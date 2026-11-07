@@ -111,6 +111,12 @@ pub trait Document {
     fn types(&mut self, _key: EditKey, _selection: Range<usize>) -> Option<(Range<usize>, String, usize)> {
         None
     }
+    /// The link at byte `at`, if there is one (a Markdown document's): the
+    /// command key and a click opens it ([`EditorHost::open_link`]), and
+    /// with the command key held the pointer over it is a hand.
+    fn link_at(&mut self, _at: usize) -> Option<String> {
+        None
+    }
 }
 
 /// Keys a [`Document`] may take first ([`Document::key`]).
@@ -610,6 +616,22 @@ pub trait EditorHost: Sized + 'static {
     /// unless the app has a menu of its own.
     fn context_menu(&mut self, key: usize, at: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
         edit_menu(self, key, at, window, cx);
+    }
+    /// The command key and a click on a link ([`Document::link_at`]):
+    /// opened (by default as the person's default app for it opens it,
+    /// on a worker; an app resolves a relative one first).
+    fn open_link(&mut self, _key: usize, link: String, _window: &mut Window, _cx: &mut Context<Self>) {
+        if link.starts_with('#') {
+            return;
+        }
+        std::thread::Builder::new()
+            .name("open link".into())
+            .spawn(move || {
+                if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::parse(&link)) {
+                    tracing::warn!("open {link}: {e}");
+                }
+            })
+            .ok();
     }
 }
 
@@ -2039,10 +2061,23 @@ impl Editor {
             let x = snap(f32::from(at.x), s);
             style::fill_rect(window, Bounds::new(point(px(x), at.y), size(px(2.0 * px1.max(0.5)), px(h))), style::c(p.keyboard_navigation));
         }
-        // The pointer: a text beam, a column's rule to size it.
+        // The pointer: a text beam, a column's rule to size it, a hand
+        // on a link with the command key held (a click opens it).
         let on_rule = window.mouse_position();
         let rule_here = o.editable && self.rules.iter().any(|(r, ..)| r.contains(&on_rule));
-        window.set_cursor_style(if rule_here || self.column_drag.is_some() { CursorStyle::ResizeColumn } else { CursorStyle::IBeam }, hitbox);
+        let mods = window.modifiers();
+        let on_link = (mods.control || mods.platform) && hitbox.is_hovered(window) && {
+            let (at, _) = self.byte_at(doc, &*sh, &o, self.to_content(on_rule));
+            doc.link_at(at).is_some()
+        };
+        let pointer = if rule_here || self.column_drag.is_some() {
+            CursorStyle::ResizeColumn
+        } else if on_link {
+            CursorStyle::PointingHand
+        } else {
+            CursorStyle::IBeam
+        };
+        window.set_cursor_style(pointer, hitbox);
         // For agents (and screen readers): the whole text, where it shows.
         agent::record(
             window,
@@ -2264,7 +2299,9 @@ pub fn view<V: EditorHost>(host: &Entity<V>, key: usize, editor: &Editor, option
         (None, Some(bg)) => sv.background(bg),
         (None, None) => sv,
     };
-    let mut d = div().id(("olo-editor", key)).key_context(CONTEXT).track_focus(&editor.focus).size_full();
+    // (A modifier pressed or let go reaches only what's focused: drawn
+    // again then, for a link's hand with the command key, `paint`.)
+    let mut d = div().id(("olo-editor", key)).key_context(CONTEXT).track_focus(&editor.focus).size_full().on_modifiers_changed(|_, window, _| window.refresh());
     macro_rules! on {
         ($($A:ty => $k:expr),* $(,)?) => {
             $(
@@ -2439,6 +2476,16 @@ impl<V: EditorHost> Element for EditorElement<V> {
             window.handle_input(f, EditorInput { host: host.clone(), key }, cx);
         }
 
+        // With the command key held over it, links are hands: drawn
+        // again as the pointer moves with it held (and as it's pressed or
+        // let go: the focused editor's, `view`).
+        let hb = hitbox.clone();
+        window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, _| {
+            if phase == DispatchPhase::Bubble && (e.modifiers.control || e.modifiers.platform) && hb.is_hovered(window) {
+                window.refresh();
+            }
+        });
+
         // The pointer.
         let hb = hitbox.clone();
         let h = host.clone();
@@ -2546,6 +2593,19 @@ fn window_focus(ed: &Editor, window: &mut Window) {
 fn press<V: EditorHost>(host: &Entity<V>, key: usize, e: &MouseDownEvent, window: &mut Window, cx: &mut App) {
     let pos = e.position;
     let (clicks, shift, alt) = (e.click_count, e.modifiers.shift, e.modifiers.alt);
+    // The command key and a click on a link: it opens, the caret stays.
+    if (e.modifiers.control || e.modifiers.platform) && clicks == 1 && !shift && !alt {
+        let link = with(host, key, window, cx, |ed, doc, sh, _, _| {
+            let o = ed.shown.o;
+            let (at, _) = ed.byte_at(doc, sh, &o, ed.to_content(pos));
+            doc.link_at(at)
+        });
+        if let Some(link) = link {
+            host.update(cx, |v, cx| v.open_link(key, link, window, cx));
+            cx.stop_propagation();
+            return;
+        }
+    }
     with(host, key, window, cx, |ed, doc, sh, window, cx| {
         let o = ed.shown.o;
         let had = ed.focus.is_focused(window);

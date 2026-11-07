@@ -7923,9 +7923,12 @@ dependencies = [
  "olo-ui",
  "olo-xdg",
  "pulldown-cmark",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tracing",
+ "ureq",
 ]
 
 [[package]]

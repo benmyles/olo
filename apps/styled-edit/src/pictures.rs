@@ -5,7 +5,9 @@
 //! bytes a picture goes into other formats as (its file's own when PNG or
 //! JPEG, else made a PNG); its natural size; and where pictures with no
 //! file of their own (pasted, or from an imported document) are kept
-//! until their document is saved, then beside it.
+//! until their document is saved, then beside it. A picture on the web
+//! (a Markdown document's `![](https://…)`) is fetched once, on the
+//! worker that decodes it, into the cache (`web`), and read from there.
 
 use std::{
     collections::HashMap,
@@ -29,6 +31,18 @@ enum Slot {
 pub struct Pictures {
     slots: HashMap<PathBuf, Slot>,
     proxy: Option<Proxy>,
+    /// Pictures on the web: the file each is kept in, and its address.
+    web: HashMap<PathBuf, String>,
+}
+
+/// The largest picture fetched from the web.
+const MOST_FETCHED: u64 = 40 << 20;
+/// Pictures fetched are kept this long after they were last fetched.
+const KEEP_FETCHED: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 3600);
+
+/// Where pictures fetched from the web are kept.
+fn fetched_dir() -> PathBuf {
+    olo_xdg::cache_dir().join("styled-edit").join("pictures")
 }
 
 /// The longest side a picture's texture has.
@@ -40,8 +54,31 @@ impl Pictures {
         self.proxy = Some(proxy);
     }
 
+    /// The file a picture at `url` (http or https) is kept in once
+    /// fetched: asked for as any other ([`Pictures::image`]), it's
+    /// fetched first.
+    pub fn web(&mut self, url: &str) -> PathBuf {
+        use sha2::Digest as _;
+        let digest = sha2::Sha256::digest(url.as_bytes());
+        let name: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+        // (Its kind as its address says it, for the decoder.)
+        let ext = url
+            .split(['?', '#'])
+            .next()
+            .and_then(|p| p.rsplit('/').next())
+            .and_then(|f| f.rsplit_once('.'))
+            .map(|(_, e)| e.to_ascii_lowercase())
+            .filter(|e| e.len() <= 5 && e.chars().all(|c| c.is_ascii_alphanumeric()));
+        let path = fetched_dir().join(match ext {
+            Some(e) => format!("{name}.{e}"),
+            None => name,
+        });
+        self.web.insert(path.clone(), url.to_owned());
+        path
+    }
+
     /// `path`'s picture once it's loaded (its loading started the first
-    /// time it's asked for).
+    /// time it's asked for; one on the web fetched first).
     pub fn image(&mut self, path: &Path) -> Option<Arc<RenderImage>> {
         match self.slots.get(path) {
             Some(Slot::Ready(t)) => Some(t.clone()),
@@ -50,8 +87,12 @@ impl Pictures {
                 self.slots.insert(path.to_owned(), Slot::Loading);
                 if let Some(proxy) = self.proxy.clone() {
                     let path = path.to_owned();
+                    let url = self.web.get(&path).cloned();
                     std::thread::spawn(move || {
-                        let r = decode(&path);
+                        let r = match url {
+                            Some(url) if !path.exists() => fetch(&url, &path).and_then(|_| decode(&path)),
+                            _ => decode(&path),
+                        };
                         proxy.send(Loaded(path, r));
                     });
                 }
@@ -68,6 +109,39 @@ impl Pictures {
         };
         self.slots.insert(l.0, slot);
     }
+}
+
+/// The picture at `url` into `to` (through a sibling, renamed into
+/// place), at most `MOST_FETCHED`; pictures fetched long ago go.
+fn fetch(url: &str, to: &Path) -> Result<(), String> {
+    use std::io::Read as _;
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .tls_config(tls)
+        .max_redirects(10)
+        .user_agent("Olo")
+        .timeout_connect(Some(std::time::Duration::from_secs(20)))
+        .timeout_per_read(Some(std::time::Duration::from_secs(30)))
+        .build()
+        .into();
+    let response = agent.get(url).header("Accept", "image/*").call().map_err(|e| format!("{url}: {e}"))?;
+    let mut bytes = Vec::new();
+    response.into_body().as_reader().take(MOST_FETCHED + 1).read_to_end(&mut bytes).map_err(|e| format!("{url}: {e}"))?;
+    if bytes.len() as u64 > MOST_FETCHED {
+        return Err(format!("{url} is too big a picture"));
+    }
+    let dir = to.parent().ok_or("no folder")?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let part = to.with_extension("part");
+    std::fs::write(&part, &bytes).and_then(|_| std::fs::rename(&part, to)).map_err(|e| e.to_string())?;
+    // (Those not fetched for a month go.)
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        if e.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|age| age > KEEP_FETCHED)) {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+    Ok(())
 }
 
 fn decode(path: &Path) -> Result<Arc<RenderImage>, String> {
@@ -219,5 +293,27 @@ mod tests {
     #[test]
     fn folders_beside_documents() {
         assert_eq!(folder_for(Path::new("/x/Report.txt")), Path::new("/x/Report pictures"));
+    }
+}
+
+#[cfg(test)]
+mod web_tests {
+    use super::*;
+
+    /// A picture on the web is kept under its address's SHA-256, with its
+    /// kind as the address says it (none for an odd one), the same each
+    /// time; and loading it is asked of that file.
+    #[test]
+    fn a_picture_on_the_web_has_a_file_of_its_own() {
+        let mut p = Pictures::default();
+        let a = p.web("https://example.org/a/cat.JPG?size=2#top");
+        assert_eq!(a.extension().and_then(|e| e.to_str()), Some("jpg"));
+        assert_eq!(a.file_stem().and_then(|s| s.to_str()).map(str::len), Some(64));
+        assert_eq!(a, p.web("https://example.org/a/cat.JPG?size=2#top"));
+        assert_ne!(a, p.web("https://example.org/a/dog.jpg"));
+        assert!(a.starts_with(fetched_dir()));
+        let odd = p.web("https://example.org/picture?id=7");
+        assert_eq!(odd.extension(), None);
+        assert_eq!(p.web.get(&odd).map(String::as_str), Some("https://example.org/picture?id=7"));
     }
 }
