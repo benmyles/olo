@@ -23,6 +23,14 @@ There is still no useful native Stripe content and no accepted configuration.
 The foreign-content implementation is next; all historical failures below remain
 evidence, not the current error. No second website is selected.
 
+The retained-source [foreign inventory](foreign-inventory.json) contains154 SVG
+roots,307 paths,135 rectangles,61 clip paths,13 linear gradients and4 filters.
+The first root is the60×25 Stripe logo; navigation chevrons follow. These are
+static source counts, not computed visibility, rendered geometry, fresh replay
+or proof of which foreign element triggered the native error. Next resolve that
+exact element and implement its native vector/style/intrinsic-size path; a
+placeholder or skipped foreign subtree cannot count as working Stripe.
+
 ## Current evidence
 
 An isolated Olo Chrome profile loaded `https://stripe.com/` with

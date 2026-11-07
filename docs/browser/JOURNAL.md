@@ -4568,3 +4568,17 @@ image/fuzz nonpasses remain open. Evidence:stripe-flex-format-{checks,worker-cos
 ordinary-cost,native-cost}.json, original page fixtures and screenshot journal.
 **Stripe0/30, corpus0/100 and0/3000; goal active.** Next inspect and implement
 the actual foreign-content blocker, then retry the same Stripe URL.
+
+
+### 2026-11-06 — Push row formatter; begin foreign-content inventory
+
+Pushed0b82487e via gh-backed credentials, then fetched origin and checked main
+with gh. Main remainsd1d0438b, already merged; no new integration is pending.
+Retained original Stripe source contains154 SVG roots/307 paths/135 rectangles,
+61 clip paths,13 linear gradients and4 filters. First source root is the60×25
+Stripe logo, followed by navigation chevrons. Record the source hash/counts and
+small attribute inventory in eval/stripe/foreign-inventory.json; this is not
+computed visibility or proof of the exact failing native node. Next identify
+that node and implement native vector styling/sizing/paint, keeping unsupported
+subtrees explicit. Owned screens are stopped; no personal install/reload.
+**Stripe0/30, corpus0/100 and0/3000; goal active.**

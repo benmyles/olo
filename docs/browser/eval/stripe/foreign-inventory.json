@@ -1,0 +1,160 @@
+{
+  "scope": "Retained original Stripe source inventory, not computed visibility or geometry and not a fresh replay",
+  "sha256": "614dc424ca90ddbdc2f3df8364c9d4f8d513fbade44326fed0b46a393e317c6d",
+  "svg_roots": 154,
+  "tags": {
+    "svg": 154,
+    "path": 307,
+    "defs": 73,
+    "clippath": 61,
+    "rect": 135,
+    "g": 168,
+    "mask": 2,
+    "text": 1,
+    "circle": 2,
+    "lineargradient": 13,
+    "stop": 35,
+    "filter": 4,
+    "feflood": 4,
+    "feblend": 4,
+    "fegaussianblur": 4
+  },
+  "attributes": {
+    "xmlns": 91,
+    "width": 293,
+    "height": 292,
+    "fill": 504,
+    "viewbox": 144,
+    "aria-label": 46,
+    "fill-rule": 59,
+    "d": 307,
+    "clip-rule": 59,
+    "class": 224,
+    "aria-hidden": 29,
+    "stroke": 9,
+    "stroke-width": 9,
+    "id": 80,
+    "x": 137,
+    "y": 137,
+    "clip-path": 61,
+    "dy": 1,
+    "dominant-baseline": 1,
+    "text-anchor": 1,
+    "font-size": 1,
+    "opacity": 2,
+    "mask": 2,
+    "role": 44,
+    "transform": 32,
+    "cx": 2,
+    "cy": 2,
+    "r": 2,
+    "stroke-linecap": 1,
+    "rx": 5,
+    "x1": 13,
+    "x2": 13,
+    "y1": 13,
+    "y2": 13,
+    "gradientunits": 13,
+    "stop-color": 34,
+    "offset": 24,
+    "style": 2,
+    "maskunits": 1,
+    "filter": 4,
+    "filterunits": 4,
+    "color-interpolation-filters": 4,
+    "flood-opacity": 4,
+    "result": 12,
+    "mode": 4,
+    "in": 4,
+    "in2": 4,
+    "stddeviation": 4,
+    "fill-opacity": 1,
+    "stop-opacity": 1
+  },
+  "first": [
+    {
+      "attributes": {
+        "xmlns": "http://www.w3.org/2000/svg",
+        "width": "60",
+        "height": "25",
+        "fill": "#031323",
+        "viewbox": "0 0 60 25",
+        "aria-label": "Stripe logo"
+      },
+      "tags": {
+        "svg": 1,
+        "path": 1
+      },
+      "paths": 1,
+      "path_bytes": 1700
+    },
+    {
+      "attributes": {
+        "class": "hds-icon navigation__chevron-down-icon",
+        "width": "16",
+        "height": "16",
+        "viewbox": "0 0 16 16",
+        "fill": "none",
+        "xmlns": "http://www.w3.org/2000/svg",
+        "aria-hidden": "true"
+      },
+      "tags": {
+        "svg": 1,
+        "path": 2
+      },
+      "paths": 2,
+      "path_bytes": 40
+    },
+    {
+      "attributes": {
+        "class": "hds-icon navigation__chevron-down-icon",
+        "width": "16",
+        "height": "16",
+        "viewbox": "0 0 16 16",
+        "fill": "none",
+        "xmlns": "http://www.w3.org/2000/svg",
+        "aria-hidden": "true"
+      },
+      "tags": {
+        "svg": 1,
+        "path": 2
+      },
+      "paths": 2,
+      "path_bytes": 40
+    },
+    {
+      "attributes": {
+        "class": "hds-icon navigation__chevron-down-icon",
+        "width": "16",
+        "height": "16",
+        "viewbox": "0 0 16 16",
+        "fill": "none",
+        "xmlns": "http://www.w3.org/2000/svg",
+        "aria-hidden": "true"
+      },
+      "tags": {
+        "svg": 1,
+        "path": 2
+      },
+      "paths": 2,
+      "path_bytes": 40
+    },
+    {
+      "attributes": {
+        "class": "hds-icon navigation__chevron-down-icon",
+        "width": "16",
+        "height": "16",
+        "viewbox": "0 0 16 16",
+        "fill": "none",
+        "xmlns": "http://www.w3.org/2000/svg",
+        "aria-hidden": "true"
+      },
+      "tags": {
+        "svg": 1,
+        "path": 2
+      },
+      "paths": 2,
+      "path_bytes": 40
+    }
+  ]
+}
