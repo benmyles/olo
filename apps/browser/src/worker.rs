@@ -1218,6 +1218,7 @@ fn render(
             }
         }
     }
+    let fixed_tiles = fixed_layer.len();
     proxy.send(Reply::Fixed(r.id, fixed_layer));
     // The sticky layers: each sticky box's commands at its flow position,
     // in tiles kept by signature; the window moves them with the scroll.
@@ -1232,8 +1233,8 @@ fn render(
         let scale = scene.device_scale();
         let x0 = (extent.x * scale).floor().max(0.) as i32;
         let y0 = (extent.y * scale).floor().max(0.) as i32;
-        let x1 = ((extent.x + extent.width) * scale).ceil().min(f64::from(x0) + 4096.) as i32;
-        let y1 = ((extent.y + extent.height) * scale).ceil().min(f64::from(y0) + 4096.) as i32;
+        let x1 = ((extent.x + extent.width) * scale).ceil().min(f64::from(x0) + 2048.) as i32;
+        let y1 = ((extent.y + extent.height) * scale).ceil().min(f64::from(y0) + 2048.) as i32;
         if x1 <= x0 || y1 <= y0 {
             sticky_layers.push(StickyLayer { sticky: *st, tiles: Vec::new() });
             continue;
@@ -1278,6 +1279,9 @@ fn render(
             }
         }
         sticky_layers.push(StickyLayer { sticky: *st, tiles: layer_tiles });
+    }
+    if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() && (fixed_tiles > 0 || !sticky_layers.is_empty()) {
+        eprintln!("  layers: fixed {fixed_tiles} tiles, sticky {} ({} tiles)", sticky_layers.len(), sticky_layers.iter().map(|l| l.tiles.len()).sum::<usize>());
     }
     proxy.send(Reply::Sticky(r.id, sticky_layers));
     if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() {

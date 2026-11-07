@@ -757,10 +757,10 @@ fn semantic_opportunities_cannot_reuse_literal_unicode_nowrap_cache_entries() {
 }
 
 #[test]
-fn unimplemented_placement_renders_in_flow_and_records_the_node() {
+fn fixed_and_sticky_boxes_are_laid_out_without_fallbacks() {
     let scope = scope();
     let host = native_host::NativeHost(scope);
-    for (declaration, fallback) in [("position:fixed", "position: fixed as absolute"), ("position:sticky", "position: sticky as relative")] {
+    for declaration in ["position:fixed", "position:sticky"] {
         let doc = html::parse(Arc::from(format!("<!doctype html><div style='{declaration}'>A</div>")), Default::default(), None).unwrap().document;
         let mut sheets = SheetBuilder::new(Default::default());
         sheets.add_sheet(&Syntax::parse(Arc::from(olo_web::page::UA), Default::default(), None).unwrap(), Origin::UserAgent, None).unwrap();
@@ -770,12 +770,12 @@ fn unimplemented_placement_renders_in_flow_and_records_the_node() {
         while !styles.step(64, |_| &host).unwrap().finished {}
         let mut job = layout::BuildJob::new(&doc, Arc::new(styles.finish().unwrap()), Default::default(), None).unwrap();
         while !job.step(1).unwrap().finished {}
-        let recorded = job.fallbacks();
-        assert_eq!(recorded.counts(), vec![(fallback, 1)], "{declaration}");
-        let node = recorded.sample()[0].node.unwrap();
-        assert_eq!(doc.name(node).unwrap(), Some("div"));
+        // Fixed boxes are laid out as absolute and painted as a layer the
+        // scroll leaves alone; sticky ones stay in the flow and are shifted
+        // when painted: neither is a fallback.
+        assert!(job.fallbacks().counts().is_empty(), "{declaration}: {:?}", job.fallbacks().counts());
         let tree = job.finish().unwrap();
-        assert!(tree.iter().any(|(_, b)| b.node == node && matches!(b.kind, BoxKind::Block { .. })));
+        assert!(tree.iter().any(|(_, b)| doc.name(b.node).unwrap() == Some("div") && matches!(b.kind, BoxKind::Block { .. })));
     }
 }
 
