@@ -585,7 +585,7 @@
     forms: { get() { return collectionOf(N.query(documentNode, 'form', true)); } }, images: { get() { return collectionOf(N.query(documentNode, 'img', true)); } }, links: { get() { return collectionOf(N.query(documentNode, 'a[href],area[href]', true)); } }, scripts: { get() { return collectionOf(N.query(documentNode, 'script', true)); } }, anchors: { get() { return collectionOf(N.query(documentNode, 'a[name]', true)); } }, embeds: { get() { return collectionOf([]); } }, plugins: { get() { return collectionOf([]); } }, all: { get() { return collectionOf(N.query(documentNode, '*', true)); } },
     styleSheets: { get() { return listOf([]); } }, adoptedStyleSheets: { get() { return []; }, set() {} },
     fonts: { get() { return { ready: Promise.resolve(), status: 'loaded', load: () => Promise.resolve([]), check: () => true, addEventListener() {}, removeEventListener() {}, forEach() {}, size: 0, add() {}, delete() {}, clear() {} }; } },
-    implementation: { get() { return { hasFeature: () => true, createHTMLDocument: () => { const f = N.createFragment(); return Object.assign(f, { body: f, head: f, documentElement: f, title: '' }); }, createDocument: () => N.createFragment(), createDocumentType: () => null }; } },
+    implementation: { get() { return { hasFeature: () => true, createHTMLDocument: (title) => createHTMLDocument(title), createDocument: () => N.createFragment(), createDocumentType: () => null }; } },
     timeline: { get() { return { currentTime: performanceNow() }; } },
     getAnimations() { return animations.filter((a) => a.playState !== 'idle'); },
     createElement(tag, options) { const name = String(tag); const el = N.createElement(name, ''); if (options && options.is) N.setAttr(el, 'is', String(options.is)); upgrade(el, name.toLowerCase()); return el; },
@@ -710,6 +710,41 @@
   global.screen = { width: vw, height: vh, availWidth: vw, availHeight: vh, colorDepth: 24, pixelDepth: 24, orientation: { type: vw >= vh ? 'landscape-primary' : 'portrait-primary', angle: 0, addEventListener() {}, removeEventListener() {} } };
   Object.assign(global, { innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0, name: '', status: '', closed: false, length: 0, isSecureContext: pageURL.protocol === 'https:', origin: pageURL.origin, crossOriginIsolated: false });
   for (const k of ['window', 'self', 'top', 'parent', 'frames']) Object.defineProperty(global, k, { get() { return global; }, set() {}, configurable: true });
+  // DOMImplementation.createHTMLDocument: a document of its own is a
+  // detached tree here (html, head with the title, body), with the
+  // document methods scripts use on it (jQuery parses markup into one).
+  const createHTMLDocument = (title) => {
+    const root = N.createFragment();
+    const html = global.document.createElement('html');
+    const head = global.document.createElement('head');
+    const body = global.document.createElement('body');
+    html.appendChild(head); html.appendChild(body); root.appendChild(html);
+    if (title != null) { const t = global.document.createElement('title'); t.textContent = String(title); head.appendChild(t); }
+    const doc = {
+      nodeType: 9, nodeName: '#document', documentElement: html, head, body,
+      get title() { const t = head.querySelector('title'); return t ? t.textContent : ''; },
+      set title(v) { let t = head.querySelector('title'); if (!t) { t = global.document.createElement('title'); head.appendChild(t); } t.textContent = String(v); },
+      defaultView: null, readyState: 'complete', contentType: 'text/html', URL: global.document.URL, documentURI: global.document.URL, cookie: '', characterSet: 'UTF-8', compatMode: 'CSS1Compat',
+      get implementation() { return global.document.implementation; },
+      createElement: (n, o) => global.document.createElement(n, o),
+      createElementNS: (ns, n) => global.document.createElementNS(ns, n),
+      createTextNode: (t) => global.document.createTextNode(t),
+      createComment: (t) => global.document.createComment(t),
+      createDocumentFragment: () => global.document.createDocumentFragment(),
+      createRange: () => global.document.createRange(),
+      createEvent: (t) => global.document.createEvent(t),
+      querySelector: (sel) => html.querySelector(sel),
+      querySelectorAll: (sel) => html.querySelectorAll(sel),
+      getElementById: (id) => html.querySelector('[id="' + String(id).replace(/["\\]/g, '\\$&') + '"]'),
+      getElementsByTagName: (t) => html.getElementsByTagName(t),
+      getElementsByClassName: (c) => html.getElementsByClassName(c),
+      addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; },
+      open() {}, close() {}, write() {}, writeln() {},
+      get childNodes() { return root.childNodes; }, get firstChild() { return html; }, get lastChild() { return html; },
+      contains: (n) => html.contains(n),
+    };
+    return doc;
+  };
   global.document = documentNode;
   Object.defineProperty(global, 'opener', { value: null, writable: true });
   const scrollWindow = (x, y) => { const size = N.docSize(); const [vw2, vh2] = N.viewport(); scrollXY[0] = Math.max(0, Math.min(x, size[0] - vw2)); scrollXY[1] = Math.max(0, Math.min(y, size[1] - vh2)); global.scrollX = global.pageXOffset = scrollXY[0]; global.scrollY = global.pageYOffset = scrollXY[1]; setTimeout(() => { dispatch(documentNode, new Event('scroll', { bubbles: true })); }, 0); };
@@ -736,7 +771,17 @@
   global.setTimeout = (fn, delay, ...args) => schedule(fn, delay, args, false);
   global.setInterval = (fn, delay, ...args) => schedule(fn, delay, args, true);
   global.clearTimeout = global.clearInterval = (id) => { timers.delete(id); };
-  const pendingIntersections = [];
+  // IntersectionObserver: observers with targets, checked after a frame
+  // when one was added, the scroll moved or the document changed.
+  const intersectionObservers = new Set();
+  let intersectionsDue = false;
+  let intersectionScroll = -1, intersectionRevision = -1;
+  const checkIntersections = () => {
+    intersectionsDue = false;
+    intersectionScroll = scrollXY[1];
+    intersectionRevision = N.revision();
+    for (const o of [...intersectionObservers]) o._check();
+  };
   global.requestAnimationFrame = (fn) => { const id = nextTimer++; rafs.push({ id, fn }); return id; };
   global.cancelAnimationFrame = (id) => { const i = rafs.findIndex((r) => r.id === id); if (i >= 0) rafs.splice(i, 1); };
   global.requestIdleCallback = (fn, options) => schedule(() => fn({ didTimeout: false, timeRemaining: () => 50 }), (options && options.timeout) || 1, [], false);
@@ -766,18 +811,18 @@
     // (HTML's "update the rendering" runs the callbacks and then updates
     // the observations, whose notifications follow), so a page that
     // schedules a frame and then observes sees the frame first.
-    if ((rafs.length || pendingIntersections.length) && now >= lastFrame + 16) {
+    const intersectionsWanted = intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || N.revision() !== intersectionRevision);
+    if ((rafs.length || intersectionsWanted) && now >= lastFrame + 16) {
       lastFrame = now;
       const batch = rafs.splice(0, rafs.length);
       for (const r of batch) { try { r.fn.call(global, performanceNow()); } catch (e) { reportError(e); } }
-      const observed = pendingIntersections.splice(0, pendingIntersections.length);
-      for (const f of observed) f();
+      if (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || N.revision() !== intersectionRevision)) checkIntersections();
     }
     // Sizes can only have changed with the document: one check per change.
     if (resizeObservers.size) { const r = N.revision(); if (r !== resizeRevision) { resizeRevision = r; for (const o of [...resizeObservers]) o._check(); } }
     let next = -1;
     for (const t of timers.values()) if (next < 0 || t.due < next) next = t.due;
-    if (rafs.length || pendingIntersections.length) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
+    if (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || N.revision() !== intersectionRevision))) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
     if (next >= 0 && next <= now) next = now + 1;
     return next;
   };
@@ -871,10 +916,52 @@
   };
   let resizeCheckPending = false, resizeRevision = -1;
   const scheduleResizeCheck = () => { if (resizeCheckPending) return; resizeCheckPending = true; setTimeout(() => { resizeCheckPending = false; for (const o of [...resizeObservers]) o._check(); }, 0); };
-  // IntersectionObserver reports every target as intersecting (its rect
-  // from the layout; the viewport is the root), once, as a task: pages
-  // then mount what they show on scroll, as they would in time.
-  global.IntersectionObserver = class IntersectionObserver { constructor(cb, options) { this._cb = cb; this.root = (options && options.root) || null; this.rootMargin = (options && options.rootMargin) || '0px'; this.thresholds = [].concat((options && options.threshold) || 0); this._targets = []; } observe(el) { if (this._targets.includes(el)) return; this._targets.push(el); const cb = this._cb; pendingIntersections.push(() => { if (!this._targets.includes(el)) return; const r = N.rect(el) || [0, 0, 0, 0]; const rect = new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]); const entry = { target: el, isIntersecting: true, intersectionRatio: 1, time: performanceNow(), boundingClientRect: rect, intersectionRect: rect, rootBounds: new DOMRect(0, 0, vw, vh) }; try { cb([entry], this); } catch (e) { reportError(e); } }); } unobserve(el) { this._targets = this._targets.filter((t) => t !== el); } disconnect() { this._targets = []; } takeRecords() { return []; } };
+  // IntersectionObserver against the viewport: each target's rect from the
+  // layout, less the scroll, against the viewport grown by the root
+  // margin; entries when a target's intersection or threshold step
+  // changes, the first time regardless (the initial notification), after
+  // a frame.
+  const parseRootMargin = (margin, vw, vh) => {
+    const parts = String(margin || '0px').trim().split(/\s+/).slice(0, 4);
+    const num = (p, axis) => { const n = parseFloat(p) || 0; return /%$/.test(p) ? n / 100 * (axis === 'v' ? vh : vw) : n; };
+    const t = num(parts[0], 'v'), r = num(parts[1] === undefined ? parts[0] : parts[1], 'h'), b = num(parts[2] === undefined ? parts[0] : parts[2], 'v'), l = num(parts[3] === undefined ? (parts[1] === undefined ? parts[0] : parts[1]) : parts[3], 'h');
+    return [t, r, b, l];
+  };
+  global.IntersectionObserver = class IntersectionObserver {
+    constructor(cb, options) {
+      if (typeof cb !== 'function') throw new TypeError("IntersectionObserver: the callback is not a function");
+      this._cb = cb; this.root = (options && options.root) || null; this.rootMargin = (options && options.rootMargin) || '0px';
+      const t = [].concat(options && options.threshold !== undefined ? options.threshold : [0]).map(Number).filter((n) => n >= 0 && n <= 1).sort((a, b) => a - b);
+      this.thresholds = t.length ? t : [0];
+      this._targets = new Map();
+    }
+    observe(el) { if (!el || this._targets.has(el)) return; this._targets.set(el, { step: null, intersecting: null }); intersectionObservers.add(this); intersectionsDue = true; }
+    unobserve(el) { this._targets.delete(el); if (!this._targets.size) intersectionObservers.delete(this); }
+    disconnect() { this._targets.clear(); intersectionObservers.delete(this); }
+    takeRecords() { return []; }
+    _check() {
+      const [vw2, vh2] = N.viewport();
+      const [mt, mr, mb, ml] = parseRootMargin(this.rootMargin, vw2, vh2);
+      const root = { x: -ml, y: -mt, w: vw2 + ml + mr, h: vh2 + mt + mb };
+      const entries = [];
+      for (const [el, state] of this._targets) {
+        const raw = N.isConnected(el) ? N.rect(el) : null;
+        const rect = raw ? { x: raw[0] - scrollXY[0], y: raw[1] - scrollXY[1], w: raw[2], h: raw[3] } : { x: 0, y: 0, w: 0, h: 0 };
+        const ix0 = Math.max(rect.x, root.x), iy0 = Math.max(rect.y, root.y), ix1 = Math.min(rect.x + rect.w, root.x + root.w), iy1 = Math.min(rect.y + rect.h, root.y + root.h);
+        const intersecting = !!raw && ix1 >= ix0 && iy1 >= iy0;
+        const area = rect.w * rect.h;
+        const ratio = !intersecting ? 0 : area > 0 ? Math.max(0, ix1 - ix0) * Math.max(0, iy1 - iy0) / area : 1;
+        let step = -1;
+        for (let i = 0; i < this.thresholds.length; i++) if (ratio >= this.thresholds[i] && (intersecting || this.thresholds[i] === 0 && ratio > 0)) step = i;
+        if (!intersecting) step = -1;
+        if (state.intersecting === intersecting && state.step === step) continue;
+        state.intersecting = intersecting; state.step = step;
+        const bounds = new DOMRect(rect.x, rect.y, rect.w, rect.h);
+        entries.push({ target: el, time: performanceNow(), isIntersecting: intersecting, intersectionRatio: ratio, boundingClientRect: bounds, intersectionRect: intersecting ? new DOMRect(ix0, iy0, Math.max(0, ix1 - ix0), Math.max(0, iy1 - iy0)) : new DOMRect(0, 0, 0, 0), rootBounds: new DOMRect(root.x, root.y, root.w, root.h), isVisible: intersecting });
+      }
+      if (entries.length) { try { this._cb(entries, this); } catch (e) { reportError(e); } }
+    }
+  };
   global.IntersectionObserverEntry = class IntersectionObserverEntry {};
   // A synchronous fetch (XMLHttpRequest in synchronous mode): bytes.
   const fetchSync = (url, method, body) => (/^(data|blob):/.test(url) ? global.__olo_fetchInline(url) : N.fetchSync(url, method, body));
