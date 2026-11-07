@@ -1696,9 +1696,11 @@ fn render(
             progress(Phase::Text, job.progress().texts)
         }
         fallbacks.merge(job.fallbacks());
+        let texts = (job.progress().reused_texts, job.progress().texts);
         let cache = job.finish()?;
         if let Some(t) = timing {
             stamps[2] = t.elapsed().as_secs_f64() * 1000.;
+            eprintln!("  texts: {} of {} reused", texts.0, texts.1);
         }
         progress(Phase::Layout, 0);
         let checked = cache.clone();

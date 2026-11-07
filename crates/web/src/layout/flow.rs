@@ -450,15 +450,49 @@ impl<'a> PrepareJob<'a> {
             shaping::features_of(style).hash(&mut hash);
             (font_identity(style.font()), source.source.clone(), hash.finish())
         });
+        // The breaks a shared text was shaped with: the inline edges and
+        // objects, and the edges of its styled runs (the shaper cuts there).
+        let expected_breaks = |text: &inline::Text| -> Result<Box<[u32]>> {
+            let mut cuts = shaping_breaks(text.prepared(), &raw_breaks)?.to_vec();
+            let len = text.prepared().text().len() as u32;
+            for run in style_runs(&self.tree, self.scope, style, source, source_controls, text.prepared(), self.cancel)? {
+                if run.range.start > 0 {
+                    cuts.push(run.range.start);
+                }
+                if run.range.end < len {
+                    cuts.push(run.range.end);
+                }
+            }
+            cuts.sort_unstable();
+            cuts.dedup();
+            Ok(cuts.into_boxed_slice())
+        };
         if let Some(text) = key.as_ref().and_then(|key| self.shared.get(key))
             && text.prepared().spans().len() == source.spans.len()
             && text.prepared().spans().iter().zip(source.spans.iter()).all(|(a, b)| a.range == b.range && a.whitespace == whitespace)
             && text.paragraph().analysis.paragraphs().all(|(_, level)| (level % 2 != 0) == (style.axes().direction == crate::css::style::Direction::Rtl))
-            && text.paragraph().shaping_breaks() == shaping_breaks(text.prepared(), &raw_breaks)?.as_ref()
+            && text.paragraph().shaping_breaks() == expected_breaks(text)?.as_ref()
             && text.prepared().controls() == controls.as_ref()
         {
             self.progress.reused_texts += 1;
             return Ok(text.clone());
+        }
+        // OLO_LAYOUT_DEBUG: why a text is prepared again.
+        if std::env::var_os("OLO_LAYOUT_DEBUG").is_some() && self.previous.is_some() {
+            let shared = key.as_ref().and_then(|key| self.shared.get(key));
+            let why = match shared {
+                None => "no shared text with this key".to_owned(),
+                Some(text) => format!(
+                    "shared text differs: spans {} vs {}, breaks {:?} vs {:?}, controls {} vs {}",
+                    text.prepared().spans().len(),
+                    source.spans.len(),
+                    text.paragraph().shaping_breaks(),
+                    expected_breaks(text).ok(),
+                    text.prepared().controls().len(),
+                    controls.len()
+                ),
+            };
+            eprintln!("  text prepared again: source {index} {:?}: {why}", source.source.chars().take(40).collect::<String>());
         }
         let spans: Arc<[prepare::Span]> = source.spans.iter().map(|s| prepare::Span { range: s.range.clone(), whitespace }).collect();
         let mut p = prepare::Job::new(source.source.clone(), spans, prepare::Limits { text_bytes: self.limits.text.text_bytes, ..Default::default() }, self.cancel)?.with_controls(controls)?;
@@ -1081,14 +1115,32 @@ impl<'a> Job<'a> {
         let mut pairs: Vec<(BoxId, BoxId, bool, bool)> = vec![(child, old, positioned(style), stored.bfc)];
         let mut copied: Vec<(BoxId, BoxId)> = Vec::new();
         self.refused[7] += 1;
+        // OLO_LAYOUT_DEBUG: why a subtree that is not dirty differs.
+        let debug = std::env::var_os("OLO_LAYOUT_DEBUG").is_some();
+        let why = |what: &str, a: BoxId| {
+            if debug {
+                eprintln!("  reuse refused: {what} at {:?} {:?} (under {:?})", new_tree.get(a).map(|b| b.node), new_tree.get(a).map(|b| b.kind), new_tree.get(child).map(|b| b.node));
+            }
+        };
         while let Some((a, o, cb_inside, bfc_inside)) = pairs.pop() {
             check(self.cancel)?;
             let (Some(n), Some(ob)) = (new_tree.get(a), old_tree.get(o)) else { return Ok(false) };
             if n.node != ob.node || prev.dirty.contains(&n.node) || n.absolute != ob.absolute || n.marker != ob.marker || n.span != ob.span {
+                why(
+                    if n.node != ob.node {
+                        "another node"
+                    } else if prev.dirty.contains(&n.node) {
+                        "dirty"
+                    } else {
+                        "absolute/marker/span"
+                    },
+                    a,
+                );
                 return Ok(false);
             }
             let (Some(sn), Some(so)) = (new_tree.style(a), old_tree.style(o)) else { return Ok(false) };
             if sn.identity() != so.identity() {
+                why(if sn.same_as(so) { "style identity (equal in value)" } else { "style" }, a);
                 return Ok(false);
             }
             let same_kind = match (n.kind, ob.kind) {
@@ -1106,12 +1158,25 @@ impl<'a> Job<'a> {
                 _ => false,
             };
             if !same_kind {
+                if debug && let (BoxKind::InlineContent { source: x }, BoxKind::InlineContent { source: y }) = (n.kind, ob.kind) {
+                    let (t, u) = (self.cache.texts.get(x as usize), prev.layout.cache.texts.get(y as usize));
+                    eprintln!(
+                        "    texts: new #{:?} {:?} / old #{:?} {:?}",
+                        t.map(|t| t.serial()),
+                        t.map(|t| t.prepared().source().chars().take(40).collect::<String>()),
+                        u.map(|u| u.serial()),
+                        u.map(|u| u.prepared().source().chars().take(40).collect::<String>())
+                    );
+                }
+                why(if matches!(n.kind, BoxKind::InlineContent { .. }) { "text" } else { "kind" }, a);
                 return Ok(false);
             }
             if n.absolute && !cb_inside {
+                why("absolute without its containing block", a);
                 return Ok(false);
             }
             if self.float_side(sn).is_some() && !bfc_inside {
+                why("float without a formatting context root", a);
                 return Ok(false);
             }
             let cb = cb_inside || positioned(sn);
