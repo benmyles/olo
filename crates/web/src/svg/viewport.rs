@@ -17,6 +17,10 @@ pub struct Viewport {
     pub shapes: Vec<Shape>,
     pub view_box: Option<[f64; 4]>,
     pub aspect: svgtypes::AspectRatio,
+    /// CSS viewport clipping, independently per axis.
+    pub clip: [bool; 2],
+    /// Conservative control-point bounds, cached once during path compilation.
+    pub ink_bounds: Option<tiny_skia::Rect>,
     pub visited: usize,
     pub work: usize,
 }
@@ -30,13 +34,18 @@ impl Viewport {
             return Err(Error::Invalid);
         }
         let root_style = styles.snapshot(root).ok_or(Error::Stale)?;
-        if [P::OverflowX, P::OverflowY].into_iter().any(|p| !matches!(root_style.value(p), Value::Keyword(K::Hidden | K::Clip))) {
-            return Err(Error::Unsupported("unclipped SVG viewport"));
+        let mut clip = [false; 2];
+        for (axis, p) in [P::OverflowX, P::OverflowY].into_iter().enumerate() {
+            clip[axis] = match root_style.value(p) {
+                Value::Keyword(K::Hidden | K::Clip) => true,
+                Value::Keyword(K::Visible) => false,
+                _ => return Err(Error::Unsupported("scrollable SVG viewport")),
+            };
         }
         if [P::Width, P::Height].into_iter().all(|p| matches!(root_style.value(p), Value::Keyword(K::Auto))) {
             return Err(Error::Unsupported("auto-sized SVG viewport"));
         }
-        let mut result = Self { node: root, shapes: Vec::new(), view_box: None, aspect: Default::default(), visited: 0, work: 0 };
+        let mut result = Self { node: root, shapes: Vec::new(), view_box: None, aspect: Default::default(), clip, ink_bounds: None, visited: 0, work: 0 };
         if let Some(value) = doc.attribute(root, "viewBox")? {
             if value.len() > 1024 * 1024 {
                 return Err(Error::Limit);
@@ -116,6 +125,10 @@ impl Viewport {
                             if matches!(s.value(P::Visibility), Value::Keyword(K::Visible)) && !matches!(s.value(P::Fill), Value::Keyword(K::None)) {
                                 let mut color = s.used_color(P::Fill)?.srgb8_clipped();
                                 color[3] = (f64::from(color[3]) * s.value(P::FillOpacity).scalar().ok_or(Error::Invalid)?).round() as u8;
+                                if let Some(geometry) = path.geometry() {
+                                    let b = geometry.bounds();
+                                    result.ink_bounds = Some(result.ink_bounds.map_or(Some(b), |old| old.join(&b)).ok_or(Error::Unsupported("SVG overflow bounds precision"))?);
+                                }
                                 result.shapes.push(Shape { node, path, color, evenodd: matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd)) });
                             }
                         }

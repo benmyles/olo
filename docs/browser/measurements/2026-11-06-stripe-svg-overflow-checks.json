@@ -1,0 +1,456 @@
+{
+  "scope": "Initial SVG visible overflow; component evidence only. Stripe 0/30; corpus 0/100.",
+  "merged_main": "e4367953",
+  "merge_commit": "b95728b2",
+  "main_validation": {
+    "workspace_seconds": 124,
+    "tests_passed": 313,
+    "ignored": 2
+  },
+  "workspace": {
+    "seconds": 9.43,
+    "passed": true
+  },
+  "reference": {
+    "rectangles": 90,
+    "exact_pixel_crops": 80,
+    "total": 90,
+    "nonpasses": 10,
+    "previous_svg_nonpasses": 28
+  },
+  "visual": {
+    "source_sha256": "62380fe33cdd840d465825ddbaf919f48308ddaaf340c180472d766a10e5bb0c",
+    "rows": [
+      {
+        "theme": "light",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "88e48c1ce5ca02775194b3a93ce227b2cb34d03f59797bf47a24c361eac9b330"
+      },
+      {
+        "theme": "light",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "c66b95d6dc0ebb6bb99a9d0f046d21b97061880d248d9d0f49fdbc733c3f3214"
+      },
+      {
+        "theme": "light",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "c23aaaaae9ef65bb2696c451b44c1c6797925022f1a269b25d3fdb409f639b22"
+      },
+      {
+        "theme": "light",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "76a7c0d3053a1d9b9e1f9538e5bb4d42a6fa1caeb1e44010b392b47bad794476"
+      },
+      {
+        "theme": "light",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "540909a178add3367d283b0804010cefd68d6e944b8aea171db6c746f2b8e028"
+      },
+      {
+        "theme": "dark",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "e31d1b48f8c725fcb5f51b6fb2d8ecd2d915f54832c97cc22f1fb9709f199da1"
+      },
+      {
+        "theme": "dark",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "99f2d1e0214dd86bdea1facedecc13e2333cb755ab67fbe41baa76a337958356"
+      },
+      {
+        "theme": "dark",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "b388e2e79dfbd7b4fd6581978f693789095b1e4582a408d081ecb84e455c8db8"
+      },
+      {
+        "theme": "dark",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "43c8e2531db40057726918a1d3db594c86f33d8f4bb9fb4c920f73f5e7c38ffb"
+      },
+      {
+        "theme": "dark",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "7858a3c1897c9a227221dafab90729e55d28fd372366424403fde353ce42d0f7"
+      },
+      {
+        "theme": "night",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "e31d1b48f8c725fcb5f51b6fb2d8ecd2d915f54832c97cc22f1fb9709f199da1"
+      },
+      {
+        "theme": "night",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "99f2d1e0214dd86bdea1facedecc13e2333cb755ab67fbe41baa76a337958356"
+      },
+      {
+        "theme": "night",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "b388e2e79dfbd7b4fd6581978f693789095b1e4582a408d081ecb84e455c8db8"
+      },
+      {
+        "theme": "night",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "43c8e2531db40057726918a1d3db594c86f33d8f4bb9fb4c920f73f5e7c38ffb"
+      },
+      {
+        "theme": "night",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "7858a3c1897c9a227221dafab90729e55d28fd372366424403fde353ce42d0f7"
+      }
+    ],
+    "inspection": "Full light1 and all five no-resampling theme contact crops inspected."
+  },
+  "stripe": {
+    "pid": 756306,
+    "exe": "/var/tmp/olo-browser-stripe/svg-overflow/browser-after",
+    "sha256": "f70dac0bb0c88685833541b3e2167e5b3698602be9fd709bb4938d8df5088c28",
+    "tree": [
+      {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "https://stripe.com/",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "flow layout Unsupported(\"SVG shape/container type\")",
+            "x": 69.0,
+            "y": 733.672,
+            "width": 302.04,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ],
+    "windows": [
+      {
+        "id": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "pid": 756306,
+        "workspace": 0,
+        "minimized": false,
+        "focused": true,
+        "kept": false,
+        "groupable": true,
+        "output": "HEADLESS-1",
+        "frame": {
+          "x": 48,
+          "y": 40,
+          "width": 1010,
+          "height": 731
+        },
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "least": [
+          650,
+          511
+        ],
+        "tab_frame": {
+          "x": 48,
+          "y": 40,
+          "width": 100,
+          "height": 21
+        },
+        "stack": 0,
+        "glowing": true,
+        "surface": 32
+      }
+    ],
+    "scope": "Fresh native HTTPS startup; no site acceptance"
+  },
+  "limitations": [
+    "Scrollable SVG viewport",
+    "Ten fractional/curve overflow pixel nonpasses plus previous 28 SVG page gaps",
+    "Remaining shapes, strokes, transforms and paint servers",
+    "No Stripe positioned geometry or useful homepage yet"
+  ],
+  "cost_notes": [
+    "20/28 ordinary observations recorded compiler processes",
+    "Native after sample ended with compiler processes; no causal claim",
+    "SVG before benchmark compiled from exact HEAD source, restored in finally before after build; benchmark sources identical",
+    "Scene command payload unchanged; SVG metadata grows 24 bytes/root",
+    "No clock/load control; client submission marks are not presentation latency"
+  ],
+  "final_tests": {
+    "passed": 315,
+    "ignored": 2
+  },
+  "final_clippy": {
+    "passed": true,
+    "seconds": 2.32
+  },
+  "strict_pixels": {
+    "exit": 101,
+    "expected_nonpasses": 10,
+    "passed": false
+  }
+}

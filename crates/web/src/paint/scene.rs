@@ -19,7 +19,7 @@ impl Default for Options {
 #[derive(Clone, Debug)]
 pub enum Primitive {
     Image { owner: BoxId, image: u32 },
-    Vector { owner: BoxId, vector: u32 },
+    Vector { owner: BoxId, vector: u32, origin: Point },
     Fill { color: [u8; 4] },
     Border { owner: BoxId, colors: [[u8; 4]; 4] },
     Text { owner: BoxId, fragment: u32, glyphs: Range<u32>, origin: Point, color: [u8; 4] },
@@ -299,7 +299,7 @@ impl<'a> BuildJob<'a> {
                 }
                 Primitive::Image { owner: id, image }
             }
-            BoxKind::InlineVector { vector } => Primitive::Vector { owner: id, vector },
+            BoxKind::InlineVector { vector } => Primitive::Vector { owner: id, vector, origin: Point::default() },
             _ => return Err(Error::Invalid),
         };
         if s.value(P::Opacity).scalar() != Some(1.)
@@ -313,7 +313,34 @@ impl<'a> BuildJob<'a> {
         if visible(s) {
             self.decorate(id, s, g, outer, group, clip, true)?;
         }
-        self.emit(group, true, outer, primitive, clip)
+        if let Primitive::Vector { vector, .. } = primitive { self.vector(id, vector, outer, group, clip) } else { self.emit(group, true, outer, primitive, clip) }
+    }
+    /// Keep the raster transform anchored to the CSS viewport while the spatial
+    /// index includes visible ink outside it. No path traversal during repaint.
+    fn vector(&mut self, id: BoxId, vector: u32, outer: Rect, group: u32, clip: u32) -> Result<()> {
+        let g = self.layout.geometry(id).ok_or(Error::Invalid)?;
+        let origin = Point { x: outer.x + g.border_width.left + g.padding.left, y: outer.y + g.border_width.top + g.padding.top };
+        let content = g.content_box();
+        let source = self.layout.cache().tree().vector(vector).ok_or(Error::Invalid)?;
+        let mut bounds = outer;
+        if source.clip != [true, true]
+            && let (Some(b), Some([sx, sy, tx, ty])) = (source.ink_bounds, source.transform(content.width, content.height))
+        {
+            let mut ink = Rect { x: origin.x + tx + f64::from(b.left()) * sx, y: origin.y + ty + f64::from(b.top()) * sy, width: f64::from(b.width()) * sx, height: f64::from(b.height()) * sy };
+            if source.clip[0] {
+                ink.x = origin.x;
+                ink.width = content.width;
+            }
+            if source.clip[1] {
+                ink.y = origin.y;
+                ink.height = content.height;
+            }
+            if !valid(ink) {
+                return Err(Error::Unsupported("SVG overflow bounds precision"));
+            }
+            bounds = union(bounds, ink);
+        }
+        self.emit(group, true, bounds, Primitive::Vector { owner: id, vector, origin }, clip)
     }
     fn text<const HAS_IMAGES: bool>(&mut self, id: BoxId, source: u32, at: Point, group: u32, clip: u32) -> Result<()> {
         // Layout is held outside self's mutable command builder borrow.
@@ -542,7 +569,7 @@ impl<'a> BuildJob<'a> {
                         }
                     }
                     if let BoxKind::BlockVector { vector } = b.kind {
-                        self.emit(group, true, outer, Primitive::Vector { owner: id, vector }, clip)?;
+                        self.vector(id, vector, outer, group, clip)?;
                     }
                     let x = !matches!(s.value(P::OverflowX), Value::Keyword(K::Visible));
                     let y = !matches!(s.value(P::OverflowY), Value::Keyword(K::Visible));

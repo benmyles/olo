@@ -114,3 +114,67 @@ fn svg_worker_quota_cancellation_and_stale_document_are_explicit() {
     page.document.set_attribute(root, "width", "80").unwrap();
     assert!(olo_web::svg::Viewport::load(&page.document, tree.styles(), root, 100, 100, None).is_err());
 }
+
+#[test]
+fn visible_svg_overflow_survives_spatial_query_and_tile_origin() {
+    for scale in [1., 1.25, 1.5, 1.75, 2.] {
+        let (page, mut painter) = load("<svg width=20 height=20 style='overflow:visible'><path d='M160 0H180V20H160Z' fill=red /></svg>", scale);
+        let region = paint::DeviceRect { x: (160. * scale) as i32, y: 0, width: (20. * scale) as u32, height: (20. * scale) as u32 };
+        let tile = painter.raster(&page.scene, region, None).unwrap();
+        assert!(tile.rgba().as_chunks::<4>().0.iter().all(|p| *p == [255, 0, 0, 255]));
+        assert!(page.scene.content_extent().width >= 180.);
+    }
+}
+
+#[test]
+fn independent_svg_overflow_geometry_and_pixels() {
+    use sha2::{Digest, Sha256};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/svg-overflow-fixtures");
+    let cases: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("cases.json")).unwrap()).unwrap();
+    let reference: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("chrome.json")).unwrap()).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(std::fs::read(root.join("cases.json")).unwrap())), reference["cases_sha256"]);
+    let mut failures = Vec::new();
+    for row in reference["rows"].as_array().unwrap() {
+        let case = cases.as_array().unwrap().iter().find(|c| c["id"] == row["id"]).unwrap();
+        let scale = row["scale"].as_f64().unwrap();
+        let (page, mut painter) = load(&format!("<style>{}</style>{}", case["css"].as_str().unwrap(), case["html"].as_str().unwrap()), scale);
+        assert_eq!(page.stylesheet_issues, 0);
+        let tree = page.scene.layout().cache().tree();
+        let (id, _) = tree.iter().find(|(_, b)| matches!(b.kind, layout::BoxKind::BlockVector { .. } | layout::BoxKind::InlineVector { .. })).unwrap();
+        let g = page.scene.layout().geometry(id).unwrap();
+        // Reconstruct the CSS border box independently from the enlarged ink bounds.
+        let mut b = g.border_box;
+        let mut parent = tree.get(id).unwrap().parent;
+        while let Some(id) = parent {
+            let p = page.scene.layout().geometry(id).unwrap().content_box();
+            b.x += p.x;
+            b.y += p.y;
+            parent = tree.get(id).unwrap().parent;
+        }
+        let expected = &row["bounds"];
+        let geometry = [("x", b.x), ("y", b.y), ("width", b.width), ("height", b.height)].into_iter().map(|(k, n)| (n - expected[k].as_f64().unwrap()).abs()).fold(0., f64::max);
+        let bytes = std::fs::read(root.join(row["png"].as_str().unwrap())).unwrap();
+        assert_eq!(format!("{:x}", Sha256::digest(&bytes)), row["sha256"]);
+        let reference = tiny_skia::Pixmap::decode_png(&bytes).unwrap();
+        assert_eq!((reference.width(), reference.height()), ((128. * scale) as u32, (80. * scale) as u32));
+        let actual = painter.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: reference.width(), height: reference.height() }, None).unwrap();
+        let different = actual.rgba().as_chunks::<4>().0.iter().zip(reference.data().as_chunks::<4>().0).filter(|(a, b)| a != b).count();
+        let maximum = actual.rgba().iter().zip(reference.data()).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
+        if geometry > 0.0001 || different != 0 {
+            failures.push(serde_json::json!({"id":row["id"],"scale":scale,"geometry_error":geometry,"different_pixels":different,"max_channel_error":maximum}));
+        }
+        if let Ok(dir) = std::env::var("OLO_SVG_OVERFLOW_REPORT") {
+            assert!(dir.starts_with("/var/tmp/"));
+            actual.save_png(Path::new(&dir).join(row["png"].as_str().unwrap())).unwrap();
+        }
+    }
+    let report = serde_json::json!({"total":reference["rows"].as_array().unwrap().len(),"nonpasses":failures});
+    if let Ok(dir) = std::env::var("OLO_SVG_OVERFLOW_REPORT") {
+        std::fs::write(Path::new(&dir).join("report.json"), serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+    }
+    let known: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("REFERENCE-GAPS.json")).unwrap()).unwrap();
+    assert_eq!(report, known, "Independent overflow pixel nonpasses changed; inspect evidence. These are not site passes.");
+    if std::env::var_os("OLO_SVG_REQUIRE_COMPLETE").is_some() {
+        assert!(failures.is_empty(), "{report:#}");
+    }
+}

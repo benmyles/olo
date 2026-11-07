@@ -1,0 +1,75 @@
+{
+  "nonpasses": [
+    {
+      "different_pixels": 152,
+      "geometry_error": 0.0,
+      "id": "fractional",
+      "max_channel_error": 76,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 172,
+      "geometry_error": 0.0,
+      "id": "curve",
+      "max_channel_error": 38,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 190,
+      "geometry_error": 0.0,
+      "id": "fractional",
+      "max_channel_error": 76,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 214,
+      "geometry_error": 0.0,
+      "id": "curve",
+      "max_channel_error": 39,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 228,
+      "geometry_error": 0.0,
+      "id": "fractional",
+      "max_channel_error": 131,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 267,
+      "geometry_error": 0.0,
+      "id": "curve",
+      "max_channel_error": 33,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 266,
+      "geometry_error": 1.9073486328125e-6,
+      "id": "fractional",
+      "max_channel_error": 131,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 314,
+      "geometry_error": 1.9073486328125e-6,
+      "id": "curve",
+      "max_channel_error": 51,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 304,
+      "geometry_error": 0.0,
+      "id": "fractional",
+      "max_channel_error": 131,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 373,
+      "geometry_error": 0.0,
+      "id": "curve",
+      "max_channel_error": 36,
+      "scale": 2.0
+    }
+  ],
+  "total": 90
+}

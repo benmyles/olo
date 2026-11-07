@@ -2501,3 +2501,21 @@ nested/auto-height geometry, flex exclusion and static overflow clip escape.
 No independent page pixels or website acceptance are implied. A fresh Stripe
 retry now fails at an unclipped SVG viewport during box construction, before
 Stripe's own positioned geometry has executed.
+
+## SVG visible overflow
+
+SVG roots now retain per-axis visible/hidden/clip behavior and conservative
+control-point ink bounds computed once during path compilation. The scene
+spatial index includes transformed overflow ink, while each vector command keeps
+its CSS content origin separately for raster transforms. Tiles lying wholly
+outside the SVG border box can find and paint that ink. Ancestor clips still
+apply; clipped axes get the viewport mask, and fully visible vectors reuse the
+ancestor mask without allocating another tile mask. Ordinary command size is
+unchanged; retained SVG metadata grows by 24 bytes per root in this build.
+
+Independent overflow references: 18 cases × five native DPRs, all 90 border
+rectangles match; 80 full crops exact and ten fractional/curve nonpasses. The
+older 28 SVG pixel nonpasses remain unchanged. OLO_SVG_REQUIRE_COMPLETE=1 stays
+failing. Scrollable SVG viewport semantics remain unsupported. Exact geometry
+is separate from conservative ink query bounds; no website acceptance follows.
+Fresh Stripe now stops at SVG shape/container type during box construction.

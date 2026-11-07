@@ -4873,3 +4873,59 @@ Raw costs/checks: measurements/2026-11-06-stripe-absolute-layout-*.json.
 Fetched main via gh: new e4367953 will be merged after this tested component
 commit, then combined workspace revalidated. Next fix the observed SVG viewport
 blocker and retry Stripe. No other website selected; goal stays active.
+
+### 2026-11-06 — SVG visible overflow and main integration
+
+Committed/pushed absolute page integration b0486a7f, then merged/pushed main
+through e4367953 as b95728b2. Combined workspace release2m04s and all313
+web/browser tests pass (two ignored); updated HACKING changes inspected.
+
+Initial SVG visible/per-axis clipped overflow now caches conservative path
+bounds once and expands scene query bounds without changing the CSS viewport
+used for raster transforms. Distant tiles beyond the SVG/page viewport retain
+their ink. Ancestor clips and per-axis viewport masks work; fully visible paths
+reuse the ancestor mask rather than allocate an extra tile mask. Scrollable
+SVG behavior remains explicit unsupported work.
+
+18 original Chrome cases ×five native DPRs: all90 border rectangles match,
+80 full128×80CSSpx crops exact, ten fractional/curve crops nonpassing. Both
+reference/native crops inspected; the fractional reference rectangle has hard
+edges while native raster antialiases them, and curves differ in coverage.
+No tolerance widening or omitted cases. REFERENCE-GAPS.json retains every
+nonpass; OLO_SVG_REQUIRE_COMPLETE=1 fails. Earlier28 SVG pixel gaps unchanged.
+An authored test rasterizes a tile wholly beyond both the SVG CSS box and page
+viewport and checks retained content extent. No website success implied.
+
+Fresh owned HTTPS Stripe PID756306 now stops at `Unsupported("SVG
+shape/container type")`, during box construction. Stripe's own absolute
+geometry has still not run. Next identify the exact element and implement its
+required semantics; do not replace/skip website content. Stripe0/30; corpus0/100.
+
+Release workspace9.43s; full web/browser tests315 pass, two ignored. Native
+authored overflow demo15 theme/scale reviews have zero findings; full light1
+and all five no-resampling contact crops visually inspected; screenshot journal
+added. Clippy's nested-if finding was corrected without changing behavior.
+Final post-benchmark restoration checks are recorded in the measurement JSON.
+
+Seven alternating CPU0 ordinary process pairs versus b95728b2:100/1000-element
+pipeline845.644/9489.355→843.093/9222.717µs; retained scene187.984/3583.462
+→183.628/3518.811µs. Source/geometry/pixel hashes unchanged. Pipeline RSS
+9084–9420→9144–9452KiB; scene7996–8364→7984–8360KiB.20/28 observations
+record compiler processes; no broad speedup or causal attribution.
+
+Direct retained SVG benchmark: seven CPU0 alternating pairs on clipped content,
+150 rounds each;100/1000 roots scene13.995/545.672→14.572/551.117µs
+(+4.1%/+1.0%);256×256 raster306.534/304.528→305.494/305.480µs.
+Geometry/source/pixels identical. Command bytes unchanged12240/121760;
+SVG metadata+24bytes/root (36800/368000→39200/392000bytes). Regressions are
+retained, not a maximum-performance claim. Three after-only visible-overflow
+runs are absolute timings with no supported baseline. Exact HEAD product files
+were temporarily restored for the baseline example build, then restored in a
+finally block before compiling the after example; benchmark source is identical.
+
+Native ordinary1000-paragraph median report-to-first-moving-client latency:
+drag9.898→9.022ms, flick9.154→8.913ms, wheel.653→.375ms. RSS111476→108532KiB;
+three-second idle0CPU/0wakeups both. After sample ends with compiler processes;
+these are client submission marks, not optical/compositor latency. Raw evidence:
+measurements/2026-11-06-stripe-svg-overflow-*.json. Owned screens stopped;
+no personal-session changes. All previous conformance/performance gaps stay open.

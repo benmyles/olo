@@ -100,30 +100,37 @@ impl Engine {
                     }
                     super::image::raster(self, &mut out, image, bounds, scale, region, mask.as_ref(), cancel)?;
                 }
-                Primitive::Vector { owner, vector } => {
+                Primitive::Vector { owner, vector, origin } => {
                     let tree = scene.layout.cache().tree();
                     let vector = tree.vector(*vector).ok_or(Error::Invalid)?;
                     let geometry = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
-                    let mut bounds = c.bounds;
-                    bounds.x += geometry.border_width.left + geometry.padding.left;
-                    bounds.y += geometry.border_width.top + geometry.padding.top;
-                    bounds.width = (bounds.width - geometry.border_width.left - geometry.border_width.right - geometry.padding.left - geometry.padding.right).max(0.);
-                    bounds.height = (bounds.height - geometry.border_width.top - geometry.border_width.bottom - geometry.padding.top - geometry.padding.bottom).max(0.);
+                    let bounds = Rect { x: origin.x, y: origin.y, ..geometry.content_box() };
                     let Some([sx, sy, tx, ty]) = vector.transform(bounds.width, bounds.height) else {
                         continue;
                     };
-                    let Some(clip) = local(bounds) else {
-                        continue;
-                    };
-                    let clip = PathBuilder::from_rect(clip);
-                    let mut vector_mask = if let Some(mask) = &mask {
-                        mask.clone()
+                    let vector_mask = if vector.clip.iter().any(|c| *c) {
+                        let clip = Rect {
+                            x: if vector.clip[0] { bounds.x } else { rect.x },
+                            y: if vector.clip[1] { bounds.y } else { rect.y },
+                            width: if vector.clip[0] { bounds.width } else { rect.width },
+                            height: if vector.clip[1] { bounds.height } else { rect.height },
+                        };
+                        let Some(clip) = local(clip) else {
+                            continue;
+                        };
+                        let mut m = if let Some(mask) = &mask {
+                            mask.clone()
+                        } else {
+                            let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
+                            m.data_mut().fill(255);
+                            m
+                        };
+                        m.intersect_path(&PathBuilder::from_rect(clip), FillRule::Winding, false, Transform::identity());
+                        Some(m)
                     } else {
-                        let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
-                        m.data_mut().fill(255);
-                        m
+                        None
                     };
-                    vector_mask.intersect_path(&clip, FillRule::Winding, false, Transform::identity());
+                    let vector_mask = vector_mask.as_ref().or(mask.as_ref());
                     let transform = Transform::from_row(
                         (sx * scale) as f32,
                         0.,
@@ -138,7 +145,7 @@ impl Engine {
                     for shape in &vector.shapes {
                         check(cancel)?;
                         if let Some(path) = shape.path.geometry() {
-                            out.fill_path(path, &paint(shape.color), if shape.evenodd { FillRule::EvenOdd } else { FillRule::Winding }, transform, Some(&vector_mask));
+                            out.fill_path(path, &paint(shape.color), if shape.evenodd { FillRule::EvenOdd } else { FillRule::Winding }, transform, vector_mask);
                         }
                     }
                 }

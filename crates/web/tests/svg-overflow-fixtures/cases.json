@@ -1,0 +1,92 @@
+[
+  {
+    "id": "visible",
+    "css": "",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "hidden",
+    "css": "svg{overflow:hidden!important}",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "clip",
+    "css": "svg{overflow:clip!important}",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "clip-x",
+    "css": "svg{overflow-x:clip!important}",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "clip-y",
+    "css": "svg{overflow-y:clip!important}",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "inline",
+    "css": "svg{display:inline}",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "ancestor-clip",
+    "css": "",
+    "html": "<div style='width:48px;height:40px;overflow:hidden'><svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg></div>"
+  },
+  {
+    "id": "padding-border",
+    "css": "svg{padding:4px;border:4px solid black}",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "viewbox-none",
+    "css": "",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' viewBox='0 0 16 12' preserveAspectRatio='none'><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "viewbox-meet",
+    "css": "",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' viewBox='0 0 16 16'><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "viewbox-slice",
+    "css": "",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' viewBox='0 0 16 16' preserveAspectRatio='xMidYMid slice'><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "negative-viewbox",
+    "css": "",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' viewBox='-8 -8 16 16' preserveAspectRatio='none'><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "empty-viewbox",
+    "css": "",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' viewBox='0 0 0 16'><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "zero-width",
+    "css": "svg{width:0}",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "distant-ink",
+    "css": "",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M56 0H80V24H56Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "fractional",
+    "css": "svg{margin:16.25px!important}",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-4 -4H40V28H-4Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "curve",
+    "css": "",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 12C-8 -16 64 -16 56 12C64 40 -8 40 -8 12Z' fill='#6050ff'/></svg>"
+  },
+  {
+    "id": "later-sibling",
+    "css": "",
+    "html": "<svg id=probe width=32 height=24 style='margin:16px;overflow:visible' ><path d='M-8 -8H56V40H-8Z' fill='#6050ff'/></svg><div style='margin-top:-12px;width:72px;height:12px;background-color:#00a48e'></div>"
+  }
+]

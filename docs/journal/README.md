@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser SVG visible overflow
+
+*18:23* — SVG ink can extend beyond its CSS viewport and remain visible in separate tiles. Per-axis clipping and ancestor clips remain intact. Authored component reviewed in light, dark and night at five live scales. Independent 90 Chrome rectangles match, 80 crops match exactly and 10 fractional/curve crops remain nonpasses; Stripe still fails on the next SVG shape/container.
+
+![Browser SVG visible overflow](2026-11-06/182309-browser-svg-visible-overflow.png)
+
 ### Browser positioned blocks
 
 *18:13* — Initial deferred absolute blocks: padding containing blocks, auto heights and flex exclusion. Authored component, not Stripe acceptance. Reviewed light, dark and night at five live scales; 15 reviews without findings. Independent 125 Chrome pages match 545 rectangles; static positions and shrink-to-fit remain unsupported.

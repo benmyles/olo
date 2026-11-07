@@ -10,16 +10,16 @@ revalidate the merged workspace and push the integration with browser work.
 Finish its real pages/journeys and all30 configurations before choosing another
 site. Component work follows observed Stripe blockers. The latest fresh HTTPS
 retry passes the absolute-position box-tree rejection and stops at
-`flow layout Unsupported("unclipped SVG viewport")` during box construction.
+`flow layout Unsupported("SVG shape/container type")` during box construction.
 Stripe's own absolute geometry has not run yet. There is still no useful native
 Stripe homepage and no accepted configuration. Initial absolute blocks match
 545 independent Chrome rectangles across 125 pages/five native DPRs. SVG's
 110 earlier rectangles match; 82 image crops match exactly and 28 pixel
 nonpasses remain. Native component reviews pass all 15 theme/scale combinations.
-SVG overflow/intrinsic sizing, strokes/paint servers/transforms, replaced flex
+SVG intrinsic sizing, strokes/paint servers/transforms, replaced flex
 items, static positions, shrink-to-fit and fractional raster fidelity remain
 incomplete. All older performance/conformance nonpasses remain open. Next fix
-the observed SVG viewport blocker and retry Stripe; do not choose another site.
+the observed SVG shape/container blocker and retry Stripe; do not choose another site.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
@@ -513,5 +513,9 @@ this is a harness correction, not a browser speedup.
   painting. 125 independent pages/545 Chrome rectangles match at five DPRs.
 - [ ] Complete absolute static-position discovery, shrink-to-fit, replaced
   positioning, inline interruption and modern alignment/stacking semantics.
-- [ ] Fix the next fresh Stripe box-construction blocker: unclipped SVG viewport.
+- [x] Initial SVG visible/per-axis clipped overflow with expanded ink query
+  bounds. 90 independent border rectangles match, 80/90 image crops exact.
+- [ ] Close the 10 SVG overflow fractional/curve pixel nonpasses plus the older
+  28 SVG page pixel nonpasses; strict pixel gate still fails.
+- [ ] Identify and implement the next fresh Stripe SVG shape/container blocker.
   Retry actual HTTPS after each supported component; keep failures explicit.
