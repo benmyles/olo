@@ -194,6 +194,10 @@ struct Live {
     /// When the window last asked for a frame, and whether it asks now.
     paced_at: Option<Instant>,
     frame_requested: bool,
+    /// The window's frame period (ms), measured between its frames: the
+    /// page's own clock when a frame changed nothing (no render, so no
+    /// window frame to ask for the next).
+    display_period_ms: f64,
     /// The page was told its window is hidden.
     hidden: bool,
     /// Since when the window was told the page wants frames and sent none
@@ -358,7 +362,7 @@ fn hidden(live: &Live) -> bool {
 /// The page's own frame period (ms): a display frame, or a second while
 /// its window is hidden.
 fn frame_period_ms(live: &Live) -> f64 {
-    if hidden(live) { 1000. } else { FRAME.as_secs_f64() * 1000. }
+    if hidden(live) { 1000. } else { live.display_period_ms }
 }
 /// A live page's frame: its animation frames run and it renders once a
 /// display frame (60 Hz), so animations are as smooth as the page draws
@@ -532,7 +536,16 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             if let Some(c) = cached.as_mut()
                                 && let Some(live) = c.live.as_mut()
                             {
-                                live.paced_at = Some(Instant::now());
+                                let now = Instant::now();
+                                if let Some(last) = live.paced_at {
+                                    let ms = (now - last).as_secs_f64() * 1000.;
+                                    // Back-to-back frames (not a pause): the display's rate,
+                                    // smoothed over a few frames.
+                                    if (4.0..34.).contains(&ms) {
+                                        live.display_period_ms = live.display_period_ms * 0.75 + ms * 0.25;
+                                    }
+                                }
+                                live.paced_at = Some(now);
                                 live.frame_requested = true;
                                 live.waiting_since = None;
                                 live.next_due_ms = Some(0.);
@@ -839,6 +852,16 @@ fn render(
             }
             rerendered = true;
         } else {
+            // A frame that changed nothing renders nothing, so the window
+            // draws no frame to ask for the next: a page still animating
+            // (a timeline in its delay, say) runs on its own clock at the
+            // display's rate until a change shows and the window paces it
+            // again (it waited for a window frame that never came, and ran
+            // at a few frames a second).
+            if paced && frame && live.wants_frame {
+                live.paced_at = None;
+                live.next_frame_ms = now_ms + live.display_period_ms;
+            }
             return Ok(());
         }
     }
@@ -1070,6 +1093,7 @@ fn render(
                 usage: Usage::new(),
                 paced_at: None,
                 frame_requested: false,
+                display_period_ms: FRAME.as_secs_f64() * 1000.,
                 hidden: false,
                 waiting_since: None,
             });
@@ -1811,6 +1835,7 @@ impl Host for PageHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use olo_web::font::GenericPolicy;
     #[test]
     fn viewport_restyle_reuses_dom_and_compiled_external_sheets() {
         let mut builder = Builder::new(Default::default());

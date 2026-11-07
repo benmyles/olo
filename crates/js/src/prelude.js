@@ -131,26 +131,32 @@
     return !event.defaultPrevented;
   };
   define(EventTarget.prototype, {
+    // Called without a `this` (a bare `addEventListener(…)` through a
+    // page's wrapper), the target is the global object, as Web IDL says.
     addEventListener(type, listener, options) {
       if (!listener) return;
+      const target = this ?? global;
       const capture = typeof options === 'boolean' ? options : !!(options && options.capture);
       const once = !!(options && options.once);
-      const m = listenersOf(this, true);
+      const signal = options && typeof options === 'object' ? options.signal : undefined;
+      if (signal && signal.aborted) return;
+      const m = listenersOf(target, true);
       let list = m.get(type);
       if (!list) { list = []; m.set(type, list); }
       if (list.some((e) => e.listener === listener && e.capture === capture)) return;
       list.push({ listener, capture, once });
       N.count('listener');
+      if (signal && typeof signal.addEventListener === 'function') signal.addEventListener('abort', () => target.removeEventListener(type, listener, capture), { once: true });
     },
     removeEventListener(type, listener, options) {
       const capture = typeof options === 'boolean' ? options : !!(options && options.capture);
-      const m = listenersOf(this, false);
+      const m = listenersOf(this ?? global, false);
       const list = m && m.get(type);
       if (!list) return;
       const i = list.findIndex((e) => e.listener === listener && e.capture === capture);
       if (i >= 0) list.splice(i, 1);
     },
-    dispatchEvent(event) { return dispatch(this, event); },
+    dispatchEvent(event) { return dispatch(this ?? global, event); },
   });
   // A plain object can be an event target too (EventTarget constructor).
   const EventTargetCtor = function EventTarget() {};
@@ -331,7 +337,17 @@
       target.setProperty(kebab(key), value == null ? '' : String(value));
       return true;
     },
+    // `'opacity' in el.style`: true for the properties the engine knows
+    // (by camelCase or hyphenated name, or the cssFloat alias), as
+    // libraries such as GSAP test before animating one.
+    has(target, key) {
+      if (key in target) return true;
+      if (typeof key !== 'string') return false;
+      return key.startsWith('--') || cssPropertyNames().has(key.includes('-') ? key : kebab(key)) || key === 'cssFloat';
+    },
   };
+  let knownProperties = null;
+  const cssPropertyNames = () => knownProperties || (knownProperties = new Set(N.cssProperties()));
   class CSSStyleDeclaration {
     constructor(read, write) { this._read = read; this._write = write; }
     getPropertyValue(name) { const p = parseStyle(this._read()).find((p) => p.name === propName(name)); return p ? p.value : ''; }

@@ -17,11 +17,18 @@ pub(crate) struct Modules {
     by_url: HashMap<String, v8::Global<v8::Module>>,
     /// Each module's URL, by its identity (the referrer of a resolution).
     urls: HashMap<i32, String>,
+    /// What bare names and URL prefixes map to.
+    pub(crate) map: ImportMap,
 }
 /// A scope that catches: what the loader works in. Handles made in it
 /// live for `'obj` (the try-catch's handle scope).
 pub(crate) type Catching<'a, 'scope, 'obj, 'iso> = v8::PinnedRef<'a, v8::TryCatch<'scope, 'obj, v8::HandleScope<'iso>>>;
 
+impl Modules {
+    pub(crate) fn with_map(map: ImportMap) -> Self {
+        Self { map, ..Default::default() }
+    }
+}
 pub(crate) fn enter(state: &Rc<RefCell<State>>) {
     CURRENT.with(|c| *c.borrow_mut() = Some(state.clone()));
 }
@@ -35,18 +42,160 @@ pub(crate) fn install(isolate: &mut v8::Isolate) {
     isolate.set_host_initialize_import_meta_object_callback(import_meta);
     isolate.set_host_import_module_dynamically_callback(dynamic_import);
 }
-/// A specifier resolved against its referrer's URL: an absolute URL, or
-/// one starting with `/`, `./` or `../` (HTML "resolve a module
-/// specifier"); a bare name has no import map to go by yet.
-pub(crate) fn resolve(base: &str, specifier: &str) -> Result<String, String> {
-    if let Ok(u) = url::Url::parse(specifier) {
-        return Ok(u.to_string());
+/// The page's import maps (HTML "import maps"): bare names such as
+/// `react` and URL prefixes mapped to URLs, at the top level and within
+/// scopes (the modules under a URL prefix), read from every
+/// `<script type="importmap">` in the document before any module loads.
+/// A later map adds only what the earlier ones did not map.
+#[derive(Default, Debug)]
+pub(crate) struct ImportMap {
+    /// Specifier keys and what they map to (None: blocked), longest first.
+    imports: Vec<(String, Option<url::Url>)>,
+    /// Scope prefixes (serialised URLs) and their maps, most specific first.
+    scopes: Vec<(String, Vec<(String, Option<url::Url>)>)>,
+}
+impl ImportMap {
+    /// The maps in `doc`, their URLs resolved against `base` (the page's).
+    pub(crate) fn of_document(doc: &olo_web::dom::Document, base: &str) -> Self {
+        let mut map = Self::default();
+        let base = url::Url::parse(base).ok();
+        let mut stack = vec![doc.root()];
+        while let Some(n) = stack.pop() {
+            if let Ok(children) = doc.children(n) {
+                let children: Vec<_> = children.collect();
+                stack.extend(children.into_iter().rev());
+            }
+            if doc.name(n).ok().flatten() != Some("script") || doc.namespace(n).ok().flatten() != Some(olo_web::dom::Namespace::Html) {
+                continue;
+            }
+            if !doc.attribute(n, "type").ok().flatten().is_some_and(|t| t.trim().eq_ignore_ascii_case("importmap")) {
+                continue;
+            }
+            let mut text = String::new();
+            let _ = crate::html::text_content(doc, n, &mut text, 4 << 20);
+            map.merge(&text, base.as_ref());
+        }
+        map
     }
+    /// One map's JSON added; malformed JSON adds nothing (as in a browser,
+    /// which reports it and goes on).
+    pub(crate) fn merge(&mut self, json: &str, base: Option<&url::Url>) {
+        let Ok(serde_json::Value::Object(top)) = serde_json::from_str::<serde_json::Value>(json) else {
+            eprintln!("Browser scripts: an import map is not a JSON object");
+            return;
+        };
+        if let Some(serde_json::Value::Object(imports)) = top.get("imports") {
+            for (key, value) in normalise(imports, base) {
+                if !self.imports.iter().any(|(k, _)| *k == key) {
+                    self.imports.push((key, value));
+                }
+            }
+            sort(&mut self.imports);
+        }
+        if let Some(serde_json::Value::Object(scopes)) = top.get("scopes") {
+            for (prefix, map) in scopes {
+                let serde_json::Value::Object(map) = map else { continue };
+                let Some(prefix) = base.and_then(|b| b.join(prefix).ok()).or_else(|| url::Url::parse(prefix).ok()) else { continue };
+                let prefix = prefix.to_string();
+                let entries = normalise(map, base);
+                match self.scopes.iter_mut().find(|(p, _)| *p == prefix) {
+                    Some((_, existing)) => {
+                        for (key, value) in entries {
+                            if !existing.iter().any(|(k, _)| *k == key) {
+                                existing.push((key, value));
+                            }
+                        }
+                        sort(existing);
+                    }
+                    None => {
+                        let mut entries = entries;
+                        sort(&mut entries);
+                        self.scopes.push((prefix, entries));
+                    }
+                }
+            }
+            self.scopes.sort_by(|a, b| b.0.cmp(&a.0));
+        }
+    }
+    pub(crate) fn is_empty(&self) -> bool {
+        self.imports.is_empty() && self.scopes.is_empty()
+    }
+}
+/// A specifier map's entries: keys normalised (a URL-like key as its URL),
+/// values parsed as URL-like specifiers against the map's base (None: a
+/// value that is not, or a prefix key mapped to a URL not ending in `/`).
+fn normalise(map: &serde_json::Map<String, serde_json::Value>, base: Option<&url::Url>) -> Vec<(String, Option<url::Url>)> {
+    let mut out = Vec::new();
+    for (key, value) in map {
+        if key.is_empty() {
+            continue;
+        }
+        let key = url_like(key, base).map_or_else(|| key.clone(), |u| u.to_string());
+        let value = value.as_str().and_then(|v| url_like(v, base)).filter(|v| !key.ends_with('/') || v.as_str().ends_with('/'));
+        out.push((key, value));
+    }
+    out
+}
+/// Keys in descending code-unit order: a longer prefix before the shorter
+/// one it starts with.
+fn sort(entries: &mut [(String, Option<url::Url>)]) {
+    entries.sort_by(|a, b| b.0.cmp(&a.0));
+}
+/// A URL-like specifier (HTML "resolve a URL-like module specifier"): an
+/// absolute URL, or one starting with `/`, `./` or `../` against `base`.
+fn url_like(specifier: &str, base: Option<&url::Url>) -> Option<url::Url> {
     if specifier.starts_with('/') || specifier.starts_with("./") || specifier.starts_with("../") {
-        let base = url::Url::parse(base).map_err(|_| format!("no base URL to resolve '{specifier}' against"))?;
-        return base.join(specifier).map(|u| u.to_string()).map_err(|e| format!("'{specifier}': {e}"));
+        return base?.join(specifier).ok();
     }
-    Err(format!("bare module specifier '{specifier}' (import maps are not supported yet)"))
+    url::Url::parse(specifier).ok()
+}
+/// A specifier resolved against its referrer's URL through the import
+/// map (HTML "resolve a module specifier"): the most specific scope
+/// containing the referrer first, then the top-level map, then the
+/// specifier as a URL-like one; a bare name nothing maps is an error.
+pub(crate) fn resolve(map: &ImportMap, base: &str, specifier: &str) -> Result<String, String> {
+    // An inline module's name carries a fragment to tell it apart; its base
+    // is its document's URL.
+    let base = base.find("#inline-module-").map_or(base, |at| &base[..at]);
+    let base_url = url::Url::parse(base).ok();
+    let as_url = url_like(specifier, base_url.as_ref());
+    if map.is_empty() {
+        return as_url.map(|u| u.to_string()).ok_or_else(|| match &base_url {
+            None if specifier.starts_with('/') || specifier.starts_with("./") || specifier.starts_with("../") => format!("no base URL to resolve '{specifier}' against"),
+            _ => format!("bare module specifier '{specifier}' (no import map maps it)"),
+        });
+    }
+    let normalised = as_url.as_ref().map_or_else(|| specifier.to_owned(), |u| u.to_string());
+    for (prefix, imports) in &map.scopes {
+        if prefix == base || prefix.ends_with('/') && base.starts_with(prefix.as_str()) {
+            if let Some(url) = imports_match(&normalised, as_url.as_ref(), imports)? {
+                return Ok(url);
+            }
+        }
+    }
+    if let Some(url) = imports_match(&normalised, as_url.as_ref(), &map.imports)? {
+        return Ok(url);
+    }
+    as_url.map(|u| u.to_string()).ok_or_else(|| format!("bare module specifier '{specifier}' (no import map maps it)"))
+}
+/// HTML "resolve an imports match": an exact key, or the longest key
+/// ending in `/` that the specifier starts with (the rest joined to its
+/// URL, which must stay under it).
+fn imports_match(normalised: &str, as_url: Option<&url::Url>, imports: &[(String, Option<url::Url>)]) -> Result<Option<String>, String> {
+    for (key, value) in imports {
+        if key == normalised {
+            return value.as_ref().map(|v| Some(v.to_string())).ok_or_else(|| format!("'{normalised}' is blocked by the import map"));
+        }
+        if key.ends_with('/') && normalised.starts_with(key.as_str()) && as_url.is_none_or(|u| u.is_special()) {
+            let value = value.as_ref().ok_or_else(|| format!("'{normalised}' is blocked by the import map"))?;
+            let url = value.join(&normalised[key.len()..]).map_err(|_| format!("'{normalised}' maps to no URL"))?;
+            if !url.as_str().starts_with(value.as_str()) {
+                return Err(format!("'{normalised}' backtracks above its mapping"));
+            }
+            return Ok(Some(url.to_string()));
+        }
+    }
+    Ok(None)
 }
 /// A module's source: fetched now, on this thread.
 fn fetch(state: &Rc<RefCell<State>>, url: &str) -> Result<String, String> {
@@ -109,7 +258,8 @@ fn compile<'obj>(tc: &mut Catching<'_, '_, 'obj, '_>, state: &Rc<RefCell<State>>
     for i in 0..requests.length() {
         let Some(request) = requests.get(tc, i).and_then(|d| v8::Local::<v8::ModuleRequest>::try_from(d).ok()) else { continue };
         let specifier = request.get_specifier().to_rust_string_lossy(tc);
-        imports.push(resolve(url, &specifier).map_err(|e| format!("{url}: {e}"))?);
+        let resolved = resolve(&state.borrow().modules.map, url, &specifier);
+        imports.push(resolved.map_err(|e| format!("{url}: {e}"))?);
     }
     Ok((module, imports))
 }
@@ -169,7 +319,7 @@ pub(crate) fn run<'obj>(tc: &mut Catching<'_, '_, 'obj, '_>, state: &Rc<RefCell<
         v8::ModuleStatus::Evaluated => return Ok(module),
         v8::ModuleStatus::Errored => {
             let e = module.get_exception();
-            return Err(format!("{} ({url})", e.to_rust_string_lossy(tc)));
+            return Err(thrown(tc, e, url));
         }
         _ => {}
     }
@@ -187,15 +337,31 @@ pub(crate) fn run<'obj>(tc: &mut Catching<'_, '_, 'obj, '_>, state: &Rc<RefCell<
     tc.perform_microtask_checkpoint();
     if module.get_status() == v8::ModuleStatus::Errored {
         let e = module.get_exception();
-        return Err(format!("{} ({url})", e.to_rust_string_lossy(tc)));
+        return Err(thrown(tc, e, url));
     }
     if let Ok(promise) = v8::Local::<v8::Promise>::try_from(value)
         && promise.state() == v8::PromiseState::Rejected
     {
         let e = promise.result(tc);
-        return Err(format!("{} ({url})", e.to_rust_string_lossy(tc)));
+        return Err(thrown(tc, e, url));
     }
     Ok(module)
+}
+/// What a module threw, with its stack when it has one (where it failed,
+/// not only the module it failed in).
+fn thrown(tc: &mut Catching<'_, '_, '_, '_>, e: v8::Local<'_, v8::Value>, url: &str) -> String {
+    let message = e.to_rust_string_lossy(tc);
+    let stack = e.to_object(tc).and_then(|o| {
+        let key = v8::String::new(tc, "stack")?;
+        o.get(tc, key.into())
+    });
+    match stack.filter(|s| s.is_string()).map(|s| s.to_rust_string_lossy(tc)) {
+        Some(stack) if stack.len() > message.len() => {
+            let stack: String = stack.lines().take(12).collect::<Vec<_>>().join("\n  ");
+            format!("{stack}\n  ({url})")
+        }
+        _ => format!("{message} ({url})"),
+    }
 }
 /// A static import resolved while instantiating: the module was loaded
 /// into the map beforehand.
@@ -210,7 +376,8 @@ fn resolve_callback<'s>(
     let state = current()?;
     let specifier = specifier.to_rust_string_lossy(scope);
     let base = state.borrow().modules.urls.get(&referrer.get_identity_hash().get()).cloned()?;
-    let module = match resolve(&base, &specifier) {
+    let resolved = resolve(&state.borrow().modules.map, &base, &specifier);
+    let module = match resolved {
         Ok(url) => state.borrow().modules.by_url.get(&url).cloned(),
         Err(_) => None,
     };
@@ -258,7 +425,8 @@ fn dynamic_import<'s>(
         Some(state) => {
             // A classic script's name is not a URL: the page's is the base.
             let base = if url::Url::parse(&referrer).is_ok() { referrer.clone() } else { state.borrow().config.url.clone() };
-            resolve(&base, &specifier).and_then(|url| {
+            let resolved = resolve(&state.borrow().modules.map, &base, &specifier);
+            resolved.and_then(|url| {
                 v8::tc_scope!(let tc, scope);
                 run(tc, &state, &url, None).map(|m| v8::Global::new(tc, m))
             })
@@ -277,4 +445,45 @@ fn dynamic_import<'s>(
         }
     }
     Some(promise)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn map(json: &str) -> ImportMap {
+        let mut m = ImportMap::default();
+        m.merge(json, url::Url::parse("https://site.test/app/page.html").ok().as_ref());
+        m
+    }
+    #[test]
+    fn bare_names_prefixes_and_scopes_resolve_as_html_says() {
+        let m = map(r#"{"imports":{"react":"https://cdn.test/react.js","lodash/":"/vendor/lodash/","./old.js":"./new.js","blocked":null},
+                "scopes":{"/app/legacy/":{"react":"/react-17.js"},"/app/":{"lodash/fp":"/fp.js"}}}"#);
+        let page = "https://site.test/app/page.html";
+        assert_eq!(resolve(&m, page, "react").unwrap(), "https://cdn.test/react.js");
+        assert_eq!(resolve(&m, page, "lodash/map.js").unwrap(), "https://site.test/vendor/lodash/map.js");
+        // A URL-like specifier maps by its URL.
+        assert_eq!(resolve(&m, page, "./old.js").unwrap(), "https://site.test/app/new.js");
+        assert_eq!(resolve(&m, "https://site.test/app/x/y.js", "../old.js").unwrap(), "https://site.test/app/new.js");
+        // Scopes: the most specific containing the referrer wins, then the top.
+        assert_eq!(resolve(&m, "https://site.test/app/legacy/a.js", "react").unwrap(), "https://site.test/react-17.js");
+        assert_eq!(resolve(&m, "https://site.test/app/a.js", "lodash/fp").unwrap(), "https://site.test/fp.js");
+        assert_eq!(resolve(&m, "https://site.test/other/a.js", "lodash/fp").unwrap(), "https://site.test/vendor/lodash/fp");
+        // An inline module resolves against its document.
+        assert_eq!(resolve(&m, "https://site.test/app/page.html#inline-module-3", "./a.js").unwrap(), "https://site.test/app/a.js");
+        assert!(resolve(&m, page, "blocked").is_err());
+        assert!(resolve(&m, page, "vue").is_err());
+        // A prefix match may not climb out of what it maps to.
+        assert!(resolve(&m, page, "lodash/../../etc").is_err());
+        // Without a map, URL-like specifiers still resolve.
+        assert_eq!(resolve(&ImportMap::default(), page, "/x.js").unwrap(), "https://site.test/x.js");
+        assert!(resolve(&ImportMap::default(), page, "react").is_err());
+    }
+    #[test]
+    fn a_later_map_adds_only_what_earlier_ones_left_unmapped() {
+        let mut m = map(r#"{"imports":{"a":"/one.js"}}"#);
+        m.merge(r#"{"imports":{"a":"/two.js","b":"/b.js"}}"#, url::Url::parse("https://site.test/").ok().as_ref());
+        m.merge("not json", None);
+        assert_eq!(resolve(&m, "https://site.test/", "a").unwrap(), "https://site.test/one.js");
+        assert_eq!(resolve(&m, "https://site.test/", "b").unwrap(), "https://site.test/b.js");
+    }
 }

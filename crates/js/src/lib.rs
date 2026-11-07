@@ -341,6 +341,9 @@ impl Realm {
         runtime();
         let quirks = if config.quirks { QuirksMode::Quirks } else { QuirksMode::NoQuirks };
         let revision = document.revision();
+        // Import maps apply to every module the page loads, so they are read
+        // before any runs.
+        let import_map = modules::ImportMap::of_document(&document, &config.url);
         let state: Shared = Rc::new(RefCell::new(State {
             document,
             config,
@@ -358,7 +361,7 @@ impl Realm {
             images: HashMap::new(),
             requests: Vec::new(),
             in_flight: HashMap::new(),
-            modules: Default::default(),
+            modules: modules::Modules::with_map(import_map),
             next_request: 1,
             workers: HashMap::new(),
             next_worker: 1,
@@ -1503,6 +1506,7 @@ const NATIVES: &[&str] = &[
     "matches",
     "layoutGeneration",
     "wallNow",
+    "cssProperties",
     "innerHTML",
     "setInnerHTML",
     "outerHTML",
@@ -2284,6 +2288,13 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         "revision" => {
             let r = state.borrow().document.revision();
             rv.set(v8::Number::new(scope, r as f64).into());
+        }
+        // The CSS properties and shorthands the engine knows, by name: what
+        // `name in element.style` answers.
+        "cssProperties" => {
+            let names = css::properties::Property::ALL.iter().map(|p| p.as_str()).chain(css::properties::Shorthand::ALL.iter().map(|p| p.as_str()));
+            let items: Vec<v8::Local<v8::Value>> = names.map(|n| string(scope, n).into()).collect();
+            rv.set(v8::Array::new_with_elements(scope, &items).into());
         }
         // Real time since the realm began (ms), for time within a task.
         "wallNow" => {

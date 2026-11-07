@@ -613,12 +613,13 @@ mod tests {
         let data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
         let loader = Loader::new().unwrap();
         let document = Resource { url: Url::parse("https://example.test/page").unwrap(), bytes: Vec::new(), mime: None, status: None, document_encoding: None };
-        let image = loader.image(&document, Url::parse(data).unwrap(), 4, &Cancel::default(), |_| {}).unwrap();
+        let no_svg = |_: &[u8]| -> page::Result<Arc<olo_web::image::Image>> { Err("no SVG here".into()) };
+        let image = loader.image(&document, Url::parse(data).unwrap(), 4, &Cancel::default(), |_| {}, &no_svg).unwrap();
         assert_eq!(image.rgba(), [255, 0, 0, 255]);
-        assert!(loader.image(&document, Url::parse(data).unwrap(), 3, &Cancel::default(), |_| {}).is_err());
+        assert!(loader.image(&document, Url::parse(data).unwrap(), 3, &Cancel::default(), |_| {}, &no_svg).is_err());
         let cancelled = Cancel::default();
         cancelled.cancel();
-        assert!(loader.image(&document, Url::parse(data).unwrap(), 4, &cancelled, |_| {}).is_err());
+        assert!(loader.image(&document, Url::parse(data).unwrap(), 4, &cancelled, |_| {}, &no_svg).is_err());
         let png = data_url::DataUrl::process(data).unwrap().decode_to_vec().unwrap().0;
         let socket = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = Url::parse(&format!("http://{}/red.png", socket.local_addr().unwrap())).unwrap();
@@ -631,7 +632,7 @@ mod tests {
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", png.len()).unwrap();
             stream.write_all(&png).unwrap();
         });
-        let image = loader.image(&document, url, 4, &Cancel::default(), |_| {}).unwrap();
+        let image = loader.image(&document, url, 4, &Cancel::default(), |_| {}, &no_svg).unwrap();
         assert_eq!(image.rgba(), [255, 0, 0, 255]);
         server.join().unwrap();
     }

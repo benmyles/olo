@@ -10,6 +10,8 @@ olo-web = { path = "../web" }
 # JavaScript: V8 (C++), the one non-Rust part of the browser, as the mandate allows.
 v8 = "152"
 url = "2"
+# Import maps (JSON).
+serde_json.workspace = true
 tiny-skia = "0.12"
 # WebGL: OpenGL ES through EGL (surfaceless), loaded at first use.
 glow = "0.16"

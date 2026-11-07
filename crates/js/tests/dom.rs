@@ -44,3 +44,55 @@ fn errors_are_reported_not_fatal() {
     let body = doc.children(html).unwrap().last().unwrap();
     assert_eq!(doc.attribute(body, "id").unwrap(), Some("after"));
 }
+#[test]
+fn modules_import_bare_names_through_the_import_map() {
+    let page = r#"<script type=importmap>{"imports":{"react":"https://cdn.test/react.js","lib/":"https://cdn.test/lib/"}}</script>
+<script type=module>import { name } from "react"; import { twice } from "lib/math.js"; console.log(name, twice(21));</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module)| match source {
+            Source::Inline(text) => Script { source: text, name, module },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let fetcher: olo_js::Fetcher = Box::new(|url: &str, _: &str, _: &str| {
+        let body = match url {
+            "https://cdn.test/react.js" => "export const name = 'react';",
+            "https://cdn.test/lib/math.js" => "export const twice = n => n * 2;",
+            _ => return Err(format!("unexpected fetch {url}")),
+        };
+        Ok(olo_js::Fetched { status: 200, content_type: "text/javascript".into(), body: body.as_bytes().to_vec(), url: url.into() })
+    });
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, Some(fetcher), None).unwrap();
+    let report = realm.run_page(&scripts);
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] react 42"]);
+}
+#[test]
+fn listeners_without_this_go_to_the_global_and_signals_remove_them() {
+    let (report, _) = run(r#"<script>"use strict";
+const add = EventTarget.prototype.addEventListener;
+let calls = 0;
+add.call(undefined, "ping", () => calls++);
+const c = new AbortController();
+window.addEventListener("ping", () => calls += 10, { signal: c.signal });
+dispatchEvent(new Event("ping"));
+c.abort();
+dispatchEvent(new Event("ping"));
+window.addEventListener("ping", () => calls += 100, { signal: AbortSignal.abort() });
+dispatchEvent(new Event("ping"));
+console.log(calls);
+</script>"#);
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] 13"]);
+}
+#[test]
+fn style_answers_in_for_the_properties_the_engine_knows() {
+    let (report, _) = run(r#"<div id=d></div><script>
+const s = document.getElementById("d").style;
+console.log("opacity" in s, "backgroundColor" in s, "background-color" in s, "cssFloat" in s, "--x" in s, "noSuchThing" in s, "setProperty" in s);
+</script>"#);
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] true true true true true false true"]);
+}
