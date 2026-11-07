@@ -789,7 +789,8 @@ pub fn finish(
         return Err(style::Error::Stale.into());
     }
     let interaction_mask = rules.state_mask();
-    let (scene, stylesheet_issues, fallbacks) = render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, &scope, shaper, painter, viewport, cancel, &mut progress)?;
+    let (scene, stylesheet_issues, fallbacks) =
+        render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, &scope, shaper, painter, viewport, cancel, None, &mut progress)?;
     Ok(Page {
         images,
         document: doc,
@@ -815,6 +816,64 @@ impl Page {
     pub fn scope(&self) -> &Scope {
         &self.scope
     }
+    /// The computed styles this page was laid out from.
+    pub fn styles(&self) -> &Arc<style::StyleTree> {
+        self.scene.layout().cache().tree().styles()
+    }
+    /// This page rendered again from `doc`, a later revision of its document
+    /// (as scripts left it): styles kept where nothing changed, the images
+    /// rebound, everything laid out and painted. The previous page's
+    /// sheets, rules and scope carry over (new stylesheets and images the
+    /// scripts added are not loaded here).
+    pub fn rerender(
+        &mut self,
+        doc: Document,
+        host: &impl Host,
+        shaper: &mut shaping::Engine,
+        painter: &mut paint::Engine,
+        viewport: layout::Viewport,
+        cancel: Option<&AtomicBool>,
+        mut progress: impl FnMut(Phase, usize),
+    ) -> Result<()> {
+        if host.font_context() != self.scope.context() {
+            return Err(style::Error::Stale.into());
+        }
+        if let Some(images) = &self.images
+            && let Some(rebound) = images.rebind(&doc)
+        {
+            self.images = Some(rebound);
+        }
+        let media = media_for(host, viewport);
+        if self.media_dependent && media != self.media {
+            let (rules, dependent, _, _) = compile(&self.sheets, media, cancel)?;
+            self.rules = Arc::new(rules);
+            self.media_dependent = dependent;
+            self.interaction_mask = self.rules.state_mask();
+            self.media = media;
+        }
+        let previous = self.styles().clone();
+        let (scene, stylesheet_issues, fallbacks) =
+            render(&doc, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, &self.scope, shaper, painter, viewport, cancel, Some(&previous), &mut progress)?;
+        let mut title = String::new();
+        let mut next = Some(doc.root());
+        while let Some(node) = next {
+            if doc.node_type(node)? == NodeType::Element && doc.name(node)? == Some("title") {
+                for child in doc.children(node)? {
+                    if let Some(value) = doc.value(child)? {
+                        title.push_str(value);
+                    }
+                }
+                break;
+            }
+            next = next_node(&doc, node)?;
+        }
+        self.document = doc;
+        self.scene = scene;
+        self.stylesheet_issues = stylesheet_issues;
+        self.fallbacks = fallbacks;
+        self.title = title;
+        Ok(())
+    }
     /// Recompute viewport-dependent styles without network I/O or HTML parsing.
     pub fn restyle(
         &mut self,
@@ -838,7 +897,7 @@ impl Page {
         }
         let scope = &self.scope;
         let (scene, issues, fallbacks) =
-            render(&self.document, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, &mut progress)?;
+            render(&self.document, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, None, &mut progress)?;
         self.scene = scene;
         self.stylesheet_issues = issues;
         self.fallbacks = fallbacks;
@@ -859,12 +918,16 @@ fn render(
     painter: &mut paint::Engine,
     viewport: layout::Viewport,
     cancel: Option<&AtomicBool>,
+    previous: Option<&style::StyleTree>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
     let mut fallbacks = layout::Fallbacks::default();
-    let defaults = Defaults::new(host, Default::default(), cancel)?;
+    let defaults = match previous.and_then(|p| p.defaults()).filter(|d| d.is_current(host)) {
+        Some(d) => d,
+        None => Defaults::new(host, Default::default(), cancel)?,
+    };
     let snapshot = interaction::Snapshot::new(doc, input, cancel);
-    let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), ..Default::default() }, Default::default(), cancel)?;
+    let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), previous, ..Default::default() }, Default::default(), cancel)?;
     while !job.step(128, |_| host)?.finished {
         progress(Phase::Styles, job.progress().styled)
     }

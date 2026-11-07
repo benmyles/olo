@@ -149,6 +149,11 @@ impl StyleTree {
     pub fn document_revision(&self) -> u64 {
         self.revision
     }
+    /// The defaults these styles were computed against (the root's; every
+    /// style shares them); None for an empty document.
+    pub fn defaults(&self) -> Option<Arc<Defaults>> {
+        self.styles.first().map(|s| s.style.defaults())
+    }
     pub fn report(&self) -> Report {
         self.report
     }

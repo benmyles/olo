@@ -188,6 +188,19 @@ impl Set {
         check(cancel)?;
         Ok(Arc::new(Self { document: document.id(), revision: document.revision(), bindings: bindings.into_boxed_slice(), backgrounds, bytes }))
     }
+    /// This set bound to the document as it is now: a later revision of the
+    /// same document, keeping the bindings whose images are still there.
+    pub fn rebind(&self, document: &Document) -> Option<Arc<Self>> {
+        if document.id() != self.document {
+            return None;
+        }
+        if document.revision() == self.revision {
+            return None;
+        }
+        let bindings: Vec<(NodeId, Arc<Image>)> =
+            self.bindings.iter().filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && document.name(*node).ok().flatten() == Some("img")).cloned().collect();
+        Some(Arc::new(Self { document: self.document, revision: document.revision(), bindings: bindings.into_boxed_slice(), backgrounds: self.backgrounds.clone(), bytes: self.bytes }))
+    }
     pub fn validate(&self, document: &Document) -> Result<(), Error> {
         if document.id() == self.document && document.revision() == self.revision { Ok(()) } else { Err(Error::Stale) }
     }

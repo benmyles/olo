@@ -77,6 +77,12 @@ pub struct Script {
     pub source: Arc<str>,
     pub name: String,
 }
+/// What an advance of the page's clock did.
+#[derive(Debug, Clone, Copy)]
+pub struct Advanced {
+    pub next_due_ms: Option<f64>,
+    pub changed: bool,
+}
 /// What happened.
 #[derive(Debug, Default, Clone)]
 pub struct Report {
@@ -193,6 +199,48 @@ impl Realm {
             return Err(error);
         }
         Ok(())
+    }
+    /// Advance the page's clock to `now_ms` (milliseconds since its scripts
+    /// ran): timers and animation frames due by then run, for at most
+    /// `wall`. Returns when the next is due, and whether the document changed.
+    pub fn advance(&mut self, now_ms: f64, wall: std::time::Duration) -> Advanced {
+        let started = Instant::now();
+        let before = self.state.borrow().document.revision();
+        let mut next_due_ms = None;
+        for _ in 0..10_000 {
+            match self.call_prelude_number("__olo_tick", now_ms) {
+                Ok(next) if next < 0. => {
+                    next_due_ms = None;
+                    break;
+                }
+                Ok(next) if next > now_ms + 0.5 => {
+                    next_due_ms = Some(next);
+                    break;
+                }
+                // More is due now (scheduled by what just ran).
+                Ok(_) => {
+                    next_due_ms = Some(now_ms);
+                    if started.elapsed() > wall {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        let after = self.state.borrow().document.revision();
+        Advanced { next_due_ms, changed: after != before }
+    }
+    /// The document as it is now, copied, for rendering while the scripts
+    /// keep theirs.
+    pub fn snapshot(&self) -> Document {
+        self.state.borrow().document.clone()
+    }
+    pub fn revision(&self) -> u64 {
+        self.state.borrow().document.revision()
+    }
+    /// What the page did so far (the counts keep growing while it lives).
+    pub fn report(&self) -> Report {
+        self.finish_report()
     }
     /// Evaluate an expression and return its value as text (objects as JSON).
     pub fn eval(&mut self, source: &str) -> Result<String, String> {

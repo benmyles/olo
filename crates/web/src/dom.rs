@@ -166,7 +166,7 @@ struct TextValue {
     len: u32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum Data {
     Vacant(Link),
     Document,
@@ -179,7 +179,7 @@ enum Data {
     Doctype(NonZeroU32),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct DoctypeData {
     name: Atom,
     public_id: TextValue,
@@ -193,7 +193,7 @@ pub struct Doctype<'a> {
     pub system_id: &'a str,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Node {
     generation: u32,
     parent: Link,
@@ -210,14 +210,14 @@ impl Node {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Attribute {
     name: AttributeName,
     value: TextValue,
     next: Link,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Pool<T> {
     slots: Vec<Option<T>>,
     free: Vec<u32>,
@@ -288,6 +288,7 @@ pub enum Change {
 }
 /// How many changes the log keeps before giving up on describing them.
 const CHANGES: usize = 1 << 16;
+#[derive(Clone)]
 pub struct Document {
     id: u64,
     revision: u64,

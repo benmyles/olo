@@ -35,6 +35,7 @@ const JAVASCRIPT: bool = true;
 pub fn max_scroll(key: &Key, extent: f64) -> i32 {
     ((extent * key.scale - f64::from(key.height)).ceil().max(0.) as i32).min(i32::MAX - MAX_VIEWPORT as i32 - 256)
 }
+#[derive(Clone)]
 pub struct Request {
     pub id: u64,
     pub key: Key,
@@ -89,7 +90,22 @@ pub enum Reply {
 enum Pass {
     Static,
     Scripted,
+    /// The page's clock advanced, and the page rendered again if its
+    /// scripts changed it.
+    Live,
 }
+/// A page whose scripts keep running: its realm, when its next timer is
+/// due, and what has been rendered.
+struct Live {
+    realm: olo_js::Realm,
+    started: Instant,
+    next_due_ms: Option<f64>,
+    rendered: u64,
+    last_render: Instant,
+}
+/// Renders of a live page are coalesced to this interval while its scripts
+/// keep changing it.
+const LIVE_RENDER_INTERVAL: Duration = Duration::from_millis(100);
 struct Cached {
     key: Key,
     page: page::Page,
@@ -100,6 +116,7 @@ struct Cached {
     images: HashMap<url::Url, Option<Arc<olo_web::image::Image>>>,
     scripted: bool,
     loaded_at: Instant,
+    live: Option<Live>,
     viewport_dependent: bool,
     origin: url::Url,
     base: url::Url,
@@ -148,7 +165,35 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                 let mut tiles = HashMap::new();
                 let mut clock = 0u64;
                 let mut pending: Vec<Message> = Vec::new();
-                while let Ok(message) = rx.recv() {
+                let mut last: Option<Request> = None;
+                loop {
+                    // A live page's next timer sets how long to wait for a
+                    // message; nothing due, nothing to wait for.
+                    let wait = cached.as_ref().and_then(|c| c.live.as_ref()).and_then(|l| l.next_due_ms.map(|due| Duration::from_secs_f64((due / 1000. - l.started.elapsed().as_secs_f64()).max(0.))));
+                    let received = match wait {
+                        Some(d) => match rx.recv_timeout(d) {
+                            Ok(m) => Some(m),
+                            Err(mpsc::RecvTimeoutError::Timeout) => None,
+                            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                        },
+                        None => match rx.recv() {
+                            Ok(m) => Some(m),
+                            Err(_) => break,
+                        },
+                    };
+                    let Some(message) = received else {
+                        // The live page's clock: run what is due, render if changed.
+                        if let Some(r) = &last
+                            && !r.cancel.load(Ordering::Relaxed)
+                            && let Err(error) = render(r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Live)
+                        {
+                            eprintln!("Browser live: {error}");
+                            if let Some(c) = cached.as_mut() {
+                                c.live = None;
+                            }
+                        }
+                        continue;
+                    };
                     let mut r = match message {
                         Message::Render(r) => r,
                         Message::Recycle(images) => {
@@ -172,6 +217,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                         continue;
                     }
                     let result = render(&r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Static);
+                    last = Some((*r).clone());
                     if let Err(error) = result
                         && !r.cancel.load(Ordering::Relaxed)
                     {
@@ -222,6 +268,37 @@ fn render(
     }
     let newly_loaded = cached.as_ref().is_none_or(|c| c.key.source != r.key.source || c.key.cwd != r.key.cwd || c.key.revision != r.key.revision);
     let newly_loaded = newly_loaded || pass == Pass::Scripted && cached.as_ref().is_some_and(|c| !c.scripted);
+    let mut rerendered = false;
+    if pass == Pass::Live {
+        let Some(c) = cached.as_mut() else { return Ok(()) };
+        let Some(live) = c.live.as_mut() else { return Ok(()) };
+        let now_ms = live.started.elapsed().as_secs_f64() * 1000.;
+        let advanced = live.realm.advance(now_ms, Duration::from_millis(30));
+        live.next_due_ms = advanced.next_due_ms;
+        let revision = live.realm.revision();
+        if revision != live.rendered {
+            if live.last_render.elapsed() < LIVE_RENDER_INTERVAL {
+                // Coalesce: render at the interval, not at every change.
+                let soon = now_ms + (LIVE_RENDER_INTERVAL - live.last_render.elapsed()).as_secs_f64() * 1000.;
+                live.next_due_ms = Some(live.next_due_ms.map_or(soon, |d| d.min(soon)));
+                return Ok(());
+            }
+            let doc = live.realm.snapshot();
+            let viewport = layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale };
+            let host = PageHost::new(c.page.scope(), &r.key);
+            let started = Instant::now();
+            c.page.rerender(doc, &host, shaper, painter, viewport, Some(&r.cancel), |_, _| {})?;
+            if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                eprintln!("  live render: revision {} -> {} in {:.0} ms", live.rendered, revision, started.elapsed().as_secs_f64() * 1000.);
+            }
+            live.rendered = revision;
+            live.last_render = Instant::now();
+            cache.clear();
+            rerendered = true;
+        } else {
+            return Ok(());
+        }
+    }
     if newly_loaded {
         // The scripted pass starts from what the static pass fetched.
         let previous = if pass == Pass::Scripted { cached.take() } else { None };
@@ -277,6 +354,7 @@ fn render(
         };
         // Scripts run against the parsed document before its resources load;
         // what they add is then fetched and styled like the rest.
+        let mut live_slot: Option<Live> = None;
         let mut run_scripts = |doc: olo_web::dom::Document, quirks: bool, measurer: page::Measurer| -> page::Result<olo_web::dom::Document> {
             let Some(document) = &document else {
                 return Ok(doc);
@@ -303,7 +381,16 @@ fn render(
                 return Ok(doc);
             }
             proxy.send(Reply::Status(r.id, format!("Running {} scripts…", scripts.len())));
-            let config = olo_js::Config { url: page_url, viewport: (f64::from(r.key.width) / r.key.scale, f64::from(r.key.height) / r.key.scale), scale: r.key.scale, quirks, ..Default::default() };
+            // The first scripted render waits only for what is due at once;
+            // the page then lives on its own clock.
+            let config = olo_js::Config {
+                url: page_url,
+                viewport: (f64::from(r.key.width) / r.key.scale, f64::from(r.key.height) / r.key.scale),
+                scale: r.key.scale,
+                quirks,
+                budget_ms: 50.,
+                ..Default::default()
+            };
             let fetch_document = document.url.clone();
             let fetcher: olo_js::Fetcher = {
                 let cancel = r.cancel.clone();
@@ -347,6 +434,7 @@ fn render(
             let started = Instant::now();
             let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), Some(measure)).map_err(|e| page::Error::from(e.as_str()))?;
             let report = realm.run_page(&scripts);
+            let scripted_at = Instant::now();
             // OLO_BROWSER_EVAL=JS: an expression run after the page's scripts,
             // its value logged, for comparing with Chrome.
             let eval = std::env::var("OLO_BROWSER_EVAL").ok().or_else(|| std::env::var("OLO_BROWSER_EVAL_FILE").ok().and_then(|f| std::fs::read_to_string(f).ok()));
@@ -356,7 +444,9 @@ fn render(
                     Err(e) => eprintln!("Browser eval failed: {e}"),
                 }
             }
-            let (doc, _) = realm.finish();
+            // The realm lives on: its timers keep running on the page's clock.
+            let doc = realm.snapshot();
+            live_slot = Some(Live { realm, started: scripted_at, next_due_ms: Some(0.), rendered: doc.revision(), last_render: Instant::now() });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
                 report.scripts,
@@ -485,6 +575,7 @@ fn render(
             images,
             scripted: pass == Pass::Scripted,
             loaded_at,
+            live: live_slot,
             viewport_dependent: host.viewport_used.get(),
             origin,
             base,
@@ -499,7 +590,7 @@ fn render(
     let navigation_changed = c.navigation != r.navigation;
     let mut input = r.interaction;
     input.target = c.page.interaction.target;
-    let mut scene_changed = newly_loaded;
+    let mut scene_changed = newly_loaded || rerendered;
     let mut sought = if navigation_changed { None } else { c.anchor_scroll };
     if navigation_changed {
         let fragment = if newly_loaded { c.origin.fragment().map(str::to_owned) } else { r.fragment.as_ref().map(ToString::to_string) };

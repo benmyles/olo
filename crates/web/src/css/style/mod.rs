@@ -632,6 +632,9 @@ impl Style {
     pub fn override_payload_bytes(&self) -> usize {
         self.values.len() * size_of::<Entry>()
     }
+    pub fn defaults(&self) -> Arc<Defaults> {
+        self.defaults.clone()
+    }
     pub fn overrides_share(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.values, &other.values)
     }
