@@ -143,7 +143,7 @@ impl Index {
         if a.run > b.run {
             return Err(Error::Invalid);
         }
-        let measure = |i: usize, units: i64| measured(units, p.font_size, p.runs[i].font.units_per_em(), pixel_scale);
+        let measure = |i: usize, units: i64| measured(units, p.runs[i].size, p.runs[i].font.units_per_em(), pixel_scale);
         if a.run == b.run {
             let width = if a.run as usize == p.runs.len() { 0. } else { measure(a.run as usize, b.units - a.units)? };
             return if width.is_finite() { Ok(width) } else { Err(Error::Invalid) };

@@ -232,7 +232,7 @@ impl Memo {
         }
         let base = p.runs.get(run as usize).ok_or(Error::Invalid)?;
         let context = p.context_range(range.start as usize..range.end as usize)?;
-        let shaped = Arc::new(engine.shape_run(
+        let mut shaped = engine.shape_run(
             base.font.selection(),
             p.analysis.source().clone(),
             range.start as usize..range.end as usize,
@@ -246,7 +246,10 @@ impl Memo {
                 context: Some((context.start, context.end)),
             },
             cancel,
-        )?);
+        )?;
+        shaped.size = base.size;
+        shaped.style = base.style;
+        let shaped = Arc::new(shaped);
         self.shape_glyphs = self.shape_glyphs.checked_add(shaped.glyphs.len()).ok_or(Error::Limit)?;
         if self.shape_glyphs > limits.shape_glyphs {
             return Err(Error::Limit);
@@ -547,13 +550,16 @@ pub struct Line {
     pub offset: f64,
     pub overflow: bool,
     pub end: Kind,
+    /// The line box above and below its baseline: the strut, styled runs'
+    /// inline boxes (half-leading model) and atomic inlines.
+    pub ascent: f64,
+    pub descent: f64,
 }
 pub struct Layout {
     text: Arc<Text>,
     lines: Box<[Line]>,
     fragments: Box<[Fragment]>,
     owned: Box<[Arc<Run>]>,
-    options: Options,
     objects: Option<Box<objects::LayoutObjects>>,
 }
 impl Layout {
@@ -573,10 +579,14 @@ impl Layout {
         if fragment.run & OWNED == 0 { self.text.paragraph.runs.get(fragment.run as usize) } else { self.owned.get((fragment.run & !OWNED) as usize).map(Arc::as_ref) }
     }
     pub fn baseline(&self, line: usize) -> Option<f64> {
-        (line < self.lines.len()).then(|| self.options.baseline + line as f64 * self.options.line_height + self.objects.as_ref().map_or(0., |o| o.baseline_extra(line)))
+        (line < self.lines.len()).then(|| self.lines[..line].iter().map(|l| l.ascent + l.descent).sum::<f64>() + self.lines[line].ascent)
     }
     pub fn height(&self) -> f64 {
-        self.lines.len() as f64 * self.options.line_height + self.objects.as_ref().map_or(0., |o| o.height_extra())
+        self.lines.iter().map(|l| l.ascent + l.descent).sum()
+    }
+    /// A fragment's baseline shift (superscripts up, positive).
+    pub fn shift(&self, fragment: &Fragment) -> f64 {
+        self.run(fragment).map_or(0., |r| self.text.paragraph.shift(r))
     }
     pub fn geometry_payload_bytes(&self) -> usize {
         self.lines.len() * size_of::<Line>()
@@ -759,7 +769,18 @@ impl<'a> Job<'a> {
             if !advance.is_finite() || !offset.is_finite() {
                 return Err(Error::Invalid);
             }
-            self.lines.push(Line { source: 0..0, text: 0..0, fragments: 0..0, advance, content_advance: advance, offset, overflow: advance > self.options.width, end: Kind::Required });
+            self.lines.push(Line {
+                source: 0..0,
+                text: 0..0,
+                fragments: 0..0,
+                advance,
+                content_advance: advance,
+                offset,
+                overflow: advance > self.options.width,
+                end: Kind::Required,
+                ascent: self.options.baseline,
+                descent: self.options.line_height - self.options.baseline,
+            });
             self.progress.lines = 1;
             self.progress.work = 1;
             self.progress.finished = true;
@@ -787,8 +808,7 @@ impl<'a> Job<'a> {
         {
             let rtl = self.text.paragraph.runs[w.run as usize].direction == Direction::RightToLeft;
             let run = self.shape(w.run, self.paint_start..end.byte, rtl)?;
-            return Ok(index::measured(all_units(&run), self.text.paragraph.font_size, run.font.units_per_em(), self.options.pixel_scale)?
-                + self.objects.as_ref().map_or(0., |o| o.width(self.paint_start, end.byte)));
+            return Ok(index::measured(all_units(&run), run.size, run.font.units_per_em(), self.options.pixel_scale)? + self.objects.as_ref().map_or(0., |o| o.width(self.paint_start, end.byte)));
         }
         Ok(self.text.index.advance_measured(&self.text.paragraph, self.start, end, self.options.pixel_scale)? + self.objects.as_ref().map_or(0., |o| o.width(self.paint_start, end.byte)))
     }
@@ -895,7 +915,7 @@ impl<'a> Job<'a> {
             self.owned.push(shaped);
             (id, glyphs, count)
         };
-        let advance = index::measured(count, self.text.paragraph.font_size, self.text.paragraph.runs[ri].font.units_per_em(), self.options.pixel_scale)?;
+        let advance = index::measured(count, self.text.paragraph.runs[ri].size, self.text.paragraph.runs[ri].font.units_per_em(), self.options.pixel_scale)?;
         totals.push((ri, count));
         self.fragments.push(Fragment { source, glyphs, x: 0., advance, level, run });
         Ok(())
@@ -991,7 +1011,7 @@ impl<'a> Job<'a> {
                 sum += totals[at].1;
                 at += 1;
             }
-            content += index::measured(sum, self.text.paragraph.font_size, self.text.paragraph.runs[ri].font.units_per_em(), self.options.pixel_scale)?;
+            content += index::measured(sum, self.text.paragraph.runs[ri].size, self.text.paragraph.runs[ri].font.units_per_em(), self.options.pixel_scale)?;
         }
         content += self.spacing.width(self.spacing_start, self.from, point.end.byte, point.offset, point.offset as usize == self.text.prepared.text().len());
         content += self.objects.as_ref().map_or(0., |o| o.width(visible.start, visible.end));
@@ -1009,8 +1029,28 @@ impl<'a> Job<'a> {
             fragment.x = x + self.spacing.before(self.spacing_start, self.from, fragment.source.start);
             x += fragment.advance;
         }
+        // The line box: the strut, each styled run's inline box with its
+        // half-leading and shift (CSS 2.2 §10.8), and the atomic inlines.
+        let mut ascent = self.options.baseline;
+        let mut descent = self.options.line_height - self.options.baseline;
+        let snap = |v: f64| self.options.pixel_scale.map_or(v, |s| (v * s).round() / s);
+        for f in &self.fragments[first..] {
+            let Some(run) = (if f.run & OWNED == 0 { self.text.paragraph.runs.get(f.run as usize) } else { self.owned.get((f.run & !OWNED) as usize).map(Arc::as_ref) }) else { continue };
+            let Some(s) = self.text.paragraph.styles.get(run.style as usize) else { continue };
+            let scale = self.options.pixel_scale.unwrap_or(1.);
+            let a = (s.ascent * scale).round();
+            let d = (s.descent * scale).round();
+            let half = ((s.line_height * scale - a - d) / 2.).floor();
+            ascent = ascent.max((a + half) / scale + snap(s.shift));
+            descent = descent.max(s.line_height - (a + half) / scale - snap(s.shift));
+        }
         if let Some(objects) = &mut self.objects {
-            objects.line(self.lines.len(), &self.fragments[first..], self.options, self.limits, self.cancel)?;
+            let (a, d) = objects.line(self.lines.len(), &self.fragments[first..], self.options, self.limits, self.cancel)?;
+            ascent = ascent.max(a);
+            descent = descent.max(d);
+        }
+        if ![ascent, descent].iter().all(|v| v.is_finite()) {
+            return Err(Error::Invalid);
         }
         self.lines.push(Line {
             source: self.from..point.offset,
@@ -1021,6 +1061,8 @@ impl<'a> Job<'a> {
             offset,
             overflow: advance > self.fit_limit(point),
             end: point.kind,
+            ascent,
+            descent,
         });
         Ok(chosen)
     }
@@ -1059,7 +1101,6 @@ impl<'a> Job<'a> {
             lines: self.lines.into_boxed_slice(),
             fragments: self.fragments.into_boxed_slice(),
             owned: self.owned.into_boxed_slice(),
-            options: self.options,
             objects: self.objects.map(|o| o.finish()),
         })
     }

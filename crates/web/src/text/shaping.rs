@@ -5,7 +5,7 @@ use harfrust::{Buffer, Font, ShapePlan, ShaperFont};
 mod paragraph;
 pub use crate::text::unicode::{Graphemes, graphemes};
 pub use harfrust::{Direction, Feature, Language, Script};
-pub use paragraph::{Analysis, BaseDirection, Paragraph, ParagraphJob, ParagraphLimits, ParagraphReport, Progress, VisualRun};
+pub use paragraph::{Analysis, BaseDirection, Paragraph, ParagraphJob, ParagraphLimits, ParagraphReport, Progress, StyleRun, VisualRun};
 use smallvec::SmallVec;
 use std::{
     collections::HashMap,
@@ -132,6 +132,10 @@ pub struct Run {
     pub script: Script,
     pub direction: Direction,
     pub glyphs: Box<[Glyph]>,
+    /// The CSS font size this run is drawn at (its style run's, else the paragraph's).
+    pub size: f64,
+    /// Index of the paragraph's style run, or u32::MAX for the paragraph's own style.
+    pub style: u32,
 }
 impl Run {
     pub fn advance(&self, size: f64) -> (f64, f64) {
@@ -302,7 +306,7 @@ impl Engine {
             .collect::<Vec<_>>()
             .into_boxed_slice();
         check(cancel)?;
-        Ok(Run { source, range: range.start as u32..range.end as u32, font, script: options.script, direction: options.direction, glyphs })
+        Ok(Run { source, range: range.start as u32..range.end as u32, font, script: options.script, direction: options.direction, glyphs, size: 0., style: u32::MAX })
     }
 }
 impl Default for Engine {

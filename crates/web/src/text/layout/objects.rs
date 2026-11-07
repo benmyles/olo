@@ -24,21 +24,13 @@ struct Row {
     object: Object,
     prefix: f64,
 }
-struct Metrics {
-    line: u32,
-    baseline_extra: f64,
-    after_extra: f64,
-}
 pub(super) struct Objects {
     rows: Box<[Row]>,
     placed: Vec<ObjectFragment>,
-    metrics: Vec<Metrics>,
-    shift: f64,
     pub monotonic: bool,
 }
 pub(super) struct LayoutObjects {
     pub placed: Box<[ObjectFragment]>,
-    metrics: Box<[Metrics]>,
 }
 impl Objects {
     pub fn new(text: &Text, input: Vec<Object>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Self> {
@@ -78,7 +70,7 @@ impl Objects {
             monotonic &= object.advance >= 0.;
             rows.push(Row { object, prefix });
         }
-        Ok(Self { rows: rows.into_boxed_slice(), placed: Vec::new(), metrics: Vec::new(), shift: 0., monotonic })
+        Ok(Self { rows: rows.into_boxed_slice(), placed: Vec::new(), monotonic })
     }
     pub fn at(&self, at: u32) -> Option<Object> {
         self.rows.binary_search_by_key(&at, |r| r.object.at).ok().map(|i| self.rows[i].object)
@@ -89,7 +81,8 @@ impl Objects {
         let before = |i: usize| i.checked_sub(1).map_or(0., |i| self.rows[i].prefix);
         before(hi) - before(lo)
     }
-    pub fn line(&mut self, index: usize, fragments: &[Fragment], options: Options, limits: Limits, cancel: Option<&AtomicBool>) -> Result<()> {
+    /// Place this line's objects; returns the largest ascent and descent among them.
+    pub fn line(&mut self, index: usize, fragments: &[Fragment], options: Options, limits: Limits, cancel: Option<&AtomicBool>) -> Result<(f64, f64)> {
         let line = u32::try_from(index).map_err(|_| Error::Limit)?;
         let mut ascent = options.baseline;
         let mut descent = options.line_height - options.baseline;
@@ -107,33 +100,17 @@ impl Objects {
                 self.placed.push(ObjectFragment { at: o.at, line, x: f.x, advance: o.advance, ascent: o.ascent, descent: o.descent });
             }
         }
-        let height = ascent + descent;
-        let baseline_extra = self.shift + (ascent - options.baseline);
-        self.shift += height - options.line_height;
-        if ![height, baseline_extra, self.shift, options.baseline + index as f64 * options.line_height + baseline_extra, (index + 1) as f64 * options.line_height + self.shift]
-            .into_iter()
-            .all(f64::is_finite)
-        {
+        if ![ascent, descent, ascent + descent].into_iter().all(f64::is_finite) {
             return Err(Error::Invalid);
         }
-        if ascent != options.baseline || descent != options.line_height - options.baseline {
-            self.metrics.push(Metrics { line, baseline_extra, after_extra: self.shift });
-        }
-        Ok(())
+        Ok((ascent, descent))
     }
     pub fn finish(self) -> Box<LayoutObjects> {
-        Box::new(LayoutObjects { placed: self.placed.into_boxed_slice(), metrics: self.metrics.into_boxed_slice() })
+        Box::new(LayoutObjects { placed: self.placed.into_boxed_slice() })
     }
 }
 impl LayoutObjects {
-    pub fn baseline_extra(&self, line: usize) -> f64 {
-        let i = self.metrics.partition_point(|r| (r.line as usize) <= line);
-        i.checked_sub(1).map_or(0., |i| if self.metrics[i].line as usize == line { self.metrics[i].baseline_extra } else { self.metrics[i].after_extra })
-    }
-    pub fn height_extra(&self) -> f64 {
-        self.metrics.last().map_or(0., |r| r.after_extra)
-    }
     pub fn payload_bytes(&self) -> usize {
-        std::mem::size_of_val(self.placed.as_ref()) + std::mem::size_of_val(self.metrics.as_ref())
+        std::mem::size_of_val(self.placed.as_ref())
     }
 }

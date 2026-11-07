@@ -158,7 +158,7 @@ impl<'a> IntrinsicJob<'a> {
                     continue;
                 };
                 if self.glyph == 0 {
-                    self.metric = LinearMetric::new(self.text.paragraph.font_size, run.font.units_per_em(), self.scale)?;
+                    self.metric = LinearMetric::new(run.size, run.font.units_per_em(), self.scale)?;
                     self.runs.push(self.prefixes.len());
                     self.prefixes.push(0.);
                 }

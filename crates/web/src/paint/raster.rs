@@ -214,7 +214,7 @@ impl Engine {
                     let text = scene.layout.text_layout(*owner).ok_or(Error::Invalid)?;
                     let f = text.fragments().get(*fragment as usize).ok_or(Error::Invalid)?;
                     let run = text.run(f).ok_or(Error::Invalid)?;
-                    let unit = text.text().paragraph().font_size / f64::from(run.font.units_per_em());
+                    let unit = run.size / f64::from(run.font.units_per_em());
                     let mut pen = 0i64;
                     let p = paint(*color);
                     for g in &run.glyphs[glyphs.start as usize..glyphs.end as usize] {

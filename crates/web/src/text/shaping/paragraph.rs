@@ -130,13 +130,34 @@ pub struct Paragraph {
     pub report: ParagraphReport,
     pub font_size: f64,
     pub language: Box<str>,
+    /// Ranges styled differently from the paragraph (a bold span, a larger
+    /// link, a superscript), in source order, never overlapping.
+    pub styles: Box<[StyleRun]>,
     request: FontRequest,
     font_context: u64,
     shaping_breaks: ShapingBreaks,
 }
+/// A differently styled range of a paragraph: its font, size and the line
+/// metrics its inline box contributes (CSS px), with a baseline shift.
+#[derive(Clone, Debug)]
+pub struct StyleRun {
+    pub range: Range<u32>,
+    pub request: FontRequest,
+    pub size: f64,
+    pub line_height: f64,
+    pub ascent: f64,
+    /// Positive, below the baseline.
+    pub descent: f64,
+    /// Baseline shift, up positive (superscripts), in CSS px.
+    pub shift: f64,
+}
 impl Paragraph {
     pub fn request(&self) -> &FontRequest {
         &self.request
+    }
+    /// The baseline shift of a run (0 for the paragraph's own style).
+    pub fn shift(&self, run: &Run) -> f64 {
+        self.styles.get(run.style as usize).map_or(0., |s| s.shift)
     }
     pub fn font_context(&self) -> u64 {
         self.font_context
@@ -165,7 +186,7 @@ impl Paragraph {
         self.runs.iter().map(Run::glyph_payload_bytes).sum()
     }
     pub fn advance(&self) -> (f64, f64) {
-        self.runs.iter().map(|r| r.advance(self.font_size)).fold((0., 0.), |(x, y), (a, b)| (x + a, y + b))
+        self.runs.iter().map(|r| r.advance(r.size)).fold((0., 0.), |(x, y), (a, b)| (x + a, y + b))
     }
 }
 fn shaping_context(context: Range<usize>, range: Range<usize>, boundaries: &[u32]) -> Result<Range<usize>> {
@@ -195,6 +216,7 @@ struct Pending {
     script: Script,
     paragraph: usize,
     font: Arc<GlyphFont>,
+    style: u32,
 }
 /// One uniform-font-request text worker, preparing unwrapped glyph runs for
 /// layout. Whitespace processing, styled inline spans, spacing and final line
@@ -219,8 +241,52 @@ pub struct ParagraphJob<'a> {
     allow_lf: bool,
     shaping_breaks: ShapingBreaks,
     inline_objects: Box<[u32]>,
+    styles: Vec<StyleRun>,
+    /// Each style run's first-available font, resolved once.
+    style_primaries: Vec<Option<Arc<GlyphFont>>>,
 }
 impl<'a> ParagraphJob<'a> {
+    /// Differently styled ranges: their boundaries become shaping breaks and
+    /// their clusters shape in their own font and size.
+    pub fn with_style_runs(mut self, styles: Vec<StyleRun>) -> Result<Self> {
+        check(self.cancel)?;
+        if self.failed || self.progress.finished || self.next != 0 || self.pending.is_some() || !self.runs.is_empty() || !self.styles.is_empty() {
+            return Err(Error::Invalid);
+        }
+        if styles.len() > self.limits.runs {
+            return Err(Error::Limit);
+        }
+        let source_len = self.analysis.source().len();
+        let mut cuts = self.shaping_breaks.to_vec();
+        for (i, s) in styles.iter().enumerate() {
+            check(self.cancel)?;
+            if s.range.start >= s.range.end || s.range.end as usize > source_len || i > 0 && styles[i - 1].range.end > s.range.start || !s.size.is_finite() || s.size < 0. {
+                return Err(Error::Invalid);
+            }
+            if s.range.start > 0 {
+                cuts.push(s.range.start);
+            }
+            if (s.range.end as usize) < source_len {
+                cuts.push(s.range.end);
+            }
+        }
+        cuts.sort_unstable();
+        cuts.dedup();
+        self.set_shaping_breaks(cuts.into_boxed_slice())?;
+        let mut primaries = Vec::with_capacity(styles.len());
+        for s in &styles {
+            let selected = self.scope.first_available(&s.request, self.cancel).map_err(Error::from)?;
+            primaries.push(Some(self.engine.font(&selected)?.0));
+        }
+        self.styles = styles;
+        self.style_primaries = primaries;
+        Ok(self)
+    }
+    /// The style run covering a source offset, if any.
+    fn style_at(&self, at: usize) -> u32 {
+        let i = self.styles.partition_point(|s| (s.range.end as usize) <= at);
+        if self.styles.get(i).is_some_and(|s| (s.range.start as usize) <= at) { i as u32 } else { u32::MAX }
+    }
     pub fn new(engine: &'a mut Engine, scope: &'a Scope, request: FontRequest, source: Arc<str>, base: BaseDirection, limits: ParagraphLimits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
         Self::build(engine, scope, request, source, base, limits, cancel, false)
     }
@@ -330,6 +396,8 @@ impl<'a> ParagraphJob<'a> {
             allow_lf,
             shaping_breaks: ShapingBreaks::default(),
             inline_objects: Box::default(),
+            styles: Vec::new(),
+            style_primaries: Vec::new(),
         })
     }
     /// Explicit inline box edges isolate shaping context without inserting
@@ -433,19 +501,23 @@ impl<'a> ParagraphJob<'a> {
     pub fn completed_runs(&self) -> Result<&[Run]> {
         if self.failed { Err(Error::Failed) } else { Ok(&self.runs) }
     }
-    fn choice(&mut self, text: &str) -> Result<Choice> {
-        if let Some(choice) = self.fallback.get(text) {
+    fn choice(&mut self, text: &str, style: u32) -> Result<Choice> {
+        // The fallback cache is per style (its request decides the candidates).
+        let key: Box<str> = if style == u32::MAX { Box::from(text) } else { Box::from(format!("{style}\u{0}{text}")) };
+        if let Some(choice) = self.fallback.get(&key) {
             return Ok(choice.clone());
         }
-        let strict = self.scope.cluster_selection(&self.request, text, true, self.cancel).map_err(Error::from)?;
+        let request = self.styles.get(style as usize).map_or(&self.request, |s| &s.request).clone();
+        let strict = self.scope.cluster_selection(&request, text, true, self.cancel).map_err(Error::from)?;
         let (selection, relaxed) =
-            if let Some(s) = strict { (Some(s), false) } else { (self.scope.cluster_selection(&self.request, text, false, self.cancel).map_err(Error::from)?, text.chars().any(variation_selector)) };
+            if let Some(s) = strict { (Some(s), false) } else { (self.scope.cluster_selection(&request, text, false, self.cancel).map_err(Error::from)?, text.chars().any(variation_selector)) };
         let missing = selection.is_none();
-        let font = if let Some(s) = selection { self.engine.font(&s)?.0 } else { self.primary.as_ref().ok_or(Error::Invalid)?.clone() };
+        let primary = self.style_primaries.get(style as usize).cloned().flatten().or_else(|| self.primary.clone());
+        let font = if let Some(s) = selection { self.engine.font(&s)?.0 } else { primary.ok_or(Error::Invalid)? };
         let choice = Choice { font, missing, relaxed };
-        let bytes = text.len() + size_of::<(Box<str>, Choice)>() * 4;
+        let bytes = key.len() + size_of::<(Box<str>, Choice)>() * 4;
         if self.fallback.len() < self.limits.fallback_cache_entries && self.fallback_bytes.saturating_add(bytes) <= self.limits.fallback_cache_bytes {
-            self.fallback.insert(Box::from(text), choice.clone());
+            self.fallback.insert(key, choice.clone());
             self.fallback_bytes += bytes;
         }
         Ok(choice)
@@ -458,7 +530,7 @@ impl<'a> ParagraphJob<'a> {
         let para = self.analysis.paragraphs.get(p.paragraph).ok_or(Error::Invalid)?;
         let context_end = para.range.end - usize::from(self.allow_lf && self.analysis.source.as_bytes()[para.range.end - 1] == b'\n');
         let context = shaping_context(para.range.start..context_end, p.range.clone(), &self.shaping_breaks)?;
-        let run = self.engine.shape_run(
+        let mut run = self.engine.shape_run(
             p.font.selection(),
             self.analysis.source.clone(),
             p.range.clone(),
@@ -473,6 +545,8 @@ impl<'a> ParagraphJob<'a> {
             },
             self.cancel,
         )?;
+        run.style = p.style;
+        run.size = self.styles.get(p.style as usize).map_or(self.request.size, |s| s.size);
         if self.progress.glyphs.saturating_add(run.glyphs.len()) > self.limits.glyphs {
             return Err(Error::Limit);
         }
@@ -535,13 +609,18 @@ impl<'a> ParagraphJob<'a> {
                     script,
                     direction: if level % 2 == 0 { Direction::LeftToRight } else { Direction::RightToLeft },
                     glyphs: Box::default(),
+                    size: self.request.size,
+                    style: u32::MAX,
                 });
                 self.next += 1;
                 self.progress.clusters += 1;
                 continue;
             }
-            let primary = primary.as_ref().ok_or(Error::Invalid)?;
-            let charmap = charmap.as_ref().ok_or(Error::Invalid)?;
+            let style = self.style_at(range.start);
+            let styled_primary = self.style_primaries.get(style as usize).cloned().flatten();
+            let primary = styled_primary.as_ref().or(primary.as_ref()).ok_or(Error::Invalid)?;
+            let styled_charmap = styled_primary.as_ref().map(|p| p.model.charmap());
+            let charmap = styled_charmap.as_ref().or(charmap.as_ref()).ok_or(Error::Invalid)?;
             let mut previous = None;
             let mut covered = true;
             for c in text.chars() {
@@ -557,7 +636,7 @@ impl<'a> ParagraphJob<'a> {
                 }
                 previous = Some(c);
             }
-            let choice = if covered { Choice { font: primary.clone(), missing: false, relaxed: false } } else { self.choice(text)? };
+            let choice = if covered { Choice { font: primary.clone(), missing: false, relaxed: false } } else { self.choice(text, style)? };
             self.report.missing_clusters += usize::from(choice.missing);
             self.report.variation_fallbacks += usize::from(choice.relaxed);
             let same = self.shaping_breaks.binary_search(&(range.start as u32)).is_err()
@@ -565,11 +644,12 @@ impl<'a> ParagraphJob<'a> {
                     p.level == level
                         && p.script == script
                         && p.paragraph == paragraph
+                        && p.style == style
                         && (Arc::ptr_eq(&p.font, &choice.font) || FontKey::new(p.font.selection()) == FontKey::new(choice.font.selection()))
                 });
             if !same {
                 self.flush()?;
-                self.pending = Some(Pending { range: range.clone(), level, script, paragraph, font: choice.font });
+                self.pending = Some(Pending { range: range.clone(), level, script, paragraph, font: choice.font, style });
             } else {
                 self.pending.as_mut().unwrap().range.end = range.end;
             }
@@ -601,6 +681,7 @@ impl<'a> ParagraphJob<'a> {
             report: self.report,
             font_size: self.request.size,
             language: Box::from(self.scope.language()),
+            styles: self.styles.into_boxed_slice(),
             request: self.request,
             font_context: self.scope.context(),
             shaping_breaks: self.shaping_breaks,

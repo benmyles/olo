@@ -50,16 +50,95 @@ fn shaping_breaks(prepared: &prepare::Prepared, source: &[u32]) -> Result<Box<[u
     out.dedup();
     Ok(out.into_boxed_slice())
 }
+/// A span's baseline shift from its vertical-align: superscripts and
+/// subscripts by the parent's size, lengths and percentages (of the
+/// span's line-height) as given; other keywords shift nothing here.
+fn baseline_shift(s: &crate::css::style::Style, parent_size: f64) -> f64 {
+    match s.value(P::VerticalAlign) {
+        Value::Keyword(K::Super) => parent_size / 3.,
+        Value::Keyword(K::Sub) => -parent_size / 5.,
+        Value::Numeric(n) => {
+            struct Basis(f64);
+            impl math::Context for Basis {
+                fn factor(&self, unit: math::RelativeUnit) -> math::Result<f64> {
+                    if unit == math::RelativeUnit::Percentage { Ok(self.0 / 100.) } else { Err(math::Error::ContextUnavailable) }
+                }
+            }
+            n.resolve(&Basis(s.line_height()), &mut math::Scratch::default(), Default::default(), None).unwrap_or(0.)
+        }
+        _ => 0.,
+    }
+}
+/// The style runs of a paragraph: every span styled differently from its
+/// container (font, size, line-height, baseline shift), in prepared-text
+/// coordinates, adjacent equal ones merged.
+fn style_runs(
+    tree: &Tree,
+    scope: &Scope,
+    style: &crate::css::style::Style,
+    source: &TextSource,
+    controls: &[Control],
+    prepared: &prepare::Prepared,
+    cancel: Option<&AtomicBool>,
+) -> Result<Vec<shaping::StyleRun>> {
+    let mut runs: Vec<shaping::StyleRun> = Vec::new();
+    let parent_size = style.font().request.size;
+    for span in &source.spans {
+        check(cancel)?;
+        let s = tree.styles.snapshot(span.style_node).ok_or(Error::Stale)?;
+        if !controls.is_empty() && controls.binary_search_by_key(&span.range.start, |c| c.offset).is_ok() {
+            continue;
+        }
+        let shift = baseline_shift(s, parent_size);
+        let same_font = s.font().request == style.font().request && s.font().context() == style.font().context();
+        if same_font && s.line_height() == style.line_height() && shift == 0. {
+            continue;
+        }
+        let start = boundary(prepared, span.range.start)?;
+        let end = boundary(prepared, span.range.end)?;
+        if start >= end {
+            continue;
+        }
+        if let Some(last) = runs.last_mut()
+            && last.range.end == start
+            && last.request == s.font().request
+            && last.line_height == s.line_height()
+            && last.shift == shift
+        {
+            last.range.end = end;
+            continue;
+        }
+        let request = s.font().request.clone();
+        let metrics = scope.metrics(&request, cancel).map_err(|e| match e {
+            crate::font::Error::Cancelled => Error::Cancelled,
+            crate::font::Error::Limit => Error::Limit,
+            crate::font::Error::Stale => Error::Stale,
+            _ => Error::Invalid,
+        })?;
+        runs.push(shaping::StyleRun {
+            range: start..end,
+            request,
+            size: s.font().request.size,
+            line_height: s.line_height(),
+            ascent: metrics.ascent.max(0.),
+            descent: (-metrics.descent).max(0.),
+            shift,
+        });
+    }
+    Ok(runs)
+}
+#[allow(clippy::too_many_arguments)] // The paragraph, its breaks, styles and worker resources.
 fn shape_text(
     engine: &mut shaping::Engine,
     scope: &Scope,
     style: &crate::css::style::Style,
     prepared: Arc<prepare::Prepared>,
     boundaries: Box<[u32]>,
+    styles: Vec<shaping::StyleRun>,
     limits: inline::Limits,
     cancel: Option<&AtomicBool>,
 ) -> Result<Arc<inline::Text>> {
-    let mut s = shaping::ParagraphJob::for_layout_style(engine, scope, style, prepared.text().clone(), Default::default(), cancel)?.with_shaping_breaks(boundaries)?;
+    let mut s = shaping::ParagraphJob::for_layout_style(engine, scope, style, prepared.text().clone(), Default::default(), cancel)?.with_shaping_breaks(boundaries)?.with_style_runs(styles)?;
     if prepared.controls().iter().any(|c| c.kind() == prepare::ControlKind::Object) {
         let positions = prepared.controls().iter().filter(|c| c.kind() == prepare::ControlKind::Object).map(|c| boundary(&prepared, c.offset())).collect::<Result<Box<[_]>>>()?;
         s = s.with_inline_objects(positions)?;
@@ -73,7 +152,7 @@ fn shape_text(
     let word = style.used_text_spacing(P::WordSpacing, size, Default::default(), cancel).unwrap_or(0.);
     if (letter != 0. || word != 0.) && size > 0. {
         for run in paragraph.runs.iter_mut() {
-            let unit = f64::from(run.font.units_per_em()) / size;
+            let unit = f64::from(run.font.units_per_em()) / run.size.max(1e-6);
             let letter_units = (letter * unit).round() as i32;
             let word_units = (word * unit).round() as i32;
             let source = run.source.clone();
@@ -197,6 +276,8 @@ impl<'a> PrepareJob<'a> {
         // styled inline (bold, another size, another white-space) is shaped
         // with its paragraph's typography until styled runs exist; that is
         // recorded, never silent.
+        // Spans keep their own font, size, line-height and baseline shift as
+        // style runs; white-space and direction stay the paragraph's.
         let mut flattened = false;
         for span in &source.spans {
             check(self.cancel)?;
@@ -205,9 +286,9 @@ impl<'a> PrepareJob<'a> {
                 continue;
             }
             let control = !source_controls.is_empty() && source_controls.binary_search_by_key(&span.range.start, |c| c.offset).is_ok();
-            if !flattened && (s.font().request != style.font().request || s.font().context() != style.font().context() || s.axes() != style.axes() || s.line_height() != style.line_height()) {
+            if !flattened && s.axes() != style.axes() {
                 flattened = true;
-                self.fallbacks.note("inline typography flattened into its paragraph", Some(span.node));
+                self.fallbacks.note("inline direction flattened into its paragraph", Some(span.node));
             }
             if !flattened && !control && prepare::WhiteSpace::for_style(s)? != whitespace {
                 flattened = true;
@@ -231,6 +312,14 @@ impl<'a> PrepareJob<'a> {
             if !controls.is_empty() {
                 controls.hash(&mut hash);
             }
+            // Styled spans shape in their own fonts: part of the identity too.
+            for span in &source.spans {
+                if let Some(s) = self.tree.styles.snapshot(span.style_node) {
+                    (Arc::as_ptr(s.font()) as usize).hash(&mut hash);
+                    s.line_height().to_bits().hash(&mut hash);
+                    baseline_shift(s, style.font().request.size).to_bits().hash(&mut hash);
+                }
+            }
             // Spacing shapes into the glyph advances, so it is part of the identity.
             let size = style.font().request.size;
             style.used_text_spacing(crate::css::style::Property::LetterSpacing, size, Default::default(), self.cancel).unwrap_or(0.).to_bits().hash(&mut hash);
@@ -252,7 +341,8 @@ impl<'a> PrepareJob<'a> {
         while !p.step(4096)?.finished {}
         let p = Arc::new(p.finish()?);
         let boundaries = shaping_breaks(&p, &raw_breaks)?;
-        let text = shape_text(self.engine, self.scope, style, p, boundaries, self.limits.text, self.cancel)?;
+        let styles = style_runs(&self.tree, self.scope, style, source, source_controls, &p, self.cancel)?;
+        let text = shape_text(self.engine, self.scope, style, p, boundaries, styles, self.limits.text, self.cancel)?;
         self.glyph_geometry_bytes += text.geometry_payload_bytes() + text.paragraph().glyph_payload_bytes();
         if self.shared.len() < self.limits.cached_texts
             && let Some(key) = key
@@ -749,7 +839,8 @@ impl<'a> Job<'a> {
         breaks.sort_unstable();
         breaks.dedup();
         if text.paragraph().shaping_breaks() != breaks.as_slice() {
-            text = shape_text(self.engine, self.scope, style, text.prepared().clone(), breaks.into_boxed_slice(), self.limits.text, self.cancel)?;
+            let styles = text.paragraph().styles.to_vec();
+            text = shape_text(self.engine, self.scope, style, text.prepared().clone(), breaks.into_boxed_slice(), styles, self.limits.text, self.cancel)?;
         }
         Ok((text, spacing))
     }

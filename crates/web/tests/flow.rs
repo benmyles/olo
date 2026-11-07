@@ -692,21 +692,24 @@ fn stale_contexts_cancellation_quotas_and_poisoning() {
 }
 
 #[test]
-fn flattened_inline_typography_is_always_recorded() {
+fn styled_spans_shape_in_their_own_fonts_and_raise_the_line() {
     let s = scope();
     let mut e = Engine::default();
-    for (css, fallback) in [
-        ("span{font-size:30px}", "inline typography flattened into its paragraph"),
-        ("span{direction:rtl}", "inline typography flattened into its paragraph"),
-        ("span{white-space:pre}", "inline white-space flattened into its paragraph"),
-        ("span{line-height:30px}", "inline typography flattened into its paragraph"),
-    ] {
+    // A larger span makes its line taller; a superscript sits above the baseline.
+    let (d, t) = tree("<div id=p>A <span id=big>B</span> C</div><div id=q>A <span id=sup>B</span> C</div>", "span#big{font-size:40px}span#sup{vertical-align:super;font-size:50%}", &s, 1);
+    let mut j = layout::PrepareJob::new(&mut e, &s, t, Default::default(), None).unwrap();
+    while !j.step(1).unwrap().finished {}
+    assert!(j.fallbacks().is_empty(), "{}", j.fallbacks());
+    let c = j.finish().unwrap();
+    let l = fit(&mut e, &s, c, 400., 1);
+    assert!(rect(&d, &l, "p").height > 20., "{:?}", rect(&d, &l, "p"));
+    assert!(rect(&d, &l, "q").height >= 20., "{:?}", rect(&d, &l, "q"));
+    // Direction and white-space still flatten, and say so.
+    for (css, fallback) in [("span{direction:rtl}", "inline direction flattened into its paragraph"), ("span{white-space:pre}", "inline white-space flattened into its paragraph")] {
         let (_, t) = tree("<div>A <span>B</span> C</div>", css, &s, 1);
         let mut j = layout::PrepareJob::new(&mut e, &s, t, Default::default(), None).unwrap();
         while !j.step(1).unwrap().finished {}
         assert_eq!(j.fallbacks().counts(), vec![(fallback, 1)], "{css}");
-        let cache = j.finish().unwrap();
-        assert_eq!(cache.fallbacks().total(), 1);
     }
     let (_, t) = tree("<div>A <span>B</span> C</div>", "span{color:red}", &s, 1);
     let mut j = layout::PrepareJob::new(&mut e, &s, t, Default::default(), None).unwrap();

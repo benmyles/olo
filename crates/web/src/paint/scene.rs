@@ -511,7 +511,6 @@ impl<'a> BuildJob<'a> {
         }
         let source = layout.cache().tree().text_source(source).ok_or(Error::Invalid)?;
         let prepared = text.text().prepared();
-        let size = text.text().paragraph().font_size;
         // Styles are immutable for this build. Consecutive glyphs usually
         // belong to the same span: resolve/convert its paint color once.
         let mut paint_color = None;
@@ -550,7 +549,9 @@ impl<'a> BuildJob<'a> {
                     self.note("vertical glyphs not painted", id);
                     continue;
                 }
-                let factor = size / f64::from(run.font.units_per_em());
+                let factor = run.size / f64::from(run.font.units_per_em());
+                // A shifted run (superscript) draws above the line's baseline.
+                let baseline = baseline - (text.shift(f) * scale).round() / scale;
                 let mut pen = 0i64;
                 let mut segment: Option<(u32, Point, [u8; 4], Rect, u32)> = None;
                 for gi in f.glyphs.clone() {
