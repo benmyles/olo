@@ -183,14 +183,25 @@ impl Engine {
                         continue;
                     };
                     let vector_mask = if vector.clip.iter().any(|c| *c) {
+                        // The viewport clip, in CSS pixels, follows the
+                        // command's transform (an ancestor's translate or
+                        // scale moves the clip with the content).
                         let clip = Rect {
-                            x: if vector.clip[0] { bounds.x } else { rect.x },
-                            y: if vector.clip[1] { bounds.y } else { rect.y },
-                            width: if vector.clip[0] { bounds.width } else { rect.width },
-                            height: if vector.clip[1] { bounds.height } else { rect.height },
+                            x: if vector.clip[0] { bounds.x } else { c.bounds.x },
+                            y: if vector.clip[1] { bounds.y } else { c.bounds.y },
+                            width: if vector.clip[0] { bounds.width } else { c.bounds.width },
+                            height: if vector.clip[1] { bounds.height } else { c.bounds.height },
                         };
-                        let Some(clip) = local(clip) else {
-                            continue;
+                        let (clip, clip_transform) = if c.transform == u32::MAX {
+                            let Some(clip) = local(clip) else {
+                                continue;
+                            };
+                            (clip, Transform::identity())
+                        } else {
+                            let Some(clip) = raw(clip) else {
+                                continue;
+                            };
+                            (clip, ct)
                         };
                         let mut m = if let Some(mask) = &mask {
                             mask.clone()
@@ -199,7 +210,7 @@ impl Engine {
                             m.data_mut().fill(255);
                             m
                         };
-                        m.intersect_path(&PathBuilder::from_rect(clip), FillRule::Winding, false, Transform::identity());
+                        m.intersect_path(&PathBuilder::from_rect(clip), FillRule::Winding, false, clip_transform);
                         Some(m)
                     } else {
                         None

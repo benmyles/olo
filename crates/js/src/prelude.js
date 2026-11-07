@@ -491,8 +491,8 @@
     focus() {}, blur() {}, select() {}, setSelectionRange() {}, scrollIntoView() {}, scrollTo() {}, scrollBy() {}, scroll() {},
     click() { dispatch(this, Object.assign(new MouseEvent('click', { bubbles: true, cancelable: true }), { isTrusted: false })); },
     submit() {}, reset() {}, requestSubmit() {}, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
-    animate() { return { play() {}, pause() {}, cancel() {}, finish() {}, reverse() {}, addEventListener() {}, removeEventListener() {}, onfinish: null, finished: Promise.resolve(), ready: Promise.resolve(), playState: 'finished', currentTime: 0, effect: null }; },
-    getAnimations() { return []; },
+    animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), null); a.play(); return a; },
+    getAnimations() { return animations.filter((a) => a.effect && a.effect.target === this && a.playState !== 'idle'); },
     attachShadow(init) { const root = N.createFragment(); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open' }); return root; },
     requestFullscreen() { return Promise.resolve(); },
     play() { return Promise.resolve(); }, pause() {}, load() {},
@@ -535,6 +535,7 @@
     fonts: { get() { return { ready: Promise.resolve(), status: 'loaded', load: () => Promise.resolve([]), check: () => true, addEventListener() {}, removeEventListener() {}, forEach() {}, size: 0, add() {}, delete() {}, clear() {} }; } },
     implementation: { get() { return { hasFeature: () => true, createHTMLDocument: () => { const f = N.createFragment(); return Object.assign(f, { body: f, head: f, documentElement: f, title: '' }); }, createDocument: () => N.createFragment(), createDocumentType: () => null }; } },
     timeline: { get() { return { currentTime: performanceNow() }; } },
+    getAnimations() { return animations.filter((a) => a.playState !== 'idle'); },
     createElement(tag, options) { const name = String(tag); const el = N.createElement(name, ''); if (options && options.is) N.setAttr(el, 'is', String(options.is)); upgrade(el, name.toLowerCase()); return el; },
     createElementNS(ns, tag) { return N.createElement(String(tag).replace(/^[^:]*:/, ''), String(ns || '')); },
     createTextNode(text) { return N.createText(String(text)); },
@@ -868,6 +869,33 @@
   global.Worker = class Worker extends EventTargetCtor { constructor() { super(); this.onmessage = null; this.onerror = null; } postMessage() {} terminate() {} };
   global.SharedWorker = global.Worker;
   global.Notification = class Notification extends EventTargetCtor { constructor() { super(); } static get permission() { return 'default'; } static requestPermission() { return Promise.resolve('denied'); } close() {} };
+  // Web Animations on the virtual clock. Nothing is interpolated: when an
+  // animation finishes, a forward fill writes its last keyframe to the
+  // element's inline style (its resting state, which is what is painted);
+  // infinite animations leave the element as it was.
+  const animations = [];
+  class KeyframeEffect {
+    constructor(target, keyframes, options) { this.target = target; if (typeof options === 'number') options = { duration: options }; this._options = Object.assign({ duration: 0, delay: 0, endDelay: 0, iterations: 1, fill: 'auto', easing: 'linear', direction: 'normal', composite: 'replace' }, options || {}); this._keyframes = Array.isArray(keyframes) ? keyframes : keyframes ? Object.keys(keyframes).map((k) => ({ [k]: keyframes[k] })) : []; this.pseudoElement = (options && options.pseudoElement) || null; }
+    getKeyframes() { if (!Array.isArray(this._keyframes) || this._keyframes.length === 0) return []; return this._keyframes.map((f) => ({ ...f })); }
+    setKeyframes(k) { this._keyframes = Array.isArray(k) ? k : []; }
+    getTiming() { return { ...this._options }; } getComputedTiming() { const t = this.getTiming(); const d = Number(t.duration) || 0; const it = t.iterations === Infinity ? Infinity : (Number(t.iterations) || 1); return { ...t, activeDuration: d * it, endTime: t.delay + d * it + (t.endDelay || 0), localTime: null, progress: null, currentIteration: null }; }
+    updateTiming(t) { Object.assign(this._options, t || {}); }
+    _last() { const frames = this._keyframes; if (!frames.length) return null; const last = Array.isArray(frames) ? frames[frames.length - 1] : frames; const out = {}; for (const k of Object.keys(last)) { if (k === 'offset' || k === 'easing' || k === 'composite') continue; const v = Array.isArray(last[k]) ? last[k][last[k].length - 1] : last[k]; if (v != null) out[k] = v; } return out; }
+  }
+  class Animation extends EventTargetCtor {
+    constructor(effect, timeline) { super(); this.effect = effect || null; this.timeline = timeline || null; this.id = ''; this.playState = 'idle'; this.playbackRate = 1; this.startTime = null; this.currentTime = null; this.pending = false; this.onfinish = null; this.oncancel = null; this.onremove = null; this.replaceState = 'active'; this._timer = 0; this._makeFinished(); this.ready = Promise.resolve(this); }
+    _makeFinished() { this.finished = new Promise((resolve, reject) => { this._resolve = resolve; this._reject = reject; }); this.finished.catch(() => {}); }
+    play() { if (this.playState === 'finished' || this.playState === 'idle' || this.playState === 'paused') { if (this.playState === 'finished') this._makeFinished(); this.playState = 'running'; this.startTime = performanceNow(); this.currentTime = 0; const t = this.effect ? this.effect.getComputedTiming() : { endTime: 0 }; if (!animations.includes(this)) animations.push(this); clearTimeout(this._timer); if (t.endTime === Infinity) return; this._timer = setTimeout(() => this._finish(), Math.max(0, t.endTime)); } }
+    pause() { if (this.playState === 'running') { this.playState = 'paused'; clearTimeout(this._timer); } }
+    reverse() { this.play(); }
+    updatePlaybackRate(r) { this.playbackRate = r; }
+    persist() { this.replaceState = 'persisted'; }
+    commitStyles() { const last = this.effect && this.effect._last(); const el = this.effect && this.effect.target; if (!last || !el || N.nodeType(el) !== 1) return; const style = el.style; for (const k of Object.keys(last)) { try { style[k] = String(last[k]); } catch (e) {} } }
+    _finish() { if (this.playState !== 'running') return; clearTimeout(this._timer); this.playState = 'finished'; const t = this.effect ? this.effect.getComputedTiming() : null; this.currentTime = t ? t.endTime : 0; const fill = t && t.fill; if (fill === 'forwards' || fill === 'both') this.commitStyles(); const i = animations.indexOf(this); if (i >= 0 && !(fill === 'forwards' || fill === 'both')) animations.splice(i, 1); this._resolve(this); const ev = new Event('finish'); ev.currentTime = this.currentTime; ev.timelineTime = performanceNow(); dispatch(this, ev); }
+    finish() { if (this.playState === 'idle') return; if (this.playState !== 'running') { this.playState = 'running'; } this._finish(); }
+    cancel() { if (this.playState === 'idle') return; clearTimeout(this._timer); const was = this.playState; this.playState = 'idle'; this.currentTime = null; this.startTime = null; const i = animations.indexOf(this); if (i >= 0) animations.splice(i, 1); if (was !== 'finished') { this._reject(new DOMException('The user aborted a request.', 'AbortError')); this._makeFinished(); } dispatch(this, new Event('cancel')); }
+  }
+  global.Animation = Animation; global.KeyframeEffect = KeyframeEffect; global.AnimationEffect = KeyframeEffect; global.DocumentTimeline = class DocumentTimeline { constructor() { this.currentTime = performanceNow(); } }; global.AnimationTimeline = global.DocumentTimeline;
   global.CSS = { supports: (p, v) => { const text = v === undefined ? String(p) : String(p) + ':' + String(v); return !/\b(anchor|@container|scroll-timeline)\b/.test(text); }, escape: (s) => String(s).replace(/([^\w-])/g, '\\$1'), px: (v) => v + 'px', registerProperty() {}, paintWorklet: { addModule: () => Promise.resolve() }, highlights: new Map() };
   global.CSSStyleSheet = class CSSStyleSheet { constructor() { this.cssRules = listOf([]); this.rules = this.cssRules; } insertRule() { return 0; } deleteRule() {} replace() { return Promise.resolve(this); } replaceSync() {} };
   global.StyleSheet = class StyleSheet {}; global.MediaList = class MediaList {}; global.CSSRuleList = class CSSRuleList extends Array {}; global.StyleSheetList = class StyleSheetList extends Array {}; global.DOMRectList = class DOMRectList extends Array {}; global.FileList = class FileList extends Array {}; global.DOMStringList = class DOMStringList extends Array {}; global.TouchList = class TouchList extends Array {}; global.PluginArray = class PluginArray extends Array {}; global.MimeTypeArray = class MimeTypeArray extends Array {}; global.HTMLAllCollection = HTMLCollection;

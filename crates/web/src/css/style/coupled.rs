@@ -1,14 +1,20 @@
 use super::*;
-fn keyword(values: &[Entry], p: Property) -> Result<Keyword> {
-    let Value::Keyword(k) = &get(values, p).value else { return Err(Error::Invalid) };
+// The values are sparse: a property not among them has its default.
+fn keyword(values: &[Entry], defaults: &Defaults, p: Property) -> Result<Keyword> {
+    let Value::Keyword(k) = get(values, defaults, p) else { return Err(Error::Invalid) };
     Ok(*k)
 }
-fn get(values: &[Entry], property: Property) -> &Entry {
-    &values[values.binary_search_by_key(&(property as u16), |e| e.property as u16).unwrap()]
+fn get<'a>(values: &'a [Entry], defaults: &'a Defaults, property: Property) -> &'a Value {
+    match values.binary_search_by_key(&(property as u16), |e| e.property as u16) {
+        Ok(i) => &values[i].value,
+        Err(_) => defaults.value(property),
+    }
 }
-fn set(values: &mut [Entry], property: Property, value: Value) {
-    let i = values.binary_search_by_key(&(property as u16), |e| e.property as u16).unwrap();
-    values[i].value = value;
+fn set(values: &mut Vec<Entry>, property: Property, value: Value) {
+    match values.binary_search_by_key(&(property as u16), |e| e.property as u16) {
+        Ok(i) => values[i].value = value,
+        Err(i) => values.insert(i, Entry { property, value }),
+    }
 }
 fn blockify(display: Display) -> Display {
     match display {
@@ -19,10 +25,10 @@ fn blockify(display: Display) -> Display {
         d => d,
     }
 }
-pub(super) fn apply(values: &mut [Entry], parent: Option<&Style>, axes: Axes, options: Options) -> Result<()> {
+pub(super) fn apply(values: &mut Vec<Entry>, defaults: &Defaults, parent: Option<&Style>, axes: Axes, options: Options) -> Result<()> {
     use Property as P;
-    let x = keyword(values, P::OverflowX)?;
-    let y = keyword(values, P::OverflowY)?;
+    let x = keyword(values, defaults, P::OverflowX)?;
+    let y = keyword(values, defaults, P::OverflowY)?;
     if !matches!(x, Keyword::Visible | Keyword::Clip) || !matches!(y, Keyword::Visible | Keyword::Clip) {
         let transform = |k| match k {
             Keyword::Visible => Keyword::Auto,
@@ -31,12 +37,12 @@ pub(super) fn apply(values: &mut [Entry], parent: Option<&Style>, axes: Axes, op
         set(values, P::OverflowX, Value::Keyword(transform(x)));
         set(values, P::OverflowY, Value::Keyword(transform(y)));
     }
-    let position = keyword(values, P::Position)?;
-    let float = keyword(values, P::Float)?;
+    let position = keyword(values, defaults, P::Position)?;
+    let float = keyword(values, defaults, P::Float)?;
     if matches!(position, Keyword::Absolute | Keyword::Fixed) {
         set(values, P::Float, Value::Keyword(Keyword::None));
     }
-    let Value::Display(mut display) = get(values, P::Display).value else { return Err(Error::Invalid) };
+    let Value::Display(mut display) = *get(values, defaults, P::Display) else { return Err(Error::Invalid) };
     if options.root && display == Display::Contents {
         display = Display::Box { outer: Outer::Block, inner: Inner::Flow, list_item: false };
     }

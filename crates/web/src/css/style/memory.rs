@@ -120,9 +120,12 @@ impl Account {
                 self.numeric(&entry.value);
             }
         }
-        if self.seen.insert(Arc::as_ptr(&style.customs) as usize) {
-            self.memory.customs_bytes += size_of::<Dictionary>() + 2 * size_of::<usize>() + style.customs.values.len() * size_of::<Custom>();
-            for custom in &style.customs.values {
+        for dictionary in style.customs.chain() {
+            if !self.seen.insert(std::ptr::from_ref(dictionary) as usize) {
+                continue;
+            }
+            self.memory.customs_bytes += size_of::<Dictionary>() + 2 * size_of::<usize>() + dictionary.values.len() * size_of::<Custom>();
+            for custom in &dictionary.values {
                 if self.seen.insert(Arc::as_ptr(&custom.name) as *const u8 as usize) {
                     self.memory.customs_bytes += custom.name.len() + 2 * size_of::<usize>();
                 }

@@ -24,12 +24,52 @@ struct Rule {
 struct Layer {
     children: Vec<u32>,
 }
+/// Rules by their subject's key: an element's candidates are the rules
+/// keyed by its id, classes and type, plus the universal ones.
 #[derive(Default)]
-struct Index {
+struct Buckets {
     ids: HashMap<Arc<str>, Vec<u32>>,
     classes: HashMap<Arc<str>, Vec<u32>>,
     types: HashMap<Arc<str>, Vec<u32>>,
+    attributes: HashMap<Arc<str>, Vec<u32>>,
+    root: Vec<u32>,
     universal: Vec<u32>,
+}
+impl Buckets {
+    fn add(&mut self, key: SubjectKey, rule: u32) {
+        let (map, key) = match key {
+            SubjectKey::Universal => {
+                if self.universal.last() != Some(&rule) {
+                    self.universal.push(rule);
+                }
+                return;
+            }
+            SubjectKey::Root => {
+                if self.root.last() != Some(&rule) {
+                    self.root.push(rule);
+                }
+                return;
+            }
+            SubjectKey::Id(k) => (&mut self.ids, k),
+            SubjectKey::Class(k) => (&mut self.classes, k),
+            SubjectKey::Type(k) => (&mut self.types, k),
+            SubjectKey::Attr(k) => (&mut self.attributes, k),
+        };
+        let list = map.entry(fold_arc(key)).or_default();
+        if list.last() != Some(&rule) {
+            list.push(rule);
+        }
+    }
+}
+#[derive(Default)]
+struct Index {
+    element: Buckets,
+    /// Rules with a branch addressing a pseudo-element, by it: the only
+    /// candidates when styling one, and never candidates for an element.
+    pseudo: HashMap<selectors::PseudoElement, Buckets>,
+    /// Of those, the rules declaring `content`: a pseudo-element exists only
+    /// when one of them matches, so they are tried first, alone.
+    pseudo_content: HashMap<selectors::PseudoElement, Buckets>,
 }
 /// Immutable ordered stylesheet set. Layer order is shared across sheets of
 /// each origin, with named/nested/anonymous layers and implicit outer layers.
@@ -397,20 +437,39 @@ impl SheetBuilder {
             check(cancelled)?;
             rule.layer = if rule.layer < 6 { u32::MAX } else { ranks[rule.layer as usize] };
             if !cfg!(feature = "baseline-cascade-index") {
-                for key in selectors.subject_keys(rule.selector) {
-                    let (map, key) = match key {
-                        SubjectKey::Universal => {
-                            index.universal.push(i as u32);
-                            continue;
+                let content = rule.declarations.iter().any(|d| matches!(d, p::Declaration::Known { values, .. } if values.iter().any(|a| a.property == p::Property::Content)));
+                for (key, pseudo) in selectors.subject_keys(rule.selector) {
+                    match pseudo {
+                        Some(pseudo) => {
+                            if content {
+                                index.pseudo_content.entry(pseudo).or_default().add(key.clone(), i as u32);
+                            }
+                            index.pseudo.entry(pseudo).or_default().add(key, i as u32)
                         }
-                        SubjectKey::Id(k) => (&mut index.ids, k),
-                        SubjectKey::Class(k) => (&mut index.classes, k),
-                        SubjectKey::Type(k) => (&mut index.types, k),
-                    };
-                    let key = fold_arc(key);
-                    map.entry(key).or_default().push(i as u32);
+                        None => index.element.add(key, i as u32),
+                    }
                 }
             }
+        }
+        if std::env::var_os("OLO_STYLE_TIMING").is_some() {
+            let biggest = |b: &Buckets| b.classes.values().chain(b.types.values()).map(Vec::len).max().unwrap_or(0);
+            let mut kinds: HashMap<String, usize> = HashMap::new();
+            for &i in &index.element.universal {
+                *kinds.entry(selectors.subject_summary(self.rules[i as usize].selector)).or_default() += 1;
+            }
+            let mut kinds: Vec<_> = kinds.into_iter().collect();
+            kinds.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+            eprintln!("universal rules by subject: {kinds:?}");
+            eprintln!(
+                "rule index: {} rules; element: {} universal, {} ids, {} classes, {} types, biggest bucket {}; pseudo: {:?}",
+                self.rules.len(),
+                index.element.universal.len(),
+                index.element.ids.len(),
+                index.element.classes.len(),
+                index.element.types.len(),
+                biggest(&index.element),
+                index.pseudo.iter().map(|(p, b)| (*p, b.universal.len(), b.classes.len() + b.types.len() + b.ids.len())).collect::<Vec<_>>()
+            );
         }
         Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues })
     }
@@ -426,6 +485,8 @@ pub struct MatchScratch {
     seen: Vec<u32>,
     generation: u32,
     candidates: Vec<u32>,
+    /// Summed over every match made with this scratch.
+    pub progress: selectors::MatchProgress,
 }
 impl MatchScratch {
     pub fn candidate_count(&self) -> usize {
@@ -438,6 +499,10 @@ impl RuleSet {
     }
     pub fn has_pseudo_elements(&self) -> bool {
         self.selectors.has_pseudo_elements()
+    }
+    /// Whether any rule addresses this pseudo-element.
+    pub fn has_pseudo(&self, pseudo: selectors::PseudoElement) -> bool {
+        self.index.pseudo.contains_key(&pseudo)
     }
     pub fn issues(&self) -> &[Issue] {
         &self.issues
@@ -456,9 +521,10 @@ impl RuleSet {
         limits: Limits,
         match_limits: selectors::MatchLimits,
         scratch: &mut MatchScratch,
+        ancestors: Option<&selectors::AncestorFilter>,
         cancelled: Option<&'a AtomicBool>,
     ) -> Result<Cascade<'a>> {
-        self.match_element_with_hints(tree, node, options, inline, None, parent, limits, match_limits, scratch, cancelled)
+        self.match_element_with_hints(tree, node, options, inline, None, parent, limits, match_limits, scratch, ancestors, cancelled)
     }
     #[allow(clippy::too_many_arguments)]
     pub fn match_element_with_hints<'a, T: selectors::Tree>(
@@ -472,6 +538,7 @@ impl RuleSet {
         limits: Limits,
         match_limits: selectors::MatchLimits,
         scratch: &mut MatchScratch,
+        ancestors: Option<&selectors::AncestorFilter>,
         cancelled: Option<&'a AtomicBool>,
     ) -> Result<Cascade<'a>> {
         check(cancelled)?;
@@ -510,8 +577,24 @@ impl RuleSet {
                 }
                 Ok(())
             };
-            add(Some(&self.index.universal), &mut work)?;
-            add(self.index.types.get(folded(name.local_name).as_ref()), &mut work)?;
+            static EMPTY: std::sync::LazyLock<Buckets> = std::sync::LazyLock::new(Buckets::default);
+            let buckets = match options.pseudo {
+                Some(pseudo) if options.content_only => self.index.pseudo_content.get(&pseudo).unwrap_or(&EMPTY),
+                Some(pseudo) => self.index.pseudo.get(&pseudo).unwrap_or(&EMPTY),
+                None => &self.index.element,
+            };
+            add(Some(&buckets.universal), &mut work)?;
+            add(buckets.types.get(folded(name.local_name).as_ref()), &mut work)?;
+            if !buckets.root.is_empty() {
+                let parent = tree.parent(node).map_err(Error::Selectors)?;
+                let is_root = match parent {
+                    Some(p) => !matches!(tree.content(p).map_err(Error::Selectors)?, selectors::Content::Element(_)),
+                    None => true,
+                };
+                if is_root {
+                    add(Some(&buckets.root), &mut work)?;
+                }
+            }
             for a in tree.attributes(node).map_err(Error::Selectors)? {
                 check(cancelled)?;
                 work = work.saturating_add(a.value.len() + a.local_name.len() + 1);
@@ -521,11 +604,14 @@ impl RuleSet {
                 if !a.namespace.is_empty() {
                     continue;
                 }
+                if !buckets.attributes.is_empty() {
+                    add(buckets.attributes.get(folded(a.local_name).as_ref()), &mut work)?;
+                }
                 if a.local_name.eq_ignore_ascii_case("id") {
-                    add(self.index.ids.get(folded(a.value).as_ref()), &mut work)?;
+                    add(buckets.ids.get(folded(a.value).as_ref()), &mut work)?;
                 } else if a.local_name.eq_ignore_ascii_case("class") {
                     for class in a.value.split([' ', '\t', '\n', '\r', '\x0c']).filter(|s| !s.is_empty()) {
-                        add(self.index.classes.get(folded(class).as_ref()), &mut work)?;
+                        add(buckets.classes.get(folded(class).as_ref()), &mut work)?;
                     }
                 }
             }
@@ -542,12 +628,17 @@ impl RuleSet {
         };
         let mut builder = Builder::new(limits, cancelled);
         let mut work = 0usize;
+        let mut keys = selectors::KeyCache::with_ancestors(ancestors);
+        let mut matcher = self.selectors.matcher(tree, node, options, match_limits, cancelled, &mut keys).map_err(Error::Selectors)?;
         for &id in &scratch.candidates {
             check(cancelled)?;
             let rule = &self.rules[id as usize];
-            let bounded = selectors::MatchLimits { work: match_limits.work.min(limits.work.saturating_sub(work)), ..match_limits };
-            let (matched, progress) = self.selectors.matches_root_accounted(rule.selector, tree, node, options, bounded, cancelled).map_err(Error::Selectors)?;
-            work = work.checked_add(progress).ok_or(Error::Limit)?;
+            let (matched, progress) = matcher.matches(rule.selector, match_limits.work.min(limits.work.saturating_sub(work))).map_err(Error::Selectors)?;
+            scratch.progress.compounds += progress.compounds;
+            scratch.progress.tests += progress.tests;
+            scratch.progress.steps += progress.steps;
+            scratch.progress.rejected += progress.rejected;
+            work = work.checked_add(progress.work).ok_or(Error::Limit)?;
             if let Some(specificity) = matched {
                 for (declaration, d) in rule.declarations.iter().enumerate() {
                     builder.add(d, Priority { origin: rule.origin, layer: rule.layer, specificity, order: rule.order, declaration: declaration as u32, rule: id as u64 + 1, ..Default::default() })?;
@@ -616,8 +707,8 @@ impl RuleSet {
             rule_array_bytes: self.rules.capacity() * size_of::<Rule>(),
             declaration_array_bytes: 0,
             selector_reserved_bytes: 0,
-            index_entries: self.index.universal.len(),
-            index_vector_bytes: self.index.universal.capacity() * 4,
+            index_entries: self.index.element.universal.len(),
+            index_vector_bytes: self.index.element.universal.capacity() * 4,
             index_key_value_capacity_bytes: 0,
         };
         for rule in &self.rules {
@@ -625,11 +716,13 @@ impl RuleSet {
             m.declaration_array_bytes += rule.declarations.len() * size_of::<p::Declaration>();
         }
         m.selector_reserved_bytes = self.selectors.memory().accounted_reserved_bytes;
-        for map in [&self.index.ids, &self.index.classes, &self.index.types] {
-            m.index_key_value_capacity_bytes += map.capacity() * size_of::<(Arc<str>, Vec<u32>)>();
-            for list in map.values() {
-                m.index_entries += list.len();
-                m.index_vector_bytes += list.capacity() * 4;
+        for buckets in std::iter::once(&self.index.element).chain(self.index.pseudo.values()) {
+            for map in [&buckets.ids, &buckets.classes, &buckets.types] {
+                m.index_key_value_capacity_bytes += map.capacity() * size_of::<(Arc<str>, Vec<u32>)>();
+                for list in map.values() {
+                    m.index_entries += list.len();
+                    m.index_vector_bytes += list.capacity() * 4;
+                }
             }
         }
         m

@@ -42,6 +42,8 @@ pub(super) fn compile(values: Components<'_>, options: CompileOptions<'_>, limit
             tests: Vec::new(),
             nth: Vec::new(),
             symbols: Vec::new(),
+            symbol_hashes: Vec::new(),
+            ancestor_hashes: Vec::new(),
             symbol_bytes: 0,
             failures: Vec::new(),
             languages: Vec::new(),
@@ -96,6 +98,7 @@ impl Compiler<'_> {
         let symbol: Arc<str> = Arc::from(s);
         self.out.symbol_bytes += s.len();
         self.symbol_index.insert(symbol.clone(), id);
+        self.out.symbol_hashes.push(token_hash(&symbol));
         self.out.symbols.push(symbol);
         Ok(id)
     }
@@ -250,9 +253,31 @@ impl Compiler<'_> {
         let pseudo = steps.last().and_then(|step| self.out.tests[step.tests.start as usize..step.tests.end as usize].iter().find_map(|t| if let Test::Pseudo(p) = t { Some(*p) } else { None }));
         let featureless = steps.last().is_some_and(|s| s.featureless);
         let start = self.out.steps.len() as u32;
+        // A compound followed (to its right) by a child or descendant
+        // combinator addresses an ancestor of the subject: its type, id
+        // and class tests are keys every match needs among the ancestors.
+        let ancestors_start = self.out.ancestor_hashes.len() as u32;
+        for (i, step) in steps.iter().enumerate() {
+            let Some(next) = steps.get(i + 1) else { break };
+            if !matches!(next.relation, Relation::Child | Relation::Descendant) {
+                continue;
+            }
+            for test in &self.out.tests[step.tests.start as usize..step.tests.end as usize] {
+                let hash = match *test {
+                    Test::Type { name, .. } if name != ANY => folded_hash(&self.out.symbols[name as usize]),
+                    Test::Id(n) | Test::Class(n) => self.out.symbol_hashes[n as usize],
+                    _ => continue,
+                };
+                if self.out.ancestor_hashes.len() >= NONE as usize {
+                    return Err(Error::CompileLimit);
+                }
+                self.out.ancestor_hashes.push(hash);
+            }
+        }
+        let ancestors = ancestors_start..self.out.ancestor_hashes.len() as u32;
         self.out.steps.extend(steps);
         let id = self.out.complexes.len() as u32;
-        self.out.complexes.push(Complex { steps: start..self.out.steps.len() as u32, specificity, relative: leading, pseudo, featureless });
+        self.out.complexes.push(Complex { steps: start..self.out.steps.len() as u32, specificity, relative: leading, pseudo, featureless, ancestors });
         Ok(id)
     }
     fn store_step(&mut self, tests: SmallVec<[Test; 8]>, relation: Relation, namespace: u32, implicit_ns: bool) -> Result<Step> {
@@ -697,6 +722,8 @@ impl RuleCompiler {
                 tests: Vec::new(),
                 nth: Vec::new(),
                 symbols: Vec::new(),
+                symbol_hashes: Vec::new(),
+                ancestor_hashes: Vec::new(),
                 symbol_bytes: 0,
                 failures: Vec::new(),
                 languages: Vec::new(),

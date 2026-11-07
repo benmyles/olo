@@ -282,8 +282,15 @@ fn render(
                 let host = PageHost::new(measurer.scope(), &r.key);
                 let mut shaper = shaping::Engine::default();
                 let cancel = r.cancel.clone();
+                let timing = std::env::var_os("OLO_BROWSER_TIMING").is_some();
                 Box::new(move |doc: &olo_web::dom::Document| match measurer.measure(doc, &host, &mut shaper, viewport, Some(&cancel)) {
-                    Ok(m) => Some(m),
+                    Ok(m) => {
+                        if timing {
+                            let [a, b, c, d] = m.phases_ms();
+                            eprintln!("  layout for scripts: style {a:.0} ms, boxes {b:.0} ms, text {c:.0} ms, layout {d:.0} ms");
+                        }
+                        Some(m)
+                    }
                     Err(e) => {
                         eprintln!("Browser scripts: measuring failed: {e}");
                         None
@@ -293,6 +300,15 @@ fn render(
             let started = Instant::now();
             let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), Some(measure)).map_err(|e| page::Error::from(e.as_str()))?;
             let report = realm.run_page(&scripts);
+            // OLO_BROWSER_EVAL=JS: an expression run after the page's scripts,
+            // its value logged, for comparing with Chrome.
+            let eval = std::env::var("OLO_BROWSER_EVAL").ok().or_else(|| std::env::var("OLO_BROWSER_EVAL_FILE").ok().and_then(|f| std::fs::read_to_string(f).ok()));
+            if let Some(js) = eval {
+                match realm.eval(&js) {
+                    Ok(value) => eprintln!("Browser eval: {value}"),
+                    Err(e) => eprintln!("Browser eval failed: {e}"),
+                }
+            }
             let (doc, _) = realm.finish();
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
