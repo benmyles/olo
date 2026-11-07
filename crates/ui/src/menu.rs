@@ -1106,6 +1106,43 @@ struct Bar {
     /// The menu the press now under way put away (`press_in`), so a
     /// press on its own title doesn't open it again.
     closed: Option<usize>,
+    /// Built from an app's state ([`MenuBar::of`]).
+    of: Option<Of>,
+}
+
+/// How a bar built from an app's state ([`MenuBar::of`]) builds its
+/// menus, and whether the app changed since it last did.
+struct Of {
+    app: gpui::EntityId,
+    build: Build,
+    raw: bool,
+    changed: Rc<std::cell::Cell<bool>>,
+    _watch: gpui::Subscription,
+}
+
+/// Builds a bar's menus from its app as it is now (none once it's gone).
+type Build = Rc<dyn Fn(&App) -> Option<Vec<Menu>>>;
+
+/// Where a bar's menus come from: given as it's drawn, or its app.
+enum Source {
+    Menus(Vec<Menu>),
+    Of { app: gpui::EntityId, build: Build, watch: Box<dyn FnOnce(&mut App, Rc<std::cell::Cell<bool>>) -> gpui::Subscription> },
+}
+
+impl Bar {
+    /// Its menus as they are now: built again from its app's state (it
+    /// may have changed without telling: a selection made, a video
+    /// played on), else as the bar last drew them. For what a person or
+    /// agent is about to use: a menu opening, a key, the palette.
+    fn current(&self, cx: &App) -> Vec<Menu> {
+        if let Some(of) = &self.of
+            && let Some(mut menus) = (of.build)(cx)
+        {
+            resolve(&mut menus, of.raw);
+            return menus;
+        }
+        self.menus.clone()
+    }
 }
 
 #[derive(Default)]
@@ -1123,7 +1160,7 @@ impl gpui::Global for Bars {}
 /// and the command palette finds the commands.
 #[derive(IntoElement)]
 pub struct MenuBar {
-    menus: Vec<Menu>,
+    source: Source,
     on_command: OnChoose,
     raw: bool,
 }
@@ -1132,7 +1169,24 @@ impl MenuBar {
     /// `menus` across the top; `on_command` gets the command chosen or
     /// pressed, in the window.
     pub fn new(menus: Vec<Menu>, on_command: impl Fn(&str, &mut Window, &mut App) + 'static) -> MenuBar {
-        MenuBar { menus, on_command: Rc::new(on_command), raw: false }
+        MenuBar { source: Source::Menus(menus), on_command: Rc::new(on_command), raw: false }
+    }
+
+    /// The menus `build` makes from `app` (the window's view, whose state
+    /// they show), built when it changes (`cx.notify()`) rather than each
+    /// time the window draws: a window drawn again for a part of it that
+    /// moves (a video playing, a terminal's output, a graph) leaves its
+    /// menus be. A menu opening, a key and an agent's look build them
+    /// afresh, so what they say is never stale.
+    pub fn of<T: 'static>(app: &gpui::Entity<T>, build: impl Fn(&T, &App) -> Vec<Menu> + 'static, on_command: impl Fn(&str, &mut Window, &mut App) + 'static) -> MenuBar {
+        let weak = app.downgrade();
+        let watched = app.clone();
+        let source = Source::Of {
+            app: app.entity_id(),
+            build: Rc::new(move |cx: &App| weak.upgrade().map(|a| build(a.read(cx), cx))),
+            watch: Box::new(move |cx: &mut App, changed: Rc<std::cell::Cell<bool>>| cx.observe(&watched, move |_, _| changed.set(true))),
+        };
+        MenuBar { source, on_command: Rc::new(on_command), raw: false }
     }
 
     /// For a terminal-style window (one of app_server's `terminal_apps`,
@@ -1148,7 +1202,7 @@ impl MenuBar {
 /// else in the window did), and where to send it.
 pub(crate) fn bar_shortcut(window: &Window, cx: &App, k: &gpui::Keystroke) -> Option<(String, OnChoose)> {
     let bar = cx.try_global::<Bars>()?.0.get(&window.window_handle().window_id())?;
-    Some((find_shortcut(&bar.menus, k)?, bar.on_command.clone()))
+    Some((find_shortcut(&bar.current(cx), k)?, bar.on_command.clone()))
 }
 
 /// The command of `window`'s menu bar that keystroke `k` chooses, if any
@@ -1160,7 +1214,7 @@ pub fn shortcut_command(window: &Window, cx: &App, k: &gpui::Keystroke) -> Optio
 /// The menus of `window`'s bar (for the command palette) and where its
 /// commands go.
 pub(crate) fn bar_menus(window: gpui::WindowId, cx: &App) -> Option<(Vec<Menu>, OnChoose)> {
-    cx.try_global::<Bars>()?.0.get(&window).map(|b| (b.menus.clone(), b.on_command.clone()))
+    cx.try_global::<Bars>()?.0.get(&window).map(|b| (b.current(cx), b.on_command.clone()))
 }
 
 /// A window closed: its bar goes.
@@ -1173,7 +1227,7 @@ pub(crate) fn forget_closed(cx: &mut App) {
 /// press on it or sliding onto it.
 fn open_bar_menu(window: &mut Window, cx: &mut App, i: usize, title: Bounds<Pixels>, pressed: bool) {
     let id = window.window_handle().window_id();
-    let Some((menu, on_command)) = cx.try_global::<Bars>().and_then(|b| b.0.get(&id)).and_then(|b| Some((b.menus.get(i)?.clone(), b.on_command.clone()))) else { return };
+    let Some((menu, on_command)) = cx.try_global::<Bars>().and_then(|b| b.0.get(&id)).and_then(|b| Some((b.current(cx).into_iter().nth(i)?, b.on_command.clone()))) else { return };
     close_bar_menu(window, cx);
     let me = window.window_handle();
     // Its popup gone (chosen, put away, a click elsewhere): no menu open,
@@ -1218,20 +1272,53 @@ impl RenderOnce for MenuBar {
         // Whole device pixels high, so a bar under it (a ruler, a tool
         // bar as high) is as high on screen at every scale.
         let height = style::snap_coord(window, px(BAR_HEIGHT));
-        let mut menus = self.menus;
-        resolve(&mut menus, self.raw);
         let id = window.window_handle().window_id();
+        // Its menus, unless its app hasn't changed since they were built.
+        let mut watch_new = None;
+        let (menus, of_app, build) = match self.source {
+            Source::Menus(menus) => (Some(menus), None, None),
+            Source::Of { app, build, watch } => {
+                // Whether its app changed, if the bar was watching it.
+                let changed = cx.try_global::<Bars>().and_then(|b| b.0.get(&id)).and_then(|b| b.of.as_ref()).filter(|of| of.app == app).map(|of| of.changed.get());
+                let menus = match changed {
+                    Some(false) => None,
+                    _ => Some(build(cx).unwrap_or_default()),
+                };
+                if changed.is_none() {
+                    watch_new = Some(watch);
+                }
+                (menus, Some(app), Some(build))
+            }
+        };
+        let menus = menus.map(|mut menus| {
+            resolve(&mut menus, self.raw);
+            menus
+        });
+        let watched = watch_new.map(|watch| {
+            let changed = Rc::new(std::cell::Cell::new(false));
+            (changed.clone(), watch(cx, changed))
+        });
         let bars = cx.default_global::<Bars>();
-        match bars.0.get_mut(&id) {
-            Some(bar) => {
-                bar.menus = menus.clone();
-                bar.on_command = self.on_command;
-            }
-            None => {
-                bars.0.insert(id, Bar { menus: menus.clone(), on_command: self.on_command, open: None, pressed: false, titles: Vec::new(), closed: None });
-            }
+        let bar = bars.0.entry(id).or_insert_with(|| Bar { menus: Vec::new(), on_command: self.on_command.clone(), open: None, pressed: false, titles: Vec::new(), closed: None, of: None });
+        bar.on_command = self.on_command;
+        if let Some(menus) = menus {
+            bar.menus = menus;
         }
-        let titles: Vec<SharedString> = menus.iter().map(|m| SharedString::from(m.title.clone())).collect();
+        match (of_app, build) {
+            (Some(app), Some(build)) => match (watched, bar.of.as_mut()) {
+                (Some((changed, watch)), _) => bar.of = Some(Of { app, build, raw: self.raw, changed, _watch: watch }),
+                // Built now if it changed: none since. The new build (it
+                // may hold what's new in the app's closure).
+                (None, Some(of)) => {
+                    of.changed.set(false);
+                    of.build = build;
+                    of.raw = self.raw;
+                }
+                (None, None) => {}
+            },
+            _ => bar.of = None,
+        }
+        let titles: Vec<SharedString> = bar.menus.iter().map(|m| SharedString::from(m.title.clone())).collect();
         canvas(
             move |b, window, _| {
                 // The first title's text lines up with the window's
@@ -1345,6 +1432,95 @@ mod tests {
         assert_eq!(said, ["Games", "Item 2", "Item 10", "terminal", "|", "A", "b"]);
         let MenuItem::Submenu(games) = &m.items[0] else { panic!() };
         assert!(matches!(&games.items[..], [MenuItem::Action(a), MenuItem::Action(b)] if a.label == "chess" && b.label == "Zork"));
+    }
+
+    /// A bar built from its app's state builds its menus once, and again
+    /// only when the app changes: not for each frame the window draws for
+    /// a part of it that moved (a video's pictures). A look at them (a
+    /// menu opening, a key, an agent) builds them as they are now.
+    #[cfg(feature = "lint")]
+    #[test]
+    fn a_bar_of_an_app_builds_its_menus_when_it_changes() {
+        use std::cell::Cell;
+
+        use gpui::{Entity, TestAppContext};
+
+        struct Picture;
+        impl Render for Picture {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full()
+            }
+        }
+        struct Doc {
+            title: &'static str,
+            built: Rc<Cell<u32>>,
+            drawn: Rc<Cell<u32>>,
+            picture: Entity<Picture>,
+        }
+        impl Render for Doc {
+            fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+                self.drawn.set(self.drawn.get() + 1);
+                let built = self.built.clone();
+                let bar = MenuBar::of(
+                    &cx.entity(),
+                    move |d: &Doc, _| {
+                        built.set(built.get() + 1);
+                        vec![Menu::new(d.title).item("Do", "do"), Menu::new("Edit").item("Copy", "copy").key("c")]
+                    },
+                    |_, _, _| {},
+                );
+                div().size_full().child(bar).child(self.picture.clone())
+            }
+        }
+
+        let mut cx = TestAppContext::with_olo_text();
+        cx.update(|cx| {
+            cx.set_global(theme::Theme { palette: crate::lint::looks()[0].1.clone() });
+            crate::app::init_for_lint(cx);
+        });
+        let (built, drawn) = (Rc::new(Cell::new(0)), Rc::new(Cell::new(0)));
+        let made: Rc<RefCell<Option<Entity<Doc>>>> = Rc::default();
+        let (b, d, m) = (built.clone(), drawn.clone(), made.clone());
+        let handle = cx
+            .update(move |cx| {
+                crate::open_window(cx, crate::WindowOptions::new("Doc", 400.0, 300.0), move |_, cx| {
+                    let picture = cx.new(|_| Picture);
+                    let doc = cx.new(|_| Doc { title: "File", built: b, drawn: d, picture });
+                    *m.borrow_mut() = Some(doc.clone());
+                    doc
+                })
+            })
+            .expect("the window opens");
+        cx.run_until_parked();
+        let doc = made.borrow().clone().unwrap();
+        let picture = doc.read_with(&cx, |d, _| d.picture.clone());
+        assert_eq!(built.get(), 1, "built as first drawn");
+
+        // The picture moves on, ten times: the document is drawn again
+        // each time, its menus not built again.
+        let before = drawn.get();
+        for _ in 0..10 {
+            picture.update(&mut cx, |_, cx| cx.notify());
+            cx.run_until_parked();
+        }
+        assert!(drawn.get() >= before + 10, "the document was drawn again ({} → {})", before, drawn.get());
+        assert_eq!(built.get(), 1, "its menus weren't built again");
+
+        // The document changes: built again, and it shows.
+        doc.update(&mut cx, |d, cx| {
+            d.title = "Document";
+            cx.notify();
+        });
+        cx.run_until_parked();
+        assert_eq!(built.get(), 2);
+        let id = handle.window_id();
+        let titles = cx.update(|cx| bar_menus(id, cx).map(|(menus, _)| menus.iter().map(|m| m.title.clone()).collect::<Vec<_>>()));
+        assert_eq!(titles.as_deref(), Some(&["Document".to_string(), "Edit".to_string()][..]));
+        // (A look builds them as they are now.)
+        assert_eq!(built.get(), 3);
+        // Its keys are found from them too.
+        let copy = cx.update(|cx| handle.update(cx, |_, window, cx| bar_shortcut(window, cx, &gpui::Keystroke::parse("ctrl-c").unwrap()).map(|(c, _)| c)).unwrap());
+        assert_eq!(copy.as_deref(), Some("copy"));
     }
 
     #[test]

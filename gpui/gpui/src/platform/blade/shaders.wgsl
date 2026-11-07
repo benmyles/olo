@@ -1593,6 +1593,8 @@ fn fs_image_triangle(input: ImageTriangleVarying) -> @location(0) vec4<f32> {
 struct SurfaceParams {
     bounds: Bounds,
     content_mask: Bounds,
+    // Olo: RGB from (Y', Cb, Cr, 1): the picture's matrix and range.
+    rgb_from_yuv: mat4x4<f32>,
 }
 
 var<uniform> surface_locals: SurfaceParams;
@@ -1636,6 +1638,6 @@ fn fs_surface(input: SurfaceVarying) -> @location(0) vec4<f32> {
         textureSampleLevel(t_cb_cr, s_surface, input.texture_position, 0.0).rg,
         1.0);
 
-    let rgb = ycbcr_to_RGB * y_cb_cr;
+    let rgb = surface_locals.rgb_from_yuv * y_cb_cr;
     return vec4<f32>(to_window(rgb.rgb), rgb.a);
 }

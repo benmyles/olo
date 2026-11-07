@@ -46,6 +46,18 @@ something nobody here has is in "Blocked", with what it waits for.
   saying which is decoding now; Preferences (a Video or Media pane) sets
   the default every app's playing uses (the Viewer, Quick Look). Next
   after the screen recording work.
+  Done so far: pictures drawn by the GPU from their planes (H.264 29.6 →
+  60 frames a second at 4K, HEVC 24.4 → 59.8, AV1 52.2 → 60; the
+  window's work 18–25 ms → 0.5 ms a frame); NVDEC for H.264, HEVC, VP9
+  and AV1 (HEVC 246% of a core → 41.6%, H.264 100% → 29%, AV1 368% →
+  26%), handing over to the processor if it fails; View ▸ Decode With
+  (saying what decodes now) and Preferences ▸ GPUs ▸ Video Playback.
+  Still to do: Intel's VA-API decoding (cros-codecs' parsers, VA-API
+  opened at run time), and "Intel GPU" in both choices; NVDEC's
+  pictures kept on the GPU (CUDA–Vulkan interop) rather than copied
+  back (the copy and upload are most of the 1.2 ms a frame left); VP9
+  and 10-bit through NVDEC checked on samples; the CPU path's SIMD; a
+  minute of each format with no frame dropped.
 
 - **Olo's own login screen and boot splash** (Ben, 2026-11-01; not
   blocked: "neither of those are blocked on me", 2026-11-06). A display

@@ -58,6 +58,8 @@ impl super::TextureFormat {
         match *self {
             Self::R8Unorm => uncompressed(1),
             Self::Rg8Unorm => uncompressed(2),
+            Self::R16Unorm => uncompressed(2),
+            Self::Rg16Unorm => uncompressed(4),
             Self::Rg8Snorm => uncompressed(2),
             Self::Rgba8Unorm => uncompressed(4),
             Self::Rgba8UnormSrgb => uncompressed(4),

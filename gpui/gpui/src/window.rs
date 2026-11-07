@@ -4420,6 +4420,28 @@ impl Window {
         Ok(())
     }
 
+    /// Olo: paint a video's picture as decoded (Y'CbCr planes: `frame`)
+    /// into `bounds`, turned into RGB by the GPU. A stream's frames keep
+    /// its textures (`YuvFrame::stream`), filled again for each new one.
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    #[cfg(not(target_os = "macos"))]
+    pub fn paint_yuv(&mut self, bounds: Bounds<Pixels>, frame: std::sync::Arc<crate::YuvFrame>) {
+        use crate::PaintSurface;
+
+        self.invalidator.debug_assert_paint();
+
+        let scale_factor = self.scale_factor();
+        let bounds = bounds.scale(scale_factor);
+        let content_mask = self.content_mask().scale(scale_factor);
+        self.next_frame.scene.insert_primitive(PaintSurface {
+            order: 0,
+            bounds,
+            content_mask,
+            frame,
+        });
+    }
+
     /// Paint a surface into the scene for the next frame at the current z-index.
     ///
     /// This method should only be called as part of the paint phase of element drawing.

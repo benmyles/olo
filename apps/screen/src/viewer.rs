@@ -1863,7 +1863,7 @@ impl Render for Viewer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let me = cx.entity();
         let bar_me = me.clone();
-        let bar = MenuBar::new(self.menus(cx), move |cmd, window, cx| bar_me.update(cx, |v, cx| v.command(cmd, window, cx)));
+        let bar = MenuBar::of(&me, |v: &Self, cx| v.menus(cx), move |cmd, window, cx| bar_me.update(cx, |v, cx| v.command(cmd, window, cx)));
         let root = div().size_full().flex().flex_col().child(bar);
         if self.rows.is_empty() {
             let busy = self.busy;

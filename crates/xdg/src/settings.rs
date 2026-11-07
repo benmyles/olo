@@ -116,6 +116,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "gpus", tab: "", group: "", name: "Apply", role: "Button" },
     Setting { panel: "gpus", tab: "", group: "Screen Recordings", name: "Encode on", role: "ComboBox" },
     Setting { panel: "gpus", tab: "", group: "Screen Recordings", name: "Format", role: "ComboBox" },
+    Setting { panel: "gpus", tab: "", group: "Video Playback", name: "Decode on", role: "ComboBox" },
     Setting { panel: "integrations", tab: "", group: "GitHub", name: "Connect with a Token…", role: "Button" },
     Setting { panel: "integrations", tab: "", group: "GitHub", name: "Check Again", role: "Button" },
     Setting { panel: "integrations", tab: "", group: "Telegram", name: "Open my.telegram.org", role: "Button" },

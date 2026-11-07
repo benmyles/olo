@@ -1030,6 +1030,24 @@ impl Doc {
             && prev.read(cx).is_video()
         {
             let zoom = prev.read(cx).video_zoom();
+            // What decodes it: the default (Preferences ▸ GPUs), or one
+            // chosen for it; and what does now.
+            let (with, now) = (prev.read(cx).decode_with(), prev.read(cx).decoding());
+            use olo_preview::video::Device;
+            let nvidia = olo_video::nvdec::available();
+            let decode = Menu::new("Decode With")
+                .item(format!("Decoding on {}", now.unwrap_or("…")), "")
+                .enabled(false)
+                .separator()
+                .item("Default (Preferences ▸ GPUs)", "decode-default")
+                .checked(with == Device::Default)
+                .item("Automatic", "decode-auto")
+                .checked(with == Device::Automatic)
+                .item("NVIDIA GPU (NVDEC)", "decode-nvidia")
+                .checked(with == Device::Nvidia)
+                .enabled(nvidia)
+                .item("Processor", "decode-cpu")
+                .checked(with == Device::Processor);
             menus.push(
                 Menu::new("View")
                     .item("Actual Size", "video-actual")
@@ -1041,6 +1059,8 @@ impl Doc {
                     .item("Zoom to Fill", "video-fill")
                     .shift_key("9")
                     .checked(zoom == VideoZoom::Fill)
+                    .separator()
+                    .submenu(decode)
                     .separator()
                     .item(full_screen, "fullscreen")
                     .keys("F"),
@@ -1177,6 +1197,18 @@ impl Doc {
         }
         if command.starts_with("edit-") {
             return self.video_edit_command(command, window, cx);
+        }
+        // View ▸ Decode With: the video decoded there from now on.
+        if let Some(d) = command.strip_prefix("decode-")
+            && let Content::Other(prev) = &self.content
+        {
+            let device = match d {
+                "default" => olo_preview::video::Device::Default,
+                d => olo_preview::video::Device::parse(d).unwrap_or_default(),
+            };
+            prev.update(cx, |p, cx| p.set_decode_with(device, cx));
+            cx.notify();
+            return;
         }
         // A chapter of the video: where it starts, the one after the
         // position, or before it (within a second of a chapter's start:
@@ -1710,7 +1742,11 @@ impl Render for Doc {
             window.set_keep_awake(playing);
         }
         let me = cx.entity();
-        let bar = MenuBar::new(self.menus(cx), move |cmd, window, cx| me.update(cx, |d, cx| d.command(cmd, window, cx)));
+        // (Built as the document changes: not for each picture of a video.)
+        let bar = MenuBar::of(&me, |d: &Doc, cx| d.menus(cx), {
+            let me = me.clone();
+            move |cmd, window, cx| me.update(cx, |d, cx| d.command(cmd, window, cx))
+        });
         let p = theme::palette(cx);
         let body: AnyElement = match &self.content {
             Content::Loading => div().size_full().bg(style::c(p.panel_background)).into_any_element(),

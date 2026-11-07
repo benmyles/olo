@@ -1459,7 +1459,7 @@ impl Render for DriveSetup {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let me = cx.entity();
         let bar_me = me.clone();
-        let bar = MenuBar::new(self.menus(), move |cmd, _, cx| bar_me.update(cx, |d, cx| d.command(cmd, cx)));
+        let bar = MenuBar::of(&me, |d: &Self, _| d.menus(), move |cmd, _, cx| bar_me.update(cx, |d, cx| d.command(cmd, cx)));
         let root = div().size_full().flex().flex_col().child(bar);
         if !self.loaded {
             let error = self.error.clone();

@@ -570,6 +570,8 @@ fn map_texture_format(format: crate::TextureFormat) -> vk::Format {
     match format {
         Tf::R8Unorm => vk::Format::R8_UNORM,
         Tf::Rg8Unorm => vk::Format::R8G8_UNORM,
+        Tf::R16Unorm => vk::Format::R16_UNORM,
+        Tf::Rg16Unorm => vk::Format::R16G16_UNORM,
         Tf::Rg8Snorm => vk::Format::R8G8_SNORM,
         Tf::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
         Tf::Rgba8UnormSrgb => vk::Format::R8G8B8A8_SRGB,
