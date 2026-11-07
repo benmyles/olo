@@ -15,6 +15,34 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The Olo installer: stock Fedora 45 to Olo in one GUI** (Ben,
+  2026-11-06: "build a polished, robust olo installer so that someone
+  can download/install a stock fedora 45 then download the olo installer
+  (i just made the olo repo public!) and run it and they get a full
+  screen gui app that \"olo-fies\" their fedora. the installer should
+  have windows 95 setup.exe vibes but windows 95 crossed with beos,
+  because... well olo is a beos successor in spirit. also the installer
+  should have a note somewhere that it is a work of love dedicated to the
+  late english lab samwise. do a thorough test of the installer and the
+  whole download-install-use process in a vm/qemu or somerhing"). One
+  program downloaded from the public repository's releases, run on a
+  stock Fedora 45 Workstation (GNOME, as it comes), full screen: a Setup
+  in Windows 95's spirit (the deep blue gradient backdrop, the big
+  title, the Welcome, Licence, Choose, Copying files with its progress
+  bar, Finish) drawn in BeOS's look (its yellow tabs, its grey panels
+  and bevels, its fonts), saying throughout what it does and why. It
+  installs what Olo needs (packages through PackageKit, RPM Fusion where
+  wanted, Rust only if it builds), Olo itself (prebuilt, or built from
+  the repository with its progress shown), the session at the login
+  screen, and offers Olo's own login screen and boot splash; it can be
+  stopped and run again (each step checks what's done), and says what to
+  do when something fails. Its About (and a line on its last page):
+  that Olo is a work of love, dedicated to the late Samwise, an English
+  Labrador. Tested whole in a VM (QEMU with KVM: a fresh Fedora 45
+  Workstation install, the installer downloaded and run, a reboot into
+  Olo, Olo used: its apps opened, a file opened, Preferences changed),
+  screenshots of every step kept, at the VM's screen's scale and 2×.
+
 - **Nothing of GNOME's needed: Olo's own in its place** (Ben, 2026-11-06:
   "if we are still reliant on any gnome services or settings, create olo
   replacements for it so we don't need any gnome stuff"). What Olo still
