@@ -1,0 +1,257 @@
+#!/usr/bin/python3
+"""Olo's boot splash (crates/app_server/src/plymouth.rs) tried in the real
+Plymouth: the theme made, put in a start-up image (initramfs) of this
+computer's kernel, and booted in a virtual machine of its own (KVM, a
+virtio GPU at --size, no window), its screen saved as it boots and
+checked against the theme, pixel for pixel.
+
+  tools/dev/plymouth-check [--scale S] [--size WxH] [--keep DIR]
+
+Two boots. In the first, nothing to start but a disk that never comes,
+so the splash shows as the boot goes: every screen must be one of the
+theme's frames in its place and nothing else, the icons lit in turn
+(at least two). In the second, a disk to unlock (LUKS, made here), so
+Plymouth asks its passphrase: the field must be the theme's, in the icon
+row's place, and the passphrase typed through the VM's keyboard comes
+back as eight bullets, then the boot goes on. Prints what it found as
+JSON; exits 1 if anything didn't hold.
+
+Needs a release build (cargo build --release -p app_server), qemu-kvm,
+dracut and cryptsetup; never root. The start-up image is built once per
+kernel into /var/tmp/olo-plymouth-check (dracut as the person, the
+theme appended as a second archive the kernel unpacks over the first);
+the screens go to --keep DIR (else a folder removed at the end).
+"""
+import argparse
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+from PIL import Image, ImageChops
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CACHE = "/var/tmp/olo-plymouth-check"
+BACKGROUND = (30, 30, 34)
+PASSPHRASE = "hunter22"
+
+
+def newc(files):
+    """A cpio archive (newc) of `files`: (path, mode, bytes), directories
+    with bytes None."""
+    out = bytearray()
+    for ino, (path, mode, data) in enumerate(files + [("TRAILER!!!", 0, b"")], 1):
+        name = path.encode() + b"\0"
+        data = data or b""
+        fields = [ino, mode, 0, 0, 1, 0, len(data), 0, 0, 0, 0, len(name), 0]
+        # The header and name, then the data, each padded to 4 bytes.
+        out += b"070701" + b"".join(b"%08X" % f for f in fields) + name
+        out += b"\0" * (-len(out) % 4)
+        out += data
+        out += b"\0" * (-len(out) % 4)
+    return bytes(out)
+
+
+def initramfs(kver):
+    """This kernel's start-up image with Plymouth (made once)."""
+    os.makedirs(CACHE, exist_ok=True)
+    path = os.path.join(CACHE, f"initrd-{kver}.img")
+    if not os.path.exists(path):
+        work = tempfile.mkdtemp(dir=CACHE)
+        try:
+            subprocess.run(["dracut", "--no-hostonly", "--kver", kver, "-m",
+                            "base systemd systemd-initrd dracut-systemd plymouth drm crypt systemd-cryptsetup i18n kernel-modules",
+                            "--add-drivers", "virtio_gpu virtio_blk virtio_pci dm_crypt", "--tmpdir", work, "--force", path + ".part"],
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            os.rename(path + ".part", path)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    return path
+
+
+def theme_archive(theme):
+    """The theme as Plymouth's, Plymouth told to draw device pixels."""
+    files = [(d, 0o40755, None) for d in ["etc", "etc/plymouth", "usr", "usr/share", "usr/share/plymouth", "usr/share/plymouth/themes", "usr/share/plymouth/themes/olo"]]
+    for name in sorted(os.listdir(theme)):
+        with open(os.path.join(theme, name), "rb") as f:
+            files.append((f"usr/share/plymouth/themes/olo/{name}", 0o100644, f.read()))
+    conf = b"[Daemon]\nTheme=olo\nDeviceScale=1\nShowDelay=0\n"
+    files.append(("etc/plymouth/plymouthd.conf", 0o100644, conf))
+    return newc(files)
+
+
+class Vm:
+    """The kernel and `image` booted at `size`, a monitor to it."""
+
+    def __init__(self, out, image, size, disk=None, cmdline=""):
+        self.out = out
+        sock = os.path.join(out, "qmp.sock")
+        w, h = size
+        args = ["qemu-kvm", "-m", "2048", "-smp", "2", "-nodefaults", "-no-reboot",
+                "-kernel", f"/boot/vmlinuz-{os.uname().release}", "-initrd", image,
+                "-device", f"virtio-vga,xres={w},yres={h}", "-display", "none",
+                "-qmp", f"unix:{sock},server=on,wait=off", "-serial", "null",
+                "-append", "rd.plymouth=1 splash quiet loglevel=3 rd.udev.log_level=3 plymouth.ignore-serial-consoles "
+                           "root=UUID=00000000-0000-0000-0000-000000000000 " + cmdline]
+        if disk:
+            args += ["-drive", f"file={disk},if=virtio,format=raw"]
+        self.vm = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.start = time.time()
+        for _ in range(100):
+            try:
+                self.s = socket.socket(socket.AF_UNIX)
+                self.s.connect(sock)
+                break
+            except OSError:
+                time.sleep(0.1)
+        self.f = self.s.makefile("rw")
+        self.f.readline()
+        self.cmd("qmp_capabilities")
+
+    def cmd(self, name, **arguments):
+        self.f.write(json.dumps({"execute": name, "arguments": arguments}) + "\n")
+        self.f.flush()
+        while True:
+            r = json.loads(self.f.readline())
+            if "return" in r or "error" in r:
+                return r
+
+    def at(self, t):
+        time.sleep(max(0.0, t - (time.time() - self.start)))
+
+    def shot(self, name):
+        path = os.path.join(self.out, name + ".png")
+        self.cmd("screendump", filename=path, format="png")
+        return Image.open(path).convert("RGB")
+
+    def key(self, key):
+        self.cmd("send-key", keys=[{"type": "qcode", "data": key}])
+        time.sleep(0.05)
+
+    def close(self):
+        try:
+            self.cmd("quit")
+        except OSError:
+            pass
+        try:
+            self.vm.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            self.vm.kill()
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("--scale", type=float, default=2.0)
+    p.add_argument("--size", default="3200x2000")
+    p.add_argument("--keep")
+    a = p.parse_args()
+    size = tuple(int(v) for v in a.size.split("x"))
+    out = a.keep or tempfile.mkdtemp(prefix="olo-plymouth-check.", dir="/var/tmp")
+    os.makedirs(out, exist_ok=True)
+    report = {"scale": a.scale, "size": list(size), "screens": out if a.keep else None, "ok": True, "problems": []}
+
+    def problem(text):
+        report["ok"] = False
+        report["problems"].append(text)
+
+    try:
+        server = os.path.join(ROOT, "target/release/olo-app-server")
+        theme = os.path.join(out, "theme")
+        subprocess.run([server, "--plymouth-theme", theme, "--scale", str(a.scale)], check=True, stdout=subprocess.DEVNULL)
+        image = os.path.join(out, "initrd.img")
+        with open(image, "wb") as f:
+            with open(initramfs(os.uname().release), "rb") as base:
+                shutil.copyfileobj(base, f)
+            f.write(theme_archive(theme))
+        frames = [Image.open(os.path.join(theme, f"progress-{k:04d}.png")).convert("RGB") for k in range(5)]
+        fw, fh = frames[0].size
+        # Where two-step puts it: alignments .5, cut toward zero.
+        px, py = int(0.5 * size[0] - fw / 2.0), int(0.5 * size[1] - fh / 2.0)
+        background = Image.new("RGB", size, BACKGROUND)
+
+        def frame_of(shot):
+            crop = shot.crop((px, py, px + fw, py + fh))
+            return next((k for k, f in enumerate(frames) if ImageChops.difference(crop, f).getbbox() is None), None)
+
+        def only_picture(shot):
+            rest = shot.copy()
+            rest.paste(BACKGROUND, (px, py, px + fw, py + fh))
+            return ImageChops.difference(rest, background).getbbox() is None
+
+        # Booting.
+        vm = Vm(out, image, size)
+        seen = []
+        try:
+            # (The firmware's text console first, till the GPU's driver
+            # has the screen at its size.)
+            vm.at(3)
+            while vm.shot("boot-first").size != size and time.time() - vm.start < 20:
+                time.sleep(0.5)
+            for t in (3, 12, 25, 45):
+                vm.at(t)
+                shot = vm.shot(f"boot-{t:02d}s")
+                k = frame_of(shot)
+                seen.append(k)
+                if k is None:
+                    problem(f"at {t} s the screen isn't one of the theme's frames")
+                elif not only_picture(shot):
+                    problem(f"at {t} s something else is on the screen")
+        finally:
+            vm.close()
+        report["frames_seen"] = seen
+        lit = [k for k in seen if k is not None]
+        if lit != sorted(lit) or len(set(lit)) < 2:
+            problem(f"the icons didn't light in turn: frames {seen}")
+
+        # A disk's passphrase.
+        disk = os.path.join(out, "luks.img")
+        with open(disk, "wb") as f:
+            f.truncate(32 << 20)
+        subprocess.run(["cryptsetup", "luksFormat", "--type", "luks2", "--pbkdf", "pbkdf2", "--pbkdf-force-iterations", "1000",
+                        "--batch-mode", disk, "--key-file", "-"], input=PASSPHRASE.encode(), check=True, stdout=subprocess.DEVNULL)
+        uuid = subprocess.run(["cryptsetup", "luksUUID", disk], capture_output=True, text=True, check=True).stdout.strip()
+        vm = Vm(out, image, size, disk=disk, cmdline=f"rd.luks.uuid=luks-{uuid}")
+        try:
+            vm.at(8)
+            for ch in PASSPHRASE:
+                vm.key(ch)
+            time.sleep(1)
+            typed = vm.shot("passphrase-typed")
+            vm.key("ret")
+            time.sleep(4)
+            after = vm.shot("passphrase-answered")
+        finally:
+            vm.close()
+        lock = Image.open(os.path.join(theme, "lock.png")).convert("RGBA")
+        entry = Image.open(os.path.join(theme, "entry.png")).convert("RGBA")
+        bullet = Image.open(os.path.join(theme, "bullet.png")).convert("RGBA")
+        dw, eh = lock.width + entry.width, entry.height
+        fx, fy = int((size[0] - dw) * 0.5), int((size[1] - eh) * 0.5)
+        want = Image.new("RGBA", (dw, eh))
+        want.paste(lock, (0, 0))
+        want.paste(entry, (lock.width, 0))
+        for i in range(len(PASSPHRASE)):
+            want.alpha_composite(bullet, (lock.width + i * bullet.width + bullet.width // 2, 0))
+        diff = ImageChops.difference(typed.crop((fx, fy, fx + dw, fy + eh)), want.convert("RGB"))
+        # (Plymouth blends the bullets' edges a rounding apart.)
+        worst = max(max(px_) for px_ in diff.get_flattened_data()) if diff.getbbox() else 0
+        report["field"] = {"at": [fx, fy], "size": [dw, eh], "most_apart": worst}
+        if worst > 2:
+            problem(f"the field with {len(PASSPHRASE)} bullets isn't the theme's (pixels {worst} apart)")
+        if abs((fy + eh / 2) - (py + fh / 2)) > 1:
+            problem("the field isn't in the icon row's place")
+        if frame_of(after) is None:
+            problem("once answered, the boot didn't go on in the theme's frames")
+    finally:
+        if not a.keep:
+            shutil.rmtree(out, ignore_errors=True)
+    print(json.dumps(report, indent=2))
+    return 0 if report["ok"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
