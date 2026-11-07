@@ -159,7 +159,37 @@ fn in_parens(item: &Item<'_>, media: &Media) -> Truth {
     }
     range_feature(&inner, media)
 }
+/// Units in a media query's calc(): the viewport's, and the initial font
+/// (16px em, with the usual ratios), as in a style with no element.
+struct MediaContext<'a>(&'a Media);
+impl super::math::Context for MediaContext<'_> {
+    fn factor(&self, unit: super::math::RelativeUnit) -> super::math::Result<f64> {
+        use super::math::RelativeUnit as U;
+        let (w, h) = (self.0.width, self.0.height);
+        Ok(match unit {
+            U::Em | U::Rem | U::Ic | U::Ric => 16.,
+            U::Ex | U::Rex | U::Ch | U::Rch => 8.,
+            U::Cap | U::Rcap => 11.,
+            U::Lh | U::Rlh => 19.2,
+            U::Vw | U::Svw | U::Lvw | U::Dvw | U::Vi | U::Svi | U::Lvi | U::Dvi => w / 100.,
+            U::Vh | U::Svh | U::Lvh | U::Dvh | U::Vb | U::Svb | U::Lvb | U::Dvb => h / 100.,
+            U::Vmin | U::Svmin | U::Lvmin | U::Dvmin => w.min(h) / 100.,
+            U::Vmax | U::Svmax | U::Lvmax | U::Dvmax => w.max(h) / 100.,
+            _ => return Err(super::math::Error::ContextUnavailable),
+        })
+    }
+}
 fn length(item: &Item<'_>, media: &Media) -> Option<f64> {
+    // calc() and the other math functions: compiled and resolved against
+    // the viewport (`(max-width: calc(1120px - 1px))`).
+    if item.kind() == Kind::Function {
+        let expression = super::math::Value::compile(*item, super::math::Options { allow_percentage: false, percentage_hint: None }, Default::default(), None).ok()?;
+        if expression.ty().kind() != Some(super::math::Dimension::Length) {
+            return None;
+        }
+        let q = expression.resolve_with(&MediaContext(media), &mut super::math::Scratch::default(), Default::default(), None).ok()?;
+        return q.value.is_finite().then_some(q.value);
+    }
     let n = item.number()?;
     match item.kind() {
         Kind::Integer | Kind::Number => (n.value == 0.).then_some(0.),

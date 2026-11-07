@@ -9,8 +9,7 @@ revalidate the merged workspace and push the integration with browser work.
 **Active websites: [Stripe](eval/stripe/README.md) (homepage and
 pricing page as Chrome, live) and Wikipedia (the main page up to the
 search box and `overflow-wrap`; the Stripe, Inc. article with its
-scripts, JOURNAL 2026-11-08; next there: `vertical-align` on inlines
-for the reference superscripts).**
+scripts, as Chrome line for line, JOURNAL 2026-11-08).**
 Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it
 substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is

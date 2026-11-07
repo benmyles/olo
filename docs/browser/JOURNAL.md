@@ -5858,9 +5858,17 @@ redo only what changed.
   and the initial one regardless. The test page's fixed header appears
   when its title scrolls out; thresholds and root margins give Chrome's
   entries.
+- **calc() in media queries.** A grey band above the title was the
+  pinned-contents container's 16 px gradient: `.client-js
+  .vector-sticky-pinned-container { display: none }` sits in `@media
+  screen and (max-width: calc(1120px - 1px))`, and the media evaluator
+  took no calc(). Math functions in media feature lengths now compile
+  and resolve against the viewport (and the initial font for em and
+  friends). The article is then Chrome's, line for line.
 - **Found on the way.** Olo has no scrollbar, so its CSS viewport is the
   window's full width where Chrome's is 15 px narrower: at exactly 1000
   px the Vector skin's `(min-width: 1000px)` differs between the two
   (its contents container choice); compare at widths off the
-  breakpoints. Wikipedia's reference superscripts rely on
-  `vertical-align` on inlines (124 fallbacks): next.
+  breakpoints. The reference superscripts are right: super, sub and
+  length `vertical-align` shift a span's baseline already, and are no
+  longer counted as fallbacks.

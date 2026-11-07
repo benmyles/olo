@@ -911,7 +911,10 @@ impl<'a> BuildJob<'a> {
                             if position != Keyword::Static {
                                 self.note("positioned inline", node);
                             }
-                            if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline)) {
+                            // super, sub and lengths shift the span's baseline in
+                            // its paragraph (`baseline_shift`); the others are not
+                            // taken into account.
+                            if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline | Keyword::Super | Keyword::Sub) | Value::Numeric(_)) {
                                 self.note("vertical-align on inline", node);
                             }
                             // Block-axis padding does not change line fitting
