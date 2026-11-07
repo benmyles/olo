@@ -2388,6 +2388,29 @@ event reaches it.
 - Pictures (`RenderImage`s) stay in the GPU's atlas until dropped
   (`cx.drop_image(image, None)`): drop one replaced (a thumbnail that
   refreshes) and those a view keeps when it goes (`cx.on_release`).
+  A view painting a stream of new pictures (a browser's tiles, a
+  canvas's frames) must drop each it stops showing
+  (`window.drop_image`, at its next paint): the browser didn't, and at
+  60 frames a second filled the GPU and then 35 GB of the machine's
+  memory.
+- Premultiplied pictures (Olo's GPUI): `RenderImage::premultiplied()`
+  (or `image_view::from_premultiplied_bgra`) marks pixels whose colours
+  are premultiplied by alpha, a renderer's output; the sprite shader
+  makes them straight after sampling, so nothing converts them on the
+  CPU. A premultiplied picture shown as a straight one has its
+  translucent whites grey.
+- Shared textures (Olo's GPUI): a texture of the window's renderer
+  another API draws into, shown with no copy (a page's WebGL canvas).
+  `Window::create_shared_texture(w, h)` makes one (its memory exported,
+  an opaque fd, with its size and the GPU's UUID: `SharedTexture`) under
+  an `ImageId`; `Window::paint_shared_texture(bounds, id, premultiplied,
+  nearest)` shows it; `Window::drop_shared_texture(id)` lets it go.
+  `Window::renderer_device_uuid()` names the window's GPU, so the other
+  API draws on the same one (the browser's WebGL picks the EGL device
+  whose `GL_DEVICE_UUID_EXT` matches, `olo_js::webgl::prefer_device`).
+  The other API imports the fd (`GL_EXT_memory_object_fd`), owns it
+  from then on, and finishes each frame before it is shown; use a ring
+  of at least two, so it never draws into the one showing.
 - A closed window lets go of its callbacks (and the views they hold) as
   it drops, not once the platform's tidying task runs: a view that
   answers something as it's released (a portal dialog cancelled) does
@@ -2673,6 +2696,15 @@ sharing, Inhibit, GlobalShortcuts, notifications, Account) know which
 program asks. Use `open::spawn_app(argv, id)` or
 `spawn_detached_app(cmd, id)` for a desktop entry's program; Olo's own
 programs (`olo-*`) and programs run in Terminal stay in the session.
+
+A program that runs what it doesn't control (the browser: a web page)
+confines itself: `scope::confine_self(app_id, Limits)` moves its own
+process into `app-olo-<id>-<pid>.scope` with systemd's resource control
+(`MemoryHigh`, `MemoryMax`, `MemorySwapMax`, `CPUQuotaPerSecUSec`,
+`CPUWeight`, `TasksMax`), asked of the person's systemd at its own bus
+(`$XDG_RUNTIME_DIR/bus`: an Agent Screen's session bus has no systemd),
+so whatever it does slows or ends it alone, never the machine. Check
+with `cat /proc/PID/cgroup` and that cgroup's `memory.max`, `cpu.max`.
 Chromium and Electron programs (Chrome, Slack) move themselves into a
 scope of their own as they start (`app-com.google.Chrome-<pid>.scope`,
 `app-slack-<pid>.scope`), which wins. Where there's no systemd (a test
@@ -6432,11 +6464,18 @@ first window), Chrome's GPU process the same, and each app_server start
   into it (`left_asleep`: its connectors' status, as sysfs keeps it,
   read without asking the GPU), and opens it when a udev change says a
   display is.
-- GPUI's apps make their Vulkan context without NVIDIA's driver
-  (`blade_context::asleep_aside`: `VK_LOADER_DRIVERS_DISABLE=*nvidia*`
-  for the moment the loader looks, put back at once so nothing the app
-  starts inherits it); they draw on the GPU the displays use, and a
-  window on NVIDIA's HDMI display is imported there.
+- GPUI's apps draw on the GPU the compositor composes the displays
+  with: the Wayland client reads linux-dmabuf v4's default feedback
+  (its main device, one roundtrip on a queue of its own; the v3 binding
+  stays for external pictures' modifiers), finds the device's PCI IDs
+  in sysfs, and makes its Vulkan context on that device
+  (`BladeContext::new_on`). Unless that is NVIDIA's, they make it
+  without NVIDIA's driver (`blade_context::asleep_aside`:
+  `VK_LOADER_DRIVERS_DISABLE=*nvidia*` for the moment the loader looks,
+  put back at once so nothing the app starts inherits it); a window on
+  NVIDIA's HDMI display is imported there. What a window shares its
+  renderer with (a browser page's WebGL) follows it onto the same GPU.
+  `OLO_GPU_DEBUG=1` prints the compositor's device.
 - Programs Olo starts get `olo_kit_base::gpu::asleep_env()` (Vulkan's
   loader and glvnd's EGL without NVIDIA's): `olo-chrome` does.
 - Activity asks NVIDIA's library only while the GPU is awake, Doctor

@@ -6041,3 +6041,40 @@ redo only what changed.
   (page thread 15.3%, window 5.1%; was 41.5% at the same rate before
   these changes); Chrome 18.1% at 60.
 
+## 2026-11-08, late: one GPU, a canvas never copied, and pages that can't hurt the machine
+
+- **A frame clock.** Animation frames ran on the page's own 16 ms clock
+  and renders on a 16.7 ms one: they beat, and the hero canvas showed in
+  39 of 59 recorded frames. One 60 Hz clock now: animation frames run on
+  its ticks and the page renders right after (58 of 59). The window draws
+  once per page frame (it drew 108 a second for 60).
+- **Cheaper frames.** Focus targets kept on frames that only move (0.48
+  -> 0.01 ms; scenes patched from another share its commands); agent
+  labels kept 100 ms on such frames; tiles and canvas frames uploaded
+  premultiplied with a swizzle only (the kit's sprite shader makes them
+  straight).
+- **The canvas never copied.** The hero's WebGL frames were read back
+  (0.9 ms), swizzled and uploaded every frame. Now the window's renderer
+  makes three textures whose memory it exports (Vulkan, an opaque fd),
+  the page's GL imports them (GL_EXT_memory_object_fd), blits each frame
+  into the next, flipped, and the window paints the texture. It needed
+  both on one GPU: the window drew on the Intel GPU and WebGL on the
+  NVIDIA one (glvnd's first, waking it). WebGL now draws on the window's
+  GPU (EGL devices matched by GL_DEVICE_UUID_EXT), and the window's
+  renderer draws on the GPU the compositor composes with (linux-dmabuf
+  v4's main device): one GPU for all of it.
+- **Cost.** stripe.com at 60 frames a second, 30 s: 16.5% of a core
+  (page thread 13.3%, window 3.2%) against Chrome's 18.0-18.4%.
+- **Caps.** The GPU-atlas leak (fixed earlier) took 35 GB and the
+  session; no page may do that again. The browser's process (its page)
+  confines itself in a systemd scope (memory high/max, swap, CPU quota
+  and weight, tasks); V8's heap is capped at 2 GiB and a task at 10 s,
+  past either the page's scripts stop and its realm goes (memory back
+  within seconds: V8 no longer pools a dead isolate's pages); WebGL
+  allocations count against 1 GiB (GL_OUT_OF_MEMORY past it); and a page
+  whose frames cost over 10 ms of CPU or 8 ms of GPU for two seconds
+  draws every 2nd, 4th, 8th frame. Each was tested with a page made to
+  break it.
+- **Found on the way.** `performance.now()` stood still inside a task (a
+  busy-wait spun forever); intervals stopped after 50 runs.
+

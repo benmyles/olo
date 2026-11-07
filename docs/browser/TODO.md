@@ -106,7 +106,14 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   geometry, a spinning tick fixed). Live pages render at 60 frames a
   second (20.4% of a core on stripe.com at 54 renders a second; JOURNAL
   2026-11-08 night: moved layers, shared document strings, the GPU
-  atlas leak). Next, in order: frames paced by the window's vsync (the
+  atlas leak). WebGL canvases show from shared textures, no copy, on the
+  window's GPU, which is the compositor's (16.5% of a core on stripe.com
+  against Chrome's 18%; JOURNAL 2026-11-08 late). Pages are capped:
+  memory, CPU, GPU memory and frame cost (same entry). Next, in order:
+  one process per page when tabs or more windows come (the caps are a
+  process's: each page needs its own); semaphores instead of glFinish
+  for shared frames (the page thread waits for the GPU; a heavy shader
+  blocks it); a hidden or covered window's page drawn at 1 Hz; frames paced by the window's vsync (the
   worker renders on a timer now, 54 of 60 a second); the hero canvas
   shared with the window's GPU without a readback (one 2.5 MB copy and
   upload a frame); renders that keep the previous scene's tiles for
