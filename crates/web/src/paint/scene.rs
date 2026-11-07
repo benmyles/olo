@@ -758,6 +758,12 @@ struct Context {
     z: i32,
     /// Where the context's own content falls in its parent's order.
     path: Vec<u32>,
+    /// A positioned box with `z-index: auto` (and nothing else making it a
+    /// stacking context): painted as if it were one, but its positioned
+    /// descendants and the stacking contexts inside it belong to the
+    /// nearest real one (CSS 2 Appendix E), so a `z-index: 2` inside it
+    /// rises above a later sibling's positioned box.
+    pseudo: bool,
 }
 struct Draft {
     context: u32,
@@ -873,7 +879,7 @@ impl<'a> BuildJob<'a> {
             vector_clip_bytes: 0,
             svg_viewports: None,
             next: 0,
-            contexts: vec![Context { parent: NONE, z: 0, path: Vec::new() }],
+            contexts: vec![Context { parent: NONE, z: 0, path: Vec::new(), pseudo: false }],
             progress: Progress::default(),
             fallbacks: layout::Fallbacks::default(),
             failed: false,
@@ -1484,12 +1490,17 @@ impl<'a> BuildJob<'a> {
                         matches!(p.value(P::Display), Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flex | crate::css::properties::Inner::Grid, .. }))
                     });
                     let z = if positioned || item { z } else { None };
-                    if positioned || z.is_some() || opacity < 1. || isolated || transformed != parent_transform || layered || mask.is_some() {
+                    let stacking = z.is_some() || opacity < 1. || isolated || transformed != parent_transform || layered || mask.is_some();
+                    if positioned || stacking {
                         if self.contexts.len() >= self.limits.commands {
                             return Err(Error::Limit);
                         }
                         let index = self.contexts.len() as u32;
-                        self.contexts.push(Context { parent: context, z: z.unwrap_or(0), path: Vec::new() });
+                        let mut parent_context = context;
+                        while self.contexts[parent_context as usize].pseudo {
+                            parent_context = self.contexts[parent_context as usize].parent;
+                        }
+                        self.contexts.push(Context { parent: parent_context, z: z.unwrap_or(0), path: Vec::new(), pseudo: !stacking });
                         context = index;
                         group = (context, 0);
                     }

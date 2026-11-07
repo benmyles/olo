@@ -922,3 +922,30 @@ fn column_flex_items_follow_order_too() {
     let tile = render(&mut painter, &page.scene);
     assert_eq!([10, 30, 50].map(|y| pixel(&tile, 50, y)), [[0, 0, 255, 255], [0, 128, 0, 255], [255, 0, 0, 255]]);
 }
+#[test]
+fn a_z_index_inside_a_positioned_auto_box_rises_above_later_positioned_siblings() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    // Apple's hero: the copy (z-index 2) inside a relative box with z-index
+    // auto, then an absolute image wrapper covering the tile. The copy
+    // belongs to the root stacking context at z 2: above the image (red).
+    // A z-index: auto child under the same box stays in tree order: under.
+    let page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}</style><div style='position:relative;height:60px'><div style='position:relative'><div style='position:relative;z-index:2;height:20px;background-color:red'></div><div style='position:relative;height:20px;background-color:green'></div></div><div style='position:absolute;top:0;left:0;width:100%;height:60px;background-color:blue'></div></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let tile = render(&mut painter, &page.scene);
+    assert_eq!(pixel(&tile, 50, 10), [255, 0, 0, 255]);
+    assert_eq!(pixel(&tile, 50, 30), [0, 0, 255, 255]);
+}

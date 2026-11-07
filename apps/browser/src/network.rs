@@ -350,8 +350,11 @@ async fn get(client: &Client, mut url: Url, initiator: Option<Url>, limit: usize
                         );
                         return Ok(Resource { url, bytes, mime, status: None, document_encoding: None });
                     }
-                    let mut response = client
-                        .get(url.clone())
+                    let mut request = client.get(url.clone());
+                    if let Some(referrer) = initiator.and_then(|from| referrer(from, &url)) {
+                        request = request.header(header::REFERER, referrer);
+                    }
+                    let mut response = request
                         .header(
                             header::ACCEPT,
                             match kind {
@@ -389,6 +392,25 @@ async fn get(client: &Client, mut url: Url, initiator: Option<Url>, limit: usize
             }
         }
     }
+}
+/// The Referer a request from `from` (the page, or a stylesheet) to `to`
+/// carries, by the default policy, strict-origin-when-cross-origin (as
+/// Chrome sends): the whole URL, less its fragment and credentials, on
+/// the same origin; the origin alone across origins; nothing from https to
+/// http, or from a page with no web origin (a file). Some servers answer
+/// without one with 404 (apple.com's fonts stylesheet).
+fn referrer(from: &Url, to: &Url) -> Option<String> {
+    if !matches!(from.scheme(), "http" | "https") || from.scheme() == "https" && to.scheme() == "http" {
+        return None;
+    }
+    if from.origin() == to.origin() {
+        let mut url = from.clone();
+        url.set_fragment(None);
+        let _ = url.set_username("");
+        let _ = url.set_password(None);
+        return Some(url.to_string());
+    }
+    Some(format!("{}/", from.origin().ascii_serialization()))
 }
 fn append(bytes: &mut Vec<u8>, chunk: &[u8], limit: usize) -> page::Result<()> {
     if chunk.len() > limit.saturating_sub(bytes.len()) {
@@ -599,6 +621,15 @@ mod tests {
         let result = Loader::new().unwrap().document(&format!("{base}/file"), None, &Cancel::default(), |_| {});
         assert!(result.err().unwrap().to_string().contains("local files"));
         server.join().unwrap();
+    }
+    #[test]
+    fn referrers_follow_strict_origin_when_cross_origin() {
+        let u = |s: &str| Url::parse(s).unwrap();
+        assert_eq!(referrer(&u("https://a.test/p/q?x=1#frag"), &u("https://a.test/style.css")).as_deref(), Some("https://a.test/p/q?x=1"));
+        assert_eq!(referrer(&u("https://user:pw@a.test/p"), &u("https://a.test/s")).as_deref(), Some("https://a.test/p"));
+        assert_eq!(referrer(&u("https://a.test/p/q"), &u("https://cdn.test/s.css")).as_deref(), Some("https://a.test/"));
+        assert_eq!(referrer(&u("https://a.test/p"), &u("http://a.test/s")), None);
+        assert_eq!(referrer(&u("file:///tmp/p.html"), &u("https://a.test/s")), None);
     }
     #[test]
     fn wrong_css_mime_is_rejected() {
