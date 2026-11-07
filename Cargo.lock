@@ -8252,6 +8252,7 @@ dependencies = [
  "gbm 0.18.0",
  "gif 0.14.2",
  "libc",
+ "md5",
  "mp4",
  "nvdec-sys",
  "nvenc-sys",

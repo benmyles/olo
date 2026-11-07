@@ -24,6 +24,8 @@ color_quant = "1.1"
 symphonia = { version = "0.5", default-features = false, features = ["aac"] }
 
 [dev-dependencies]
+# Pictures checked against the reference decoders' MD5s (tests/reference.rs).
+md5 = "0.8"
 png = "0.18"
 # Dmabufs to encode from (`vaapi_dmabuf_frames_come_back`).
 gbm = { version = "0.18", default-features = false }
