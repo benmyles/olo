@@ -75,7 +75,7 @@ pub struct Resource {
 impl Loader {
     pub fn new() -> page::Result<Self> {
         Ok(Self {
-            client: Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(Duration::from_secs(20)).timeout(Duration::from_secs(60)).user_agent("OloBrowser/0.1").build()?,
+            client: Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(Duration::from_secs(20)).timeout(Duration::from_secs(60)).user_agent(olo_js::USER_AGENT).build()?,
             runtime: tokio::runtime::Builder::new_current_thread().enable_all().build()?,
             cache: Default::default(),
         })

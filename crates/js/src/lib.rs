@@ -13,6 +13,7 @@
 pub mod canvas;
 pub mod clone;
 pub mod html;
+mod modules;
 pub mod webgl;
 pub mod worker;
 use olo_web::{
@@ -46,18 +47,14 @@ pub struct Config {
     /// Wall-clock seconds the whole run may take.
     pub wall_seconds: f64,
 }
+/// What the browser calls itself, to servers and to scripts alike: a
+/// Chrome of the same engine generation, so sites serve the pages they
+/// serve Chrome (an unknown agent gets fallback or bot pages), with Olo
+/// named after it.
+pub const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Olo/0.1";
 impl Default for Config {
     fn default() -> Self {
-        Self {
-            url: "about:blank".into(),
-            viewport: (1000., 700.),
-            scale: 1.,
-            user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Olo/0.1".into(),
-            language: "en-US".into(),
-            quirks: false,
-            budget_ms: 3000.,
-            wall_seconds: 8.,
-        }
+        Self { url: "about:blank".into(), viewport: (1000., 700.), scale: 1., user_agent: USER_AGENT.into(), language: "en-US".into(), quirks: false, budget_ms: 3000., wall_seconds: 8. }
     }
 }
 /// A fetched resource for `fetch` and `XMLHttpRequest`.
@@ -107,6 +104,8 @@ const LAYOUT_SECONDS_PER_ADVANCE: f64 = 0.25;
 pub struct Script {
     pub source: Arc<str>,
     pub name: String,
+    /// A module script (`type="module"`): its imports loaded, run as one.
+    pub module: bool,
 }
 /// Input from the person, for the page's scripts: where (document
 /// coordinates, CSS px) and what.
@@ -197,6 +196,8 @@ struct State {
     requests: Vec<Request>,
     /// The element each image request in flight is for.
     in_flight: HashMap<u64, Option<NodeId>>,
+    /// The modules loaded so far, by URL.
+    modules: modules::Modules,
     next_request: u64,
     /// Workers by id, with what they need to be made.
     workers: HashMap<u32, worker::Handle>,
@@ -251,6 +252,7 @@ impl Realm {
             images: HashMap::new(),
             requests: Vec::new(),
             in_flight: HashMap::new(),
+            modules: Default::default(),
             next_request: 1,
             workers: HashMap::new(),
             next_worker: 1,
@@ -267,6 +269,8 @@ impl Realm {
         }));
         let mut isolate = v8::Isolate::new(v8::CreateParams::default());
         isolate.set_slot(state.clone());
+        modules::install(&mut isolate);
+        modules::enter(&state);
         let context = {
             v8::scope!(let scope, &mut isolate);
             let global = v8::ObjectTemplate::new(scope);
@@ -439,6 +443,22 @@ impl Realm {
         }
         Ok(())
     }
+    /// Run a module script: its imports fetched and compiled first, then
+    /// the graph instantiated and evaluated (see `modules`).
+    pub fn run_module(&mut self, source: &str, url: &str) -> Result<(), String> {
+        let state = self.state.clone();
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        match modules::run(tc, &state, url, Some(source)) {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                state.borrow_mut().report.errors.push(error.clone());
+                Err(error)
+            }
+        }
+    }
     /// Advance the page's clock to `now_ms` (milliseconds since its scripts
     /// ran): timers and animation frames due by then run, for at most
     /// `wall`. Returns when the next is due, and whether the document changed.
@@ -600,7 +620,11 @@ impl Realm {
                 break;
             }
             self.state.borrow_mut().report.scripts += 1;
-            let _ = self.run(&script.source, &script.name);
+            if script.module {
+                let _ = self.run_module(&script.source, &script.name);
+            } else {
+                let _ = self.run(&script.source, &script.name);
+            }
         }
         let _ = self.call_prelude("__olo_lifecycle", &["DOMContentLoaded"]);
         self.pump();
@@ -686,6 +710,7 @@ impl Realm {
             s.measure = None;
             s.measured = None;
         }
+        modules::leave();
         let state = std::mem::replace(&mut self.state, Rc::new(RefCell::new(State::empty())));
         drop(self);
         let state = Rc::try_unwrap(state).ok().expect("the realm's state is only its own").into_inner();
@@ -715,6 +740,7 @@ impl State {
             images: HashMap::new(),
             requests: Vec::new(),
             in_flight: HashMap::new(),
+            modules: Default::default(),
             next_request: 1,
             workers: HashMap::new(),
             next_worker: 1,
@@ -2221,12 +2247,13 @@ pub enum Source {
     Inline(Arc<str>),
     External(String),
 }
-/// The page's scripts in the order they run: classic scripts (deferred
-/// ones included, since everything runs after parsing) in document order,
-/// then async ones. Modules are not run (no `import` yet), so `nomodule`
-/// scripts are, as in a browser without module support. Resolve each
-/// external URL against `base` with `url::Url`.
-pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String)> {
+/// The page's scripts in the order they run: classic and module scripts
+/// (deferred ones included, since everything runs after parsing) in
+/// document order, then async ones; `nomodule` scripts not at all, as in
+/// any browser with modules. Each entry says whether it is a module. An
+/// external URL is resolved against `base` with `url::Url`.
+pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String, bool)> {
+    let page = base.to_owned();
     let base = url::Url::parse(base).ok();
     let mut classic = Vec::new();
     let mut asynchronous = Vec::new();
@@ -2241,9 +2268,13 @@ pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String)> {
             continue;
         }
         let kind = doc.attribute(n, "type").ok().flatten().unwrap_or("").trim().to_ascii_lowercase();
+        let module = kind == "module";
         let javascript = kind.is_empty()
             || matches!(kind.as_str(), "text/javascript" | "application/javascript" | "text/ecmascript" | "application/ecmascript" | "application/x-javascript" | "text/jscript" | "text/x-javascript");
-        if !javascript {
+        if !javascript && !module {
+            continue;
+        }
+        if doc.attribute(n, "nomodule").ok().flatten().is_some() {
             continue;
         }
         let entry = match doc.attribute(n, "src").ok().flatten().filter(|s| !s.trim().is_empty()) {
@@ -2260,10 +2291,14 @@ pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String)> {
                 if text.trim().is_empty() {
                     continue;
                 }
-                (Source::Inline(Arc::from(text)), format!("inline script {}", classic.len() + asynchronous.len() + 1))
+                // An inline module's name is a URL, for its imports to resolve
+                // against.
+                let name = if module { format!("{page}#inline-module-{}", classic.len() + asynchronous.len() + 1) } else { format!("inline script {}", classic.len() + asynchronous.len() + 1) };
+                (Source::Inline(Arc::from(text)), name)
             }
         };
         let is_async = doc.attribute(n, "async").ok().flatten().is_some() && matches!(entry.0, Source::External(_));
+        let entry = (entry.0, entry.1, module);
         if is_async { asynchronous.push(entry) } else { classic.push(entry) }
     }
     classic.extend(asynchronous);

@@ -7,8 +7,8 @@ fn run(page: &str) -> (olo_js::Report, olo_web::dom::Document) {
     let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
     let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/dir/page.html")
         .into_iter()
-        .map(|(source, name)| match source {
-            Source::Inline(text) => Script { source: text, name },
+        .map(|(source, name, module)| match source {
+            Source::Inline(text) => Script { source: text, name, module },
             Source::External(u) => panic!("external script {u}"),
         })
         .collect();
@@ -30,8 +30,9 @@ fn dom_page() {
 fn scripts_in_order_then_async() {
     let page = "<script async src=a.js></script><script>1</script><script type=module>2</script><script defer src=b.js></script><script type=text/template>no</script><script nomodule>3</script>";
     let parsed = html::parse(Arc::from(page), Default::default(), None).unwrap();
-    let names: Vec<String> = olo_js::page_scripts(&parsed.document, "https://x.test/p/").into_iter().map(|(_, n)| n).collect();
-    assert_eq!(names, ["inline script 2", "https://x.test/p/b.js", "inline script 4", "https://x.test/p/a.js"]);
+    let names: Vec<String> = olo_js::page_scripts(&parsed.document, "https://x.test/p/").into_iter().map(|(_, n, _)| n).collect();
+    // Modules run in order with the classic scripts; `nomodule` ones not at all.
+    assert_eq!(names, ["inline script 2", "https://x.test/p/#inline-module-3", "https://x.test/p/b.js", "https://x.test/p/a.js"]);
 }
 #[test]
 fn errors_are_reported_not_fatal() {

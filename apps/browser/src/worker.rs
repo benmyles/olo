@@ -620,13 +620,13 @@ fn render(
             let page_url = document.url.to_string();
             let scripts: Vec<olo_js::Script> = olo_js::page_scripts(&doc, &page_url)
                 .into_iter()
-                .filter_map(|(source, name)| match source {
-                    olo_js::Source::Inline(text) => Some(olo_js::Script { source: text, name }),
+                .filter_map(|(source, name, module)| match source {
+                    olo_js::Source::Inline(text) => Some(olo_js::Script { source: text, name, module }),
                     olo_js::Source::External(u) => {
                         proxy.send(Reply::Status(r.id, "Loading script…".into()));
                         let url = url::Url::parse(&u).ok()?;
                         match loader.script(document, url, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "script")) {
-                            Ok(text) => Some(olo_js::Script { source: Arc::from(text), name: u }),
+                            Ok(text) => Some(olo_js::Script { source: Arc::from(text), name: u, module }),
                             Err(error) => {
                                 eprintln!("Browser script {u}: {error}");
                                 None
