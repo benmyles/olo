@@ -777,6 +777,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     && !self.in_front_of_fullscreen_under(output, &window, location)
                     && let Some((_, _)) = window.surface_under(location - output_geo.loc.to_f64(), WindowSurfaceType::ALL)
                 {
+                    // In front again, as any window clicked: what was over
+                    // it (`shell::in_front_of_fullscreen`) goes behind,
+                    // its own dialogs staying over it.
+                    self.space.raise_element(&window, true);
+                    self.keep_children_above();
                     keyboard.set_focus(self, Some(window.into()), serial);
                     return;
                 }

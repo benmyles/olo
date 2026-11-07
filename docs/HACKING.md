@@ -4848,7 +4848,10 @@ windows above it in the space that show on that display, used by
 `gather_elements`, `surface_under` and the click's focus): drawn alone,
 the full-screen window hid them, and a password dialog asked for while
 Olo Setup filled the screen had the keyboard but was never seen (a
-stock Fedora 45, 2026-11-07). With nothing in front the loop stops at
+stock Fedora 45, 2026-11-07). A click on the full-screen window raises
+it, as any window clicked (its own dialogs kept over it), so what was
+over it goes behind until it's brought forward again (Deskbar, the
+switcher, `activate`). With nothing in front the loop stops at
 its first window (a display's gather, Setup full screen: 19.1 and 17.5
 µs a frame before, 18.8 and 16.9 after). When that display's size in points
 changes (a new scale, mode or rotation: `fixup_positions`), the window
