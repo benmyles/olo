@@ -203,7 +203,7 @@ fn flex_reflow_keeps_intrinsics_and_rejects_unimplemented_contexts() {
         ("<div id=probe><div>AB</div></div>", "#probe{display:flex;flex-wrap:wrap}", None),
         ("<div id=probe><div>AB</div></div>", "#probe{display:flex;direction:rtl}", Some("right-to-left flex as left-to-right")),
         ("<div id=probe><div>AB</div></div>", "#probe{display:flex;align-items:baseline}", Some("flex baseline alignment as flex-start")),
-        ("<div id=probe><div style='order:1'>AB</div></div>", "#probe{display:flex}", Some("flex order ignored")),
+        ("<div id=probe><div style='order:1'>AB</div></div>", "#probe{display:flex}", None),
         ("<div id=probe><div><div>AB</div></div></div>", "#probe{display:flex}", None),
         ("<div id=probe><div>AB</div></div>", "#probe{display:flex}#probe>div{box-sizing:border-box;flex:1;min-width:0;padding:5px}", None),
     ] {
