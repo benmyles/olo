@@ -350,6 +350,11 @@ impl Selectors {
     /// The invalidation sets of every selector (see `Invalidation`).
     pub fn invalidation(&self) -> Invalidation {
         let mut out = Invalidation::default();
+        for test in &self.tests {
+            if let Test::Attr { name, .. } = test {
+                out.attributes.insert(self.symbols[*name as usize].to_string());
+            }
+        }
         let mut subject = Vec::new();
         for complex in &self.complexes {
             if complex.steps.end <= complex.steps.start + 1 {
@@ -605,8 +610,16 @@ pub struct Invalidation {
     pub siblings: std::collections::HashMap<String, Reach>,
     pub any_descendants: Reach,
     pub any_siblings: Reach,
+    /// Every attribute any selector tests (in any compound, inside `:not()`
+    /// and `:is()` too): one no selector tests changes no match, keyless
+    /// compounds or not.
+    pub attributes: std::collections::HashSet<String>,
 }
 impl Invalidation {
+    /// Whether any selector tests this attribute.
+    pub fn tests_attribute(&self, name: &str) -> bool {
+        self.attributes.contains(name)
+    }
     /// Keys are written "t:tag", "#id", ".class", "[attr".
     pub fn reach_of(&self, keys: impl Iterator<Item = String>) -> (Reach, Reach) {
         let (mut d, mut s) = (self.any_descendants.clone(), self.any_siblings.clone());

@@ -836,3 +836,53 @@ impl RuleSet {
         m
     }
 }
+/// The cascade layers `syntax` names, in the order it first names them, as
+/// one `@layer a, a.b, c;` statement: what an earlier copy of a sheet
+/// linked again later contributes (its rules lose to the later copy's,
+/// but its place sets the layers' order). Layers named inside conditional
+/// rules or anonymous layers are left to the later copy. None when it
+/// names none.
+pub fn layer_statement(syntax: &Syntax, cancelled: Option<&AtomicBool>) -> Option<String> {
+    fn names(values: Components<'_>) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut name = String::new();
+        for c in values {
+            match c.kind() {
+                Kind::Whitespace => {}
+                Kind::Ident => name.push_str(c.text().unwrap_or("")),
+                Kind::Comma => out.push(std::mem::take(&mut name)),
+                _ if c.character() == Some('.') => name.push('.'),
+                _ => return Vec::new(),
+            }
+        }
+        out.push(name);
+        out.retain(|n| !n.is_empty() && !n.starts_with('.') && !n.ends_with('.') && !n.contains(".."));
+        out
+    }
+    fn walk(rules: Vec<Statement<'_>>, prefix: &str, out: &mut Vec<String>, depth: usize, cancelled: Option<&AtomicBool>) {
+        if depth > 32 {
+            return;
+        }
+        for rule in rules {
+            if rule.kind() != StatementKind::AtRule || !rule.name().is_some_and(|n| n.eq_ignore_ascii_case("layer")) {
+                continue;
+            }
+            let named = names(rule.value());
+            for n in &named {
+                let full = format!("{prefix}{n}");
+                if !out.contains(&full) {
+                    out.push(full);
+                }
+            }
+            if rule.block().is_some()
+                && let [one] = named.as_slice()
+                && let Ok(inner) = rule.block_contents(cancelled)
+            {
+                walk(inner, &format!("{prefix}{one}."), out, depth + 1, cancelled);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(syntax.stylesheet(cancelled).ok()?, "", &mut out, 0, cancelled);
+    (!out.is_empty()).then(|| format!("@layer {};", out.join(",")))
+}

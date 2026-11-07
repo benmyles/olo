@@ -285,8 +285,9 @@ pub enum Change {
     /// An element's `style` attribute changed: its declared values, never
     /// what selectors match (unless one tests the attribute itself).
     Style(NodeId),
-    /// A text node's data changed (what its parent lays out).
-    Text(NodeId),
+    /// A text node's data changed (what its parent lays out); `emptiness`
+    /// when it went from empty to not or back (all `:empty` sees of it).
+    Text { node: NodeId, emptiness: bool },
     /// A node's child list changed: children inserted, removed or moved
     /// (every child's sibling-dependent matching, and what the node holds);
     /// `elements` when an element was among them (text alone cannot
@@ -717,6 +718,7 @@ impl Document {
         if self.revision == u64::MAX {
             return Err(Error::RevisionOverflow);
         }
+        let emptiness = matches!(self.nodes[index(at)].data, Data::Text(_)) && self.text(old).is_empty() != text.is_empty();
         let new = self.store_text(text, self.owned_len(old))?;
         self.free_text(old);
         match &mut self.nodes[index(at)].data {
@@ -724,7 +726,7 @@ impl Document {
             _ => unreachable!(),
         }
         let id = self.handle(at);
-        self.bump_with(Change::Text(id))?;
+        self.bump_with(Change::Text { node: id, emptiness })?;
         Ok(true)
     }
 
@@ -752,7 +754,7 @@ impl Document {
             if self.source.get(end..).is_some_and(|rest| text.as_ptr() == rest.as_ptr() && text.len() <= rest.len()) {
                 self.replace_character_value(at, TextValue { start: old.start, len: old.len + text.len() as u32 });
                 let id = self.handle(at);
-                self.bump_with(Change::Text(id))?;
+                self.bump_with(Change::Text { node: id, emptiness: false })?;
                 return Ok(true);
             }
         }
@@ -767,7 +769,7 @@ impl Document {
             if value.capacity() >= required {
                 value.push_str(&text);
                 let id = self.handle(at);
-                self.bump_with(Change::Text(id))?;
+                self.bump_with(Change::Text { node: id, emptiness: false })?;
                 return Ok(true);
             }
         }
@@ -791,7 +793,7 @@ impl Document {
         let slot = self.growing.insert(Arc::new(value));
         self.replace_character_value(at, TextValue { start: slot.get(), len: u32::MAX - 1 });
         let id = self.handle(at);
-        self.bump_with(Change::Text(id))?;
+        self.bump_with(Change::Text { node: id, emptiness: false })?;
         Ok(true)
     }
 

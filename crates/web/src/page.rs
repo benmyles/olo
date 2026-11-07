@@ -301,6 +301,12 @@ pub fn prepare_scripted(
                 if second.rules_reused { "reused" } else { "recompiled" }
             );
         }
+        if std::env::var_os("OLO_SHEET_DEBUG").is_some() {
+            for (i, (x, o, u)) in second.sheets.iter().enumerate() {
+                let was = first.sheets.iter().position(|(y, p, v)| p == o && v == u && y.source() == x.source());
+                eprintln!("  sheet {i}: {:?} {} bytes, before at {was:?}", u.as_deref().map(|u| u.rsplit('/').next().unwrap_or(u)), x.source().len());
+            }
+        }
         return Ok(second);
     }
     gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load, &mut prefetch, None)
@@ -394,11 +400,24 @@ impl Measurer {
         if ids == self.sheet_ids {
             return Ok(false);
         }
+        let started = std::time::Instant::now();
         let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None)];
         let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel)?;
         sheets.extend(loaded);
+        let loaded_at = started.elapsed();
         let (rules, _, faces, _) = compile(&sheets, self.media, cancel)?;
+        let compiled_at = started.elapsed();
         let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel)?;
+        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+            eprintln!(
+                "  measurer sheets: {} ({} KB) loaded in {:.0} ms, compiled in {:.0} ms, fonts {:.0} ms",
+                sheets.len(),
+                sheets.iter().map(|s| s.0.source().len()).sum::<usize>() / 1024,
+                loaded_at.as_secs_f64() * 1000.,
+                (compiled_at - loaded_at).as_secs_f64() * 1000.,
+                (started.elapsed() - compiled_at).as_secs_f64() * 1000.
+            );
+        }
         self.rules = Arc::new(rules);
         self.scope = if fonts.is_empty() { self.base_scope.clone() } else { self.base_scope.with_faces(fonts, cancel)? };
         self.sheet_ids = ids;
@@ -739,8 +758,9 @@ fn trim(v: f64) -> String {
 /// through `resource` (an external one by its href against `base`).
 ///
 /// A sheet linked again later (React apps insert the same one several
-/// times) is kept only at its last place, where it wins anyway, unless it
-/// names cascade layers, whose order its first place sets. The sheets are
+/// times) is kept only at its last place, where it wins anyway; when it
+/// names cascade layers, its first place keeps just those names (one
+/// `@layer` statement), whose order that place sets. The sheets are
 /// held to `CSS_BYTES` in all: one past it is left out, counted as an
 /// issue, and the page renders with the rest, as a browser renders a page
 /// whose sheet failed to load.
@@ -800,21 +820,24 @@ fn load_sheets(
     // The sheet at an href's last place, loaded first so an earlier copy
     // can be checked for layers without loading it again.
     let mut loaded: Vec<Option<Option<Resource>>> = (0..items.len()).map(|_| None).collect();
-    let mut layered = std::collections::HashSet::new();
+    // A repeated sheet's layer order, by href, for its first place.
+    let mut layered = std::collections::HashMap::new();
     for (i, item) in items.iter().enumerate() {
         if let Item::Link(href) = item
             && last.get(href.trim()) == Some(&i)
             && items[..i].iter().any(|e| matches!(e, Item::Link(h) if h.trim() == href.trim()))
         {
             let r = resource(ResourceKind::Stylesheet, base, href)?;
-            if let Some(Resource::Stylesheet(syntax, _)) = &r
+            if let Some(Resource::Stylesheet(syntax, url)) = &r
                 && syntax.source().contains("@layer")
+                && let Some(statement) = css::cascade::layer_statement(syntax, cancel)
             {
-                layered.insert(href.trim());
+                layered.insert(href.trim(), (statement, url.clone()));
             }
             loaded[i] = Some(r);
         }
     }
+    let mut first_seen = std::collections::HashSet::new();
     let mut sheets = Vec::new();
     let mut css_bytes = 0usize;
     for (i, item) in items.iter().enumerate() {
@@ -841,8 +864,15 @@ fn load_sheets(
                 sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None));
             }
             Item::Link(href) => {
-                if last.get(href.trim()) != Some(&i) && !layered.contains(href.trim()) {
-                    continue; // linked again later, where it wins
+                if last.get(href.trim()) != Some(&i) {
+                    // Linked again later, where it wins: here only the layers
+                    // it names, at their first place.
+                    if let Some((statement, url)) = layered.get(href.trim())
+                        && first_seen.insert(href.trim())
+                    {
+                        sheets.push((css::Syntax::parse(Arc::from(statement.as_str()), Default::default(), cancel)?, Origin::Author, url.clone()));
+                    }
+                    continue;
                 }
                 let r = match loaded[i].take() {
                     Some(r) => r,
@@ -1550,7 +1580,7 @@ fn dirty_nodes(doc: &Document, revision: u64) -> Option<std::collections::HashSe
     let mut nodes = Vec::with_capacity(changes.len());
     for (_, change) in changes {
         nodes.push(match change {
-            Change::Node(n) | Change::Attribute { node: n, .. } | Change::Style(n) | Change::Text(n) | Change::Children { node: n, .. } => *n,
+            Change::Node(n) | Change::Attribute { node: n, .. } | Change::Style(n) | Change::Text { node: n, .. } | Change::Children { node: n, .. } => *n,
             Change::Unknown => return None,
         });
     }
@@ -1609,9 +1639,14 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
                 if has_keys.attributes.contains("style") {
                     return Err("a :has() tests [style]".to_owned());
                 }
-                let (down, beside) = invalidation.reach_of(std::iter::once("[style".to_owned()));
-                if !down.is_empty() || !beside.is_empty() {
-                    return Err("a selector reaches from [style]".to_owned());
+                // No selector tests the style attribute (the usual case):
+                // its change matches nothing anew, whatever keyless
+                // compounds (`* + *`, `:first-child`) reach from any change.
+                if invalidation.tests_attribute("style") {
+                    let (down, beside) = invalidation.reach_of(std::iter::once("[style".to_owned()));
+                    if !down.is_empty() || !beside.is_empty() {
+                        return Err("a selector reaches from [style]".to_owned());
+                    }
                 }
                 add(*n, false);
             }
@@ -1628,12 +1663,14 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
             }
             crate::dom::Change::Node(n) => return Err(format!("<{}> attributes", name(*n))),
             // Text alone changes no element's style, bar `:empty` on its
-            // parent (matched again) and a `:has()` testing that (not patched).
-            crate::dom::Change::Text(n) => {
-                if has_keys.empty {
+            // parent (matched again) and a `:has()` testing that (not
+            // patched), and those only when text appeared or went.
+            crate::dom::Change::Text { node: n, emptiness } => {
+                if has_keys.empty && *emptiness {
                     return Err(format!("text in <{}>: a :has() tests :empty", doc.parent(*n).ok().flatten().map(name).unwrap_or_default()));
                 }
-                if rules.uses_empty()
+                if *emptiness
+                    && rules.uses_empty()
                     && let Some(parent) = doc.parent(*n).ok().flatten()
                 {
                     add(parent, true);

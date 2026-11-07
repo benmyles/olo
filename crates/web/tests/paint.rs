@@ -431,6 +431,43 @@ fn a_sheet_linked_again_counts_once_and_too_much_css_drops_sheets_not_the_page()
 }
 
 #[test]
+fn a_repeated_layered_sheet_keeps_its_first_place_in_the_layer_order() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    // Layer b is named first (by x.css's first copy), then a: a wins, red,
+    // as in Chrome. Without the first copy's place, b would come last.
+    let source = Arc::from("<!doctype html><style>body{margin:0}div{height:20px}</style><link rel=stylesheet href=x.css><link rel=stylesheet href=y.css><link rel=stylesheet href=x.css><div></div>");
+    let mut requests = Vec::new();
+    let page = olo_web::page::load_resources(
+        source,
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+        |_, href| {
+            requests.push(href.to_owned());
+            let css = match href {
+                "x.css" => "@layer b { div { background-color: green } @layer inner { div { color: red } } }",
+                "y.css" => "@layer a { div { background-color: red } }",
+                _ => unreachable!(),
+            };
+            Ok(Some(olo_web::css::Syntax::parse(Arc::from(css), Default::default(), None)?))
+        },
+    )
+    .unwrap();
+    assert_eq!(requests, ["x.css", "y.css"]);
+    assert_eq!(page.stylesheet_issues, 0);
+    assert_eq!(pixel(&render(&mut painter, &page.scene), 50, 10), [255, 0, 0, 255]);
+}
+
+#[test]
 fn document_input_restyles_link_states_and_keeps_equal_color_owners_separate() {
     let mut b = Builder::new(Default::default());
     b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
@@ -764,4 +801,43 @@ fn floats_shorten_lines_beside_them_and_clear_moves_below() {
         .expect("cleared block");
     assert!(k.y >= right_float.y + right_float.height, "cleared block y {} below float bottom {}", k.y, right_float.y + right_float.height);
     assert!(right_float.x == 60., "right float against the right edge: {:?}", right_float);
+}
+#[test]
+fn text_edits_restyle_empty_only_when_text_comes_or_goes() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // An :empty test and a :has() of one: a text edit that keeps text
+    // patches the styles; one that empties the element matches again.
+    let mut page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}div{height:20px;color:transparent;background-color:green}div:empty{background-color:red}body:has(div:empty){background-color:blue}</style><div>x</div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let text_of = |doc: &olo_web::dom::Document| {
+        let body = doc.children(doc.root()).unwrap().last().unwrap();
+        let body = doc.children(body).unwrap().last().unwrap();
+        let div = doc.children(body).unwrap().last().unwrap();
+        doc.first_child(div).unwrap().unwrap()
+    };
+    assert_eq!(pixel(&render(&mut painter, &page.scene), 50, 10), [0, 128, 0, 255]);
+    for (text, div, below) in [("yy", [0, 128, 0, 255], [255, 255, 255, 255]), ("", [255, 0, 0, 255], [0, 0, 255, 255]), ("z", [0, 128, 0, 255], [255, 255, 255, 255])] {
+        let mut doc = page.document.clone();
+        let t = text_of(&doc);
+        doc.set_value(t, text).unwrap();
+        page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+        let tile = render(&mut painter, &page.scene);
+        assert_eq!(pixel(&tile, 50, 10), div, "div after {text:?}");
+        assert_eq!(pixel(&tile, 50, 50), below, "body after {text:?}");
+    }
 }

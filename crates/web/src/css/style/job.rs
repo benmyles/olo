@@ -447,7 +447,7 @@ impl<'a> Job<'a> {
                                 )
                             }
                             crate::dom::Change::Style(n) => format!("<{}> style", name(*n)),
-                            crate::dom::Change::Text(n) => format!("text in <{}>", document.parent(*n).ok().flatten().map(name).unwrap_or_default()),
+                            crate::dom::Change::Text { node: n, .. } => format!("text in <{}>", document.parent(*n).ok().flatten().map(name).unwrap_or_default()),
                             crate::dom::Change::Children { node: n, elements } => format!("children of <{}>{}", name(*n), if *elements { " (elements)" } else { "" }),
                             crate::dom::Change::Unknown => "unknown".to_owned(),
                         })
@@ -501,9 +501,13 @@ impl<'a> Job<'a> {
                                 nodes.insert(*n);
                             }
                         }
-                        crate::dom::Change::Text(n) => {
+                        crate::dom::Change::Text { node: n, emptiness } => {
                             geometry_kept = false;
-                            if uses_empty && let Some(p) = document.parent(*n).ok().flatten() {
+                            // Only text appearing or going flips `:empty`.
+                            if uses_empty
+                                && *emptiness
+                                && let Some(p) = document.parent(*n).ok().flatten()
+                            {
                                 nodes.insert(p);
                                 if has_keys.empty {
                                     dirty_ancestors(p, &mut nodes);
