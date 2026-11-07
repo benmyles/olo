@@ -61,8 +61,13 @@ something nobody here has is in "Blocked", with what it waits for.
   (NVDEC's through CUDA–Vulkan interop, VA-API's as dmabufs; the copy
   and upload are most of the 1.1 ms a frame left); VP9 at 4K and
   10-bit video checked on samples (none here yet, and nothing here
-  encodes VP9); the CPU path's SIMD; a minute of each format with no
-  frame dropped.
+  encodes VP9); a minute of each format with no frame dropped. The
+  processor's own: rav1d's and OpenH264's assembly is built in now
+  (4K AV1 32 → 85 pictures a second, H.264 45 → 53–98); still, every
+  decoder's pictures are copied as 16-bit samples (25 MB a 4K
+  picture, even 8-bit video's) and then made 8-bit planes: keep 8-bit
+  video's planes as bytes (the video thread spends a quarter of a core
+  in the kernel at 4K60 AV1, faulting in those copies).
 
 - **Olo's own login screen and boot splash** (Ben, 2026-11-01; not
   blocked: "neither of those are blocked on me", 2026-11-06). A display

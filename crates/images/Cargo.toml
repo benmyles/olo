@@ -10,10 +10,11 @@ license.workspace = true
 olo-crash.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff", "ico", "rayon"] }
 jxl-oxide = { version = "0.12.6", features = ["image"] }
-# BSD-2-Clause AV1 decoder (no asm: pure Rust) and MPL-2.0 container parser.
 filmcraft-vp9 = "0.9"
 rust_h265 = "0.4"
-rav1d = { version = "1.1", default-features = false, features = ["bitdepth_8", "bitdepth_16"] }
+# BSD-2-Clause AV1 decoder, with its x86 assembly (SSE4 and AVX2, chosen
+# at run time: nasm builds it), and MPL-2.0 container parser.
+rav1d = { version = "1.1", default-features = false, features = ["asm", "bitdepth_8", "bitdepth_16"] }
 avif-parse = "2"
 heifer = "0.2"
 # Embedded colour profiles into sRGB (pure Rust; the image crate's own).
