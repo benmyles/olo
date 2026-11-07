@@ -523,3 +523,53 @@ fn opacity_composites_a_box_and_its_content_as_one_layer() {
     assert!((190..=192).contains(&px[0]) && (126..=129).contains(&px[1]) && (190..=192).contains(&px[2]), "{px:?}");
     assert!(s.commands().len() >= 2);
 }
+
+#[test]
+fn transforms_move_rotate_and_scale_a_box_with_its_content() {
+    let mut p = paint::Engine::default();
+    // translate: the box's pixels land 30px right; its old place is white.
+    let s = scene("<div></div>", "div{width:20px;height:20px;background:blue;transform:translate(30px,10px)}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 5, 5), [255; 4]);
+    assert_eq!(pixel(&t, 40, 20), [0, 0, 255, 255]);
+    // Percentages are of the box's own size; translate(-50%,-50%) centres a
+    // box placed at (40, 40) on that point.
+    let s = scene("<div></div>", "div{width:20px;height:20px;margin:40px;background:blue;transform:translate(-50%,-50%)}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 32, 32), [0, 0, 255, 255]);
+    assert_eq!(pixel(&t, 48, 48), [0, 0, 255, 255]);
+    assert_eq!(pixel(&t, 52, 52), [255; 4]);
+    // scale(2) about the centre (the default origin) doubles the box both ways.
+    let s = scene("<div></div>", "div{width:20px;height:20px;margin:40px;background:blue;transform:scale(2)}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 32, 32), [0, 0, 255, 255]);
+    assert_eq!(pixel(&t, 68, 68), [0, 0, 255, 255]);
+    assert_eq!(pixel(&t, 25, 25), [255; 4]);
+    // transform-origin: scaled about its top-left corner, the box grows right and down only.
+    let s = scene("<div></div>", "div{width:20px;height:20px;margin:40px;background:blue;transform:scale(2);transform-origin:0 0}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 35, 35), [255; 4]);
+    assert_eq!(pixel(&t, 75, 75), [0, 0, 255, 255]);
+    // rotate(45deg): the corners leave the box; the centre and a point on the
+    // diagonal stay blue, a former corner is white.
+    let s = scene("<div></div>", "div{width:40px;height:40px;margin:30px;background:blue;transform:rotate(45deg)}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 50, 50), [0, 0, 255, 255]);
+    assert_eq!(pixel(&t, 32, 32), [255; 4], "former corner");
+    assert_eq!(pixel(&t, 50, 26), [0, 0, 255, 255], "rotated corner reaches further up");
+    // Content follows: text inside a translated box paints at the new place,
+    // and a nested transform composes with its parent's.
+    let s = scene("<div><p>A</p></div>", "div{width:40px;height:40px;transform:translate(20px,0)}p{color:green;transform:translate(20px,0)}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 1, 3), [255; 4]);
+    assert_eq!(pixel(&t, 41, 3), [0, 128, 0, 255]);
+    // An overflow clip inside a transformed box moves with it.
+    let s = scene("<div><p></p></div>", "div{width:20px;height:20px;margin:40px;overflow:hidden;transform:translate(30px,0)}p{width:60px;height:60px;background:blue}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 75, 45), [0, 0, 255, 255]);
+    assert_eq!(pixel(&t, 45, 45), [255; 4], "old place");
+    assert_eq!(pixel(&t, 95, 45), [255; 4], "clipped at the moved box's edge");
+    // transform: none and an identity list paint in place.
+    let s = scene("<div></div>", "div{width:20px;height:20px;background:blue;transform:none}", &mut p);
+    assert_eq!(pixel(&render(&mut p, &s), 5, 5), [0, 0, 255, 255]);
+}

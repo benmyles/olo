@@ -12,18 +12,19 @@ pub(super) struct Index {
     ids: Box<[u32]>,
 }
 impl Index {
-    pub fn new(commands: &[Command], cancel: Option<&AtomicBool>) -> Result<Self> {
+    pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
         check(cancel)?;
+        let extent = |id: u32| super::scene::extent(&commands[id as usize], transforms);
         let mut ids: Vec<u32> = (0..commands.len() as u32).collect();
         ids.sort_unstable_by(|&a, &b| {
-            let a = commands[a as usize].bounds;
-            let b = commands[b as usize].bounds;
+            let a = extent(a);
+            let b = extent(b);
             (a.y + a.height / 2.).total_cmp(&(b.y + b.height / 2.))
         });
         let mut nodes = Vec::new();
         for (i, chunk) in ids.chunks(8).enumerate() {
             check(cancel)?;
-            let bounds = chunk.iter().map(|&id| commands[id as usize].bounds).reduce(union).unwrap();
+            let bounds = chunk.iter().map(|&id| extent(id)).reduce(union).unwrap();
             nodes.push(Node { bounds, first: (i * 8) as u32, count: chunk.len() as u8, leaf: true });
         }
         let mut from = 0;
@@ -41,7 +42,7 @@ impl Index {
         }
         Ok(Self { nodes: nodes.into_boxed_slice(), ids: ids.into_boxed_slice() })
     }
-    pub fn query(&self, commands: &[Command], region: layout::Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
+    pub fn query(&self, commands: &[Command], transforms: &[[f64; 6]], region: layout::Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
         out.clear();
         if self.nodes.is_empty() {
             return Ok(());
@@ -56,7 +57,7 @@ impl Index {
             }
             if n.leaf {
                 for &id in &self.ids[n.first as usize..n.first as usize + n.count as usize] {
-                    if intersects(commands[id as usize].bounds, region) {
+                    if intersects(super::scene::extent(&commands[id as usize], transforms), region) {
                         out.push(id)
                     }
                 }

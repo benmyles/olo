@@ -55,6 +55,26 @@ pub struct Command {
     pub(super) clip: u32,
     /// The innermost opacity group this command paints inside, or NONE.
     pub(super) group: u32,
+    /// The cumulative CSS transform this command paints through (an index
+    /// into the scene's transforms), or NONE. `bounds` and the primitive's
+    /// geometry are untransformed; `extent` applies it.
+    pub(super) transform: u32,
+}
+/// The axis-aligned bounds of `r` mapped through `m`.
+pub(super) fn aabb(m: [f64; 6], r: Rect) -> Rect {
+    let corners = [(r.x, r.y), (r.x + r.width, r.y), (r.x, r.y + r.height), (r.x + r.width, r.y + r.height)].map(|(x, y)| crate::css::properties::apply_transform(m, x, y));
+    let (mut x0, mut y0, mut x1, mut y1) = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for (x, y) in corners {
+        x0 = x0.min(x);
+        y0 = y0.min(y);
+        x1 = x1.max(x);
+        y1 = y1.max(y);
+    }
+    Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+}
+/// A command's bounds in document space, its transform applied.
+pub(super) fn extent(c: &Command, transforms: &[[f64; 6]]) -> Rect {
+    if c.transform == NONE { c.bounds } else { aabb(transforms[c.transform as usize], c.bounds) }
 }
 /// A box painted as a whole at an opacity (CSS Color 4 §2.2): its commands
 /// are contiguous in paint order and composite through one layer.
@@ -69,12 +89,17 @@ pub struct Group {
 pub struct Clip {
     pub rect: Rect,
     pub radii: Option<decoration::Radii>,
+    /// The transform the clipping box paints through, or NONE.
+    pub transform: u32,
 }
 pub struct Scene {
     pub(super) layout: Arc<layout::Layout>,
     pub(super) commands: Box<[Command]>,
     pub(super) clips: Box<[Clip]>,
     pub(super) groups: Box<[Group]>,
+    /// Cumulative affine matrices of transformed boxes, document space to
+    /// document space (CSS Transforms 1 §6).
+    pub(super) transforms: Box<[[f64; 6]]>,
     pub(super) vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     pub(super) vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     pub(super) index: index::Index,
@@ -202,10 +227,13 @@ impl Scene {
         if !valid(region) {
             return Err(Error::Invalid);
         }
-        self.index.query(&self.commands, region, out, cancel)?;
+        self.index.query(&self.commands, &self.transforms, region, out, cancel)?;
         out.retain(|&id| {
             let c = &self.commands[id as usize];
-            c.clip == NONE || intersects(self.clips[c.clip as usize].rect, region)
+            c.clip == NONE || {
+                let clip = &self.clips[c.clip as usize];
+                intersects(if clip.transform == NONE { clip.rect } else { aabb(self.transforms[clip.transform as usize], clip.rect) }, region)
+            }
         });
         Ok(())
     }
@@ -222,6 +250,7 @@ struct State {
     context: u32,
     clip: u32,
     group: u32,
+    transform: u32,
 }
 /// One CSS stacking context (CSS 2.2 Appendix E): the root, positioned boxes
 /// (z-index: auto ones painted as if they were contexts), opacity groups and
@@ -256,6 +285,8 @@ pub struct BuildJob<'a> {
     clips: Vec<Clip>,
     groups: Vec<Group>,
     current_group: u32,
+    transforms: Vec<[f64; 6]>,
+    current_transform: u32,
     vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
@@ -316,6 +347,8 @@ impl<'a> BuildJob<'a> {
             clips: Vec::new(),
             groups: Vec::new(),
             current_group: NONE,
+            transforms: Vec::new(),
+            current_transform: NONE,
             vector_geometry: Default::default(),
             vector_clips: Default::default(),
             vector_clip_bytes: 0,
@@ -348,9 +381,39 @@ impl<'a> BuildJob<'a> {
         if self.draft.len() >= self.limits.commands {
             return Err(Error::Limit);
         }
-        self.extent = union(self.extent, if clip == NONE { bounds } else { intersection(bounds, self.clips[clip as usize].rect) });
-        self.draft.push(Draft { context, slot, text, command: Command { bounds, primitive, clip, group: self.current_group } });
+        let command = Command { bounds, primitive, clip, group: self.current_group, transform: self.current_transform };
+        let reach = extent(&command, &self.transforms);
+        self.extent = union(self.extent, if clip == NONE { reach } else { intersection(reach, self.clip_extent(clip)) });
+        self.draft.push(Draft { context, slot, text, command });
         Ok(())
+    }
+    fn clip_extent(&self, clip: u32) -> Rect {
+        let c = &self.clips[clip as usize];
+        if c.transform == NONE { c.rect } else { aabb(self.transforms[c.transform as usize], c.rect) }
+    }
+    /// The box's `transform` about its `transform-origin`, composed with its
+    /// parent's: the matrix its subtree paints through.
+    fn transform_of(&mut self, s: &Style, outer: Rect, parent: u32) -> Result<u32> {
+        let Value::Transforms(t) = s.value(P::Transform) else { return Ok(parent) };
+        let local = t.matrix(outer.width, outer.height);
+        let (ox, oy) = match s.value(P::TransformOrigin) {
+            Value::Positions(p) if !p.0.is_empty() => (decoration::resolve_any(&p.0[0].0, outer.width), decoration::resolve_any(&p.0[0].1, outer.height)),
+            _ => (outer.width / 2., outer.height / 2.),
+        };
+        let (ox, oy) = (outer.x + ox, outer.y + oy);
+        let about = crate::css::properties::multiply_transforms([1., 0., 0., 1., ox, oy], crate::css::properties::multiply_transforms(local, [1., 0., 0., 1., -ox, -oy]));
+        let m = if parent == NONE { about } else { crate::css::properties::multiply_transforms(self.transforms[parent as usize], about) };
+        if !m.iter().all(|v| v.is_finite()) {
+            return Err(Error::Invalid);
+        }
+        if crate::css::properties::is_identity(m) && parent == NONE {
+            return Ok(NONE);
+        }
+        if self.transforms.len() >= self.limits.commands {
+            return Err(Error::Limit);
+        }
+        self.transforms.push(m);
+        Ok(self.transforms.len() as u32 - 1)
     }
     #[allow(clippy::too_many_arguments)]
     fn decorate(&mut self, id: BoxId, s: &Style, g: layout::Geometry, outer: Rect, group: (u32, u8), clip: u32, text: bool) -> Result<()> {
@@ -651,14 +714,16 @@ impl<'a> BuildJob<'a> {
                 break;
             };
             self.next += 1;
-            let (parent, mut context, mut clip, parent_group) = if let Some(parent) = b.parent {
+            let (parent, mut context, mut clip, parent_group, parent_transform) = if let Some(parent) = b.parent {
                 let p = &self.states[parent.index()];
-                (p.origin, p.context, p.clip, p.group)
+                (p.origin, p.context, p.clip, p.group, p.transform)
             } else {
-                (Point::default(), 0, NONE, NONE)
+                (Point::default(), 0, NONE, NONE, NONE)
             };
             self.current_group = parent_group;
             let mut children_group = parent_group;
+            self.current_transform = parent_transform;
+            let mut children_transform = parent_transform;
             // In-flow content paints in slot 2 of its context; a box that
             // starts a context paints its own decoration in slot 0 of the new one.
             let mut group = (context, 2);
@@ -680,7 +745,6 @@ impl<'a> BuildJob<'a> {
             if !valid(outer) {
                 return Err(Error::Invalid);
             }
-            self.extent = union(self.extent, if clip == NONE { outer } else { intersection(outer, self.clips[clip as usize].rect) });
             let local = g.content_box();
             let origin = Point { x: parent.x + local.x, y: parent.y + local.y };
             let mut children_clip = clip;
@@ -688,6 +752,13 @@ impl<'a> BuildJob<'a> {
                 BoxKind::Viewport => {}
                 BoxKind::Block { .. } | BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. } => {
                     let s = tree.style(id).ok_or(Error::Invalid)?;
+                    // A transformed box paints its subtree through its matrix
+                    // and is a stacking context (CSS Transforms 1 §3).
+                    let transformed = self.transform_of(s, outer, parent_transform)?;
+                    if transformed != parent_transform {
+                        self.current_transform = transformed;
+                        children_transform = transformed;
+                    }
                     let opacity = s.value(P::Opacity).scalar().unwrap_or(1.).clamp(0., 1.);
                     if opacity < 1. {
                         if self.groups.len() >= self.limits.commands {
@@ -710,7 +781,7 @@ impl<'a> BuildJob<'a> {
                         matches!(p.value(P::Display), Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flex | crate::css::properties::Inner::Grid, .. }))
                     });
                     let z = if positioned || item { z } else { None };
-                    if positioned || z.is_some() || opacity < 1. || isolated {
+                    if positioned || z.is_some() || opacity < 1. || isolated || transformed != parent_transform {
                         if self.contexts.len() >= self.limits.commands {
                             return Err(Error::Limit);
                         }
@@ -747,7 +818,7 @@ impl<'a> BuildJob<'a> {
                         let radii = decoration::radii(s, outer);
                         let radii = if x && y && decoration::rounded(&radii) && clip_rect == p { Some(decoration::inset_radii(&radii, g.border_width)) } else { None };
                         children_clip = self.clips.len() as u32;
-                        self.clips.push(Clip { rect: clip_rect, radii });
+                        self.clips.push(Clip { rect: clip_rect, radii, transform: children_transform });
                     }
                 }
                 BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. } => {}
@@ -760,7 +831,7 @@ impl<'a> BuildJob<'a> {
                     }
                 }
             }
-            self.states.push(State { origin, context, clip: children_clip, group: children_group });
+            self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform });
             self.progress.boxes += 1;
             self.progress.commands = self.draft.len();
         }
@@ -792,13 +863,14 @@ impl<'a> BuildJob<'a> {
         let key = |d: &Draft| contexts[d.context as usize].path.iter().copied().chain(std::iter::once(u32::from(d.slot)));
         self.draft.sort_by(|a, b| key(a).cmp(key(b)).then(a.text.cmp(&b.text)));
         let commands: Box<[Command]> = self.draft.into_iter().map(|d| d.command).collect();
-        let index = index::Index::new(&commands, self.cancel)?;
+        let index = index::Index::new(&commands, &self.transforms, self.cancel)?;
         Ok(Arc::new(Scene {
             extent: self.extent,
             layout: self.layout,
             commands,
             clips: self.clips.into_boxed_slice(),
             groups: self.groups.into_boxed_slice(),
+            transforms: self.transforms.into_boxed_slice(),
             vector_geometry: self.vector_geometry,
             vector_clips: self.vector_clips,
             index,

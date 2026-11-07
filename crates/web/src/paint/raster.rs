@@ -55,6 +55,20 @@ impl Engine {
         // Subtract the tile origin in f64 before converting to raster coordinates.
         // Global f32 coordinates discard subpixels in long documents.
         let transform = Transform::identity();
+        // A CSS transform in device space: document pixels through the box's
+        // matrix, scaled, less the tile origin. Built in f64 so far-down
+        // tiles keep their subpixels.
+        let device = |t: u32| -> Transform {
+            if t == u32::MAX {
+                return Transform::identity();
+            }
+            let m = scene.transforms[t as usize];
+            let (rx, ry) = (f64::from(region.x), f64::from(region.y));
+            Transform::from_row(m[0] as f32, m[1] as f32, m[2] as f32, m[3] as f32, (m[0] * rx + m[2] * ry + scale * m[4] - rx) as f32, (m[1] * rx + m[3] * ry + scale * m[5] - ry) as f32)
+        };
+        // A rect in untransformed device space, unclamped: the transform
+        // decides where it lands, and the tile clips.
+        let raw = |r: Rect| tiny_skia::Rect::from_xywh((r.x * scale - f64::from(region.x)) as f32, (r.y * scale - f64::from(region.y)) as f32, (r.width * scale) as f32, (r.height * scale) as f32);
         let local = |r: Rect| {
             let x = (r.x * scale).round().max(f64::from(region.x));
             let y = (r.y * scale).round().max(f64::from(region.y));
@@ -121,9 +135,14 @@ impl Engine {
                 } else {
                     let clip = &scene.clips[c.clip as usize];
                     let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
+                    let ct = device(clip.transform);
                     if let Some(radii) = &clip.radii {
                         if let Some(path) = super::decoration::path(clip.rect, radii, scale, region) {
-                            m.fill_path(&path, FillRule::Winding, true, transform);
+                            m.fill_path(&path, FillRule::Winding, true, ct);
+                        }
+                    } else if clip.transform != u32::MAX {
+                        if let Some(r) = raw(clip.rect) {
+                            m.fill_path(&PathBuilder::from_rect(r), FillRule::Winding, true, ct);
                         }
                     } else if let Some(r) = local(clip.rect) {
                         let path = PathBuilder::from_rect(r);
@@ -133,6 +152,7 @@ impl Engine {
                 };
                 last_clip = c.clip;
             }
+            let ct = device(c.transform);
             match &c.primitive {
                 Primitive::Image { owner, image } => {
                     let image = scene.layout.cache().tree().image(*image).ok_or(Error::Invalid)?;
@@ -145,7 +165,11 @@ impl Engine {
                     if bounds.width == 0. || bounds.height == 0. {
                         continue;
                     }
-                    super::image::raster(self, out, image, bounds, scale, region, mask.as_ref(), cancel)?;
+                    if c.transform == u32::MAX {
+                        super::image::raster(self, out, image, bounds, scale, region, mask.as_ref(), cancel)?;
+                    } else {
+                        super::image::transformed(self, out, image, bounds, scale, region, ct, mask.as_ref(), cancel)?;
+                    }
                 }
                 Primitive::Vector { owner, vector, origin } => {
                     let tree = scene.layout.cache().tree();
@@ -188,13 +212,18 @@ impl Engine {
                         ((bounds.x + tx) * scale - f64::from(region.x)) as f32,
                         ((bounds.y + ty) * scale - f64::from(region.y)) as f32,
                     );
+                    let transform = transform.post_concat(ct);
                     if !transform.is_valid() {
                         return Err(Error::Unsupported("SVG viewport transform precision"));
                     }
                     super::vector::raster(out, vector, used_geometry, resolved_clips.map(Vec::as_slice).unwrap_or(&[]), transform, vector_mask, self.limits(), &mut layer_work, cancel)?;
                 }
                 Primitive::Fill { color } => {
-                    if let Some(r) = local(c.bounds) {
+                    if c.transform != u32::MAX {
+                        if let Some(r) = raw(c.bounds) {
+                            out.fill_rect(r, &paint(*color), ct, mask.as_ref());
+                        }
+                    } else if let Some(r) = local(c.bounds) {
                         out.fill_rect(r, &paint(*color), transform, mask.as_ref());
                     }
                 }
@@ -202,13 +231,13 @@ impl Engine {
                     let tree = scene.layout.cache().tree();
                     let s = tree.style(*owner).ok_or(Error::Invalid)?;
                     let g = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
-                    super::decoration::raster(out, s, g, *outer, scale, region, mask.as_ref(), self.limits(), cancel)?;
+                    super::decoration::raster(out, s, g, *outer, scale, region, mask.as_ref(), ct, self.limits(), cancel)?;
                 }
                 Primitive::Border { owner, colors } => {
                     let b = scene.layout.geometry(*owner).ok_or(Error::Invalid)?.border_width;
                     let o = c.bounds;
                     let inner = Rect { x: o.x + b.left, y: o.y + b.top, width: (o.width - b.left - b.right).max(0.), height: (o.height - b.top - b.bottom).max(0.) };
-                    super::border::raster(out, o, inner, *colors, scale, region, mask.as_ref(), cancel)?;
+                    super::border::raster(out, o, inner, *colors, scale, region, mask.as_ref(), ct, cancel)?;
                 }
                 Primitive::Text { owner, fragment, glyphs, origin, color, .. } => {
                     let text = scene.layout.text_layout(*owner).ok_or(Error::Invalid)?;
@@ -227,6 +256,7 @@ impl Engine {
                             if !t.is_finite() || t.sx == 0. || t.sy == 0. {
                                 return Err(Error::Invalid);
                             }
+                            let t = t.post_concat(ct);
                             out.fill_path(&path, &p, FillRule::Winding, t, mask.as_ref());
                         }
                         pen += i64::from(g.x_advance);

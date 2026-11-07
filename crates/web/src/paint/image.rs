@@ -4,7 +4,7 @@ use super::mipmap::{Cache, Plane};
 use super::*;
 use crate::layout::Rect;
 use std::sync::Arc;
-use tiny_skia::{Mask, Pixmap};
+use tiny_skia::{FilterQuality, Mask, Paint, Pattern, Pixmap, SpreadMode, Transform};
 // Normalized binary16 texels, retained as a tiny lookup over the original
 // RGBA8 storage. Native Chrome observations distinguish this from rounding
 // only the final filtered value. No expanded copy of an image is retained.
@@ -157,4 +157,76 @@ fn channel(p: Plane<'_>, x: &Tap, y: &Tap, c: usize) -> f64 {
     let upper = a + (b - a) * x.f;
     let lower = d + (e - d) * x.f;
     upper + (lower - upper) * y.f
+}
+
+/// Draw an image through a CSS transform: the source (at the mip level
+/// nearest its drawn size) sampled bilinearly as a pattern over its box,
+/// composited in one fill. Anchored in device space like the axis-aligned
+/// path, but resampled: transformed pixels have no device grid to snap to.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn transformed(
+    engine: &mut Engine,
+    out: &mut Pixmap,
+    image: &Arc<crate::image::Image>,
+    bounds: Rect,
+    scale: f64,
+    region: DeviceRect,
+    transform: Transform,
+    mask: Option<&Mask>,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
+    let Some(rect) =
+        tiny_skia::Rect::from_xywh((bounds.x * scale - f64::from(region.x)) as f32, (bounds.y * scale - f64::from(region.y)) as f32, (bounds.width * scale) as f32, (bounds.height * scale) as f32)
+    else {
+        return Ok(());
+    };
+    // The drawn size of the image, for its mip level: the box's size through
+    // the matrix's scale, so a shrunk image is averaged, not skipped through.
+    let (sx, sy) = ((transform.sx.hypot(transform.ky)) as f64, (transform.kx.hypot(transform.sy)) as f64);
+    let (width, height) = (bounds.width * scale * sx, bounds.height * scale * sy);
+    if !(width.is_finite() && height.is_finite()) {
+        return Err(Error::Invalid);
+    }
+    if width <= 0. || height <= 0. {
+        return Ok(());
+    }
+    let max_level = 31 - image.width().max(image.height()).leading_zeros();
+    let lod =
+        if width < f64::from(image.width()) && height < f64::from(image.height()) { ((f64::from(image.width()) / width).max(f64::from(image.height()) / height).log2() - 0.5).max(0.) } else { 0. };
+    let level = (lod.round() as u32).min(max_level);
+    let source = if level == 0 {
+        None
+    } else {
+        let limits = engine.limits();
+        let cache = engine.image_mips.get_or_insert_with(|| Box::new(Cache::new(limits.image_mip_bytes, limits.image_mip_sources)));
+        match cache.get(image, level, cancel) {
+            Ok(level) => Some(level),
+            Err(Error::Limit) => None,
+            Err(error) => return Err(error),
+        }
+    };
+    let plane = source.as_ref().map_or_else(|| Plane::from(image.as_ref()), |p| p.plane());
+    let pixmap = engine.premultiplied(image, level, plane, cancel)?;
+    let pattern = Transform::from_scale(rect.width() / pixmap.width() as f32, rect.height() / pixmap.height() as f32).post_translate(rect.x(), rect.y());
+    let paint = Paint { shader: Pattern::new((*pixmap).as_ref(), SpreadMode::Pad, FilterQuality::Bilinear, 1., pattern), anti_alias: true, ..Default::default() };
+    out.fill_rect(rect, &paint, transform, mask);
+    Ok(())
+}
+impl Engine {
+    /// The image's pixels at a mip level as a tiny-skia surface (the same
+    /// premultiplied RGBA8), kept for the next tile that draws the same one.
+    fn premultiplied(&mut self, image: &Arc<crate::image::Image>, level: u32, plane: Plane<'_>, cancel: Option<&AtomicBool>) -> Result<Arc<Pixmap>> {
+        let key = (Arc::as_ptr(image) as usize, level);
+        if let Some((k, p)) = &self.transformed_image
+            && *k == key
+        {
+            return Ok(p.clone());
+        }
+        check(cancel)?;
+        let size = tiny_skia::IntSize::from_wh(plane.width, plane.height).ok_or(Error::Invalid)?;
+        let pixmap = Pixmap::from_vec(plane.rgba.to_vec(), size).ok_or(Error::Invalid)?;
+        let pixmap = Arc::new(pixmap);
+        self.transformed_image = Some((key, pixmap.clone()));
+        Ok(pixmap)
+    }
 }

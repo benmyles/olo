@@ -20,7 +20,11 @@ impl math::Context for Basis {
     }
 }
 fn resolve(n: &crate::css::properties::Numeric, basis: f64) -> f64 {
-    n.resolve(&Basis(basis), &mut math::Scratch::default(), Default::default(), None).unwrap_or(0.).max(0.)
+    resolve_any(n, basis).max(0.)
+}
+/// A computed length-percentage in CSS pixels, percentages of `basis`.
+pub(super) fn resolve_any(n: &crate::css::properties::Numeric, basis: f64) -> f64 {
+    n.resolve(&Basis(basis), &mut math::Scratch::default(), Default::default(), None).unwrap_or(0.)
 }
 /// The corner radii of a box, percentages against its size, scaled down
 /// together when adjacent radii would overlap (CSS Backgrounds 3 §5.5).
@@ -278,6 +282,7 @@ pub(super) fn raster(
     scale: f64,
     region: DeviceRect,
     mask: Option<&Mask>,
+    transform: Transform,
     limits: Limits,
     cancel: Option<&AtomicBool>,
 ) -> Result<()> {
@@ -306,7 +311,7 @@ pub(super) fn raster(
             }
             // Coverage of the shadow shape, blurred, with the box cut out.
             let mut coverage = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
-            coverage.fill_path(&shadow_path, FillRule::Winding, true, Transform::identity());
+            coverage.fill_path(&shadow_path, FillRule::Winding, true, transform);
             if blur_radius > 0. {
                 let sigma = blur_radius * scale / 2.;
                 blur(coverage.data_mut(), w, h, sigma, cancel)?;
@@ -314,7 +319,7 @@ pub(super) fn raster(
             let mut layer = Pixmap::new(region.width, region.height).ok_or(Error::Limit)?;
             layer.fill_rect(tiny_skia::Rect::from_xywh(0., 0., region.width as f32, region.height as f32).ok_or(Error::Invalid)?, &paint_for(color), Transform::identity(), Some(&coverage));
             let cut = Paint { blend_mode: BlendMode::DestinationOut, anti_alias: true, ..Default::default() };
-            layer.fill_path(&border_path, &cut, FillRule::Winding, Transform::identity(), None);
+            layer.fill_path(&border_path, &cut, FillRule::Winding, transform, None);
             out.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), mask);
         }
     }
@@ -360,8 +365,8 @@ pub(super) fn raster(
         let bg = s.used_color(P::BackgroundColor)?.srgb8_clipped();
         if bg[3] != 0 {
             let mut p = paint_for(bg);
-            p.anti_alias = rounded(&radii);
-            out.fill_path(clip_path, &p, FillRule::Winding, Transform::identity(), mask);
+            p.anti_alias = rounded(&radii) || !transform.is_identity();
+            out.fill_path(clip_path, &p, FillRule::Winding, transform, mask);
         }
         if let Value::Images(images) = s.value(P::BackgroundImage) {
             let origin_box = match s.value(P::BackgroundOrigin) {
@@ -372,8 +377,8 @@ pub(super) fn raster(
             for image in images.0.iter().rev().flatten() {
                 check(cancel)?;
                 let Some(shader) = shader(image, current, origin_box, scale, region) else { continue };
-                let p = Paint { shader, anti_alias: rounded(&radii), ..Default::default() };
-                out.fill_path(clip_path, &p, FillRule::Winding, Transform::identity(), mask);
+                let p = Paint { shader, anti_alias: rounded(&radii) || !transform.is_identity(), ..Default::default() };
+                out.fill_path(clip_path, &p, FillRule::Winding, transform, mask);
             }
         }
     }
@@ -396,7 +401,7 @@ pub(super) fn raster(
                 if let Some(ring) = b.finish() {
                     let mut p = paint_for(colors[i]);
                     p.anti_alias = true;
-                    out.fill_path(&ring, &p, FillRule::EvenOdd, Transform::identity(), mask);
+                    out.fill_path(&ring, &p, FillRule::EvenOdd, transform, mask);
                 }
             }
         } else {
@@ -406,7 +411,7 @@ pub(super) fn raster(
                 width: (outer.width - g.border_width.horizontal()).max(0.),
                 height: (outer.height - g.border_width.vertical()).max(0.),
             };
-            super::border::raster(out, outer, inner, [colors[0], colors[1], colors[2], colors[3]], scale, region, mask, cancel)?;
+            super::border::raster(out, outer, inner, [colors[0], colors[1], colors[2], colors[3]], scale, region, mask, transform, cancel)?;
         }
     }
     Ok(())

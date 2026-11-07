@@ -24,6 +24,9 @@ pub struct CacheStats {
 }
 pub struct Engine {
     pub(super) image_mips: Option<Box<super::mipmap::Cache>>,
+    /// The last image drawn through a transform, as a surface, keyed by its
+    /// pointer and mip level.
+    pub(super) transformed_image: Option<((usize, u32), std::sync::Arc<tiny_skia::Pixmap>)>,
     fonts: HashMap<usize, FontEntry>,
     limits: Limits,
     clock: u64,
@@ -36,7 +39,7 @@ impl Default for Engine {
 }
 impl Engine {
     pub fn new(limits: Limits) -> Self {
-        Self { image_mips: None, fonts: HashMap::new(), limits, clock: 0, stats: CacheStats::default() }
+        Self { image_mips: None, transformed_image: None, fonts: HashMap::new(), limits, clock: 0, stats: CacheStats::default() }
     }
     pub(super) fn limits(&self) -> Limits {
         self.limits

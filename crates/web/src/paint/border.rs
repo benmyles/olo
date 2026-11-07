@@ -21,13 +21,22 @@ impl Edges {
         }
     }
 }
-fn fill(out: &mut Pixmap, e: Edges, color: [u8; 4], mask: Option<&Mask>) {
-    if color[3] == 0 || e.left >= e.right || e.top >= e.bottom || e.right <= 0. || e.bottom <= 0. || e.left >= f64::from(out.width()) || e.top >= f64::from(out.height()) {
+fn fill(out: &mut Pixmap, e: Edges, color: [u8; 4], mask: Option<&Mask>, transform: Transform) {
+    if color[3] == 0 || e.left >= e.right || e.top >= e.bottom {
+        return;
+    }
+    let mut p = Paint::default();
+    p.set_color_rgba8(color[0], color[1], color[2], color[3]);
+    if !transform.is_identity() {
+        // Transformed: the strip lands where the matrix says; the tile clips.
+        let Some(rect) = tiny_skia::Rect::from_ltrb(e.left as f32, e.top as f32, e.right as f32, e.bottom as f32) else { return };
+        out.fill_rect(rect, &p, transform, mask);
+        return;
+    }
+    if e.right <= 0. || e.bottom <= 0. || e.left >= f64::from(out.width()) || e.top >= f64::from(out.height()) {
         return;
     }
     let Some(rect) = tiny_skia::Rect::from_ltrb(e.left.max(0.) as f32, e.top.max(0.) as f32, e.right.min(f64::from(out.width())) as f32, e.bottom.min(f64::from(out.height())) as f32) else { return };
-    let mut p = Paint::default();
-    p.set_color_rgba8(color[0], color[1], color[2], color[3]);
     p.anti_alias = false;
     out.fill_rect(rect, &p, Transform::identity(), mask);
 }
@@ -40,7 +49,7 @@ fn premul(c: [u8; 4]) -> [u32; 4] {
 #[allow(clippy::too_many_arguments)] // One bounded corner and its orientation/colours.
 fn corner(out: &mut Pixmap, e: Edges, flip_x: bool, flip_y: bool, horizontal: [u8; 4], vertical: [u8; 4], mask: Option<&Mask>, cancel: Option<&AtomicBool>) -> Result<()> {
     if horizontal == vertical {
-        fill(out, e, horizontal, mask);
+        fill(out, e, horizontal, mask, Transform::identity());
         return Ok(());
     }
     let width = e.right - e.left;
@@ -92,7 +101,17 @@ fn corner(out: &mut Pixmap, e: Edges, flip_x: bool, flip_y: bool, horizontal: [u
     Ok(())
 }
 #[allow(clippy::too_many_arguments)] // Tile, device geometry, colours and cancellation.
-pub(super) fn raster(out: &mut Pixmap, outer: Rect, inner: Rect, colors: [[u8; 4]; 4], scale: f64, region: DeviceRect, mask: Option<&Mask>, cancel: Option<&AtomicBool>) -> Result<()> {
+pub(super) fn raster(
+    out: &mut Pixmap,
+    outer: Rect,
+    inner: Rect,
+    colors: [[u8; 4]; 4],
+    scale: f64,
+    region: DeviceRect,
+    mask: Option<&Mask>,
+    transform: Transform,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
     let o = Edges::new(outer, scale, region);
     let mut i = Edges::new(inner, scale, region);
     if ![o.left, o.top, o.right, o.bottom, i.left, i.top, i.right, i.bottom].into_iter().all(f64::is_finite) {
@@ -104,17 +123,19 @@ pub(super) fn raster(out: &mut Pixmap, outer: Rect, inner: Rect, colors: [[u8; 4
     i.bottom = i.bottom.clamp(i.top, o.bottom);
     let top = Edges { left: i.left, top: o.top, right: i.right, bottom: i.top };
     let bottom = Edges { left: i.left, top: i.bottom, right: i.right, bottom: o.bottom };
-    if colors.iter().all(|c| *c == colors[0]) {
-        fill(out, Edges { left: o.left, top: o.top, right: i.left, bottom: o.bottom }, colors[0], mask);
-        fill(out, Edges { left: i.right, top: o.top, right: o.right, bottom: o.bottom }, colors[0], mask);
-        fill(out, top, colors[0], mask);
-        fill(out, bottom, colors[0], mask);
+    if colors.iter().all(|c| *c == colors[0]) || !transform.is_identity() {
+        // One colour, or transformed (the corner coverage is analytic in
+        // device space, so each side's colour fills its strip whole).
+        fill(out, Edges { left: o.left, top: o.top, right: i.left, bottom: o.bottom }, colors[3], mask, transform);
+        fill(out, Edges { left: i.right, top: o.top, right: o.right, bottom: o.bottom }, colors[1], mask, transform);
+        fill(out, top, colors[0], mask, transform);
+        fill(out, bottom, colors[2], mask, transform);
         return Ok(());
     }
-    fill(out, top, colors[0], mask);
-    fill(out, bottom, colors[2], mask);
-    fill(out, Edges { left: o.left, top: i.top, right: i.left, bottom: i.bottom }, colors[3], mask);
-    fill(out, Edges { left: i.right, top: i.top, right: o.right, bottom: i.bottom }, colors[1], mask);
+    fill(out, top, colors[0], mask, transform);
+    fill(out, bottom, colors[2], mask, transform);
+    fill(out, Edges { left: o.left, top: i.top, right: i.left, bottom: i.bottom }, colors[3], mask, transform);
+    fill(out, Edges { left: i.right, top: i.top, right: o.right, bottom: i.bottom }, colors[1], mask, transform);
     corner(out, Edges { left: o.left, top: o.top, right: i.left, bottom: i.top }, false, false, colors[0], colors[3], mask, cancel)?;
     corner(out, Edges { left: i.right, top: o.top, right: o.right, bottom: i.top }, true, false, colors[0], colors[1], mask, cancel)?;
     corner(out, Edges { left: i.right, top: i.bottom, right: o.right, bottom: o.bottom }, true, true, colors[2], colors[1], mask, cancel)?;

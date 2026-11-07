@@ -8,6 +8,7 @@ mod grid;
 mod numeric;
 mod parse;
 mod registry;
+mod transform;
 use super::{Component, Components, Kind, Statement, StatementKind, color, math, variables};
 pub use clip::{GeometryBox, Inset, LocalUrl};
 pub use decoration::{Direction, Image, Images, Positions, RadialSize, Radius, RepeatAxis, Repeats, Shadow, Shadows, Size, Sizes, Stop};
@@ -21,6 +22,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+pub use transform::{Function as TransformFunction, IDENTITY, Transforms, apply as apply_transform, is_identity, multiply as multiply_transforms};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
@@ -101,6 +103,7 @@ pub enum Value {
     Sizes(Sizes),
     Positions(Positions),
     Repeats(Repeats),
+    Transforms(Transforms),
     Pending(Arc<Pending>),
 }
 
@@ -130,6 +133,7 @@ impl Value {
             Self::Sizes(s) => s.reserved_bytes(),
             Self::Positions(p) => p.reserved_bytes(),
             Self::Repeats(r) => r.reserved_bytes(),
+            Self::Transforms(t) => t.reserved_bytes(),
             Self::Color(v) => v.expression_reserved_bytes(),
             Self::Pending(v) => size_of::<Pending>() + 2 * size_of::<usize>() + v.tokens.arena_reserved_bytes(),
             _ => 0,
