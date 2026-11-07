@@ -6,7 +6,9 @@ item means implemented and verified; a partial implementation stays open.
 While working, fetch and merge `origin/main` at regular working checkpoints,
 revalidate the merged workspace and push the integration with browser work.
 
-**Active website: [Stripe](eval/stripe/README.md), selected by the user.**
+**Active websites: [Stripe](eval/stripe/README.md) (static rendering
+matches Chrome; the rest is script) and Wikipedia's main page (matches
+Chrome at 1000 × 700 up to the search box and `overflow-wrap`).**
 Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it
 substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is
@@ -33,8 +35,11 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   presentational hints, legacy centring; letter-spacing; opacity groups.
 - [x] Flex wrapping (lines, align-content), aspect-ratio, min-height
   containers aligning their tracks, Chrome's line-height rounding.
-- [ ] vertical-align (23 images), list markers, floats (Wikipedia: 21),
-  table captions/column groups/rowspan, collapsed borders.
+- [x] Floats and clear, list markers, system fonts with Chrome's family
+  policy (Liberation Sans for sans-serif, …), SVG files as images,
+  mask-image, text-decoration.
+- [ ] vertical-align (23 images), table captions/column groups/rowspan,
+  collapsed borders, a block formatting context beside a float narrowed.
 - [x] Paint: gradients, border-radius, box-shadow, rounded overflow clips.
 - [x] Paint: `url()` background images (size, position, repeat), CSS
   transforms, opacity groups.
