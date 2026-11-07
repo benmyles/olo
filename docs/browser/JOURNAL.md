@@ -4582,3 +4582,38 @@ computed visibility or proof of the exact failing native node. Next identify
 that node and implement native vector styling/sizing/paint, keeping unsupported
 subtrees explicit. Owned screens are stopped; no personal install/reload.
 **Stripe0/30, corpus0/100 and0/3000; goal active.**
+
+### 2026-11-06 — Stripe vector path groundwork
+
+Previous checkpoint made concrete progress: integrated row flex and independent
+page geometry evidence. This checkpoint adds worker-only SVG path compilation;
+it does **not** yet connect SVG to page styles, layout or paint. The exact live
+foreign node remains unidentified, and Stripe still has no useful native content.
+No website acceptance count changes (Stripe0/30, corpus0/100).
+
+`svg::PathJob` borrows retained attribute bytes, enforces source/action limits,
+checks cancellation and poisons failed jobs. svgtypes supplies command grammar;
+our normalizer tracks relative/current/subpath coordinates and reflected controls.
+Kurbo supplies incremental arc cubics; tiny-skia stores vectors, not bitmaps.
+Malformed syntax preserves the valid prefix and a diagnostic. First tests found
+svgtypes' convenience normalizer emits a line for coincident arc endpoints; our
+raw-command normalization omits the arc as SVG requires. A subsequent test that
+assumed one quarter-circle cubic was corrected to check the analytic circle at
+101 samples per generated cubic: subdivision count is not a conformance property.
+Six semantic/budget tests pass, including small-arc explicit precision failures.
+Arc approximation currently uses0.001 user-unit tolerance, not a validated
+scale-aware policy; <=1e-5 nonzero radii and extreme coordinates fail explicitly.
+
+The original HTML parser plus the new worker compiles all307 path attributes in
+retained Stripe source SHA256
+614dc424ca90ddbdc2f3df8364c9d4f8d513fbade44326fed0b46a393e317c6d:
+zero syntax errors,10,329 actions,160,383 occupied vector bytes (excludes
+capacity/headers/source/allocator overhead). Seven CPU0 processes,100 complete
+sets each, median790.572 microseconds; absolute timing only, host not isolated.
+No existing page/event/idle path changed; no before/after speedup is claimed.
+Raw observations are in `/var/tmp/olo-browser-stripe/svg`; committed summary is
+`measurements/2026-11-06-stripe-svg-paths.json`. Release web+Browser299pass,
+2ignored; strict scoped clippy passes. No graphical change or GUI review claimed.
+Next: actual failing element diagnosis and SVG presentation cascade, viewport,
+replaced sizing and retained scene integration, followed by independent pixels
+and real Stripe retry. Keep all prior performance/fidelity nonpasses open.

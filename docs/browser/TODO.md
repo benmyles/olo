@@ -19,6 +19,9 @@ bases, initial alignments, margins, cross stretch/percentage descendants and
 selected nested rows work; RTL/column/wrap/order/baseline, replaced and complex
 intrinsic contexts remain open. Shared immutable text intrinsic widths survive
 resize. The earlier shorthand365/370 result still has five fit-content() gaps.
+Initial worker-only SVG path compilation handles all307 retained Stripe paths
+without syntax errors, but is not connected to CSS/layout/paint. Arc scale
+accuracy and extreme-coordinate support remain open.
 Next inspect and implement the actual foreign-content blocker, then retry Stripe;
 do not choose another website.
 

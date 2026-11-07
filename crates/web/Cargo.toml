@@ -58,6 +58,8 @@ baseline-inline-reshape = []
 
 [dependencies]
 tiny-skia = "0.12"
+svgtypes = "0.15.3"
+kurbo = "0.11.3"
 memchr = "2"
 encoding_rs = "0.8"
 simdutf8 = "0.1"

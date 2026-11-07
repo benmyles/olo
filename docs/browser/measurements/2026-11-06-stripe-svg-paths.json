@@ -1,0 +1,37 @@
+{
+  "scope": "Unwired SVG path compilation on retained Stripe HTML; no live-page, CSS, raster or Chrome comparison. Absolute worker timing, not a before/after improvement; host not isolated.",
+  "source_sha256": "614dc424ca90ddbdc2f3df8364c9d4f8d513fbade44326fed0b46a393e317c6d",
+  "paths": 307,
+  "malformed": 0,
+  "occupied_vector_payload_bytes": 160383,
+  "actions": 10329,
+  "all_paths_us": [
+    783.86178,
+    783.9507600000001,
+    794.3786899999999,
+    791.4894,
+    778.87702,
+    790.57159,
+    793.21397
+  ],
+  "median_us": 790.57159,
+  "rounds_per_process": 100,
+  "cpu": 0,
+  "load": [
+    10.5703125,
+    9.1025390625,
+    9.220703125
+  ],
+  "binary_sha256": "ba4660795554724bb76c15b15c544a7e24a251d80279d7433d6d49c7af2de37f",
+  "checks": {
+    "release_default_passed": 299,
+    "ignored": 2,
+    "strict_clippy": "pass"
+  },
+  "limitations": [
+    "Not connected to page style/layout/paint; actual Stripe remains blocked.",
+    "Arc tolerance 0.001 user units; device-scale arc accuracy unproven.",
+    "Float32 retained geometry; small nonzero arc radii <=1e-5 and extreme arc coordinates rejected.",
+    "Payload excludes capacity, headers, source storage and allocator overhead."
+  ]
+}

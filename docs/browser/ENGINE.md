@@ -2373,3 +2373,23 @@ live cancellation flag after construction. `raster_bench` compares the tighter
 worker path against the existing codec policy in the same frozen release binary,
 with identical input/pixel hashes, excluding filesystem/network I/O. Neither
 component tests nor these authored performance inputs establish website passes.
+
+## SVG path groundwork (not yet page-connected)
+
+`svg::PathJob` compiles a borrowed SVG `d` attribute on a worker, preserving
+vector geometry with source/action quotas, cancellation and poisoned failures.
+The command grammar uses svgtypes; original current-point/subpath/smooth-control
+state follows [SVG2 paths](https://www.w3.org/TR/SVG2/paths.html). Kurbo supplies
+incremental arc cubics. A malformed command ends the rendered valid prefix and
+sets a diagnostic. Resource and numeric failures remain errors, not silent loss.
+The output uses float32 tiny-skia vectors and reports occupied payload separately
+from capacity/headers. Arc tolerance is initially0.001 user units; small radii
+<=1e-5 and extreme inputs are explicit unsupported precision ranges. Scale-aware
+accuracy, strokes/markers, SVG presentation cascade, viewport/sizing, scene and
+agent integration remain required. This API alone renders no page.
+
+`cargo run --release -p olo-web --example svg_paths -- /var/tmp/OWNED/source.html`
+uses the original HTML DOM to compile SVG path attributes and report work,
+payload and absolute timing. It ignores visibility/styles and makes no Chrome
+or website acceptance claim. Tests in `tests/svg.rs` check semantic path state,
+analytic circle samples, valid-prefix recovery and worker limits/cancellation.
