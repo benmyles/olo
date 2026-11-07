@@ -69,6 +69,7 @@ impl Engine {
         scene.query(rect, &mut hits, cancel)?;
         let mut last_clip = u32::MAX;
         let mut mask: Option<Mask> = None;
+        let mut clip_operations = 0usize;
         for id in hits {
             check(cancel)?;
             let c = &scene.commands[id as usize];
@@ -102,6 +103,7 @@ impl Engine {
                 }
                 Primitive::Vector { owner, vector, origin } => {
                     let tree = scene.layout.cache().tree();
+                    let resolved_clips = scene.vector_clips.get(vector);
                     let vector = tree.vector(*vector).ok_or(Error::Invalid)?;
                     let geometry = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
                     let bounds = Rect { x: origin.x, y: origin.y, ..geometry.content_box() };
@@ -142,10 +144,52 @@ impl Engine {
                     if !transform.is_valid() {
                         return Err(Error::Unsupported("SVG viewport transform precision"));
                     }
+                    let mut last = crate::svg::clip::NO_CLIP;
+                    let mut clipped: Option<Mask> = None;
                     for shape in &vector.shapes {
                         check(cancel)?;
+                        if shape.clip != last {
+                            clipped = if shape.clip == crate::svg::clip::NO_CLIP {
+                                None
+                            } else {
+                                let definitions = resolved_clips.ok_or(Error::Invalid)?;
+                                let mut mask = if let Some(mask) = vector_mask {
+                                    mask.clone()
+                                } else {
+                                    let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
+                                    m.data_mut().fill(255);
+                                    m
+                                };
+                                let mut at = shape.clip;
+                                while at != crate::svg::clip::NO_CLIP {
+                                    check(cancel)?;
+                                    clip_operations = clip_operations.checked_add(1).ok_or(Error::Limit)?;
+                                    if clip_operations > self.limits().path_segments {
+                                        return Err(Error::Limit);
+                                    }
+                                    let clip = definitions.get(at as usize).ok_or(Error::Invalid)?;
+                                    if let Some(path) = clip.path.as_ref() {
+                                        let path = path.clone().transform(transform).ok_or(Error::Unsupported("SVG clip transform precision"))?;
+                                        let b = path.bounds();
+                                        if [b.left(), b.top(), b.right(), b.bottom()].iter().any(|v| v.abs() > f32::MAX * 0.25) {
+                                            return Err(Error::Unsupported("SVG clip raster precision"));
+                                        }
+                                        mask.intersect_path(&path, FillRule::Winding, true, Transform::identity());
+                                    } else {
+                                        mask.data_mut().fill(0);
+                                        break;
+                                    }
+                                    if clip.parent != crate::svg::clip::NO_CLIP && clip.parent >= at {
+                                        return Err(Error::Invalid);
+                                    }
+                                    at = clip.parent;
+                                }
+                                Some(mask)
+                            };
+                            last = shape.clip;
+                        }
                         if let Some(path) = shape.path.geometry() {
-                            out.fill_path(path, &paint(shape.color), if shape.evenodd { FillRule::EvenOdd } else { FillRule::Winding }, transform, vector_mask);
+                            out.fill_path(path, &paint(shape.color), if shape.evenodd { FillRule::EvenOdd } else { FillRule::Winding }, transform, clipped.as_ref().or(vector_mask));
                         }
                     }
                 }

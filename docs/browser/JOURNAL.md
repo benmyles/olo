@@ -5077,3 +5077,64 @@ clipPath itself is never directly painted. Sources consulted:
 https://www.w3.org/TR/css-masking-1/#the-clip-path,
 https://www.w3.org/TR/SVG2/linking.html#processingURL-validity,
 https://www.w3.org/TR/SVG2/shapes.html#RectElement.
+
+### 2026-11-06 — SVG referenced rectangles
+
+Previous turn made verified progress: typed rounded inset values, live Stripe
+cleared style computation back to SVG clip-path construction, commits through
+dc2a8afc pushed and main53b1ba74 merged. Current work connects local SVG clips:
+X/Y/Rx/Ry typed geometry (113 longhands, all reset and presentation hints), lazy
+bounded document ID index, shared definitions, clip chains, computed rectangle
+coordinates/radii and scene-time used geometry cached once per definition per
+viewport. Raster retains only the last clip mask and intersects ancestor clips.
+Invalid targets apply no clip; valid empty definitions clip everything. Direct
+clipPath elements are excluded from paint. Root clip decorations, bbox units,
+non-rect shapes, recursive definitions and transforms remain explicit gaps.
+
+First registry test caught Rx/Ry inserted outside the sorted property registry;
+fixed their order. First independent capture31 cases/five DPRs155 crops:
+100 exact,55 nonpasses. Two all-scale failures came from display:none definitions
+or their ancestors: Chrome treats the resource as unavailable (no clip), unlike
+CSS Masking1 section6.1. Implemented and documented the observed compatibility
+behavior;110 exact/45 fractional/rounded-edge nonpasses remain. Source inspection
+and pixel color counts show current tiny-skia path masks quantize coverage more
+coarsely than Chrome. No pixel-perfect/site acceptance claim. Extra identity,
+root-none/missing, all reset and multiple-viewport cases now being captured.
+Unquoted self-closing numeric attributes were corrected before any capture.
+
+Final expanded corpus37 cases/five DPRs185 crops caught the wrong percentage
+basis for definitions stored in another SVG viewport; fixed to use definition
+viewport dimensions. Final185 bounds match,137 exact crops,48 explicit pixel
+nonpasses. Earlier38 SVG pixel gaps unchanged. Strict exact gate verified fails;
+known-gap regressions are not acceptance tolerances. Boundedness, cancellation,
+stale DOM, shared path storage and tile-origin regressions pass. Full324 release
+tests pass,2 ignored; strict scoped clippy4.81s, workspace release8.77s,
+examples6.54s. Clippy prompted replacing boxed worker scratch HashMap with Option.
+
+Seven alternating CPU0 release pairs, no compiler contexts; clocks/load
+uncontrolled. Ordinary100/1000 pipeline868.725/9628.030→880.412/9608.671us;
+scene188.300/3563.374→195.793/3599.543us (small scene regression retained).
+Ordinary SVG pipeline1196.848/11707.872→1226.484/11586.123us;
+scene14.689/546.538→14.475/553.784us;
+raster310.575/306.558→312.132/304.353us. Vector payload+24B/root in
+this two-path workload; command bytes unchanged. New100/1000 clipped workload
+(no supported before baseline): pipeline2670.997/26086.324us,
+scene45.513/836.728us, raster408.901/400.635us.
+
+Native1000-paragraph fixture RSS111552→109928KiB,3s idle zeroCPU/wakeups both.
+Median drag9.183→9.053ms, flick9.164→8.899ms, wheel.505→.419ms:
+report-to-first-moving-client submissions, not presentation/optical latency.
+All15 native light/dark/night ×1/1.25/1.5/1.75/2 reviews pass; screenshots inspected
+at all settings with live scale changes. These are component visuals, not Stripe
+or pixel acceptance. Screenshot journal added. Evidence retained under
+measurements/2026-11-06-stripe-svg-clips-*.json.
+
+Fresh frozen-binary native HTTPS Stripe probe clears SVG clipping and now stops
+at flow layout Unsupported("SVG group opacity") during box construction. Exact
+process/executable hash/window checked. Cmd+Q closed the window immediately but
+process outlived10s wait; stopped owned screen, then verified process exited.
+This delayed shutdown is recorded as a follow-up. Other probes exited normally.
+No personal-session changes. Stripe0/30; corpus0/100. Goal remains active.
+Main advanced to ca0dcc77; merge/combined validation follows this component
+checkpoint. Next: group compositing, preserve/close clipping fidelity gaps,
+connect inset painting, retry Stripe. No other website selected.

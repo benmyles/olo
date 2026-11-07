@@ -264,6 +264,8 @@ property_registry! {
     Resize, "resize", Grammar::Keywords(&[Keyword::None,Keyword::Both,Keyword::Horizontal,Keyword::Vertical,Keyword::Block,Keyword::Inline]), "none", false;
     Right, "right", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
     RowGap, "row-gap", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Normal]), "normal", false;
+    Rx, "rx", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
+    Ry, "ry", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Auto]), "auto", false;
     StopColor, "stop-color", Grammar::Color(&[]), "black", false;
     StopOpacity, "stop-opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", false;
     Stroke, "stroke", Grammar::Color(&[Keyword::None]), "none", true;
@@ -281,6 +283,8 @@ property_registry! {
     WordBreak, "word-break", Grammar::Keywords(&[Keyword::Normal,Keyword::BreakAll,Keyword::KeepAll,Keyword::AutoPhrase,Keyword::BreakWord]), "normal", true;
     WordSpacing, "word-spacing", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Normal]), "normal", true;
     WritingMode, "writing-mode", Grammar::Keywords(&[Keyword::HorizontalTb,Keyword::VerticalRl,Keyword::VerticalLr,Keyword::SidewaysRl,Keyword::SidewaysLr]), "horizontal-tb", true;
+    X, "x", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[]), "0px", false;
+    Y, "y", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[]), "0px", false;
     ZIndex, "z-index", Grammar::Numeric(NumericKind::Integer, Range::All, &[Keyword::Auto]), "auto", false;
 }
 macro_rules! shorthand_registry {
@@ -298,7 +302,7 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
-    All, "all", [AlignItems,AlignSelf,BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
+    All, "all", [AlignItems,AlignSelf,BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;

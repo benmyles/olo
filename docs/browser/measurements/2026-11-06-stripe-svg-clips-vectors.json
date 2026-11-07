@@ -1,0 +1,869 @@
+{
+  "scope": "Seven alternating CPU0 default release pairs for ordinary SVG. New clip mode after-only because baseline cannot render clips. Pipeline/retained scene/256-square CPU raster; no network/GPU/presentation/site acceptance.",
+  "before": "65d51d68 engine baseline",
+  "load": [
+    2.4462890625,
+    2.77001953125,
+    2.95703125
+  ],
+  "binaries": {
+    "before": "211ab27ec324670c762cac8c7f0dd7d0f37667c1952a5a55b3ece990b6098d13",
+    "after": "37c3d32f365baaeac0f475422e9aed82d795e39f05b8d76d5870ef2fc40eec16"
+  },
+  "summary": {
+    "ordinary": {
+      "100": {
+        "before": {
+          "pipeline_us": 1196.8477666666665,
+          "scene_us": 14.688533333333334,
+          "raster_us": 310.57483333333334,
+          "vector_bytes": 39200,
+          "command_bytes": 12240
+        },
+        "after": {
+          "pipeline_us": 1226.4840666666669,
+          "scene_us": 14.4747,
+          "raster_us": 312.13203333333337,
+          "vector_bytes": 41600,
+          "command_bytes": 12240
+        }
+      },
+      "1000": {
+        "before": {
+          "pipeline_us": 11707.872299999999,
+          "scene_us": 546.5381666666667,
+          "raster_us": 306.5584,
+          "vector_bytes": 392000,
+          "command_bytes": 121760
+        },
+        "after": {
+          "pipeline_us": 11586.1227,
+          "scene_us": 553.7839333333334,
+          "raster_us": 304.3531,
+          "vector_bytes": 416000,
+          "command_bytes": 121760
+        }
+      }
+    },
+    "clips": {
+      "100": {
+        "after": {
+          "pipeline_us": 2670.9972333333335,
+          "scene_us": 45.513466666666666,
+          "raster_us": 408.90063333333336,
+          "vector_bytes": 44800,
+          "command_bytes": 29236
+        }
+      },
+      "1000": {
+        "after": {
+          "pipeline_us": 26086.324266666667,
+          "scene_us": 836.7283,
+          "raster_us": 400.6346,
+          "vector_bytes": 448000,
+          "command_bytes": 313896
+        }
+      }
+    }
+  },
+  "observations": [
+    {
+      "mode": "ordinary",
+      "variant": "before",
+      "repeat": 0,
+      "compiler_context": [],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1206.2155333333333,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 316.29223333333334,
+          "scene_us": 14.300633333333334,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11697.878566666664,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 311.8842333333333,
+          "scene_us": 622.9741333333334,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "after",
+      "repeat": 0,
+      "compiler_context": [],
+      "clips": false,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1623.7001000000002,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 642.5280666666666,
+          "scene_us": 14.640999999999998,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "tree_bytes": 47368,
+          "vector_bytes": 41600
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11530.716199999999,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 302.66773333333333,
+          "scene_us": 544.3445,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "tree_bytes": 472168,
+          "vector_bytes": 416000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "after",
+      "repeat": 1,
+      "compiler_context": [],
+      "clips": false,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1209.4860666666668,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 309.30373333333335,
+          "scene_us": 15.207333333333334,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "tree_bytes": 47368,
+          "vector_bytes": 41600
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11560.0298,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 304.3531,
+          "scene_us": 572.4287,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "tree_bytes": 472168,
+          "vector_bytes": 416000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "before",
+      "repeat": 1,
+      "compiler_context": [],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1195.0837666666666,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 307.5312333333333,
+          "scene_us": 14.688533333333334,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12068.516366666667,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 303.60873333333336,
+          "scene_us": 540.8221,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "before",
+      "repeat": 2,
+      "compiler_context": [],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1209.8673666666666,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 310.57483333333334,
+          "scene_us": 14.825333333333333,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11445.066233333335,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 306.5584,
+          "scene_us": 540.6387,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "after",
+      "repeat": 2,
+      "compiler_context": [],
+      "clips": false,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1226.4840666666669,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 311.36413333333337,
+          "scene_us": 14.4747,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "tree_bytes": 47368,
+          "vector_bytes": 41600
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12572.56,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 310.81829999999997,
+          "scene_us": 551.7310333333334,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "tree_bytes": 472168,
+          "vector_bytes": 416000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "after",
+      "repeat": 3,
+      "compiler_context": [],
+      "clips": false,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1245.1044333333332,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 316.69083333333333,
+          "scene_us": 15.163966666666669,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "tree_bytes": 47368,
+          "vector_bytes": 41600
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11466.858733333333,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 306.8698333333333,
+          "scene_us": 570.5306666666667,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "tree_bytes": 472168,
+          "vector_bytes": 416000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "before",
+      "repeat": 3,
+      "compiler_context": [],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1186.4689,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 305.70683333333335,
+          "scene_us": 14.850933333333334,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12321.817333333332,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 301.8654666666667,
+          "scene_us": 546.5381666666667,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "before",
+      "repeat": 4,
+      "compiler_context": [],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1238.6716333333336,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 329.8192,
+          "scene_us": 14.570966666666667,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11707.872299999999,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 307.0979,
+          "scene_us": 550.2512,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "after",
+      "repeat": 4,
+      "compiler_context": [],
+      "clips": false,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1219.9257333333333,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 335.44083333333333,
+          "scene_us": 14.2799,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "tree_bytes": 47368,
+          "vector_bytes": 41600
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12157.569133333333,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 303.08913333333334,
+          "scene_us": 540.3168666666667,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "tree_bytes": 472168,
+          "vector_bytes": 416000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "after",
+      "repeat": 5,
+      "compiler_context": [],
+      "clips": false,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1206.3513333333333,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 312.13203333333337,
+          "scene_us": 14.257966666666668,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "tree_bytes": 47368,
+          "vector_bytes": 41600
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11586.1227,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 303.3732,
+          "scene_us": 553.7839333333334,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "tree_bytes": 472168,
+          "vector_bytes": 416000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "before",
+      "repeat": 5,
+      "compiler_context": [],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1196.7260333333334,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 310.5677333333333,
+          "scene_us": 14.632733333333332,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12185.672033333334,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 310.5611666666667,
+          "scene_us": 942.5588333333333,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "before",
+      "repeat": 6,
+      "compiler_context": [],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1196.8477666666665,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 310.6988,
+          "scene_us": 14.777666666666669,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11598.267333333333,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 301.0946333333333,
+          "scene_us": 543.7028999999999,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "ordinary",
+      "variant": "after",
+      "repeat": 6,
+      "compiler_context": [],
+      "clips": false,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1233.1678666666667,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 307.7624333333334,
+          "scene_us": 14.283866666666665,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "tree_bytes": 47368,
+          "vector_bytes": 41600
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11898.2728,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 316.44876666666664,
+          "scene_us": 572.9605333333333,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "tree_bytes": 472168,
+          "vector_bytes": 416000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "clips",
+      "variant": "after",
+      "repeat": 0,
+      "compiler_context": [],
+      "clips": true,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 29236,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 3460.9458,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 510.5945666666667,
+          "scene_us": 44.563066666666664,
+          "source_sha256": "7f7beaa209b26d7bcd58a034866aa6311d39255a8c30bf14f5c98a101fe44b69",
+          "tree_bytes": 113768,
+          "vector_bytes": 44800
+        },
+        {
+          "command_bytes": 313896,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 25353.369433333333,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 401.92299999999994,
+          "scene_us": 857.3660666666667,
+          "source_sha256": "d8b8428698f7a9977477e2b66e3a1dbafc2ec1409b031c8e922d9be973c704ed",
+          "tree_bytes": 1136168,
+          "vector_bytes": 448000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "clips",
+      "variant": "after",
+      "repeat": 1,
+      "compiler_context": [],
+      "clips": true,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 29236,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 3188.1823999999997,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 413.4926333333333,
+          "scene_us": 45.08453333333333,
+          "source_sha256": "7f7beaa209b26d7bcd58a034866aa6311d39255a8c30bf14f5c98a101fe44b69",
+          "tree_bytes": 113768,
+          "vector_bytes": 44800
+        },
+        {
+          "command_bytes": 313896,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 25424.81963333333,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 400.3625666666667,
+          "scene_us": 836.7283,
+          "source_sha256": "d8b8428698f7a9977477e2b66e3a1dbafc2ec1409b031c8e922d9be973c704ed",
+          "tree_bytes": 1136168,
+          "vector_bytes": 448000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "clips",
+      "variant": "after",
+      "repeat": 2,
+      "compiler_context": [],
+      "clips": true,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 29236,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 2670.9972333333335,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 839.0597333333333,
+          "scene_us": 47.16193333333333,
+          "source_sha256": "7f7beaa209b26d7bcd58a034866aa6311d39255a8c30bf14f5c98a101fe44b69",
+          "tree_bytes": 113768,
+          "vector_bytes": 44800
+        },
+        {
+          "command_bytes": 313896,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 25509.904766666663,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 400.6346,
+          "scene_us": 827.3896000000001,
+          "source_sha256": "d8b8428698f7a9977477e2b66e3a1dbafc2ec1409b031c8e922d9be973c704ed",
+          "tree_bytes": 1136168,
+          "vector_bytes": 448000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "clips",
+      "variant": "after",
+      "repeat": 3,
+      "compiler_context": [],
+      "clips": true,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 29236,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 2644.8177666666666,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 405.75536666666665,
+          "scene_us": 45.281299999999995,
+          "source_sha256": "7f7beaa209b26d7bcd58a034866aa6311d39255a8c30bf14f5c98a101fe44b69",
+          "tree_bytes": 113768,
+          "vector_bytes": 44800
+        },
+        {
+          "command_bytes": 313896,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 26376.439200000004,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 401.7159666666667,
+          "scene_us": 845.2688333333333,
+          "source_sha256": "d8b8428698f7a9977477e2b66e3a1dbafc2ec1409b031c8e922d9be973c704ed",
+          "tree_bytes": 1136168,
+          "vector_bytes": 448000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "clips",
+      "variant": "after",
+      "repeat": 4,
+      "compiler_context": [],
+      "clips": true,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 29236,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 2619.5220666666664,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 407.7454666666667,
+          "scene_us": 45.7264,
+          "source_sha256": "7f7beaa209b26d7bcd58a034866aa6311d39255a8c30bf14f5c98a101fe44b69",
+          "tree_bytes": 113768,
+          "vector_bytes": 44800
+        },
+        {
+          "command_bytes": 313896,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 26123.998966666662,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 398.4245,
+          "scene_us": 828.4251333333334,
+          "source_sha256": "d8b8428698f7a9977477e2b66e3a1dbafc2ec1409b031c8e922d9be973c704ed",
+          "tree_bytes": 1136168,
+          "vector_bytes": 448000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "clips",
+      "variant": "after",
+      "repeat": 5,
+      "compiler_context": [],
+      "clips": true,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 29236,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 2674.5474666666664,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 404.0163,
+          "scene_us": 45.513466666666666,
+          "source_sha256": "7f7beaa209b26d7bcd58a034866aa6311d39255a8c30bf14f5c98a101fe44b69",
+          "tree_bytes": 113768,
+          "vector_bytes": 44800
+        },
+        {
+          "command_bytes": 313896,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 26733.172933333335,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 398.02736666666664,
+          "scene_us": 865.2757666666668,
+          "source_sha256": "d8b8428698f7a9977477e2b66e3a1dbafc2ec1409b031c8e922d9be973c704ed",
+          "tree_bytes": 1136168,
+          "vector_bytes": 448000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "mode": "clips",
+      "variant": "after",
+      "repeat": 6,
+      "compiler_context": [],
+      "clips": true,
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 29236,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 2615.2387,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 408.90063333333336,
+          "scene_us": 45.540166666666664,
+          "source_sha256": "7f7beaa209b26d7bcd58a034866aa6311d39255a8c30bf14f5c98a101fe44b69",
+          "tree_bytes": 113768,
+          "vector_bytes": 44800
+        },
+        {
+          "command_bytes": 313896,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 26086.324266666667,
+          "pixels_sha256": "606e7cf1bee8090181527f4d7842498ec83a56fb5cbe3d08f2d475bf187280f3",
+          "raster_us": 405.46860000000004,
+          "scene_us": 835.1658333333332,
+          "source_sha256": "d8b8428698f7a9977477e2b66e3a1dbafc2ec1409b031c8e922d9be973c704ed",
+          "tree_bytes": 1136168,
+          "vector_bytes": 448000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    }
+  ]
+}

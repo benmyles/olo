@@ -34,6 +34,7 @@ pub struct Scene {
     pub(super) layout: Arc<layout::Layout>,
     pub(super) commands: Box<[Command]>,
     pub(super) clips: Box<[Rect]>,
+    pub(super) vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     pub(super) index: index::Index,
     pub(super) base: [u8; 4],
     pub(super) canvas: [u8; 4],
@@ -147,7 +148,11 @@ impl Scene {
         self.layout.device_scale()
     }
     pub fn command_payload_bytes(&self) -> usize {
-        self.commands.len() * size_of::<Command>() + self.clips.len() * size_of::<Rect>() + self.index.payload_bytes()
+        self.commands.len() * size_of::<Command>()
+            + self.clips.len() * size_of::<Rect>()
+            + self.index.payload_bytes()
+            + self.vector_clips.capacity() * (size_of::<(u32, Vec<crate::svg::clip::Resolved>)>() + 1)
+            + self.vector_clips.values().map(|v| crate::svg::clip::resolved_bytes(v)).sum::<usize>()
     }
     pub fn query(&self, region: Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
         if !valid(region) {
@@ -191,6 +196,9 @@ pub struct BuildJob<'a> {
     states: Vec<State>,
     draft: Vec<Draft>,
     clips: Vec<Rect>,
+    vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
+    vector_clip_bytes: usize,
+    svg_viewports: Option<std::collections::HashMap<crate::dom::NodeId, [f64; 2]>>,
     next: usize,
     groups: u32,
     progress: Progress,
@@ -244,6 +252,9 @@ impl<'a> BuildJob<'a> {
             states: Vec::new(),
             draft: Vec::new(),
             clips: Vec::new(),
+            vector_clips: Default::default(),
+            vector_clip_bytes: 0,
+            svg_viewports: None,
             next: 0,
             groups: 0,
             progress: Progress::default(),
@@ -339,6 +350,27 @@ impl<'a> BuildJob<'a> {
                 return Err(Error::Unsupported("SVG overflow bounds precision"));
             }
             bounds = union(bounds, ink);
+        }
+        if !source.clip_nodes().is_empty() && !self.vector_clips.contains_key(&vector) {
+            if self.svg_viewports.is_none() {
+                let tree = self.layout.cache().tree();
+                let mut viewports = std::collections::HashMap::new();
+                for (id, node) in tree.iter() {
+                    check(self.cancel)?;
+                    if let BoxKind::BlockVector { vector } | BoxKind::InlineVector { vector } = node.kind {
+                        let svg = tree.vector(vector).ok_or(Error::Invalid)?;
+                        let content = self.layout.geometry(id).ok_or(Error::Invalid)?.content_box();
+                        viewports.insert(svg.node, svg.view_box.map_or([content.width, content.height], |v| [v[2], v[3]]));
+                    }
+                }
+                self.svg_viewports = Some(viewports);
+            }
+            let clips = source.resolve_clips(self.svg_viewports.as_ref().unwrap(), self.limits.path_segments, self.limits.path_bytes.saturating_sub(self.vector_clip_bytes), self.cancel)?;
+            self.vector_clip_bytes = self.vector_clip_bytes.checked_add(crate::svg::clip::resolved_bytes(&clips)).ok_or(Error::Limit)?;
+            if self.vector_clip_bytes > self.limits.path_bytes {
+                return Err(Error::Limit);
+            }
+            self.vector_clips.insert(vector, clips);
         }
         self.emit(group, true, bounds, Primitive::Vector { owner: id, vector, origin }, clip)
     }
@@ -617,6 +649,15 @@ impl<'a> BuildJob<'a> {
         self.draft.sort_by_key(|d| (d.group, d.text));
         let commands: Box<[Command]> = self.draft.into_iter().map(|d| d.command).collect();
         let index = index::Index::new(&commands, self.cancel)?;
-        Ok(Arc::new(Scene { extent: self.extent, layout: self.layout, commands, clips: self.clips.into_boxed_slice(), index, base: self.options.canvas, canvas: self.canvas }))
+        Ok(Arc::new(Scene {
+            extent: self.extent,
+            layout: self.layout,
+            commands,
+            clips: self.clips.into_boxed_slice(),
+            vector_clips: self.vector_clips,
+            index,
+            base: self.options.canvas,
+            canvas: self.canvas,
+        }))
     }
 }

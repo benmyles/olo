@@ -1,0 +1,294 @@
+{
+  "exact": 137,
+  "failures": [
+    {
+      "different_pixels": 32,
+      "id": "percent",
+      "max_channel_error": 13,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 44,
+      "id": "round",
+      "max_channel_error": 41,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 36,
+      "id": "round-auto",
+      "max_channel_error": 22,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 40,
+      "id": "round-css",
+      "max_channel_error": 34,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 100,
+      "id": "round-clamp",
+      "max_channel_error": 44,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 52,
+      "id": "round-percent",
+      "max_channel_error": 52,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 21,
+      "id": "position",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 21,
+      "id": "css-geometry",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 62,
+      "id": "round",
+      "max_channel_error": 39,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 44,
+      "id": "round-auto",
+      "max_channel_error": 16,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 52,
+      "id": "round-css",
+      "max_channel_error": 34,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 124,
+      "id": "round-clamp",
+      "max_channel_error": 49,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 68,
+      "id": "round-percent",
+      "max_channel_error": 58,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 15,
+      "id": "overlap-union",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 22,
+      "id": "nested",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 33,
+      "id": "variables",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 48,
+      "id": "percent",
+      "max_channel_error": 13,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 71,
+      "id": "round",
+      "max_channel_error": 41,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 56,
+      "id": "round-auto",
+      "max_channel_error": 30,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 58,
+      "id": "round-css",
+      "max_channel_error": 38,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 156,
+      "id": "round-clamp",
+      "max_channel_error": 41,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 84,
+      "id": "round-percent",
+      "max_channel_error": 38,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 3,
+      "id": "stripe-rect",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 36,
+      "id": "position",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 36,
+      "id": "css-geometry",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 56,
+      "id": "percent",
+      "max_channel_error": 26,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 90,
+      "id": "round",
+      "max_channel_error": 38,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 62,
+      "id": "round-auto",
+      "max_channel_error": 30,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 76,
+      "id": "round-css",
+      "max_channel_error": 43,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 182,
+      "id": "round-clamp",
+      "max_channel_error": 45,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 97,
+      "id": "round-percent",
+      "max_channel_error": 39,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 21,
+      "id": "overlap-union",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 28,
+      "id": "nested",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 3,
+      "id": "restore-sibling",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 3,
+      "id": "path-clip",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 3,
+      "id": "ignore-fill",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 3,
+      "id": "explicit-units",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 52,
+      "id": "variables",
+      "max_channel_error": 63,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 3,
+      "id": "escape-id",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 3,
+      "id": "all-geometry-reset",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 3,
+      "id": "percent-identity-order",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 3,
+      "id": "utf8-id",
+      "max_channel_error": 1,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 64,
+      "id": "percent",
+      "max_channel_error": 26,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 96,
+      "id": "round",
+      "max_channel_error": 42,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 76,
+      "id": "round-auto",
+      "max_channel_error": 26,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 88,
+      "id": "round-css",
+      "max_channel_error": 52,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 212,
+      "id": "round-clamp",
+      "max_channel_error": 37,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 110,
+      "id": "round-percent",
+      "max_channel_error": 45,
+      "scale": 2.0
+    }
+  ],
+  "total": 185
+}

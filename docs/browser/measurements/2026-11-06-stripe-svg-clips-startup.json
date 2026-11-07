@@ -1,0 +1,46 @@
+{
+  "scope": "Fresh native HTTPS Stripe startup; not rendered-site acceptance",
+  "url": "https://stripe.com/",
+  "pid": 866865,
+  "executable": "/var/tmp/olo-browser-stripe/svg-clips/browser-after",
+  "sha256": "b05c0090d88016f6cc3f28d5ab04a23a3ab6ad1c42f8b451cd2c0bde01c56791",
+  "window": {
+    "id": 4,
+    "app_id": "olo.browser",
+    "title": "Browser",
+    "pid": 866865,
+    "workspace": 0,
+    "minimized": false,
+    "focused": true,
+    "kept": false,
+    "groupable": true,
+    "output": "HEADLESS-1",
+    "frame": {
+      "x": 48,
+      "y": 40,
+      "width": 1010,
+      "height": 731
+    },
+    "content": {
+      "x": 53,
+      "y": 66,
+      "width": 1000,
+      "height": 700
+    },
+    "least": [
+      650,
+      511
+    ],
+    "tab_frame": {
+      "x": 48,
+      "y": 40,
+      "width": 100,
+      "height": 21
+    },
+    "stack": 0,
+    "surface": 37
+  },
+  "labels": [
+    "flow layout Unsupported(\"SVG group opacity\")"
+  ]
+}

@@ -1,0 +1,814 @@
+{
+  "scope": "Frozen default release before/after SVG referenced rectangular clipping. Ordinary authored pipeline and retained scene only; excludes network, SVG work, JS, raster timing/GPU/presentation. All observations retained; external compiler context is not a causal explanation.",
+  "before": "65d51d68 engine baseline; after main integration f9f14a03",
+  "cpu": 0,
+  "load": [
+    2.5654296875,
+    2.81005859375,
+    2.97265625
+  ],
+  "binaries": {
+    "browser-before": "18c310051d30487d502d7b94437c0d2ead2b60a138803263aeb46e0342fec9dc",
+    "page-before": "ad8ff866c54dd0264c4106a3faf0a546446291f60bd12d008388a38e3a00268b",
+    "scene-before": "e85e28cab1645848907266d122c4a3b36764fbf266d931657db0345d90c29abb",
+    "svg-before": "211ab27ec324670c762cac8c7f0dd7d0f37667c1952a5a55b3ece990b6098d13",
+    "browser-after": "b05c0090d88016f6cc3f28d5ab04a23a3ab6ad1c42f8b451cd2c0bde01c56791",
+    "page-after": "7d5043b941b1e24a796c7cb48d4591d1cac9f584cbe4fac0488b5991a81a5940",
+    "scene-after": "c23478d52d34dcdf336d43279aecce9bad1c70b3e6d2a9fd45e1c2857f1a8864",
+    "svg-after": "37c3d32f365baaeac0f475422e9aed82d795e39f05b8d76d5870ef2fc40eec16"
+  },
+  "summary": {
+    "page": {
+      "100": {
+        "before": 868.7253333333333,
+        "after": 880.4124666666667
+      },
+      "1000": {
+        "before": 9628.030183333332,
+        "after": 9608.671066666666
+      }
+    },
+    "scene": {
+      "100": {
+        "before": 188.30049000000002,
+        "after": 195.79292
+      },
+      "1000": {
+        "before": 3563.3743099999997,
+        "after": 3599.54255
+      }
+    }
+  },
+  "observations": [
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 0,
+      "compiler_context": [],
+      "rss_kib": 9128,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 878.3087166666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9628.030183333332,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 0,
+      "compiler_context": [],
+      "rss_kib": 9428,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 872.5165666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9741.756866666665,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 1,
+      "compiler_context": [],
+      "rss_kib": 9328,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 881.9858666666665,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9412.713749999999,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 1,
+      "compiler_context": [],
+      "rss_kib": 9296,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 840.2518999999999,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9648.803033333332,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 2,
+      "compiler_context": [],
+      "rss_kib": 9068,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 868.7253333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9749.281616666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 2,
+      "compiler_context": [],
+      "rss_kib": 9144,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 863.4289333333332,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9422.23285,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 3,
+      "compiler_context": [],
+      "rss_kib": 9316,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 875.6847999999999,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9691.518699999999,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 3,
+      "compiler_context": [],
+      "rss_kib": 9248,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 867.5843000000001,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9716.811216666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 4,
+      "compiler_context": [],
+      "rss_kib": 9276,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 935.7543833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9178.1511,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 4,
+      "compiler_context": [],
+      "rss_kib": 9292,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 893.9967333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9876.488866666665,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 5,
+      "compiler_context": [],
+      "rss_kib": 9148,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 880.4124666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9496.434666666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 5,
+      "compiler_context": [],
+      "rss_kib": 9020,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1228.5072333333335,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9224.517583333334,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 6,
+      "compiler_context": [],
+      "rss_kib": 9104,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 849.88175,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9545.738000000001,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 6,
+      "compiler_context": [],
+      "rss_kib": 9264,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 894.7325666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9608.671066666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 0,
+      "compiler_context": [],
+      "rss_kib": 8032,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 218.43594000000002,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3563.3743099999997,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 0,
+      "compiler_context": [],
+      "rss_kib": 8096,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 194.32672000000002,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3562.1025299999997,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 1,
+      "compiler_context": [],
+      "rss_kib": 8108,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 198.05997,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3840.32125,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 1,
+      "compiler_context": [],
+      "rss_kib": 8360,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 188.30049000000002,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3464.8641700000003,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 2,
+      "compiler_context": [],
+      "rss_kib": 8244,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 186.40929,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3625.5147100000004,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 2,
+      "compiler_context": [],
+      "rss_kib": 8428,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 199.49982,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3634.46648,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 3,
+      "compiler_context": [],
+      "rss_kib": 8092,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 203.71687999999997,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3588.55965,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 3,
+      "compiler_context": [],
+      "rss_kib": 8144,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 202.01348000000002,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3830.97502,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 4,
+      "compiler_context": [],
+      "rss_kib": 8304,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 189.90865999999997,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3472.65883,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 4,
+      "compiler_context": [],
+      "rss_kib": 8156,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 193.36252000000002,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3799.90813,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 5,
+      "compiler_context": [],
+      "rss_kib": 8236,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 195.79292,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3599.54255,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 5,
+      "compiler_context": [],
+      "rss_kib": 8112,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 185.60077,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3516.5655800000004,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 6,
+      "compiler_context": [],
+      "rss_kib": 8188,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 186.67814,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3628.12413,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 6,
+      "compiler_context": [],
+      "rss_kib": 8308,
+      "controls": false,
+      "features": [],
+      "rounds": 100,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 190.85244000000003,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3526.26077,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    }
+  ]
+}

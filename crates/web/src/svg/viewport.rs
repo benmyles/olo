@@ -1,5 +1,5 @@
 //! Initial path-only inline SVG source. Worker-owned, retained vector geometry.
-use super::{Path, PathJob};
+use super::{Path, PathJob, clip};
 use crate::{
     css::style::{Display, Keyword as K, Property as P, StyleTree, Value},
     dom::{Document, Namespace, NodeId, NodeType},
@@ -11,10 +11,12 @@ pub struct Shape {
     pub path: Path,
     pub color: [u8; 4],
     pub evenodd: bool,
+    pub clip: u32,
 }
 pub struct Viewport {
     pub node: NodeId,
     pub shapes: Vec<Shape>,
+    clips: Option<triomphe::ThinArc<(), clip::Clip>>,
     pub view_box: Option<[f64; 4]>,
     pub aspect: svgtypes::AspectRatio,
     /// CSS viewport clipping, independently per axis.
@@ -26,6 +28,19 @@ pub struct Viewport {
 }
 impl Viewport {
     pub fn load(doc: &Document, styles: &StyleTree, root: NodeId, nodes_limit: usize, work_limit: usize, cancel: Option<&AtomicBool>) -> Result<Self> {
+        Self::load_with_sources(doc, styles, root, nodes_limit, work_limit, 64 * 1024 * 1024, &mut clip::Sources::default(), cancel)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn load_with_sources<'a>(
+        doc: &'a Document,
+        styles: &StyleTree,
+        root: NodeId,
+        nodes_limit: usize,
+        work_limit: usize,
+        bytes_limit: usize,
+        sources: &mut clip::Sources<'a>,
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Self> {
         if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
             return Err(Error::Cancelled);
         }
@@ -45,7 +60,7 @@ impl Viewport {
         if [P::Width, P::Height].into_iter().all(|p| matches!(root_style.value(p), Value::Keyword(K::Auto))) {
             return Err(Error::Unsupported("auto-sized SVG viewport"));
         }
-        let mut result = Self { node: root, shapes: Vec::new(), view_box: None, aspect: Default::default(), clip, ink_bounds: None, visited: 0, work: 0 };
+        let mut result = Self { node: root, shapes: Vec::new(), clips: None, view_box: None, aspect: Default::default(), clip, ink_bounds: None, visited: 0, work: 0 };
         if let Some(value) = doc.attribute(root, "viewBox")? {
             if value.len() > 1024 * 1024 {
                 return Err(Error::Limit);
@@ -67,6 +82,8 @@ impl Viewport {
             result.aspect = value.parse().map_err(|_| Error::Unsupported("invalid SVG preserveAspectRatio"))?;
         }
         let mut next = Some(root);
+        let mut clips = Vec::new();
+        let mut inherited_clips = std::collections::HashMap::new();
         let mut visited = 0;
         let mut bytes = 0usize;
         let mut work = 0usize;
@@ -88,12 +105,30 @@ impl Viewport {
                 // Definitions stay in the DOM/style tree for future references,
                 // but never enter the directly painted subtree. Unsupported
                 // uses (paint servers, clip-path, use) still reject explicitly.
-                skip = matches!(s.value(P::Display), Value::Display(Display::None)) || matches!(name, "defs" | "title" | "desc" | "metadata");
+                skip = matches!(s.value(P::Display), Value::Display(Display::None)) || matches!(name, "defs" | "clipPath" | "title" | "desc" | "metadata");
                 if !skip {
-                    if !matches!(s.value(P::ClipPath), Value::Keyword(K::None)) {
-                        return Err(Error::Unsupported("SVG clip-path"));
+                    let mut current_clip = if inherited_clips.is_empty() { clip::NO_CLIP } else { doc.parent(node)?.and_then(|p| inherited_clips.get(&p).copied()).unwrap_or(clip::NO_CLIP) };
+                    match s.value(P::ClipPath) {
+                        Value::Keyword(K::None) => {}
+                        Value::LocalUrl(url) => {
+                            if let Some(definition) = sources.get(doc, styles, url.as_str(), work_limit.saturating_sub(work), bytes_limit, cancel)? {
+                                if node == root {
+                                    return Err(Error::Unsupported("SVG root clip decoration"));
+                                }
+                                let index = u32::try_from(clips.len()).map_err(|_| Error::Limit)?;
+                                clips.push(clip::Clip { parent: current_clip, definition });
+                                current_clip = index;
+                            }
+                        }
+                        _ => return Err(Error::Unsupported("SVG basic shape clip")),
                     }
-                    for (attr, diagnostic) in [("transform", "SVG transform"), ("clip-path", "SVG clip-path"), ("mask", "SVG mask"), ("filter", "SVG filter")] {
+                    if current_clip != clip::NO_CLIP {
+                        inherited_clips.insert(node, current_clip);
+                        if inherited_clips.capacity().saturating_mul(size_of::<(NodeId, u32)>() + 1) > bytes_limit {
+                            return Err(Error::Limit);
+                        }
+                    }
+                    for (attr, diagnostic) in [("transform", "SVG transform"), ("mask", "SVG mask"), ("filter", "SVG filter")] {
                         if doc.attribute(node, attr)?.is_some() {
                             return Err(Error::Unsupported(diagnostic));
                         }
@@ -113,7 +148,8 @@ impl Viewport {
                             if bytes > 16 * 1024 * 1024 {
                                 return Err(Error::Limit);
                             }
-                            let mut job = PathJob::new(source, super::Limits { segments: 65536.min(work_limit.saturating_sub(work)), ..Default::default() }, cancel).map_err(path_error)?;
+                            let mut job = PathJob::new(source, super::Limits { segments: 65536.min(work_limit.saturating_sub(work).saturating_sub(sources.work)), ..Default::default() }, cancel)
+                                .map_err(path_error)?;
                             let steps = loop {
                                 let p = job.step(128).map_err(path_error)?;
                                 if p.finished {
@@ -121,7 +157,7 @@ impl Viewport {
                                 }
                             };
                             work = work.checked_add(steps).ok_or(Error::Limit)?;
-                            if work > 1_000_000.min(work_limit) {
+                            if work > 1_000_000.min(work_limit) || work.saturating_add(sources.work) > work_limit {
                                 return Err(Error::Limit);
                             }
                             let path = job.finish().map_err(path_error)?;
@@ -135,7 +171,7 @@ impl Viewport {
                                     let b = geometry.bounds();
                                     result.ink_bounds = Some(result.ink_bounds.map_or(Some(b), |old| old.join(&b)).ok_or(Error::Unsupported("SVG overflow bounds precision"))?);
                                 }
-                                result.shapes.push(Shape { node, path, color, evenodd: matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd)) });
+                                result.shapes.push(Shape { node, path, color, evenodd: matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd)), clip: current_clip });
                             }
                         }
                         _ => return Err(Error::UnsupportedForeign(Box::new(crate::layout::ForeignElement { node, namespace: Namespace::Svg, name: name.into() }))),
@@ -159,12 +195,47 @@ impl Viewport {
                 }
             }
         }
+        if !clips.is_empty() {
+            result.clips = Some(triomphe::ThinArc::from_header_and_iter((), clips.into_iter()));
+        }
         result.visited = visited;
         result.work = work;
         Ok(result)
     }
     pub fn payload_bytes(&self) -> usize {
-        self.shapes.len() * size_of::<Shape>() + self.shapes.iter().map(|s| s.path.payload_bytes()).sum::<usize>()
+        self.clips.as_ref().map_or(0, |c| 2 * size_of::<usize>() + size_of_val(&c.slice)) + self.shapes.len() * size_of::<Shape>() + self.shapes.iter().map(|s| s.path.payload_bytes()).sum::<usize>()
+    }
+    pub(crate) fn clip_nodes(&self) -> &[clip::Clip] {
+        self.clips.as_ref().map_or(&[], |c| &c.slice)
+    }
+    /// Materialize geometry once for this layout, never per raster tile.
+    pub(crate) fn resolve_clips(&self, viewports: &std::collections::HashMap<NodeId, [f64; 2]>, segments: usize, bytes: usize, cancel: Option<&AtomicBool>) -> Result<Vec<clip::Resolved>> {
+        let mut left = bytes.checked_sub(self.clip_nodes().len() * size_of::<clip::Resolved>()).ok_or(Error::Limit)?;
+        let mut work = segments;
+        let mut paths = std::collections::HashMap::new();
+        let mut out = Vec::with_capacity(self.clip_nodes().len());
+        for c in self.clip_nodes() {
+            if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+                return Err(Error::Cancelled);
+            }
+            let key = std::sync::Arc::as_ptr(&c.definition) as usize;
+            let path = if let Some(path) = paths.get(&key) {
+                std::sync::Arc::clone(path)
+            } else {
+                // A verb uses at most three f32 points. Bound growth before
+                // allocating the path, then charge actual retained payload.
+                let viewport = *viewports.get(&c.definition.viewport).ok_or(Error::Unsupported("SVG clip definition viewport"))?;
+                let path = c.definition.resolve(viewport, work.min(left / 32), cancel)?;
+                let amount = size_of::<Option<tiny_skia::Path>>() + 2 * size_of::<usize>() + path.as_ref().map_or(0, |p| size_of_val(p.verbs()) + size_of_val(p.points()));
+                left = left.checked_sub(amount).ok_or(Error::Limit)?;
+                work = work.checked_sub(path.as_ref().map_or(0, |p| p.verbs().len())).ok_or(Error::Limit)?;
+                let path = std::sync::Arc::new(path);
+                paths.insert(key, path.clone());
+                path
+            };
+            out.push(clip::Resolved { parent: c.parent, path });
+        }
+        Ok(out)
     }
     /// Initial default object size with viewBox ratio. Complete SVG intrinsic
     /// percentage/default sizing remains subject to independent layout checks.

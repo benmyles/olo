@@ -143,7 +143,16 @@ impl Tree {
         if self.document != document.id() || self.revision != document.revision() { Err(Error::Stale) } else { Ok(()) }
     }
     pub fn storage_payload_bytes(&self) -> usize {
-        self.vectors.len() * size_of::<crate::svg::Viewport>()
+        let mut seen = std::collections::HashSet::new();
+        let definitions: usize = self
+            .vectors
+            .iter()
+            .flat_map(|v| v.clip_nodes())
+            .filter(|c| seen.insert(Arc::as_ptr(&c.definition) as usize))
+            .map(|c| c.definition.payload_bytes() + size_of::<crate::svg::clip::Definition>() + 2 * size_of::<usize>())
+            .sum();
+        definitions
+            + self.vectors.len() * size_of::<crate::svg::Viewport>()
             + self.vectors.iter().map(|v| v.payload_bytes()).sum::<usize>()
             + self.images.as_ref().map_or(0, |images| images.payload_bytes())
             + self.boxes.len() * size_of::<BoxNode>()
@@ -209,6 +218,7 @@ struct OpenInline {
     index: usize,
 }
 pub struct BuildJob<'a> {
+    clip_sources: crate::svg::clip::Sources<'a>,
     vectors: Vec<crate::svg::Viewport>,
     vector_nodes: std::collections::HashMap<NodeId, u32>,
     vector_bytes: usize,
@@ -238,6 +248,7 @@ impl<'a> BuildJob<'a> {
         let root = BoxId::new(0)?;
         Ok(Self {
             images: None,
+            clip_sources: Default::default(),
             vectors: Vec::new(),
             vector_nodes: Default::default(),
             vector_bytes: 0,
@@ -475,16 +486,18 @@ impl<'a> BuildJob<'a> {
                             return Err(Error::Unsupported("aligned/positioned SVG"));
                         }
                         let vector = u32::try_from(self.vectors.len()).map_err(|_| Error::Limit)?;
-                        let source = crate::svg::Viewport::load(
+                        let source = crate::svg::Viewport::load_with_sources(
                             self.document,
                             &self.styles,
                             node,
                             self.limits.nodes.saturating_sub(self.progress.visited) + 1,
                             self.limits.vector_work.saturating_sub(self.vector_work),
+                            self.limits.vector_bytes.saturating_sub(self.vector_bytes),
+                            &mut self.clip_sources,
                             self.cancel,
                         )?;
                         self.vector_bytes = self.vector_bytes.checked_add(source.payload_bytes()).ok_or(Error::Limit)?;
-                        if self.vector_bytes > self.limits.vector_bytes {
+                        if self.vector_bytes.saturating_add(self.clip_sources.bytes) > self.limits.vector_bytes {
                             return Err(Error::Limit);
                         }
                         self.vector_work += source.work;

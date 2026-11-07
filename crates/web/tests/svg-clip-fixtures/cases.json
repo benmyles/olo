@@ -1,0 +1,187 @@
+[
+  {
+    "id": "stripe-rect",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "position",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect x=2 y=3 width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "css-geometry",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect id=r width=1 height=1 x=0 y=0 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": "#r{x:2px;y:3px;width:12px;height:9px}"
+  },
+  {
+    "id": "percent",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect x=\"10%\" y=\"20%\" width=\"50%\" height=\"40%\" /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "round",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=16 height=12 rx=3 ry=4 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "round-auto",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=16 height=12 rx=3 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "round-css",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect id=r width=16 height=12 rx=1 ry=1 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": "#r{rx:4px;ry:2px}"
+  },
+  {
+    "id": "round-clamp",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=16 height=12 rx=30 ry=40 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "round-percent",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=16 height=12 rx=\"25%\" ry=\"10%\" /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "round-zero",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=16 height=12 rx=0 ry=4 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "union",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=6 height=10 /><rect x=10 y=2 width=6 height=10 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "overlap-union",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 /><rect x=6 y=3 width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "nested",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=20 height=15 /></clipPath></defs><clipPath id=d><rect x=4 y=5 width=8 height=8 /></clipPath><g clip-path=\"url(#c)\"><g clip-path=\"url(#d)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "restore-sibling",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g><path d=\"M16 14H24V20H16Z\" fill=\"red\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "path-clip",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 /></clipPath></defs><path d=\"M0 0H24V20H0Z\" fill=\"blue\" clip-path=\"url(#c)\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "empty",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "zero",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=0 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "auto",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "none-override",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": "g{clip-path:none}"
+  },
+  {
+    "id": "missing",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#missing)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "wrong-type",
+    "html": "<div id=c></div><svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "display-child",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 style=\"display:none\" /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "visibility-child",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 style=\"visibility:hidden\" /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "ignore-fill",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 fill=\"none\" stroke=\"none\" opacity=0 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "display-definition",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c style=\"display:none\"><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "explicit-units",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c clipPathUnits=\"userSpaceOnUse\"><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "css-radius-auto",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect id=r width=16 height=12 rx=3 ry=4 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": "#r{rx:auto;ry:auto}"
+  },
+  {
+    "id": "variables",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect id=r width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": "#r{--x:2px;x:var(--x);y:calc(10% + 1px);width:calc(50% + 1px)}"
+  },
+  {
+    "id": "escape-id",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=\"a b\" ><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#a%20b)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "duplicate-first",
+    "html": "<svg width=0 height=0 style=\"display:none\"><defs><clipPath id=c><rect width=4 height=5 /></clipPath></defs></svg><svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "ancestor-overflow",
+    "html": "<div style=\"width:16px;height:10px;overflow:hidden\"><svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg></div>",
+    "css": ""
+  },
+  {
+    "id": "root-missing",
+    "css": "",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\" clip-path=\"url(#missing)\"><defs><clipPath id=c ><rect width=12 height=9 /></clipPath></defs><g><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>"
+  },
+  {
+    "id": "root-none-override",
+    "css": "svg{clip-path:none}",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\" clip-path=\"url(#c)\"><defs><clipPath id=c ><rect width=12 height=9 /></clipPath></defs><g><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>"
+  },
+  {
+    "id": "all-geometry-reset",
+    "css": "#r{all:initial;width:12px;height:9px}",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=c ><rect id=r x=3 y=4 rx=2 width=12 height=9 /></clipPath></defs><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>"
+  },
+  {
+    "id": "percent-identity-order",
+    "css": "",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=\"a%20b\" ><rect width=4 height=5 /></clipPath><clipPath id=\"a b\"><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#a%20b)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>"
+  },
+  {
+    "id": "utf8-id",
+    "css": "",
+    "html": "<svg id=probe width=48 height=40 viewBox=\"0 0 24 20\"><defs><clipPath id=\"caf\u00e9\" ><rect width=12 height=9 /></clipPath></defs><g clip-path=\"url(#caf%C3%A9)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg>"
+  },
+  {
+    "id": "two-viewport-bases",
+    "css": "",
+    "html": "<svg width=0 height=0><defs><clipPath id=c><rect width=\"50%\" height=\"100%\" /></clipPath></defs></svg><svg id=probe width=24 height=20 viewBox=\"0 0 24 20\"><g clip-path=\"url(#c)\"><path d=\"M0 0H24V20H0Z\" fill=\"blue\" /></g></svg><svg width=48 height=40 viewBox=\"0 0 48 40\"><g clip-path=\"url(#c)\"><path d=\"M0 0H48V40H0Z\" fill=\"blue\" /></g></svg>"
+  }
+]

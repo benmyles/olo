@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: referenced SVG rectangle clips
+
+*19:34* — Authored component only: local SVG rectangle and rounded-rectangle clips. All 15 theme/scale reviews pass; 48 of 185 Chrome pixel comparisons remain nonpasses. Live Stripe advances to SVG group opacity; no Stripe configuration accepted.
+
+![Browser: referenced SVG rectangle clips](2026-11-06/193425-browser-referenced-svg-rectangle-clips.png)
+
 ### Browser SVG visible overflow
 
 *18:23* — SVG ink can extend beyond its CSS viewport and remain visible in separate tiles. Per-axis clipping and ancestor clips remain intact. Authored component reviewed in light, dark and night at five live scales. Independent 90 Chrome rectangles match, 80 crops match exactly and 10 fractional/curve crops remain nonpasses; Stripe still fails on the next SVG shape/container.

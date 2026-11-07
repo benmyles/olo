@@ -9,18 +9,14 @@ revalidate the merged workspace and push the integration with browser work.
 **Active website: [Stripe](eval/stripe/README.md), selected by the user.**
 Finish its real pages/journeys and all30 configurations before choosing another
 site. Component work follows observed Stripe blockers. The latest fresh HTTPS
-retry passes rounded inset computed values and stops at
-`flow layout Unsupported("SVG clip-path")` during box construction. Inset style
-values match205 independent Chrome observations across41 cases/five DPRs.
-Stripe's own absolute geometry has not run yet. There is still no useful native
-Stripe homepage and no accepted configuration. Initial absolute blocks match
-545 independent Chrome rectangles across 125 pages/five native DPRs. SVG's
-110 earlier rectangles match; 82 image crops match exactly and 28 pixel
-nonpasses remain. Native component reviews pass all 15 theme/scale combinations.
-SVG intrinsic sizing, strokes/paint servers/transforms, replaced flex
-items, static positions, shrink-to-fit and fractional raster fidelity remain
-incomplete. All older performance/conformance nonpasses remain open. Next fix
-the SVG clip reference/geometry blocker and connect inset painting, then retry Stripe; do not choose another site.
+retry passes referenced SVG rectangle clips and stops at
+`flow layout Unsupported("SVG group opacity")` during box construction.
+The new clip corpus has185 matching bounds,137 exact pixel crops and48 explicit
+pixel nonpasses; the older38 SVG pixel nonpasses remain. Native component
+reviews pass15 theme/scale combinations. Stripe's actual absolute geometry
+has not run, and no useful native homepage/configuration is accepted.
+Next implement SVG group compositing, keep clipping raster gaps open, connect
+inset painting and retry Stripe; do not choose another site.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
@@ -524,7 +520,14 @@ this is a harness correction, not a browser speedup.
 - [x] Typed rounded inset() values: compact shared numerics, reference boxes,
   variables/math, computed inheritance,205 Chrome observations across five DPRs.
   Numeric-probe precision limited to1/64px+.0005px; no shape geometry claim.
-- [ ] Complete clip-path painting. Connect variable-dependent
-  inset() geometry (including rounded corners) and retained SVG reference clips.
-  Latest startup stops at clip shape grammar during computed style.
+- [x] Initial referenced SVG rectangular clips: bounded indexed ID lookup,
+  shared definitions, computed geometry/radii, unions and ancestor intersections.
+  185 independent Chrome bounds match;137 exact crops,48 explicit pixel nonpasses.
+- [ ] Close48 clipping pixel nonpasses; exact gate remains failing. Support root
+  decoration clips, bbox units, non-rect shapes, recursive clips and transforms.
+- [ ] Complete variable-dependent inset() geometry/painting and SVG hit testing.
+- [ ] SVG group opacity/compositing: latest fresh Stripe startup blocker.
   Retry actual HTTPS after each supported component; keep failures explicit.
+- [ ] Investigate delayed process exit after quitting the live Stripe probe:
+  window closed immediately, process outlived10s wait, then exited after screen
+  stop. Local component/scroll probes exited within their waits.

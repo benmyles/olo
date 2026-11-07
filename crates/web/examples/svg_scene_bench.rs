@@ -14,6 +14,7 @@ use std::{hint::black_box, path::Path, sync::Arc, time::Instant};
 fn main() {
     let rounds: usize = std::env::args().nth(1).unwrap_or_else(|| "200".into()).parse().unwrap();
     assert!(rounds > 0);
+    let clips = std::env::args().nth(2).as_deref() == Some("clips");
     let visible = std::env::args().nth(2).as_deref() == Some("visible");
     let mut fonts = Builder::new(Default::default());
     fonts.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
@@ -25,7 +26,12 @@ fn main() {
     for count in [100, 1000] {
         let overflow = if visible { "visible" } else { "hidden" };
         let body = "<svg width=128 height=20 viewBox='0 0 128 20'><path fill='#6050ff' d='M-8 -4H136V24H-8Z'/><path fill='#00a48e' d='M8 16C8 0 64 0 64 16Z'/></svg>";
-        let source: Arc<str> = Arc::from(format!("<!doctype html><style>body{{margin:0}}svg{{display:block;overflow:{overflow}}}</style>{}", body.repeat(count)));
+        let body = if clips {
+            (0..count).map(|i| format!("<svg width=128 height=20 viewBox='0 0 128 20'><defs><clipPath id=c{i}><rect x=4 y=2 width=90 height=12 /></clipPath></defs><g clip-path='url(#c{i})'><path fill='#6050ff' d='M-8 -4H136V24H-8Z'/><path fill='#00a48e' d='M8 16C8 0 64 0 64 16Z'/></g></svg>")).collect::<String>()
+        } else {
+            body.repeat(count)
+        };
+        let source: Arc<str> = Arc::from(format!("<!doctype html><style>body{{margin:0}}svg{{display:block;overflow:{overflow}}}</style>{body}"));
         let page = page::load(source.clone(), &host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 800., height: 600., scale: 1. }, None, |_, _| {}).unwrap();
         let mut geometry = Sha256::new();
         for c in page.scene.commands() {
@@ -64,10 +70,10 @@ fn main() {
             })
             .map(|v| std::mem::size_of_val(v) + v.payload_bytes())
             .sum();
-        rows.push(json!({"pipeline_us":pipeline_us,"raster_us":raster_us,"vector_bytes":vector_bytes,"command_bytes":page.scene.command_payload_bytes(),"elements":count,"scene_us":scene_us,"commands":page.scene.commands().len(),"source_sha256":format!("{:x}",Sha256::digest(source.as_bytes())),"geometry_sha256":format!("{:x}",geometry.finalize()),"pixels_sha256":pixels}));
+        rows.push(json!({"pipeline_us":pipeline_us,"raster_us":raster_us,"vector_bytes":vector_bytes,"tree_bytes":page.scene.layout().cache().tree().storage_payload_bytes(),"command_bytes":page.scene.command_payload_bytes(),"elements":count,"scene_us":scene_us,"commands":page.scene.commands().len(),"source_sha256":format!("{:x}",Sha256::digest(source.as_bytes())),"geometry_sha256":format!("{:x}",geometry.finalize()),"pixels_sha256":pixels}));
     }
     println!(
         "{}",
-        json!({"features":build_features::enabled(),"rounds":rounds,"visible":visible,"rows":rows,"scope":"SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance."})
+        json!({"features":build_features::enabled(),"rounds":rounds,"visible":visible,"clips":clips,"rows":rows,"scope":"SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance."})
     );
 }

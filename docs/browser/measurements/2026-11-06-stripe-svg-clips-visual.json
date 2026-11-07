@@ -1,0 +1,3202 @@
+{
+  "scope": "SVG referenced rectangular-clip component,15 native reviews; not Stripe or pixel acceptance.",
+  "source_sha256": "3d528f853521d0e9cbe85efc019f11ba166af7dc4a75646018e9246038a16970",
+  "pid": 864403,
+  "rows": [
+    {
+      "theme": "light",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 174.45999,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.32,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 281.76675,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 391.32,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.28275,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 539.32,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "light",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 175.26001,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.72,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 282.173,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 389.92,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 429.889,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 537.92,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "light",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 174.45999,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.32,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 281.77716,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 390.98666,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.29315,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 538.9867,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "light",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 175.03143,
+            "width": 360.756,
+            "height": 36.179993,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.60571,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 282.06586,
+            "width": 203.42857,
+            "height": 83.42859,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 390.6057,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.0104,
+            "width": 203.42857,
+            "height": 83.42856,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 538.6057,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "light",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 174.95999,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.82,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 281.78238,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 391.32,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.29837,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 539.82,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.672,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "dark",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 174.45999,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.32,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 281.76675,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 391.32,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.28275,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 539.32,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "dark",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 175.26001,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.72,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 282.173,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 389.92,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 429.889,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 537.92,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "dark",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 174.45999,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.32,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 281.77716,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 390.98666,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.29315,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 538.9867,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "dark",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 175.03143,
+            "width": 360.756,
+            "height": 36.179993,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.60571,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 282.06586,
+            "width": 203.42857,
+            "height": 83.42859,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 390.6057,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.0104,
+            "width": 203.42857,
+            "height": 83.42856,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 538.6057,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "dark",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 174.95999,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.82,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 281.78238,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 391.32,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.29837,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 539.82,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.672,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "night",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 174.45999,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.32,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 281.76675,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 391.32,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.28275,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 539.32,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "night",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 175.26001,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.72,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 282.173,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 389.92,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 429.889,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 537.92,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "night",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 174.45999,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.32,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 281.77716,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 390.98666,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.29315,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 538.9867,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "night",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 175.03143,
+            "width": 360.756,
+            "height": 36.179993,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.60571,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 282.06586,
+            "width": 203.42857,
+            "height": 83.42859,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 390.6057,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.0104,
+            "width": 203.42857,
+            "height": 83.42856,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 538.6057,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "night",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-clips/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-clips/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG referenced clips",
+            "x": 74.656,
+            "y": 174.95999,
+            "width": 360.756,
+            "height": 36.18,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "A rectangle clips the purple artwork:",
+            "x": 73.0,
+            "y": 242.82,
+            "width": 304.884,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 281.78238,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS sets the coordinates and rounded corners:",
+            "x": 74.098,
+            "y": 391.32,
+            "width": 392.112,
+            "height": 13.932007,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 430.29837,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 539.82,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG clip components",
+            "x": 69.0,
+            "y": 733.672,
+            "width": 118.53601,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    }
+  ]
+}

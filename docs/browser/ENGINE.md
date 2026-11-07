@@ -2586,3 +2586,34 @@ limitations: tests/inset-style-fixtures. This is not clipping geometry: referenc
 box choice in layout, inset overlap reduction, radius fitting, hit testing,
 ancestor intersections and actual painting remain to connect. Non-none clips
 still stop layout explicitly. All prior pixel nonpasses remain open.
+
+## Initial referenced SVG rectangular clips
+
+Local fragment clips now resolve through one lazy, bounded, cancellable document
+ID index per build job. Tree-order duplicate identity, percent-decoded fragments,
+missing/wrong-type targets and valid empty resources remain distinct. Definitions
+are shared across viewports and accounted once in Tree storage. CSS X/Y/Rx/Ry
+bring the registry to113 longhands and participate in all reset/presentation hints.
+Direct rect children use computed coordinates, size and radii; hidden children
+are excluded, paint colors/opacity do not change the clipping silhouette.
+Chrome makes display:none definitions/ancestors unavailable, despite CSS Masking1
+section6.1; independent cases pin this intentional compatibility behavior.
+
+Scene construction resolves each distinct definition once per viewport, using
+percentages from the SVG containing the definition. Paths union rectangles;
+clip chains intersect ancestors. Ordinary vectors retain only an optional thin
+clip-list pointer; this measured two-path workload adds24 retained bytes/root.
+The sparse scene map and resolved paths are charged to command memory. Raster
+keeps only the last mask per vector, with bounded operations and cancellation;
+no per-tile URL parsing or numeric resolution. Ordinary SVG command bytes stay
+unchanged. Viewport/root decorations and SVG hit testing are not fully clipped.
+
+37 authored cases/five native DPRs give185 matching bounds and137 exact crops.
+48 fractional/rounded-edge nonpasses remain; tiny-skia mask coverage is coarser
+than Chrome. Default tests preserve exact cases and reject worsened known gaps;
+OLO_SVG_REQUIRE_COMPLETE=1 still fails. This is not an acceptance tolerance.
+Root decoration clips, bbox units, non-rect definitions, transforms, recursively
+clipped definitions, inset painting and group compositing remain incomplete.
+Fresh Stripe startup now reaches Unsupported("SVG group opacity"). No useful
+Stripe render/configuration is accepted. Release measurements and validation:
+measurements/2026-11-06-stripe-svg-clips-*.json.

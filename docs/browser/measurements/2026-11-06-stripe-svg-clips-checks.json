@@ -1,0 +1,29 @@
+{
+  "scope": "Referenced SVG rectangular clips; not Stripe acceptance",
+  "release_tests": {
+    "passed": 324,
+    "ignored": 2
+  },
+  "strict_scoped_clippy_seconds": 4.81,
+  "workspace_release_seconds": 8.77,
+  "examples_release_seconds": 6.54,
+  "reference": {
+    "cases": 37,
+    "dprs": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "matching_bounds": 185,
+    "exact_crops": 137,
+    "pixel_nonpasses": 48,
+    "older_svg_nonpasses": 38,
+    "strict_pixel_gate": "fails as required"
+  },
+  "native_reviews": 15,
+  "native_review_findings": 0,
+  "main_at_measurement": "53b1ba749c5a35247796fcdc9d27c889454c7380",
+  "process_cleanup": "Cmd+Q closed window; process outlived 10s wait, then exited after owned screen stop; absence verified"
+}

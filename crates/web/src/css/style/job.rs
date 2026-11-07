@@ -244,10 +244,12 @@ impl<'a> Job<'a> {
     fn svg_hints(&mut self, node: NodeId, hints: &mut Vec<p::Declaration>) -> Result<()> {
         let document = self.document;
         let geometry = matches!(document.name(node).map_err(Error::Dom)?, Some("svg" | "rect" | "image" | "foreignObject" | "symbol" | "use"));
+        let position = matches!(document.name(node).map_err(Error::Dom)?, Some("svg" | "rect" | "image" | "foreignObject" | "use"));
+        let rounded = document.name(node).map_err(Error::Dom)? == Some("rect");
         let animation = matches!(document.name(node).map_err(Error::Dom)?, Some("animate" | "animateMotion" | "animateTransform" | "set"));
         for (name, source) in document.attributes(node).map_err(Error::Dom)? {
             self.tick()?;
-            if !(geometry && matches!(name, "width" | "height"))
+            if !(geometry && matches!(name, "width" | "height") || position && matches!(name, "x" | "y") || rounded && matches!(name, "rx" | "ry"))
                 && !matches!(
                     name,
                     "fill"
@@ -274,7 +276,7 @@ impl<'a> Job<'a> {
                 return Err(Error::Limit);
             }
             let mut syntax = Syntax::parse(Arc::from(source), self.limits.css, self.cancelled).map_err(Error::css)?;
-            if geometry && matches!(name, "width" | "height") {
+            if geometry && matches!(name, "width" | "height") || position && matches!(name, "x" | "y") || rounded && matches!(name, "rx" | "ry") {
                 let mut parts = syntax.components().filter(|c| c.kind() != crate::css::Kind::Whitespace);
                 if parts.next().is_some_and(|c| matches!(c.kind(), crate::css::Kind::Number | crate::css::Kind::Integer)) && parts.next().is_none() {
                     syntax = Syntax::parse(Arc::from(format!("{}px", source.trim())), self.limits.css, self.cancelled).map_err(Error::css)?;

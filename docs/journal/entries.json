@@ -3676,5 +3676,11 @@
     "title": "Browser SVG visible overflow",
     "caption": "SVG ink can extend beyond its CSS viewport and remain visible in separate tiles. Per-axis clipping and ancestor clips remain intact. Authored component reviewed in light, dark and night at five live scales. Independent 90 Chrome rectangles match, 80 crops match exactly and 10 fractional/curve crops remain nonpasses; Stripe still fails on the next SVG shape/container.",
     "image": "2026-11-06/182309-browser-svg-visible-overflow.png"
+  },
+  {
+    "time": "2026-11-06T19:34:25",
+    "title": "Browser: referenced SVG rectangle clips",
+    "caption": "Authored component only: local SVG rectangle and rounded-rectangle clips. All 15 theme/scale reviews pass; 48 of 185 Chrome pixel comparisons remain nonpasses. Live Stripe advances to SVG group opacity; no Stripe configuration accepted.",
+    "image": "2026-11-06/193425-browser-referenced-svg-rectangle-clips.png"
   }
 ]

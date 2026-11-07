@@ -14,20 +14,21 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest startup checkpoint
 
-The latest fresh owned native HTTPS retry passes the rounded inset style
-values and stops at **flow layout Unsupported("SVG clip-path")** during box
-construction. Inset values now match205 independent Chrome observations across
-41 cases/five DPRs; clipping geometry is not yet connected. Stripe's actual
-absolute geometry has still not run.
-There is no useful native Stripe homepage and no accepted configuration.
-Initial deferred absolute blocks match 545 independent Chrome rectangles across
-125 authored pages/five native DPRs. Their 15 theme/scale reviews have no findings.
-The earlier path-only SVG work has 110 matching rectangles, 82 exact full pixel
-crops and 28 explicit pixel nonpasses. These are component results, not site
-passes. Visible/per-axis SVG overflow now matches 90 more independent border
-rectangles and 80/90 full crops; 10 fractional/curve pixel nonpasses remain.
-Continue with clip shape grammar and SVG reference clipping, remaining positioned
-modes and SVG fidelity on Stripe only.
+The latest fresh owned native HTTPS retry clears referenced rectangular SVG
+clipping and stops at **flow layout Unsupported("SVG group opacity")** during
+box construction. Process/executable hash/window evidence is retained in
+`../../measurements/2026-11-06-stripe-svg-clips-startup*.json`.
+There is no useful native Stripe homepage and no accepted configuration;
+Stripe's actual absolute geometry has still not run.
+
+The clip component matches185 independent Chrome bounds and137/185 exact crops
+across37 cases/five native DPRs;48 fractional/rounded-edge pixel nonpasses remain.
+The strict pixel gate fails. Earlier path/overflow corpora retain38 nonpasses.
+Its15 native theme/scale reviews have no findings. These are component results,
+not site passes. Typed inset values match205 Chrome observations, but inset
+painting remains unconnected. Initial deferred absolute blocks match545 Chrome
+rectangles across125 authored pages. Continue with SVG group compositing,
+clipping fidelity and remaining positioned modes on Stripe only.
 
 The retained-source [foreign inventory](foreign-inventory.json) contains154 SVG
 roots,307 paths,135 rectangles,61 clip paths,13 linear gradients and4 filters.
@@ -38,7 +39,7 @@ other shapes, transforms, paint servers, masks and filters remain open.
 The retained-source [clip inventory](clip-inventory.json) has61 local references
 on g elements and61 clipPath definitions. Their children are identical12×9
 rectangles at0,0, with no other geometry/transform/units attributes. This is
-source evidence for the next component, not computed cascade, a frozen replay
+source evidence for the initial clip component, not computed cascade, a frozen replay
 or proof that all references are visible.
 
 ## Current evidence

@@ -204,3 +204,98 @@ fn svg_definitions_remain_in_dom_without_direct_paint_or_path_compilation() {
         assert_eq!(vector.visited, 3); // root, definitions container, painted path
     }
 }
+
+#[test]
+fn independent_svg_rectangular_clip_geometry_and_pixel_nonpasses() {
+    use sha2::{Digest, Sha256};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/svg-clip-fixtures");
+    let cases: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("cases.json")).unwrap()).unwrap();
+    let reference: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("chrome.json")).unwrap()).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(std::fs::read(root.join("cases.json")).unwrap())), reference["cases_sha256"]);
+    let mut failures = Vec::new();
+    let mut exact = 0;
+    for row in reference["rows"].as_array().unwrap() {
+        let case = cases.as_array().unwrap().iter().find(|c| c["id"] == row["id"]).unwrap();
+        let scale = row["scale"].as_f64().unwrap();
+        let (page, mut painter) = load(&format!("<style>{}</style>{}", case["css"].as_str().unwrap(), case["html"].as_str().unwrap()), scale);
+        assert_eq!(page.stylesheet_issues, 0, "{}", case["id"]);
+        let (_, command) = page
+            .scene
+            .commands()
+            .iter()
+            .enumerate()
+            .find(|(i, c)| matches!(c.primitive, paint::Primitive::Vector { .. }) && page.scene.node(*i as u32).is_some_and(|n| page.document.attribute(n, "id").unwrap() == Some("probe")))
+            .unwrap();
+        let b = command.bounds;
+        let geometry = [("x", b.x), ("y", b.y), ("width", b.width), ("height", b.height)].into_iter().map(|(k, n)| (n - row["bounds"][k].as_f64().unwrap()).abs()).fold(0., f64::max);
+        assert!(geometry < 0.0001, "{} @{} geometry {geometry}", case["id"], scale);
+        let bytes = std::fs::read(root.join(row["png"].as_str().unwrap())).unwrap();
+        assert_eq!(format!("{:x}", Sha256::digest(&bytes)), row["sha256"]);
+        let expected = tiny_skia::Pixmap::decode_png(&bytes).unwrap();
+        assert_eq!((expected.width(), expected.height()), ((128. * scale) as u32, (80. * scale) as u32));
+        let actual = painter.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: expected.width(), height: expected.height() }, None).unwrap();
+        let different = actual.rgba().as_chunks::<4>().0.iter().zip(expected.data().as_chunks::<4>().0).filter(|(a, b)| a != b).count();
+        let maximum = actual.rgba().iter().zip(expected.data()).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
+        if different == 0 {
+            exact += 1;
+        } else {
+            failures.push(serde_json::json!({"id":row["id"],"scale":scale,"different_pixels":different,"max_channel_error":maximum}));
+        }
+        if let Ok(dir) = std::env::var("OLO_SVG_CLIP_REPORT") {
+            assert!(dir.starts_with("/var/tmp/"));
+            actual.save_png(Path::new(&dir).join(row["png"].as_str().unwrap())).unwrap();
+        }
+    }
+    let report = serde_json::json!({"total":reference["rows"].as_array().unwrap().len(),"exact":exact,"failures":failures});
+    if let Ok(dir) = std::env::var("OLO_SVG_CLIP_REPORT") {
+        std::fs::write(Path::new(&dir).join("report.json"), serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+    }
+    assert_eq!(reference["rows"].as_array().unwrap().len(), cases.as_array().unwrap().len() * 5);
+    let known: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("REFERENCE-GAPS.json")).unwrap()).unwrap();
+    for gap in &failures {
+        let previous = known["failures"].as_array().unwrap().iter().find(|r| r["id"] == gap["id"] && r["scale"] == gap["scale"]).unwrap_or_else(|| panic!("New nonpass: {gap}"));
+        assert!(gap["different_pixels"].as_u64() <= previous["different_pixels"].as_u64() && gap["max_channel_error"].as_u64() <= previous["max_channel_error"].as_u64(), "Raster regression: {gap}");
+    }
+    if std::env::var_os("OLO_SVG_REQUIRE_COMPLETE").is_some() {
+        assert!(failures.is_empty(), "{report}");
+    }
+}
+
+#[test]
+fn svg_clip_budgets_cancellation_sharing_and_tile_origin() {
+    use std::sync::atomic::AtomicBool;
+    let source = |count| {
+        format!(
+            "<svg width=48 height=40 viewBox='0 0 24 20' style='margin:8px'><defs><clipPath id=c><rect width=12 height=9 /></clipPath></defs>{}</svg>",
+            "<g clip-path='url(#c)'><path d='M0 0H24V20H0Z' fill='blue'/></g>".repeat(count)
+        )
+    };
+    let (mut page, mut painter) = load(&source(1), 2.);
+    let (many, _) = load(&source(10), 2.);
+    // Additional references retain clip links, not duplicate resolved paths.
+    let growth = many.scene.command_payload_bytes() - page.scene.command_payload_bytes();
+    assert!(growth > 0 && growth < 9 * 64, "unexpected duplicate clip geometry: {growth}");
+    let full = painter.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: 128, height: 128 }, None).unwrap();
+    let crop = painter.raster(&page.scene, paint::DeviceRect { x: 16, y: 16, width: 40, height: 32 }, None).unwrap();
+    for y in 0..32 {
+        assert_eq!(&crop.rgba()[y * 40 * 4..(y + 1) * 40 * 4], &full.rgba()[((y + 16) * 128 + 16) * 4..((y + 16) * 128 + 56) * 4]);
+    }
+    let cancel = AtomicBool::new(true);
+    assert!(matches!(painter.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: 10, height: 10 }, Some(&cancel)), Err(paint::Error::Cancelled)));
+    let tree = page.scene.layout().cache().tree();
+    let root = tree.iter().find(|(_, n)| page.document.name(n.node).unwrap() == Some("svg")).unwrap().1.node;
+    assert!(matches!(olo_web::svg::Viewport::load(&page.document, tree.styles(), root, 1000, 1, None), Err(layout::Error::Limit)));
+    for limits in [layout::BuildLimits { vector_work: 1, ..Default::default() }, layout::BuildLimits { vector_bytes: 1, ..Default::default() }] {
+        let mut job = layout::BuildJob::new(&page.document, tree.styles().clone(), limits, None).unwrap();
+        loop {
+            match job.step(1) {
+                Ok(p) => assert!(!p.finished),
+                Err(layout::Error::Limit) => break,
+                Err(e) => panic!("{e:?}"),
+            }
+        }
+        assert!(matches!(job.step(1), Err(layout::Error::Failed)));
+    }
+    page.document.set_attribute(root, "width", "80").unwrap();
+    assert!(olo_web::svg::Viewport::load(&page.document, tree.styles(), root, 1000, 10000, None).is_err());
+}
