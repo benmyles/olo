@@ -5,6 +5,7 @@ mod catalog;
 mod matching;
 mod metrics;
 mod scope;
+pub mod system;
 pub mod woff;
 use crate::css::properties::{Family, GenericFamily};
 use crate::css::style::{FontMetrics, FontRequest, FontSlant};

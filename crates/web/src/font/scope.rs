@@ -18,13 +18,32 @@ struct Binding {
 pub struct GenericPolicy {
     default: Box<[Arc<str>]>,
     bindings: Vec<Binding>,
+    /// Named families answered by others when absent (metric-compatible
+    /// substitutes, as fontconfig's aliases): lower-cased name → families.
+    aliases: Vec<(String, Box<[Arc<str>]>)>,
 }
 impl GenericPolicy {
     fn complete(generic: GenericFamily) -> bool {
         matches!(generic, GenericFamily::Serif | GenericFamily::SansSerif | GenericFamily::Monospace | GenericFamily::Cursive | GenericFamily::Fantasy | GenericFamily::SystemUi | GenericFamily::Math)
     }
     pub fn new(default: &[&str]) -> Result<Self> {
-        Ok(Self { default: names(default)?, bindings: Vec::new() })
+        Ok(Self { default: names(default)?, bindings: Vec::new(), aliases: Vec::new() })
+    }
+    /// Families to try for `name` when no installed family has it.
+    pub fn alias(&mut self, name: &str, families: &[&str]) -> Result<()> {
+        if self.aliases.len() >= 1024 || name.is_empty() || name.len() > 256 {
+            return Err(Error::Limit);
+        }
+        let key = name.to_ascii_lowercase();
+        let families = names(families)?;
+        match self.aliases.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, f)) => *f = families,
+            None => self.aliases.push((key, families)),
+        }
+        Ok(())
+    }
+    fn aliases_of(&self, name: &str) -> &[Arc<str>] {
+        self.aliases.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map_or(&[], |(_, f)| f)
     }
     pub fn set(&mut self, generic: GenericFamily, language: &str, range: Option<(char, char)>, families: &[&str]) -> Result<()> {
         if self.bindings.len() >= 1024 || range.is_some_and(|(a, b)| a > b) {
@@ -229,6 +248,9 @@ impl Scope {
         }
         Ok(metrics)
     }
+    pub fn catalog(&self) -> &Arc<Catalog> {
+        &self.set.catalog
+    }
     fn family(&self, name: &str, r: &FontRequest, cancelled: Option<&AtomicBool>) -> Result<Option<Selection>> {
         self.set.catalog.select_family(name, r, self.set.options, cancelled)
     }
@@ -257,10 +279,18 @@ impl Scope {
             check(cancelled)?;
             match family {
                 Family::Named(name) => {
-                    if let Some(s) = self.family(name, r, cancelled)?
-                        && supported(&s)?
-                    {
-                        return Ok(Some(s));
+                    if let Some(s) = self.family(name, r, cancelled)? {
+                        if supported(&s)? {
+                            return Ok(Some(s));
+                        }
+                    } else {
+                        for alias in self.set.policy.aliases_of(name) {
+                            if let Some(s) = self.family(alias, r, cancelled)?
+                                && supported(&s)?
+                            {
+                                return Ok(Some(s));
+                            }
+                        }
                     }
                 }
                 Family::Generic(generic) => {

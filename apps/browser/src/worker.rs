@@ -6,7 +6,7 @@ use olo_web::{
         math,
         style::{self, Axes, FontMetrics, FontRequest, Host, Keyword},
     },
-    font::{Builder, FontSet, GenericPolicy, Scope},
+    font::{Builder, FontSet, Scope},
     layout, page, paint,
     text::shaping,
 };
@@ -97,8 +97,10 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
         .name("browser-page".into())
         .spawn(move || {
             let run = || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-                // Olo's own fonts: the sans family with its italic, the mono
-                // family for monospace, and the symbol and maths faces.
+                // Olo's own fonts first (the sans family with its italic, the
+                // mono family, the symbol and maths faces), then the system's,
+                // mapped, with Chrome's family policy so pages take the fonts
+                // Chrome would on this machine.
                 let fonts = olo_xdg::data_dirs().iter().map(|p| p.join("fonts")).find(|p| p.join("NotoSans[wght].ttf").is_file()).ok_or("Browser font is unavailable")?;
                 let mut builder = Builder::new(Default::default());
                 for file in ["NotoSans[wght].ttf", "NotoSans-Italic[wght].ttf", "NotoSansMono[wght].ttf", "NotoSansSymbols[wght].ttf", "NotoSansSymbols2-Regular.ttf", "NotoSansMath-Regular.ttf"] {
@@ -107,8 +109,20 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                         builder.load_file(&path, |_| {}, None)?;
                     }
                 }
-                let mut policy = GenericPolicy::new(&["Noto Sans"])?;
-                policy.set(olo_web::css::properties::GenericFamily::Monospace, "", None, &["Noto Sans Mono"])?;
+                let system = olo_web::font::system::directories().into_iter().filter(|d| *d != fonts).collect::<Vec<_>>();
+                let mapped = olo_web::font::system::map_directories(&mut builder, &system, |path| {
+                    let file = std::fs::File::open(path).ok()?;
+                    if file.metadata().ok()?.len() > 64 << 20 {
+                        return None;
+                    }
+                    // SAFETY: a read-only mapping of an installed font file; the
+                    // engine treats the bytes as untrusted and bounds-checks every
+                    // table read, so a file rewritten underneath fails closed.
+                    let map = unsafe { memmap2::Mmap::map(&file) }.ok()?;
+                    Some(std::sync::Arc::new(map) as std::sync::Arc<dyn AsRef<[u8]> + Send + Sync>)
+                });
+                eprintln!("Browser fonts: {mapped} system font files mapped");
+                let policy = olo_web::font::system::chrome_policy()?;
                 let scope = FontSet::new(builder.finish(None)?, policy, Default::default())?.scope("en")?;
                 let loader = crate::network::Loader::new()?;
                 let mut shaper = shaping::Engine::default();

@@ -14,7 +14,7 @@ use olo_web::{
         properties::Keyword,
         style::{self, Axes, FontMetrics, FontRequest, Host},
     },
-    font::{Builder, FontSet, GenericPolicy},
+    font::{Builder, FontSet},
     layout, page, paint,
     text::shaping,
 };
@@ -86,10 +86,22 @@ fn main() {
     let png = args.iter().position(|a| a == "--png").map(|i| {
         (args.get(i + 1).cloned().unwrap_or_else(|| "page.png".into()), args.get(i + 2).and_then(|h| h.parse().ok()).unwrap_or(700u32), args.get(i + 3).and_then(|y| y.parse().ok()).unwrap_or(0i32))
     });
+    // Olo's Noto faces and the system's fonts, with Chrome's family policy,
+    // as the browser does.
     let mut fonts = Builder::new(Default::default());
-    let font = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/fonts/NotoSans[wght].ttf");
-    fonts.load_file(&font, |_| {}, None).unwrap();
-    let scope = FontSet::new(fonts.finish(None).unwrap(), GenericPolicy::new(&["Noto Sans"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/fonts");
+    for file in ["NotoSans[wght].ttf", "NotoSans-Italic[wght].ttf", "NotoSansMono[wght].ttf", "NotoSansSymbols[wght].ttf", "NotoSansSymbols2-Regular.ttf", "NotoSansMath-Regular.ttf"] {
+        let path = data.join(file);
+        if path.is_file() {
+            fonts.load_file(&path, |_| {}, None).unwrap();
+        }
+    }
+    let system = olo_web::font::system::directories();
+    olo_web::font::system::map_directories(&mut fonts, &system, |path| {
+        let bytes = std::fs::read(path).ok()?;
+        Some(Arc::new(bytes) as Arc<dyn AsRef<[u8]> + Send + Sync>)
+    });
+    let scope = FontSet::new(fonts.finish(None).unwrap(), olo_web::font::system::chrome_policy().unwrap(), Default::default()).unwrap().scope("en").unwrap();
     let viewport = layout::Viewport { width, height: 700., scale: 1. };
     let mut shaper = shaping::Engine::default();
     let mut painter = paint::Engine::default();
@@ -129,7 +141,9 @@ fn main() {
             }
         },
     );
+    let mut prepared_scope = scope.clone();
     let result = prepared.and_then(|prepared| {
+        prepared_scope = prepared.scope().clone();
         if issues {
             // A histogram of the dropped declarations and selectors.
             let mut counts: std::collections::BTreeMap<String, usize> = Default::default();
@@ -171,6 +185,8 @@ fn main() {
                     }
                     let Some(s) = tree.style(id) else { continue };
                     let f = &s.font().request;
+                    let face = prepared_scope.first_available(f, None).ok().and_then(|sel| prepared_scope.catalog().face(sel.face).ok().map(|face| face.families.join("/")));
+                    println!("  face {}", face.unwrap_or_default());
                     println!(
                         "{:?} <{} class=\"{classes}\"> bounds {:?}\n  font {:?} size {} weight {} letter-spacing {} line-height {} max-width {} color {:?}",
                         b.kind,

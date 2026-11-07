@@ -11,18 +11,24 @@ impl FaceId {
 pub(super) enum Bytes {
     Owned(Vec<u8>),
     Shared(Arc<[u8]>),
+    /// Bytes someone else holds, such as a file the caller mapped read-only
+    /// (the OS pages in the tables that are used; nothing is copied).
+    Leased(Arc<dyn AsRef<[u8]> + Send + Sync>),
 }
 impl Bytes {
     pub fn data(&self) -> &[u8] {
         match self {
             Self::Owned(v) => v,
             Self::Shared(v) => v,
+            Self::Leased(l) => (**l).as_ref(),
         }
     }
+    /// Heap bytes retained; a lease holds none of its own.
     fn reserved(&self) -> usize {
         match self {
             Self::Owned(v) => v.capacity(),
             Self::Shared(v) => v.len() + 2 * size_of::<usize>(),
+            Self::Leased(_) => 2 * size_of::<usize>(),
         }
     }
 }
@@ -145,6 +151,12 @@ impl Builder {
         face.ranges = descriptor.ranges;
         self.faces.truncate(before + 1);
         Ok(())
+    }
+    /// Bytes the caller keeps alive, such as a file it mapped read-only
+    /// (system fonts: many files, few used). Faces are indexed from them;
+    /// `file_bytes` still bounds the file.
+    pub fn add_leased(&mut self, data: Arc<dyn AsRef<[u8]> + Send + Sync>, cancelled: Option<&AtomicBool>) -> Result<usize> {
+        self.add(Bytes::Leased(data), cancelled)
     }
     /// Native bounded file I/O; call on a worker. Reads at most 64 KiB between
     /// cancel/progress checks. No source bytes are copied after loading.
