@@ -1915,8 +1915,11 @@ event reaches it.
   each series' latest value), `widgets::CellGrid` (Pulse's LED wells,
   `GridCell`s lit in colours, `on_click` with the cell; a click either
   takes is its own, not the clickable card's it's on), and
-  `charts::paint_sparkline`/`paint_bars`/`paint_meter`/`paint_well`
-  (small graphs painted in a canvas: Deskbar's widgets),
+  `charts::paint_trace`/`paint_bars`/`paint_meter`/`paint_heatmap`/
+  `paint_well` (small graphs painted in a canvas: Deskbar's widgets; a
+  trace is timed points scrolled to `now`, its frames asked for with
+  `charts::tick_within`, the window's one clock below; a heatmap is a
+  cell a level, `heatmap_grid` laying them out as big as they go),
   `widgets::legend`/`legend_height` (swatches, names and values in
   wrapping rows, each name and value on one baseline; laid out by their
   lengths, the review keeps them on a grid of their own, as it does a
@@ -11931,10 +11934,11 @@ ProcessController put their bars in its tray.
   writes; a volume's fullness; an interface's down and up; a hwmon
   temperature, "chip/label"; battery power), where (`Place`: an icon's
   place in the tray, a row under the tray, a row at the foot under the
-  applications), its look (`Look`: graph, bars, meter, number), its
-  row's size, its name and value shown, how often it's read
-  (`every_ms`, 250 ms to a minute), how far back its graph looks
-  (`span_s`) and its colour (a `Hue`, or the accent).
+  applications), its look (`Look`: graph, bars, heatmap, meter,
+  number), its row's size, its name and value shown, how often it's
+  read (`every_ms`, 250 ms to a minute), how far back its graph looks
+  (`span_s`), its colour (a `Hue`, or the accent), and whether it's
+  `beside` the one before it, sharing its row.
 * **Readings**: `olo_system::meters` (Preferences' list of what there
   is too, `sources`: cores, GPUs, disks, volumes, interfaces, sensors,
   a battery): `/proc/stat`, `meminfo`, `diskstats`, `net/dev`, statvfs,
@@ -11948,24 +11952,52 @@ ProcessController put their bars in its tray.
   nothing is read (`Live::pause`). What a widget draws is made once a
   reading (`Shown`: each series' levels over its history, rates against
   the highest in it, its value in words), not each frame.
-* **Drawing**: tray widgets take the tray's first slots (a graph, bars
-  or meter in a sunken well, or the value in small figures); rows have
-  the name at the left and the value at the right (shortened, "↓27K
-  ↑102K", or without the name, when both don't fit), the drawing
-  between them in a small row and under them in a medium or large one.
-  A tip says what it measures in full and each series' value; a click
-  opens Activity Monitor; the other button, Activity Monitor and
-  Deskbar Preferences…. Agents read each as a `Meter` with its value.
-* **Cost**, over 20 s on release builds (`tools/dev/cost`): no widgets,
-  0.1% of a core, 2 wakeups a second, 0.2 frames a second; eight (most
-  read every second), 0.2%, 5 wakeups (2 the worker's), 1.1 frames a
-  second at 613 µs (430 without).
+* **Drawing**: tray widgets take the tray's first slots (a graph, bars,
+  a heatmap or a meter in a sunken well, or the value in small
+  figures); a row of its own has the name at the left and the value at
+  the right (shortened, "↓27K ↑102K", or without the name, when both
+  don't fit), the drawing between them in a small row and under them in
+  a medium or large one. Widgets `beside` one another share a row
+  (Ben: "more than 1 widget per row, e.g. a more compact representation
+  of a combination of things", as iStat Menus' labels over little
+  meters): equal cells `TIGHT` apart, each its name (shorter, "Mem",
+  where the whole doesn't fit) over its drawing, its value beside the
+  name only if it fits whole (a number's under it), the row as tall as
+  its tallest. A tip says what it measures in full and each series'
+  value; a click opens Activity Monitor; the other button, Activity
+  Monitor and Deskbar Preferences…. Agents read each as a `Meter` with
+  its value.
+* **Motion** (Ben: "make the graphs etc in the deskbar widgets all
+  animate smoothly like in activity monitor"; "even if e.g. something
+  only updates once per second it still smoothly animates, including
+  e.g heatmap the tiles should animate to the next state"): each
+  reading is timed (`widgets::clock`), and a graph's right edge is an
+  interval behind the latest (`graph_now`, Activity Monitor's `now`),
+  so its line runs into the edge a device pixel at a time and stands
+  still once readings stop; bars, meters and heatmap cells move from
+  where they're drawn to each reading over the time between readings
+  (a second at most), still at each end so one move runs into the next.
+  Frames follow the pixels: a graph's when it has scrolled one, a
+  level's when it has moved one (a heatmap's: a sixteenth of its
+  colour), at most 60 a second, all on the window's one clock, none once
+  nothing moves. They're drawn on a layer of their own over the bar
+  (`widgets::Layer`, both cached under `BarRoot`): the bar lays them
+  out (`Shelf`) and draws their ground, tips and clicks, the layer
+  draws them; a reading or a step of motion draws the layer alone (the
+  bar too only while a widget's tip is up, for its words).
+* **Cost**, over 20 s on release builds at 2× (`tools/dev/cost`): no
+  widgets, 0.1% of a core, 2 wakeups a second, 0.2 frames a second;
+  eight (most read every second: three graphs, 16 cores' bars, a
+  meter, a tray heatmap and number), 0.9%, 45 wakeups, 9.6 frames a
+  second at 614 µs (a frame of the layer alone: ~200 µs of GPUI's own,
+  ~27 µs a widget, ~200 submitting). Before they moved: 0.3%, 2.1
+  frames a second at 773 µs, the whole bar each.
 
 Preferences ▸ Deskbar (`deskbar.rs`) lists the widgets in order (Add
 one of a kind after the chosen one, Remove, Move Up, Move Down) beside
 the chosen one's settings (what it shows and which of it, where, look,
-size, name and value, how often, how far back, colour), each changing
-the Deskbar at once; Defaults has none.
+size, name and value, beside the one before it, how often, how far
+back, colour), each changing the Deskbar at once; Defaults has none.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

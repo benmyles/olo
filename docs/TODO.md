@@ -15,6 +15,51 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Voice Processing's delay down from 40 ms** (Ben, 2026-11-07, of
+  "Cleaning up the microphone's sound: 40 ms behind": "we need that to
+  be way more optimized so that it is not introducing any kind of
+  noticeable lag"). Its processing is 0.4-0.6 ms a 10 ms frame; the 40
+  ms is how far behind the sound is: DeepFilterNet3's STFT (10 ms) and
+  its two frames of look-ahead (20 ms), and the frame the source keeps
+  ahead (10 ms) because the capture and the source run in different
+  cycles. Take the processing into the graph's own cycle (one node, the
+  microphone in and the cleaned sound out in the same quantum: a filter,
+  not two streams) so nothing is kept ahead (30 ms); and a "least
+  delay" choice for when it matters most (hearing yourself, music):
+  noise suppression without look-ahead (DeepFilterNet3's low-latency
+  model chopped voices when measured, so another, measured the same
+  way), 10 ms or under in all. Measure each against today's chain with
+  Try It and the chain tests before choosing.
+
+- **Slash commands in the command palette** (Ben, 2026-11-07, Super+Space:
+  "support `/ws` for web search so if i do `/ws when was beos released?`
+  it should open that search in my browser. if i do `/ask how do i find
+  what ports are open` it should use AI (with a config to choose the
+  model under prefs-> ai defaulting to astra on low) to show me an
+  answer, and it should be a structured json response so you can let it
+  provide a text/prose answer as well as up to, say, 4 optional code
+  snippets and then if it returned the code snippets show them (or a
+  preview of them if they're large) and give each one a number and make
+  it so if i press the number then it shows that one expanded, and if i
+  hit enter it copies that code to the clipboard, if i hit escape it goes
+  back one e.g. back to seeing all the snippets and escape again goes
+  back so i can type something else in the command bar. also if i hit
+  space let me ask a followup question where it keeps the
+  context/messages from the previous interactions and the followup
+  should be able to provide a new answer/snippets. make sure it all
+  works very intuitively and fast"). Streams, cancellable, never blocks.
+
+- **Float a window, or its group, from its tab** (Ben, 2026-11-07:
+  "right click on a tab title bar thing and if we are in auto-tiling or
+  focus mode i should be able to choose "Float Window" and if it's part
+  of a group then also an option for "Float Window Group" and they do as
+  they sound. if it's part of a group and i just choose to float window
+  then it should also pull it out of that group"). The tab's menu, in
+  the tiling and focus modes: Float Window (out of its group first, if
+  it's in one), and Float Window Group with one; a floating window's
+  tab offers Unfloat (Ben: "there also needs to be an option to
+  "Unfloat" a floating window too"), back into the tiling or focus.
+
 - **Intel's render GT busy on an idle desktop**: on 2026-11-07 its idle
   residency rose 4 ms in a second (the media GT's 928), so the GPU never
   rests (RC6). Find what keeps it awake (app_server drawing every frame?
@@ -32,6 +77,31 @@ something nobody here has is in "Blocked", with what it waits for.
   matched to it; Quick Look gets it too.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Deskbar's widgets move smoothly, share rows, and come along in
+  backups** (Ben, 2026-11-07: "make the graphs etc in the deskbar
+  widgets all animate smoothly like in activity monitor"; "even if e.g.
+  something only updates once per second it still smoothly animates,
+  including e.g heatmap the tiles should animate to the next state";
+  "the option of more than 1 widget per row, e.g. a more compact
+  representation of a combination of things", as iStat Menus' labels
+  over little meters; "make sure all this stuff like the deskbar widgets
+  settings and so on properly get imported/exported in olo backups";
+  and "an option for a heatmap look for cpu where each core is a grid
+  item"). Graphs scroll a device pixel at a time, an interval behind the
+  latest reading, as Activity Monitor's; bars, meters and heatmap cells
+  move to each reading over the time between readings; all on a layer
+  of their own, so motion draws only them. Preferences ▸ Deskbar ▸
+  "Beside the widget before it" puts a widget in the row before it,
+  each then its name over a small drawing. Heatmap: a cell a core. A
+  widget changed is read at once. Backups: the deskbar widgets were
+  always in (app_server's settings); from another computer, one
+  measuring a device that isn't there measures the default instead,
+  said; the GPUs' tuning and power plan (/etc/olo/gpus.json, root's)
+  now go in too, put back through polkit, only the plan from another
+  computer. Cost, eight widgets at 2×: 0.9% of a core, 9.6 frames/s
+  (before they moved, 0.3% at 2.1). Try: Preferences ▸ Deskbar after
+  the upgrade.
 
 - **Olo's history rewritten without personal details** (Ben, 2026-11-07:
   "do the history rewrite but backup the repo first"). Backed up first,

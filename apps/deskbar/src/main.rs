@@ -38,9 +38,9 @@ use olo_protocol::{Client, DisplayWorkspace, Event, KeyboardProfile, NoteApp, Ou
 use olo_ui::{
     Frame, Menu, MenuItem, WindowOptions, agent, dnd,
     gpui::{
-        AnyElement, App, AppContext as _, Bounds, ClickEvent, ContentMask, Context, Corner, Entity, ExternalPaths, FontWeight, InteractiveElement as _, IntoElement, LayerKeyboard, LayerShellLayer,
-        MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled as _, Task,
-        Window, WindowHandle, canvas, div, point, px, size,
+        AnyElement, AnyView, App, AppContext as _, Bounds, ClickEvent, ContentMask, Context, Corner, Entity, ExternalPaths, FontWeight, InteractiveElement as _, IntoElement, LayerKeyboard,
+        LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _,
+        StyleRefinement, Styled as _, Task, Window, WindowHandle, canvas, div, point, px, size,
     },
     icons, menu,
     palette::{Palette, Rgba},
@@ -147,7 +147,7 @@ enum Msg {
     /// Other programs' tray icons and launcher badges (`sni`).
     Tray(sni::Tray),
     /// The live widgets' readings, by widget (`widgets`).
-    Meters(Vec<(u32, olo_system::meters::Reading)>),
+    Meters(Vec<(u32, f64, olo_system::meters::Reading)>),
     /// What there is to measure (the widgets' GPUs, disks and sensors by
     /// name).
     Sources(olo_system::meters::Sources),
@@ -190,6 +190,7 @@ struct Settings {
 struct Bar {
     win: WindowHandle<Frame>,
     view: Entity<BarView>,
+    layer: Entity<widgets::Layer>,
 }
 
 /// A team: the windows of one application.
@@ -1329,7 +1330,18 @@ impl Deskbar {
                 self.scanning = false;
                 self.entries.clear();
             }
-            Msg::Meters(batch) => self.live.add(batch),
+            Msg::Meters(batch) => {
+                self.live.add(batch);
+                // Only the widgets drawn again (and a bar whose widget's
+                // tip is showing, for its words): not the bar.
+                for bar in &self.bars {
+                    bar.layer.update(cx, |_, cx| cx.notify());
+                    if bar.view.read(cx).hot.as_ref().is_some_and(|k| k.contains("widget:")) {
+                        bar.view.update(cx, |_, cx| cx.notify());
+                    }
+                }
+                return;
+            }
             Msg::Sources(sources) => self.sources = sources,
             Msg::Tray(tray) => {
                 // Pictures no item has any more go.
@@ -1668,17 +1680,37 @@ fn listing(names: &[String]) -> String {
 /// displays are known).
 fn open_bar(cx: &mut App, model: Entity<Deskbar>, output: Option<String>) -> Option<Bar> {
     let height = TILE_H + tray_height(1);
+    let shelf = widgets::Shelf::default();
     let view = cx.new(|cx| {
         cx.observe(&model, |_, _, cx| cx.notify()).detach();
-        BarView { model: model.clone(), output: output.clone(), hot: None, open: None, press: None, height, scroll: 0.0, fading: None }
+        BarView { model: model.clone(), output: output.clone(), hot: None, open: None, press: None, height, scroll: 0.0, fading: None, shelf: shelf.clone() }
     });
+    let layer = cx.new(|cx| widgets::Layer::new(shelf, model.clone(), cx));
+    let root = cx.new(|_| BarRoot { bar: view.clone(), layer: layer.clone() });
     let options = WindowOptions::new("Deskbar", WIDTH, height).layer("deskbar", LayerShellLayer::Top, (true, false, false, true)).layer_options(|l| {
         l.keyboard = LayerKeyboard::None;
         l.output = output.clone();
     });
-    let v = view.clone();
-    let win = olo_ui::open_window(cx, options, move |_, _| v)?;
-    Some(Bar { win, view })
+    let win = olo_ui::open_window(cx, options, move |_, _| root)?;
+    Some(Bar { win, view, layer })
+}
+
+/// A Deskbar's window: the bar, and its live widgets drawn over it, each
+/// cached, so that as the widgets move (or a reading comes) only they are
+/// drawn again, and the bar's last frame is kept (`widgets::Layer`).
+struct BarRoot {
+    bar: Entity<BarView>,
+    layer: Entity<widgets::Layer>,
+}
+
+impl Render for BarRoot {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .relative()
+            .size_full()
+            .child(AnyView::from(self.bar.clone()).cached(StyleRefinement::default().size_full()))
+            .child(AnyView::from(self.layer.clone()).cached(StyleRefinement::default().absolute().inset_0()))
+    }
 }
 
 /// A press on an application that may become a drag out of it.
@@ -1708,6 +1740,8 @@ struct BarView {
     /// Drawn again as a dot drains (no faster than a device pixel of it
     /// can change).
     fading: Option<Task<()>>,
+    /// Where its widgets are, for the layer over it.
+    shelf: widgets::Shelf,
 }
 
 impl BarView {
@@ -1752,6 +1786,8 @@ struct Drawing {
     animating: bool,
     /// A dot has begun to drain.
     fading: bool,
+    /// The live widgets, drawn over the bar (`widgets::Layer`).
+    placed: Vec<widgets::Placed>,
 }
 
 impl Drawing {
@@ -1871,7 +1907,8 @@ impl Render for BarView {
         let view = cx.entity();
         let pointer = Pointer { hot: self.hot.clone(), open: self.open.clone() };
         let output = self.output.clone();
-        let (drawing, height) = self.model.clone().update(cx, |d, cx| d.draw_bar(output.as_deref(), &pointer, &view, window, cx));
+        let (mut drawing, height) = self.model.clone().update(cx, |d, cx| d.draw_bar(output.as_deref(), &pointer, &view, window, cx));
+        self.shelf.set(std::mem::take(&mut drawing.placed));
         // Its height follows what it shows (after this frame: the
         // compositor sizes a layer surface).
         if (height - self.height).abs() > 0.5 {
@@ -1919,7 +1956,7 @@ impl Deskbar {
         let p = theme::palette(cx);
         let display = self.shown_on(output);
         self.drawing_for = display.clone();
-        let mut d = Drawing { paint: Vec::new(), hits: Vec::new(), animating: false, fading: false };
+        let mut d = Drawing { paint: Vec::new(), hits: Vec::new(), animating: false, fading: false, placed: Vec::new() };
 
         // ---- the Olo tile
         let tile = rect(0.0, 0.0, WIDTH, TILE_H);
@@ -2076,23 +2113,10 @@ impl Deskbar {
         // tray's left.
         for w in tray_widgets {
             let key = format!("widget:{}", w.id);
-            let shown = self.live.shown(&w);
-            let tip_text = shown.tip(&self.sources);
-            let (r, h) = tray_item(
-                &mut d,
-                &key,
-                tip_text,
-                Box::new(move |window, cx, r| {
-                    let p = theme::palette(cx);
-                    widgets::paint_tray(window, cx, r, &shown, &p);
-                    let name = widgets::label(&shown.widget);
-                    agent::record(
-                        window,
-                        cx,
-                        agent::Node { role: "Meter", name: Some(name.into()), value: Some(shown.value.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
-                    );
-                }),
-            );
+            let tip_text = self.live.shown(&w).tip(&self.sources);
+            // (Drawn on the layer over the bar.)
+            let (r, h) = tray_item(&mut d, &key, tip_text, Box::new(|_, _, _| {}));
+            d.placed.push(widgets::Placed { widget: w, spot: widgets::Spot::Tray(r) });
             d.hits.push(self.widget_hit(h, &format!("tray:{key}"), r, view, &model));
         }
         for (it, picture) in apps.iter().zip(pictures) {
@@ -2864,16 +2888,19 @@ impl Deskbar {
 }
 
 impl Deskbar {
-    /// The live widgets placed at `place`, a row each from `y` down (the
-    /// tray's ground under the tray, the panel's at the foot, an etched
-    /// line above them): where the next thing starts.
+    /// The live widgets placed at `place`, in rows from `y` down (each on
+    /// its own, or beside the one before; the tray's ground under the
+    /// tray, the panel's at the foot, an etched line above them): where
+    /// the next thing starts. Drawn on the layer over the bar; the
+    /// ground, tips and clicks here.
     fn widget_rows(&self, d: &mut Drawing, place: olo_protocol::deskbar::Place, y: f32, view: &Entity<BarView>, model: &Entity<Deskbar>) -> f32 {
-        let rows: Vec<olo_protocol::deskbar::Widget> = self.live.widgets.iter().filter(|w| w.place == place).cloned().collect();
+        let placed: Vec<olo_protocol::deskbar::Widget> = self.live.widgets.iter().filter(|w| w.place == place).cloned().collect();
+        let rows = widgets::rows(&placed);
         if rows.is_empty() {
             return y;
         }
         let top = y;
-        let height: f32 = rows.iter().map(widgets::row_height).sum();
+        let height: f32 = rows.iter().map(|row| widgets::row_height(row)).sum();
         let under_tray = place == olo_protocol::deskbar::Place::Top;
         let section = rect(0.0, top, WIDTH, height + TRAY_FOOT);
         d.paint(move |window, cx| {
@@ -2885,25 +2912,23 @@ impl Deskbar {
             style::hline(window, px(0.0), px(WIDTH), section.top() + style::hairline(window), c(p.shine));
         });
         let mut y = top + TRAY_FOOT / 2.0;
-        for w in rows {
-            let h = widgets::row_height(&w);
+        for row in rows {
+            let h = widgets::row_height(&row);
             let r = rect(0.0, y, WIDTH, h);
             y += h;
-            let key = format!("widget:{}", w.id);
-            let shown = self.live.shown(&w);
-            let tip_text = shown.tip(&self.sources);
-            d.paint(move |window, cx| {
-                let p = theme::palette(cx);
-                widgets::paint_row(window, cx, r, &shown, &p, TRAY_TEXT);
-                let name = widgets::label(&shown.widget);
-                agent::record(
-                    window,
-                    cx,
-                    agent::Node { role: "Meter", name: Some(name.into()), value: Some(shown.value.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
-                );
-            });
-            let h = hit(view, &key, r, Some(tip_text));
-            d.hits.push(self.widget_hit(h, &key, r, view, model));
+            let spots: Vec<widgets::Spot> = if row.len() == 1 { vec![widgets::Spot::Row(r)] } else { widgets::cells(r, row.len(), TRAY_TEXT).into_iter().map(widgets::Spot::Cell).collect() };
+            for (w, spot) in row.into_iter().zip(spots) {
+                let key = format!("widget:{}", w.id);
+                let tip_text = self.live.shown(&w).tip(&self.sources);
+                let at = match spot {
+                    widgets::Spot::Row(r) | widgets::Spot::Tray(r) => r,
+                    // (A cell's hit takes in half the gap at each side.)
+                    widgets::Spot::Cell(c) => expand(c, olo_ui::metrics::TIGHT / 2.0),
+                };
+                let h = hit(view, &key, at, Some(tip_text));
+                d.hits.push(self.widget_hit(h, &key, at, view, model));
+                d.placed.push(widgets::Placed { widget: w, spot });
+            }
         }
         top + height + TRAY_FOOT
     }
