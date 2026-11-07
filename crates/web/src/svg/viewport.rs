@@ -1,4 +1,4 @@
-//! Initial path-only inline SVG source. Worker-owned, retained vector geometry.
+//! Inline SVG source. Worker-owned, retained vector geometry.
 use super::{Path, PathJob, clip};
 use crate::{
     css::style::{Display, Keyword as K, Property as P, StyleTree, Value},
@@ -8,9 +8,27 @@ use crate::{
 use std::sync::atomic::{AtomicBool, Ordering};
 pub struct Shape {
     pub node: NodeId,
-    pub path: Path,
+    pub(crate) geometry: Geometry,
     pub color: [u8; 4],
     pub evenodd: bool,
+}
+pub(crate) enum Geometry {
+    Path(Path),
+    Rectangle { slot: u32, source: Box<super::rect::Rectangle> },
+}
+impl Geometry {
+    pub fn path<'a>(&'a self, used: Option<&'a super::used::Geometry>) -> Option<&'a tiny_skia::Path> {
+        match self {
+            Self::Path(path) => path.geometry(),
+            Self::Rectangle { slot, .. } => used.and_then(|u| u.rectangles.get(*slot as usize)).and_then(Option::as_ref),
+        }
+    }
+    fn payload_bytes(&self) -> usize {
+        match self {
+            Self::Path(path) => path.payload_bytes(),
+            Self::Rectangle { .. } => size_of::<super::rect::Rectangle>(),
+        }
+    }
 }
 /// Preorder isolated effects over a contiguous range of retained shapes.
 /// Bounds are in SVG user space; raster surfaces cover only their tile intersection.
@@ -25,6 +43,7 @@ pub struct Layer {
 pub struct Viewport {
     pub node: NodeId,
     pub shapes: Vec<Shape>,
+    pub(crate) rectangles: u32,
     clips: Option<triomphe::ThinArc<(), clip::Clip>>,
     layers: Option<triomphe::ThinArc<(), Layer>>,
     pub view_box: Option<[f64; 4]>,
@@ -70,7 +89,7 @@ impl Viewport {
         if [P::Width, P::Height].into_iter().all(|p| matches!(root_style.value(p), Value::Keyword(K::Auto))) {
             return Err(Error::Unsupported("auto-sized SVG viewport"));
         }
-        let mut result = Self { node: root, shapes: Vec::new(), clips: None, layers: None, view_box: None, aspect: Default::default(), clip, ink_bounds: None, visited: 0, work: 0 };
+        let mut result = Self { node: root, shapes: Vec::new(), rectangles: 0, clips: None, layers: None, view_box: None, aspect: Default::default(), clip, ink_bounds: None, visited: 0, work: 0 };
         if let Some(value) = doc.attribute(root, "viewBox")? {
             if value.len() > 1024 * 1024 {
                 return Err(Error::Limit);
@@ -151,42 +170,55 @@ impl Viewport {
                     match name {
                         "svg" if node == root => {}
                         "g" => {}
-                        "path" => {
+                        "path" | "rect" => {
                             if !matches!(s.value(P::Stroke), Value::Keyword(K::None)) {
                                 return Err(Error::Unsupported("SVG strokes"));
                             }
-                            let source = doc.attribute(node, "d")?.unwrap_or("");
-                            bytes = bytes.checked_add(source.len()).ok_or(Error::Limit)?;
-                            if bytes > 16 * 1024 * 1024 {
-                                return Err(Error::Limit);
-                            }
-                            let mut job = PathJob::new(source, super::Limits { segments: 65536.min(work_limit.saturating_sub(work).saturating_sub(sources.work)), ..Default::default() }, cancel)
-                                .map_err(path_error)?;
-                            let steps = loop {
-                                let p = job.step(128).map_err(path_error)?;
-                                if p.finished {
-                                    break p.segments;
+                            let geometry = if name == "rect" {
+                                work = work.checked_add(10).ok_or(Error::Limit)?;
+                                if work.saturating_add(sources.work) > work_limit {
+                                    return Err(Error::Limit);
                                 }
+                                let slot = result.rectangles;
+                                Geometry::Rectangle { slot, source: Box::new(super::rect::Rectangle::read(s)?) }
+                            } else {
+                                let source = doc.attribute(node, "d")?.unwrap_or("");
+                                bytes = bytes.checked_add(source.len()).ok_or(Error::Limit)?;
+                                if bytes > 16 * 1024 * 1024 {
+                                    return Err(Error::Limit);
+                                }
+                                let mut job = PathJob::new(source, super::Limits { segments: 65536.min(work_limit.saturating_sub(work).saturating_sub(sources.work)), ..Default::default() }, cancel)
+                                    .map_err(path_error)?;
+                                let steps = loop {
+                                    let p = job.step(128).map_err(path_error)?;
+                                    if p.finished {
+                                        break p.segments;
+                                    }
+                                };
+                                work = work.checked_add(steps).ok_or(Error::Limit)?;
+                                if work > 1_000_000.min(work_limit) || work.saturating_add(sources.work) > work_limit {
+                                    return Err(Error::Limit);
+                                }
+                                let path = job.finish().map_err(path_error)?;
+                                if path.malformed() {
+                                    return Err(Error::Unsupported("malformed SVG path"));
+                                }
+                                Geometry::Path(path)
                             };
-                            work = work.checked_add(steps).ok_or(Error::Limit)?;
-                            if work > 1_000_000.min(work_limit) || work.saturating_add(sources.work) > work_limit {
-                                return Err(Error::Limit);
-                            }
-                            let path = job.finish().map_err(path_error)?;
-                            if path.malformed() {
-                                return Err(Error::Unsupported("malformed SVG path"));
-                            }
                             if matches!(s.value(P::Visibility), Value::Keyword(K::Visible)) && !matches!(s.value(P::Fill), Value::Keyword(K::None)) {
                                 let mut color = s.used_color(P::Fill)?.srgb8_clipped();
                                 color[3] = (f64::from(color[3]) * s.value(P::FillOpacity).scalar().ok_or(Error::Invalid)?).round() as u8;
-                                if let Some(geometry) = path.geometry() {
+                                if matches!(geometry, Geometry::Rectangle { .. }) {
+                                    result.rectangles = result.rectangles.checked_add(1).ok_or(Error::Limit)?;
+                                }
+                                if let Some(geometry) = geometry.path(None) {
                                     let b = geometry.bounds();
                                     result.ink_bounds = Some(result.ink_bounds.map_or(Some(b), |old| old.join(&b)).ok_or(Error::Unsupported("SVG overflow bounds precision"))?);
                                     if let Some(&(_, i)) = open.last() {
                                         layers[i].bounds = Some(layers[i].bounds.map_or(Some(b), |old| old.join(&b)).ok_or(Error::Unsupported("SVG layer bounds precision"))?);
                                     }
                                 }
-                                result.shapes.push(Shape { node, path, color, evenodd: matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd)) });
+                                result.shapes.push(Shape { node, geometry, color, evenodd: matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd)) });
                             }
                         }
                         _ => return Err(Error::UnsupportedForeign(Box::new(crate::layout::ForeignElement { node, namespace: Namespace::Svg, name: name.into() }))),
@@ -232,7 +264,7 @@ impl Viewport {
         self.layers.as_ref().map_or(0, |l| 2 * size_of::<usize>() + size_of_val(&l.slice))
             + self.clips.as_ref().map_or(0, |c| 2 * size_of::<usize>() + size_of_val(&c.slice))
             + self.shapes.len() * size_of::<Shape>()
-            + self.shapes.iter().map(|s| s.path.payload_bytes()).sum::<usize>()
+            + self.shapes.iter().map(|s| s.geometry.payload_bytes()).sum::<usize>()
     }
     pub(crate) fn layers(&self) -> &[Layer] {
         self.layers.as_ref().map_or(&[], |l| &l.slice)

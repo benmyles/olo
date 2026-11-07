@@ -9,8 +9,8 @@ struct Surface {
     y: i32,
     image: Pixmap,
 }
-fn fill(out: &mut Pixmap, shape: &crate::svg::Shape, transform: Transform, mask: Option<&Mask>) {
-    if let Some(path) = shape.path.geometry() {
+fn fill(out: &mut Pixmap, shape: &crate::svg::Shape, used: Option<&crate::svg::used::Geometry>, transform: Transform, mask: Option<&Mask>) {
+    if let Some(path) = shape.geometry.path(used) {
         let mut paint = Paint::default();
         paint.set_color_rgba8(shape.color[0], shape.color[1], shape.color[2], shape.color[3]);
         out.fill_path(path, &paint, if shape.evenodd { FillRule::EvenOdd } else { FillRule::Winding }, transform, mask);
@@ -20,6 +20,7 @@ fn fill(out: &mut Pixmap, shape: &crate::svg::Shape, transform: Transform, mask:
 pub(super) fn raster(
     out: &mut Pixmap,
     vector: &Viewport,
+    used: Option<&crate::svg::used::Geometry>,
     clips: &[clip::Resolved],
     transform: Transform,
     mask: Option<&Mask>,
@@ -31,7 +32,7 @@ pub(super) fn raster(
     if layers.is_empty() {
         for shape in &vector.shapes {
             check(cancel)?;
-            fill(out, shape, transform, mask);
+            fill(out, shape, used, transform, mask);
         }
         return Ok(());
     }
@@ -90,7 +91,8 @@ pub(super) fn raster(
             // Keep the complete ink bounds, even when the clip is smaller.
             // Cropping the curve before scan conversion changes tiny-skia's
             // edge subdivision. Empty clip resources can still skip all work.
-            let bounds = if layer.clip == clip::NO_CLIP { layer.bounds } else { clips.get(layer.clip as usize).ok_or(Error::Invalid)?.path.as_ref().as_ref().and(layer.bounds) };
+            let ink = used.map_or(layer.bounds, |g| g.layers[next]);
+            let bounds = if layer.clip == clip::NO_CLIP { ink } else { clips.get(layer.clip as usize).ok_or(Error::Invalid)?.path.as_ref().as_ref().and(ink) };
             if layer.opacity > 0.
                 && let Some(bounds) = bounds
             {
@@ -130,9 +132,9 @@ pub(super) fn raster(
         }
         let path = &vector.shapes[shape];
         if let Some(surface) = stack.last_mut() {
-            fill(&mut surface.image, path, transform.post_translate(-surface.x as f32, -surface.y as f32), None);
+            fill(&mut surface.image, path, used, transform.post_translate(-surface.x as f32, -surface.y as f32), None);
         } else {
-            fill(out, path, transform, mask);
+            fill(out, path, used, transform, mask);
         }
         shape += 1;
     }

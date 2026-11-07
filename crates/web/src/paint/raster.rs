@@ -104,6 +104,7 @@ impl Engine {
                 Primitive::Vector { owner, vector, origin } => {
                     let tree = scene.layout.cache().tree();
                     let resolved_clips = scene.vector_clips.get(vector);
+                    let used_geometry = scene.vector_geometry.get(vector);
                     let vector = tree.vector(*vector).ok_or(Error::Invalid)?;
                     let geometry = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
                     let bounds = Rect { x: origin.x, y: origin.y, ..geometry.content_box() };
@@ -144,7 +145,7 @@ impl Engine {
                     if !transform.is_valid() {
                         return Err(Error::Unsupported("SVG viewport transform precision"));
                     }
-                    super::vector::raster(&mut out, vector, resolved_clips.map(Vec::as_slice).unwrap_or(&[]), transform, vector_mask, self.limits(), &mut layer_work, cancel)?;
+                    super::vector::raster(&mut out, vector, used_geometry, resolved_clips.map(Vec::as_slice).unwrap_or(&[]), transform, vector_mask, self.limits(), &mut layer_work, cancel)?;
                 }
                 Primitive::Fill { color } => {
                     if let Some(r) = local(c.bounds) {

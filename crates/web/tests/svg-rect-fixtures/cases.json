@@ -1,0 +1,192 @@
+[
+  {
+    "id": "sharp",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "default-black",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect width=\"56\" height=\"32\"/></svg>"
+  },
+  {
+    "id": "missing-dimension",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect height=\"32\"/></svg>"
+  },
+  {
+    "id": "zero",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect width=\"0\" height=\"32\"/></svg>"
+  },
+  {
+    "id": "negative",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect width=\"-10\" height=\"32\"/></svg>"
+  },
+  {
+    "id": "auto-css",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect width=\"56\" height=\"32\" style=\"width:auto\"/></svg>"
+  },
+  {
+    "id": "css-geometry",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"2\" y=\"3\" width=\"10\" height=\"12\" style=\"x:8px;y:4px;width:56px;height:32px;fill:#2277cc\"/></svg>"
+  },
+  {
+    "id": "percent",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"10%\" y=\"12.5%\" width=\"60%\" height=\"75%\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "viewbox-percent",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" viewBox=\"0 0 40 24\"><rect x=\"10%\" y=\"12.5%\" width=\"60%\" height=\"75%\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "viewbox-none",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" viewBox=\"0 0 40 16\" preserveAspectRatio=\"none\"><rect x=\"10%\" y=\"12.5%\" width=\"60%\" height=\"75%\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "viewbox-offset",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" viewBox=\"-8 -4 40 24\"><rect x=\"10%\" y=\"12.5%\" width=\"60%\" height=\"75%\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "empty-viewbox",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" viewBox=\"0 0 0 24\"><rect width=\"100%\" height=\"100%\"/></svg>"
+  },
+  {
+    "id": "round",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" rx=\"8\" ry=\"4\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "round-auto-y",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" rx=\"8\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "round-auto-x",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" ry=\"8\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "round-clamp",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" rx=\"80\" ry=\"40\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "round-zero",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" rx=\"8\" ry=\"0\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "round-percent",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" rx=\"10%\" ry=\"12.5%\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "round-percent-auto",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" rx=\"10%\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "round-css-auto",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" rx=\"8\" ry=\"4\" style=\"rx:auto\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "variables-math",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect style=\"--size:60%;x:calc(10% + 2px);y:4px;width:var(--size);height:calc(75% - 4px);rx:calc(5% + 2px);fill:#2277cc\"/></svg>"
+  },
+  {
+    "id": "font-relative",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect width=\"3em\" height=\"2em\" x=\".5em\" y=\".25em\" style=\"font-size:16px;fill:#2277cc\"/></svg>"
+  },
+  {
+    "id": "all-reset",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect width=\"56\" height=\"32\" style=\"all:initial\"/></svg>"
+  },
+  {
+    "id": "inherited-geometry",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><g style=\"width:56px;height:32px;x:8px;y:4px\"><rect style=\"width:inherit;height:inherit;x:inherit;y:inherit\"/></g></svg>"
+  },
+  {
+    "id": "fill-none",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect width=\"56\" height=\"32\" fill=\"none\"/></svg>"
+  },
+  {
+    "id": "hidden-restored",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><g visibility=\"hidden\"><rect width=\"80\" height=\"48\"/><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" visibility=\"visible\" fill=\"#2277cc\"/></g></svg>"
+  },
+  {
+    "id": "display-none",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><g display=\"none\"><rect width=\"100%\" height=\"100%\"/></g><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "current-color",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><g color=\"#2277cc\"><rect x=\"8\" y=\"4\" width=\"56\" height=\"32\" fill=\"currentColor\"/></g></svg>"
+  },
+  {
+    "id": "stripe-geometry",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect width=\"100%\" height=\"100%\" fill=\"#0a2540\" opacity=\".1\"/></svg>"
+  },
+  {
+    "id": "nested-opacity",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><g opacity=\".5\"><rect width=\"80%\" height=\"75%\" fill=\"red\"/><g opacity=\".5\"><rect x=\"25%\" y=\"25%\" width=\"75%\" height=\"75%\" fill=\"blue\"/></g></g></svg>"
+  },
+  {
+    "id": "mixed-layers",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><g opacity=\".5\"><path d=\"M0 0H40V24H0Z\" fill=\"red\"/><g opacity=\".5\"><rect x=\"25%\" y=\"25%\" width=\"75%\" height=\"75%\" fill=\"blue\"/></g><path d=\"M4 24H16V48H4Z\" fill=\"green\"/></g></svg>"
+  },
+  {
+    "id": "empty-layers",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><g opacity=\".5\"><g opacity=\".5\"></g><rect width=\"0\" height=\"50%\"/><g opacity=\".5\"><rect width=\"100%\" height=\"100%\" fill=\"blue\"/></g></g></svg>"
+  },
+  {
+    "id": "fill-opacity",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><g fill=\"#2277cc\" fill-opacity=\".5\"><rect width=\"75%\" height=\"75%\" opacity=\".5\"/><rect x=\"25%\" y=\"25%\" width=\"75%\" height=\"75%\"/></g></svg>"
+  },
+  {
+    "id": "clipped",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><defs><clipPath id=\"c\"><rect x=\"16\" y=\"8\" width=\"48\" height=\"24\" rx=\"4\"/></clipPath></defs><g clip-path=\"url(#c)\" opacity=\".5\"><rect width=\"100%\" height=\"100%\" fill=\"red\"/><rect x=\"40\" width=\"50%\" height=\"100%\" fill=\"blue\"/></g></svg>"
+  },
+  {
+    "id": "fractional",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect x=\"8.3\" y=\"4.7\" width=\"56.2\" height=\"32.1\" fill=\"#2277cc\"/></svg>"
+  },
+  {
+    "id": "overflow",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" style=\"overflow:visible\"><g opacity=\".5\"><rect x=\"80\" y=\"16\" width=\"40\" height=\"24\" fill=\"red\"/></g></svg>"
+  },
+  {
+    "id": "overflow-x",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" style=\"overflow-x:visible;overflow-y:clip\"><rect x=\"64\" y=\"32\" width=\"56\" height=\"32\" fill=\"red\"/></svg>"
+  },
+  {
+    "id": "two-viewports",
+    "css": "",
+    "html": "<svg id=\"probe\" width=\"80\" height=\"48\" ><rect width=\"50%\" height=\"50%\" fill=\"#2277cc\"/></svg><svg width=\"40\" height=\"24\"><rect width=\"50%\" height=\"50%\" fill=\"red\"/></svg>"
+  }
+]

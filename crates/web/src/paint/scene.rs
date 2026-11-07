@@ -34,6 +34,7 @@ pub struct Scene {
     pub(super) layout: Arc<layout::Layout>,
     pub(super) commands: Box<[Command]>,
     pub(super) clips: Box<[Rect]>,
+    pub(super) vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     pub(super) vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     pub(super) index: index::Index,
     pub(super) base: [u8; 4],
@@ -151,6 +152,8 @@ impl Scene {
         self.commands.len() * size_of::<Command>()
             + self.clips.len() * size_of::<Rect>()
             + self.index.payload_bytes()
+            + self.vector_geometry.capacity() * (size_of::<(u32, crate::svg::used::Geometry)>() + 1)
+            + self.vector_geometry.values().map(|g| g.payload_bytes()).sum::<usize>()
             + self.vector_clips.capacity() * (size_of::<(u32, Vec<crate::svg::clip::Resolved>)>() + 1)
             + self.vector_clips.values().map(|v| crate::svg::clip::resolved_bytes(v)).sum::<usize>()
     }
@@ -196,6 +199,7 @@ pub struct BuildJob<'a> {
     states: Vec<State>,
     draft: Vec<Draft>,
     clips: Vec<Rect>,
+    vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
     svg_viewports: Option<std::collections::HashMap<crate::dom::NodeId, [f64; 2]>>,
@@ -252,6 +256,7 @@ impl<'a> BuildJob<'a> {
             states: Vec::new(),
             draft: Vec::new(),
             clips: Vec::new(),
+            vector_geometry: Default::default(),
             vector_clips: Default::default(),
             vector_clip_bytes: 0,
             svg_viewports: None,
@@ -333,9 +338,19 @@ impl<'a> BuildJob<'a> {
         let origin = Point { x: outer.x + g.border_width.left + g.padding.left, y: outer.y + g.border_width.top + g.padding.top };
         let content = g.content_box();
         let source = self.layout.cache().tree().vector(vector).ok_or(Error::Invalid)?;
+        if source.rectangles != 0 && !self.vector_geometry.contains_key(&vector) {
+            let viewport = source.view_box.map_or([content.width, content.height], |v| [v[2], v[3]]);
+            let used = crate::svg::used::Geometry::resolve(source, viewport, self.limits.path_segments, self.limits.path_bytes.saturating_sub(self.vector_clip_bytes), self.cancel)?;
+            self.vector_clip_bytes = self.vector_clip_bytes.checked_add(used.payload_bytes()).ok_or(Error::Limit)?;
+            if self.vector_clip_bytes > self.limits.path_bytes {
+                return Err(Error::Limit);
+            }
+            self.vector_geometry.insert(vector, used);
+        }
+        let ink_bounds = self.vector_geometry.get(&vector).map_or(source.ink_bounds, |g| g.ink_bounds);
         let mut bounds = outer;
         if source.clip != [true, true]
-            && let (Some(b), Some([sx, sy, tx, ty])) = (source.ink_bounds, source.transform(content.width, content.height))
+            && let (Some(b), Some([sx, sy, tx, ty])) = (ink_bounds, source.transform(content.width, content.height))
         {
             let mut ink = Rect { x: origin.x + tx + f64::from(b.left()) * sx, y: origin.y + ty + f64::from(b.top()) * sy, width: f64::from(b.width()) * sx, height: f64::from(b.height()) * sy };
             if source.clip[0] {
@@ -654,6 +669,7 @@ impl<'a> BuildJob<'a> {
             layout: self.layout,
             commands,
             clips: self.clips.into_boxed_slice(),
+            vector_geometry: self.vector_geometry,
             vector_clips: self.vector_clips,
             index,
             base: self.options.canvas,

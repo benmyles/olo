@@ -380,3 +380,127 @@ fn svg_isolated_layers_bound_scratch_work_and_preserve_tile_origin() {
     let mut limited = paint::Engine::new(paint::Limits { layer_bytes: 0, layer_pixel_work: 0, ..Default::default() });
     assert!(limited.raster(&zero.scene, region, None).unwrap().rgba().iter().all(|v| *v == 255));
 }
+
+#[test]
+fn independent_svg_rectangle_geometry_and_pixel_nonpasses() {
+    use sha2::{Digest, Sha256};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/svg-rect-fixtures");
+    let cases: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("cases.json")).unwrap()).unwrap();
+    let reference: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("chrome.json")).unwrap()).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(std::fs::read(root.join("cases.json")).unwrap())), reference["cases_sha256"]);
+    let mut failures = Vec::new();
+    let mut exact = 0;
+    for row in reference["rows"].as_array().unwrap() {
+        let case = cases.as_array().unwrap().iter().find(|c| c["id"] == row["id"]).unwrap();
+        let scale = row["scale"].as_f64().unwrap();
+        let (page, mut painter) = load(&format!("<style>{}</style>{}", case["css"].as_str().unwrap(), case["html"].as_str().unwrap()), scale);
+        assert_eq!(page.stylesheet_issues, usize::from(case["id"] == "negative"), "{}", case["id"]);
+        let tree = page.scene.layout().cache().tree();
+        let (id, _) = tree
+            .iter()
+            .find(|(_, b)| matches!(b.kind, layout::BoxKind::BlockVector { .. } | layout::BoxKind::InlineVector { .. }) && page.document.attribute(b.node, "id").unwrap() == Some("probe"))
+            .unwrap();
+        let g = page.scene.layout().geometry(id).unwrap();
+        let mut b = g.border_box;
+        let mut parent = tree.get(id).unwrap().parent;
+        while let Some(id) = parent {
+            let p = page.scene.layout().geometry(id).unwrap().content_box();
+            b.x += p.x;
+            b.y += p.y;
+            parent = tree.get(id).unwrap().parent;
+        }
+        let geometry = [("x", b.x), ("y", b.y), ("width", b.width), ("height", b.height)].into_iter().map(|(k, n)| (n - row["bounds"][k].as_f64().unwrap()).abs()).fold(0., f64::max);
+        assert!(geometry < 0.0001, "{} @{} geometry {geometry}", case["id"], scale);
+        let bytes = std::fs::read(root.join(row["png"].as_str().unwrap())).unwrap();
+        assert_eq!(format!("{:x}", Sha256::digest(&bytes)), row["sha256"]);
+        let expected = tiny_skia::Pixmap::decode_png(&bytes).unwrap();
+        assert_eq!((expected.width(), expected.height()), ((128. * scale) as u32, (80. * scale) as u32));
+        let actual = painter.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: expected.width(), height: expected.height() }, None).unwrap();
+        let different = actual.rgba().as_chunks::<4>().0.iter().zip(expected.data().as_chunks::<4>().0).filter(|(a, b)| a != b).count();
+        let maximum = actual.rgba().iter().zip(expected.data()).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
+        if different == 0 {
+            exact += 1;
+        } else {
+            failures.push(serde_json::json!({"id":row["id"],"scale":scale,"different_pixels":different,"max_channel_error":maximum}));
+        }
+        if let Ok(dir) = std::env::var("OLO_SVG_RECT_REPORT") {
+            assert!(dir.starts_with("/var/tmp/"));
+            actual.save_png(Path::new(&dir).join(row["png"].as_str().unwrap())).unwrap();
+        }
+    }
+    let report = serde_json::json!({"total":reference["rows"].as_array().unwrap().len(),"exact":exact,"failures":failures});
+    if let Ok(dir) = std::env::var("OLO_SVG_RECT_REPORT") {
+        std::fs::write(Path::new(&dir).join("report.json"), serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+    }
+    assert_eq!(reference["rows"].as_array().unwrap().len(), cases.as_array().unwrap().len() * 5);
+    let known: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("REFERENCE-GAPS.json")).unwrap()).unwrap();
+    for gap in &failures {
+        let previous = known["failures"].as_array().unwrap().iter().find(|r| r["id"] == gap["id"] && r["scale"] == gap["scale"]).unwrap_or_else(|| panic!("New nonpass: {gap}"));
+        assert!(gap["different_pixels"].as_u64() <= previous["different_pixels"].as_u64() && gap["max_channel_error"].as_u64() <= previous["max_channel_error"].as_u64(), "Raster regression: {gap}");
+    }
+    if std::env::var_os("OLO_SVG_REQUIRE_COMPLETE").is_some() {
+        assert!(failures.is_empty(), "{report}");
+    }
+}
+
+#[test]
+fn svg_rectangle_layout_reuses_sources_but_recomputes_percentages() {
+    let mut fonts = Builder::new(Default::default());
+    fonts.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(fonts.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = paint_host::Scaled::new(scope.clone(), 1.);
+    let mut shaper = shaping::Engine::default();
+    let mut painter = paint::Engine::default();
+    let source = Arc::from("<style>body{margin:0}svg{display:block;width:100%;height:40px}</style><svg><g opacity='.5'><rect x='50%' width='50%' height='100%' fill='red'/></g></svg>");
+    let page = page::load(source, &host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 80., height: 40., scale: 1. }, None, |_, _| {}).unwrap();
+    let region = paint::DeviceRect { x: 0, y: 0, width: 128, height: 40 };
+    for width in [120., 64., 80.] {
+        let mut job = layout::Job::new(&mut shaper, &scope, page.scene.layout().cache().clone(), layout::Viewport { width, height: 40., scale: 1. }, Default::default(), None).unwrap();
+        while !job.step(8).unwrap().finished {}
+        let layout = Arc::new(job.finish().unwrap());
+        assert!(Arc::ptr_eq(layout.cache().tree(), page.scene.layout().cache().tree()));
+        let mut job = paint::BuildJob::new(&page.document, layout, &mut painter, Default::default(), Default::default(), None).unwrap();
+        while !job.step(8).unwrap().finished {}
+        let scene = job.finish().unwrap();
+        let image = painter.raster(&scene, region, None).unwrap();
+        let pixel = |x: usize| &image.rgba()[((20 * 128 + x) * 4)..][..4];
+        assert_eq!(pixel((width / 2.) as usize - 1), [255; 4]);
+        assert_eq!(pixel((width / 2.) as usize), [255, 127, 127, 255]);
+        assert_eq!(pixel(width as usize), [255; 4]);
+    }
+    // Reflow must not mutate the geometry retained by an older scene.
+    let original = painter.raster(&page.scene, region, None).unwrap();
+    assert_eq!(&original.rgba()[(20 * 128 + 40) * 4..][..4], [255, 127, 127, 255]);
+    assert_eq!(&original.rgba()[(20 * 128 + 80) * 4..][..4], [255; 4]);
+}
+
+#[test]
+fn svg_rectangle_limits_cancellation_and_overflow_tiles() {
+    use std::sync::atomic::AtomicBool;
+    for scale in [1., 1.25, 1.5, 1.75, 2.] {
+        let (page, mut painter) = load("<svg width=20 height=20 style='overflow:visible'><g opacity='.5'><g opacity='.5'><rect x='800%' width='100%' height='100%' fill='red'/></g></g></svg>", scale);
+        let region = paint::DeviceRect { x: (160. * scale) as i32, y: 0, width: (20. * scale) as u32, height: (20. * scale) as u32 };
+        let tile = painter.raster(&page.scene, region, None).unwrap();
+        assert!(tile.rgba().as_chunks::<4>().0.iter().all(|p| *p == [255, 191, 191, 255]));
+        assert!(page.scene.content_extent().width >= 180.);
+    }
+    let (mut page, mut painter) = load("<svg width=80 height=40><rect width='100%' height='100%'/></svg>", 1.);
+    for limits in [paint::Limits { path_bytes: 1, ..Default::default() }, paint::Limits { path_segments: 9, ..Default::default() }] {
+        let mut job = paint::BuildJob::new(&page.document, page.scene.layout().clone(), &mut painter, Default::default(), limits, None).unwrap();
+        loop {
+            match job.step(1) {
+                Err(paint::Error::Layout(layout::Error::Limit) | paint::Error::Limit) => break,
+                Ok(p) => assert!(!p.finished),
+                Err(e) => panic!("{e}"),
+            }
+        }
+        assert!(matches!(job.step(1), Err(paint::Error::Failed)));
+    }
+    assert!(matches!(
+        paint::BuildJob::new(&page.document, page.scene.layout().clone(), &mut painter, Default::default(), Default::default(), Some(&AtomicBool::new(true))),
+        Err(paint::Error::Cancelled)
+    ));
+    let root = page.scene.layout().cache().tree().iter().find(|(_, b)| matches!(b.kind, layout::BoxKind::BlockVector { .. })).unwrap().1.node;
+    page.document.set_attribute(root, "width", "100").unwrap();
+    assert!(paint::BuildJob::new(&page.document, page.scene.layout().clone(), &mut painter, Default::default(), Default::default(), None).is_err());
+}

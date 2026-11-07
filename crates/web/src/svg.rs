@@ -1,9 +1,12 @@
 //! Retained SVG path geometry and initial path-only viewport compilation.
 //! Stroke/paint-server/nested SVG and full intrinsic sizing remain incomplete.
 pub(crate) mod clip;
+pub(crate) mod rect;
+pub(crate) mod used;
 mod viewport;
 use std::sync::atomic::{AtomicBool, Ordering};
 use svgtypes::{PathParser, PathSegment as Segment};
+pub(crate) use viewport::Geometry;
 pub use viewport::{Shape, Viewport};
 
 #[derive(Clone, Copy, Debug)]

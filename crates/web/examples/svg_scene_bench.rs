@@ -14,6 +14,7 @@ use std::{hint::black_box, path::Path, sync::Arc, time::Instant};
 fn main() {
     let rounds: usize = std::env::args().nth(1).unwrap_or_else(|| "200".into()).parse().unwrap();
     assert!(rounds > 0);
+    let rectangles = std::env::args().nth(2).as_deref() == Some("rectangles");
     let opacity = std::env::args().nth(2).as_deref() == Some("opacity");
     let clips = std::env::args().nth(2).as_deref() == Some("clips");
     let visible = std::env::args().nth(2).as_deref() == Some("visible");
@@ -29,6 +30,8 @@ fn main() {
         let body = "<svg width=128 height=20 viewBox='0 0 128 20'><path fill='#6050ff' d='M-8 -4H136V24H-8Z'/><path fill='#00a48e' d='M8 16C8 0 64 0 64 16Z'/></svg>";
         let body = if clips {
             (0..count).map(|i| format!("<svg width=128 height=20 viewBox='0 0 128 20'><defs><clipPath id=c{i}><rect x=4 y=2 width=90 height=12 /></clipPath></defs><g clip-path='url(#c{i})'><path fill='#6050ff' d='M-8 -4H136V24H-8Z'/><path fill='#00a48e' d='M8 16C8 0 64 0 64 16Z'/></g></svg>")).collect::<String>()
+        } else if rectangles {
+            "<svg width=128 height=20><g opacity='.5'><rect width='100%' height='100%' fill='#6050ff'/><rect x='6.25%' y='20%' width='50%' height='60%' rx='4' fill='#00a48e'/></g></svg>".repeat(count)
         } else if opacity {
             body.replace("<path fill", "<g opacity='.5'><path fill").replace("</svg>", "</g></g></svg>").repeat(count)
         } else {
@@ -77,6 +80,6 @@ fn main() {
     }
     println!(
         "{}",
-        json!({"features":build_features::enabled(),"rounds":rounds,"visible":visible,"clips":clips,"opacity":opacity,"rows":rows,"scope":"SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance."})
+        json!({"features":build_features::enabled(),"rounds":rounds,"visible":visible,"clips":clips,"opacity":opacity,"rectangles":rectangles,"rows":rows,"scope":"SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance."})
     );
 }
