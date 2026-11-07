@@ -843,6 +843,8 @@ let slack = null;
 // The unread count as the page's app badge says it (once it has), and as
 // its title does; what the host was told.
 const slackBadge = { app: undefined, title: 0, told: null };
+// Olo's state as the host last said it ({away, dnd, dnd_until, call}).
+let slackStatus = null;
 // Notifications shown: ours (unique across tabs) ↔ the page's.
 const slackNotes = new Map();
 let slackNext = 1;
@@ -913,6 +915,12 @@ async function fromSlackHost(m) {
   } else if (m.go) {
     const tab = await slackTab();
     if (tab) chrome.tabs.sendMessage(tab.id, { type: "slack-go", command: m.go }).catch(() => {});
+  } else if (m.status) {
+    // Olo's state, which Slack's status follows (slack-page.js): kept
+    // for a page that comes later, and given to Slack's window's.
+    slackStatus = m.status;
+    const tab = await slackTab();
+    if (tab) chrome.tabs.sendMessage(tab.id, { type: "slack-status", status: m.status }).catch(() => {});
   }
 }
 
@@ -963,6 +971,10 @@ async function fromSlack(m, sender) {
     tellSlackBadge();
   } else if (m.type === "slack-open" && web(m.url)) {
     tellHost({ slack: { open: m.url } });
+  } else if (m.type === "slack-status?") {
+    // A page come in: Olo's state, if it is Slack's window's.
+    const tab = await slackTab();
+    if (slackStatus && tab?.id === sender.tab.id) chrome.tabs.sendMessage(tab.id, { type: "slack-status", status: slackStatus }).catch(() => {});
   }
 }
 

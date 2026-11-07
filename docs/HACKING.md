@@ -10979,10 +10979,34 @@ start):
 * **Agents and Passwords**: as in any of Olo's Chrome's windows (the
   extension's trees, Passwords and passkeys).
 
-Idle, nothing runs (the host 0% of a core, 0 wakeups a second; the page
-watches only its `<title>`). Not yet: Slack's status following Olo's
-(away when the screen locks, Do Not Disturb), which needs Slack's own
-client signed in to build against. Test with a stand-in page served from
+* **Status**: Slack's follows Olo's. The host follows the screen's lock
+  (app_server's power events), Do Not Disturb (Notifications' state
+  file, by the kernel's events; until when, from its settings, if it
+  was turned on for a while) and calls (an app recording from a
+  microphone, `olo_system::audio::watch_listening`: not Olo's own, not
+  a monitor; for 20 s before it's a call, a voice clip isn't, and over
+  after 10 s with none), and tells the extension `{slack: {status:
+  {away, dnd, dnd_until, call}}}` when it changes (`status_of`); the
+  background keeps the latest for a page that comes later. The page
+  (slack-page.js) calls Slack's web API as its own client does, with
+  each signed-in workspace's token from `localConfig_v2` and the page's
+  sign-in: `users.setPresence` away while locked and automatic after,
+  `dnd.setSnooze` for Do Not Disturb's time (a day at a time when it
+  has no end) and `dnd.endSnooze`, and "In a meeting"
+  (`users.profile.set`, :spiral_calendar_pad:) during a call, only when
+  the person has no status of their own, cleared after only if it is
+  still ours. What Olo set is kept in the page's `oloSlackStatus`, so
+  only that is undone, after a reload too. Checked: `status_of`'s test
+  (a lock, Do Not Disturb, a voice clip that isn't a call, a pause
+  that doesn't end one), and the page's calls against a fake Slack in
+  node (/var/tmp's harness: each case's calls, a status of the
+  person's own left, ours changed by them kept); not yet against
+  Slack itself, which would change the person's status where others
+  see it.
+
+Idle, nothing runs (the host 0% of a core, 0 wakeups a second, its
+watchers asleep on their sources; the page watches only its
+`<title>`). Test with a stand-in page served from
 127.0.0.1 (`OLO_SLACK_URL=http://127.0.0.1:PORT/client`: a sidebar of
 `/client/T/C` links, buttons that make a `Notification`, change the
 title and call `setAppBadge`, a `target=_blank` link, a picture), a copy

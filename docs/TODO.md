@@ -80,14 +80,18 @@ something nobody here has is in "Blocked", with what it waits for.
   (the start-up screen's picture as a theme), built and tried headless
   and on a vkms seat; switching the machine over is Ben's to say.
 
-- **olo-slack: its status follows Olo's** (Ben, 2026-11-04): away when
-  the screen locks, Do Not Disturb with Olo's, in a meeting during a
-  call; through Slack's web API from its signed-in page.
-
 - **StyledEdit: ⌘-click opens a link; pictures on the web shown** (from
   the StyledEdit entry: "Not done").
 
 ## Done, waiting for Ben to try or confirm
+
+- **olo-slack: its status follows Olo's** (Ben, 2026-11-04): away when
+  the screen locks, Do Not Disturb with Olo's, in a meeting during a
+  call; through Slack's web API from its signed-in page. Built (HACKING,
+  "Slack", Status) and checked against a fake Slack, not against Slack
+  itself: that would change Ben's status where others see it. To try:
+  lock the screen (Slack shows away), turn on Do Not Disturb (Slack's
+  bell snoozed), join a call in any app for 20 s ("In a meeting").
 
 - ~~**Screen recording in Screenshot, all of CleanShot X's**~~ (Ben, 2026-11-04,
   again 2026-11-06: "where is the screen recording app?"). The

@@ -718,6 +718,61 @@ pub fn watch_playing(mut changed: impl FnMut(Option<bool>)) -> ! {
     }
 }
 
+/// The apps recording from a microphone now (a call, a meeting): each
+/// recording stream that isn't paused, on a source that isn't another's
+/// monitor, and not Olo's own (its voice processing's stream, Olo's
+/// programs: dictation, a screen recording), by its application's
+/// name, told `changed` when that changes; None while there is no sound
+/// server. Never returns: run it on its own thread.
+pub fn watch_listening(mut changed: impl FnMut(Option<Vec<String>>)) -> ! {
+    let mut last: Option<Option<Vec<String>>> = None;
+    let mut report = |p: Option<Vec<String>>| {
+        if last.as_ref() != Some(&p) {
+            last = Some(p.clone());
+            changed(p);
+        }
+    };
+    loop {
+        let r: Result<()> = (|| {
+            let mut query = Conn::connect()?;
+            let mut events = Conn::connect()?;
+            events.sock.get_ref().set_read_timeout(None)?;
+            events.ack(&Command::Subscribe(SubscriptionMask::SOURCE_OUTPUT))?;
+            report(Some(listening(&mut query)?));
+            loop {
+                let (_, cmd) = protocol::read_command_message(&mut events.sock, events.version)?;
+                if let Command::SubscribeEvent(_) = cmd {
+                    // (Streams come and go in bursts as a call starts.)
+                    std::thread::sleep(Duration::from_millis(30));
+                    report(Some(listening(&mut query)?));
+                }
+            }
+        })();
+        if let Err(e) = r {
+            tracing::debug!("sound server: {e}");
+        }
+        report(None);
+        std::thread::sleep(Duration::from_secs(3));
+    }
+}
+
+/// [`watch_listening`]'s apps, now.
+fn listening(q: &mut Conn) -> Result<Vec<String>> {
+    let sources: protocol::SourceInfoList = q.request(&Command::GetSourceInfoList)?;
+    let monitors: std::collections::HashSet<u32> = sources.iter().filter(|s| s.monitor_of_sink_index.is_some()).map(|s| s.index).collect();
+    let outputs: protocol::SourceOutputInfoList = q.request(&Command::GetSourceOutputInfoList)?;
+    let mut apps: Vec<String> = outputs
+        .iter()
+        .filter(|o| !o.corked && !monitors.contains(&o.source_index))
+        .filter(|o| prop(&o.props, "node.name").as_deref() != Some(VOICE_MICROPHONE))
+        .filter(|o| !prop(&o.props, "application.process.binary").is_some_and(|b| b.starts_with("olo-") || b.starts_with("olo_")))
+        .map(|o| prop(&o.props, "application.name").or_else(|| prop(&o.props, "application.process.binary")).unwrap_or_else(|| "An app".to_owned()))
+        .collect();
+    apps.sort();
+    apps.dedup();
+    Ok(apps)
+}
+
 #[cfg(test)]
 mod mic_mute_tests {
     /// The microphone key on this machine (`cargo test -p olo-system
