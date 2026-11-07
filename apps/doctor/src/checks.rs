@@ -218,7 +218,8 @@ pub struct Roots {
 /// Where temporary files go: /tmp's file system, and the session's
 /// `TMPDIR` (systemd's user manager's, else ours) and whether it's in
 /// memory too; the user's config folder (for the fix's file) and data
-/// folder (for D-Bus activation files: `file_manager`).
+/// folder (for D-Bus activation files: `file_manager`), and the
+/// session's runtime folder (the activation files an Olo session writes).
 #[derive(Debug, Clone, Default)]
 pub struct TempFiles {
     pub tmp_in_memory: bool,
@@ -226,6 +227,7 @@ pub struct TempFiles {
     pub tmpdir_in_memory: bool,
     pub config: PathBuf,
     pub data: PathBuf,
+    pub runtime: PathBuf,
 }
 
 impl TempFiles {
@@ -235,7 +237,15 @@ impl TempFiles {
         let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
         let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".config"));
         let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".local/share"));
-        TempFiles { tmp_in_memory: olo_system::env::in_memory(Path::new("/tmp")), tmpdir_in_memory: tmpdir.as_deref().is_some_and(|d| olo_system::env::in_memory(Path::new(d))), tmpdir, config, data }
+        let runtime = olo_xdg::runtime_dir();
+        TempFiles {
+            tmp_in_memory: olo_system::env::in_memory(Path::new("/tmp")),
+            tmpdir_in_memory: tmpdir.as_deref().is_some_and(|d| olo_system::env::in_memory(Path::new(d))),
+            tmpdir,
+            config,
+            data,
+            runtime,
+        }
     }
 }
 
@@ -516,13 +526,25 @@ fn file_manager_service(tracker: &Path) -> String {
 /// wins over the system's: the fix writes one that starts Tracker
 /// (`--file-manager`), and has the session bus read it at once. It is the
 /// user's, so it applies in another desktop's session on this account
-/// too.
+/// too. An Olo session now names Tracker for it itself, in the runtime
+/// folder's services (which the bus reads first, gone with the login:
+/// olo-session's graphical.rs), so there it's fine with nothing to do.
 fn file_manager(roots: &Roots, r: &mut Report) {
     let tracker = roots.bin.join("olo-tracker");
     if !tracker.is_file() {
         return;
     }
     let mine = roots.temp.data.join("dbus-1/services").join(format!("{FILE_MANAGER}.service"));
+    let session = roots.temp.runtime.join("dbus-1/services").join(format!("{FILE_MANAGER}.service"));
+    let starts_tracker =
+        |text: &str| text.lines().any(|l| l.trim().strip_prefix("Exec=").and_then(|e| e.split_whitespace().next()).is_some_and(|p| Path::new(p).file_name().is_some_and(|n| n == "olo-tracker")));
+    if read(&session).is_some_and(|t| starts_tracker(&t)) {
+        r.fine.push(Fine {
+            title: "Programs' “Show in folder” opens Tracker".into(),
+            detail: format!("While Olo runs, D-Bus starts Tracker when a program asks for the file manager and none is running yet (Olo's session names it, in {}).", session.display()),
+        });
+        return;
+    }
     let content = file_manager_service(&tracker);
     // (Read whole: `read` trims.)
     if std::fs::read_to_string(&mine).is_ok_and(|t| t == content) {
@@ -2220,6 +2242,13 @@ mod tests {
         w("home/me/.local/share/dbus-1/services/org.freedesktop.FileManager1.service", "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/usr/bin/dolphin\n");
         let r = scan(&roots);
         assert_eq!(r.findings.iter().find(|f| f.id == "dbus:file-manager").map(|f| f.title.as_str()), Some("Programs may open dolphin instead of Tracker"));
+        // In an Olo session, which names Tracker for it in the runtime
+        // folder (read before the user's own): fine, whatever the user's.
+        roots.temp.runtime = fs.join("run/user/1000");
+        w("run/user/1000/dbus-1/services/org.freedesktop.FileManager1.service", "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/home/me/.local/bin/olo-tracker --file-manager\n");
+        let r = scan(&roots);
+        assert!(!r.findings.iter().any(|f| f.id == "dbus:file-manager"));
+        assert!(r.fine.iter().any(|f| f.title == "Programs' “Show in folder” opens Tracker" && f.detail.contains("While Olo runs")));
         let _ = std::fs::remove_dir_all(&fs);
     }
 
@@ -2491,7 +2520,14 @@ mod tests {
                 airpods: false,
                 packages: Box::new(|_| None),
                 updates: Box::new(|| None),
-                temp: TempFiles { tmp_in_memory, tmpdir: tmpdir.map(str::to_owned), tmpdir_in_memory, config: PathBuf::from("/home/me/.config"), data: PathBuf::from("/home/me/.local/share") },
+                temp: TempFiles {
+                    tmp_in_memory,
+                    tmpdir: tmpdir.map(str::to_owned),
+                    tmpdir_in_memory,
+                    config: PathBuf::from("/home/me/.config"),
+                    data: PathBuf::from("/home/me/.local/share"),
+                    runtime: PathBuf::new(),
+                },
             };
             temp_files(&roots, &mut r);
             r

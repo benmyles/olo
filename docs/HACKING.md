@@ -611,6 +611,20 @@ fn main() {
   nothing), and the session bus told to read it at once
   (`Step::SessionBusReload`). It's the user's, so it applies in another
   desktop's session on this account too (Ben chose it so, 2026-11-05).
+  An Olo session names Tracker for it by itself, with nothing to press:
+  the same activation file in the runtime folder's services
+  (`$XDG_RUNTIME_DIR/dbus-1/services`, read before the user's and the
+  system's, gone with the login; olo-session's
+  `graphical::name_file_manager`, written once the session's
+  environment is exported so a Tracker D-Bus starts finds its display),
+  as dconf's is (below); the Doctor counts it as fine. A Tracker D-Bus
+  started first is handed the session's `--desktop` and shows the
+  desktop (`Tracker::open_desktop`); the session's own `olo-tracker
+  --desktop`, which the session looks after, then waits for that one to
+  end (`instance::running_pid`, `instance::wait_for_exit`: asleep on a
+  pidfd) and ends with it, so the session starts the desktop's Tracker
+  again (gone at once, it was started again and again, then left
+  stopped).
   A window's yellow tab offers it too, for a window that says what it
   shows (`agent::set_path(window, cx, path)`: StyledEdit's document, the Viewer's file,
   Terminal's working folder; Tracker's own windows don't need it).

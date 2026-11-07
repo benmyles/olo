@@ -244,6 +244,7 @@ pub fn start() {
     }
     if let Some(bin) = crate::exe().parent() {
         take_dconf(bin, &crate::runtime_dir());
+        name_file_manager(bin, &crate::runtime_dir());
     }
     stop_gvfs();
 }
@@ -276,6 +277,38 @@ fn dconf_service(bin: &Path) -> String {
 /// session later has GNOME's again.
 fn dconf_service_path(runtime: &Path) -> PathBuf {
     runtime.join("dbus-1/services/ca.desrt.dconf.service")
+}
+
+/// The name programs ask to show a file in its folder (Chrome's Show in
+/// folder, an app's Open Containing Folder).
+const FILE_MANAGER: &str = "org.freedesktop.FileManager1";
+
+/// Tracker for it, while an Olo session runs: the desktop's Tracker takes
+/// the name, but while none has it (as Tracker restarts, or after an
+/// upgrade) D-Bus started the system's file manager for it, GNOME's Files
+/// on Fedora, which then kept it. Tracker started so (`--file-manager`)
+/// answers without a window of its own.
+fn file_manager_service(bin: &Path) -> String {
+    format!("[D-BUS Service]\nName={FILE_MANAGER}\nExec={} --file-manager\n", bin.join("olo-tracker").display())
+}
+
+/// In the runtime folder's services, as dconf's (and gone with the
+/// login: another desktop's session has its own file manager again).
+fn file_manager_service_path(runtime: &Path) -> PathBuf {
+    runtime.join(format!("dbus-1/services/{FILE_MANAGER}.service"))
+}
+
+/// Name Tracker for [`FILE_MANAGER`]. After the session's environment is
+/// exported, so a Tracker D-Bus starts finds the session's display.
+fn name_file_manager(bin: &Path, runtime: &Path) {
+    if !bin.join("olo-tracker").is_file() {
+        return;
+    }
+    match put(&file_manager_service_path(runtime), &file_manager_service(bin)) {
+        Ok(true) => reload_bus(),
+        Ok(false) => {}
+        Err(e) => log(format!("could not name Tracker the file manager: {e}")),
+    }
 }
 
 fn reload_bus() {
@@ -333,7 +366,8 @@ pub fn stop() {
     let _ = std::fs::remove_file(crate::runtime_dir().join("olo").join("gtk-4.0.css"));
     let _ = std::fs::remove_file(portal_drop_in(&crate::runtime_dir()));
     let _ = std::fs::remove_file(gio_drop_in_path(&crate::runtime_dir()));
-    if std::fs::remove_file(dconf_service_path(&crate::runtime_dir())).is_ok() {
+    let dconf = std::fs::remove_file(dconf_service_path(&crate::runtime_dir())).is_ok();
+    if std::fs::remove_file(file_manager_service_path(&crate::runtime_dir())).is_ok() || dconf {
         reload_bus();
     }
     let _ = std::fs::remove_file(crate::runtime_dir().join(olo_xdg::legacy::OLD).join("gtk-4.0.css"));
@@ -407,6 +441,13 @@ mod tests {
         let text = dconf_service(Path::new("/home/u/.local/bin"));
         assert_eq!(text, "[D-BUS Service]\nName=ca.desrt.dconf\nExec=/home/u/.local/bin/olo-dconf\n");
         assert_eq!(dconf_service_path(Path::new("/run/user/1000")), Path::new("/run/user/1000/dbus-1/services/ca.desrt.dconf.service"));
+    }
+
+    #[test]
+    fn tracker_is_the_file_manager_while_it_runs() {
+        let text = file_manager_service(Path::new("/home/u/.local/bin"));
+        assert_eq!(text, "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/home/u/.local/bin/olo-tracker --file-manager\n");
+        assert_eq!(file_manager_service_path(Path::new("/run/user/1000")), Path::new("/run/user/1000/dbus-1/services/org.freedesktop.FileManager1.service"));
     }
 
     #[test]

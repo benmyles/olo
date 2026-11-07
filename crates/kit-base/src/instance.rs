@@ -110,6 +110,34 @@ pub fn running(app_id: &str) -> bool {
     UnixStream::connect(socket_path(app_id)).is_ok()
 }
 
+/// The process of `app_id`'s copy running in this session (the one
+/// listening for launches), if there is one.
+pub fn running_pid(app_id: &str) -> Option<i32> {
+    use std::os::fd::AsRawFd as _;
+    let s = UnixStream::connect(socket_path(app_id)).ok()?;
+    let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: getsockopt into a ucred of the size given, on our socket.
+    let r = unsafe { libc::getsockopt(s.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&raw mut cred).cast(), &raw mut len) };
+    (r == 0 && cred.pid > 0).then_some(cred.pid)
+}
+
+/// Return once process `pid` has ended (at once if it has): asleep on a
+/// pidfd till then, nothing polled.
+pub fn wait_for_exit(pid: i32) {
+    // SAFETY: pidfd_open makes a new descriptor, ours to close.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) } as i32;
+    if fd < 0 {
+        return;
+    }
+    let mut p = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
+    // SAFETY: poll on the one pollfd above; closing our own descriptor.
+    unsafe {
+        while libc::poll(&raw mut p, 1, -1) < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {}
+        libc::close(fd);
+    }
+}
+
 /// Accept forwarded launches; each arrives in `App::message` as a
 /// [`Launch`].
 pub fn listen(app_id: &str, proxy: Proxy) {
@@ -212,6 +240,29 @@ mod tests {
         assert!(!send(at("nobody"), &[]));
         let _ = std::fs::remove_file(taken);
         let _ = std::fs::remove_file(dropped);
+    }
+
+    /// The copy listening is found by its process, and waited for till it
+    /// ends.
+    #[test]
+    fn the_running_copy_is_waited_for() {
+        let id = format!("olo-test-pid-{}", std::process::id());
+        let path = socket_path(&id);
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        assert_eq!(running_pid(&id), Some(std::process::id() as i32));
+        drop(listener);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(running_pid(&id), None);
+        let mut child = std::process::Command::new("sleep").arg("0.2").spawn().unwrap();
+        let t = Instant::now();
+        wait_for_exit(child.id() as i32);
+        assert!(t.elapsed() >= Duration::from_millis(150), "{:?}", t.elapsed());
+        let _ = child.wait();
+        // Gone already: at once.
+        let t = Instant::now();
+        wait_for_exit(child.id() as i32);
+        assert!(t.elapsed() < Duration::from_millis(100));
     }
 
     /// A launch the launching process gave up on isn't to be opened too.
