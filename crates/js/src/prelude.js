@@ -415,8 +415,8 @@
     href: reflect('href', 'url'), src: reflect('src', 'url'), action: reflect('action', 'url'), poster: reflect('poster', 'url'),
     alt: reflect('alt'), type: reflect('type'), name: reflect('name'), placeholder: reflect('placeholder'), rel: reflect('rel'), target: reflect('target'), method: reflect('method'), htmlFor: reflect('for'), label: reflect('label'), charset: reflect('charset'), media: reflect('media'), srcset: reflect('srcset'), sizes: reflect('sizes'), loading: reflect('loading'), decoding: reflect('decoding'), crossOrigin: reflect('crossorigin'), referrerPolicy: reflect('referrerpolicy'), integrity: reflect('integrity'), nonce: reflect('nonce'), role: reflect('role'), autocomplete: reflect('autocomplete'), pattern: reflect('pattern'), min: reflect('min'), max: reflect('max'), step: reflect('step'), accept: reflect('accept'), enctype: reflect('enctype'), httpEquiv: reflect('http-equiv'), scope: reflect('scope'), headers: reflect('headers'), abbr: reflect('abbr'), axis: reflect('axis'), align: reflect('align'), valign: reflect('valign'), bgColor: reflect('bgcolor'), border: reflect('border'), cellPadding: reflect('cellpadding'), cellSpacing: reflect('cellspacing'), summary: reflect('summary'), frame: reflect('frame'), rules: reflect('rules'), coords: reflect('coords'), shape: reflect('shape'), download: reflect('download'), ping: reflect('ping'), hreflang: reflect('hreflang'), as: reflect('as'), form: { get() { return this.closest('form'); } },
     disabled: reflect('disabled', 'bool'), checked: reflect('checked', 'bool'), selected: reflect('selected', 'bool'), required: reflect('required', 'bool'), readOnly: reflect('readonly', 'bool'), multiple: reflect('multiple', 'bool'), autofocus: reflect('autofocus', 'bool'), open: reflect('open', 'bool'), controls: reflect('controls', 'bool'), autoplay: reflect('autoplay', 'bool'), loop: reflect('loop', 'bool'), muted: reflect('muted', 'bool'), playsInline: reflect('playsinline', 'bool'), async: reflect('async', 'bool'), defer: reflect('defer', 'bool'), noValidate: reflect('novalidate', 'bool'), reversed: reflect('reversed', 'bool'), isMap: reflect('ismap', 'bool'), noModule: reflect('nomodule', 'bool'),
-    width: { get() { const v = N.attr(this, 'width'); return v == null ? 0 : (parseInt(v, 10) || 0); }, set(v) { N.setAttr(this, 'width', String(v)); } },
-    height: { get() { const v = N.attr(this, 'height'); return v == null ? 0 : (parseInt(v, 10) || 0); }, set(v) { N.setAttr(this, 'height', String(v)); } },
+    width: { get() { const v = N.attr(this, 'width'); return v == null ? (N.nodeName(this) === 'CANVAS' ? 300 : 0) : (parseInt(v, 10) || 0); }, set(v) { N.setAttr(this, 'width', String(v)); if (N.nodeName(this) === 'CANVAS') { Object.defineProperty(this, '_sized', { value: true, configurable: true }); N.canvasSize(this, parseInt(v, 10) || 0, this.height); } } },
+    height: { get() { const v = N.attr(this, 'height'); return v == null ? (N.nodeName(this) === 'CANVAS' ? 150 : 0) : (parseInt(v, 10) || 0); }, set(v) { N.setAttr(this, 'height', String(v)); if (N.nodeName(this) === 'CANVAS') { Object.defineProperty(this, '_sized', { value: true, configurable: true }); N.canvasSize(this, this.width, parseInt(v, 10) || 0); } } },
     value: { get() { const tag = N.nodeName(this); if (tag === 'TEXTAREA') return N.textContent(this); if (tag === 'SELECT') { const o = N.query(this, 'option[selected]', false) || N.query(this, 'option', false); return o ? o.value : ''; } if (tag === 'OPTION') { const v = N.attr(this, 'value'); return v == null ? N.textContent(this) : v; } const v = this._value; return v !== undefined ? v : (N.attr(this, 'value') || ''); }, set(v) { const tag = N.nodeName(this); if (tag === 'TEXTAREA') N.setTextContent(this, String(v)); else Object.defineProperty(this, '_value', { value: String(v), writable: true, configurable: true }); } },
     defaultValue: reflect('value'),
     start: reflect('start', 'number'), span: reflect('span', 'number'), colSpan: reflect('colspan', 'number'), rowSpan: reflect('rowspan', 'number'), size: reflect('size', 'number'), maxLength: reflect('maxlength', 'number'), minLength: reflect('minlength', 'number'), rows: reflect('rows', 'number'), cols: reflect('cols', 'number'),
@@ -969,23 +969,70 @@
   // (the canvas stays an empty box), so canvas-using scripts run.
   class DOMMatrix { constructor(init) { Object.assign(this, { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, m11: 1, m12: 0, m21: 0, m22: 1, m41: 0, m42: 0, is2D: true, isIdentity: true }); if (Array.isArray(init) && init.length >= 6) { [this.a, this.b, this.c, this.d, this.e, this.f] = init; this.isIdentity = false; } } multiply() { return new DOMMatrix(); } translate() { return new DOMMatrix(); } scale() { return new DOMMatrix(); } rotate() { return new DOMMatrix(); } inverse() { return new DOMMatrix(); } transformPoint(p) { return p; } toFloat32Array() { return new Float32Array(16); } toString() { return 'matrix(1, 0, 0, 1, 0, 0)'; } static fromMatrix() { return new DOMMatrix(); } }
   global.DOMMatrix = DOMMatrix; global.DOMMatrixReadOnly = DOMMatrix; global.WebKitCSSMatrix = DOMMatrix; global.DOMPoint = class DOMPoint { constructor(x, y, z, w) { this.x = x || 0; this.y = y || 0; this.z = z || 0; this.w = w === undefined ? 1 : w; } static fromPoint(p) { return new DOMPoint(p.x, p.y, p.z, p.w); } matrixTransform() { return new DOMPoint(this.x, this.y, this.z, this.w); } }; global.DOMPointReadOnly = global.DOMPoint;
-  class Path2D { constructor() {} addPath() {} closePath() {} moveTo() {} lineTo() {} bezierCurveTo() {} quadraticCurveTo() {} arc() {} arcTo() {} ellipse() {} rect() {} roundRect() {} }
+  // A Path2D records its calls and replays them into a context's path.
+  class Path2D {
+    constructor(other) { this._ops = []; if (other instanceof Path2D) this._ops = other._ops.slice(); }
+    addPath(p) { if (p instanceof Path2D) this._ops.push(...p._ops); }
+    _replay(ctx) { ctx.beginPath(); for (const [op, args] of this._ops) ctx[op](...args); }
+  }
+  for (const op of ['closePath', 'moveTo', 'lineTo', 'bezierCurveTo', 'quadraticCurveTo', 'arc', 'arcTo', 'ellipse', 'rect', 'roundRect']) Path2D.prototype[op] = function (...args) { this._ops.push([op, args]); };
   class ImageData { constructor(a, b, c) { if (typeof a === 'number') { this.width = a; this.height = b; this.data = new Uint8ClampedArray(a * b * 4); } else { this.data = a; this.width = b; this.height = c === undefined ? a.length / 4 / b : c; } this.colorSpace = 'srgb'; } }
-  class CanvasGradient { addColorStop() {} }
+  class CanvasGradient { constructor(ctx, id) { this._ctx = ctx; this._id = id; } addColorStop(offset, color) { if (this._ctx) canvasOp(this._ctx, 'addColorStop', [this._id, offset, String(color)]); } }
   class CanvasPattern { setTransform() {} }
   class TextMetrics { constructor(w) { this.width = w; this.actualBoundingBoxLeft = 0; this.actualBoundingBoxRight = w; this.actualBoundingBoxAscent = 8; this.actualBoundingBoxDescent = 2; this.fontBoundingBoxAscent = 10; this.fontBoundingBoxDescent = 3; } }
+  // The 2D context: every call goes to the engine's raster for the canvas
+  // (N.canvasOp); properties are kept here and sent when set.
+  const canvasOp = (ctx, op, args) => N.canvasOp(ctx.canvas, op, args);
+  const ensureCanvas = (el) => { if (!el._sized) { Object.defineProperty(el, '_sized', { value: true, configurable: true }); N.canvasSize(el, parseInt(N.attr(el, 'width'), 10) || 300, parseInt(N.attr(el, 'height'), 10) || 150); } };
   class CanvasRenderingContext2D {
-    constructor(canvas) { this.canvas = canvas; Object.assign(this, { fillStyle: '#000000', strokeStyle: '#000000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, lineDashOffset: 0, font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', direction: 'ltr', globalAlpha: 1, globalCompositeOperation: 'source-over', imageSmoothingEnabled: true, imageSmoothingQuality: 'low', shadowBlur: 0, shadowColor: 'rgba(0, 0, 0, 0)', shadowOffsetX: 0, shadowOffsetY: 0, filter: 'none', letterSpacing: '0px', wordSpacing: '0px', fontKerning: 'auto', fontStretch: 'normal', fontVariantCaps: 'normal', textRendering: 'auto' }); this._dash = []; }
+    constructor(canvas) {
+      this.canvas = canvas;
+      ensureCanvas(canvas);
+      this._ = { fillStyle: '#000000', strokeStyle: '#000000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, lineDashOffset: 0, globalAlpha: 1, globalCompositeOperation: 'source-over', imageSmoothingEnabled: true };
+      Object.assign(this, { font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', direction: 'ltr', imageSmoothingQuality: 'low', shadowBlur: 0, shadowColor: 'rgba(0, 0, 0, 0)', shadowOffsetX: 0, shadowOffsetY: 0, filter: 'none', letterSpacing: '0px', wordSpacing: '0px', fontKerning: 'auto', fontStretch: 'normal', fontVariantCaps: 'normal', textRendering: 'auto' });
+      this._dash = [];
+    }
+    get fillStyle() { return this._.fillStyle; } set fillStyle(v) { this._.fillStyle = v; canvasOp(this, 'fillStyle', [v instanceof CanvasGradient ? v._id : String(v)]); }
+    get strokeStyle() { return this._.strokeStyle; } set strokeStyle(v) { this._.strokeStyle = v; canvasOp(this, 'strokeStyle', [v instanceof CanvasGradient ? v._id : String(v)]); }
+    get lineWidth() { return this._.lineWidth; } set lineWidth(v) { this._.lineWidth = v; canvasOp(this, 'lineWidth', [v]); }
+    get lineCap() { return this._.lineCap; } set lineCap(v) { this._.lineCap = v; canvasOp(this, 'lineCap', [String(v)]); }
+    get lineJoin() { return this._.lineJoin; } set lineJoin(v) { this._.lineJoin = v; canvasOp(this, 'lineJoin', [String(v)]); }
+    get miterLimit() { return this._.miterLimit; } set miterLimit(v) { this._.miterLimit = v; canvasOp(this, 'miterLimit', [v]); }
+    get lineDashOffset() { return this._.lineDashOffset; } set lineDashOffset(v) { this._.lineDashOffset = v; canvasOp(this, 'setLineDash', [v].concat(this._dash)); }
+    get globalAlpha() { return this._.globalAlpha; } set globalAlpha(v) { this._.globalAlpha = v; canvasOp(this, 'globalAlpha', [v]); }
+    get globalCompositeOperation() { return this._.globalCompositeOperation; } set globalCompositeOperation(v) { this._.globalCompositeOperation = v; canvasOp(this, 'globalCompositeOperation', [String(v)]); }
+    get imageSmoothingEnabled() { return this._.imageSmoothingEnabled; } set imageSmoothingEnabled(v) { this._.imageSmoothingEnabled = !!v; canvasOp(this, 'imageSmoothingEnabled', [v ? 1 : 0]); }
     getContextAttributes() { return { alpha: true, colorSpace: 'srgb', desynchronized: false, willReadFrequently: false }; }
-    save() {} restore() {} reset() {} scale() {} rotate() {} translate() {} transform() {} setTransform() {} resetTransform() {} getTransform() { return new DOMMatrix(); }
-    beginPath() {} closePath() {} moveTo() {} lineTo() {} bezierCurveTo() {} quadraticCurveTo() {} arc() {} arcTo() {} ellipse() {} rect() {} roundRect() {}
-    fill() {} stroke() {} clip() {} isPointInPath() { return false; } isPointInStroke() { return false; }
-    fillRect() {} strokeRect() {} clearRect() {}
+    save() { this._saved = this._saved || []; this._saved.push(Object.assign({}, this._)); canvasOp(this, 'save', []); }
+    restore() { if (this._saved && this._saved.length) this._ = this._saved.pop(); canvasOp(this, 'restore', []); }
+    reset() { canvasOp(this, 'reset', []); }
+    scale(x, y) { canvasOp(this, 'scale', [x, y]); } rotate(a) { canvasOp(this, 'rotate', [a]); } translate(x, y) { canvasOp(this, 'translate', [x, y]); }
+    transform(a, b, c, d, e, f) { canvasOp(this, 'transform', [a, b, c, d, e, f]); }
+    setTransform(a, b, c, d, e, f) { if (typeof a === 'object' && a) { canvasOp(this, 'setTransform', [a.a, a.b, a.c, a.d, a.e, a.f]); } else if (a === undefined) { canvasOp(this, 'setTransform', []); } else { canvasOp(this, 'setTransform', [a, b, c, d, e, f]); } }
+    resetTransform() { canvasOp(this, 'resetTransform', []); }
+    getTransform() { const m = canvasOp(this, 'getTransform', []) || [1, 0, 0, 1, 0, 0]; return new DOMMatrix(m); }
+    beginPath() { canvasOp(this, 'beginPath', []); } closePath() { canvasOp(this, 'closePath', []); }
+    moveTo(x, y) { canvasOp(this, 'moveTo', [x, y]); } lineTo(x, y) { canvasOp(this, 'lineTo', [x, y]); }
+    bezierCurveTo(a, b, c, d, e, f) { canvasOp(this, 'bezierCurveTo', [a, b, c, d, e, f]); } quadraticCurveTo(a, b, c, d) { canvasOp(this, 'quadraticCurveTo', [a, b, c, d]); }
+    arc(x, y, r, a0, a1, ccw) { canvasOp(this, 'arc', [x, y, r, a0, a1, ccw ? 1 : 0]); } arcTo(a, b, c, d, r) { canvasOp(this, 'arcTo', [a, b, c, d, r]); }
+    ellipse(x, y, rx, ry, rot, a0, a1, ccw) { canvasOp(this, 'ellipse', [x, y, rx, ry, rot, a0, a1, ccw ? 1 : 0]); }
+    rect(x, y, w, h) { canvasOp(this, 'rect', [x, y, w, h]); } roundRect(x, y, w, h, r) { const rr = Array.isArray(r) ? r[0] : r; canvasOp(this, 'roundRect', [x, y, w, h, typeof rr === 'object' && rr ? rr.x || 0 : (rr || 0)]); }
+    fill(a, b) { const rule = typeof a === 'string' ? a : typeof b === 'string' ? b : 'nonzero'; if (a instanceof Path2D) a._replay(this); canvasOp(this, 'fill', [rule]); }
+    stroke(p) { if (p instanceof Path2D) p._replay(this); canvasOp(this, 'stroke', []); }
+    clip(a, b) { const rule = typeof a === 'string' ? a : typeof b === 'string' ? b : 'nonzero'; if (a instanceof Path2D) a._replay(this); canvasOp(this, 'clip', [rule]); }
+    isPointInPath() { return false; } isPointInStroke() { return false; }
+    fillRect(x, y, w, h) { canvasOp(this, 'fillRect', [x, y, w, h]); } strokeRect(x, y, w, h) { canvasOp(this, 'strokeRect', [x, y, w, h]); } clearRect(x, y, w, h) { canvasOp(this, 'clearRect', [x, y, w, h]); }
     fillText() {} strokeText() {} measureText(text) { return new TextMetrics(String(text).length * (parseFloat(this.font) || 10) * 0.5); }
-    drawImage() {} drawFocusIfNeeded() {}
-    createLinearGradient() { return new CanvasGradient(); } createRadialGradient() { return new CanvasGradient(); } createConicGradient() { return new CanvasGradient(); } createPattern() { return new CanvasPattern(); }
-    createImageData(w, h) { return w instanceof ImageData ? new ImageData(w.width, w.height) : new ImageData(w, h); } getImageData(x, y, w, h) { return new ImageData(Math.max(1, w | 0), Math.max(1, h | 0)); } putImageData() {}
-    setLineDash(d) { this._dash = Array.from(d || []); } getLineDash() { return this._dash.slice(); }
+    drawImage(image, ...rest) { if (image && isNode(image) && N.nodeName(image) === 'CANVAS') { ensureCanvas(image); canvasOp(this, 'drawImage', [image].concat(rest)); } }
+    drawFocusIfNeeded() {}
+    createLinearGradient(x0, y0, x1, y1) { return new CanvasGradient(this, canvasOp(this, 'createLinearGradient', [x0, y0, x1, y1])); }
+    createRadialGradient(x0, y0, r0, x1, y1, r1) { return new CanvasGradient(this, canvasOp(this, 'createRadialGradient', [x0, y0, r0, x1, y1, r1])); }
+    createConicGradient(a, x, y) { return new CanvasGradient(this, canvasOp(this, 'createRadialGradient', [x, y, 0, x, y, 1])); }
+    createPattern() { return new CanvasPattern(); }
+    createImageData(w, h) { return w instanceof ImageData ? new ImageData(w.width, w.height) : new ImageData(w, h); }
+    getImageData(x, y, w, h) { w = Math.max(1, w | 0); h = Math.max(1, h | 0); const buffer = canvasOp(this, 'getImageData', [x | 0, y | 0, w, h]); return new ImageData(buffer instanceof ArrayBuffer ? new Uint8ClampedArray(buffer) : new Uint8ClampedArray(w * h * 4), w, h); }
+    putImageData(data, dx, dy) { if (!data || !data.data) return; const bytes = data.data.buffer instanceof ArrayBuffer && data.data.byteOffset === 0 && data.data.byteLength === data.data.buffer.byteLength ? data.data.buffer : data.data.slice().buffer; canvasOp(this, 'putImageData', [bytes, data.width, data.height, dx | 0, dy | 0]); }
+    setLineDash(d) { this._dash = Array.from(d || []).map(Number); canvasOp(this, 'setLineDash', [this._.lineDashOffset].concat(this._dash)); } getLineDash() { return this._dash.slice(); }
   }
   global.CanvasRenderingContext2D = CanvasRenderingContext2D; global.CanvasGradient = CanvasGradient; global.CanvasPattern = CanvasPattern; global.TextMetrics = TextMetrics; global.Path2D = Path2D; global.ImageData = ImageData;
   global.OffscreenCanvas = class OffscreenCanvas { constructor(w, h) { this.width = w; this.height = h; } getContext(kind) { if (String(kind) === '2d') { if (!this._ctx) this._ctx = new CanvasRenderingContext2D(this); return this._ctx; } return null; } convertToBlob() { return Promise.resolve(new Blob([])); } transferToImageBitmap() { return { width: this.width, height: this.height, close() {} }; } };

@@ -170,7 +170,7 @@ impl Set {
         }
         for (node, image) in &bindings {
             check(cancel)?;
-            if document.namespace(*node).map_err(Error::Dom)? != Some(Namespace::Html) || document.name(*node).map_err(Error::Dom)? != Some("img") {
+            if document.namespace(*node).map_err(Error::Dom)? != Some(Namespace::Html) || !matches!(document.name(*node).map_err(Error::Dom)?, Some("img" | "canvas")) {
                 return Err(Error::Invalid);
             }
             if unique.insert(Arc::as_ptr(image)) {
@@ -197,9 +197,33 @@ impl Set {
         if document.revision() == self.revision {
             return None;
         }
-        let bindings: Vec<(NodeId, Arc<Image>)> =
-            self.bindings.iter().filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && document.name(*node).ok().flatten() == Some("img")).cloned().collect();
+        let bindings: Vec<(NodeId, Arc<Image>)> = self
+            .bindings
+            .iter()
+            .filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas")))
+            .cloned()
+            .collect();
         Some(Arc::new(Self { document: self.document, revision: document.revision(), bindings: bindings.into_boxed_slice(), backgrounds: self.backgrounds.clone(), bytes: self.bytes }))
+    }
+    /// This set with more bindings (canvases the scripts drew), replacing
+    /// any for the same element, for the document as it is now.
+    pub fn with_extra(&self, document: &Document, extra: Vec<(NodeId, Arc<Image>)>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
+        let mut bindings: Vec<(NodeId, Arc<Image>)> = self.bindings.iter().filter(|(n, _)| !extra.iter().any(|(e, _)| e == n)).cloned().collect();
+        bindings.extend(extra);
+        let bindings = bindings
+            .into_iter()
+            .filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas")))
+            .collect();
+        Self::with_backgrounds(document, bindings, self.backgrounds.clone(), limits, cancel)
+    }
+    /// A set from bindings alone.
+    pub fn from_bindings(document: &Document, bindings: Vec<(NodeId, Arc<Image>)>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
+        Self::with_backgrounds(document, bindings, HashMap::new(), limits, cancel)
+    }
+    /// Which elements are bound (not what to), for telling whether a layout
+    /// made with another set has the same replaced boxes.
+    pub fn bound_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.bindings.iter().map(|(n, _)| *n)
     }
     pub fn validate(&self, document: &Document) -> Result<(), Error> {
         if document.id() == self.document && document.revision() == self.revision { Ok(()) } else { Err(Error::Stale) }

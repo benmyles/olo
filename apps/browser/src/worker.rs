@@ -372,7 +372,8 @@ fn render(
                 }
             }
             let host = PageHost::new(c.page.scope(), &r.key);
-            c.page.rerender(doc, &host, shaper, painter, viewport, Some(&r.cancel), |_, _| {})?;
+            let canvases = live.realm.canvases();
+            c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&r.cancel), |_, _| {})?;
             if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
                 eprintln!("  live render: revision {} -> {} in {:.0} ms", live.rendered, revision, started.elapsed().as_secs_f64() * 1000.);
             }
@@ -459,6 +460,7 @@ fn render(
         // what they add is then fetched and styled like the rest.
         let mut live_slot: Option<Live> = None;
         let mut layout_slot: Option<Arc<layout::Layout>> = None;
+        let mut canvas_slot: Vec<(olo_web::dom::NodeId, Arc<olo_web::image::Image>)> = Vec::new();
         // The live page's own cancellation: later requests from the window
         // cancel their predecessors, not the page living on.
         let live_cancel = crate::network::Cancel::default();
@@ -582,6 +584,7 @@ fn render(
             // The realm lives on: its timers keep running on the page's clock.
             let doc = realm.snapshot();
             layout_slot = realm.last_measured();
+            canvas_slot = realm.canvases();
             live_slot = Some(Live {
                 realm,
                 cancel: live_cancel.clone(),
@@ -713,6 +716,8 @@ fn render(
         )?;
         // The host is made for the page's own fonts (its web faces included).
         let host = PageHost::new(prepared.scope(), &r.key);
+        let mut prepared = prepared;
+        prepared.bind_images(std::mem::take(&mut canvas_slot), Some(&r.cancel))?;
         let page = page::finish_with(prepared, &host, shaper, painter, viewport, Some(&r.cancel), layout_slot.as_deref(), &mut report)?;
         let origin = document.as_ref().map(|d| d.url.clone()).unwrap_or(url::Url::parse("about:engine")?);
         let base = page.base_href.as_deref().and_then(|href| origin.join(href).ok()).unwrap_or_else(|| origin.clone());

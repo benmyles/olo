@@ -10,3 +10,4 @@ olo-web = { path = "../web" }
 # JavaScript: V8 (C++), the one non-Rust part of the browser, as the mandate allows.
 v8 = "152"
 url = "2"
+tiny-skia = "0.12"

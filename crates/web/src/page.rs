@@ -106,6 +106,17 @@ impl Prepared {
     pub fn into_document(self) -> Document {
         self.document
     }
+    /// Bind more images (canvases the scripts drew) before finishing.
+    pub fn bind_images(&mut self, extra: Vec<(crate::dom::NodeId, Arc<crate::image::Image>)>, cancel: Option<&AtomicBool>) -> Result<()> {
+        if extra.is_empty() {
+            return Ok(());
+        }
+        self.images = Some(match &self.images {
+            Some(set) => set.with_extra(&self.document, extra, Default::default(), cancel)?,
+            None => crate::image::Set::from_bindings(&self.document, extra, Default::default(), cancel)?,
+        });
+        Ok(())
+    }
     /// A measurer for this page as prepared: styles and lays it out on
     /// demand (scripts' measurements, benchmarks).
     pub fn measurer(&self) -> Measurer {
@@ -1080,6 +1091,7 @@ impl Page {
     pub fn rerender(
         &mut self,
         doc: Document,
+        canvases: Vec<(crate::dom::NodeId, Arc<crate::image::Image>)>,
         host: &impl Host,
         shaper: &mut shaping::Engine,
         painter: &mut paint::Engine,
@@ -1094,6 +1106,12 @@ impl Page {
             && let Some(rebound) = images.rebind(&doc)
         {
             self.images = Some(rebound);
+        }
+        if !canvases.is_empty() {
+            self.images = Some(match &self.images {
+                Some(set) => set.with_extra(&doc, canvases, Default::default(), cancel)?,
+                None => crate::image::Set::from_bindings(&doc, canvases, Default::default(), cancel)?,
+            });
         }
         let media = media_for(host, viewport);
         if self.media_dependent && media != self.media {
@@ -1201,7 +1219,16 @@ fn render(
         + styles.report().presentation_unsupported;
     // A restyle that changed only what is painted, over the same boxes:
     // the previous layout stands, with the new styles.
-    let kept = previous.filter(|p| styles.geometry_kept() && p.device_scale() == viewport.scale && p.cache().tree().images().map(Arc::as_ptr) == images.map(Arc::as_ptr));
+    // The same elements bound to images (a redrawn canvas is the same box).
+    let same_bindings = |p: &layout::Layout| {
+        let (a, b) = (p.cache().tree().images(), images);
+        match (a, b) {
+            (None, None) => true,
+            (Some(a), Some(b)) => a.bound_nodes().eq(b.bound_nodes()),
+            _ => false,
+        }
+    };
+    let kept = previous.filter(|p| styles.geometry_kept() && p.device_scale() == viewport.scale && same_bindings(p));
     let layout = if let Some(p) = kept {
         fallbacks.merge(&p.cache().fallbacks());
         Arc::new(p.with_styles(styles))

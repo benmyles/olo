@@ -10,6 +10,7 @@
 //! order up to a budget, without waiting. The document comes back changed
 //! and the page styles, lays out and paints from it.
 #![forbid(unsafe_op_in_unsafe_fn)]
+pub mod canvas;
 pub mod html;
 use olo_web::{
     css::{
@@ -154,6 +155,8 @@ struct State {
     ids: Vec<*mut NodeId>,
     templates: Option<Templates>,
     fetcher: Option<Fetcher>,
+    /// The page's canvases, by element, drawn by its scripts.
+    canvases: HashMap<NodeId, canvas::Canvas>,
     measure: Option<Measure>,
     /// The last layout, good while the document's revision is its own.
     measured: Option<olo_web::page::Measured>,
@@ -194,6 +197,7 @@ impl Realm {
             ids: Vec::new(),
             templates: None,
             fetcher,
+            canvases: HashMap::new(),
             measure,
             measured: None,
             layout_seconds: 0.,
@@ -337,6 +341,12 @@ impl Realm {
                 false
             }
         }
+    }
+    /// The canvases the scripts drew on, as images, by element: bound into
+    /// the page's images, a canvas renders like an image of its pixels.
+    pub fn canvases(&self) -> Vec<(NodeId, Arc<olo_web::image::Image>)> {
+        let s = self.state.borrow();
+        s.canvases.iter().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))).collect()
     }
     /// The document as it is now, copied, for rendering while the scripts
     /// keep theirs.
@@ -487,6 +497,7 @@ impl State {
             ids: Vec::new(),
             templates: None,
             fetcher: None,
+            canvases: HashMap::new(),
             measure: None,
             measured: None,
             layout_seconds: 0.,
@@ -718,6 +729,142 @@ fn named_global(scope: &mut v8::PinScope, key: v8::Local<v8::Name>, _args: v8::P
         None => v8::Intercepted::kNo,
     }
 }
+/// Perform one canvas call; `arguments` is a JS array. Returns a value for
+/// the few calls that answer (gradient ids, image data).
+fn canvas_op<'s>(scope: &mut v8::PinScope<'s, '_>, state: &Shared, node: NodeId, op: &str, arguments: v8::Local<v8::Value>) -> Option<v8::Local<'s, v8::Value>> {
+    let array = v8::Local::<v8::Array>::try_from(arguments).ok();
+    let count = array.map_or(0, |a| a.length());
+    let num = |scope: &mut v8::PinScope, i: u32| -> f32 { array.and_then(|a| a.get_index(scope, i)).and_then(|v| v.number_value(scope)).unwrap_or(0.) as f32 };
+    let text = |scope: &mut v8::PinScope, i: u32| -> String { array.and_then(|a| a.get_index(scope, i)).map(|v| v.to_rust_string_lossy(scope)).unwrap_or_default() };
+    let nums: Vec<f32> = (0..count.min(16)).map(|i| num(scope, i)).collect();
+    let n = |i: usize| nums.get(i).copied().unwrap_or(0.);
+    // drawImage sources need the other canvas's pixels before this one is
+    // borrowed mutably.
+    if op == "drawImage" {
+        let source = array.and_then(|a| a.get_index(scope, 0)).and_then(|v| node_of(scope, v));
+        let pixels = {
+            let s = state.borrow();
+            source.and_then(|src| s.canvases.get(&src)).map(|c| (c.pixels().to_vec(), c.width(), c.height()))
+        };
+        let Some((pixels, sw, sh)) = pixels else { return None };
+        let mut s = state.borrow_mut();
+        let c = s.canvases.get_mut(&node)?;
+        // drawImage(image, dx, dy), (image, dx, dy, dw, dh), (image, sx, sy, sw, sh, dx, dy, dw, dh)
+        let (sx, sy, sw2, sh2, dx, dy, dw, dh) = match count {
+            3 => (0., 0., sw as f32, sh as f32, n(1), n(2), sw as f32, sh as f32),
+            5 => (0., 0., sw as f32, sh as f32, n(1), n(2), n(3), n(4)),
+            _ => (n(1), n(2), n(3), n(4), n(5), n(6), n(7), n(8)),
+        };
+        c.draw_image(&pixels, sw, sh, sx, sy, sw2, sh2, dx, dy, dw, dh);
+        return None;
+    }
+    let mut s = state.borrow_mut();
+    let c = s.canvases.get_mut(&node)?;
+    match op {
+        "save" => c.save(),
+        "restore" => c.restore(),
+        "reset" => c.reset_state(),
+        "scale" => c.transform(tiny_skia::Transform::from_scale(n(0), n(1))),
+        "rotate" => c.transform(tiny_skia::Transform::from_rotate(n(0).to_degrees())),
+        "translate" => c.transform(tiny_skia::Transform::from_translate(n(0), n(1))),
+        "transform" => c.transform(tiny_skia::Transform::from_row(n(0), n(1), n(2), n(3), n(4), n(5))),
+        "setTransform" => {
+            if count >= 6 {
+                c.set_transform(tiny_skia::Transform::from_row(n(0), n(1), n(2), n(3), n(4), n(5)))
+            } else {
+                c.set_transform(tiny_skia::Transform::identity())
+            }
+        }
+        "resetTransform" => c.set_transform(tiny_skia::Transform::identity()),
+        "getTransform" => {
+            let t = c.current_transform();
+            drop(s);
+            let items: Vec<v8::Local<v8::Value>> = [t.sx, t.ky, t.kx, t.sy, t.tx, t.ty].iter().map(|v| v8::Number::new(scope, f64::from(*v)).into()).collect();
+            return Some(v8::Array::new_with_elements(scope, &items).into());
+        }
+        "beginPath" => c.begin_path(),
+        "closePath" => c.close_path(),
+        "moveTo" => c.move_to(n(0), n(1)),
+        "lineTo" => c.line_to(n(0), n(1)),
+        "bezierCurveTo" => c.bezier_to(n(0), n(1), n(2), n(3), n(4), n(5)),
+        "quadraticCurveTo" => c.quad_to(n(0), n(1), n(2), n(3)),
+        "arc" => c.arc(n(0), n(1), n(2), n(3), n(4), count > 5 && n(5) != 0.),
+        "arcTo" => c.arc_to_point(n(0), n(1), n(2), n(3), n(4)),
+        "ellipse" => c.ellipse(n(0), n(1), n(2), n(3), n(4), n(5), n(6), count > 7 && n(7) != 0.),
+        "rect" => c.rect(n(0), n(1), n(2), n(3)),
+        "roundRect" => c.round_rect(n(0), n(1), n(2), n(3), n(4)),
+        "fill" => c.fill(if count > 0 && text(scope, 0) == "evenodd" { tiny_skia::FillRule::EvenOdd } else { tiny_skia::FillRule::Winding }),
+        "stroke" => c.stroke(),
+        "clip" => c.clip(if count > 0 && text(scope, 0) == "evenodd" { tiny_skia::FillRule::EvenOdd } else { tiny_skia::FillRule::Winding }),
+        "fillRect" => c.fill_rect(n(0), n(1), n(2), n(3)),
+        "strokeRect" => c.stroke_rect(n(0), n(1), n(2), n(3)),
+        "clearRect" => c.clear_rect(n(0), n(1), n(2), n(3)),
+        "lineWidth" => c.set_line_width(n(0)),
+        "lineCap" => {
+            let v = text(scope, 0);
+            c.set_line_cap(&v)
+        }
+        "lineJoin" => {
+            let v = text(scope, 0);
+            c.set_line_join(&v)
+        }
+        "miterLimit" => c.set_miter_limit(n(0)),
+        "setLineDash" => {
+            let offset = n(0);
+            let dash: Vec<f32> = nums.iter().skip(1).copied().collect();
+            c.set_dash(dash, offset)
+        }
+        "globalAlpha" => c.set_alpha(n(0)),
+        "imageSmoothingEnabled" => c.set_smoothing(n(0) != 0.),
+        "globalCompositeOperation" => {
+            let v = text(scope, 0);
+            c.set_composite(&v)
+        }
+        "fillStyle" | "strokeStyle" => {
+            let fill = op == "fillStyle";
+            let value = array.and_then(|a| a.get_index(scope, 0));
+            let style = match value {
+                Some(v) if v.is_number() => canvas::StyleValue::Gradient(v.number_value(scope).unwrap_or(0.) as u32),
+                Some(v) => canvas::StyleValue::Color(v.to_rust_string_lossy(scope)),
+                None => return None,
+            };
+            c.set_style(fill, style)
+        }
+        "createLinearGradient" => {
+            let id = c.linear_gradient(n(0), n(1), n(2), n(3));
+            drop(s);
+            return Some(v8::Number::new(scope, f64::from(id)).into());
+        }
+        "createRadialGradient" => {
+            let id = c.radial_gradient(n(0), n(1), n(2), n(3), n(4), n(5));
+            drop(s);
+            return Some(v8::Number::new(scope, f64::from(id)).into());
+        }
+        "addColorStop" => {
+            let color = text(scope, 2);
+            c.add_color_stop(n(0) as u32, n(1), &color)
+        }
+        "getImageData" => {
+            let bytes = c.image_data(n(0) as i32, n(1) as i32, n(2).max(0.) as u32, n(3).max(0.) as u32);
+            drop(s);
+            let store = v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
+            let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
+            return Some(buffer.into());
+        }
+        "putImageData" => {
+            // (data as an ArrayBuffer, width, height, dx, dy)
+            let data = array.and_then(|a| a.get_index(scope, 0)).and_then(|v| v8::Local::<v8::ArrayBuffer>::try_from(v).ok());
+            let Some(data) = data else { return None };
+            let bytes: Vec<u8> = {
+                let store = data.get_backing_store();
+                store.iter().map(|b| b.get()).collect()
+            };
+            c.put_image_data(&bytes, n(1) as u32, n(2) as u32, n(3) as i32, n(4) as i32)
+        }
+        _ => {}
+    }
+    None
+}
 /// A JSON string literal.
 fn json_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
@@ -861,6 +1008,8 @@ const NATIVES: &[&str] = &[
     "log",
     "fetchSync",
     "runScript",
+    "canvasSize",
+    "canvasOp",
     "rect",
     "paddingRect",
     "scrollSize",
@@ -1441,6 +1590,32 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
         "revision" => {
             let r = state.borrow().document.revision();
             rv.set(v8::Number::new(scope, r as f64).into());
+        }
+        // A canvas's raster, made or resized (which clears it).
+        "canvasSize" => {
+            if let Some(n) = node(scope, 0) {
+                let w = args.get(1).number_value(scope).unwrap_or(300.).max(0.) as u32;
+                let h = args.get(2).number_value(scope).unwrap_or(150.).max(0.) as u32;
+                let mut s = state.borrow_mut();
+                match s.canvases.get_mut(&n) {
+                    Some(c) => c.resize(w, h),
+                    None => {
+                        if let Some(c) = canvas::Canvas::new(w, h) {
+                            s.canvases.insert(n, c);
+                        }
+                    }
+                }
+            }
+        }
+        // One drawing call: the canvas, the operation, its arguments.
+        "canvasOp" => {
+            if let Some(n) = node(scope, 0) {
+                let op = arg_string(scope, &args, 1);
+                let result = canvas_op(scope, &state, n, &op, args.get(2));
+                if let Some(v) = result {
+                    rv.set(v);
+                }
+            }
         }
         "url" => {
             let url = state.borrow().config.url.clone();
