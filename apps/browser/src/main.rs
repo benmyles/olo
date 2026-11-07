@@ -53,6 +53,8 @@ struct Browser {
     id: u64,
     key: Option<worker::Key>,
     tiles: Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>,
+    /// The fixed layer over the tiles (viewport device coordinates).
+    fixed: Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>,
     labels: Vec<worker::Label>,
     status: String,
     blocked_action: Option<&'static str>,
@@ -123,6 +125,7 @@ impl Browser {
             id: 0,
             key: None,
             tiles: Vec::new(),
+            fixed: Vec::new(),
             labels: Vec::new(),
             status: "Loading…".into(),
             blocked_action: None,
@@ -299,8 +302,13 @@ impl Browser {
         let bounds = self.viewport.get();
         let scale = self.key.as_ref().map_or(1., |k| k.scale);
         let x = f64::from(f32::from(at.x - bounds.left()));
-        let y = f64::from(f32::from(at.y - bounds.top())) + f64::from(self.scroll) / scale;
-        let label = self.labels.iter().rev().find(|l| x >= l.rect.x && x < l.rect.x + l.rect.width && y >= l.rect.y && y < l.rect.y + l.rect.height);
+        let viewport_y = f64::from(f32::from(at.y - bounds.top()));
+        let y = viewport_y + f64::from(self.scroll) / scale;
+        // Fixed labels paint over the page: tried first, at viewport coordinates.
+        let label = self.labels.iter().rev().filter(|l| l.fixed).chain(self.labels.iter().rev().filter(|l| !l.fixed)).find(|l| {
+            let ly = if l.fixed { viewport_y } else { y };
+            x >= l.rect.x && x < l.rect.x + l.rect.width && ly >= l.rect.y && ly < l.rect.y + l.rect.height
+        });
         let node = label.and_then(|l| l.node);
         let link = label.and_then(|l| l.link.clone());
         let old = self.interaction;
@@ -432,6 +440,14 @@ impl Browser {
             worker::Reply::Batch(id, tiles) if id == self.id => {
                 self.merge_tiles(tiles);
             }
+            worker::Reply::Fixed(id, layer) if id == self.id => {
+                let old = std::mem::replace(&mut self.fixed, layer);
+                self.recycle(old.into_iter().map(|(_, image)| image).collect());
+            }
+            worker::Reply::Fixed(_, layer) => {
+                self.recycle(layer.into_iter().map(|(_, image)| image).collect());
+                return;
+            }
             worker::Reply::Content { focus_targets, .. } => {
                 if !focus_targets.is_empty() {
                     let _ = self.tx.send(worker::Message::RecycleTargets(focus_targets));
@@ -477,7 +493,8 @@ impl Render for Browser {
         let tiles = self.tiles.clone();
         let focused = self.interaction.focus;
         let document_snapshot = self.document_snapshot.clone();
-        let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image)).collect();
+        let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image, l.fixed)).collect();
+        let fixed = self.fixed.clone();
         let viewport = self.viewport.clone();
         let scroll = self.scroll;
         let extent = self.extent;
@@ -510,7 +527,15 @@ impl Render for Browser {
                         );
                         let _ = window.paint_image_nearest(b, image.clone());
                     }
-                    for (text, r, link, image) in &labels {
+                    // Fixed to the viewport: over the tiles, unscrolled.
+                    for (r, image) in &fixed {
+                        let b = Bounds::new(
+                            point(bounds.left() + px((f64::from(r.x) / scale) as f32), bounds.top() + px((f64::from(r.y) / scale) as f32)),
+                            size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
+                        );
+                        let _ = window.paint_image_nearest(b, image.clone());
+                    }
+                    for (text, r, link, image, fixed) in &labels {
                         agent::record(
                             window,
                             cx,
@@ -528,7 +553,10 @@ impl Render for Browser {
                                 clickable: link.is_some(),
                                 focused: link.as_ref().is_some_and(|l| Some(l.node) == focused),
                                 enabled: true,
-                                bounds: Bounds::new(point(bounds.left() + px(r.x as f32), bounds.top() + px((r.y - f64::from(scroll) / scale) as f32)), size(px(r.width as f32), px(r.height as f32))),
+                                bounds: Bounds::new(
+                                    point(bounds.left() + px(r.x as f32), bounds.top() + px((r.y - if *fixed { 0. } else { f64::from(scroll) / scale }) as f32)),
+                                    size(px(r.width as f32), px(r.height as f32)),
+                                ),
                                 ..Default::default()
                             },
                         );

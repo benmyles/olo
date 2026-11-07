@@ -68,6 +68,8 @@ pub struct Label {
     pub rect: layout::Rect,
     pub node: Option<olo_web::dom::NodeId>,
     pub link: Option<Arc<crate::links::Link>>,
+    /// Fixed to the viewport: `rect` is viewport coordinates.
+    pub fixed: bool,
 }
 pub enum Reply {
     Status(u64, String),
@@ -91,6 +93,9 @@ pub enum Reply {
         focus_targets: Arc<crate::navigation::FocusTargets>,
     },
     Batch(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
+    /// The page's fixed layer (viewport device coordinates), painted over
+    /// the tiles wherever they scroll; empty when nothing is fixed.
+    Fixed(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
     Error(u64, String),
 }
 /// Which pass of a page: the static page first, shown at once, then the
@@ -358,7 +363,10 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             {
                                 let target = match input.kind {
                                     olo_js::InputKind::Key { .. } | olo_js::InputKind::Scroll => None,
-                                    _ => c.page.scene.layout().hit_test(input.x, input.y),
+                                    _ => {
+                                        let scroll = last.as_ref().map_or(0., |r| f64::from(r.scroll) / r.key.scale);
+                                        c.page.scene.layout().hit_test_scrolled(input.x, input.y, scroll)
+                                    }
                                 };
                                 live.realm.input(&input, target);
                                 live.loads.dispatch(&mut live.realm);
@@ -1010,8 +1018,12 @@ fn render(
     let visible = layout::Rect { x: 0., y: f64::from(scroll) / r.key.scale, width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale };
     let mut hits = Vec::new();
     scene.query(visible, &mut hits, Some(&r.cancel))?;
+    // The fixed layer's content lies in the viewport at the initial scroll.
+    let viewport_rect = layout::Rect { x: 0., y: 0., width: visible.width, height: visible.height };
+    let mut fixed_hits = Vec::new();
+    scene.query_fixed(viewport_rect, &mut fixed_hits, Some(&r.cancel))?;
     let mut labels = Vec::new();
-    for id in hits {
+    for (id, fixed) in hits.into_iter().map(|id| (id, false)).chain(fixed_hits.into_iter().map(|id| (id, true))) {
         let vector = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Vector { .. });
         let image = vector || matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
         let node = scene.node(id);
@@ -1032,7 +1044,7 @@ fn render(
             Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
             None => None,
         };
-        labels.push(Label { image, text: text.into_owned().into(), rect, node, link });
+        labels.push(Label { image, text: text.into_owned().into(), rect, node, link, fixed });
     }
     proxy.send(Reply::Content {
         id: r.id,
@@ -1131,6 +1143,60 @@ fn render(
         }
     }
     TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);
+    // The fixed layer: what `position: fixed` boxes paint, over the tiles
+    // at viewport coordinates, as one image, kept by signature like a tile.
+    let mut fixed_layer = Vec::new();
+    if let Some(extent) = scene.fixed_extent() {
+        let scale = scene.device_scale();
+        let x0 = (extent.x * scale).floor().max(0.) as i32;
+        let y0 = (extent.y * scale).floor().max(0.) as i32;
+        let x1 = ((extent.x + extent.width) * scale).ceil().min(f64::from(r.key.width)) as i32;
+        let y1 = ((extent.y + extent.height) * scale).ceil().min(f64::from(r.key.height)) as i32;
+        if x1 > x0 && y1 > y0 {
+            // In tiles like the page (the raster limits are a tile's), each
+            // kept by the layer's signature and its place.
+            let layer_signature = scene.fixed_signature(Some(&r.cancel))?;
+            for y in (y0.div_euclid(256) * 256..y1).step_by(256) {
+                for x in (x0.div_euclid(256) * 256..x1).step_by(256) {
+                    if r.cancel.load(Ordering::Relaxed) {
+                        return Err(paint::Error::Cancelled.into());
+                    }
+                    let region = paint::DeviceRect { x, y, width: 256, height: 256 };
+                    let signature = {
+                        use std::hash::{Hash, Hasher};
+                        let mut h = std::hash::DefaultHasher::new();
+                        layer_signature.hash(&mut h);
+                        (x, y).hash(&mut h);
+                        h.finish()
+                    };
+                    *clock = clock.wrapping_add(1);
+                    // Apart from the page's tiles in the cache.
+                    let key = (x | (1 << 30), y);
+                    let image = if let Some((image, stamp, kept)) = cache.get_mut(&key)
+                        && *kept == signature
+                    {
+                        *stamp = *clock;
+                        image.clone()
+                    } else {
+                        let tile = painter.raster_fixed(scene, region, Some(&r.cancel))?;
+                        let mut bytes = tile.into_rgba();
+                        for p in bytes.as_chunks_mut::<4>().0 {
+                            p.swap(0, 2)
+                        }
+                        let image = olo_ui::widgets::image_view::from_bgra(256, 256, bytes).ok_or("Fixed layer upload failed")?;
+                        if cache.len() >= 256 {
+                            let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;
+                            cache.remove(&key);
+                        }
+                        cache.insert(key, (image.clone(), *clock, signature));
+                        image
+                    };
+                    fixed_layer.push((region, image));
+                }
+            }
+        }
+    }
+    proxy.send(Reply::Fixed(r.id, fixed_layer));
     if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
         eprintln!("  tiles: {repainted} of {total} repainted in {:.1} ms", painting.elapsed().as_secs_f64() * 1000.);
     }

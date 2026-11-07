@@ -59,6 +59,10 @@ pub struct Command {
     /// into the scene's transforms), or NONE. `bounds` and the primitive's
     /// geometry are untransformed; `extent` applies it.
     pub(super) transform: u32,
+    /// Under a `position: fixed` box: anchored to the viewport, painted
+    /// over the scrolled page (its bounds are viewport coordinates, which
+    /// are the document's at the initial scroll).
+    pub(super) fixed: bool,
 }
 /// The axis-aligned bounds of `r` mapped through `m`.
 pub(super) fn aabb(m: [f64; 6], r: Rect) -> Rect {
@@ -112,6 +116,8 @@ pub struct Scene {
     pub(super) vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     pub(super) vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     pub(super) index: index::Index,
+    /// The fixed commands, apart: not in the page's tiles.
+    pub(super) fixed_index: index::Index,
     pub(super) base: [u8; 4],
     pub(super) canvas: [u8; 4],
     extent: Rect,
@@ -243,10 +249,14 @@ impl Scene {
     /// The signature and, for checking why a tile repaints, each command's
     /// own hash with what it is.
     pub fn tile_signature_parts(&self, region: Rect, cancel: Option<&AtomicBool>) -> Result<(u64, Vec<(u64, &'static str, [u64; 5], u32)>)> {
-        use std::hash::{Hash, Hasher};
-        let mut parts = Vec::new();
         let mut hits = Vec::new();
         self.query(region, &mut hits, cancel)?;
+        self.signature_parts(&hits, cancel)
+    }
+    /// The signature of these commands (in order), and each one's part.
+    fn signature_parts(&self, hits: &[u32], cancel: Option<&AtomicBool>) -> Result<(u64, Vec<(u64, &'static str, [u64; 5], u32)>)> {
+        use std::hash::{Hash, Hasher};
+        let mut parts = Vec::new();
         let tree = self.layout.cache().tree();
         let mut h = std::hash::DefaultHasher::new();
         self.base.hash(&mut h);
@@ -276,7 +286,7 @@ impl Scene {
         let whole = h.finish();
         let mut combined = std::hash::DefaultHasher::new();
         whole.hash(&mut combined);
-        for id in hits {
+        for &id in hits {
             check(cancel)?;
             let c = &self.commands[id as usize];
             let mut h = std::hash::DefaultHasher::new();
@@ -366,6 +376,45 @@ impl Scene {
         }
         Ok((combined.finish(), parts))
     }
+    /// The fixed commands over `region` (viewport coordinates), in paint
+    /// order: what paints over the scrolled page.
+    pub fn query_fixed(&self, region: Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
+        if !valid(region) {
+            return Err(Error::Invalid);
+        }
+        self.fixed_index.query(&self.commands, &self.transforms, region, out, cancel)?;
+        out.sort_unstable();
+        Ok(())
+    }
+    /// Whether anything is fixed to the viewport.
+    pub fn has_fixed(&self) -> bool {
+        !self.fixed_index.ids().is_empty()
+    }
+    /// What the fixed commands cover, in viewport coordinates (clips
+    /// applied), or None without any.
+    pub fn fixed_extent(&self) -> Option<Rect> {
+        let mut out: Option<Rect> = None;
+        for &id in self.fixed_index.ids() {
+            let c = &self.commands[id as usize];
+            let mut reach = extent(c, &self.transforms);
+            if c.clip != NONE {
+                let clip = &self.clips[c.clip as usize];
+                let clip_rect = if clip.transform == NONE { clip.rect } else { aabb(self.transforms[clip.transform as usize], clip.rect) };
+                reach = intersection(reach, clip_rect);
+            }
+            if reach.width <= 0. || reach.height <= 0. {
+                continue;
+            }
+            out = Some(out.map_or(reach, |o| union(o, reach)));
+        }
+        out
+    }
+    /// The signature of the fixed layer (see `tile_signature`).
+    pub fn fixed_signature(&self, cancel: Option<&AtomicBool>) -> Result<u64> {
+        let mut hits: Vec<u32> = self.fixed_index.ids().to_vec();
+        hits.sort_unstable();
+        Ok(self.signature_parts(&hits, cancel)?.0)
+    }
     pub fn query(&self, region: Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
         if !valid(region) {
             return Err(Error::Invalid);
@@ -397,6 +446,8 @@ struct State {
     /// Under `opacity: 0`: nothing of it paints (its boxes are walked for
     /// their states and nothing else).
     hidden: bool,
+    /// Under a `position: fixed` box (see `Command::fixed`).
+    fixed: bool,
 }
 /// One CSS stacking context (CSS 2.2 Appendix E): the root, positioned boxes
 /// (z-index: auto ones painted as if they were contexts), opacity groups and
@@ -433,6 +484,8 @@ pub struct BuildJob<'a> {
     current_group: u32,
     transforms: Vec<[f64; 6]>,
     current_transform: u32,
+    /// The box being painted is fixed to the viewport (or under one).
+    current_fixed: bool,
     vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
@@ -497,6 +550,7 @@ impl<'a> BuildJob<'a> {
             current_group: NONE,
             transforms: Vec::new(),
             current_transform: NONE,
+            current_fixed: false,
             vector_geometry: Default::default(),
             vector_clips: Default::default(),
             vector_clip_bytes: 0,
@@ -530,7 +584,7 @@ impl<'a> BuildJob<'a> {
         if self.draft.len() >= self.limits.commands {
             return Err(Error::Limit);
         }
-        let command = Command { bounds, primitive, clip, group: self.current_group, transform: self.current_transform };
+        let command = Command { bounds, primitive, clip, group: self.current_group, transform: self.current_transform, fixed: self.current_fixed };
         let reach = extent(&command, &self.transforms);
         self.extent = union(self.extent, if clip == NONE { reach } else { intersection(reach, self.clip_extent(clip)) });
         self.draft.push(Draft { context, slot, text, command });
@@ -932,17 +986,19 @@ impl<'a> BuildJob<'a> {
                 break;
             };
             self.next += 1;
-            let (parent, mut context, mut clip, parent_group, parent_transform, parent_hidden) = if let Some(parent) = b.parent {
+            let (parent, mut context, mut clip, parent_group, parent_transform, parent_hidden, parent_fixed) = if let Some(parent) = b.parent {
                 let p = &self.states[parent.index()];
-                (p.origin, p.context, p.clip, p.group, p.transform, p.hidden)
+                (p.origin, p.context, p.clip, p.group, p.transform, p.hidden, p.fixed)
             } else {
-                (Point::default(), 0, NONE, NONE, NONE, false)
+                (Point::default(), 0, NONE, NONE, NONE, false, false)
             };
             if parent_hidden {
-                self.states.push(State { origin: parent, context, clip, group: parent_group, transform: parent_transform, hidden: true });
+                self.states.push(State { origin: parent, context, clip, group: parent_group, transform: parent_transform, hidden: true, fixed: parent_fixed });
                 self.progress.boxes += 1;
                 continue;
             }
+            self.current_fixed = parent_fixed;
+            let mut children_fixed = parent_fixed;
             self.current_group = parent_group;
             let mut children_group = parent_group;
             self.current_transform = parent_transform;
@@ -975,6 +1031,13 @@ impl<'a> BuildJob<'a> {
                 BoxKind::Viewport => {}
                 BoxKind::Block { .. } | BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. } => {
                     let s = tree.style(id).ok_or(Error::Invalid)?;
+                    // Fixed to the viewport (unless a transformed ancestor is
+                    // its containing block: then it scrolls with that): its
+                    // subtree paints over the scrolled page.
+                    if !parent_fixed && parent_transform == NONE && matches!(s.value(P::Position), Value::Keyword(K::Fixed)) {
+                        self.current_fixed = true;
+                        children_fixed = true;
+                    }
                     // A transformed box paints its subtree through its matrix
                     // and is a stacking context (CSS Transforms 1 §3).
                     let transformed = self.transform_of(s, outer, parent_transform)?;
@@ -995,7 +1058,7 @@ impl<'a> BuildJob<'a> {
                     // Fully transparent: nothing of it or its content paints
                     // (a fallback picture under a canvas that drew, say).
                     if opacity == 0. {
-                        self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform, hidden: true });
+                        self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform, hidden: true, fixed: children_fixed });
                         self.progress.boxes += 1;
                         continue;
                     }
@@ -1129,7 +1192,7 @@ impl<'a> BuildJob<'a> {
                     }
                 }
             }
-            self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform, hidden: false });
+            self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform, hidden: false, fixed: children_fixed });
             self.progress.boxes += 1;
             self.progress.commands = self.draft.len();
         }
@@ -1161,7 +1224,9 @@ impl<'a> BuildJob<'a> {
         let key = |d: &Draft| contexts[d.context as usize].path.iter().copied().chain(std::iter::once(u32::from(d.slot)));
         self.draft.sort_by(|a, b| key(a).cmp(key(b)).then(a.text.cmp(&b.text)));
         let commands: Box<[Command]> = self.draft.into_iter().map(|d| d.command).collect();
-        let index = index::Index::new(&commands, &self.transforms, self.cancel)?;
+        let (fixed_ids, page_ids): (Vec<u32>, Vec<u32>) = (0..commands.len() as u32).partition(|&i| commands[i as usize].fixed);
+        let index = index::Index::over(&commands, &self.transforms, page_ids, self.cancel)?;
+        let fixed_index = index::Index::over(&commands, &self.transforms, fixed_ids, self.cancel)?;
         Ok(Arc::new(Scene {
             extent: self.extent,
             layout: self.layout,
@@ -1172,6 +1237,7 @@ impl<'a> BuildJob<'a> {
             vector_geometry: self.vector_geometry,
             vector_clips: self.vector_clips,
             index,
+            fixed_index,
             base: self.options.canvas,
             canvas: self.canvas,
         }))

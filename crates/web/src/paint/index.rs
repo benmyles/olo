@@ -13,9 +13,12 @@ pub(super) struct Index {
 }
 impl Index {
     pub fn new(commands: &[Command], transforms: &[[f64; 6]], cancel: Option<&AtomicBool>) -> Result<Self> {
+        Self::over(commands, transforms, (0..commands.len() as u32).collect(), cancel)
+    }
+    /// An index over some of the commands (by id).
+    pub fn over(commands: &[Command], transforms: &[[f64; 6]], mut ids: Vec<u32>, cancel: Option<&AtomicBool>) -> Result<Self> {
         check(cancel)?;
         let extent = |id: u32| super::scene::extent(&commands[id as usize], transforms);
-        let mut ids: Vec<u32> = (0..commands.len() as u32).collect();
         ids.sort_unstable_by(|&a, &b| {
             let a = extent(a);
             let b = extent(b);
@@ -41,6 +44,10 @@ impl Index {
             count = nodes.len() - parent;
         }
         Ok(Self { nodes: nodes.into_boxed_slice(), ids: ids.into_boxed_slice() })
+    }
+    /// Every command this index holds.
+    pub fn ids(&self) -> &[u32] {
+        &self.ids
     }
     pub fn query(&self, commands: &[Command], transforms: &[[f64; 6]], region: layout::Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
         out.clear();

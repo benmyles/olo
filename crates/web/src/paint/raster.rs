@@ -30,6 +30,15 @@ fn paint(color: [u8; 4]) -> Paint<'static> {
 }
 impl Engine {
     pub fn raster(&mut self, scene: &Scene, region: DeviceRect, cancel: Option<&AtomicBool>) -> Result<Tile> {
+        self.raster_layer(scene, region, false, cancel)
+    }
+    /// The fixed layer over `region` (viewport device pixels): the
+    /// commands under `position: fixed` boxes on a transparent tile, to
+    /// composite over the scrolled page.
+    pub fn raster_fixed(&mut self, scene: &Scene, region: DeviceRect, cancel: Option<&AtomicBool>) -> Result<Tile> {
+        self.raster_layer(scene, region, true, cancel)
+    }
+    fn raster_layer(&mut self, scene: &Scene, region: DeviceRect, fixed: bool, cancel: Option<&AtomicBool>) -> Result<Tile> {
         check(cancel)?;
         let pixels = (region.width as usize).checked_mul(region.height as usize).ok_or(Error::Limit)?;
         if pixels > self.limits().tile_pixels {
@@ -48,8 +57,10 @@ impl Engine {
             return Err(Error::Invalid);
         }
         let mut base = Pixmap::new(region.width, region.height).ok_or(Error::Limit)?;
-        base.fill(tiny_skia::Color::from_rgba8(scene.base[0], scene.base[1], scene.base[2], 255));
-        if scene.canvas[3] != 0 {
+        if !fixed {
+            base.fill(tiny_skia::Color::from_rgba8(scene.base[0], scene.base[1], scene.base[2], 255));
+        }
+        if !fixed && scene.canvas[3] != 0 {
             base.fill_rect(tiny_skia::Rect::from_xywh(0., 0., region.width as f32, region.height as f32).ok_or(Error::Invalid)?, &paint(scene.canvas), Transform::identity(), None);
         }
         // Subtract the tile origin in f64 before converting to raster coordinates.
@@ -80,7 +91,11 @@ impl Engine {
             tiny_skia::Rect::from_ltrb((x - f64::from(region.x)) as f32, (y - f64::from(region.y)) as f32, (right - f64::from(region.x)) as f32, (bottom - f64::from(region.y)) as f32)
         };
         let mut hits = Vec::new();
-        scene.query(rect, &mut hits, cancel)?;
+        if fixed {
+            scene.query_fixed(rect, &mut hits, cancel)?
+        } else {
+            scene.query(rect, &mut hits, cancel)?
+        }
         // OLO_TILE_PROFILE: time per primitive kind, per tile.
         let profile = std::env::var_os("OLO_TILE_PROFILE").map(|_| std::time::Instant::now());
         let mut counts = [0usize; 6];

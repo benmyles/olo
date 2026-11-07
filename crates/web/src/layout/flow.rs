@@ -617,8 +617,15 @@ impl Layout {
     /// smallest box containing it, later boxes winning ties (painted above),
     /// by its node. Transforms are not followed yet.
     pub fn hit_test(&self, x: f64, y: f64) -> Option<crate::dom::NodeId> {
+        self.hit_test_scrolled(x, y, 0.)
+    }
+    /// The node at document point (x, y) with the page scrolled by
+    /// `scroll` (CSS px): a box fixed to the viewport is where the
+    /// viewport is, so it is tested against the viewport point.
+    pub fn hit_test_scrolled(&self, x: f64, y: f64, scroll: f64) -> Option<crate::dom::NodeId> {
         let tree = &self.cache.tree;
-        let mut best: Option<(f64, usize, BoxId)> = None;
+        let fixed = self.fixed_boxes();
+        let mut best: Option<(f64, bool, usize, BoxId)> = None;
         // Absolute positions by one walk, parents before children.
         let mut origins = vec![(0f64, 0f64); self.geometry.len()];
         for (id, b) in tree.iter() {
@@ -630,15 +637,34 @@ impl Layout {
                 continue;
             }
             let r = Rect { x: ox + g.border_box.x, y: oy + g.border_box.y, width: g.border_box.width, height: g.border_box.height };
+            let is_fixed = fixed[id.index()];
+            let y = if is_fixed { y - scroll } else { y };
             if x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height {
                 continue;
             }
+            // A fixed box paints over the page: it wins over anything under it.
             let area = r.width * r.height;
-            if best.is_none_or(|(a, _, _)| area <= a) {
-                best = Some((area, id.index(), id));
+            if best.is_none_or(|(a, f, _, _)| (is_fixed && !f) || (is_fixed == f && area <= a)) {
+                best = Some((area, is_fixed, id.index(), id));
             }
         }
-        best.and_then(|(_, _, id)| tree.get(id)).map(|b| b.node)
+        best.and_then(|(_, _, _, id)| tree.get(id)).map(|b| b.node)
+    }
+    /// Which boxes are fixed to the viewport (a `position: fixed` box and
+    /// its descendants, unless a transformed ancestor contains it).
+    pub fn fixed_boxes(&self) -> Box<[bool]> {
+        let tree = &self.cache.tree;
+        let mut fixed = vec![false; self.geometry.len()];
+        let mut transformed = vec![false; self.geometry.len()];
+        for (id, b) in tree.iter() {
+            let (parent_fixed, parent_transformed) = b.parent.map_or((false, false), |p| (fixed[p.index()], transformed[p.index()]));
+            let style = tree.style(id);
+            let own_transform = style.is_some_and(|s| matches!(s.value(P::Transform), Value::Transforms(_)));
+            let own_fixed = !parent_transformed && style.is_some_and(|s| matches!(s.value(P::Position), Value::Keyword(K::Fixed)));
+            fixed[id.index()] = parent_fixed || own_fixed;
+            transformed[id.index()] = parent_transformed || own_transform;
+        }
+        fixed.into_boxed_slice()
     }
     pub fn geometry_payload_bytes(&self) -> usize {
         self.geometry.len() * size_of::<Geometry>()
