@@ -1171,7 +1171,7 @@ fn render(
                     return match loader.image(
                         document,
                         url.clone(),
-                        (64usize << 20).saturating_sub(image_bytes),
+                        page::PAGE_IMAGE_LIMITS.bytes.saturating_sub(image_bytes),
                         &r.cancel,
                         crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "image"),
                         &svg,

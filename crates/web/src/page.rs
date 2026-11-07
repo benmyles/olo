@@ -249,7 +249,11 @@ pub const UA: &str = concat!(
 );
 #[allow(clippy::too_many_arguments)] // Explicit worker resources, viewport, cancellation and progress.
 /// Room for what scripts draw and load on top of the page's own images.
-const SCRIPTED_IMAGE_LIMITS: crate::image::Limits = crate::image::Limits { pixels: 64 << 20, bytes: 256 << 20, bindings: 2048 };
+const SCRIPTED_IMAGE_LIMITS: crate::image::Limits = PAGE_IMAGE_LIMITS;
+/// What a page's images may take, decoded: a photograph-heavy page (Apple's
+/// homepage) holds a few hundred megabytes of pixels; past that an image is
+/// left out (an issue), the page still shown.
+pub const PAGE_IMAGE_LIMITS: crate::image::Limits = crate::image::Limits { pixels: 64 << 20, bytes: 256 << 20, bindings: 2048 };
 pub fn load(
     source: Arc<str>,
     host: &impl Host,
@@ -1130,10 +1134,12 @@ fn gather(
                 }
                 Some("style" | "link") => style_nodes.push(node),
                 Some("img") => {
-                    if image_nodes.len() == crate::image::Limits::default().bindings {
-                        return Err(paint::Error::Limit.into());
+                    // Past the bindings an image is left out (an issue below).
+                    if image_nodes.len() < PAGE_IMAGE_LIMITS.bindings {
+                        image_nodes.push(node);
+                    } else {
+                        resource_issues += 1;
                     }
-                    image_nodes.push(node);
                 }
                 Some("script") => scripts += 1,
                 Some("title") => {
@@ -1187,13 +1193,15 @@ fn gather(
         };
         match resource(ResourceKind::Image, base.as_deref(), src)? {
             Some(Resource::Image(image)) => {
-                if image_unique.insert(Arc::as_ptr(&image)) {
-                    image_bytes = image_bytes.checked_add(image.payload_bytes()).ok_or(paint::Error::Limit)?;
-                    if image_bytes > crate::image::Limits::default().bytes {
-                        return Err(paint::Error::Limit.into());
-                    }
+                if image_unique.contains(&Arc::as_ptr(&image)) {
+                    image_bindings.push((node, image));
+                } else if image_bytes.saturating_add(image.payload_bytes()) > PAGE_IMAGE_LIMITS.bytes || image_bindings.len() >= PAGE_IMAGE_LIMITS.bindings {
+                    resource_issues += 1;
+                } else {
+                    image_unique.insert(Arc::as_ptr(&image));
+                    image_bytes += image.payload_bytes();
+                    image_bindings.push((node, image));
                 }
-                image_bindings.push((node, image));
             }
             None => resource_issues += 1,
             _ => return Err(paint::Error::Invalid.into()),
@@ -1237,19 +1245,21 @@ fn gather(
         }
         match resource(ResourceKind::Image, sheet_base.as_deref().or(base.as_deref()), url)? {
             Some(Resource::Image(image)) => {
-                if image_unique.insert(Arc::as_ptr(&image)) {
-                    image_bytes = image_bytes.checked_add(image.payload_bytes()).ok_or(paint::Error::Limit)?;
-                    if image_bytes > crate::image::Limits::default().bytes {
-                        return Err(paint::Error::Limit.into());
-                    }
+                if image_unique.contains(&Arc::as_ptr(&image)) {
+                    backgrounds.insert(url.clone(), image);
+                } else if image_bytes.saturating_add(image.payload_bytes()) > PAGE_IMAGE_LIMITS.bytes {
+                    resource_issues += 1;
+                } else {
+                    image_unique.insert(Arc::as_ptr(&image));
+                    image_bytes += image.payload_bytes();
+                    backgrounds.insert(url.clone(), image);
                 }
-                backgrounds.insert(url.clone(), image);
             }
             None => resource_issues += 1,
             _ => return Err(paint::Error::Invalid.into()),
         }
     }
-    let images = if image_bindings.is_empty() && backgrounds.is_empty() { None } else { Some(crate::image::Set::with_backgrounds(&doc, image_bindings, backgrounds, Default::default(), cancel)?) };
+    let images = if image_bindings.is_empty() && backgrounds.is_empty() { None } else { Some(crate::image::Set::with_backgrounds(&doc, image_bindings, backgrounds, PAGE_IMAGE_LIMITS, cancel)?) };
     // Web fonts: the first decodable source of each face. A face whose file
     // fails to load or decode is simply unavailable, as in other browsers.
     let mut loaded = Vec::new();
