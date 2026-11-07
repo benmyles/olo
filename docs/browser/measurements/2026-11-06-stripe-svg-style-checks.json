@@ -1,0 +1,26 @@
+{
+  "scope": "SVG paint style computation and diagnostic checkpoint; no SVG sizing/painting or website acceptance.",
+  "native": {
+    "pid": 588076,
+    "executable": "/var/tmp/olo-browser-stripe/svg-style/browser-final",
+    "sha256": "b9292c70c721cb920a46f7fefa4d4bf4ca02b578ddee52277ddab2fa213a9780",
+    "url": "https://stripe.com/",
+    "failure": "UnsupportedForeign: SVG svg root, document1/slot238/generation1",
+    "tree_sha256": "5f05df1968f48497994f231987e553f099d35c5e16ca074adcc7085df5a0b206"
+  },
+  "checks": {
+    "default_release": "301 passed, 2 ignored",
+    "all_features_before_diagnostic_boxing": "287 passed, 1 ignored",
+    "strict_clippy": "pass, 4.29s",
+    "release_workspace": "pass, 9.60s",
+    "independent_style_cases": 28,
+    "independent_style_observations": 140,
+    "matches": 140
+  },
+  "main": "82f7089aea496d5e986419fa013146765af9586e",
+  "limitations": [
+    "No useful native Stripe content; 0/30 Stripe and 0/100 websites accepted.",
+    "SVG viewport sizing, geometry presentation attributes, vector paint and paint servers remain required.",
+    "Final ordinary pipeline 2.1\u20132.4% and scene 1.7\u20135.5% regressions remain open."
+  ]
+}

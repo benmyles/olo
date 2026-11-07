@@ -181,6 +181,15 @@ fn white_space(parts: &[Component<'_>]) -> Result<Assignments> {
 }
 fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     let grammar = property.grammar();
+    if matches!(property, Property::Fill | Property::Stroke)
+        && parts.iter().any(|c| {
+            matches!(c.kind(), Kind::Url | Kind::UnclosedUrl)
+                || c.kind() == Kind::Function && c.text().is_some_and(|s| s.eq_ignore_ascii_case("url"))
+                || c.kind() == Kind::Ident && c.text().is_some_and(|s| s.eq_ignore_ascii_case("context-fill") || s.eq_ignore_ascii_case("context-stroke"))
+        })
+    {
+        return Err(Error::Unsupported("SVG paint server/context paint"));
+    }
     match grammar {
         Grammar::FontStyle => font::style(parts, limits, cancelled),
         Grammar::Keywords(_) if property == Property::TextAlign && parts.len() == 1 && parts[0].kind() == Kind::Ident && parts[0].text().unwrap().eq_ignore_ascii_case("-webkit-match-parent") => {

@@ -1,0 +1,9 @@
+{
+  "scope": "Original SVG style fixtures, independent owned Chrome computed-value capture; no website acceptance.",
+  "files": {
+    "cases.json": "cd025042b01af01118880ece7c523c321289f31b4bdaf87c5189a2dd8618ffd2",
+    "chrome.json": "5805bfa74d4b517c5b57c35847b95c5388c77c92e0253c52d52624557d7eeac6",
+    "capture.py": "6bd4ac93a1dc22f8ec6004ef87b0f2108803617139e5e7fe00b5500cf8fce3dc",
+    "README.md": "f7bfeef6e2db0103a6adf83d64f4ca2a605e641fae9a5d891caba5e8077ac37b"
+  }
+}

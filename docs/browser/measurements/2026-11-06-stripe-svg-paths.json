@@ -35,9 +35,11 @@
     "Payload excludes capacity, headers, source storage and allocator overhead."
   ],
   "integration": {
-    "origin_main": "56c9d81b532129e12bea9f3d534d9cbf09a475e3",
+    "origin_main": "82f7089aea496d5e986419fa013146765af9586e",
     "merge": "bc18a515",
     "release_workspace": "pass, 2m55s",
-    "merged_svg_tests": "6 passed"
+    "merged_svg_tests": "6 passed",
+    "api_snapshot": "56c9d81b532129e12bea9f3d534d9cbf09a475e3",
+    "correction": "Verified actual second parent of bc18a515; earlier value was the API snapshot preceding fetch/merge."
   }
 }

@@ -278,7 +278,12 @@ fn render(
         progress(Phase::Styles, job.progress().styled)
     }
     let styles = Arc::new(job.finish()?);
-    let stylesheet_issues = resource_issues + styles.report().stylesheet_issues + styles.report().inline_unsupported + styles.report().inline_invalid;
+    let stylesheet_issues = resource_issues
+        + styles.report().stylesheet_issues
+        + styles.report().inline_unsupported
+        + styles.report().inline_invalid
+        + styles.report().presentation_invalid
+        + styles.report().presentation_unsupported;
     progress(Phase::Boxes, 0);
     let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
     if let Some(images) = images {

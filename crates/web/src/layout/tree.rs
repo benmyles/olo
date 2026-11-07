@@ -407,8 +407,8 @@ impl<'a> BuildJob<'a> {
                     {
                         return Err(Error::Unsupported("positioned/floating/clearance layout"));
                     }
-                    if self.document.namespace(node)? != Some(crate::dom::Namespace::Html) {
-                        return Err(Error::Unsupported("foreign box layout"));
+                    if let Some(namespace @ (crate::dom::Namespace::Svg | crate::dom::Namespace::MathMl)) = self.document.namespace(node)? {
+                        return Err(Error::UnsupportedForeign(Box::new(ForeignElement { node, namespace, name: self.document.name(node)?.ok_or(Error::Invalid)?.into() })));
                     }
                     let name = self.document.name(node)?;
                     if let Some(name @ ("br" | "wbr")) = name {

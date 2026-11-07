@@ -2393,3 +2393,26 @@ uses the original HTML DOM to compile SVG path attributes and report work,
 payload and absolute timing. It ignores visibility/styles and makes no Chrome
 or website acceptance claim. Tests in `tests/svg.rs` check semantic path state,
 analytic circle samples, valid-prefix recovery and worker limits/cancellation.
+
+## Initial SVG presentation paint styles
+
+Ten added longhands (`fill`, `fill-opacity`, `fill-rule`, `clip-rule`, `stroke`,
+`stroke-opacity`, `stop-color`, `stop-opacity`, `flood-color`, `flood-opacity`)
+bring the registry to108; `all` includes them. Solid colors/currentColor and
+none, opacity number/percentages and fill/clip winding rules use existing typed
+values, computed inheritance and custom-property substitution. URL paint servers
+and context paint remain explicitly unsupported, not rasterized substitutes.
+
+SVG-only presentation attributes for these properties plus color/opacity/display/
+visibility enter the existing presentational-hint cascade path; animation `fill`
+is excluded. HTML attributes do not become SVG hints. Invalid and unsupported
+presentation values have separate report counters, included in page issue totals.
+Attribute bytes, declaration counts and visits obey the style worker budgets.
+The28 authored cases match140 independent Chrome computed-style observations at
+five native DPRs. This is style computation, not SVG sizing or painting.
+
+`layout::Error::UnsupportedForeign` now includes the actual DOM handle, namespace
+and element name, with the context boxed only on failure. It copies no attributes
+or text and retains no document. The fresh Stripe retry identifies an SVG root;
+viewport sizing, presentation geometry properties, retained scene integration,
+paint servers and scale-accurate vector pixels remain open.

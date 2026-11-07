@@ -68,6 +68,8 @@ keyword_registry! {
     Dotted => "dotted",
     Double => "double",
     End => "end",
+    Evenodd => "evenodd",
+    Nonzero => "nonzero",
     Fill => "fill",
     FitContent => "fit-content",
     Fixed => "fixed",
@@ -190,17 +192,23 @@ property_registry! {
     BoxSizing, "box-sizing", Grammar::Keywords(&[Keyword::ContentBox,Keyword::BorderBox]), "content-box", false;
     CaretColor, "caret-color", Grammar::Color(&[Keyword::Auto]), "auto", true;
     Clear, "clear", Grammar::Keywords(&[Keyword::None,Keyword::Left,Keyword::Right,Keyword::Both,Keyword::InlineStart,Keyword::InlineEnd]), "none", false;
+    ClipRule, "clip-rule", Grammar::Keywords(&[Keyword::Nonzero,Keyword::Evenodd]), "nonzero", true;
     Color, "color", Grammar::Color(&[]), "canvastext", true;
     ColumnGap, "column-gap", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Normal]), "normal", false;
     ContainerType, "container-type", Grammar::Keywords(&[Keyword::Normal,Keyword::InlineSize,Keyword::Size]), "normal", false;
     Direction, "direction", Grammar::Keywords(&[Keyword::Ltr,Keyword::Rtl]), "ltr", true;
     Display, "display", Grammar::Display, "inline", false;
+    Fill, "fill", Grammar::Color(&[Keyword::None]), "black", true;
+    FillOpacity, "fill-opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", true;
+    FillRule, "fill-rule", Grammar::Keywords(&[Keyword::Nonzero,Keyword::Evenodd]), "nonzero", true;
     FlexBasis, "flex-basis", Grammar::Size(SizeKind::Basis), "auto", false;
     FlexDirection, "flex-direction", Grammar::Keywords(&[Keyword::Row,Keyword::RowReverse,Keyword::Column,Keyword::ColumnReverse]), "row", false;
     FlexGrow, "flex-grow", Grammar::Numeric(NumericKind::Number, Range::Nonnegative, &[]), "0", false;
     FlexShrink, "flex-shrink", Grammar::Numeric(NumericKind::Number, Range::Nonnegative, &[]), "1", false;
     FlexWrap, "flex-wrap", Grammar::Keywords(&[Keyword::Nowrap,Keyword::Wrap,Keyword::WrapReverse]), "nowrap", false;
     Float, "float", Grammar::Keywords(&[Keyword::None,Keyword::Left,Keyword::Right,Keyword::InlineStart,Keyword::InlineEnd]), "none", false;
+    FloodColor, "flood-color", Grammar::Color(&[]), "black", false;
+    FloodOpacity, "flood-opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", false;
     FontFamily, "font-family", Grammar::FontFamily, "serif", true;
     FontSize, "font-size", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::XxSmall,Keyword::XSmall,Keyword::Small,Keyword::Medium,Keyword::Large,Keyword::XLarge,Keyword::XxLarge,Keyword::XxxLarge,Keyword::Larger,Keyword::Smaller,Keyword::Math]), "medium", true;
     FontStyle, "font-style", Grammar::FontStyle, "normal", true;
@@ -254,6 +262,10 @@ property_registry! {
     Resize, "resize", Grammar::Keywords(&[Keyword::None,Keyword::Both,Keyword::Horizontal,Keyword::Vertical,Keyword::Block,Keyword::Inline]), "none", false;
     Right, "right", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
     RowGap, "row-gap", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Normal]), "normal", false;
+    StopColor, "stop-color", Grammar::Color(&[]), "black", false;
+    StopOpacity, "stop-opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", false;
+    Stroke, "stroke", Grammar::Color(&[Keyword::None]), "none", true;
+    StrokeOpacity, "stroke-opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", true;
     TextAlign, "text-align", Grammar::Keywords(&[Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify,Keyword::MatchParent,Keyword::JustifyAll]), "start", true;
     TextAlignLast, "text-align-last", Grammar::Keywords(&[Keyword::Auto,Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify]), "auto", true;
     TextDecorationColor, "text-decoration-color", Grammar::Color(&[]), "currentcolor", false;
@@ -284,7 +296,7 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
-    All, "all", [AlignItems,AlignSelf,BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,Color,ColumnGap,ContainerType,Display,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
+    All, "all", [AlignItems,AlignSelf,BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,ClipRule,Color,ColumnGap,ContainerType,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;

@@ -23,6 +23,9 @@ pub enum Error {
     Incomplete,
     Failed,
     Unsupported(&'static str),
+    /// Identify the actual rejected element without retaining its document or
+    /// copying attribute/content data into a diagnostic.
+    UnsupportedForeign(Box<ForeignElement>),
     Dom(dom::Error),
     Style(style::Error),
     Numeric(css::properties::Error),
@@ -30,6 +33,14 @@ pub enum Error {
     Shaping(text::shaping::Error),
     Break(text::linebreak::Error),
     Text(text::layout::Error),
+}
+/// Allocated only on failure, so adding diagnostic context does not enlarge
+/// every successful layout/paint Result or worker state containing one.
+#[derive(Debug)]
+pub struct ForeignElement {
+    pub node: dom::NodeId,
+    pub namespace: dom::Namespace,
+    pub name: Box<str>,
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

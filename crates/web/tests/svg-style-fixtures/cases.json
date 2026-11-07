@@ -1,0 +1,142 @@
+[
+  {
+    "id": "initial",
+    "html": "<svg><path id=probe /></svg>",
+    "css": ""
+  },
+  {
+    "id": "logo",
+    "html": "<svg fill=\"#031323\"><path id=probe /></svg>",
+    "css": ""
+  },
+  {
+    "id": "attribute",
+    "html": "<svg><path id=probe fill=red stroke=blue fill-opacity=\"40%\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "inherited",
+    "html": "<svg fill=red stroke=blue fill-rule=evenodd clip-rule=evenodd fill-opacity=.3 stroke-opacity=.4><g><path id=probe /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "current",
+    "html": "<svg fill=currentColor color=red><path id=probe color=blue /></svg>",
+    "css": ""
+  },
+  {
+    "id": "css-current",
+    "html": "<svg style=\"color:red;fill:currentColor\"><path id=probe style=\"color:blue\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "css-over-attr",
+    "html": "<svg><path id=probe fill=red /></svg>",
+    "css": "*{fill:blue}"
+  },
+  {
+    "id": "layer-over-attr",
+    "html": "<svg><path id=probe fill=red /></svg>",
+    "css": "@layer a {*{fill:blue}}"
+  },
+  {
+    "id": "inline",
+    "html": "<svg><path id=probe fill=red style=\"fill:green\" /></svg>",
+    "css": "*{fill:blue}"
+  },
+  {
+    "id": "important",
+    "html": "<svg><path id=probe fill=red style=\"fill:green\" /></svg>",
+    "css": "#probe{fill:blue!important}"
+  },
+  {
+    "id": "invalid-important",
+    "html": "<svg fill=green><path id=probe fill=\"red !important\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "none",
+    "html": "<svg fill=red stroke=blue><path id=probe fill=none stroke=none /></svg>",
+    "css": ""
+  },
+  {
+    "id": "opacity-clamp",
+    "html": "<svg><path id=probe fill-opacity=\"200%\" stroke-opacity=\"-30%\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "opacity-inherit",
+    "html": "<svg opacity=.2 fill-opacity=.3><path id=probe /></svg>",
+    "css": ""
+  },
+  {
+    "id": "stop-noninherited",
+    "html": "<svg stop-color=red stop-opacity=.2><stop id=probe /></svg>",
+    "css": ""
+  },
+  {
+    "id": "stop-color",
+    "html": "<svg color=blue><stop id=probe stop-color=currentColor stop-opacity=\"25%\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "flood-noninherited",
+    "html": "<svg flood-color=red flood-opacity=.2><filter><feFlood id=probe /></filter></svg>",
+    "css": ""
+  },
+  {
+    "id": "flood-color",
+    "html": "<svg><filter><feFlood id=probe flood-color=red flood-opacity=.4 /></filter></svg>",
+    "css": ""
+  },
+  {
+    "id": "html-ignored",
+    "html": "<div id=probe fill=red stroke=blue fill-opacity=.2></div>",
+    "css": ""
+  },
+  {
+    "id": "animation-fill",
+    "html": "<svg fill=red><animate id=probe fill=blue /></svg>",
+    "css": ""
+  },
+  {
+    "id": "variables",
+    "html": "<svg style=\"--paint:blue;--alpha:.7\"><path id=probe fill=\"var(--paint)\" fill-opacity=\"var(--alpha)\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "unset",
+    "html": "<svg fill=red fill-rule=evenodd><path id=probe fill=unset fill-rule=unset /></svg>",
+    "css": ""
+  },
+  {
+    "id": "initial-reset",
+    "html": "<svg fill=red><path id=probe fill=initial /></svg>",
+    "css": ""
+  },
+  {
+    "id": "revert",
+    "html": "<svg><path id=probe fill=red /></svg>",
+    "css": "#probe{fill:revert}"
+  },
+  {
+    "id": "revert-layer",
+    "html": "<svg><path id=probe fill=red /></svg>",
+    "css": "#probe{fill:revert-layer}"
+  },
+  {
+    "id": "all-initial",
+    "html": "<svg fill=red><path id=probe fill=blue /></svg>",
+    "css": "#probe{all:initial}"
+  },
+  {
+    "id": "bad-rule",
+    "html": "<svg fill-rule=evenodd><path id=probe fill-rule=garbage /></svg>",
+    "css": ""
+  },
+  {
+    "id": "foreign-html",
+    "html": "<svg fill=green><foreignObject><div id=probe fill=red></div></foreignObject></svg>",
+    "css": ""
+  }
+]

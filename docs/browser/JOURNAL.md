@@ -4623,3 +4623,53 @@ Fetched through restored `gh` credentials and merged origin/main56c9d81b
 Merged `cargo build --release --workspace` passes in2m55s; six SVG regressions
 pass again after integration. No personal-session install/reload, no GUI changes
 or new GUI acceptance claimed. Both Stripe Agent Screens remain stopped.
+
+### 2026-11-06 — SVG paint cascade reaches the real Stripe failure
+
+Previous goal turn made concrete progress in bounded path compilation. Added
+10 paint longhands (108 total) and SVG-only presentation attributes to the real
+computed-style pipeline: solid/none/currentColor paint, fill/clip rules, inherited
+fill/stroke opacity and non-inherited stop/flood colors/opacity. Animation fill
+attributes remain animation metadata, and HTML attributes do not acquire SVG
+meaning. URL paint servers/context paint remain explicit unsupported diagnostics;
+new presentation invalid/unsupported counters contribute to page issue totals.
+No SVG layout/paint acceptance is claimed.
+
+Captured28 original cases in owned Chrome, after initial implementation and before
+native comparison:140 observations at native1/1.25/1.5/1.75/2DPR all match.
+Coverage includes stylesheets/layers overriding attributes, inline/important,
+currentColor/inheritance, variables, rollback and malformed important values.
+Capture restored settings, closed/awaited Chrome and stopped its screen.
+
+A fresh HTTPS Stripe retry on owned Browser PID574079 now reports the actual
+foreign element: document1, slot238, generation1, namespace Svg, name svg. It
+still stops before useful content. This identifies a root, not its logo identity
+or any rendering pass. Diagnostic context is boxed only on failure; no attributes
+or document are retained. The native proof/tree and frozen binaries are under
+`/var/tmp/olo-browser-stripe/svg-style`.
+
+Initial ordinary release comparison (7 alternating pairs per workload, CPU0,
+no observed compiler context) regressed: pipeline100/1000 elements
+821.769/9098.825→850.557/9453.536us; scene193.584/3353.618→192.997/3661.730us.
+After boxing error context, final paired pipeline816.946/8917.089→836.299/9101.182us
+and scene188.734/3395.170→191.855/3580.845us. Source/geometry/pixel hashes agree.
+The final2.1–2.4% pipeline and1.7–5.5% scene regressions remain open, as do all
+older nonpasses. These controls do not prove isolated causality. Initial RSS
+page9172→9204KiB,scene8124→8188; final9084→9148,8052→8060.
+Both reports are retained in measurements/2026-11-06-stripe-svg-style-*-cost.json.
+An intermediate measurement was rejected by its feature guard after a compile
+error left all-feature example binaries; it contributes no accepted sample.
+
+Integration correction: bc18a515's actual second parent is82f7089a, not56c9d81b
+as the earlier API snapshot suggested. The SIMD-assembly update was already in
+that merge. Fetched again through gh credentials and verified origin/main82f7089a
+is an ancestor of this branch; there is no outstanding main merge.
+
+Final boxed-diagnostic default release tests301pass/2ignored, strict clippy4.29s,
+full release workspace9.60s pass. All-feature tests before boxing287pass/1ignored;
+no post-boxing all-feature claim. A second fresh HTTPS retry on final Browser
+PID588076 confirms the same SVG root/document1/slot238. Frozen binary hash/tree
+proof are in svg-style-checks.json and scratch. Quit/awaited Browser; zero windows,
+both Stripe screens stopped. No visual matrix/pixel acceptance is claimed for
+this style/diagnostic checkpoint. Stripe remains0/30; corpus0/100. Continue with
+SVG geometry presentation attributes, viewport/intrinsic sizing and scene paint.

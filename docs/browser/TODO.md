@@ -10,7 +10,7 @@ revalidate the merged workspace and push the integration with browser work.
 Finish its real pages/journeys and all30 configurations before choosing another
 site. Component work follows observed Stripe blockers. The last verified real
 HTTPS retry now clears flex box-tree construction and stops at
-Unsupported("foreign box layout"). There is still no useful native Stripe
+an identified SVG root (fresh HTTPS: document1/slot238). There is still no useful native Stripe
 content, and its own carousel/container geometry has not executed. Initial
 horizontal LTR single-line flex formatting is connected to the page pipeline:
 320 definite lines/1,095 positions and widths plus260 authored page observations
@@ -22,7 +22,11 @@ resize. The earlier shorthand365/370 result still has five fit-content() gaps.
 Initial worker-only SVG path compilation handles all307 retained Stripe paths
 without syntax errors, but is not connected to CSS/layout/paint. Arc scale
 accuracy and extreme-coordinate support remain open.
-Next inspect and implement the actual foreign-content blocker, then retry Stripe;
+Ten SVG paint longhands and initial SVG-only presentation attributes now reach
+the real computed-style pipeline;140 independent Chrome style observations match.
+Final ordinary pipeline2.1–2.4% and scene1.7–5.5% cost regressions remain open.
+Next connect SVG viewport sizing, geometry attributes and vector scene paint,
+then retry Stripe;
 do not choose another website.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.

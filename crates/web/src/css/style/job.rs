@@ -65,6 +65,8 @@ pub struct Report {
     pub stylesheet_issues: usize,
     pub inline_invalid: usize,
     pub inline_unsupported: usize,
+    pub presentation_invalid: usize,
+    pub presentation_unsupported: usize,
 }
 struct Styled {
     node: NodeId,
@@ -239,6 +241,44 @@ impl<'a> Job<'a> {
         }
         Ok(None)
     }
+    fn svg_hints(&mut self, node: NodeId, hints: &mut Vec<p::Declaration>) -> Result<()> {
+        let document = self.document;
+        let animation = matches!(document.name(node).map_err(Error::Dom)?, Some("animate" | "animateMotion" | "animateTransform" | "set"));
+        for (name, source) in document.attributes(node).map_err(Error::Dom)? {
+            self.tick()?;
+            if !matches!(
+                name,
+                "fill"
+                    | "fill-opacity"
+                    | "fill-rule"
+                    | "stroke"
+                    | "stroke-opacity"
+                    | "clip-rule"
+                    | "color"
+                    | "opacity"
+                    | "display"
+                    | "visibility"
+                    | "stop-color"
+                    | "stop-opacity"
+                    | "flood-color"
+                    | "flood-opacity"
+            ) || name == "fill" && animation
+            {
+                continue;
+            }
+            if source.len() > self.limits.inline_bytes || hints.len() >= self.limits.inline_declarations {
+                return Err(Error::Limit);
+            }
+            let syntax = Syntax::parse(Arc::from(source), self.limits.css, self.cancelled).map_err(Error::css)?;
+            match p::Declaration::parse(name, syntax.components(), false, self.limits.property, self.cancelled) {
+                Ok(declaration) => hints.push(declaration),
+                Err(p::Error::Invalid) => self.tree.report.presentation_invalid += 1,
+                Err(p::Error::Unsupported(_)) => self.tree.report.presentation_unsupported += 1,
+                Err(error) => return Err(Error::Property(error)),
+            }
+        }
+        Ok(())
+    }
     fn element(&mut self, node: NodeId, host: &impl Host) -> Result<()> {
         if self.tree.styles.len() >= self.limits.elements || self.tree.styles.len() >= u32::MAX as usize || node.slot() as usize >= self.limits.slots {
             return Err(Error::Limit);
@@ -255,6 +295,9 @@ impl<'a> Job<'a> {
                     hints.push(p::Declaration::parse(name, syntax.components(), false, self.limits.property, self.cancelled).map_err(Error::Property)?);
                 }
             }
+        }
+        if self.document.namespace(node).map_err(Error::Dom)? == Some(crate::dom::Namespace::Svg) {
+            self.svg_hints(node, &mut hints)?;
         }
         let mut inline = Vec::new();
         if let Some(source) = self.document.attribute(node, "style").map_err(Error::Dom)? {

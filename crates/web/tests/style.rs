@@ -660,3 +660,61 @@ fn carousel_flex_basis_retains_query_lengths_until_its_layout_context_exists() {
         Ok(s) => panic!("unexpected inherited basis: {:?}", s.value(P::FlexBasis)),
     }
 }
+
+#[test]
+fn svg_presentation_cascade_matches_owned_chrome() {
+    use sha2::{Digest, Sha256};
+    let cases: serde_json::Value = serde_json::from_str(include_str!("svg-style-fixtures/cases.json")).unwrap();
+    let reference: serde_json::Value = serde_json::from_str(include_str!("svg-style-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(include_bytes!("svg-style-fixtures/cases.json"))), reference["cases_sha256"]);
+    let mut mismatches = Vec::new();
+    for row in reference["rows"].as_array().unwrap() {
+        let case = cases.as_array().unwrap().iter().find(|c| c["id"] == row["id"]).unwrap();
+        let host = Snapshot { scale: row["scale"].as_f64().unwrap(), ..Default::default() };
+        let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+        let doc = olo_web::html::parse(Arc::from(format!("<!doctype html>{}", case["html"].as_str().unwrap())), Default::default(), None).unwrap().document;
+        let sheet = rules(case["css"].as_str().unwrap());
+        let mut job = style::Job::new(&doc, &sheet, defaults, Default::default(), Default::default(), None).unwrap();
+        while !job.step(1, |_| &host).unwrap().finished {}
+        let tree = job.finish().unwrap();
+        let (_, probe) = tree.iter().find(|(n, _)| doc.attribute(*n, "id").unwrap() == Some("probe")).unwrap();
+        for property in [P::Fill, P::FillOpacity, P::FillRule, P::Stroke, P::StrokeOpacity, P::ClipRule, P::StopColor, P::StopOpacity, P::FloodColor, P::FloodOpacity, P::Opacity, P::Color] {
+            let value = match probe.value(property) {
+                Value::Color(_) => {
+                    let c = rgba(probe, property);
+                    assert_eq!(c[3], 255);
+                    format!("rgb({}, {}, {})", c[0], c[1], c[2])
+                }
+                Value::Keyword(k) => k.as_str().to_string(),
+                value => value.scalar().unwrap().to_string(),
+            };
+            if row["values"][property.as_str()] != value {
+                mismatches.push(format!("{} @{} {}: native {} chrome {}", case["id"], row["scale"], property.as_str(), value, row["values"][property.as_str()]));
+            }
+        }
+        assert_eq!(tree.report().presentation_unsupported, 0);
+        assert_eq!(tree.report().presentation_invalid, usize::from(matches!(case["id"].as_str().unwrap(), "invalid-important" | "bad-rule")));
+    }
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+    assert_eq!(reference["rows"].as_array().unwrap().len(), cases.as_array().unwrap().len() * 5);
+}
+
+#[test]
+fn svg_paint_servers_are_explicitly_unsupported_and_attribute_work_is_bounded() {
+    let host = Snapshot::default();
+    let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+    let doc = olo_web::html::parse(Arc::from("<svg><path fill='url(#gradient) red' stroke=context-stroke /></svg>"), Default::default(), None).unwrap().document;
+    let sheet = rules("");
+    let mut job = style::Job::new(&doc, &sheet, defaults.clone(), Default::default(), Default::default(), None).unwrap();
+    while !job.step(1, |_| &host).unwrap().finished {}
+    assert_eq!(job.finish().unwrap().report().presentation_unsupported, 2);
+    let mut job = style::Job::new(&doc, &sheet, defaults, Default::default(), style::JobLimits { inline_bytes: 2, ..Default::default() }, None).unwrap();
+    loop {
+        match job.step(1, |_| &host) {
+            Ok(p) => assert!(!p.finished),
+            Err(style::Error::Limit) => break,
+            Err(e) => panic!("{e:?}"),
+        }
+    }
+    assert!(matches!(job.step(1, |_| &host), Err(style::Error::Failed)));
+}
