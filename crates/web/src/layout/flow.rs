@@ -714,12 +714,30 @@ struct ParentFrame {
     used: Used,
     queries: QueryBasis,
 }
+thread_local! {
+    /// OLO_WEB_TIMING: layout work by kind, (count, seconds): blocks
+    /// entered, texts laid out, replaced boxes, frames finished, flex
+    /// ticks, absolutes begun, intrinsic sizings.
+    pub(super) static LAYOUT_PROFILE: std::cell::Cell<[(u32, f64); 7]> = const { std::cell::Cell::new([(0, 0.); 7]) };
+}
+pub(super) fn profile(slot: usize, started: Option<std::time::Instant>) {
+    if let Some(t) = started {
+        LAYOUT_PROFILE.with(|p| {
+            let mut v = p.get();
+            v[slot].0 += 1;
+            v[slot].1 += t.elapsed().as_secs_f64();
+            p.set(v);
+        });
+    }
+}
 pub struct Job<'a> {
     engine: &'a mut shaping::Engine,
     scope: &'a Scope,
     cache: Arc<Cache>,
     limits: Limits,
     cancel: Option<&'a AtomicBool>,
+    /// OLO_WEB_TIMING: the work profiled by kind.
+    profiling: bool,
     geometry: Vec<Geometry>,
     texts: Vec<Option<inline::Layout>>,
     stack: Vec<Frame>,
@@ -777,6 +795,7 @@ impl<'a> Job<'a> {
             cache,
             limits,
             cancel,
+            profiling: std::env::var_os("OLO_WEB_TIMING").is_some(),
             geometry,
             texts,
             stack: vec![Frame {
@@ -1358,7 +1377,9 @@ impl<'a> Job<'a> {
                     self.progress.finished = true;
                     break;
                 }
+                let t = self.profiling.then(std::time::Instant::now);
                 self.begin_absolute()?;
+                profile(5, t);
                 continue;
             }
             if self.stack.last().is_some_and(|f| f.atomic_host) {
@@ -1380,15 +1401,20 @@ impl<'a> Job<'a> {
                     None => {
                         let host = self.stack.pop().ok_or(Error::Invalid)?;
                         let BoxKind::InlineContent { source } = self.cache.tree.boxes[host.id.index()].kind else { return Err(Error::Invalid) };
+                        let t = self.profiling.then(std::time::Instant::now);
                         let r = self.text(host.id, source)?;
                         self.place(host.id, r)?;
+                        profile(1, t);
                         self.progress.boxes += 1;
                     }
                 }
                 continue;
             }
             let child = if self.flex.last().is_some_and(|f| self.stack.last().is_some_and(|parent| f.id == parent.id)) {
-                match self.flex_tick()? {
+                let t = self.profiling.then(std::time::Instant::now);
+                let tick = self.flex_tick()?;
+                profile(4, t);
+                match tick {
                     flex_flow::Tick::Pending => continue,
                     flex_flow::Tick::Child(id) => Some(id),
                     flex_flow::Tick::Done => None,
@@ -1414,7 +1440,11 @@ impl<'a> Job<'a> {
                     self.clear(s)?;
                 }
                 match b.kind {
-                    BoxKind::Block { .. } => self.enter(child)?,
+                    BoxKind::Block { .. } => {
+                        let t = self.profiling.then(std::time::Instant::now);
+                        self.enter(child)?;
+                        profile(0, t);
+                    }
                     BoxKind::InlineContent { source } => {
                         let mut atomic = b.first_child;
                         while let Some(c) = atomic {
@@ -1449,12 +1479,15 @@ impl<'a> Job<'a> {
                                 float_left: None,
                             });
                         } else {
+                            let t = self.profiling.then(std::time::Instant::now);
                             let r = self.text(child, source)?;
                             self.place(child, r)?;
+                            profile(1, t);
                             self.progress.boxes += 1
                         }
                     }
                     BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. } => {
+                        let t = self.profiling.then(std::time::Instant::now);
                         let frame = self.stack.last().ok_or(Error::Invalid)?;
                         let parent = frame.used;
                         let queries = frame.queries;
@@ -1487,11 +1520,13 @@ impl<'a> Job<'a> {
                         } else {
                             self.place(child, Completed { before: Strut::new(used.margin.top), after: Strut::new(used.margin.bottom), through: false, relative_y: 0. })?;
                         }
+                        profile(2, t);
                         self.progress.boxes += 1;
                     }
                     BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. } | BoxKind::Viewport => return Err(Error::Invalid),
                 }
             } else {
+                let t = self.profiling.then(std::time::Instant::now);
                 let mut f = self.stack.pop().ok_or(Error::Invalid)?;
                 if let Some(height) = self.finish_container(f.id)? {
                     f.cursor = height;
@@ -1529,6 +1564,7 @@ impl<'a> Job<'a> {
                 } else {
                     self.place(f.id, result)?
                 }
+                profile(3, t);
             }
         }
         Ok(self.progress)
@@ -1540,6 +1576,12 @@ impl<'a> Job<'a> {
         check(self.cancel)?;
         if !self.progress.finished {
             return Err(Error::Incomplete);
+        }
+        if self.profiling {
+            let p = LAYOUT_PROFILE.with(|p| p.replace([(0, 0.); 7]));
+            let names = ["enter", "text", "replaced", "finish", "flex", "absolute", "intrinsic"];
+            let parts: Vec<String> = names.iter().zip(p).filter(|(_, (n, _))| *n > 0).map(|(name, (n, secs))| format!("{name} {n}×{:.1} ms", secs * 1000.)).collect();
+            eprintln!("layout profile: {}", parts.join(", "));
         }
         if !self.intrinsics.is_empty() {
             if let Some(previous) = &self.cache.intrinsics {

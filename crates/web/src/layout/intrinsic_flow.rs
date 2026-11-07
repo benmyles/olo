@@ -96,6 +96,12 @@ impl Job<'_> {
     /// border. A specified (non-percentage) width is the contribution; otherwise
     /// children decide: a row flex sums them, anything else takes the widest.
     pub(super) fn intrinsic_content(&mut self, id: BoxId, queries: QueryBasis, basis: f64, depth: usize) -> Result<(inline::IntrinsicWidths, f64)> {
+        let t = (depth == 0 && self.profiling).then(std::time::Instant::now);
+        let r = self.intrinsic_content_timed(id, queries, basis, depth);
+        super::flow::profile(6, t);
+        r
+    }
+    fn intrinsic_content_timed(&mut self, id: BoxId, queries: QueryBasis, basis: f64, depth: usize) -> Result<(inline::IntrinsicWidths, f64)> {
         self.intrinsic_content_of(id, queries, basis, depth, false)
     }
     /// The same, measuring the content itself even when a width is specified
