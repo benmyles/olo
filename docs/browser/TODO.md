@@ -83,10 +83,13 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   texts kept, tiles kept by signature so only what changed repaints,
   WebGL canvases read back asynchronously; 6–10 ms a render on
   stripe.com, coalesced to 10 a second), and nothing runs while nothing
-  is due. Next: incremental layout (a text change redoes boxes and
-  layout, ~10 ms), the restyle floor (the tree's styles copied, 0.6–2
-  ms), `:has()` walks, canvases composited on the GPU without readback,
-  numeric GL opcodes.
+  is due. Measurements after inline style changes patch the previous
+  styles in place (0.05–0.1 ms an element; JOURNAL 2026-11-07 evening).
+  Next: incremental layout (a text change redoes boxes and layout, ~10
+  ms, in measurements and in every live render), canvases composited on
+  the GPU without readback, numeric GL opcodes, a window resize
+  reaching the live page's scripts (innerWidth/innerHeight, `resize`,
+  measurements at the new size).
 - [ ] Performance, the first priority: styling Stripe is 34 ms (was 115:
   pseudo-element buckets, ancestor Bloom filter, hashed keys, root/
   attribute/:is() buckets, sparse computed values, chained custom

@@ -5731,8 +5731,26 @@ redo only what changed.
   a canvas never shows blank; a render that left a readback in flight
   is followed by one more, so a canvas that stops shows its last
   frame). Stripe hero live render: 34 → 6 ms (canvases 14.0 → 0.1).
+- **Measurements patch styles in place.** A script measuring after an
+  inline style change restyled through the incremental job: the tree
+  walked from the root and every style copied, 1.0–1.5 ms for one
+  changed element, a hundred times a second. The previous measurement
+  is now consumed by the next: a few elements' own declarations changed
+  and nothing else, each is cascaded from the rules it matched and
+  written over its entry in place (a subtree recomputed when what it
+  inherits changed), nothing else visited or copied, the layout and its
+  index kept. 0.05–0.1 ms for one element, 0.3–0.45 ms for a card and
+  its 22 descendants. The `:has()` keys look inside `:not()`/`:is()`
+  and through the states that reflect attributes, so nothing is
+  "universal" any more: html was re-matched (3600 steps) at every
+  change, now 54 times in 20 s. Stripe's scripts: 346–431 → 198–277 ms
+  per 2 s. Each measurement's timing line says how it was made.
+- **Found on the way.** `6lvh` on the hero heading is 34.68 px in a
+  578 px tall page area and 42 px at 700, as Chrome: the window must be
+  compared at the same page size. A window resize reaches the rendered
+  page but not its scripts (innerHeight, measurements and `resize`
+  stay at the size the page loaded at): to do.
 - **Open.** Incremental layout (the GDP counter's text change redoes
-  boxes and layout, ~10 ms); the restyle floor (the whole tree's styles
-  copied, 0.6–2 ms); `:has()` evaluation walks (html: 3604 steps);
-  compositing canvases on the GPU without any readback; numeric GL
-  opcodes; the scripts' own ~450 ms per 2 s.
+  boxes and layout, ~10 ms, in measurements and in every live render:
+  14 ms a render where 4 would do); compositing canvases on the GPU
+  without any readback; numeric GL opcodes; the scripts' own cost.
