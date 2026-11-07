@@ -2792,7 +2792,18 @@ for a 3-second `sleep`.
 
 * `olo-session reload` (SIGHUP): if `olo-session` itself was
   upgraded it re-executes the new binary first, keeping its children and
-  sockets. Then it stops app_server (SIGTERM; it saves every window's
+  sockets, with the arguments it was started with (`start_args`, made
+  from what it keeps: its backend's, `--greeter`, a screen's
+  `--own-bus`; the new self resumes and doesn't read them, but
+  olo-screen knows a screen's session by its `--headless`, and every
+  screen re-executed bare looked ended, so starting it again by name
+  started another, the old one left running unknown: nine on
+  2026-11-07). Resumed, it stops the children this version doesn't run
+  (`retire_dropped`, by program: `SHELL`, `REAL_SHELL`, a screen's bus
+  and services, the greeter), rather than starting them again each time
+  they end: agent screens from before their portals were Olo's alone
+  kept GTK's portal backend going, so Olo Doctor's Quit Them never
+  held. Then it stops app_server (SIGTERM; it saves every window's
   place to `$XDG_RUNTIME_DIR/olo-layout-<display>.json`) and starts the
   one now on disk, which puts returning windows back (same app id and
   title within 60 s; position, size, workspace, minimized, focus).
@@ -8309,7 +8320,10 @@ scan made for the sudo user). What it looks for:
   dconf-service, GNOME's and GTK's portal backends, gvfs's daemons and
   volume monitors, GNOME Online Accounts, and GNOME Keyring while Olo's
   keyring answers), running in this session or as the user's services
-  (not when GNOME is logged in elsewhere): advice, quit by the fix (what
+  (not when GNOME is logged in elsewhere, nor an agent screen's:
+  `OLO_SCREEN` in its environment, `on_a_screen`, its own session's,
+  which starts its services again; the same for another desktop's
+  daemons and old versions): advice, quit by the fix (what
   asks for dconf, a portal or the keyring reaches Olo's). None, and
   nothing of another desktop either: "Nothing of GNOME's runs".
 - **USB input devices allowed to sleep** (an interface of class 03 with

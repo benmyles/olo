@@ -327,6 +327,17 @@ fn home_of(uid: u32) -> Option<std::ffi::OsString> {
     })
 }
 
+/// Whether a process is an agent screen's (`OLO_SCREEN` in its
+/// environment): the screen's own session, on a bus of its own, which
+/// starts its services again as they exit and brings its programs up to
+/// date as it upgrades, so it isn't the person's session's to quit things
+/// in. (Three screens from before their portals were Olo's alone ran
+/// GTK's portal backend, started again at once: Ben, 2026-11-07, "i press
+/// fix all or quit them and it just comes back".)
+fn on_a_screen(fs: &Path, pid: i32) -> bool {
+    std::fs::read(fs.join("proc").join(pid.to_string()).join("environ")).is_ok_and(|e| e.split(|b| *b == 0).any(|v| v.starts_with(b"OLO_SCREEN=")))
+}
+
 /// A process's login session, from its cgroup.
 fn scope_of(cgroup: &str) -> Option<String> {
     cgroup.lines().find_map(|l| l.rsplit('/').find(|part| part.starts_with("session-") && part.ends_with(".scope")).map(str::to_owned))
@@ -729,7 +740,12 @@ fn foreign(roots: &Roots, procs: &[Proc], r: &mut Report) {
     let mine: Vec<(&Proc, &str)> = if elsewhere {
         Vec::new()
     } else {
-        procs.iter().filter(|p| ours(p) && (p.scope.is_none() || p.scope == roots.scope)).filter_map(|p| FOREIGN.iter().find(|(n, _)| *n == p.name).map(|(_, what)| (p, *what))).collect()
+        procs
+            .iter()
+            .filter(|p| ours(p) && (p.scope.is_none() || p.scope == roots.scope))
+            .filter_map(|p| FOREIGN.iter().find(|(n, _)| *n == p.name).map(|(_, what)| (p, *what)))
+            .filter(|(p, _)| !on_a_screen(&roots.fs, p.pid))
+            .collect()
     };
     if mine.is_empty() {
         r.fine.push(Fine { title: "No other desktop's daemons run in this session".into(), detail: "Nothing fights Olo for the keys or the power settings.".into() });
@@ -786,6 +802,7 @@ fn gnome_services(roots: &Roots, procs: &[Proc], r: &mut Report) {
         .filter(|p| ours(p) && (p.scope.is_none() || p.scope == roots.scope))
         .filter(|p| p.name != "gnome-keyring-daemon" || keyring_ours)
         .filter_map(|p| GNOME_SERVICES.iter().find(|(n, _)| *n == p.name).map(|(_, what)| (p, *what)))
+        .filter(|(p, _)| !on_a_screen(&roots.fs, p.pid))
         .collect();
     if found.is_empty() {
         // (GNOME's settings daemons are another desktop's: `foreign` says so.)
@@ -1964,6 +1981,7 @@ fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
         .filter(|p| p.uid == roots.uid && p.pid != me)
         .filter(|p| p.exe.as_deref().is_some_and(|e| e.ends_with(" (deleted)") && e.starts_with(&*bin)))
         .filter(|p| !NEVER_STOPPED.contains(&p.name.as_str()))
+        .filter(|p| !on_a_screen(&roots.fs, p.pid))
         .collect();
     if old.is_empty() {
         r.fine.push(Fine { title: "Every Olo program runs the installed version".into(), detail: String::new() });
@@ -2350,11 +2368,15 @@ mod tests {
         w("proc/954/cmdline", "/usr/libexec/gvfsd\0");
         w("proc/952/cmdline", "/usr/bin/gnome-keyring-daemon\0--start\0");
         w("proc/953/cmdline", "/usr/libexec/xdg-desktop-portal\0");
+        // An agent screen's GTK portal backend: its own session's, left.
+        w("proc/955/cmdline", "/usr/libexec/xdg-desktop-portal-gtk\0");
+        w("proc/955/environ", "OLO_SCREEN=claude-browser\0DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/olo-screens/claude-browser.bus\0");
         let f = scan(&roots).find("gnome:services").cloned().unwrap();
         // (GNOME Keyring only while Olo's keyring answers.)
         assert_eq!(f.title, "2 of GNOME's services run", "{}", f.detail);
         // (A program running twice is said once, with both processes.)
         assert!(f.detail.contains("(dconf-service, process 950)") && f.detail.contains("(gvfsd, processes 951 and 954)") && f.detail.contains("network folders"), "{}", f.detail);
+        assert!(!f.detail.contains("xdg-desktop-portal-gtk"), "{}", f.detail);
         assert_eq!(f.fix.unwrap().steps, [950, 951, 954].map(|pid| Step::Signal { pid, signal: libc::SIGTERM }));
         w(&format!("run/user/{}/olo-secrets.json", roots.uid), "{\"serving\": true}");
         assert_eq!(scan(&roots).find("gnome:services").unwrap().title, "3 of GNOME's services run");
