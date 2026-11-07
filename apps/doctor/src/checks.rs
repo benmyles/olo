@@ -1317,6 +1317,17 @@ fn soundwire_part(mfg: &str, part: &str) -> Option<&'static str> {
 /// is never made: Passwords couldn't keep its key (the ThinkPad P1
 /// Gen 9, 2026-11-04).
 fn login_keyring(roots: &Roots, r: &mut Report) {
+    // Olo's keyring answering, its key sealed by the login password
+    // (pam_olo_keyring opens it at Olo's login screen): nothing of GNOME's
+    // is needed.
+    let sealed = roots.bin.parent().is_some_and(|local| local.parent().is_some_and(|home| home.join(".config/olo/secrets.login").exists()));
+    if sealed && secrets_status(roots).is_some_and(|v| v["serving"].as_bool() == Some(true)) {
+        r.fine.push(Fine {
+            title: "Olo's keyring opens when you log in".into(),
+            detail: "Programs' secrets are in Olo's keyring, which your login password opens (at Olo's login screen; another asks for it once).".into(),
+        });
+        return;
+    }
     if !roots.fs.join("usr/bin/gnome-keyring-daemon").exists() {
         return;
     }

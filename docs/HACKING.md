@@ -384,7 +384,8 @@ socket.
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
 | `apps/dconf` | `olo-dconf`: Olo's dconf service (`ca.desrt.dconf`), GSettings programs' settings written into dconf's own database in place of GNOME's dconf-service (see "Other toolkits' programs"). |
-| `apps/secrets` | `olo-secrets`: Olo's own Secret Service, programs' secrets kept in place of GNOME Keyring when Preferences ▸ Security says so (see "Programs' secrets"). |
+| `apps/secrets` | `olo-secrets`: Olo's own Secret Service and Secret portal, programs' secrets kept in place of GNOME Keyring unless Preferences ▸ Security says otherwise, its store opened by the login password (see "Programs' secrets"). |
+| `crates/pam-keyring`, `crates/login-key` | `pam_olo_keyring.so`: the login password opens Olo's keyring, the key it gives handed to olo-secrets in the login's kernel keyring; `olo-login-key`: that key's derivation, shared (see "Programs' secrets"). |
 | `crates/camera` | `olo-camera`: cameras in process: listed from sysfs (nothing opened till one is asked for), a V4L2 stream (MJPEG decoded by zune-jpeg, or YUYV converted) as BGRA frames; `OLO_CAMERA_FAKE=1` puts a stand-in first ("Test Camera", a moving pattern at 30 frames a second) for tests and headless sessions, which never open a real camera. For a recording's camera bubble (Screenshot's `bubble.rs`), later face sign-in. |
 | `crates/face` | `olo-face`: face unlock natively: the infrared camera over V4L2, its emitter through its UVC extension unit, YuNet and SFace run in process (tract), and `olo-faced`, the root service on the system bus. See "Face unlock". |
 | `crates/pam-face` | `pam_olo_face.so`: face unlock in sudo's and polkit's PAM stacks (asks `olo-faced`). See "Face unlock". |
@@ -9632,9 +9633,10 @@ a Secret Service client calling `Unlock` and `Prompt`.
 
 `olo-secrets` is Olo's own Secret Service (`org.freedesktop.secrets`, the
 freedesktop API 0.2): with Preferences ▸ Security ▸ Programs' Secrets on
-(`security.passwords.secret_service`, off by default), the secrets
+(`security.passwords.secret_service`, on by default), the secrets
 Chrome, Slack, NetworkManager's applets, `gh` and Olo itself keep through
-libsecret live in Olo's store rather than GNOME Keyring's. olo-session
+libsecret live in Olo's store rather than GNOME Keyring's, and the
+Secret portal is Olo's too. olo-session
 starts it in a real session (`REAL_SHELL`, and on an upgrade that adds
 it); while off it waits on app_server's settings events (no CPU, no
 wakeups) and follows the switch live.
@@ -9645,14 +9647,45 @@ wakeups) and follows the switch live.
   at 0600 after each change. Collections (`login`, the `default` alias's,
   made first; others by `CreateCollection`) of items (label, attributes,
   secret, content type, times); the `session` collection in memory only.
-  Its key is 32 random bytes in GNOME Keyring's login keyring
-  (`olo_system::secrets::SECRETS_KEY`, which PAM unlocks at login; a
-  kept secret, so Backup carries it, and the store with it as a vault:
-  "Programs' Secrets"), and for the rest of the login in the kernel's
-  session keyring (`kernel.rs`: `olo-secrets:` and the store's path, so
-  a test's key never meets the real one), so olo-secrets started again
-  (an upgrade, a crash) opens it without GNOME Keyring, which has quit.
-- **Taking over** (at login, or switched on): the key, the store, then
+  Its key is 32 random bytes, sealed by the login password beside the
+  store (`login_key.rs`: `secrets.login`, "OLOL", a format byte, a
+  nonce, the key sealed with XChaCha20-Poly1305 under the key the
+  password gives, `olo_login_key::login_key`: Argon2id, 64 MiB, 3
+  passes, salted by the uid and /etc/machine-id, 99 ms here), kept in
+  GNOME Keyring's login keyring too where it was made there
+  (`olo_system::secrets::SECRETS_KEY`; a kept secret, so Backup carries
+  it, and the store with it as a vault: "Programs' Secrets"), and for
+  the rest of the login in the kernel's session keyring (`kernel.rs`:
+  `olo-secrets:` and the store's path, so a test's key never meets the
+  real one), so olo-secrets started again (an upgrade, a crash) opens it
+  without asking anything.
+- **The login password opens it** (`crates/pam-keyring`,
+  `pam_olo_keyring.so`, in olo-login's password service in
+  `pam_gnome_keyring`'s place: `-auth optional` after `password-auth`,
+  `-session optional` after `pam_keyinit`; tools/install-login.sh puts it
+  in /usr/lib64/security). At authentication it derives the key the
+  typed password gives and keeps it with the PAM handle; once the
+  session opens it puts it in the login's session keyring
+  (`olo-secrets:login-key`, the user's, gone in ten minutes, and with
+  the login). It never fails a login and never reads the person's files;
+  with no password (a face, a fingerprint, the greeter) it does nothing.
+  olo-secrets takes the key once (read, then invalidated) and opens the
+  sealed store key with it (`key`). With none from PAM (another login
+  screen, a face, a fingerprint) or the password changed since it was
+  sealed, it takes GNOME Keyring's copy if GNOME Keyring is answering
+  (another login screen's PAM unlocked it), else asks for the password
+  through Olo's prompter (`ask_password`: the one used before, if it
+  changed) until it opens the seal; then it seals again with this
+  login's. The first time (nothing sealed yet) it takes GNOME Keyring's
+  copy, or makes a key for a new store. Tested in a real PAM run
+  (`tests/pam.rs`, private services and a session keyring of the test's
+  own): the typed password's key arrives in the session keyring, and a
+  stack without a password leaves nothing.
+- **Taking over** (at login, or switched on): the key, the store, then,
+  when GNOME Keyring is answering or its keyrings
+  (`$XDG_DATA_HOME/keyrings/*.keyring`) changed since the last copy (a
+  GNOME session since: D-Bus starts it, and it asks for its password
+  through Olo's prompter; neither, and nothing of GNOME's starts),
   every GNOME Keyring item new or changed since the last copy
   (`Data::imported`: identity, its `Modified`; identity is collection,
   label and attributes without `xdg:schema`, which GNOME Keyring adds to
@@ -9677,6 +9710,19 @@ wakeups) and follows the switch live.
   `Unlock` gives a prompt asking for the account password in Olo's
   keyring window (`ask_password`), checked by PAM. Changes made while
   serving are noted (`Data::changed`, `deleted`).
+- **The Secret portal** (`service.rs`, `Portal`:
+  `org.freedesktop.impl.portal.Secret` at `/org/freedesktop/portal/
+  desktop`, version 1): each program's own secret, which sandboxed
+  programs, and Chrome and Electron apps (Slack), ask the portal for
+  first. Kept in `login` as GNOME Keyring's portal keeps it (`app_id`
+  and `xdg:schema` `org.freedesktop.portal.Secret`, "Application key for
+  …"), so those copied from it are what each program gets; made (64
+  random bytes) the first time a program asks, then written to the
+  portal's file descriptor, which is closed. olo-session describes it
+  to the portal as `olo-secrets.portal` (`DBusName=org.freedesktop.
+  secrets`: whoever answers for the keyring, so GNOME Keyring, which
+  serves the same, when Olo's is off) and routes Secret to it. Tried
+  through the real frontend on a test bus: the same 64 bytes both times.
 - **Handing back** (switched off): the name given up, then what changed
   while Olo answered written into GNOME Keyring (D-Bus starts it again;
   it asks for the password to unlock through Olo's prompter) and what was

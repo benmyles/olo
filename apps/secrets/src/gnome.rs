@@ -41,6 +41,20 @@ pub struct Found {
     pub item: Item,
 }
 
+/// Where GNOME Keyring keeps its keyrings (`$XDG_DATA_HOME/keyrings`).
+fn keyrings() -> PathBuf {
+    std::env::var_os("XDG_DATA_HOME").filter(|d| !d.is_empty()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share")).join("keyrings")
+}
+
+/// Whether one of GNOME Keyring's keyrings changed since `at` (seconds
+/// since 1970; None: never copied, so any there is new).
+pub fn changed_since(at: Option<u64>) -> bool {
+    std::fs::read_dir(keyrings()).into_iter().flatten().flatten().any(|e| {
+        e.path().extension().is_some_and(|x| x == "keyring")
+            && e.metadata().and_then(|m| m.modified()).is_ok_and(|t| at.is_none_or(|at| t.duration_since(std::time::UNIX_EPOCH).is_ok_and(|d| d.as_secs() > at)))
+    })
+}
+
 /// Who answers for the keyring now (a unique name), if anyone.
 pub fn owner(conn: &Connection) -> Option<String> {
     let dbus = zbus::blocking::fdo::DBusProxy::new(conn).ok()?;

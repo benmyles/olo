@@ -41,6 +41,19 @@ pub fn put(store: &std::path::Path, key: &[u8; 32]) -> bool {
     id > 0
 }
 
+/// The key the login password gave (pam_olo_keyring put it in this
+/// login's session keyring), taken: read once, then gone from there.
+pub fn take_login_key() -> Option<Zeroizing<[u8; 32]>> {
+    let desc = CString::new(olo_login_key::KEY_NAME).ok()?;
+    let id = find(&desc)?;
+    let mut key = Zeroizing::new([0u8; 32]);
+    // SAFETY: keyctl(KEYCTL_READ) into a 32-byte buffer, then
+    // KEYCTL_INVALIDATE on the key found.
+    let n = unsafe { libc::syscall(libc::SYS_keyctl, KEYCTL_READ, id, key.as_mut_ptr(), 32 as libc::c_long) };
+    unsafe { libc::syscall(libc::SYS_keyctl, KEYCTL_INVALIDATE, id) };
+    (n == 32).then_some(key)
+}
+
 /// Forget the key kept for the store at `store`.
 pub fn forget(store: &std::path::Path) {
     if let Some(id) = description(store).and_then(|d| find(&d)) {

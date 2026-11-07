@@ -1,0 +1,20 @@
+[package]
+name = "olo-pam-keyring"
+description = "The login password unlocks Olo's keyring: PAM derives a key from it and hands it to olo-secrets in the login's kernel keyring"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "pam_olo_keyring"
+# The module PAM loads, and the derivation olo-secrets shares.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+olo-login-key = { path = "../login-key" }
+zeroize = "1"
+libc = "0.2"
+
+[dev-dependencies]
+# A real PAM run of the module (private services, as olo-login's tests).
+olo-greet = { path = "../greet" }

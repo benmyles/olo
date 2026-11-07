@@ -7492,6 +7492,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-login-key"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "sha2 0.10.9",
+ "zeroize",
+]
+
+[[package]]
 name = "olo-logs"
 version = "0.1.0"
 dependencies = [
@@ -7597,6 +7606,16 @@ name = "olo-pam-face"
 version = "0.1.0"
 dependencies = [
  "zbus",
+]
+
+[[package]]
+name = "olo-pam-keyring"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-greet",
+ "olo-login-key",
+ "zeroize",
 ]
 
 [[package]]
@@ -7908,6 +7927,7 @@ dependencies = [
  "libc",
  "num-bigint 0.4.8",
  "olo-crash",
+ "olo-login-key",
  "olo-protocol",
  "olo-system",
  "olo-xdg",

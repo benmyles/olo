@@ -1,4 +1,5 @@
-//! The login keyring. At login, PAM (pam_gnome_keyring) starts
+//! The login keyring, as another login screen leaves it (GDM: Olo's own
+//! starts none, pam_olo_keyring opening Olo's). At login, PAM (pam_gnome_keyring) starts
 //! gnome-keyring-daemon and unlocks the login keyring with the password
 //! just typed, then the daemon waits for the desktop to finish starting it
 //! over its control socket. Unless that happens within two minutes it

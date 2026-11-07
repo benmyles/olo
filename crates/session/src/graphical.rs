@@ -38,13 +38,15 @@ After=graphical-session-pre.target
 /// backends: Olo's portal for what it serves (screen sharing and remote
 /// control, screenshots, keeping awake, Open and Save panels, Open With,
 /// the permission dialogs other portals ask through, the desktop's look
-/// as Settings, notifications), the keyring for secrets, and none for
-/// the rest (no backend: the portal says the interface isn't there).
+/// as Settings, notifications), the keyring (olo-secrets, or GNOME
+/// Keyring when Olo's is turned off: `OLO_SECRETS_PORTAL`) for programs'
+/// secrets, and none for the rest (no backend: the portal says the
+/// interface isn't there).
 const PORTALS: &str = "\
 # Written by olo-session: the desktop portals for Olo.
 [preferred]
 default=none
-org.freedesktop.impl.portal.Secret=gnome-keyring
+org.freedesktop.impl.portal.Secret=olo-secrets
 org.freedesktop.impl.portal.Settings=olo
 org.freedesktop.impl.portal.Notification=olo
 org.freedesktop.impl.portal.ScreenCast=olo
@@ -96,6 +98,16 @@ DBusName=org.freedesktop.impl.portal.desktop.olo
 Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.RemoteDesktop;org.freedesktop.impl.portal.Inhibit;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.Access;org.freedesktop.impl.portal.Account;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.AppChooser;org.freedesktop.impl.portal.Background;org.freedesktop.impl.portal.Email;org.freedesktop.impl.portal.Wallpaper;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.Print;org.freedesktop.impl.portal.Settings;org.freedesktop.impl.portal.Notification;
 ";
 
+/// The keyring's portal backend: whoever answers for the keyring
+/// (`org.freedesktop.secrets`), olo-secrets or, turned off, GNOME
+/// Keyring, which serves the same interface at the same path.
+const OLO_SECRETS_PORTAL: &str = "\
+# Written by olo-session: the keyring's portal backend (olo-secrets).
+[portal]
+DBusName=org.freedesktop.secrets
+Interfaces=org.freedesktop.impl.portal.Secret;
+";
+
 fn config_home() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".config")))
 }
@@ -133,6 +145,7 @@ fn write_files(config: &Path, data: &Path, runtime: &Path) -> std::io::Result<Wr
     let _ = std::fs::remove_file(config.join("systemd").join("user").join(OLD_TARGET));
     let conf = put(&config.join("xdg-desktop-portal").join("olo-portals.conf"), PORTALS)?;
     let backend = put(&data.join("xdg-desktop-portal").join("portals").join("olo.portal"), OLO_PORTAL)?;
+    let backend = put(&data.join("xdg-desktop-portal").join("portals").join("olo-secrets.portal"), OLO_SECRETS_PORTAL)? || backend;
     let drop_in = put(&portal_drop_in(runtime), PORTAL_DROP_IN)?;
     let unit = put(&config.join("systemd").join("user").join(TARGET), TARGET_UNIT)? || drop_in;
     if let Some(bin_dir) = crate::exe().parent() {
@@ -319,6 +332,8 @@ mod tests {
         ] {
             assert!(conf.contains(&format!("\norg.freedesktop.impl.portal.{iface}=")), "{iface}");
         }
+        let secrets = std::fs::read_to_string(data.join("xdg-desktop-portal/portals/olo-secrets.portal")).unwrap();
+        assert!(conf.contains("\norg.freedesktop.impl.portal.Secret=olo-secrets\n") && secrets.contains("DBusName=org.freedesktop.secrets\nInterfaces=org.freedesktop.impl.portal.Secret;"));
         let backend = std::fs::read_to_string(data.join("xdg-desktop-portal/portals/olo.portal")).unwrap();
         assert!(backend.contains("DBusName=org.freedesktop.impl.portal.desktop.olo"));
         // What the config sends to Olo's backend, it says it has.

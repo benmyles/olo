@@ -1,16 +1,16 @@
 #%PAM-1.0
 # Olo's login screen (olo-login): the password. As GDM's gdm-password,
-# with the system's password-auth.
+# with the system's password-auth; the password unlocks Olo's keyring
+# (pam_olo_keyring: olo-secrets), not GNOME Keyring's.
 auth     [success=done ignore=ignore default=bad] pam_selinux_permit.so
 auth        substack      password-auth
--auth       optional      pam_gnome_keyring.so
+-auth       optional      pam_olo_keyring.so
 auth        include       postlogin
 
 account     required      pam_nologin.so
 account     include       password-auth
 
 password    substack      password-auth
--password   optional      pam_gnome_keyring.so use_authtok
 
 session     required      pam_selinux.so close
 session     required      pam_loginuid.so
@@ -18,5 +18,5 @@ session     required      pam_selinux.so open
 session     optional      pam_keyinit.so force revoke
 session     required      pam_namespace.so
 session     include       password-auth
--session    optional      pam_gnome_keyring.so auto_start
+-session    optional      pam_olo_keyring.so
 session     include       postlogin
