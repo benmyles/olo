@@ -1,0 +1,210 @@
+{
+  "scope": "Typed local clip-source cascade only. No clip geometry or Stripe acceptance.",
+  "reference_comparisons": 145,
+  "reference_cases": 29,
+  "dprs": [
+    1,
+    1.25,
+    1.5,
+    1.75,
+    2
+  ],
+  "workspace": {
+    "passed": true,
+    "seconds": 8.24
+  },
+  "clippy": {
+    "passed": true,
+    "seconds": 3.28
+  },
+  "final_focused_tests": 42,
+  "native": {
+    "pid": 813093,
+    "exe": "/var/tmp/olo-browser-stripe/clip-style/browser-after",
+    "sha256": "17d70e1e17f73d7aaecf38ea65119aa1e545ebd23b4a5b2c3c35d7370227d201",
+    "tree": [
+      {
+        "window": 7,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "https://stripe.com/",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS style Unsupported(\"clip-path shape or geometry box\")",
+            "x": 69.0,
+            "y": 733.672,
+            "width": 327.49194,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ],
+    "windows": [
+      {
+        "id": 7,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "pid": 813093,
+        "workspace": 0,
+        "minimized": false,
+        "focused": true,
+        "kept": false,
+        "groupable": true,
+        "output": "HEADLESS-1",
+        "frame": {
+          "x": 48,
+          "y": 40,
+          "width": 1010,
+          "height": 731
+        },
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "least": [
+          650,
+          511
+        ],
+        "tab_frame": {
+          "x": 48,
+          "y": 40,
+          "width": 100,
+          "height": 21
+        },
+        "stack": 0,
+        "surface": 32
+      }
+    ],
+    "scope": "Final native HTTPS startup: clip shape fails during computed style; no site acceptance."
+  },
+  "limitations": [
+    "Referenced geometry and basic shapes remain unsupported",
+    "Latest Stripe load fails during CSS style, earlier than previous SVG layout rejection",
+    "Existing raw SVG clip-path attribute guard remains",
+    "No site or clipping pixel pass",
+    "Ordinary large pipeline +3.2%; all samples retained; clocks/load uncontrolled"
+  ],
+  "known_pixel_nonpasses": 38,
+  "final_full_tests": {
+    "passed": 319,
+    "ignored": 2
+  }
+}

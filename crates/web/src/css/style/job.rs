@@ -256,6 +256,7 @@ impl<'a> Job<'a> {
                         | "stroke"
                         | "stroke-opacity"
                         | "clip-rule"
+                        | "clip-path"
                         | "color"
                         | "opacity"
                         | "display"

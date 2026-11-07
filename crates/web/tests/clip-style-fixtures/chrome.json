@@ -1,0 +1,1173 @@
+{
+  "scope": "Original local clip-source presentation-attribute and CSS cascade computed values at five native scales. No SVG geometry, pixels or website acceptance.",
+  "version": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  },
+  "cases_sha256": "a98fe1834536d754aedef95522492877aefc2221b6f411de2a3365f6c768c664",
+  "rows": [
+    {
+      "scale": 1,
+      "id": "initial",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "attribute",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#Clip\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "quoted",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#clip\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "react-id",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#:R1pbdir6l6:\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "not-inherited",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "inherit",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#parent\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "unset",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "initial-keyword",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "css-over-attribute",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#rule\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "none-over-attribute",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "inline",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#inline\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "important",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#rule\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "layer",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#layer\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "revert-layer",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#a\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "revert",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "variable",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#variable\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "fallback",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#fallback\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "inherited-variable",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#inherited\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "invalid-computed",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "escaped",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#A\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "percent",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#a%20b\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "empty-fragment",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#MiXeD\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "unclosed-url",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#open\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "html-attribute",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "html-css",
+      "dpr": 1,
+      "values": {
+        "clip-path": "url(\"#html\")"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "invalid-attribute",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "invalid-important",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1,
+      "id": "all-reset",
+      "dpr": 1,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "initial",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "attribute",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#Clip\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "quoted",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#clip\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "react-id",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#:R1pbdir6l6:\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "not-inherited",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "inherit",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#parent\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "unset",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "initial-keyword",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "css-over-attribute",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#rule\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "none-over-attribute",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "inline",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#inline\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "important",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#rule\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "layer",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#layer\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "revert-layer",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#a\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "revert",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "variable",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#variable\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "fallback",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#fallback\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "inherited-variable",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#inherited\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "invalid-computed",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "escaped",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#A\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "percent",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#a%20b\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "empty-fragment",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#MiXeD\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "unclosed-url",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#open\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "html-attribute",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "html-css",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "url(\"#html\")"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "invalid-attribute",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "invalid-important",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "all-reset",
+      "dpr": 1.25,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "initial",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "attribute",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#Clip\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "quoted",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#clip\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "react-id",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#:R1pbdir6l6:\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "not-inherited",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "inherit",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#parent\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "unset",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "initial-keyword",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "css-over-attribute",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#rule\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "none-over-attribute",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "inline",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#inline\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "important",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#rule\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "layer",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#layer\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "revert-layer",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#a\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "revert",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "variable",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#variable\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "fallback",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#fallback\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "inherited-variable",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#inherited\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "invalid-computed",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "escaped",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#A\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "percent",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#a%20b\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "empty-fragment",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#MiXeD\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "unclosed-url",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#open\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "html-attribute",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "html-css",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "url(\"#html\")"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "invalid-attribute",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "invalid-important",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "all-reset",
+      "dpr": 1.5,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "initial",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "attribute",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#Clip\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "quoted",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#clip\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "react-id",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#:R1pbdir6l6:\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "not-inherited",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "inherit",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#parent\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "unset",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "initial-keyword",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "css-over-attribute",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#rule\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "none-over-attribute",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "inline",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#inline\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "important",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#rule\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "layer",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#layer\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "revert-layer",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#a\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "revert",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "variable",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#variable\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "fallback",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#fallback\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "inherited-variable",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#inherited\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "invalid-computed",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "escaped",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#A\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "percent",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#a%20b\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "empty-fragment",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#MiXeD\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "unclosed-url",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#open\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "html-attribute",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "html-css",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "url(\"#html\")"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "invalid-attribute",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "invalid-important",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "all-reset",
+      "dpr": 1.75,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "initial",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "attribute",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#Clip\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "quoted",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#clip\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "react-id",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#:R1pbdir6l6:\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "not-inherited",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "inherit",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#parent\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "unset",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "initial-keyword",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "css-over-attribute",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#rule\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "none-over-attribute",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "inline",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#inline\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "important",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#rule\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "layer",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#layer\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "revert-layer",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#a\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "revert",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "variable",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#variable\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "fallback",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#fallback\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "inherited-variable",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#inherited\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "invalid-computed",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "escaped",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#A\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "percent",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#a%20b\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "empty-fragment",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#MiXeD\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "unclosed-url",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#open\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "html-attribute",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "html-css",
+      "dpr": 2,
+      "values": {
+        "clip-path": "url(\"#html\")"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "invalid-attribute",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "invalid-important",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    },
+    {
+      "scale": 2,
+      "id": "all-reset",
+      "dpr": 2,
+      "values": {
+        "clip-path": "none"
+      }
+    }
+  ]
+}

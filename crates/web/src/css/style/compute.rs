@@ -168,6 +168,7 @@ fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_
         p::Value::Color(color) => Value::Color(color.computed(&context::Color { numeric }, limits.color, cancelled).map_err(Error::color)?),
         p::Value::Display(display) => Value::Display(display),
         p::Value::Families(families) => Value::Families(families),
+        p::Value::LocalUrl(url) => Value::LocalUrl(url),
         p::Value::Keyword(k @ (Keyword::Thin | Keyword::Medium | Keyword::Thick))
             if matches!(property, Property::BorderTopWidth | Property::BorderRightWidth | Property::BorderBottomWidth | Property::BorderLeftWidth) =>
         {

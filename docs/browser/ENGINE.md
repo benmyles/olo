@@ -2536,3 +2536,25 @@ clip-path, mask and filter attribute failures have distinct static messages.
 Fresh Stripe identified defs at slot285; with defs excluded it reaches
 `Unsupported("SVG clip-path")`. Actual Stripe layout and useful rendering remain
 unreached. Previous reference pixel and performance nonpasses remain open.
+
+## Initial local clip-source values
+
+The registry now has109 longhands, including non-inherited ClipPath and its
+all reset. A CSS-decoded local URL is retained in a pointer-sized ThinArc;
+clones share its bytes, equality follows the decoded spelling, and style memory
+counts each shared allocation once. Percent escapes are retained for subsequent
+URL target resolution. Parsing accepts local url() syntax and none, plus the
+existing wide keywords/substitution/cascade. Non-local URLs and shape/box forms
+are explicit unsupported features; invalid names/functions remain invalid values.
+SVG clip-path presentation attributes participate in the normal cascade.
+
+29 original cases at five native Chrome scales match145 computed values, with
+source/version provenance in tests/clip-style-fixtures. This proves neither URL
+target resolution nor clipping pixels. HTML/SVG known local CSS clips fail
+explicitly before rendering until connected; the existing SVG attribute guard
+also remains. Stylesheet overrides to none are independently checked as style
+values, not yet as page rendering. A first full regression found the missing
+all list entry; it is fixed and independently checked. Native Stripe now fails
+shape grammar during computed style; its retained CSS contains rounded inset()
+forms with variables/math. That grammar and retained referenced clip geometry
+are next, with arbitrary IDs, cascade and ancestor intersections preserved.

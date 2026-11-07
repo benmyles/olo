@@ -4972,3 +4972,48 @@ clip-path references on g elements and61 definitions, each with an identical
 This guides the next initial rectangular clip component; it is not a reason to
 ignore CSS cascade, arbitrary IDs, ancestor intersection or unsupported modes.
 Inventory: eval/stripe/clip-inventory.json. All previous gaps remain open.
+
+### 2026-11-06 — Local clip-source cascade
+
+Previous goal turn made verified progress through cea61541. This component adds
+one non-inherited ClipPath longhand (109 total), a pointer-sized shared local URL,
+CSS token decoding, substitution/cascade, SVG presentation hints and unique
+allocation memory accounting. Known local HTML/SVG clips fail explicitly until
+paint support is connected; the previous raw SVG attribute guard remains.
+No target lookup, clip geometry or clipping pixel pass is claimed.
+
+29 authored cascade cases captured in native Wayland Chrome at five DPRs yield
+145 matching computed values. The first full run caught a missing ClipPath in
+the manually enumerated all shorthand; added it and the independent all-reset
+case. Unknown names/functions are invalid (preserving invalid-at-computed-value
+semantics), while recognized unsupported shapes and boxes fail explicitly.
+Property regressions cover decoding, shared allocation, invalid syntax and limits.
+
+Final release workspace8.24s, strict scoped clippy3.28s, focused properties/style/
+SVG tests42 pass. Full final suite recorded in the paired checks JSON. Source,
+geometry and pixels unchanged in ordinary and supported-SVG cost workloads.
+Seven alternating CPU0 pairs: ordinary100/1000-node pipeline845.450/9277.879→
+861.429/9577.510µs (+1.9%/+3.2%); retained scene192.882/3832.670→185.622/
+3542.138µs. SupportedSVG100/1000-root pipeline1129.937/11175.692→1162.633/
+11290.471µs; scene14.698/546.402→13.818/536.976µs;256² raster311.059/304.542→
+310.347/306.229µs. No compiler processes observed; clocks/load uncontrolled.
+Both earlier and final samples retained, no broad performance improvement claim.
+
+Native ordinary1000-paragraph scroll fixture: RSS111504→111552KiB, idle3s zero
+CPU/wakeups both; median drag9.047→9.084ms, flick9.135→9.192ms, wheel.527→.370ms.
+These are report-to-first-moving-client submissions, not optical latency.
+Evidence: measurements/2026-11-06-stripe-clip-style-*.json.
+
+Final frozen-binary native HTTPS proof now fails earlier, during CSS style:
+Unsupported("clip-path shape or geometry box"). It does not reach the previous
+SVG clip-path box-construction rejection. An initial flow-label-only wait timed
+out and its empty tree was disqualified; later captures validate process,
+binary hash, window and exact style error. Owned Browser processes awaited and
+screens stopped. No personal-session changes or new UI visual acceptance.
+
+Retained-source inventory finds14 inset() declarations, including rounded,
+variable-dependent and numeric math forms. This is not proof of which fresh
+computed declaration fails. Next implement inset values and geometry as well as
+referenced SVG clips; preserve CSS cascade and geometry overrides. Existing38
+SVG pixel nonpasses and all other gaps remain. Stripe0/30; corpus0/100; goal
+active, no second site selected.

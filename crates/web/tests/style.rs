@@ -718,3 +718,59 @@ fn svg_paint_servers_are_explicitly_unsupported_and_attribute_work_is_bounded() 
     }
     assert!(matches!(job.step(1, |_| &host), Err(style::Error::Failed)));
 }
+
+#[test]
+fn local_clip_sources_match_owned_chrome_cascade() {
+    use sha2::{Digest, Sha256};
+    let cases: serde_json::Value = serde_json::from_str(include_str!("clip-style-fixtures/cases.json")).unwrap();
+    let reference: serde_json::Value = serde_json::from_str(include_str!("clip-style-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(include_bytes!("clip-style-fixtures/cases.json"))), reference["cases_sha256"]);
+    for row in reference["rows"].as_array().unwrap() {
+        let case = cases.as_array().unwrap().iter().find(|c| c["id"] == row["id"]).unwrap();
+        let host = Snapshot { scale: row["scale"].as_f64().unwrap(), ..Default::default() };
+        let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+        let doc = olo_web::html::parse(Arc::from(format!("<!doctype html>{}", case["html"].as_str().unwrap())), Default::default(), None).unwrap().document;
+        let sheet = rules(case["css"].as_str().unwrap());
+        let mut job = style::Job::new(&doc, &sheet, defaults, Default::default(), Default::default(), None).unwrap();
+        while !job.step(1, |_| &host).unwrap().finished {}
+        let tree = job.finish().unwrap();
+        let (_, probe) = tree.iter().find(|(n, _)| doc.attribute(*n, "id").unwrap() == Some("probe")).unwrap();
+        // Cases use identifiers requiring no CSS string serialization escapes.
+        let value = match probe.value(P::ClipPath) {
+            Value::Keyword(k) => k.as_str().to_string(),
+            Value::LocalUrl(u) => format!("url(\"{}\")", u.as_str()),
+            v => panic!("{v:?}"),
+        };
+        assert_eq!(value, row["values"]["clip-path"], "{} @{}", case["id"], row["scale"]);
+        assert_eq!(tree.report().presentation_unsupported, 0);
+        assert_eq!(tree.report().presentation_invalid, usize::from(matches!(case["id"].as_str().unwrap(), "invalid-attribute" | "invalid-important")));
+        if case["id"] == "html-css" {
+            let mut layout = olo_web::layout::BuildJob::new(&doc, Arc::new(tree), Default::default(), None).unwrap();
+            loop {
+                match layout.step(1) {
+                    Ok(p) => assert!(!p.finished, "Unpainted clip must not silently disappear"),
+                    Err(olo_web::layout::Error::Unsupported("CSS clip-path")) => break,
+                    Err(e) => panic!("unexpected clip failure: {e}"),
+                }
+            }
+        }
+    }
+    assert_eq!(reference["rows"].as_array().unwrap().len(), cases.as_array().unwrap().len() * 5);
+}
+
+#[test]
+fn inherited_local_clip_storage_is_counted_once() {
+    let host = Snapshot::default();
+    let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+    let parent = compute(&defaults, &host, "clip-path:url(#shared)", None, None, Options { root: true, ..Default::default() });
+    let child = compute(&defaults, &host, "clip-path:inherit", Some(&parent), Some(&parent), Default::default());
+    let Value::LocalUrl(p) = parent.value(P::ClipPath) else { panic!() };
+    let Value::LocalUrl(c) = child.value(P::ClipPath) else { panic!() };
+    assert_eq!(p.as_str().as_ptr(), c.as_str().as_ptr());
+    let memory = style::Memory::for_styles([&parent, &child]);
+    assert_eq!(memory.local_url_bytes, p.reserved_bytes());
+    assert_eq!(
+        memory.accounted_reserved_bytes,
+        memory.styles_bytes + memory.defaults_bytes + memory.overrides_bytes + memory.fonts_bytes + memory.families_bytes + memory.customs_bytes + memory.numeric_bytes + memory.local_url_bytes
+    );
+}

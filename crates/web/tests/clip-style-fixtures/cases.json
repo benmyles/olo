@@ -1,0 +1,147 @@
+[
+  {
+    "id": "initial",
+    "html": "<svg><path id=probe /></svg>",
+    "css": ""
+  },
+  {
+    "id": "attribute",
+    "html": "<svg><path id=probe clip-path=\"url(#Clip)\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "quoted",
+    "html": "<svg><g id=probe clip-path=\"url('#clip')\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "react-id",
+    "html": "<svg><g id=probe clip-path=\"url(#:R1pbdir6l6:)\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "not-inherited",
+    "html": "<svg clip-path=\"url(#parent)\"><path id=probe /></svg>",
+    "css": ""
+  },
+  {
+    "id": "inherit",
+    "html": "<svg clip-path=\"url(#parent)\"><path id=probe style=\"clip-path:inherit\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "unset",
+    "html": "<svg clip-path=\"url(#parent)\"><path id=probe style=\"clip-path:unset\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "initial-keyword",
+    "html": "<svg><path id=probe clip-path=\"url(#attribute)\" style=\"clip-path:initial\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "css-over-attribute",
+    "html": "<svg><path id=probe clip-path=\"url(#attribute)\" /></svg>",
+    "css": "#probe{clip-path:url(#rule)}"
+  },
+  {
+    "id": "none-over-attribute",
+    "html": "<svg><path id=probe clip-path=\"url(#attribute)\" /></svg>",
+    "css": "#probe{clip-path:none}"
+  },
+  {
+    "id": "inline",
+    "html": "<svg><path id=probe clip-path=\"url(#attribute)\" style=\"clip-path:url(#inline)\" /></svg>",
+    "css": "#probe{clip-path:url(#rule)}"
+  },
+  {
+    "id": "important",
+    "html": "<svg><path id=probe style=\"clip-path:url(#inline)\" /></svg>",
+    "css": "#probe{clip-path:url(#rule)!important}"
+  },
+  {
+    "id": "layer",
+    "html": "<svg><path id=probe clip-path=\"url(#attribute)\" /></svg>",
+    "css": "@layer a {#probe{clip-path:url(#layer)}}"
+  },
+  {
+    "id": "revert-layer",
+    "html": "<svg><path id=probe /></svg>",
+    "css": "@layer a,b;@layer a{#probe{clip-path:url(#a)}}@layer b{#probe{clip-path:revert-layer}}"
+  },
+  {
+    "id": "revert",
+    "html": "<svg><path id=probe clip-path=\"url(#attribute)\" style=\"clip-path:revert\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "variable",
+    "html": "<svg><path id=probe style=\"--clip:url(#variable);clip-path:var(--clip)\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "fallback",
+    "html": "<svg><path id=probe style=\"clip-path:var(--missing,url(#fallback))\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "inherited-variable",
+    "html": "<svg style=\"--clip:url(#inherited)\"><path id=probe style=\"clip-path:var(--clip)\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "invalid-computed",
+    "html": "<svg><path id=probe clip-path=\"url(#attribute)\" style=\"--clip:12px;clip-path:var(--clip)\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "escaped",
+    "html": "<svg><path id=probe clip-path=\"url(#\\41 )\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "percent",
+    "html": "<svg><path id=probe clip-path=\"url('#a%20b')\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "empty-fragment",
+    "html": "<svg><path id=probe clip-path=\"url(#)\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "case",
+    "html": "<svg><path id=probe clip-path=\"URL(#MiXeD)\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "unclosed-url",
+    "html": "<svg><path id=probe clip-path=\"url(#open\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "html-attribute",
+    "html": "<div id=probe clip-path=\"url(#ignored)\"></div>",
+    "css": ""
+  },
+  {
+    "id": "html-css",
+    "html": "<div id=probe style=\"clip-path:url(#html)\"></div>",
+    "css": ""
+  },
+  {
+    "id": "invalid-attribute",
+    "html": "<svg><path id=probe clip-path=\"url(#x) junk\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "invalid-important",
+    "html": "<svg><path id=probe clip-path=\"url(#x)!important\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "all-reset",
+    "html": "<svg><path id=probe clip-path=\"url(#attribute)\" style=\"clip-path:url(#inline);all:initial\" /></svg>",
+    "css": ""
+  }
+]

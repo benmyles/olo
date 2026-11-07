@@ -504,6 +504,9 @@ impl<'a> BuildJob<'a> {
                     if let Some(namespace @ (crate::dom::Namespace::Svg | crate::dom::Namespace::MathMl)) = self.document.namespace(node)? {
                         return Err(Error::UnsupportedForeign(Box::new(ForeignElement { node, namespace, name: self.document.name(node)?.ok_or(Error::Invalid)?.into() })));
                     }
+                    if !matches!(s.value(Property::ClipPath), Value::Keyword(Keyword::None)) {
+                        return Err(Error::Unsupported("CSS clip-path"));
+                    }
                     let name = self.document.name(node)?;
                     if let Some(name @ ("br" | "wbr")) = name {
                         if *display == Display::Contents {

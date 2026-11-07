@@ -33,7 +33,7 @@ fn number(v: &Value) -> f64 {
 }
 #[test]
 fn registry_names_initial_values_and_inheritance_are_typed() {
-    assert_eq!(P::ALL.len(), 108);
+    assert_eq!(P::ALL.len(), 109);
     assert_eq!(p::Shorthand::ALL.len(), 19);
     for &property in P::ALL {
         assert!(Name::parse(property.as_str()).is_some());
@@ -260,4 +260,27 @@ fn independent_pinned_property_grammar_expansion_and_numeric_ports() {
     assert_eq!(report["total"], 1109);
     assert_eq!(report["counts"]["passed"], 821);
     assert_eq!(report["counts"]["unsupported"], 288);
+}
+
+#[test]
+fn local_clip_urls_are_decoded_bounded_and_share_thin_storage() {
+    for (source, expected) in [("url(#Clip)", "#Clip"), ("URL('#:R1:')", "#:R1:"), (r"url(#\41 )", "#A"), ("url(\"#a%20b\")", "#a%20b"), ("url('#')", "#"), ("url(#open", "#open")] {
+        let a = values("clip-path", source);
+        let Value::LocalUrl(url) = &a[0].value else { panic!("{source}: {:?}", a[0].value) };
+        assert_eq!(url.as_str(), expected);
+        let copy = url.clone();
+        assert_eq!(url.as_str().as_ptr(), copy.as_str().as_ptr());
+        assert_eq!(url.reserved_bytes(), 2 * size_of::<usize>() + expected.len());
+        assert_eq!(size_of_val(url), size_of::<usize>());
+    }
+    assert!(matches!(values("clip-path", "none")[0].value, Value::Keyword(Keyword::None)));
+    for source in ["url('#x') junk", "url('#x' '#y')", "url() none", "12px", "url(#x) url(#y)", "banana", "banana(0)"] {
+        assert!(matches!(parse("clip-path", source), Err(Error::Invalid)), "{source}");
+    }
+    for source in ["url(https://example.test/a.svg#clip)", "url('a.svg#clip')", "circle(50%)", "border-box"] {
+        assert!(matches!(parse("clip-path", source), Err(Error::Unsupported(_))), "{source}");
+    }
+    let input = syntax("url(#bounded)");
+    assert!(matches!(Declaration::parse("clip-path", input.components(), false, p::Limits { bytes: 2, ..Default::default() }, None), Err(Error::Limit)));
+    assert!(matches!(Declaration::parse("clip-path", input.components(), false, Default::default(), Some(&AtomicBool::new(true))), Err(Error::Cancelled)));
 }

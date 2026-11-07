@@ -90,6 +90,9 @@ impl Viewport {
                 // uses (paint servers, clip-path, use) still reject explicitly.
                 skip = matches!(s.value(P::Display), Value::Display(Display::None)) || matches!(name, "defs" | "title" | "desc" | "metadata");
                 if !skip {
+                    if !matches!(s.value(P::ClipPath), Value::Keyword(K::None)) {
+                        return Err(Error::Unsupported("SVG clip-path"));
+                    }
                     for (attr, diagnostic) in [("transform", "SVG transform"), ("clip-path", "SVG clip-path"), ("mask", "SVG mask"), ("filter", "SVG filter")] {
                         if doc.attribute(node, attr)?.is_some() {
                             return Err(Error::Unsupported(diagnostic));

@@ -216,6 +216,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
 pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     check(cancelled)?;
     match grammar {
+        Grammar::ClipPath => super::clip::parse(c),
         Grammar::FontWidth => font::width(c, limits, cancelled),
         Grammar::Overflow => {
             if c.kind() == Kind::Ident && c.text().unwrap().eq_ignore_ascii_case("overlay") {

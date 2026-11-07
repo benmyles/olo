@@ -13,6 +13,7 @@ pub struct Memory {
     pub families_bytes: usize,
     pub customs_bytes: usize,
     pub numeric_bytes: usize,
+    pub local_url_bytes: usize,
     pub accounted_reserved_bytes: usize,
 }
 impl Memory {
@@ -51,7 +52,15 @@ impl Account {
             }
         }
     }
+    fn local_url(&mut self, url: &p::LocalUrl) {
+        if self.seen.insert(url.identity()) {
+            self.memory.local_url_bytes += url.reserved_bytes();
+        }
+    }
     fn numeric(&mut self, value: &Value) {
+        if let Value::LocalUrl(u) = value {
+            self.local_url(u);
+        }
         if let Value::Families(f) = value {
             self.families(f);
         }
@@ -75,6 +84,8 @@ impl Account {
             for value in &style.defaults.specified {
                 if let p::Value::Families(f) = value {
                     self.families(f);
+                } else if let p::Value::LocalUrl(u) = value {
+                    self.local_url(u);
                 } else {
                     self.memory.defaults_bytes += value.reserved_bytes();
                 }
@@ -110,6 +121,7 @@ impl Account {
             + self.memory.fonts_bytes
             + self.memory.families_bytes
             + self.memory.customs_bytes
-            + self.memory.numeric_bytes;
+            + self.memory.numeric_bytes
+            + self.memory.local_url_bytes;
     }
 }
