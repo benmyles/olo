@@ -641,6 +641,7 @@ impl<'a> Job<'a> {
         let parent = frame.used;
         let queries = frame.queries;
         let (parent_origin, parent_cursor, parent_pending, parent_collapsing) = (frame.bfc_origin, frame.cursor, frame.pending.value(), frame.at_start && frame.collapse_top);
+        let parent_id = frame.id;
         let cache = self.cache.clone();
         let b = cache.tree.get(id).ok_or(Error::Invalid)?;
         let BoxKind::Block { flow_root, root, .. } = b.kind else { return Err(Error::Invalid) };
@@ -660,6 +661,24 @@ impl<'a> Job<'a> {
         } else {
             let mut used = Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
             float_left = self.float_side(style);
+            // Legacy centring (<center>, align=center): a sized block in a
+            // -webkit-center container is centred, as by auto margins.
+            if float_left.is_none()
+                && !container_flow::is_table(style)
+                && !matches!(style.value(P::Width), Value::Keyword(K::Auto))
+                && matches!(style.value(P::MarginLeft), Value::Keyword(K::Auto)) == matches!(style.value(P::MarginRight), Value::Keyword(K::Auto))
+                && let Some(p) = cache.tree.style(parent_id)
+                && let Value::Keyword(align @ (K::WebkitCenter | K::WebkitRight)) = p.value(P::TextAlign)
+            {
+                let outer = used.width + used.padding.horizontal() + used.border.horizontal();
+                let specified_left = used::length(style, P::MarginLeft, Some(parent.width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
+                let specified_right = used::length(style, P::MarginRight, Some(parent.width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
+                let free = parent.width - outer - specified_left - specified_right;
+                if free > 0. {
+                    used.margin.left = specified_left + used::grid(if *align == K::WebkitRight { free } else { free / 2. }, self.scale);
+                    used.margin.right = specified_right;
+                }
+            }
             if float_left.is_some() {
                 // A float is a formatting context of its own, shrink-to-fit
                 // wide unless sized, its auto margins zero (CSS 2.2 §10.3.5).

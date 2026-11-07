@@ -285,14 +285,20 @@ impl Job<'_> {
         // size_tracks places the spacing between columns; the two edge gaps are ours.
         let widths = size_tracks(&tracks, &contributions, Some((content - 2. * sx).max(0.)), sx, true, self.scale);
         used.width = used::grid(content, self.scale);
-        // Legacy centring (<center>, align=center) centres a shrink-to-fit table.
-        if specified.is_none()
-            && let Some(parent) = self.stack.last()
+        // Legacy centring (<center>, align=center) centres a table narrower
+        // than its container, shrink-to-fit or sized (HTML §15.3.9).
+        if let Some(parent) = self.stack.last()
             && self.cache.tree.style(parent.id).is_some_and(|p| matches!(p.value(P::TextAlign), Value::Keyword(K::WebkitCenter | K::WebkitRight)))
         {
             let right = self.cache.tree.style(parent.id).is_some_and(|p| matches!(p.value(P::TextAlign), Value::Keyword(K::WebkitRight)));
-            let free = (available - used.width - extra - used.margin.horizontal()).max(0.);
-            used.margin.left += used::grid(if right { free } else { free / 2. }, self.scale);
+            // From the specified margins (auto being zero): the block width
+            // equation may have given a sized table's free space to one side.
+            let left_margin = used::length(style, P::MarginLeft, Some(available), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
+            let right_margin = used::length(style, P::MarginRight, Some(available), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
+            let free = (available - used.width - extra - left_margin - right_margin).max(0.);
+            let start = used::grid(if right { free } else { free / 2. }, self.scale);
+            used.margin.left = left_margin + start;
+            used.margin.right = right_margin + free - start;
         }
         self.tables.push(Table { id, columns: widths, spacing: (sx, sy) });
         Ok(())
