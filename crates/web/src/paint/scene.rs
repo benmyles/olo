@@ -854,13 +854,11 @@ impl<'a> BuildJob<'a> {
                                     missing = true;
                                 }
                             }
-                            if list.0.iter().flatten().any(|i| !matches!(i, crate::css::properties::Image::Url(_))) {
-                                self.note("mask-image gradient ignored", id);
-                            }
+                            let gradient = list.0.iter().flatten().any(|i| !matches!(i, crate::css::properties::Image::Url(_)));
                             if missing {
                                 self.note("mask-image not loaded", id);
                             }
-                            loaded.then_some(MaskRef { owner: id, outer, transform: self.current_transform })
+                            (loaded || gradient).then_some(MaskRef { owner: id, outer, transform: self.current_transform })
                         }
                         _ => None,
                     };

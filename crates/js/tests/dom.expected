@@ -1,0 +1,35 @@
+[log] head script loading object
+[log] root DIV 2 2 one
+[log] list <li data-index="3" style="color: red;" data-k="v">item</li><li class="h">html <b>bold</b></li> 3 red true true
+[log] instanceof true true true true false
+[log] event 42:root
+[log] url https:/ https://x.test/a/b?c=1#d 2
+[log] text "onetwo itemhtml bold"
+[log] replaced 2 SPAN 8 <div id="root" class="ready"><span>replaced</span><!-- c --></div>
+[log] storage v v 1
+[log] matchMedia true 1000 1 true
+[log] ctor TypeError
+[log] template has content
+[log] custom custom!
+[log] microtask false
+[log] fetch hi
+[log] two before true true true 
+[log] two after two:true
+[log] two disconnected
+[log] two html two:true true
+[log] template 11 P
+[log] instanceof2 true true HTMLBodyElement true
+[log] dynamic inline ran SCRIPT
+[log] dynamic inline after append 1
+[log] dynamic inline moved 1
+[log] innerHTML script ran false
+[log] external ran
+[warn] script failed: https://nowhere.invalid/x.js: TypeError: fetch failed: no network for scripts
+[log] DOMContentLoaded interactive
+[log] dynamic inline load event
+[log] external load true
+[log] external error event
+[log] timeout 2 true
+[log] interval done 4
+[log] raf number
+[log] load complete JS test

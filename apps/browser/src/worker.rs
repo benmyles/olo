@@ -297,6 +297,14 @@ fn render(
             for error in report.errors.iter().take(50) {
                 eprintln!("  error: {error}");
             }
+            // The document as the scripts left it, for comparing with Chrome's.
+            if let Ok(path) = std::env::var("OLO_BROWSER_DOM") {
+                let mut text = String::new();
+                let mut budget = 64 << 20;
+                if olo_js::html::serialize(&doc, doc.root(), &mut text, &mut budget).is_ok() {
+                    let _ = std::fs::write(path, text);
+                }
+            }
             Ok(doc)
         };
         let prepared = page::prepare_scripted(

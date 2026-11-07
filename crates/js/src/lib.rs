@@ -165,7 +165,9 @@ impl Realm {
         v8::tc_scope!(let tc, scope);
         let result = (|| {
             let code = v8::String::new(tc, source)?;
-            let script = v8::Script::compile(tc, code, None)?;
+            let resource = string(tc, name);
+            let origin = v8::ScriptOrigin::new(tc, resource, 0, 0, false, 0, None, false, false, false, None);
+            let script = v8::Script::compile(tc, code, Some(&origin))?;
             script.run(tc)
         })();
         if result.is_none() {
@@ -493,6 +495,12 @@ fn named_global(scope: &mut v8::PinScope, key: v8::Local<v8::Name>, _args: v8::P
         None => v8::Intercepted::kNo,
     }
 }
+/// Attribute names are case-insensitive on HTML elements (stored in lower
+/// case) and case-sensitive elsewhere (SVG's viewBox).
+fn attribute_name(state: &Shared, node: NodeId, name: String) -> String {
+    let html = state.borrow().document.namespace(node).ok().flatten() == Some(Namespace::Html);
+    if html && name.bytes().any(|b| b.is_ascii_uppercase()) { name.to_ascii_lowercase() } else { name }
+}
 /// The first form, img, iframe, embed or object with this `name`.
 fn find_by_name(doc: &Document, name: &str) -> Option<NodeId> {
     let mut stack = vec![doc.root()];
@@ -611,6 +619,7 @@ const NATIVES: &[&str] = &[
     "isConnected",
     "log",
     "fetchSync",
+    "runScript",
     "url",
     "viewport",
     "userAgent",
@@ -840,7 +849,7 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
         }
         "attr" => {
             if let Some(n) = node(scope, 0) {
-                let attribute = arg_string(scope, &args, 1).to_ascii_lowercase();
+                let attribute = attribute_name(&state, n, arg_string(scope, &args, 1));
                 let value = state.borrow().document.attribute(n, &attribute).ok().flatten().map(|v| v.to_owned());
                 match value {
                     Some(v) => rv.set(string(scope, &v)),
@@ -850,7 +859,7 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
         }
         "setAttr" => {
             if let Some(n) = node(scope, 0) {
-                let attribute = arg_string(scope, &args, 1).to_ascii_lowercase();
+                let attribute = attribute_name(&state, n, arg_string(scope, &args, 1));
                 let value = arg_string(scope, &args, 2);
                 if attribute.is_empty() {
                     throw(scope, "InvalidCharacterError: empty attribute name");
@@ -861,7 +870,7 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
         }
         "removeAttr" => {
             if let Some(n) = node(scope, 0) {
-                let attribute = arg_string(scope, &args, 1).to_ascii_lowercase();
+                let attribute = attribute_name(&state, n, arg_string(scope, &args, 1));
                 let _ = state.borrow_mut().document.remove_attribute(n, &attribute);
             }
         }
@@ -1116,6 +1125,28 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
                 }
                 Err(e) => throw(scope, &format!("TypeError: fetch failed: {e}")),
             }
+        }
+        // A script inserted by a script: compiled and run here, in the global
+        // scope, its exception recorded like a page script's. Returns whether
+        // it ran to the end.
+        "runScript" => {
+            let source = arg_string(scope, &args, 0);
+            let name = arg_string(scope, &args, 1);
+            state.borrow_mut().report.scripts += 1;
+            v8::tc_scope!(let tc, scope);
+            let ran = (|| {
+                let code = v8::String::new(tc, &source)?;
+                let resource = string(tc, &name);
+                let origin = v8::ScriptOrigin::new(tc, resource, 0, 0, false, 0, None, false, false, false, None);
+                let script = v8::Script::compile(tc, code, Some(&origin))?;
+                script.run(tc)
+            })()
+            .is_some();
+            if !ran {
+                let error = exception_text(tc, &name);
+                state.borrow_mut().report.errors.push(error);
+            }
+            rv.set_bool(ran);
         }
         "url" => {
             let url = state.borrow().config.url.clone();

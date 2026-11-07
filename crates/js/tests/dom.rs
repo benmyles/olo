@@ -21,36 +21,10 @@ fn run(page: &str) -> (olo_js::Report, olo_web::dom::Document) {
 fn dom_page() {
     let (report, _) = run(include_str!("dom.html"));
     assert_eq!(report.errors, Vec::<String>::new());
-    let expected = [
-        "[log] head script loading object",
-        "[log] root DIV 2 2 one",
-        "[log] list <li data-index=\"3\" style=\"color: red;\" data-k=\"v\">item</li><li class=\"h\">html <b>bold</b></li> 3 red true true",
-        "[log] instanceof true true true true false",
-        "[log] event 42:root",
-        "[log] url https:/ https://x.test/a/b?c=1#d 2",
-        "[log] text \"onetwo itemhtml bold\"",
-        "[log] replaced 2 SPAN 8 <div id=\"root\" class=\"ready\"><span>replaced</span><!-- c --></div>",
-        "[log] storage v v 1",
-        "[log] matchMedia true 1000 1 true",
-        "[log] ctor TypeError",
-        "[log] template has content",
-        "[log] custom custom!",
-        "[log] microtask false",
-        "[log] fetch hi",
-        "[log] two before true true true ",
-        "[log] two after two:true",
-        "[log] two disconnected",
-        "[log] two html two:true true",
-        "[log] template 11 P",
-        "[log] instanceof2 true true HTMLBodyElement true",
-        "[log] DOMContentLoaded interactive",
-        "[log] timeout 2 true",
-        "[log] interval done 4",
-        "[log] raf number",
-        "[log] load complete JS test",
-    ];
-    assert_eq!(report.console, expected.map(String::from).to_vec());
-    assert_eq!(report.scripts, 3);
+    // tests/dom.expected: the console lines the page logs, one per line.
+    let expected: Vec<String> = include_str!("dom.expected").lines().map(String::from).collect();
+    assert_eq!(report.console, expected);
+    assert_eq!(report.scripts, 6);
 }
 #[test]
 fn scripts_in_order_then_async() {

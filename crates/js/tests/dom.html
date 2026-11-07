@@ -48,3 +48,12 @@ document.body.innerHTML += '<two-el id="x"></two-el>'; console.log('two html', d
 const tpl2 = document.createElement('template'); tpl2.innerHTML = '<p>t</p>'; console.log('template', tpl2.content && tpl2.content.nodeType, tpl2.content && tpl2.content.firstChild.nodeName);
 console.log('instanceof2', document.body instanceof HTMLElement, document.body instanceof HTMLBodyElement, document.body.constructor.name, Object.getPrototypeOf(HTMLDivElement.prototype) === HTMLElement.prototype);
 </script>
+<script>
+const dyn = document.createElement('script'); dyn.textContent = "window.dynRan = (window.dynRan || 0) + 1; console.log('dynamic inline ran', document.currentScript && document.currentScript.tagName);";
+dyn.onload = () => console.log('dynamic inline load event');
+document.head.appendChild(dyn); console.log('dynamic inline after append', window.dynRan);
+document.head.appendChild(dyn); console.log('dynamic inline moved', window.dynRan);
+const holder = document.createElement('div'); holder.innerHTML = '<script>window.viaHTML = true<\/script>'; document.body.appendChild(holder); console.log('innerHTML script ran', !!window.viaHTML);
+const ext = document.createElement('script'); ext.src = 'data:text/javascript,window.extRan%20%3D%20true%3B%20console.log(%27external%20ran%27)'; ext.onload = () => console.log('external load', window.extRan); document.body.appendChild(ext);
+const bad = document.createElement('script'); bad.src = 'https://nowhere.invalid/x.js'; bad.onerror = () => console.log('external error event'); document.body.appendChild(bad);
+</script>

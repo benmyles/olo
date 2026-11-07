@@ -239,11 +239,52 @@
       if (el._connected && typeof el.disconnectedCallback === 'function') { el._connected = false; try { el.disconnectedCallback(); } catch (e) { reportError(e); } }
     }
   };
+  // Scripts that scripts insert run when they join the document: fetched
+  // (external) and run at once, in document order of insertion, with load
+  // or error fired on the element afterwards, as a task. Scripts the parser
+  // made have already run (the engine ran them before the prelude), and a
+  // script runs once however often it moves.
+  const JS_TYPES = ['', 'text/javascript', 'application/javascript', 'text/ecmascript', 'application/ecmascript', 'application/x-javascript', 'text/jscript', 'text/x-javascript'];
+  const started = new WeakSet();
+  let inserts = 0;
+  const fireOn = (el, type) => setTimeout(() => dispatch(el, new Event(type)), 0);
+  const runScriptElement = (el) => {
+    if (started.has(el)) return;
+    started.add(el);
+    const type = (N.attr(el, 'type') || '').trim().toLowerCase();
+    if (type === 'module') { log('warn', ['module script skipped: ' + (N.attr(el, 'src') || 'inline')]); fireOn(el, 'error'); return; }
+    if (!JS_TYPES.includes(type)) return;
+    const src = N.attr(el, 'src');
+    let source, name;
+    if (src != null && src.trim() !== '') {
+      name = resolveURL(src.trim());
+      let r;
+      try { r = fetchSync(name, 'GET', ''); } catch (e) { log('warn', ['script failed: ' + name + ': ' + (e && e.message || e)]); fireOn(el, 'error'); return; }
+      if (r.status && (r.status < 200 || r.status >= 300)) { log('warn', ['script failed: ' + name + ': HTTP ' + r.status]); fireOn(el, 'error'); return; }
+      source = r.body;
+    } else {
+      source = N.textContent(el);
+      name = 'inserted inline script ' + (++inserts);
+      if (!source.trim()) return;
+    }
+    const previous = currentScript;
+    currentScript = el;
+    let ok = false;
+    try { ok = N.runScript(source, name); } finally { currentScript = previous; }
+    fireOn(el, 'load');
+    return ok;
+  };
+  const runScriptsIn = (node) => {
+    if (N.nodeType(node) !== 1 || !N.isConnected(node)) return;
+    if (N.nodeName(node) === 'SCRIPT') { runScriptElement(node); return; }
+    for (const el of N.query(node, 'script', true)) runScriptElement(el);
+  };
   const nativeAppend = N.append, nativeInsertBefore = N.insertBefore, nativeRemove = N.remove, nativeSetInnerHTML = N.setInnerHTML;
-  N.append = (parent, node) => { disconnected(node); nativeAppend(parent, node); connected(node); };
-  N.insertBefore = (parent, node, ref) => { disconnected(node); nativeInsertBefore(parent, node, ref); connected(node); };
+  N.append = (parent, node) => { disconnected(node); nativeAppend(parent, node); connected(node); runScriptsIn(node); };
+  N.insertBefore = (parent, node, ref) => { disconnected(node); nativeInsertBefore(parent, node, ref); connected(node); runScriptsIn(node); };
   N.remove = (node) => { disconnected(node); nativeRemove(node); };
-  N.setInnerHTML = (node, markup) => { if (definitions.size) for (const c of N.childNodes(node)) disconnected(c); nativeSetInnerHTML(node, markup); if (definitions.size) for (const c of N.childNodes(node)) connected(c); };
+  N.setInnerHTML = (node, markup) => { if (definitions.size) for (const c of N.childNodes(node)) disconnected(c); nativeSetInnerHTML(node, markup); if (definitions.size) for (const c of N.childNodes(node)) connected(c); if (markup.indexOf('<script') !== -1 && N.nodeType(node) === 1) for (const el of N.query(node, 'script', true)) started.add(el); };
+  for (const el of N.query(N.docRoot(), 'script', true)) started.add(el);
   define(Node.prototype, {
     append(...args) { for (const n of nodesFrom(args)) N.append(this, n); },
     prepend(...args) { const first = N.firstChild(this); for (const n of nodesFrom(args)) { if (first) N.insertBefore(this, n, first); else N.append(this, n); } },
@@ -450,7 +491,7 @@
     attachShadow(init) { const root = N.createFragment(); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open' }); return root; },
     requestFullscreen() { return Promise.resolve(); },
     play() { return Promise.resolve(); }, pause() {}, load() {},
-    getContext() { return null; }, toDataURL() { return 'data:,'; }, toBlob(cb) { if (cb) cb(null); }, captureStream() { return null; },
+    getContext(kind) { if (N.nodeName(this) !== 'CANVAS') return null; kind = String(kind); if (kind === '2d') { if (!this._ctx2d) Object.defineProperty(this, '_ctx2d', { value: new CanvasRenderingContext2D(this) }); return this._ctx2d; } return null; }, toDataURL() { return 'data:,'; }, toBlob(cb) { if (cb) cb(null); }, captureStream() { return null; }, transferControlToOffscreen() { return new OffscreenCanvas(this.width, this.height); },
     setPointerCapture() {}, releasePointerCapture() {}, hasPointerCapture() { return false; },
     computedStyleMap() { return new Map(); },
     getBBox() { return new DOMRect(0, 0, 0, 0); }, getCTM() { return null; }, getScreenCTM() { return null; }, getTotalLength() { return 0; },
@@ -793,7 +834,10 @@
   global.WebSocket.CONNECTING = 0; global.WebSocket.OPEN = 1; global.WebSocket.CLOSING = 2; global.WebSocket.CLOSED = 3;
   global.EventSource = class EventSource extends EventTargetCtor { constructor(url) { super(); this.url = String(url); this.readyState = 2; } close() {} };
   global.BroadcastChannel = class BroadcastChannel extends EventTargetCtor { constructor(name) { super(); this.name = name; this.onmessage = null; } postMessage() {} close() {} };
-  global.MessageChannel = class MessageChannel { constructor() { this.port1 = new EventTargetCtor(); this.port2 = new EventTargetCtor(); for (const p of [this.port1, this.port2]) { p.postMessage = () => {}; p.start = () => {}; p.close = () => {}; p.onmessage = null; } } };
+  // Message ports deliver as macrotasks (React's scheduler runs on one).
+  class MessagePort extends EventTargetCtor { constructor() { super(); this.onmessage = null; this.onmessageerror = null; this._other = null; } postMessage(data) { const other = this._other; if (!other) return; setTimeout(() => { const ev = new MessageEvent('message', { data }); if (typeof other.onmessage === 'function') { try { other.onmessage(ev); } catch (e) { reportError(e); } } dispatch(other, ev); }, 0); } start() {} close() { this._other = null; } }
+  global.MessagePort = MessagePort;
+  global.MessageChannel = class MessageChannel { constructor() { this.port1 = new MessagePort(); this.port2 = new MessagePort(); this.port1._other = this.port2; this.port2._other = this.port1; } };
   global.Worker = class Worker extends EventTargetCtor { constructor() { super(); this.onmessage = null; this.onerror = null; } postMessage() {} terminate() {} };
   global.SharedWorker = global.Worker;
   global.Notification = class Notification extends EventTargetCtor { constructor() { super(); } static get permission() { return 'default'; } static requestPermission() { return Promise.resolve('denied'); } close() {} };
@@ -806,7 +850,31 @@
   global.ReadableStream = global.ReadableStream || class ReadableStream { constructor() {} getReader() { return { read: () => Promise.resolve({ done: true }), releaseLock() {}, cancel: () => Promise.resolve() }; } cancel() { return Promise.resolve(); } };
   global.WritableStream = global.WritableStream || class WritableStream {};
   global.TransformStream = global.TransformStream || class TransformStream {};
-  global.Path2D = class Path2D {}; global.ImageData = class ImageData { constructor(w, h) { this.width = w; this.height = h; this.data = new Uint8ClampedArray(w * h * 4); } }; global.OffscreenCanvas = class OffscreenCanvas { constructor(w, h) { this.width = w; this.height = h; } getContext() { return null; } };
+  // Canvas: a 2D context that accepts every call and draws nothing yet
+  // (the canvas stays an empty box), so canvas-using scripts run.
+  class DOMMatrix { constructor(init) { Object.assign(this, { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, m11: 1, m12: 0, m21: 0, m22: 1, m41: 0, m42: 0, is2D: true, isIdentity: true }); if (Array.isArray(init) && init.length >= 6) { [this.a, this.b, this.c, this.d, this.e, this.f] = init; this.isIdentity = false; } } multiply() { return new DOMMatrix(); } translate() { return new DOMMatrix(); } scale() { return new DOMMatrix(); } rotate() { return new DOMMatrix(); } inverse() { return new DOMMatrix(); } transformPoint(p) { return p; } toFloat32Array() { return new Float32Array(16); } toString() { return 'matrix(1, 0, 0, 1, 0, 0)'; } static fromMatrix() { return new DOMMatrix(); } }
+  global.DOMMatrix = DOMMatrix; global.DOMMatrixReadOnly = DOMMatrix; global.WebKitCSSMatrix = DOMMatrix; global.DOMPoint = class DOMPoint { constructor(x, y, z, w) { this.x = x || 0; this.y = y || 0; this.z = z || 0; this.w = w === undefined ? 1 : w; } static fromPoint(p) { return new DOMPoint(p.x, p.y, p.z, p.w); } matrixTransform() { return new DOMPoint(this.x, this.y, this.z, this.w); } }; global.DOMPointReadOnly = global.DOMPoint;
+  class Path2D { constructor() {} addPath() {} closePath() {} moveTo() {} lineTo() {} bezierCurveTo() {} quadraticCurveTo() {} arc() {} arcTo() {} ellipse() {} rect() {} roundRect() {} }
+  class ImageData { constructor(a, b, c) { if (typeof a === 'number') { this.width = a; this.height = b; this.data = new Uint8ClampedArray(a * b * 4); } else { this.data = a; this.width = b; this.height = c === undefined ? a.length / 4 / b : c; } this.colorSpace = 'srgb'; } }
+  class CanvasGradient { addColorStop() {} }
+  class CanvasPattern { setTransform() {} }
+  class TextMetrics { constructor(w) { this.width = w; this.actualBoundingBoxLeft = 0; this.actualBoundingBoxRight = w; this.actualBoundingBoxAscent = 8; this.actualBoundingBoxDescent = 2; this.fontBoundingBoxAscent = 10; this.fontBoundingBoxDescent = 3; } }
+  class CanvasRenderingContext2D {
+    constructor(canvas) { this.canvas = canvas; Object.assign(this, { fillStyle: '#000000', strokeStyle: '#000000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, lineDashOffset: 0, font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', direction: 'ltr', globalAlpha: 1, globalCompositeOperation: 'source-over', imageSmoothingEnabled: true, imageSmoothingQuality: 'low', shadowBlur: 0, shadowColor: 'rgba(0, 0, 0, 0)', shadowOffsetX: 0, shadowOffsetY: 0, filter: 'none', letterSpacing: '0px', wordSpacing: '0px', fontKerning: 'auto', fontStretch: 'normal', fontVariantCaps: 'normal', textRendering: 'auto' }); this._dash = []; }
+    getContextAttributes() { return { alpha: true, colorSpace: 'srgb', desynchronized: false, willReadFrequently: false }; }
+    save() {} restore() {} reset() {} scale() {} rotate() {} translate() {} transform() {} setTransform() {} resetTransform() {} getTransform() { return new DOMMatrix(); }
+    beginPath() {} closePath() {} moveTo() {} lineTo() {} bezierCurveTo() {} quadraticCurveTo() {} arc() {} arcTo() {} ellipse() {} rect() {} roundRect() {}
+    fill() {} stroke() {} clip() {} isPointInPath() { return false; } isPointInStroke() { return false; }
+    fillRect() {} strokeRect() {} clearRect() {}
+    fillText() {} strokeText() {} measureText(text) { return new TextMetrics(String(text).length * (parseFloat(this.font) || 10) * 0.5); }
+    drawImage() {} drawFocusIfNeeded() {}
+    createLinearGradient() { return new CanvasGradient(); } createRadialGradient() { return new CanvasGradient(); } createConicGradient() { return new CanvasGradient(); } createPattern() { return new CanvasPattern(); }
+    createImageData(w, h) { return w instanceof ImageData ? new ImageData(w.width, w.height) : new ImageData(w, h); } getImageData(x, y, w, h) { return new ImageData(Math.max(1, w | 0), Math.max(1, h | 0)); } putImageData() {}
+    setLineDash(d) { this._dash = Array.from(d || []); } getLineDash() { return this._dash.slice(); }
+  }
+  global.CanvasRenderingContext2D = CanvasRenderingContext2D; global.CanvasGradient = CanvasGradient; global.CanvasPattern = CanvasPattern; global.TextMetrics = TextMetrics; global.Path2D = Path2D; global.ImageData = ImageData;
+  global.OffscreenCanvas = class OffscreenCanvas { constructor(w, h) { this.width = w; this.height = h; } getContext(kind) { if (String(kind) === '2d') { if (!this._ctx) this._ctx = new CanvasRenderingContext2D(this); return this._ctx; } return null; } convertToBlob() { return Promise.resolve(new Blob([])); } transferToImageBitmap() { return { width: this.width, height: this.height, close() {} }; } };
+  global.createImageBitmap = () => Promise.resolve({ width: 0, height: 0, close() {} }); global.ImageBitmap = class ImageBitmap {};
   global.AudioContext = class AudioContext { constructor() { this.state = 'suspended'; this.destination = {}; } resume() { return Promise.resolve(); } close() { return Promise.resolve(); } createGain() { return { connect() {}, gain: { value: 1 } }; } createOscillator() { return { connect() {}, start() {}, stop() {}, frequency: { value: 440 } }; } };
   global.webkitAudioContext = global.AudioContext;
   global.speechSynthesis = { speak() {}, cancel() {}, getVoices: () => [], addEventListener() {} };

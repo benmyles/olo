@@ -549,12 +549,24 @@ pub(super) fn mask_layers(
 ) -> Result<()> {
     let Value::Images(images) = s.value(P::MaskImage) else { return Ok(()) };
     let Some(clip_path) = path(outer, &[[0.; 2]; 4], scale, region) else { return Ok(()) };
+    let current = s.used_color(P::Color)?;
     for (layer, image) in images.0.iter().enumerate().rev() {
         check(cancel)?;
-        if let Some(Image::Url(url)) = image
-            && let Some(bitmap) = tree.background(url)
-        {
-            image_layer(out, s, (P::MaskSize, P::MaskPosition, P::MaskRepeat), layer, bitmap, outer, &clip_path, scale, region, None, transform, engine, cancel)?;
+        match image {
+            Some(Image::Url(url)) => {
+                if let Some(bitmap) = tree.background(url) {
+                    image_layer(out, s, (P::MaskSize, P::MaskPosition, P::MaskRepeat), layer, bitmap, outer, &clip_path, scale, region, None, transform, engine, cancel)?;
+                }
+            }
+            // A gradient mask: its alpha over the border box (mask-origin
+            // and mask-clip's default), which also bounds what the group
+            // shows, as mask-clip does.
+            Some(gradient) => {
+                let Some(shader) = shader(gradient, current, outer, scale, region) else { continue };
+                let p = Paint { shader, anti_alias: !transform.is_identity(), ..Default::default() };
+                out.fill_path(&clip_path, &p, FillRule::Winding, transform, None);
+            }
+            None => {}
         }
     }
     Ok(())

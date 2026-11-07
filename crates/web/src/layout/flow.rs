@@ -750,6 +750,47 @@ impl<'a> Job<'a> {
     }
     /// `float: left | right` on a box in normal flow (not a flex or grid
     /// item, not absolutely positioned).
+    /// A laid-out box's last in-flow line box's baseline, from its border
+    /// box's top; None when it has no in-flow line box.
+    fn last_baseline(&self, id: BoxId, depth: usize) -> Result<Option<f64>> {
+        check(self.cancel)?;
+        if depth > self.limits.depth {
+            return Err(Error::Limit);
+        }
+        let tree = &self.cache.tree;
+        let b = tree.get(id).ok_or(Error::Invalid)?;
+        let g = self.geometry.get(id.index()).copied().unwrap_or_default();
+        if let BoxKind::InlineContent { source } = b.kind {
+            let Some(l) = self.texts.get(source as usize).and_then(Option::as_ref) else { return Ok(None) };
+            let lines = l.lines().len();
+            return Ok(if lines == 0 { None } else { l.baseline(lines - 1) });
+        }
+        if !matches!(b.kind, BoxKind::Block { .. }) {
+            return Ok(None);
+        }
+        let mut children = Vec::new();
+        let mut next = b.first_child;
+        while let Some(c) = next {
+            let child = tree.get(c).ok_or(Error::Invalid)?;
+            next = child.next_sibling;
+            if child.absolute || child.marker {
+                continue;
+            }
+            if let Some(cs) = tree.style(c)
+                && matches!(cs.value(P::Float), Value::Keyword(K::Left | K::Right | K::InlineStart | K::InlineEnd))
+            {
+                continue;
+            }
+            children.push(c);
+        }
+        for c in children.into_iter().rev() {
+            if let Some(baseline) = self.last_baseline(c, depth + 1)? {
+                let cg = self.geometry.get(c.index()).copied().unwrap_or_default();
+                return Ok(Some(g.border_width.top + g.padding.top + cg.border_box.y + baseline));
+            }
+        }
+        Ok(None)
+    }
     fn float_side(&self, style: &crate::css::style::Style) -> Option<bool> {
         let parent = self.stack.last()?;
         if self.flex.last().is_some_and(|f| f.id == parent.id) || self.containers.last().is_some_and(|c| c.id == parent.id) || parent.atomic_host {
@@ -1007,7 +1048,21 @@ impl<'a> Job<'a> {
                 (super::images::geometry(used), used.margin)
             };
             let height = g.border_box.height + margin.vertical();
-            let ascent = if middle && matches!(b.kind, BoxKind::InlineVector { .. } | BoxKind::Block { .. }) { (height + style.font().metrics.ex) / 2. } else { height };
+            // An inline-block's baseline is its last line box's (CSS 2.1
+            // §10.8.1) when it has one and shows its overflow; otherwise,
+            // and for other atomic inlines, the bottom margin edge.
+            let inline_block = !measuring
+                && matches!(b.kind, BoxKind::Block { .. })
+                && matches!(s.value(P::Display), Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flow | crate::css::properties::Inner::FlowRoot, .. }))
+                && matches!(s.value(P::OverflowX), Value::Keyword(K::Visible))
+                && matches!(s.value(P::OverflowY), Value::Keyword(K::Visible));
+            let ascent = if middle && matches!(b.kind, BoxKind::InlineVector { .. } | BoxKind::Block { .. }) {
+                (height + style.font().metrics.ex) / 2.
+            } else if inline_block && let Some(baseline) = self.last_baseline(child, 0)? {
+                baseline + margin.top
+            } else {
+                height
+            };
             objects.push(inline::Object { at, advance: g.border_box.width + margin.horizontal(), ascent, descent: height - ascent });
             image_geometry.push((child, g, at));
         }
