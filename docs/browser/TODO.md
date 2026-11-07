@@ -62,13 +62,30 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   POST and headers, cookies from responses, events from the person
   (clicks, keys, scroll) reaching scripts, `document.write` while
   parsing, iframes.
+- [ ] Stripe's remaining gaps, in order: events from the person reaching
+  the scripts (hover opens its menus; clicks, keys, scrolling, focus),
+  canvas: its graphics are WebGL (the hero wave, the agentic and issuing
+  backgrounds, the globe; the carousel is 2D) — a GPU WebGL 1 over wgpu
+  with shaders translated by naga, textures, framebuffers, blending — and
+  a real 2D context; CSSOM (`insertRule`, `styleSheets`); then the
+  animated states (its payment-method carousel) checked against Chrome
+  at the same moment of the page's clock.
+- [x] The page lives: after the static render (612 ms on stripe.com,
+  prefetching subresources together) and the scripted one (3.6 s), the
+  realm's timers and animation frames run on the page's clock, the
+  document is re-rendered from a snapshot when it changes (incremental
+  style, prepared texts kept; 19 ms a render on stripe.com, coalesced to
+  10 a second), and nothing runs while nothing is due.
 - [ ] Performance, the first priority: styling Stripe is 34 ms (was 115:
   pseudo-element buckets, ancestor Bloom filter, hashed keys, root/
   attribute/:is() buckets, sparse computed values, chained custom
   properties). Next: incremental restyle and relayout for scripts'
-  measurements (64 full layouts per Stripe load at 45 ms each: only what
-  changed should be redone), matching's per-candidate floor (17 ms for
-  76k candidates), computing declared values (8 ms), then parallel
+  measurements are incremental for style (5 ms) and texts; boxes, layout
+  and paint still redo everything (10 ms); a stylesheet added by a script
+  recompiles every rule (133 ms on Stripe) where it should extend the set
+  and invalidate only what the new rules can match; matching's
+  per-candidate floor (17 ms for 76k candidates), computing declared
+  values (8 ms), then parallel
   styling (elements are independent given their parent), SIMD text
   shaping and rasterisation, GPU compositing of the scene.
 - [ ] Dark pages: pages render on a white canvas with the standard light

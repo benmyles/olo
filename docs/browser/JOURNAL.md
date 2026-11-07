@@ -5629,3 +5629,25 @@ Measured on stripe.com live: 94 scripts run, 0 errors, 486 listeners,
 64 layouts for measurements in the 4 s budget, then the page. The
 measurement layouts are the next cost: they redo everything, and should
 redo only what changed.
+
+## 2026-11-07, late morning: a live page, and the measurements made cheap
+
+- **Incremental restyle.** The document logs its changes (an element's
+  attributes, a text node, a child list); a style job given the previous
+  tree keeps every style whose element, siblings and parent's style are
+  unchanged (`Style::same_as` compares recomputed ones by value, so a
+  class toggled on the body that changes nothing keeps the whole tree).
+  A class toggle deep in Stripe restyles in 8 ms, on the body in 4 ms,
+  from 34. Prepared texts carry over too (identity: content, breaks,
+  fonts by request, spacing): text 12 → 1.3 ms.
+- **Two passes, then live.** The static page renders first (612 ms on
+  stripe.com, its stylesheets and images prefetched together, 12 at a
+  time, into a session cache), the scripted page follows (3.6 s), and
+  then the realm lives on: the worker waits for messages only as long as
+  the page's next timer allows, advances the page's clock to real time,
+  and re-renders from a document snapshot when the scripts changed it
+  (19 ms a render, at most 10 a second). The marquee scrolls and the
+  counter counts, as on the site; nothing runs while nothing is due.
+- **Found on the way.** Stripe's bento graphics are WebGL canvases (the
+  hero wave too); the carousel is a 2D canvas. Those draw nothing yet:
+  WebGL over wgpu is on the list after events and the 2D canvas.
