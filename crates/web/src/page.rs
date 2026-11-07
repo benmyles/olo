@@ -350,6 +350,9 @@ impl Measurer {
         let tree = job.finish()?;
         phases[1] = started.elapsed().as_secs_f64() * 1000. - phases[0];
         let mut job = layout::PrepareJob::new(shaper, &self.scope, tree, Default::default(), cancel)?;
+        if let Some(p) = previous {
+            job = job.with_previous(p.layout.cache());
+        }
         while !job.step(4)?.finished {}
         let cache = job.finish()?;
         phases[2] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1];
@@ -851,7 +854,7 @@ impl Page {
             self.interaction_mask = self.rules.state_mask();
             self.media = media;
         }
-        let previous = self.styles().clone();
+        let previous = self.scene.layout().clone();
         let (scene, stylesheet_issues, fallbacks) =
             render(&doc, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, &self.scope, shaper, painter, viewport, cancel, Some(&previous), &mut progress)?;
         let mut title = String::new();
@@ -918,20 +921,26 @@ fn render(
     painter: &mut paint::Engine,
     viewport: layout::Viewport,
     cancel: Option<&AtomicBool>,
-    previous: Option<&style::StyleTree>,
+    previous: Option<&layout::Layout>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
+    let previous_styles = previous.map(|p| p.cache().tree().styles().as_ref());
     let mut fallbacks = layout::Fallbacks::default();
-    let defaults = match previous.and_then(|p| p.defaults()).filter(|d| d.is_current(host)) {
+    let timing = std::env::var_os("OLO_WEB_TIMING").map(|_| std::time::Instant::now());
+    let mut stamps = [0f64; 5];
+    let defaults = match previous_styles.and_then(|p| p.defaults()).filter(|d| d.is_current(host)) {
         Some(d) => d,
         None => Defaults::new(host, Default::default(), cancel)?,
     };
     let snapshot = interaction::Snapshot::new(doc, input, cancel);
-    let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), previous, ..Default::default() }, Default::default(), cancel)?;
+    let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), previous: previous_styles, ..Default::default() }, Default::default(), cancel)?;
     while !job.step(128, |_| host)?.finished {
         progress(Phase::Styles, job.progress().styled)
     }
     let styles = Arc::new(job.finish()?);
+    if let Some(t) = timing {
+        stamps[0] = t.elapsed().as_secs_f64() * 1000.;
+    }
     for _ in 0..styles.report().value_fallbacks.min(u32::MAX as usize) {
         fallbacks.note("declaration dropped at computed-value time", None);
     }
@@ -951,13 +960,22 @@ fn render(
     }
     fallbacks.merge(job.fallbacks());
     let tree = job.finish()?;
+    if let Some(t) = timing {
+        stamps[1] = t.elapsed().as_secs_f64() * 1000.;
+    }
     progress(Phase::Text, 0);
     let mut job = layout::PrepareJob::new(shaper, scope, tree, Default::default(), cancel)?;
+    if let Some(p) = previous {
+        job = job.with_previous(p.cache());
+    }
     while !job.step(1)?.finished {
         progress(Phase::Text, job.progress().texts)
     }
     fallbacks.merge(job.fallbacks());
     let cache = job.finish()?;
+    if let Some(t) = timing {
+        stamps[2] = t.elapsed().as_secs_f64() * 1000.;
+    }
     progress(Phase::Layout, 0);
     let mut job = layout::Job::new(shaper, scope, cache, viewport, Default::default(), cancel)?;
     while !job.step(64)?.finished {
@@ -965,6 +983,10 @@ fn render(
     }
     fallbacks.merge(job.fallbacks());
     let layout = Arc::new(job.finish()?);
+    if let Some(t) = timing {
+        stamps[3] = t.elapsed().as_secs_f64() * 1000.;
+    }
+    let box_count = layout.cache().tree().boxes().len();
     progress(Phase::Paint, 0);
     let canvas = host.system_color(css::color::SystemColor::Canvas, host.scheme())?.srgb8_clipped();
     let mut job = paint::BuildJob::new(doc, layout, painter, paint::Options { canvas }, Default::default(), cancel)?;
@@ -973,6 +995,18 @@ fn render(
     }
     fallbacks.merge(job.fallbacks());
     let scene = job.finish()?;
+    if let Some(t) = timing {
+        stamps[4] = t.elapsed().as_secs_f64() * 1000.;
+        eprintln!(
+            "render: style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms, paint {:.1} ms ({} boxes)",
+            stamps[0],
+            stamps[1] - stamps[0],
+            stamps[2] - stamps[1],
+            stamps[3] - stamps[2],
+            stamps[4] - stamps[3],
+            box_count
+        );
+    }
     Ok((scene, stylesheet_issues, fallbacks))
 }
 

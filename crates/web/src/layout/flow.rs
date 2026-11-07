@@ -188,6 +188,10 @@ pub struct Progress {
 pub struct Cache {
     tree: Arc<Tree>,
     texts: Arc<[Arc<inline::Text>]>,
+    /// The prepared texts by their identity (content, breaks, fonts and
+    /// spacing), for the next preparation of a changed document to keep
+    /// what is the same.
+    shared: Arc<HashMap<TextKey, Arc<inline::Text>>>,
     intrinsics: Option<Arc<HashMap<usize, inline::IntrinsicWidths>>>,
     glyph_geometry_bytes: usize,
     fallbacks: Fallbacks,
@@ -219,12 +223,39 @@ impl Cache {
         self.glyph_geometry_bytes
     }
 }
+/// A prepared text's identity: its container's font, its content, and a
+/// hash of its spans, breaks, controls, styled runs and spacing.
+type TextKey = (u64, Arc<str>, u64);
+/// What identifies a font for text preparation: everything in its request
+/// and the scope it resolved in (not the allocation: a restyled element
+/// gets a new one for the same font).
+fn font_identity(font: &crate::css::style::Font) -> u64 {
+    let mut hash = DefaultHasher::new();
+    let r = &font.request;
+    r.size.to_bits().hash(&mut hash);
+    r.weight.to_bits().hash(&mut hash);
+    r.width.to_bits().hash(&mut hash);
+    match r.slant {
+        crate::css::style::FontSlant::Normal => 0u8.hash(&mut hash),
+        crate::css::style::FontSlant::Italic => 1u8.hash(&mut hash),
+        crate::css::style::FontSlant::Left => 2u8.hash(&mut hash),
+        crate::css::style::FontSlant::Right => 3u8.hash(&mut hash),
+        crate::css::style::FontSlant::Oblique(a) => {
+            4u8.hash(&mut hash);
+            a.to_bits().hash(&mut hash);
+        }
+    }
+    r.families.hash(&mut hash);
+    (r.axes.writing_mode as u8, r.axes.direction as u8).hash(&mut hash);
+    font.context().hash(&mut hash);
+    hash.finish()
+}
 pub struct PrepareJob<'a> {
     engine: &'a mut shaping::Engine,
     scope: &'a Scope,
     tree: Arc<Tree>,
     texts: Vec<Arc<inline::Text>>,
-    shared: HashMap<(usize, Arc<str>, u64), Arc<inline::Text>>,
+    shared: HashMap<TextKey, Arc<inline::Text>>,
     glyph_geometry_bytes: usize,
     fallbacks: Fallbacks,
     cancel: Option<&'a AtomicBool>,
@@ -254,6 +285,14 @@ impl<'a> PrepareJob<'a> {
     }
     pub fn fallbacks(&self) -> &Fallbacks {
         &self.fallbacks
+    }
+    /// Start from an earlier preparation's texts: those whose identity is
+    /// unchanged are kept, not shaped again.
+    pub fn with_previous(mut self, previous: &Cache) -> Self {
+        if self.shared.is_empty() && previous.shared.len() <= self.limits.cached_texts {
+            self.shared = previous.shared.as_ref().clone();
+        }
+        self
     }
     fn one(&mut self, index: usize) -> Result<Arc<inline::Text>> {
         let source = &self.tree.sources[index];
@@ -318,7 +357,7 @@ impl<'a> PrepareJob<'a> {
             // Styled spans shape in their own fonts: part of the identity too.
             for span in &source.spans {
                 if let Some(s) = self.tree.styles.snapshot(span.style_node) {
-                    (Arc::as_ptr(s.font()) as usize).hash(&mut hash);
+                    font_identity(s.font()).hash(&mut hash);
                     s.line_height().to_bits().hash(&mut hash);
                     baseline_shift(s, style.font().request.size).to_bits().hash(&mut hash);
                     shaping::features_of(s).hash(&mut hash);
@@ -329,7 +368,7 @@ impl<'a> PrepareJob<'a> {
             style.used_text_spacing(crate::css::style::Property::LetterSpacing, size, Default::default(), self.cancel).unwrap_or(0.).to_bits().hash(&mut hash);
             style.used_text_spacing(crate::css::style::Property::WordSpacing, size, Default::default(), self.cancel).unwrap_or(0.).to_bits().hash(&mut hash);
             shaping::features_of(style).hash(&mut hash);
-            (Arc::as_ptr(style.font()) as usize, source.source.clone(), hash.finish())
+            (font_identity(style.font()), source.source.clone(), hash.finish())
         });
         if let Some(text) = key.as_ref().and_then(|key| self.shared.get(key))
             && text.prepared().spans().len() == source.spans.len()
@@ -395,7 +434,14 @@ impl<'a> PrepareJob<'a> {
         if !self.progress.finished {
             return Err(Error::Incomplete);
         }
-        Ok(Arc::new(Cache { tree: self.tree, texts: Arc::from(self.texts), intrinsics: None, glyph_geometry_bytes: self.glyph_geometry_bytes, fallbacks: self.fallbacks }))
+        Ok(Arc::new(Cache {
+            tree: self.tree,
+            texts: Arc::from(self.texts),
+            shared: Arc::new(self.shared),
+            intrinsics: None,
+            glyph_geometry_bytes: self.glyph_geometry_bytes,
+            fallbacks: self.fallbacks,
+        }))
     }
 }
 #[derive(Clone, Copy, Debug, Default)]
@@ -1361,6 +1407,7 @@ impl<'a> Job<'a> {
             self.cache = Arc::new(Cache {
                 tree: self.cache.tree.clone(),
                 texts: self.cache.texts.clone(),
+                shared: self.cache.shared.clone(),
                 intrinsics: Some(Arc::new(self.intrinsics)),
                 glyph_geometry_bytes: self.cache.glyph_geometry_bytes,
                 fallbacks: self.cache.fallbacks.clone(),
