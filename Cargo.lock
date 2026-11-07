@@ -7168,6 +7168,7 @@ version = "0.1.0"
 dependencies = [
  "data-url",
  "encoding_rs",
+ "memmap2",
  "mime",
  "olo-crash",
  "olo-images",
