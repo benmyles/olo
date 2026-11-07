@@ -92,6 +92,10 @@ something nobody here has is in "Blocked", with what it waits for.
   `releases/latest`, installed over the earlier one, restarted, logged
   in). Run again over an install, Setup now chooses what it installed
   before (2757548d), and its password dialog shows over it (8c9bf3cd).
+  Updated as v2026.11.07.2 (9338942c: the day's later fixes), tried from
+  GitHub in the VM over the first: Setup found it, updated it and the
+  login screen's own copies, restarted, logged in, nothing of GNOME's
+  running.
   Left for Ben: publishing a release (a GitHub release of
   benmyles/olo with tools/release.sh's four files: Setup takes the
   newest one's archive; until then it needs `--bundle URL`), then a
