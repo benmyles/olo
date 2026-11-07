@@ -4718,3 +4718,69 @@ Release web tests292pass/1ignored and Browser13pass/1ignored; strict web+Browser
 release workspace17.74s pass. No personal-session installation or reload.
 Browsers closed and process exits awaited; zero native windows, both Stripe
 screens stopped. Fetched via gh again: origin/main82f7089a already merged.
+
+
+### 2026-11-06 — Positioned section identified; status-driven reload loop found (in progress)
+
+The previous goal turn committed/pushed ac782e23 and verified SVG component
+progress. Added failure-only boxed context for the rejected layout property;
+20 release flow tests pass, including absolute/fixed/float/clear diagnostic
+identity. Fresh native PID631078 repeatedly reaches a section with computed
+Position Absolute (document slots279/306 in differing live responses).
+
+The live UI appeared stuck loading images, but its log reveals repeated complete
+failed navigations (hundreds of document identities). The new long error wraps
+the status row; that changes the viewport height, which schedules another page
+load, whose short loading status restores the height. Thus this retry's delay
+is NOT evidence of a single slow image request. Sequential image loading and
+60s request timeouts are independently present in code, but not established as
+the cause of this incident. Original process quit/awaited; log retained under
+/var/tmp/olo-browser-stripe/positioned/native-failure-log.txt.
+
+Work in progress: shared StringView::fit option uses shaped ellipsis at a fixed
+row height with full agent text. Browser status uses it and offers the full text
+as a tooltip. This prevents status length changing page geometry. Full release
+workspace rebuild is running; fixed-build live retry, idle/latency measurements,
+visual matrix and final validation/commit remain outstanding. Do not claim the
+loop fixed until those checks pass. Stripe remains0/30; corpus0/100.
+
+
+### 2026-11-06 — Stable failed loads with a fixed status row
+
+Completed the fixed-row implementation using existing shared style::label_fit:
+normal text is shaped once; truncated text has the kit's automatic full-text
+tooltip. StringView::fit(true) fills available width, takes precedence over
+wrapping and preserves the full structured agent label. Browser uses LABEL_ROW
+height. BStringView's existing read-only label role remains; the modern addition
+is fitting plus full human/agent access, documented in HACKING.
+
+Owned release delayed-local-response reproduction (75ms per response): before,
+requests21→97 over3s,3%CPU/163wakeups,140frames with mean399us and worst1205us.
+After, requests1→1,0CPU/0wakeups/0frames. Compiler processes were observed in both
+samples; the request-count/idle result proves stability, not isolated rendering
+throughput. Fresh fixed Browser PID646555 loaded real HTTPS Stripe once after
+component checks, stopped on section Position Absolute at document20/slot279,
+and retained identical trees across3s with0CPU/0wakeups. Root attributes/source
+are not retained in the error. All15 native light/dark/night ×1/1.25/1.5/1.75/2
+reviews have zero findings; screenshots inspected and full tooltip verified.
+Neither this shell fix nor the diagnostic implements absolute layout.
+
+Ordinary frozen release controls,7 alternating pairs/mode on CPU0 against
+ac782e23: pipeline100/1000 872.708/9495.157→881.356/9455.447us; scene198.561/
+3880.317→197.717/3806.528us. Small pipeline+0.99% remains an observed nonpass;
+other differences do not erase earlier regressions. Hashes agree. Controls ran
+while component/live diagnostic checks were active, and23/28 samples observed
+compiler context; they do not isolate cause.
+Evidence: measurements/2026-11-06-browser-error-status-*.json.
+
+Release flow20tests pass; final workspace build2m08s passes. Scoped web+Browser
+strict clippy passes1.70s. Expanding strict clippy to the entire UI crate reports
+32 library/33 test errors in unchanged code (logs retained); no whole-UI strict
+clippy pass is claimed. Release UI layout lint passes before commit (kit and Preferences). An accidental
+workspace-wide examples build was interrupted and replaced by scoped examples;
+no incomplete binary supplied accepted measurements. The attempted offline
+replay helper stopped at fixture-host ContextUnavailable and was removed; it
+contributes no live Stripe evidence. Browser quit/awaited; owned screens stopped.
+origin/main82f7089a fetched via gh and already merged. Next implement absolute
+layout for the rejected section, preserving all SVG and older gaps. Stripe0/30,
+corpus0/100.

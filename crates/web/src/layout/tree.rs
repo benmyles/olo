@@ -448,7 +448,19 @@ impl<'a> BuildJob<'a> {
                         || !matches!(s.value(Property::Float), Value::Keyword(Keyword::None))
                         || !matches!(s.value(Property::Clear), Value::Keyword(Keyword::None))
                     {
-                        return Err(Error::Unsupported("positioned/floating/clearance layout"));
+                        let property = if !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static | Keyword::Relative)) {
+                            Property::Position
+                        } else if !matches!(s.value(Property::Float), Value::Keyword(Keyword::None)) {
+                            Property::Float
+                        } else {
+                            Property::Clear
+                        };
+                        return Err(Error::UnsupportedProperty(Box::new(UnsupportedProperty {
+                            node,
+                            name: self.document.name(node)?.ok_or(Error::Invalid)?.into(),
+                            property,
+                            value: s.value(property).clone(),
+                        })));
                     }
                     if self.document.namespace(node)? == Some(crate::dom::Namespace::Svg) && self.document.name(node)? == Some("svg") {
                         if *display == Display::Contents {

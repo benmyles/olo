@@ -1905,7 +1905,10 @@ event reaches it.
   and empties the `GraphShelf` as it renders; with both cached, a graph
   moving a pixel redraws the layer, not the cards, legends and figures
   around it (Activity Monitor's CPU section: 4.2 ms a frame to 1.4).
-- `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
+- `StringView::fit(true)` (a fixed-height row filling available width, with
+  shaped ellipsis and an automatic full-text tooltip; the agent label retains
+  the full text; takes precedence over wrapping),
+  `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
   `StringView::size(points)` (a title's or lead's size, its row grown to
   fit), `widgets::KeyHint::new("Space", "Next")` (a key's cap and what
   it does, `enabled(false)` dim: for views driven from the keyboard,

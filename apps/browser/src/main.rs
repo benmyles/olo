@@ -621,7 +621,7 @@ impl Render for Browser {
             .child(bar)
             .child(controls)
             .child(surface)
-            .child(div().p(px(olo_ui::metrics::WINDOW_INSET)).child(StringView::new(self.status.clone()).wrap(true)))
+            .child(div().p(px(olo_ui::metrics::WINDOW_INSET)).child(StringView::new(self.status.clone()).fit(true).height(olo_ui::metrics::LABEL_ROW)))
     }
 }
 fn main() {

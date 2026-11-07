@@ -15,7 +15,7 @@ without a dedicated eval environment; no personal account is part of this run.
 ## Latest startup checkpoint
 
 The fresh owned native HTTPS retry now gets past the initial SVG root and stops
-at **flow layout Unsupported("positioned/floating/clearance layout")**. There
+at **section Position Absolute** (latest fresh document20/slot279). A long-error status resize/reload loop is fixed and the failed page now rests idle. There
 is still no useful native Stripe homepage and no accepted configuration.
 The retained first Stripe logo path renders in an isolated native component.
 Path-only SVG roots now participate in CSS sizing, inline/block layout and

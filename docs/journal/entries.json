@@ -3658,5 +3658,11 @@
     "title": "Original browser SVG paths",
     "caption": "The native engine renders the retained Stripe logo and original vector examples. Component checks: 110 matching rectangles, 82 exact pixel captures and 28 recorded nonpasses at five scales; all 15 native theme/scale reviews have zero findings. The real Stripe homepage still stops at positioned layout; this is not website acceptance.",
     "image": "2026-11-06/173322-original-browser-svg-paths.png"
+  },
+  {
+    "time": "2026-11-06T17:49:27",
+    "title": "Browser errors settle to idle",
+    "caption": "Long errors now use a fixed-height status row with shaped ellipsis and a full-text tooltip. A delayed local failure made 76 extra requests in 3 seconds before; after, it stayed at one request with zero CPU and wakeups. Stripe still fails on absolute positioning; this is shell stability, not website acceptance.",
+    "image": "2026-11-06/174927-browser-errors-settle-to-idle.png"
   }
 ]

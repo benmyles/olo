@@ -17,12 +17,13 @@ pub struct StringView {
     color: Option<Hsla>,
     height: f32,
     wrap: bool,
+    fit: bool,
     size: f32,
 }
 
 impl StringView {
     pub fn new(text: impl Into<SharedString>) -> StringView {
-        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, size: style::PLAIN_SIZE }
+        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, fit: false, size: style::PLAIN_SIZE }
     }
 
     /// In the small size (a table's column names, a scale's ends).
@@ -37,6 +38,13 @@ impl StringView {
     pub fn size(mut self, points: f32) -> Self {
         self.size = points;
         self.height = self.height.max(style::line_row(points));
+        self
+    }
+
+    /// A single row that fills its available width, shortening with an ellipsis.
+    /// The agent label retains the full text. Takes precedence over wrapping.
+    pub fn fit(mut self, on: bool) -> Self {
+        self.fit = on;
         self
     }
 
@@ -74,7 +82,7 @@ impl StringView {
 impl RenderOnce for StringView {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let weight = if self.bold { FontWeight::BOLD } else { FontWeight::NORMAL };
-        if self.wrap {
+        if self.wrap && !self.fit {
             let p = theme::palette(cx);
             let ink = self.color.unwrap_or_else(|| if self.dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
             let text = self.text.clone();
@@ -87,21 +95,25 @@ impl RenderOnce for StringView {
             return d.child(self.text).child(said).into_any_element();
         }
         let size = self.size;
-        let w = f32::from(style::text_width(window, self.text.clone(), size, style::ui_font(weight))).ceil();
+        let fit = self.fit;
+        let w = if fit { 0. } else { f32::from(style::text_width(window, self.text.clone(), size, style::ui_font(weight))).ceil() };
         let (text, dim, color, height) = (self.text, self.dim, self.color, self.height);
-        canvas(
+        let row = canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
                 let ink = color.unwrap_or_else(|| if dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
-                let r = style::label(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink);
+                let r = if fit {
+                    style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink, b.size.width)
+                } else {
+                    style::label(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink)
+                };
                 agent::record(window, cx, agent::Node::label(text.clone(), r));
             },
         )
-        .w(px(w))
         .h(px(height))
-        .flex_shrink_0()
-        .into_any_element()
+        .flex_shrink_0();
+        if fit { row.w_full().into_any_element() } else { row.w(px(w)).into_any_element() }
     }
 }
 

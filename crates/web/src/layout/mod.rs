@@ -26,6 +26,7 @@ pub enum Error {
     /// Identify the actual rejected element without retaining its document or
     /// copying attribute/content data into a diagnostic.
     UnsupportedForeign(Box<ForeignElement>),
+    UnsupportedProperty(Box<UnsupportedProperty>),
     Dom(dom::Error),
     Style(style::Error),
     Numeric(css::properties::Error),
@@ -41,6 +42,14 @@ pub struct ForeignElement {
     pub node: dom::NodeId,
     pub namespace: dom::Namespace,
     pub name: Box<str>,
+}
+/// Failure-only context identifying the first unsupported layout property.
+#[derive(Debug)]
+pub struct UnsupportedProperty {
+    pub node: dom::NodeId,
+    pub name: Box<str>,
+    pub property: style::Property,
+    pub value: style::Value,
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

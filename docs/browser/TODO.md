@@ -9,7 +9,7 @@ revalidate the merged workspace and push the integration with browser work.
 **Active website: [Stripe](eval/stripe/README.md), selected by the user.**
 Finish its real pages/journeys and all30 configurations before choosing another
 site. Component work follows observed Stripe blockers. The latest fresh HTTPS retry gets past the initial SVG root and stops at
-`flow layout Unsupported("positioned/floating/clearance layout")`. There is still
+a `section` with computed `Position: Absolute` (latest fresh slot279). There is still
 no useful native Stripe homepage and no accepted configuration. Initial LTR row
 flex and path-only SVG roots now reach layout/paint. SVG's110 independent page
 rectangles match at five native DPRs;82 image crops match exactly and28 pixel
@@ -492,3 +492,14 @@ this is a harness correction, not a browser speedup.
   905.738/8897.912→776.512/7441.896 µs for 100/1,000 elements; matched
   pre-control baseline 895.940/8868.916 µs (CPU0, seven rotated samples).
   Original samples remain retained. This is not general website acceptance.
+
+
+- [ ] Remove sequential image-loading startup delays. The resource loop currently
+  completes image requests before box construction, with a60-second per-request
+  timeout. Preserve cancellation, bounded memory, progress and deterministic
+  resource/layout updates when implementing concurrency; don't count omitted
+  or placeholder images as site acceptance.
+
+- [x] Prevent long status/error text from resizing the document viewport and
+  repeatedly reloading failed pages. Delayed HTTP repro stays at one request;
+  real Stripe failure returns to idle. Absolute layout itself remains open.

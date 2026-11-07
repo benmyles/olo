@@ -739,3 +739,36 @@ fn semantic_opportunities_cannot_reuse_literal_unicode_nowrap_cache_entries() {
     assert_eq!(rect(&d, &l, "semantic").height, 40.);
     assert_eq!(rect(&d, &l, "literal").height, 20.);
 }
+
+#[test]
+fn rejected_placement_reports_actual_node_property_and_computed_value() {
+    use olo_web::css::style::{Keyword as K, Property as P, Value};
+    let scope = scope();
+    let host = native_host::NativeHost(scope);
+    for (declaration, property, value) in
+        [("position:absolute", P::Position, K::Absolute), ("position:fixed", P::Position, K::Fixed), ("float:left", P::Float, K::Left), ("clear:both", P::Clear, K::Both)]
+    {
+        let doc = html::parse(Arc::from(format!("<!doctype html><div style='{declaration}'>content</div>")), Default::default(), None).unwrap().document;
+        let mut sheets = SheetBuilder::new(Default::default());
+        sheets.add_sheet(&Syntax::parse(Arc::from(olo_web::page::UA), Default::default(), None).unwrap(), Origin::UserAgent, None).unwrap();
+        let rules = sheets.finish(None).unwrap();
+        let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+        let mut styles = style::Job::new(&doc, &rules, defaults, Default::default(), Default::default(), None).unwrap();
+        while !styles.step(64, |_| &host).unwrap().finished {}
+        let mut job = layout::BuildJob::new(&doc, Arc::new(styles.finish().unwrap()), Default::default(), None).unwrap();
+        loop {
+            match job.step(1) {
+                Ok(p) => assert!(!p.finished),
+                Err(layout::Error::UnsupportedProperty(context)) => {
+                    assert_eq!(doc.name(context.node).unwrap(), Some("div"));
+                    assert_eq!(&*context.name, "div");
+                    assert_eq!(context.property, property);
+                    assert!(matches!(context.value, Value::Keyword(k) if k == value));
+                    break;
+                }
+                Err(e) => panic!("{e:?}"),
+            }
+        }
+        assert!(matches!(job.step(1), Err(layout::Error::Failed)));
+    }
+}

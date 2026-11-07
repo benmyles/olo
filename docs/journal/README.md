@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser errors settle to idle
+
+*17:49* — Long errors now use a fixed-height status row with shaped ellipsis and a full-text tooltip. A delayed local failure made 76 extra requests in 3 seconds before; after, it stayed at one request with zero CPU and wakeups. Stripe still fails on absolute positioning; this is shell stability, not website acceptance.
+
+![Browser errors settle to idle](2026-11-06/174927-browser-errors-settle-to-idle.png)
+
 ### Original browser SVG paths
 
 *17:33* — The native engine renders the retained Stripe logo and original vector examples. Component checks: 110 matching rectangles, 82 exact pixel captures and 28 recorded nonpasses at five scales; all 15 native theme/scale reviews have zero findings. The real Stripe homepage still stops at positioned layout; this is not website acceptance.

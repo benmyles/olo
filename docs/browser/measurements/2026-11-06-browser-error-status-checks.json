@@ -1,0 +1,625 @@
+{
+  "scope": "Stable failed Stripe load, not website acceptance",
+  "binary_sha256": "c0fc7c957aae8caacb35722c6425590a4fd332c63d58a212dc7ed2bc21ad3d8a",
+  "pid": 646555,
+  "before": [
+    {
+      "window": 4,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 53.0,
+          "y": 66.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 61.0,
+          "y": 67.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "Navigate",
+          "x": 96.188,
+          "y": 67.0,
+          "width": 66.256,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Back",
+          "x": 65.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Forward",
+          "x": 157.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": false
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "https://stripe.com/",
+          "x": 249.0,
+          "y": 104.0,
+          "width": 608.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 869.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 8,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 961.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 9,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "x": 53.0,
+          "y": 140.0,
+          "width": 1000.0,
+          "height": 578.0,
+          "enabled": true
+        },
+        {
+          "id": 10,
+          "parent": 1,
+          "role": "Label",
+          "name": "flow layout UnsupportedProperty(UnsupportedProperty { node: NodeId { document: 20, slot: 279, generation: 1 }, name: \"section\", property: Position, value: Keyword(Absolute) })",
+          "x": 69.0,
+          "y": 733.672,
+          "width": 961.90814,
+          "height": 16.343994,
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "after": [
+    {
+      "window": 4,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 53.0,
+          "y": 66.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 61.0,
+          "y": 67.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "Navigate",
+          "x": 96.188,
+          "y": 67.0,
+          "width": 66.256,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Back",
+          "x": 65.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Forward",
+          "x": 157.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": false
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "https://stripe.com/",
+          "x": 249.0,
+          "y": 104.0,
+          "width": 608.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 869.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 8,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 961.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 9,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "x": 53.0,
+          "y": 140.0,
+          "width": 1000.0,
+          "height": 578.0,
+          "enabled": true
+        },
+        {
+          "id": 10,
+          "parent": 1,
+          "role": "Label",
+          "name": "flow layout UnsupportedProperty(UnsupportedProperty { node: NodeId { document: 20, slot: 279, generation: 1 }, name: \"section\", property: Position, value: Keyword(Absolute) })",
+          "x": 69.0,
+          "y": 733.672,
+          "width": 961.90814,
+          "height": 16.343994,
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "windows": [
+    {
+      "id": 4,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "pid": 646555,
+      "workspace": 0,
+      "minimized": false,
+      "focused": true,
+      "kept": false,
+      "groupable": true,
+      "output": "HEADLESS-1",
+      "frame": {
+        "x": 48,
+        "y": 40,
+        "width": 1010,
+        "height": 731
+      },
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "least": [
+        650,
+        511
+      ],
+      "tab_frame": {
+        "x": 48,
+        "y": 40,
+        "width": 100,
+        "height": 21
+      },
+      "stack": 0,
+      "surface": 37
+    }
+  ],
+  "idle": {
+    "seconds": 3.0,
+    "total": {
+      "cpu": 0.0,
+      "wakeups": 0
+    },
+    "threads": [
+      {
+        "tid": 646555,
+        "name": "browser-fixed",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 646559,
+        "name": "Timer",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 646561,
+        "name": "theme-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 646563,
+        "name": "menus",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 646564,
+        "name": "upgrade-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 646574,
+        "name": "browser:disk$0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 646580,
+        "name": "browse:traceq0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 646600,
+        "name": "browser-page",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 646602,
+        "name": "browser-fixed",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      }
+    ],
+    "windows": [
+      {
+        "title": "Browser",
+        "frames": 0,
+        "per_second": 0.0,
+        "mean_us": 0,
+        "ui_us": 0,
+        "tessellate_us": 0,
+        "submit_us": 0,
+        "slowest_us": 0
+      }
+    ]
+  },
+  "visual": [
+    {
+      "theme": "light",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": false,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": false,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": false,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": false,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "light",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": false,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "night",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "night",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "night",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "night",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    },
+    {
+      "theme": "night",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    }
+  ]
+}

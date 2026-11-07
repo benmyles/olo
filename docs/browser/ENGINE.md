@@ -2449,3 +2449,11 @@ Malformed path/viewBox recovery is incomplete. `svg-page-fixtures` pins110
 independent Chrome rectangles and full crops:82 exact,28 raster nonpasses.
 `OLO_SVG_REQUIRE_COMPLETE=1` fails until all pass. Native logo/demo reviews at
 15 theme/scale combinations are component checks, not Stripe acceptance.
+
+
+Layout failures for positioning, floats and clearance now retain the actual
+node, element name, first rejected property and its computed value in a boxed
+`layout::UnsupportedProperty`. Allocation occurs only on failure. No document,
+attributes or text are retained. This distinguishes an absolute/fixed/sticky
+positioning requirement from float/clear work without guessing from a generic
+message; it does not implement those layout modes.
