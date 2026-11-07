@@ -28,7 +28,7 @@ screens long, scrolled to the top.
 import json
 import math, os, socket, statistics, sys, time
 
-BASE = "/tmp/olo-dev"
+BASE = "/var/tmp/olo-dev"
 TRACE = "--trace" in sys.argv
 
 

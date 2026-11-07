@@ -10,7 +10,7 @@ Use a headless session with several screens and a few apps open, e.g.
 
   tsession start sweep 5120x2880,1920x1080,3456x2160 --session
   tsession run sweep olo-terminal; tsession run sweep olo-styled-edit
-  tools/dev/wm-sweep /tmp/olo-dev/sweep/…sock
+  tools/dev/wm-sweep /var/tmp/olo-dev/sweep/…sock
 
 It rearranges the screens too (as in Ben's layout), so windows get moved
 between them while zoomed, minimized and on other workspaces.

@@ -387,7 +387,7 @@ def start():
         f.write(WELCOME)
     ts("stop", NAME)
     # (What the session's apps kept from a run before: DeskCalc's sum.)
-    shutil.rmtree(f"/tmp/olo-dev/{NAME}", ignore_errors=True)
+    shutil.rmtree(f"/var/tmp/olo-dev/{NAME}", ignore_errors=True)
     out = ts("start", NAME, f"{SIZE[0]}x{SIZE[1]}", "--scale", str(SCALE), "--session", "--shell", "--home", HOME, check=True)
     global DISPLAY
     DISPLAY = out.split(":")[1].split()[0] if ":" in out else ""

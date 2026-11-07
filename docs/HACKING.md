@@ -2603,7 +2603,7 @@ NAME 2560x1600,1920x1080 --session --shell`, start apps in it,
 `tsession reload NAME` (twice), and every app is there after, each
 display with its own Deskbar (`tsession shot NAME out.png --output
 HEADLESS-2` for the second), no "exited" or protocol error in
-`/tmp/olo-dev/NAME/app_server.log`. A bar for a display this app's
+`/var/tmp/olo-dev/NAME/app_server.log`. A bar for a display this app's
 connection doesn't know yet is refused by GPUI (not stood in for by the
 compositor's choice, which put the Dell's bar on the Studio Display)
 and asked for again from `olo_ui::on_displays_changed`.
@@ -3251,9 +3251,9 @@ default, i.e. 1280×800 logical) and drives it:
 T=tools/dev/tsession
 $T start mine --light          # unique session name per developer/agent
 $T start mine --session [--shell]   # under olo-session (with Deskbar + desktop)
-$T start mine --session --home /tmp/olo-dev/mine-home   # sandbox HOME
+$T start mine --session --home /var/tmp/olo-dev/mine-home   # sandbox HOME
 $T reload mine                 # in-place reload (test upgrades: rebuild, then reload)
-$T run mine olo-myapp       # binaries from target/debug (log in /tmp/olo-dev/mine/)
+$T run mine olo-myapp       # binaries from target/debug (log in /var/tmp/olo-dev/mine/)
 $T start two 2560x1600,1920x1080   # two screens, HEADLESS-1 and -2 (each offers a few modes)
 $T shot mine /tmp/x.png        # full screenshot (device pixels) of the pointer's screen
 $T shot two /tmp/y.png --output HEADLESS-2
@@ -3317,7 +3317,7 @@ and 120 Hz and every scale. Run it after changing anything about input,
 frame timing or a scroll view.
 
 Every session gets its own D-Bus session bus (`olo-bus` from the build
-tree, as agent screens have, else busd; at `/tmp/olo-dev/NAME/bus`, in
+tree, as agent screens have, else busd; at `/var/tmp/olo-dev/NAME/bus`, in
 `DBUS_SESSION_BUS_ADDRESS` for `run`): the runtime directory is the real
 one, so without it programs fall back to `$XDG_RUNTIME_DIR/bus`, the
 user's real session bus, and a test's notifications pop up on their
@@ -3326,13 +3326,13 @@ your choosing, or, with no `olo-bus` built, the busd it builds under
 `~/.cache/olo-dev` with `tools/dev/busd-lenient` the first time on a new
 machine). To see a
 test's notifications, run its own centre:
-`$T run NAME olo-notifications --bus unix:path=/tmp/olo-dev/NAME/bus`.
+`$T run NAME olo-notifications --bus unix:path=/var/tmp/olo-dev/NAME/bus`.
 
 sudo resets HOME, so without `--home` a session and its apps use the real
 home folder: pass `--home` whenever a test saves files (Screenshot,
 Tracker, StyledEdit…). What apps keep between runs and their caches are
 the session's own even so (`XDG_STATE_HOME`, `XDG_CACHE_HOME` in
-`/tmp/olo-dev/NAME`, in its env.json for `run`): a test Terminal (the
+`/var/tmp/olo-dev/NAME`, in its env.json for `run`): a test Terminal (the
 fuzzers open them) once restored the person's windows and wrote its own
 over their `windows.json`, which their next login would have brought
 back. Sessions are always silent (`PULSE_SERVER` points at
@@ -10443,7 +10443,7 @@ or fitted whole), kept, and the windows drawn again as each comes.
   on|off|MINUTES`; `--list` says which are pinned and until when each is
   snoozed.
 
-Test it on a private bus: `busd -a unix:path=/tmp/olo-dev/NAME/bus.sock`
+Test it on a private bus: `busd -a unix:path=/var/tmp/olo-dev/NAME/bus.sock`
 (`cargo install busd`; Aurora's dbus-broker-launch needs systemd), then
 `tsession run NAME olo-notifications --bus unix:path=…` and send with
 `gdbus call -a unix:path=… -d org.freedesktop.Notifications -o
@@ -12360,9 +12360,9 @@ changes nothing and names every change, archived items and an
 unlistable vault, and several accounts in one review). The Secret Service
 client has an ignored test for a private keyring:
 `tools/dev/private-keyring start` (busd if installed with `cargo install
-busd --root /tmp/olo-dev/busd`, else dbus-daemon, plus its own
+busd --root /var/tmp/olo-dev/busd`, else dbus-daemon, plus its own
 gnome-keyring), then
-`DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/olo-dev/keyring/bus cargo test
+`DBUS_SESSION_BUS_ADDRESS=unix:path=/var/tmp/olo-dev/keyring/bus cargo test
 -p olo-system secrets -- --ignored`; it refuses any other bus.
 
 ```sh

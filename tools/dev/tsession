@@ -43,7 +43,7 @@
                                                (sockets and files of displays no session
                                                holds); `stop` does it for its own
 
-Sessions live in /tmp/olo-dev/NAME. Output is 2× scale by default.
+Sessions live in /var/tmp/olo-dev/NAME. Output is 2× scale by default.
 Screenshots are in device pixels; coordinates, crops included, are
 logical (device pixels / the screen's scale, so / 2 at 2×).
 Shells in a session keep their history in its bash_history, not yours.
@@ -65,10 +65,12 @@ os.environ.pop("OLO_REAL_SESSION", None)
 os.environ.setdefault("OLO_ACTIVITY_HELPER", "off")
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-BASE = "/tmp/olo-dev"
-# Where sessions lived before the rename (Tabula); ones still running
-# there are found too.
-OLD_BASE = "/tmp/tabula-dev"
+# On disk: /tmp is memory (tmpfs), and a session's logs, shots and home
+# filled it (364 MB of the person's memory, one stale session's log 160).
+BASE = "/var/tmp/olo-dev"
+# Where sessions lived before (in /tmp; before the rename, Tabula's): ones
+# still running there are found too.
+OLD_BASES = ["/tmp/olo-dev", "/tmp/tabula-dev"]
 OWNER = pwd.getpwuid(os.stat(ROOT).st_uid)
 RUNTIME = f"/run/user/{OWNER.pw_uid}"
 TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))
@@ -129,8 +131,10 @@ def as_owner(cmd, **kw):
     return cmd
 
 def sdir(name):
-    new, old = os.path.join(BASE, name), os.path.join(OLD_BASE, name)
-    return old if not os.path.exists(new) and os.path.exists(old) else new
+    new = os.path.join(BASE, name)
+    if os.path.exists(new):
+        return new
+    return next((o for o in (os.path.join(b, name) for b in OLD_BASES) if os.path.exists(o)), new)
 
 def ident(path):
     try:
@@ -593,7 +597,7 @@ def main():
         watch(sys.argv[2], int(sys.argv[3]))
         return
     if cmd == "list":
-        for d in sorted(glob.glob(os.path.join(BASE, "*", "env.json")) + glob.glob(os.path.join(OLD_BASE, "*", "env.json"))):
+        for d in sorted(glob.glob(os.path.join(BASE, "*", "env.json")) + [e for b in OLD_BASES for e in glob.glob(os.path.join(b, "*", "env.json"))]):
             print(os.path.basename(os.path.dirname(d)), json.load(open(d))["WAYLAND_DISPLAY"])
         return
     name, a = sys.argv[2], sys.argv[3:]
