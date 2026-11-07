@@ -488,7 +488,7 @@
     insertAdjacentText(where, text) { this.insertAdjacentNodes(where, [N.createText(String(text))]); },
     getBoundingClientRect() { const r = N.rect(this); return r ? new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]) : new DOMRect(0, 0, 0, 0); },
     getClientRects() { const r = N.rect(this); return listOf(r ? [new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3])] : [], global.DOMRectList); },
-    focus() {}, blur() {}, select() {}, setSelectionRange() {}, scrollIntoView() {}, scrollTo() {}, scrollBy() {}, scroll() {},
+    focus() { focusElement(this); }, blur() { if (activeElement === this) focusElement(null); }, select() {}, setSelectionRange() {}, scrollIntoView() {}, scrollTo() {}, scrollBy() {}, scroll() {},
     click() { dispatch(this, Object.assign(new MouseEvent('click', { bubbles: true, cancelable: true }), { isTrusted: false })); },
     submit() {}, reset() {}, requestSubmit() {}, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
     animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), null); a.play(); return a; },
@@ -527,7 +527,7 @@
     location: { get() { return global.location; } }, defaultView: { get() { return global; } },
     characterSet: { get() { return 'UTF-8'; } }, charset: { get() { return 'UTF-8'; } }, inputEncoding: { get() { return 'UTF-8'; } }, contentType: { get() { return 'text/html'; } }, compatMode: { get() { return 'CSS1Compat'; } },
     hidden: { get() { return false; } }, visibilityState: { get() { return 'visible'; } }, hasFocus() { return true; },
-    activeElement: { get() { return this.body; } }, scrollingElement: { get() { return html(); } }, currentScript: { get() { return currentScript; } },
+    activeElement: { get() { return activeElement && N.isConnected(activeElement) ? activeElement : this.body; } }, scrollingElement: { get() { return html(); } }, currentScript: { get() { return currentScript; } },
     doctype: { get() { for (const c of N.childNodes(documentNode)) if (N.nodeType(c) === 10) return c; return null; } },
     cookie: { get() { return [...cookies.entries()].map(([k, v]) => k + '=' + v).join('; '); }, set(v) { const s = String(v); const m = s.match(/^\s*([^=;]+)=([^;]*)/); if (m) { if (/max-age=0|expires=Thu, 01 Jan 1970/i.test(s)) cookies.delete(m[1].trim()); else cookies.set(m[1].trim(), m[2]); } } },
     forms: { get() { return collectionOf(N.query(documentNode, 'form', true)); } }, images: { get() { return collectionOf(N.query(documentNode, 'img', true)); } }, links: { get() { return collectionOf(N.query(documentNode, 'a[href],area[href]', true)); } }, scripts: { get() { return collectionOf(N.query(documentNode, 'script', true)); } }, anchors: { get() { return collectionOf(N.query(documentNode, 'a[name]', true)); } }, embeds: { get() { return collectionOf([]); } }, plugins: { get() { return collectionOf([]); } }, all: { get() { return collectionOf(N.query(documentNode, '*', true)); } },
@@ -774,6 +774,66 @@
     return next;
   };
   let currentScript = null;
+  // Input from the person: the browser hit-tests and hands the target.
+  let hoverTarget = null, pressTarget = null, activeElement = null;
+  const FOCUSABLE = 'a[href],button,input,select,textarea,summary,[tabindex],[contenteditable]';
+  const ancestors = (el) => { const out = []; let n = el; while (n && N.nodeType(n) === 1) { out.push(n); n = N.parent(n); } return out; };
+  const focusElement = (el) => {
+    const old = activeElement && N.isConnected(activeElement) ? activeElement : null;
+    if (el === old) return;
+    activeElement = el;
+    if (old) { dispatch(old, new FocusEvent('blur', { relatedTarget: el })); dispatch(old, new FocusEvent('focusout', { bubbles: true, relatedTarget: el })); }
+    if (el) { dispatch(el, new FocusEvent('focus', { relatedTarget: old })); dispatch(el, new FocusEvent('focusin', { bubbles: true, relatedTarget: old })); }
+  };
+  global.__olo_input = (json, target) => {
+    const i = JSON.parse(json);
+    scrollXY[0] = 0;
+    scrollXY[1] = i.scrollY;
+    global.scrollY = global.pageYOffset = i.scrollY;
+    if (!target || !N.isConnected(target)) target = document.body || documentNode;
+    const base = { bubbles: true, cancelable: true, composed: true, view: global, clientX: i.x, clientY: i.y - i.scrollY, pageX: i.x, pageY: i.y, screenX: i.x, screenY: i.y - i.scrollY, buttons: i.buttons, shiftKey: !!(i.modifiers & 1), ctrlKey: !!(i.modifiers & 2), altKey: !!(i.modifiers & 4), metaKey: !!(i.modifiers & 8) };
+    let prevented = false;
+    const fire = (Ctor, type, at, extra) => { const ev = new Ctor(type, Object.assign({}, base, extra || {})); ev.isTrusted = true; if (!dispatch(at, ev)) prevented = true; return ev; };
+    switch (i.kind) {
+      case 'move': {
+        if (target !== hoverTarget) {
+          const from = hoverTarget && N.isConnected(hoverTarget) ? hoverTarget : null;
+          const fromChain = from ? ancestors(from) : [], toChain = ancestors(target);
+          if (from) { fire(PointerEvent, 'pointerout', from, { relatedTarget: target }); fire(MouseEvent, 'mouseout', from, { relatedTarget: target }); for (const el of fromChain) if (!toChain.includes(el)) { fire(PointerEvent, 'pointerleave', el, { bubbles: false, relatedTarget: target }); fire(MouseEvent, 'mouseleave', el, { bubbles: false, relatedTarget: target }); } }
+          fire(PointerEvent, 'pointerover', target, { relatedTarget: from }); fire(MouseEvent, 'mouseover', target, { relatedTarget: from });
+          for (const el of toChain.slice().reverse()) if (!fromChain.includes(el)) { fire(PointerEvent, 'pointerenter', el, { bubbles: false, relatedTarget: from }); fire(MouseEvent, 'mouseenter', el, { bubbles: false, relatedTarget: from }); }
+          hoverTarget = target;
+        }
+        fire(PointerEvent, 'pointermove', target);
+        fire(MouseEvent, 'mousemove', target);
+        break;
+      }
+      case 'down': {
+        fire(PointerEvent, 'pointerdown', target, { button: 0, buttons: 1 });
+        const ev = fire(MouseEvent, 'mousedown', target, { button: 0, buttons: 1 });
+        pressTarget = target;
+        if (!ev.defaultPrevented) { const f = target.closest ? target.closest(FOCUSABLE) : null; focusElement(f); }
+        break;
+      }
+      case 'up': {
+        fire(PointerEvent, 'pointerup', target, { button: 0, buttons: 0 });
+        fire(MouseEvent, 'mouseup', target, { button: 0, buttons: 0 });
+        if (pressTarget && N.isConnected(pressTarget)) { const chain = ancestors(pressTarget); const common = ancestors(target).find((el) => chain.includes(el)) || null; if (common) { fire(PointerEvent, 'click', common, { button: 0, buttons: 0, detail: 1 }); } }
+        pressTarget = null;
+        break;
+      }
+      case 'wheel': fire(WheelEvent, 'wheel', target, { deltaX: i.dx, deltaY: i.dy, deltaMode: 0 }); break;
+      case 'key': {
+        const at = activeElement && N.isConnected(activeElement) ? activeElement : (document.body || documentNode);
+        const init = { key: i.key, code: i.code, repeat: false, keyCode: i.key.length === 1 ? i.key.toUpperCase().charCodeAt(0) : ({ Enter: 13, Escape: 27, Tab: 9, Backspace: 8, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, ' ': 32 }[i.key] || 0) };
+        const ev = fire(KeyboardEvent, i.down ? 'keydown' : 'keyup', at, init);
+        if (i.down && i.text && !ev.defaultPrevented) fire(KeyboardEvent, 'keypress', at, Object.assign({ charCode: i.text.charCodeAt(0) }, init));
+        break;
+      }
+      case 'scroll': dispatch(documentNode, new Event('scroll', { bubbles: true })); break;
+    }
+    return prevented;
+  };
   global.__olo_lifecycle = (name) => {
     if (name === 'DOMContentLoaded') { readyState = 'interactive'; dispatch(documentNode, new Event('readystatechange')); dispatch(documentNode, new Event('DOMContentLoaded', { bubbles: true })); }
     if (name === 'load') { readyState = 'complete'; dispatch(documentNode, new Event('readystatechange')); dispatch(global, new Event('load')); dispatch(global, new PageTransitionEvent('pageshow', { persisted: false })); }

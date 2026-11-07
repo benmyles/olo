@@ -268,7 +268,31 @@ impl Browser {
             self.navigate(link.url.to_string(), window, cx);
         }
     }
+    /// Input for the page's scripts: the pointer's document position, keys.
+    fn send_input(&mut self, kind: worker::InputKind, at: Option<gpui::Point<gpui::Pixels>>, modifiers: gpui::Modifiers) {
+        let Some(key) = &self.key else { return };
+        let bounds = self.viewport.get();
+        let scale = key.scale;
+        let (x, y) = at.map_or((0., 0.), |at| (f64::from(f32::from(at.x - bounds.left())) / scale, f64::from(f32::from(at.y - bounds.top())) / scale + f64::from(self.scroll) / scale));
+        let _ = self.tx.send(worker::Message::Input(worker::Input {
+            kind,
+            x,
+            y,
+            scroll_y: f64::from(self.scroll) / scale,
+            buttons: u32::from(self.pressed.is_some() || self.interaction.active.is_some()),
+            modifiers: u8::from(modifiers.shift) | u8::from(modifiers.control) << 1 | u8::from(modifiers.alt) << 2 | u8::from(modifiers.platform) << 3,
+        }));
+    }
     fn pointer(&mut self, at: gpui::Point<gpui::Pixels>, phase: u8, window: &mut Window, cx: &mut Context<Self>) {
+        self.send_input(
+            match phase {
+                1 => worker::InputKind::Down,
+                2 => worker::InputKind::Up,
+                _ => worker::InputKind::Move,
+            },
+            Some(at),
+            window.modifiers(),
+        );
         if self.key.is_none() || phase == 0 && self.interaction_mask & (1u64 << olo_web::css::selectors::State::Hover as u8) == 0 {
             return;
         }
@@ -561,9 +585,11 @@ impl Render for Browser {
                     let max = v.key.as_ref().map_or(0, |key| worker::max_scroll(key, v.extent));
                     let old = v.scroll;
                     v.scroll = (v.scroll - (f64::from(delta) * scale).round() as i32).clamp(0, max);
+                    v.send_input(worker::InputKind::Wheel { dx: 0., dy: -f64::from(delta) }, Some(e.position), e.modifiers);
                     if v.scroll == old {
                         return;
                     }
+                    v.send_input(worker::InputKind::Scroll, None, e.modifiers);
                     v.seek_anchor = false;
                     v.focus_scroll = None;
                     if let Some(key) = v.key.clone() {
@@ -601,6 +627,32 @@ impl Render for Browser {
                 }
             }))
             .on_key_down(cx.listener(|v, e: &gpui::KeyDownEvent, window, cx| {
+                if v.focus.is_focused(window) {
+                    let key = match e.keystroke.key.as_str() {
+                        "enter" => "Enter".to_owned(),
+                        "escape" => "Escape".to_owned(),
+                        "tab" => "Tab".to_owned(),
+                        "backspace" => "Backspace".to_owned(),
+                        "delete" => "Delete".to_owned(),
+                        "space" => " ".to_owned(),
+                        "left" => "ArrowLeft".to_owned(),
+                        "right" => "ArrowRight".to_owned(),
+                        "up" => "ArrowUp".to_owned(),
+                        "down" => "ArrowDown".to_owned(),
+                        "home" => "Home".to_owned(),
+                        "end" => "End".to_owned(),
+                        "pageup" => "PageUp".to_owned(),
+                        "pagedown" => "PageDown".to_owned(),
+                        k => e.keystroke.key_char.clone().unwrap_or_else(|| k.to_owned()),
+                    };
+                    let code = match key.as_str() {
+                        " " => "Space".to_owned(),
+                        k if k.len() == 1 && k.chars().all(|c| c.is_ascii_alphabetic()) => format!("Key{}", k.to_ascii_uppercase()),
+                        k if k.len() == 1 && k.chars().all(|c| c.is_ascii_digit()) => format!("Digit{k}"),
+                        k => k.to_owned(),
+                    };
+                    v.send_input(worker::InputKind::Key { down: true, key, code, text: e.keystroke.key_char.clone() }, None, e.keystroke.modifiers);
+                }
                 if e.keystroke.modifiers.alt && e.keystroke.key == "left" {
                     v.command("back", window, cx);
                     cx.stop_propagation();

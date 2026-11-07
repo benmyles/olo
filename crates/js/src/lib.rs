@@ -77,6 +77,37 @@ pub struct Script {
     pub source: Arc<str>,
     pub name: String,
 }
+/// Input from the person, for the page's scripts: where (document
+/// coordinates, CSS px) and what.
+#[derive(Clone, Debug)]
+pub struct Input {
+    pub kind: InputKind,
+    pub x: f64,
+    pub y: f64,
+    /// The window's scroll position, so events report client coordinates.
+    pub scroll_y: f64,
+    pub buttons: u32,
+    /// Bits: shift 1, control 2, alt 4, meta 8.
+    pub modifiers: u8,
+}
+#[derive(Clone, Debug)]
+pub enum InputKind {
+    Move,
+    Down,
+    Up,
+    Wheel {
+        dx: f64,
+        dy: f64,
+    },
+    Key {
+        down: bool,
+        key: String,
+        code: String,
+        text: Option<String>,
+    },
+    /// The window scrolled (to `scroll_y`).
+    Scroll,
+}
 /// What an advance of the page's clock did.
 #[derive(Debug, Clone, Copy)]
 pub struct Advanced {
@@ -234,6 +265,52 @@ impl Realm {
     /// of the same document keeps its styles and texts.
     pub fn last_measured(&self) -> Option<Arc<olo_web::layout::Layout>> {
         self.state.borrow().measured.as_ref().map(|m| m.layout().clone())
+    }
+    /// Deliver input to the page: the events it implies (mouseover/out,
+    /// enter/leave, pointer and mouse events, click, focus, keys, wheel,
+    /// scroll) dispatched to `target` (the element under the pointer, or
+    /// the focused one for keys). Returns whether a default was prevented.
+    pub fn input(&mut self, input: &Input, target: Option<NodeId>) -> bool {
+        let state = self.state.clone();
+        let (kind, down, key, code, text, dx, dy) = match &input.kind {
+            InputKind::Move => ("move", false, "", "", None, 0., 0.),
+            InputKind::Down => ("down", true, "", "", None, 0., 0.),
+            InputKind::Up => ("up", false, "", "", None, 0., 0.),
+            InputKind::Wheel { dx, dy } => ("wheel", false, "", "", None, *dx, *dy),
+            InputKind::Key { down, key, code, text } => ("key", *down, key.as_str(), code.as_str(), text.as_deref(), 0., 0.),
+            InputKind::Scroll => ("scroll", false, "", "", None, 0., 0.),
+        };
+        let json = format!(
+            "{{\"kind\":\"{kind}\",\"x\":{},\"y\":{},\"scrollY\":{},\"buttons\":{},\"modifiers\":{},\"down\":{down},\"key\":{},\"code\":{},\"text\":{},\"dx\":{dx},\"dy\":{dy}}}",
+            input.x,
+            input.y,
+            input.scroll_y,
+            input.buttons,
+            input.modifiers,
+            json_string(key),
+            json_string(code),
+            text.map_or("null".to_owned(), json_string)
+        );
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let global = context.global(tc);
+        let Some(name) = v8::String::new(tc, "__olo_input") else { return false };
+        let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return false };
+        let json = string(tc, &json);
+        let target: v8::Local<v8::Value> = match target.and_then(|n| wrap(tc, &state, n)) {
+            Some(o) => o.into(),
+            None => v8::null(tc).into(),
+        };
+        match f.call(tc, global.into(), &[json, target]) {
+            Some(v) => v.boolean_value(tc),
+            None => {
+                let error = exception_text(tc, "input");
+                state.borrow_mut().report.errors.push(error);
+                false
+            }
+        }
     }
     /// The document as it is now, copied, for rendering while the scripts
     /// keep theirs.
@@ -609,6 +686,24 @@ fn named_global(scope: &mut v8::PinScope, key: v8::Local<v8::Name>, _args: v8::P
         }
         None => v8::Intercepted::kNo,
     }
+}
+/// A JSON string literal.
+fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 /// Attribute names are case-insensitive on HTML elements (stored in lower
 /// case) and case-sensitive elsewhere (SVG's viewBox).

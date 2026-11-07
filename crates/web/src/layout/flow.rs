@@ -496,6 +496,33 @@ impl Layout {
         }
         Some(r)
     }
+    /// The element under a point of the page (document coordinates): the
+    /// smallest box containing it, later boxes winning ties (painted above),
+    /// by its node. Transforms are not followed yet.
+    pub fn hit_test(&self, x: f64, y: f64) -> Option<crate::dom::NodeId> {
+        let tree = &self.cache.tree;
+        let mut best: Option<(f64, usize, BoxId)> = None;
+        // Absolute positions by one walk, parents before children.
+        let mut origins = vec![(0f64, 0f64); self.geometry.len()];
+        for (id, b) in tree.iter() {
+            let g = self.geometry[id.index()];
+            let (ox, oy) = b.parent.map_or((0., 0.), |p| origins[p.index()]);
+            let c = g.content_box();
+            origins[id.index()] = (ox + c.x, oy + c.y);
+            if matches!(b.kind, BoxKind::Viewport) || b.marker {
+                continue;
+            }
+            let r = Rect { x: ox + g.border_box.x, y: oy + g.border_box.y, width: g.border_box.width, height: g.border_box.height };
+            if x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height {
+                continue;
+            }
+            let area = r.width * r.height;
+            if best.is_none_or(|(a, _, _)| area <= a) {
+                best = Some((area, id.index(), id));
+            }
+        }
+        best.and_then(|(_, _, id)| tree.get(id)).map(|b| b.node)
+    }
     pub fn geometry_payload_bytes(&self) -> usize {
         self.geometry.len() * size_of::<Geometry>()
             + self

@@ -1,3 +1,4 @@
+pub use olo_js::{Input, InputKind};
 use olo_theme::Palette;
 use olo_ui::{Proxy, gpui::RenderImage};
 use olo_web::{
@@ -50,6 +51,9 @@ pub struct Request {
 }
 pub enum Message {
     Render(Box<Request>),
+    /// Input from the person, for the live page's scripts (document
+    /// coordinates in CSS px).
+    Input(olo_js::Input),
     Recycle(Vec<Arc<RenderImage>>),
     RecycleTargets(Arc<crate::navigation::FocusTargets>),
 }
@@ -164,22 +168,50 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                 let mut cached: Option<Cached> = None;
                 let mut tiles = HashMap::new();
                 let mut clock = 0u64;
-                let mut pending: Vec<Message> = Vec::new();
+                let mut pending: std::collections::VecDeque<Message> = Default::default();
                 let mut last: Option<Request> = None;
                 loop {
+                    // The static page is on screen and its scripts have not run:
+                    // run them now, unless something else is waiting.
+                    if let Some(r) = &last
+                        && JAVASCRIPT
+                        && cached.as_ref().is_some_and(|c| c.page.scripts > 0 && !c.scripted)
+                        && !r.cancel.load(Ordering::Relaxed)
+                        && pending.is_empty()
+                    {
+                        match rx.try_recv() {
+                            Ok(message) => pending.push_back(message),
+                            Err(mpsc::TryRecvError::Disconnected) => break,
+                            Err(mpsc::TryRecvError::Empty) => {
+                                let result = render(r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Scripted);
+                                if let Err(error) = result
+                                    && !r.cancel.load(Ordering::Relaxed)
+                                {
+                                    eprintln!("Browser scripts: {error}");
+                                    if let Some(c) = cached.as_mut() {
+                                        c.scripted = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // A live page's next timer sets how long to wait for a
                     // message; nothing due, nothing to wait for.
                     let wait = cached.as_ref().and_then(|c| c.live.as_ref()).and_then(|l| l.next_due_ms.map(|due| Duration::from_secs_f64((due / 1000. - l.started.elapsed().as_secs_f64()).max(0.))));
-                    let received = match wait {
-                        Some(d) => match rx.recv_timeout(d) {
-                            Ok(m) => Some(m),
-                            Err(mpsc::RecvTimeoutError::Timeout) => None,
-                            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                        },
-                        None => match rx.recv() {
-                            Ok(m) => Some(m),
-                            Err(_) => break,
-                        },
+                    let received = if let Some(m) = pending.pop_front() {
+                        Some(m)
+                    } else {
+                        match wait {
+                            Some(d) => match rx.recv_timeout(d) {
+                                Ok(m) => Some(m),
+                                Err(mpsc::RecvTimeoutError::Timeout) => None,
+                                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                            },
+                            None => match rx.recv() {
+                                Ok(m) => Some(m),
+                                Err(_) => break,
+                            },
+                        }
                     };
                     let Some(message) = received else {
                         // The live page's clock: run what is due, render if changed.
@@ -196,6 +228,30 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     };
                     let mut r = match message {
                         Message::Render(r) => r,
+                        Message::Input(input) => {
+                            // Pointer and keys reach the live page's scripts; a
+                            // change they make renders at once.
+                            if let Some(c) = cached.as_mut()
+                                && let Some(live) = c.live.as_mut()
+                            {
+                                let target = match input.kind {
+                                    olo_js::InputKind::Key { .. } | olo_js::InputKind::Scroll => None,
+                                    _ => c.page.scene.layout().hit_test(input.x, input.y),
+                                };
+                                live.realm.input(&input, target);
+                                if live.realm.revision() != live.rendered {
+                                    live.next_due_ms = Some(0.);
+                                    live.last_render = Instant::now() - LIVE_RENDER_INTERVAL;
+                                }
+                                if let Some(r) = &last
+                                    && !r.cancel.load(Ordering::Relaxed)
+                                    && let Err(error) = render(r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Live)
+                                {
+                                    eprintln!("Browser live: {error}");
+                                }
+                            }
+                            continue;
+                        }
                         Message::Recycle(images) => {
                             drop(images);
                             continue;
@@ -205,13 +261,16 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             continue;
                         }
                     };
+                    let mut kept = std::collections::VecDeque::new();
                     for message in pending.drain(..).chain(std::iter::from_fn(|| rx.try_recv().ok())) {
                         match message {
                             Message::Render(new) => r = new,
+                            Message::Input(input) => kept.push_back(Message::Input(input)),
                             Message::Recycle(images) => drop(images),
                             Message::RecycleTargets(targets) => drop(targets),
                         }
                     }
+                    pending = kept;
                     drop(std::mem::take(&mut r.recycle));
                     if r.cancel.load(Ordering::Relaxed) {
                         continue;
@@ -224,21 +283,6 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                         eprintln!("Browser: {error}");
                         proxy.send(Reply::Error(r.id, error.to_string()));
                         continue;
-                    }
-                    // The static page is on screen; now the page as its scripts
-                    // leave it, unless something else was asked for meanwhile.
-                    if JAVASCRIPT && cached.as_ref().is_some_and(|c| c.page.scripts > 0 && !c.scripted) && !r.cancel.load(Ordering::Relaxed) {
-                        match rx.try_recv() {
-                            Ok(message) => pending.push(message),
-                            Err(_) => {
-                                let result = render(&r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Scripted);
-                                if let Err(error) = result
-                                    && !r.cancel.load(Ordering::Relaxed)
-                                {
-                                    eprintln!("Browser scripts: {error}");
-                                }
-                            }
-                        }
                     }
                 }
                 Ok(())
