@@ -638,10 +638,8 @@ mod tests {
                 for y in 0..h {
                     let row = &mut frame[(y * w * 4) as usize..((y + 1) * w * 4) as usize];
                     for (x, px) in row.chunks_exact_mut(4).enumerate() {
-                        let x = x as u32;
-                        let bar = ((x + f * 16) / 120) % 2 == 0 && ((y + f * 4) / 270) % 3 != 0;
-                        let g = (((x + f * 8) * 255 / w) % 256) as u8;
-                        px.copy_from_slice(&if bar { [g, 255 - g, (y * 255 / h) as u8, 255] } else { [40, (y * 200 / h) as u8, g, 255] });
+                        let [r, g, b] = pattern(x as u32, y, f, w, h);
+                        px.copy_from_slice(&[b, g, r, 255]);
                     }
                 }
                 let (bits, key) = enc.encode(&frame, (w * 4) as usize, Order::Bgra).unwrap();
@@ -650,5 +648,63 @@ mod tests {
             mp4.finish().unwrap();
             eprintln!("made {}", path.display());
         }
+    }
+
+    /// Frame `f`'s pixel (x, y) of the 4K60 clips (RGB): a gradient
+    /// sliding and bars crossing, every frame different.
+    fn pattern(x: u32, y: u32, f: u32, w: u32, h: u32) -> [u8; 3] {
+        let bar = ((x + f * 16) / 120) % 2 == 0 && ((y + f * 4) / 270) % 3 != 0;
+        let g = (((x + f * 8) * 255 / w) % 256) as u8;
+        if bar { [(y * 255 / h) as u8, 255 - g, g] } else { [g, (y * 200 / h) as u8, 40] }
+    }
+
+    /// The same frames as Y4M (4:2:0, BT.709 in its limited range) into
+    /// `OLO_Y4M` (a FIFO), for an encoder of a format nothing here makes:
+    /// VP9 through libvpx's vpxenc (`OLO_Y4M=FIFO OLO_SECONDS=60 cargo
+    /// test --release -p olo-video make_4k60_y4m -- --ignored`, vpxenc
+    /// reading the FIFO).
+    #[test]
+    #[ignore]
+    fn make_4k60_y4m() {
+        use std::io::Write;
+        let Some(path) = std::env::var_os("OLO_Y4M") else { return };
+        let (w, h) = (3840u32, 2160u32);
+        let seconds: u32 = std::env::var("OLO_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
+        let mut out = std::io::BufWriter::with_capacity(1 << 24, std::fs::OpenOptions::new().write(true).open(path).unwrap());
+        writeln!(out, "YUV4MPEG2 W{w} H{h} F60:1 Ip A1:1 C420jpeg XCOLORRANGE=LIMITED").unwrap();
+        let (cw, ch) = (w / 2, h / 2);
+        let luma = |[r, g, b]: [u8; 3]| 0.2126 * f32::from(r) + 0.7152 * f32::from(g) + 0.0722 * f32::from(b);
+        let mut planes = vec![0u8; (w * h + 2 * cw * ch) as usize];
+        for f in 0..seconds * 60 {
+            let (y_plane, chroma) = planes.split_at_mut((w * h) as usize);
+            let (u_plane, v_plane) = chroma.split_at_mut((cw * ch) as usize);
+            // (Rows in bands over the machine's threads.)
+            let bands = std::thread::available_parallelism().map_or(1, |n| n.get()) as u32;
+            let per = ch.div_ceil(bands);
+            std::thread::scope(|scope| {
+                for ((ys, us), (vs, band)) in y_plane.chunks_mut((w * 2 * per) as usize).zip(u_plane.chunks_mut((cw * per) as usize)).zip(v_plane.chunks_mut((cw * per) as usize).zip(0..)) {
+                    scope.spawn(move || {
+                        for cy in 0..(us.len() as u32 / cw) {
+                            for cx in 0..cw {
+                                let (mut cb, mut cr) = (0.0, 0.0);
+                                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                                    let (x, y) = (cx * 2 + dx, (band * per + cy) * 2 + dy);
+                                    let rgb = pattern(x, y, f, w, h);
+                                    let l = luma(rgb);
+                                    ys[((cy * 2 + dy) * w + x) as usize] = (16.0 + l * 219.0 / 255.0).round() as u8;
+                                    cb += (f32::from(rgb[2]) - l) / 1.8556;
+                                    cr += (f32::from(rgb[0]) - l) / 1.5748;
+                                }
+                                us[(cy * cw + cx) as usize] = (128.0 + cb / 4.0 * 224.0 / 255.0).round() as u8;
+                                vs[(cy * cw + cx) as usize] = (128.0 + cr / 4.0 * 224.0 / 255.0).round() as u8;
+                            }
+                        }
+                    });
+                }
+            });
+            out.write_all(b"FRAME\n").unwrap();
+            out.write_all(&planes).unwrap();
+        }
+        out.flush().unwrap();
     }
 }
