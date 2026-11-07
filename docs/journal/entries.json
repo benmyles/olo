@@ -3646,5 +3646,11 @@
     "title": "Browser query-container lengths, dark 2x",
     "caption": "The same native component after live mode/scale changes. Fifteen configured mode/scale reviews and visual checks; no Chrome pixel, forced-dark website or night-output acceptance.",
     "image": "2026-11-06/142143-browser-query-container-lengths-dark-2x.png"
+  },
+  {
+    "time": "2026-11-06T16:35:21",
+    "title": "Original browser flex page layout",
+    "caption": "The original Rust formatter now resolves row item widths, measured text, cross alignment and stretch, reverse order and auto margins. Checked at five native scales in light, dark and night modes with structured agent content. Independent component geometry matches320 definite lines and260 page cases; this authored demo is not Stripe acceptance or native website darkening. Real Stripe now stops at foreign box layout.",
+    "image": "2026-11-06/163521-original-browser-flex-page-layout.png"
   }
 ]

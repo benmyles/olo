@@ -1,0 +1,1107 @@
+{
+  "scope": "Frozen before/after release scroll and idle samples on an OWN Agent Screen.\nUsage: SCREEN /var/tmp/OWNED OUTPUT.json; eval that screen's environment first.\nExpects browser-before/browser-after. Only authored local text is loaded.\nClient submission marks do not measure compositor presentation or optical latency.\n",
+  "fixture_sha256": "7095431b1596ecfbd9c506d20aa5aaa29f223909d5a2f234296ef1bb1862b5fe",
+  "rows": [
+    {
+      "variant": "before",
+      "before_context": {
+        "loadavg": [
+          5.1162109375,
+          8.1328125,
+          8.7744140625
+        ],
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          3.625,
+          7.5419921875,
+          8.56103515625
+        ],
+        "compiler_pids": [
+          506490
+        ]
+      },
+      "binary_sha256": "ce0f00a6243fdc8d61c57038896773dfb34d958f031e0f300cda3341107b9b4d",
+      "rss_kib": 108892,
+      "hwm_kib": 108892,
+      "idle": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 506054,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506071,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506080,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506081,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506082,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506083,
+            "name": "browser:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506095,
+            "name": "browse:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506114,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506116,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      },
+      "bursts": [
+        {
+          "repeat": 0,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.32,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 2.15,
+          "distance": 711.0,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 0.999,
+            "sd": 0.012,
+            "min": 0.934,
+            "max": 1.001,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 28.7,
+          "report_to_first_moving_client_ms": 9.12,
+          "first_report_at_us": 112943041854,
+          "baseline_y": 0.0,
+          "first_moving_mark": {
+            "at_us": 112943050974,
+            "us": 710,
+            "ui_us": 382,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 328,
+            "scrolls": [
+              [
+                0.0,
+                9.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 0,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.31,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.64,
+          "distance": 329.0,
+          "reached_end": false,
+          "legacy_first_move_ms": 28.7,
+          "report_to_first_moving_client_ms": 9.13,
+          "first_report_at_us": 112944696487,
+          "baseline_y": 720.0,
+          "first_moving_mark": {
+            "at_us": 112944705617,
+            "us": 641,
+            "ui_us": 376,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 265,
+            "scrolls": [
+              [
+                0.0,
+                737.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 0,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.61,
+          "distance": -132.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 8.9,
+          "report_to_first_moving_client_ms": 0.428,
+          "first_report_at_us": 112948639444,
+          "baseline_y": 1066.5,
+          "first_moving_mark": {
+            "at_us": 112948639872,
+            "us": 363,
+            "ui_us": 233,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 130,
+            "scrolls": [
+              [
+                0.0,
+                1058.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.35,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 1.4,
+          "distance": -716.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 0.998,
+            "sd": 0.0,
+            "min": 0.998,
+            "max": 0.998,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 25.2,
+          "report_to_first_moving_client_ms": 5.942,
+          "first_report_at_us": 112950256085,
+          "baseline_y": 925.5,
+          "first_moving_mark": {
+            "at_us": 112950262027,
+            "us": 397,
+            "ui_us": 261,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 136,
+            "scrolls": [
+              [
+                0.0,
+                922.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "flick",
+          "frames": 13,
+          "moving_frames": 11,
+          "frame_ms": 8.35,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.63,
+          "distance": -204.5,
+          "reached_end": true,
+          "legacy_first_move_ms": 21.8,
+          "report_to_first_moving_client_ms": 2.357,
+          "first_report_at_us": 112951912136,
+          "baseline_y": 205.5,
+          "first_moving_mark": {
+            "at_us": 112951914493,
+            "us": 634,
+            "ui_us": 378,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 256,
+            "scrolls": [
+              [
+                0.0,
+                204.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.36,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.55,
+          "distance": 132.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 8.2,
+          "report_to_first_moving_client_ms": 0.261,
+          "first_report_at_us": 112955855895,
+          "baseline_y": 0.0,
+          "first_moving_mark": {
+            "at_us": 112955856156,
+            "us": 403,
+            "ui_us": 256,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 147,
+            "scrolls": [
+              [
+                0.0,
+                8.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "drag",
+          "frames": 97,
+          "moving_frames": 95,
+          "frame_ms": 8.32,
+          "hitches": 1,
+          "still": 0,
+          "slowest_draw_ms": 6.1,
+          "distance": 716.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.011,
+            "sd": 0.107,
+            "min": 0.868,
+            "max": 2.003,
+            "off_25pct": 1,
+            "frames": 91
+          },
+          "legacy_first_move_ms": 25.1,
+          "report_to_first_moving_client_ms": 5.648,
+          "first_report_at_us": 112957472735,
+          "baseline_y": 141.0,
+          "first_moving_mark": {
+            "at_us": 112957478383,
+            "us": 426,
+            "ui_us": 294,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 132,
+            "scrolls": [
+              [
+                0.0,
+                144.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.39,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.59,
+          "distance": 329.0,
+          "reached_end": false,
+          "legacy_first_move_ms": 28.6,
+          "report_to_first_moving_client_ms": 9.159,
+          "first_report_at_us": 112959128487,
+          "baseline_y": 861.0,
+          "first_moving_mark": {
+            "at_us": 112959137646,
+            "us": 593,
+            "ui_us": 390,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 203,
+            "scrolls": [
+              [
+                0.0,
+                878.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.35,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.63,
+          "distance": -132.0,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 8.3,
+          "report_to_first_moving_client_ms": 0.556,
+          "first_report_at_us": 112963071550,
+          "baseline_y": 1207.5,
+          "first_moving_mark": {
+            "at_us": 112963072106,
+            "us": 598,
+            "ui_us": 373,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 225,
+            "scrolls": [
+              [
+                0.0,
+                1199.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        }
+      ],
+      "compositor": {
+        "type": "timings",
+        "timings": {
+          "outputs": [],
+          "beats": 0,
+          "latest_beat_us": 0,
+          "slowest": null,
+          "phases": []
+        }
+      }
+    },
+    {
+      "variant": "after",
+      "before_context": {
+        "loadavg": [
+          3.57470703125,
+          7.46630859375,
+          8.53076171875
+        ],
+        "compiler_pids": [
+          506490
+        ]
+      },
+      "after_context": {
+        "loadavg": [
+          4.90234375,
+          7.42333984375,
+          8.48583984375
+        ],
+        "compiler_pids": [
+          507131,
+          507229,
+          507296
+        ]
+      },
+      "binary_sha256": "96cb13613c9ed7686ca11eafd33fcf667c72539a8ef67954b5709cbbb22ba51e",
+      "rss_kib": 108308,
+      "hwm_kib": 108308,
+      "idle": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 506769,
+            "name": "browser-after",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506773,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506775,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506776,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506777,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506778,
+            "name": "browser:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506782,
+            "name": "browse:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506794,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 506796,
+            "name": "browser-after",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      },
+      "bursts": [
+        {
+          "repeat": 0,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.8,
+          "distance": 713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 0.999,
+            "sd": 0.0,
+            "min": 0.999,
+            "max": 0.999,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 28.5,
+          "report_to_first_moving_client_ms": 9.167,
+          "first_report_at_us": 112968808859,
+          "baseline_y": 0.0,
+          "first_moving_mark": {
+            "at_us": 112968818026,
+            "us": 390,
+            "ui_us": 249,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 141,
+            "scrolls": [
+              [
+                0.0,
+                6.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 0,
+          "kind": "flick",
+          "frames": 18,
+          "moving_frames": 17,
+          "frame_ms": 8.39,
+          "hitches": 1,
+          "still": 0,
+          "slowest_draw_ms": 6.08,
+          "distance": 330.0,
+          "reached_end": false,
+          "legacy_first_move_ms": 28.4,
+          "report_to_first_moving_client_ms": 8.926,
+          "first_report_at_us": 112970463371,
+          "baseline_y": 720.0,
+          "first_moving_mark": {
+            "at_us": 112970472297,
+            "us": 440,
+            "ui_us": 289,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 151,
+            "scrolls": [
+              [
+                0.0,
+                737.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 0,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.35,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.47,
+          "distance": -131.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 9.0,
+          "report_to_first_moving_client_ms": 0.296,
+          "first_report_at_us": 112974405147,
+          "baseline_y": 1067.0,
+          "first_moving_mark": {
+            "at_us": 112974405443,
+            "us": 356,
+            "ui_us": 218,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 138,
+            "scrolls": [
+              [
+                0.0,
+                1058.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.65,
+          "distance": -713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.0,
+            "sd": 0.0,
+            "min": 1.0,
+            "max": 1.0,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 28.7,
+          "report_to_first_moving_client_ms": 9.211,
+          "first_report_at_us": 112976020591,
+          "baseline_y": 927.0,
+          "first_moving_mark": {
+            "at_us": 112976029802,
+            "us": 653,
+            "ui_us": 413,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 240,
+            "scrolls": [
+              [
+                0.0,
+                920.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "flick",
+          "frames": 12,
+          "moving_frames": 10,
+          "frame_ms": 8.3,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.4,
+          "distance": -190.0,
+          "reached_end": true,
+          "legacy_first_move_ms": 28.4,
+          "report_to_first_moving_client_ms": 8.813,
+          "first_report_at_us": 112977677240,
+          "baseline_y": 207.0,
+          "first_moving_mark": {
+            "at_us": 112977686053,
+            "us": 401,
+            "ui_us": 259,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 142,
+            "scrolls": [
+              [
+                0.0,
+                190.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.62,
+          "distance": 132.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 8.9,
+          "report_to_first_moving_client_ms": 0.212,
+          "first_report_at_us": 112981620249,
+          "baseline_y": 0.0,
+          "first_moving_mark": {
+            "at_us": 112981620461,
+            "us": 360,
+            "ui_us": 223,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 137,
+            "scrolls": [
+              [
+                0.0,
+                8.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 1.14,
+          "distance": 713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 0.999,
+            "sd": 0.0,
+            "min": 0.999,
+            "max": 0.999,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 28.6,
+          "report_to_first_moving_client_ms": 9.091,
+          "first_report_at_us": 112983237042,
+          "baseline_y": 141.0,
+          "first_moving_mark": {
+            "at_us": 112983246133,
+            "us": 388,
+            "ui_us": 258,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 130,
+            "scrolls": [
+              [
+                0.0,
+                147.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.4,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.56,
+          "distance": 329.5,
+          "reached_end": false,
+          "legacy_first_move_ms": 28.6,
+          "report_to_first_moving_client_ms": 9.136,
+          "first_report_at_us": 112984893101,
+          "baseline_y": 861.0,
+          "first_moving_mark": {
+            "at_us": 112984902237,
+            "us": 485,
+            "ui_us": 298,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 187,
+            "scrolls": [
+              [
+                0.0,
+                878.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 1.35,
+          "distance": -131.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 9.0,
+          "report_to_first_moving_client_ms": 0.492,
+          "first_report_at_us": 112988836760,
+          "baseline_y": 1208.0,
+          "first_moving_mark": {
+            "at_us": 112988837252,
+            "us": 398,
+            "ui_us": 234,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 164,
+            "scrolls": [
+              [
+                0.0,
+                1199.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        }
+      ],
+      "compositor": {
+        "type": "timings",
+        "timings": {
+          "outputs": [
+            {
+              "output": "HEADLESS-1",
+              "frames": 973,
+              "slowest_us": 1057,
+              "total_us": 182587
+            }
+          ],
+          "beats": 6342,
+          "latest_beat_us": 3353,
+          "slowest": [
+            "clients' requests",
+            949
+          ],
+          "phases": [
+            {
+              "name": "clients' requests",
+              "count": 2212,
+              "total_us": 44304,
+              "slowest_us": 949
+            },
+            {
+              "name": "commit",
+              "count": 551,
+              "total_us": 13157,
+              "slowest_us": 144
+            },
+            {
+              "name": "damage and draw",
+              "count": 973,
+              "total_us": 64791,
+              "slowest_us": 454
+            },
+            {
+              "name": "gather (all)",
+              "count": 973,
+              "total_us": 25688,
+              "slowest_us": 156
+            },
+            {
+              "name": "gather: lower layers",
+              "count": 11143,
+              "total_us": 12397,
+              "slowest_us": 40
+            },
+            {
+              "name": "gather: upper layers",
+              "count": 11143,
+              "total_us": 62072,
+              "slowest_us": 145
+            },
+            {
+              "name": "gather: wallpaper",
+              "count": 11143,
+              "total_us": 27942,
+              "slowest_us": 57
+            },
+            {
+              "name": "gather: windows",
+              "count": 11143,
+              "total_us": 145985,
+              "slowest_us": 132
+            },
+            {
+              "name": "look (whole)",
+              "count": 973,
+              "total_us": 185641,
+              "slowest_us": 1059
+            },
+            {
+              "name": "post_repaint",
+              "count": 973,
+              "total_us": 2436,
+              "slowest_us": 23
+            },
+            {
+              "name": "pre_repaint",
+              "count": 973,
+              "total_us": 57044,
+              "slowest_us": 206
+            },
+            {
+              "name": "repoint",
+              "count": 267,
+              "total_us": 2632,
+              "slowest_us": 70
+            },
+            {
+              "name": "space refresh",
+              "count": 11061,
+              "total_us": 154033,
+              "slowest_us": 296
+            },
+            {
+              "name": "tick",
+              "count": 11061,
+              "total_us": 183690,
+              "slowest_us": 196
+            },
+            {
+              "name": "tick: auto-tiling",
+              "count": 3143,
+              "total_us": 25172,
+              "slowest_us": 60
+            },
+            {
+              "name": "tick: groups",
+              "count": 3143,
+              "total_us": 87257,
+              "slowest_us": 134
+            },
+            {
+              "name": "tick: sides, children, focus",
+              "count": 3143,
+              "total_us": 13991,
+              "slowest_us": 47
+            },
+            {
+              "name": "tick: window infos",
+              "count": 3143,
+              "total_us": 38371,
+              "slowest_us": 90
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

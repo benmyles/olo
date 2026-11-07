@@ -4492,3 +4492,79 @@ Earlier performance/image/fuzz nonpasses remain open. Evidence:
 stripe-flex-shorthand-{checks,parse-cost,ordinary-cost,ordinary-cost-initial,
 perf-diagnostic}.json and original fixtures. **Stripe0/30, corpus0/100 and0/3000;
 goal active.** Next: connect original flex item construction/formatting to pages.
+
+### 2026-11-06 — Integrated initial row flex page formatting
+
+Merged origin/main d1d0438b asd2763007 via gh-backed credentials after pushing
+f31aed72. Read shared menu/state and video/graphics changes and HACKING update;
+main integration workspace passes2m10s. No Browser/web engine changes were
+imported. The merge is pushed. No personal install/reload.
+
+Connected original flex item construction/distribution/layout to page formatting.
+Initial horizontal LTR nowrap/reversed rows handle measured text/auto/content/
+numeric/percentage bases, automatic minima/constraints/decorations, main/cross
+alignment, auto margins, auto-height stretching and definite percentage children.
+Whitespace-only anonymous items disappear even with preserved whitespace. Shared
+Text intrinsic measures are cached once per immutable geometry and survive width
+jobs without mutating previous snapshots. Explicit bases/minima avoid measurement.
+Global work/cancellation and failed publication apply to nested intrinsic/solver
+work. RTL/column/wrap/order/baseline, replaced/negative inner bases and complex/
+nested/contained intrinsic contributions remain explicit unsupported contexts.
+Three initial alignment longhands and border width/style/color expansion are
+registered (98 longhands,19 shorthands); full alignment grammar/border-image
+resets and complete Flexbox remain open.
+
+Original64-case Chrome geometry now also runs through production HTML/CSS/style
+and page layout:320 lines/1,095 border positions and widths match unchanged.
+New52 authored pages ×five verified native DPRs:260 layouts/825 rectangles match,
+including nested rows with definite main sizes, anonymous content and preserved
+indentation. Corrected references exposed2 then18 fractional alignment/percentage
+height differences, now fixed without changing observations or tolerance. Initial
+missing-font glyphs caused Chrome system fallback and disqualified that capture;
+its raw input/reference and140 mismatches remain on disk. Corrected capture and
+later16-case expansion happened after the initial implementation; they are not
+claimed to predate it. A capture quoting error/whitespace guard and initial
+registry ordering failure were corrected, with diagnostics retained. Original
+15 normal-flow groups pass throughout after the registry ordering fix.
+
+Release web/Browser293 pass,2 ignored; all-feature web279 pass,1 ignored. Strict
+all-target clippy3.22s, final workspace15.82s, examples5.97s and format/diff pass.
+Fresh owned PID/executable/hash-verified actual HTTPS Stripe retry now clears
+flex box-tree construction and stops at Unsupported("foreign box layout"). It
+still reaches no useful native Stripe content or actual carousel geometry; the
+formatter is not executed on the failing site. Browser's authored flex component
+passes15 drawn native mode/scale reviews at light/dark/night ×1/1.25/1.5/1.75/2;
+all unresampled upper component crops inspected. Fixed authored website white/
+blue colors are not universal forced-dark acceptance. Screenshot journal added.
+Browser quit, process exit/zero windows verified, owned screens stopped.
+
+Frozen default release worker controls,7 processes/CPU0 with0 compiler waits/
+discards/contexts, load7.06: measure→retained4/128/1024 short items
+10.43→8.93 /294.59→290.88 /2286.70→2272.41µs;4 long items810.53→741.63µs.
+Only one shared Text geometry is measured in each fixture, even at1,024 items;
+occupied intrinsic key/width payload24B excludes hash capacity/controls/headers.
+Job/cache headers496/40B; total geometry2,176/82,304/655,744B for short rows and
+129,664B long. Process RSS median10,100KiB is separate. Worst constructor109.18µs,
+worst single action108.93µs. These are new-layout absolute/retained controls with
+fixed mode order, not a speedup over the parent engine that rejects flex pages.
+
+Frozen ordinary before/after28 accepted,2 compiler discards/71 waits and10
+accepted Cargo contexts, load8.88–13.51: pipeline100/1000
+811.81→813.75 /8832.14→8796.69µs; scene202.98→191.08 /3341.87→3246.78µs,
+identical source/geometry/pixels. Small pipeline~0.24% remains an open finding;
+this scene observation does not clear earlier unrelated/noncausal regressions.
+RSS page9,104→9,116KiB, scene8,136→8,172KiB. Journal generation finished while
+the cost runner was starting/waiting; complete host isolation is not claimed.
+
+Owned native2× before/after9 scroll bursts each: idle0 CPU/0 wakeups, RSS
+108,892→108,308KiB. Each has1 hitch; median cadence8.35→8.34ms, worst client
+draw6.10→6.08ms. Report-to-first-moving-client median5.648→8.926ms, maximum
+9.159→9.211ms: latency still misses8.3ms and remains nonpassing. Concurrent
+compiler context is recorded but not established as the cause; these marks do
+not measure compositor presentation or optical latency. Both measured processes
+quit and exit was awaited; zero windows verified and owned screen stopped.
+No full performance acceptance or website speedup is claimed. Prior performance/
+image/fuzz nonpasses remain open. Evidence:stripe-flex-format-{checks,worker-cost,
+ordinary-cost,native-cost}.json, original page fixtures and screenshot journal.
+**Stripe0/30, corpus0/100 and0/3000; goal active.** Next inspect and implement
+the actual foreign-content blocker, then retry the same Stripe URL.

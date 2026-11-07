@@ -12,6 +12,17 @@ public interactive example. Inspect the actual reference before specifying
 that example's executable steps. Authenticated workflows remain blocked
 without a dedicated eval environment; no personal account is part of this run.
 
+## Latest startup checkpoint
+
+Initial horizontal LTR row formatting now runs through the page pipeline, with
+320 definite reference lines and260 authored page comparisons at five native
+DPRs. Fresh owned PID/executable/hash-verified HTTPS navigation now clears the
+flex box-tree blocker and stops at **flow layout Unsupported("foreign box
+layout")**. Tree construction stops before any Stripe flex item geometry runs.
+There is still no useful native Stripe content and no accepted configuration.
+The foreign-content implementation is next; all historical failures below remain
+evidence, not the current error. No second website is selected.
+
 ## Current evidence
 
 An isolated Olo Chrome profile loaded `https://stripe.com/` with

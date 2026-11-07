@@ -1,0 +1,30 @@
+{
+  "scope": "Original integrated horizontal flex page geometry; not site acceptance",
+  "version": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  },
+  "date": "2026-11-06",
+  "captured_before_implementation": false,
+  "provenance": "Initial invalid font-coverage reference was disqualified. Corrected36 cases captured after initial implementation, before alignment fixes;16 additional cases captured before their native validation.",
+  "pages": 52,
+  "native_dprs": [
+    1,
+    1.25,
+    1.5,
+    1.75,
+    2
+  ],
+  "observations": 260,
+  "rectangles": 825,
+  "hashes": {
+    "cases.json": "b4c64e45f8c7af490868eecf28fde8de5b389758d37a89a3813159b1740eb4cc",
+    "chrome.json": "5b0d543dd05b38f9084ec4994df14d401462f1270726dbafcf2d13447e8c967d",
+    "capture.py": "e6a18a31c4ca6877c8ea42cab070e572ef389d0239f7bb2a53974e64e3f6d7e8",
+    "README.md": "d1ba2edd2437dfa434a9002c4e592dd1dd73708f6bc958edffb9a805f859eab1"
+  },
+  "font_sha256": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb"
+}

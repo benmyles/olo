@@ -11,6 +11,11 @@ use std::{
     hash::{Hash, Hasher},
     sync::{Arc, atomic::AtomicBool},
 };
+#[path = "flex_flow.rs"]
+mod flex_flow;
+pub(super) fn is_flex(style: &crate::css::style::Style) -> bool {
+    matches!(style.value(crate::css::style::Property::Display), crate::css::style::Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flex, .. }))
+}
 /// Project an original-source box boundary through whitespace preparation.
 fn boundary(prepared: &prepare::Prepared, at: u32) -> Result<u32> {
     if at as usize == prepared.source().len() {
@@ -65,7 +70,8 @@ pub struct Progress {
 /// Width-independent text/font geometry for a frozen box/style generation.
 pub struct Cache {
     tree: Arc<Tree>,
-    texts: Box<[Arc<inline::Text>]>,
+    texts: Arc<[Arc<inline::Text>]>,
+    intrinsics: Option<Arc<HashMap<usize, inline::IntrinsicWidths>>>,
     glyph_geometry_bytes: usize,
 }
 impl Cache {
@@ -74,6 +80,16 @@ impl Cache {
     }
     pub fn text(&self, source: u32) -> Option<&Arc<inline::Text>> {
         self.texts.get(source as usize)
+    }
+    /// Distinct retained text geometries measured for flex intrinsic sizing.
+    /// Equal shared Text objects use one entry; width-only reflow keeps it.
+    pub fn intrinsic_measurements(&self) -> usize {
+        self.intrinsics.as_ref().map_or(0, |m| m.len())
+    }
+    /// Occupied key/width-pair payload only. Excludes hash-table spare capacity,
+    /// control bytes, headers, allocator overhead and the shared text/fonts.
+    pub fn intrinsic_payload_bytes(&self) -> usize {
+        self.intrinsic_measurements() * size_of::<(usize, inline::IntrinsicWidths)>()
     }
     /// Only native glyph + text-index payload; excludes the tree, preparation
     /// maps, font/source allocations, headers, capacity and allocator overhead.
@@ -214,7 +230,7 @@ impl<'a> PrepareJob<'a> {
         if !self.progress.finished {
             return Err(Error::Incomplete);
         }
-        Ok(Arc::new(Cache { tree: self.tree, texts: self.texts.into_boxed_slice(), glyph_geometry_bytes: self.glyph_geometry_bytes }))
+        Ok(Arc::new(Cache { tree: self.tree, texts: Arc::from(self.texts), intrinsics: None, glyph_geometry_bytes: self.glyph_geometry_bytes }))
     }
 }
 #[derive(Clone, Copy, Debug, Default)]
@@ -324,6 +340,8 @@ pub struct Job<'a> {
     geometry: Vec<Geometry>,
     texts: Vec<Option<inline::Layout>>,
     stack: Vec<Frame>,
+    flex: Vec<flex_flow::Frame<'a>>,
+    intrinsics: HashMap<usize, inline::IntrinsicWidths>,
     scratch: math::Scratch,
     progress: Progress,
     failed: bool,
@@ -384,6 +402,8 @@ impl<'a> Job<'a> {
                 through: false,
                 queries: QueryBasis::viewport(viewport),
             }],
+            flex: Vec::new(),
+            intrinsics: HashMap::new(),
             scratch: math::Scratch::default(),
             progress: Progress::default(),
             failed: false,
@@ -406,7 +426,11 @@ impl<'a> Job<'a> {
         if style.font().context() != self.scope.context() {
             return Err(Error::Stale);
         }
-        let mut used = Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
+        let mut used = if let Some(used) = self.flex_child_used(id)? {
+            used
+        } else {
+            Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?
+        };
         used.bfc |= flow_root || root;
         let collapse_top = !used.bfc && used.padding.top + used.border.top == 0.;
         let collapse_bottom = !used.bfc && used.height.is_none() && used.min_height == 0. && used.padding.bottom + used.border.bottom == 0.;
@@ -417,6 +441,9 @@ impl<'a> Job<'a> {
             border_width: used.border,
             margin: used.margin,
         };
+        if is_flex(style) {
+            self.flex.push(flex_flow::Frame::new(id, b.first_child, style, used, queries, &mut self.scratch, self.cancel, self.scale)?);
+        }
         let queries = queries.descendants(style, used.width, used.height(0.))?;
         self.stack.push(Frame {
             id,
@@ -434,6 +461,9 @@ impl<'a> Job<'a> {
         Ok(())
     }
     fn place(&mut self, id: BoxId, result: Completed) -> Result<()> {
+        if self.place_flex(id, result.relative_y)? {
+            return Ok(());
+        }
         let f = self.stack.last_mut().ok_or(Error::Invalid)?;
         let y = if f.at_start && f.collapse_top {
             f.top = f.top.union(result.before);
@@ -463,6 +493,7 @@ impl<'a> Job<'a> {
     fn text(&mut self, id: BoxId, source: u32) -> Result<Completed> {
         let parent = self.stack.last().ok_or(Error::Invalid)?;
         let style = self.cache.tree.style(parent.id).ok_or(Error::Invalid)?;
+        let available = self.flex_child_used(id)?.map_or(parent.used.width, |u| u.width);
         let mut text = self.cache.texts[source as usize].clone();
         let mut spacing = Vec::new();
         let mut breaks = Vec::new();
@@ -509,7 +540,7 @@ impl<'a> Job<'a> {
             text = shape_text(self.engine, self.scope, style, text.prepared().clone(), breaks.into_boxed_slice(), self.limits.text, self.cancel)?;
         }
         let prepared = (text.object_count() != 0).then(|| text.prepared().clone());
-        let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text, style, self.scope, parent.used.width, self.scale, self.limits.text, self.cancel, spacing)?;
+        let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text, style, self.scope, available, self.scale, self.limits.text, self.cancel, spacing)?;
         let mut image_geometry = Vec::new();
         let mut objects = Vec::new();
         let mut next = self.cache.tree.get(id).ok_or(Error::Invalid)?.first_child;
@@ -556,7 +587,7 @@ impl<'a> Job<'a> {
         self.progress.lines += l.lines().len();
         self.progress.texts += 1;
         let through = l.lines().is_empty();
-        self.geometry[id.index()] = Geometry { border_box: Rect { x: 0., y: 0., width: parent.used.width, height: l.height() }, ..Default::default() };
+        self.geometry[id.index()] = Geometry { border_box: Rect { x: 0., y: 0., width: available, height: l.height() }, ..Default::default() };
         for placed in l.object_fragments() {
             let index = image_geometry.binary_search_by_key(&placed.at, |(_, _, at)| *at).map_err(|_| Error::Invalid)?;
             let (child, mut g, _) = image_geometry[index];
@@ -589,10 +620,22 @@ impl<'a> Job<'a> {
             if self.progress.work > self.limits.work {
                 return Err(Error::Limit);
             }
-            let f = self.stack.last_mut().ok_or(Error::Invalid)?;
-            if let Some(child) = f.next {
+            let child = if self.flex.last().is_some_and(|f| self.stack.last().is_some_and(|parent| f.id == parent.id)) {
+                match self.flex_tick()? {
+                    flex_flow::Tick::Pending => continue,
+                    flex_flow::Tick::Child(id) => Some(id),
+                    flex_flow::Tick::Done => None,
+                }
+            } else {
+                let f = self.stack.last_mut().ok_or(Error::Invalid)?;
+                let child = f.next;
+                if let Some(child) = child {
+                    f.next = self.cache.tree.boxes[child.index()].next_sibling;
+                }
+                child
+            };
+            if let Some(child) = child {
                 let b = &self.cache.tree.boxes[child.index()];
-                f.next = b.next_sibling;
                 match b.kind {
                     BoxKind::Block { .. } => self.enter(child)?,
                     BoxKind::InlineContent { source } => {
@@ -643,13 +686,23 @@ impl<'a> Job<'a> {
         }
         Ok(self.progress)
     }
-    pub fn finish(self) -> Result<Layout> {
+    pub fn finish(mut self) -> Result<Layout> {
         if self.failed {
             return Err(Error::Failed);
         }
         check(self.cancel)?;
         if !self.progress.finished {
             return Err(Error::Incomplete);
+        }
+        if !self.intrinsics.is_empty() {
+            if let Some(previous) = &self.cache.intrinsics {
+                for (&source, &widths) in previous.iter() {
+                    check(self.cancel)?;
+                    self.intrinsics.entry(source).or_insert(widths);
+                }
+            }
+            self.cache =
+                Arc::new(Cache { tree: self.cache.tree.clone(), texts: self.cache.texts.clone(), intrinsics: Some(Arc::new(self.intrinsics)), glyph_geometry_bytes: self.cache.glyph_geometry_bytes });
         }
         Ok(Layout { cache: self.cache, geometry: self.geometry.into_boxed_slice(), texts: self.texts.into_boxed_slice(), scale: self.scale })
     }

@@ -1,0 +1,1050 @@
+{
+  "scope": "Initial integrated flex worker layout cost versus retained-intrinsic control.\nSeven frozen default-feature release processes, one allowed performance CPU.\nCompare identical production layout geometry/source at the same width. This is\nnot a before-engine speedup: the parent rejects flex pages. Excludes parsing,\nstyle/preparation, paint/raster, network, JS, UI/GPU/presentation. Occupied entry\npayload excludes hash capacity/controls/headers/allocator overhead; RSS is separate.\n",
+  "cpu": 0,
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "binary_sha256": "6f4d4b01194c8dd3f5ede2c9700e5f6c5fbb10b2ca35e587eb80b3160bd23bfb",
+  "script": "#!/usr/bin/python3\n\"\"\"Initial integrated flex worker layout cost versus retained-intrinsic control.\nSeven frozen default-feature release processes, one allowed performance CPU.\nCompare identical production layout geometry/source at the same width. This is\nnot a before-engine speedup: the parent rejects flex pages. Excludes parsing,\nstyle/preparation, paint/raster, network, JS, UI/GPU/presentation. Occupied entry\npayload excludes hash capacity/controls/headers/allocator overhead; RSS is separate.\n\"\"\"\nimport hashlib,json,os,select,statistics,subprocess,time\nfrom pathlib import Path\nroot=Path('/var/tmp/olo-browser-stripe/flex-format');binary=root/'flex-flow-after'\nallowed=sorted(os.sched_getaffinity(0))\ndef freq(cpu):\n p=Path(f'/sys/devices/system/cpu/cpu{cpu}/cpufreq/cpuinfo_max_freq');return int(p.read_text())if p.exists()else 0\ncpu=max(allowed,key=freq);os.sched_setaffinity(0,{cpu})\ndef context():\n procs={}\n for p in Path('/proc').iterdir():\n  if p.name.isdigit():\n   try:\n    name=(p/'comm').read_text().strip()\n    if name in ('cargo','rustc'):procs[p.name]=name\n   except OSError:pass\n return dict(at_ns=time.time_ns(),loadavg=os.getloadavg(),build_processes=procs)\nrows,discarded,waits=[],[],[]\nfor repeat in range(7):\n while True:\n  before=context();compilers=[p for p,n in before['build_processes'].items()if n=='rustc']\n  if compilers:\n   waits.append(before);fds=[]\n   try:\n    for pid in compilers:\n     try:fds.append(os.pidfd_open(int(pid)))\n     except ProcessLookupError:pass\n    if fds:select.select(fds,[],[],20)\n   finally:\n    for fd in fds:os.close(fd)\n   continue\n  rss=root/'flex-flow.rss'\n  data=json.loads(subprocess.check_output(['/usr/bin/time','-f','%M','-o',str(rss),str(binary),'50'],text=True))\n  assert data['features']==[]\n  observation=dict(repeat=repeat,before_context=before,after_context=context(),rss_kib=int(rss.read_text()),**data)\n  if 'rustc'in observation['after_context']['build_processes'].values():discarded.append(observation);continue\n  for count,words in [(4,2),(128,2),(1024,2),(4,500)]:\n   group=[r for r in data['rows']if(r['items'],r['word_pairs_per_item'])==(count,words)];assert len(group)==2\n   for k in ['geometry_sha256','source_sha256','geometry_payload_bytes','intrinsic_entry_payload_bytes']:assert group[0][k]==group[1][k],k\n  rows.append(observation);print(repeat,flush=True);break\nsummary=[]\nfor c in rows[0]['rows']:\n group=[x for r in rows for x in r['rows']if(x['items'],x['word_pairs_per_item'],x['mode'])==(c['items'],c['word_pairs_per_item'],c['mode'])]\n summary.append(dict(items=c['items'],word_pairs_per_item=c['word_pairs_per_item'],mode=c['mode'],**{k:statistics.median(x[k]for x in group)for k in ['layout_us','ctor_us','maximum_single_step_us','work','geometry_payload_bytes','intrinsic_entry_payload_bytes']},worst_single_step_us=max(x['maximum_single_step_us']for x in group)))\nPath('docs/browser/measurements/2026-11-06-stripe-flex-format-worker-cost.json').write_text(json.dumps(dict(scope=__doc__,cpu=cpu,allowed_cpus=allowed,binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),script=Path(__file__).read_text(),observations=rows,discarded=discarded,build_waits=waits,summary=summary),indent=2)+'\\n')\nprint(json.dumps(summary),flush=True)\n",
+  "observations": [
+    {
+      "repeat": 0,
+      "before_context": {
+        "at_ns": 1794011885755521633,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "at_ns": 1794011886133235381,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 9964,
+      "cache_bytes": 40,
+      "features": [],
+      "job_bytes": 496,
+      "rounds": 50,
+      "rows": [
+        {
+          "ctor_us": 0.314,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 10.43088,
+          "maximum_single_step_us": 2.228,
+          "mode": "measure",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 127
+        },
+        {
+          "ctor_us": 0.21400000000000002,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 8.932039999999999,
+          "maximum_single_step_us": 1.1090000000000002,
+          "mode": "retained",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 101
+        },
+        {
+          "ctor_us": 15.814000000000002,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 293.16654,
+          "maximum_single_step_us": 4.575,
+          "mode": "measure",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3631
+        },
+        {
+          "ctor_us": 0.685,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 289.09436,
+          "maximum_single_step_us": 2.1390000000000002,
+          "mode": "retained",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3605
+        },
+        {
+          "ctor_us": 105.32000000000001,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2269.49992,
+          "maximum_single_step_us": 28.122,
+          "mode": "measure",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28761
+        },
+        {
+          "ctor_us": 21.671,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2252.8414199999997,
+          "maximum_single_step_us": 2.429,
+          "mode": "retained",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28735
+        },
+        {
+          "ctor_us": 0.243,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 805.37556,
+          "maximum_single_step_us": 108.93299999999999,
+          "mode": "measure",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 15770
+        },
+        {
+          "ctor_us": 0.232,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 736.8052799999999,
+          "maximum_single_step_us": 95.39500000000001,
+          "mode": "retained",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 10725
+        }
+      ]
+    },
+    {
+      "repeat": 1,
+      "before_context": {
+        "at_ns": 1794011886139945545,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "at_ns": 1794011886535029176,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 10100,
+      "cache_bytes": 40,
+      "features": [],
+      "job_bytes": 496,
+      "rounds": 50,
+      "rows": [
+        {
+          "ctor_us": 0.3,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 10.88608,
+          "maximum_single_step_us": 4.308,
+          "mode": "measure",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 127
+        },
+        {
+          "ctor_us": 0.198,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 8.85478,
+          "maximum_single_step_us": 1.1039999999999999,
+          "mode": "retained",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 101
+        },
+        {
+          "ctor_us": 13.236,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 294.81344,
+          "maximum_single_step_us": 4.574,
+          "mode": "measure",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3631
+        },
+        {
+          "ctor_us": 0.684,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 286.84028,
+          "maximum_single_step_us": 2.089,
+          "mode": "retained",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3605
+        },
+        {
+          "ctor_us": 90.84,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2785.9225,
+          "maximum_single_step_us": 20.197,
+          "mode": "measure",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28761
+        },
+        {
+          "ctor_us": 5.084,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2269.8774399999998,
+          "maximum_single_step_us": 4.189,
+          "mode": "retained",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28735
+        },
+        {
+          "ctor_us": 0.303,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 820.50724,
+          "maximum_single_step_us": 103.044,
+          "mode": "measure",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 15770
+        },
+        {
+          "ctor_us": 0.283,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 745.2323199999998,
+          "maximum_single_step_us": 99.367,
+          "mode": "retained",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 10725
+        }
+      ]
+    },
+    {
+      "repeat": 2,
+      "before_context": {
+        "at_ns": 1794011886541884307,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "at_ns": 1794011886912000373,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 9988,
+      "cache_bytes": 40,
+      "features": [],
+      "job_bytes": 496,
+      "rounds": 50,
+      "rows": [
+        {
+          "ctor_us": 0.33099999999999996,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 11.140139999999999,
+          "maximum_single_step_us": 1.641,
+          "mode": "measure",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 127
+        },
+        {
+          "ctor_us": 0.189,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 8.714820000000001,
+          "maximum_single_step_us": 1.088,
+          "mode": "retained",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 101
+        },
+        {
+          "ctor_us": 12.850000000000001,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 297.61548,
+          "maximum_single_step_us": 4.585999999999999,
+          "mode": "measure",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3631
+        },
+        {
+          "ctor_us": 0.737,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 291.61092,
+          "maximum_single_step_us": 2.004,
+          "mode": "retained",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3605
+        },
+        {
+          "ctor_us": 101.23,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2284.10052,
+          "maximum_single_step_us": 22.686,
+          "mode": "measure",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28761
+        },
+        {
+          "ctor_us": 5.196,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2266.8174,
+          "maximum_single_step_us": 4.2620000000000005,
+          "mode": "retained",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28735
+        },
+        {
+          "ctor_us": 0.25899999999999995,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 810.5287999999999,
+          "maximum_single_step_us": 93.437,
+          "mode": "measure",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 15770
+        },
+        {
+          "ctor_us": 0.114,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 741.14722,
+          "maximum_single_step_us": 92.304,
+          "mode": "retained",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 10725
+        }
+      ]
+    },
+    {
+      "repeat": 3,
+      "before_context": {
+        "at_ns": 1794011886919080060,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "at_ns": 1794011887309177095,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 10216,
+      "cache_bytes": 40,
+      "features": [],
+      "job_bytes": 496,
+      "rounds": 50,
+      "rows": [
+        {
+          "ctor_us": 0.288,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 9.02998,
+          "maximum_single_step_us": 1.53,
+          "mode": "measure",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 127
+        },
+        {
+          "ctor_us": 0.191,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 9.07288,
+          "maximum_single_step_us": 1.0410000000000001,
+          "mode": "retained",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 101
+        },
+        {
+          "ctor_us": 12.311,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 294.59156,
+          "maximum_single_step_us": 3.9090000000000003,
+          "mode": "measure",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3631
+        },
+        {
+          "ctor_us": 0.656,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 297.70261999999997,
+          "maximum_single_step_us": 2.1679999999999997,
+          "mode": "retained",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3605
+        },
+        {
+          "ctor_us": 88.44800000000001,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2342.1251,
+          "maximum_single_step_us": 27.555,
+          "mode": "measure",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28761
+        },
+        {
+          "ctor_us": 10.856,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2319.58104,
+          "maximum_single_step_us": 4.742,
+          "mode": "retained",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28735
+        },
+        {
+          "ctor_us": 0.248,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 814.8032800000001,
+          "maximum_single_step_us": 102.419,
+          "mode": "measure",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 15770
+        },
+        {
+          "ctor_us": 0.253,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 804.41184,
+          "maximum_single_step_us": 92.676,
+          "mode": "retained",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 10725
+        }
+      ]
+    },
+    {
+      "repeat": 4,
+      "before_context": {
+        "at_ns": 1794011887315900079,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "at_ns": 1794011887696549551,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 10116,
+      "cache_bytes": 40,
+      "features": [],
+      "job_bytes": 496,
+      "rounds": 50,
+      "rows": [
+        {
+          "ctor_us": 0.327,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 10.84798,
+          "maximum_single_step_us": 1.7409999999999999,
+          "mode": "measure",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 127
+        },
+        {
+          "ctor_us": 0.21400000000000002,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 8.807139999999999,
+          "maximum_single_step_us": 1.106,
+          "mode": "retained",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 101
+        },
+        {
+          "ctor_us": 12.692,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 295.59462,
+          "maximum_single_step_us": 4.375,
+          "mode": "measure",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3631
+        },
+        {
+          "ctor_us": 0.6589999999999999,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 494.13854,
+          "maximum_single_step_us": 2.01,
+          "mode": "retained",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3605
+        },
+        {
+          "ctor_us": 89.03,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2276.02734,
+          "maximum_single_step_us": 18.915000000000003,
+          "mode": "measure",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28761
+        },
+        {
+          "ctor_us": 4.556,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2272.4107,
+          "maximum_single_step_us": 3.21,
+          "mode": "retained",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28735
+        },
+        {
+          "ctor_us": 0.224,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 815.1993400000001,
+          "maximum_single_step_us": 95.03399999999999,
+          "mode": "measure",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 15770
+        },
+        {
+          "ctor_us": 0.12,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 755.62934,
+          "maximum_single_step_us": 92.007,
+          "mode": "retained",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 10725
+        }
+      ]
+    },
+    {
+      "repeat": 5,
+      "before_context": {
+        "at_ns": 1794011887703337947,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "at_ns": 1794011888075255783,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 10328,
+      "cache_bytes": 40,
+      "features": [],
+      "job_bytes": 496,
+      "rounds": 50,
+      "rows": [
+        {
+          "ctor_us": 0.329,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 10.053040000000001,
+          "maximum_single_step_us": 1.8860000000000001,
+          "mode": "measure",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 127
+        },
+        {
+          "ctor_us": 0.176,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 10.01058,
+          "maximum_single_step_us": 1.091,
+          "mode": "retained",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 101
+        },
+        {
+          "ctor_us": 12.683,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 293.3811,
+          "maximum_single_step_us": 5.755999999999999,
+          "mode": "measure",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3631
+        },
+        {
+          "ctor_us": 0.684,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 290.87998,
+          "maximum_single_step_us": 3.2119999999999997,
+          "mode": "retained",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3605
+        },
+        {
+          "ctor_us": 109.17999999999999,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2325.3282999999997,
+          "maximum_single_step_us": 18.830000000000002,
+          "mode": "measure",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28761
+        },
+        {
+          "ctor_us": 9.602,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2287.6825,
+          "maximum_single_step_us": 4.03,
+          "mode": "retained",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28735
+        },
+        {
+          "ctor_us": 0.213,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 810.18148,
+          "maximum_single_step_us": 101.842,
+          "mode": "measure",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 15770
+        },
+        {
+          "ctor_us": 0.226,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 741.6332600000001,
+          "maximum_single_step_us": 98.848,
+          "mode": "retained",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 10725
+        }
+      ]
+    },
+    {
+      "repeat": 6,
+      "before_context": {
+        "at_ns": 1794011888081543549,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "at_ns": 1794011888464167983,
+        "loadavg": [
+          7.05859375,
+          8.68017578125,
+          8.96142578125
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 10076,
+      "cache_bytes": 40,
+      "features": [],
+      "job_bytes": 496,
+      "rounds": 50,
+      "rows": [
+        {
+          "ctor_us": 0.33599999999999997,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 9.15152,
+          "maximum_single_step_us": 3.624,
+          "mode": "measure",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 127
+        },
+        {
+          "ctor_us": 0.18,
+          "geometry_payload_bytes": 2176,
+          "geometry_sha256": "12323e1f945e8f3cd12fde1ef8d8367fb463a0ab15d5978e44a49755790ac1c0",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 9.4148,
+          "maximum_single_step_us": 1.077,
+          "mode": "retained",
+          "source_sha256": "09b9649d48732e2ff32d807d5c5a73fd1e8daec4bced260b2379c3049b0c8e44",
+          "word_pairs_per_item": 2,
+          "work": 101
+        },
+        {
+          "ctor_us": 12.621,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 289.69442000000004,
+          "maximum_single_step_us": 15.04,
+          "mode": "measure",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3631
+        },
+        {
+          "ctor_us": 0.6759999999999999,
+          "geometry_payload_bytes": 82304,
+          "geometry_sha256": "40401dde6fd9163adb608645efb339042a8effc15fc0492b6dc472da9cd31c6b",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 128,
+          "layout_us": 286.04804,
+          "maximum_single_step_us": 3.52,
+          "mode": "retained",
+          "source_sha256": "3a175993bd88e11346bdbfce4aa6ac7044fc3e2c1547d8127262eae006d01ffb",
+          "word_pairs_per_item": 2,
+          "work": 3605
+        },
+        {
+          "ctor_us": 96.415,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2286.70296,
+          "maximum_single_step_us": 21.136,
+          "mode": "measure",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28761
+        },
+        {
+          "ctor_us": 21.69,
+          "geometry_payload_bytes": 655744,
+          "geometry_sha256": "521c3deefd821bfe3b3f6b28ebfc17ad6208238604128285ede87483ead54502",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 1024,
+          "layout_us": 2562.6016400000003,
+          "maximum_single_step_us": 3.517,
+          "mode": "retained",
+          "source_sha256": "84089e5e30a3c3eb26287cff8faa4ac6e6bffe5124216e2deb9b43a90560a5f6",
+          "word_pairs_per_item": 2,
+          "work": 28735
+        },
+        {
+          "ctor_us": 0.232,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 808.3869,
+          "maximum_single_step_us": 104.088,
+          "mode": "measure",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 15770
+        },
+        {
+          "ctor_us": 0.238,
+          "geometry_payload_bytes": 129664,
+          "geometry_sha256": "769196e47df281a855c592a8fb31abf50c0a8eb576ea99b93bb247a1d68f51a4",
+          "intrinsic_entry_payload_bytes": 24,
+          "items": 4,
+          "layout_us": 735.81174,
+          "maximum_single_step_us": 92.573,
+          "mode": "retained",
+          "source_sha256": "1e7f4a09a78f4a23ebaa845b9a61d09321fca07955fb3988c37fa2bb44710f82",
+          "word_pairs_per_item": 500,
+          "work": 10725
+        }
+      ]
+    }
+  ],
+  "discarded": [],
+  "build_waits": [],
+  "summary": [
+    {
+      "items": 4,
+      "word_pairs_per_item": 2,
+      "mode": "measure",
+      "layout_us": 10.43088,
+      "ctor_us": 0.327,
+      "maximum_single_step_us": 1.8860000000000001,
+      "work": 127,
+      "geometry_payload_bytes": 2176,
+      "intrinsic_entry_payload_bytes": 24,
+      "worst_single_step_us": 4.308
+    },
+    {
+      "items": 4,
+      "word_pairs_per_item": 2,
+      "mode": "retained",
+      "layout_us": 8.932039999999999,
+      "ctor_us": 0.191,
+      "maximum_single_step_us": 1.091,
+      "work": 101,
+      "geometry_payload_bytes": 2176,
+      "intrinsic_entry_payload_bytes": 24,
+      "worst_single_step_us": 1.1090000000000002
+    },
+    {
+      "items": 128,
+      "word_pairs_per_item": 2,
+      "mode": "measure",
+      "layout_us": 294.59156,
+      "ctor_us": 12.692,
+      "maximum_single_step_us": 4.575,
+      "work": 3631,
+      "geometry_payload_bytes": 82304,
+      "intrinsic_entry_payload_bytes": 24,
+      "worst_single_step_us": 15.04
+    },
+    {
+      "items": 128,
+      "word_pairs_per_item": 2,
+      "mode": "retained",
+      "layout_us": 290.87998,
+      "ctor_us": 0.684,
+      "maximum_single_step_us": 2.1390000000000002,
+      "work": 3605,
+      "geometry_payload_bytes": 82304,
+      "intrinsic_entry_payload_bytes": 24,
+      "worst_single_step_us": 3.52
+    },
+    {
+      "items": 1024,
+      "word_pairs_per_item": 2,
+      "mode": "measure",
+      "layout_us": 2286.70296,
+      "ctor_us": 96.415,
+      "maximum_single_step_us": 21.136,
+      "work": 28761,
+      "geometry_payload_bytes": 655744,
+      "intrinsic_entry_payload_bytes": 24,
+      "worst_single_step_us": 28.122
+    },
+    {
+      "items": 1024,
+      "word_pairs_per_item": 2,
+      "mode": "retained",
+      "layout_us": 2272.4107,
+      "ctor_us": 9.602,
+      "maximum_single_step_us": 4.03,
+      "work": 28735,
+      "geometry_payload_bytes": 655744,
+      "intrinsic_entry_payload_bytes": 24,
+      "worst_single_step_us": 4.742
+    },
+    {
+      "items": 4,
+      "word_pairs_per_item": 500,
+      "mode": "measure",
+      "layout_us": 810.5287999999999,
+      "ctor_us": 0.243,
+      "maximum_single_step_us": 102.419,
+      "work": 15770,
+      "geometry_payload_bytes": 129664,
+      "intrinsic_entry_payload_bytes": 24,
+      "worst_single_step_us": 108.93299999999999
+    },
+    {
+      "items": 4,
+      "word_pairs_per_item": 500,
+      "mode": "retained",
+      "layout_us": 741.6332600000001,
+      "ctor_us": 0.232,
+      "maximum_single_step_us": 92.676,
+      "work": 10725,
+      "geometry_payload_bytes": 129664,
+      "intrinsic_entry_payload_bytes": 24,
+      "worst_single_step_us": 99.367
+    }
+  ]
+}

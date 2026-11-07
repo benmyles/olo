@@ -256,7 +256,8 @@ impl<'a> BuildJob<'a> {
         if p.source.bytes().all(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
             && p.inlines.is_empty()
             && p.controls.is_empty()
-            && p.spans.iter().all(|s| self.styles.snapshot(s.style_node).and_then(|s| WhiteSpace::for_style(s).ok()).is_some_and(|w| w.collapse == Collapse::Collapse))
+            && (self.styles.snapshot(self.boxes[p.container.index()].style_node).is_some_and(super::flow::is_flex)
+                || p.spans.iter().all(|s| self.styles.snapshot(s.style_node).and_then(|s| WhiteSpace::for_style(s).ok()).is_some_and(|w| w.collapse == Collapse::Collapse)))
         {
             return Ok(());
         }
@@ -474,10 +475,10 @@ impl<'a> BuildJob<'a> {
                             self.push(node, container, node, false)?;
                             self.stack.last_mut().unwrap().inline = true;
                         }
-                        Display::Box { outer: Outer::Block, inner: inner @ (Inner::Flow | Inner::FlowRoot), list_item: false } => {
+                        Display::Box { outer: Outer::Block, inner: inner @ (Inner::Flow | Inner::FlowRoot | Inner::Flex), list_item: false } => {
                             self.flush()?;
                             let root = self.boxes[container.index()].kind == BoxKind::Viewport;
-                            let id = self.add(node, node, BoxKind::Block { flow_root: inner == Inner::FlowRoot, root }, container)?;
+                            let id = self.add(node, node, BoxKind::Block { flow_root: inner != Inner::Flow, root }, container)?;
                             self.push(node, id, node, true)?;
                         }
                         _ => {

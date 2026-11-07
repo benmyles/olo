@@ -62,6 +62,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 Expansion::WideOnly => Err(Error::Invalid),
                 Expansion::WhiteSpace => white_space(&parts),
                 Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
+                Expansion::Border => border(&parts, properties, limits, cancelled),
                 Expansion::Quad | Expansion::Repeat => {
                     if parts.len() > properties.len() {
                         return Err(Error::Invalid);
@@ -106,6 +107,40 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             }
         }
     }
+}
+// The registered border width/style/color longhands. Border images are not
+// implemented; this must not be advertised as complete border-image reset support.
+fn border(parts: &[Component<'_>], properties: &[Property], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Assignments> {
+    if parts.is_empty() || parts.len() > 3 {
+        return Err(Error::Invalid);
+    }
+    let mut found: [Option<Value>; 3] = [None, None, None];
+    for &c in parts {
+        let mut matched = false;
+        let mut unsupported = None;
+        for (index, p) in [Property::BorderTopWidth, Property::BorderTopStyle, Property::BorderTopColor].into_iter().enumerate() {
+            match component(p.grammar(), c, limits, cancelled) {
+                Ok(value) => {
+                    if found[index].replace(value).is_some() {
+                        return Err(Error::Invalid);
+                    }
+                    matched = true;
+                    break;
+                }
+                Err(Error::Invalid) => {}
+                Err(error @ Error::Unsupported(_)) => {
+                    unsupported.get_or_insert(error);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        if !matched {
+            return Err(unsupported.unwrap_or(Error::Invalid));
+        }
+    }
+    let [width, style, color] = found;
+    let values = [width.unwrap_or(Value::Keyword(Keyword::Medium)), style.unwrap_or(Value::Keyword(Keyword::None)), color.unwrap_or(Value::Color(color::Value::CurrentColor))];
+    Ok(properties.iter().enumerate().map(|(index, &property)| Assignment { property, value: values[index / 4].clone() }).collect())
 }
 // CSS Text 4's interoperable two-longhand shorthand. white-space-trim and
 // discard are not implemented; their syntax must fail, never silently reset.

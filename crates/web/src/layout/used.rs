@@ -60,6 +60,26 @@ pub(super) struct Used {
 impl Used {
     #[allow(clippy::too_many_arguments)] // Explicit parent geometry/context and worker resources.
     pub fn new(s: &Style, width: f64, height: Option<f64>, parent_rtl: bool, queries: QueryBasis, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<Self> {
+        Self::resolve(s, width, height, parent_rtl, queries, scratch, cancel, scale, None)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn flex(s: &Style, width: f64, height: Option<f64>, queries: QueryBasis, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<Self> {
+        let mut used = Self::resolve(s, width, height, false, queries, scratch, cancel, scale, Some(0.))?;
+        used.bfc = true;
+        Ok(used)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn resolve(
+        s: &Style,
+        width: f64,
+        height: Option<f64>,
+        parent_rtl: bool,
+        queries: QueryBasis,
+        scratch: &mut math::Scratch,
+        cancel: Option<&AtomicBool>,
+        scale: f64,
+        flex: Option<f64>,
+    ) -> Result<Self> {
         let mut value = |p, fallback| length(s, p, Some(width), fallback, queries, scratch, cancel, scale);
         let padding = Edges {
             top: value(P::PaddingTop, None)?.ok_or(Error::Invalid)?,
@@ -80,39 +100,46 @@ impl Used {
         let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
         let extra = padding.horizontal() + border.horizontal();
         let content = |v: f64| nonnegative(v - if border_box { extra } else { 0. });
-        let specified = length(s, P::Width, Some(width), None, queries, scratch, cancel, scale)?.map(content);
-        let min = length(s, P::MinWidth, Some(width), Some(0.), queries, scratch, cancel, scale)?.map(content).unwrap();
-        let max = length(s, P::MaxWidth, Some(width), None, queries, scratch, cancel, scale)?.map(content).unwrap_or(f64::MAX);
-        let solve = |w: Option<f64>| {
-            let mut left = ml.unwrap_or(0.);
-            let mut right = mr.unwrap_or(0.);
-            let used = w.unwrap_or_else(|| nonnegative(width - extra - left - right));
-            let remainder = width - extra - used - left - right;
-            if remainder >= 0. && w.is_some() && (ml.is_none() || mr.is_none()) {
-                match (ml.is_none(), mr.is_none()) {
-                    (true, true) => {
-                        let half = ((remainder * scale * 64.).round() / 2.).trunc() / (scale * 64.);
-                        left = if parent_rtl { remainder - half } else { half };
-                        right = remainder - left
+        let (used, left, right) = if let Some(used) = flex {
+            // Flex sizing/alignment, not the block width equation, owns these
+            // values. In particular it must not absorb free space in a margin.
+            (used, ml.unwrap_or(0.), mr.unwrap_or(0.))
+        } else {
+            let specified = length(s, P::Width, Some(width), None, queries, scratch, cancel, scale)?.map(content);
+            let min = length(s, P::MinWidth, Some(width), Some(0.), queries, scratch, cancel, scale)?.map(content).unwrap();
+            let max = length(s, P::MaxWidth, Some(width), None, queries, scratch, cancel, scale)?.map(content).unwrap_or(f64::MAX);
+            let solve = |w: Option<f64>| {
+                let mut left = ml.unwrap_or(0.);
+                let mut right = mr.unwrap_or(0.);
+                let used = w.unwrap_or_else(|| nonnegative(width - extra - left - right));
+                let remainder = width - extra - used - left - right;
+                if remainder >= 0. && w.is_some() && (ml.is_none() || mr.is_none()) {
+                    match (ml.is_none(), mr.is_none()) {
+                        (true, true) => {
+                            let half = ((remainder * scale * 64.).round() / 2.).trunc() / (scale * 64.);
+                            left = if parent_rtl { remainder - half } else { half };
+                            right = remainder - left
+                        }
+                        (true, false) => left = remainder,
+                        (false, true) => right = remainder,
+                        _ => {}
                     }
-                    (true, false) => left = remainder,
-                    (false, true) => right = remainder,
-                    _ => {}
+                } else if parent_rtl {
+                    left += remainder
+                } else {
+                    right += remainder
                 }
-            } else if parent_rtl {
-                left += remainder
-            } else {
-                right += remainder
+                (used, left, right)
+            };
+            let (mut used, mut left, mut right) = solve(specified);
+            if used > max {
+                (used, left, right) = solve(Some(max))
+            }
+            if used < min {
+                (used, left, right) = solve(Some(min))
             }
             (used, left, right)
         };
-        let (mut used, mut left, mut right) = solve(specified);
-        if used > max {
-            (used, left, right) = solve(Some(max))
-        }
-        if used < min {
-            (used, left, right) = solve(Some(min))
-        }
         let extra_y = padding.vertical() + border.vertical();
         let content_y = |v: f64| nonnegative(v - if border_box { extra_y } else { 0. });
         let mut h = length(s, P::Height, height, None, queries, scratch, cancel, scale)?.map(content_y);

@@ -8,17 +8,19 @@ revalidate the merged workspace and push the integration with browser work.
 
 **Active website: [Stripe](eval/stripe/README.md), selected by the user.**
 Finish its real pages/journeys and all30 configurations before choosing another
-site. Component work now follows observed Stripe blockers. Startup is still a
-nonpass: CSS disabled state and environment substitution are implemented;
-horizontal box query-container lengths are implemented and the actual live page
-now reaches layout, where it stops at Unsupported("flex box formatting").
-Initial retained LTR text intrinsic widths now match300 independent Chrome
-min/max pairs. Initial flex shorthand expansion is implemented (365/370 Chrome
-observations match;5 fit-content() reference gaps remain), and its carousel Cqi
-basis is retained for layout. Initial definite single-line distribution matches320
-Chrome lines (1,095 widths). Neither stage is wired into page flex sizing yet.
-Implement the required original flex item construction/layout next. Stripe's own container
-geometry remains unobserved until its formatting tree can be built.
+site. Component work follows observed Stripe blockers. The last verified real
+HTTPS retry now clears flex box-tree construction and stops at
+Unsupported("foreign box layout"). There is still no useful native Stripe
+content, and its own carousel/container geometry has not executed. Initial
+horizontal LTR single-line flex formatting is connected to the page pipeline:
+320 definite lines/1,095 positions and widths plus260 authored page observations
+(825 rectangles) match independent Chrome at five native DPRs. Text/auto/explicit
+bases, initial alignments, margins, cross stretch/percentage descendants and
+selected nested rows work; RTL/column/wrap/order/baseline, replaced and complex
+intrinsic contexts remain open. Shared immutable text intrinsic widths survive
+resize. The earlier shorthand365/370 result still has five fit-content() gaps.
+Next inspect and implement the actual foreign-content blocker, then retry Stripe;
+do not choose another website.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
@@ -238,6 +240,16 @@ geometry remains unobserved until its formatting tree can be built.
   similar process CPU. See 2026-11-06-flow raw measurements; no universal win.
 - [ ] Implement complete block/inline, flex/grid/table layout,
   positioning, fragmentation and incremental layout.
+- [x] Connect initial row flex item construction, scalar distribution, layout,
+  initial alignment and cross-size/stretch to production pages; compare320
+  definite lines and260 independent authored page layouts at five native DPRs.
+  Cache intrinsic measurements per shared immutable Text across width jobs;
+  explicit bases/minima avoid intrinsic measurement. This is partial Flexbox.
+- [ ] Complete flex column/RTL/wrapping/order/baseline and compound alignment,
+  replaced items, negative inner border-box bases, nested/contained intrinsic
+  contributions and mixed/decorated text intrinsic contexts. Three initial
+  alignment longhands and border width/style/color expansion are registered;
+  complete alignment grammar, border-image reset and related painting remain.
 - [x] Initial horizontal inline margins/padding, percentage and auto contexts,
   nested/empty spans, slice ends across wrapping/block interruptions, and
   shaping isolation at actual used inline edges. Transparent vertical padding
@@ -393,6 +405,14 @@ this is a harness correction, not a browser speedup.
   context (no rustc observed at sample boundaries). Scene construction does not
   query the new state index; cause/attribution remains unresolved. Preserve the
   dataset and confirm/profile before performance acceptance.
+- [ ] Profile integrated-flex checkpoint cost nonpasses: ordinary pipeline100
+  811.81→813.75µs (~0.24%);1k8832.14→8796.69µs. Scene202.98→191.08 /
+  3341.87→3246.78µs does not clear earlier regressions.28 accepted samples,
+  2 compiler discards/71 waits/10 accepted Cargo contexts, load8.88–13.51;
+  no causal attribution or full host isolation. Native2× trials each have1
+  hitch; first-motion client median5.648→8.926ms, max9.159→9.211ms still misses
+  8.3ms. Compiler overlap is recorded, not established as the cause. Idle0 CPU/
+  0 wakeups and new worker/cache controls do not accept full performance.
 - [ ] Profile flex-shorthand-checkpoint ordinary-path cost: pipeline100/1000
   813.35→819.94 /8938.51→8652.91µs; scene188.84→209.25 /3316.88→3531.09µs,
   identical geometry/pixels. Small pipeline~0.8% and scene~10.8%/~6.5%

@@ -1,0 +1,531 @@
+[
+  {
+    "id": "auto-text",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "text-grow",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{flex:1}#b{flex:2}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "text-shrink",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{width:70px}#a{}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "text-min-zero",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{width:50px}#a{min-width:0}#b{min-width:0}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "text-nowrap-auto-min",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{width:70px}#a{white-space:nowrap}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "text-auto-width-cap",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{width:70px}#a{width:30px}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "text-explicit-basis-auto-min",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{width:60px}#a{flex-basis:10px}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "basis-percentage",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{flex:0 0 20%;min-width:0}#b{flex:1 1 40%;min-width:0}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "basis-content",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{flex-basis:content;width:150px}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "basis-min-content",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{flex-basis:min-content}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "basis-max-content",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{width:60px}#a{flex:0 0 max-content}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "box-sizing-basis",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{box-sizing:border-box;flex:1 1 40px;min-width:0;padding:3px;border:2px solid red}#b{flex:1 1 40px;min-width:0}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "percent-padding",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{flex:1;min-width:0;padding:2%}#b{flex:1;min-width:0}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "gap",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{column-gap:7.3px}#a{flex:1}#b{flex:2}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "auto-main-both",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{margin-left:auto;margin-right:auto}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "auto-main-multiple",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{margin-left:auto}#b{margin-right:auto}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "auto-main-overflow",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{width:50px}#a{margin-left:auto;white-space:nowrap}#b{margin-left:auto}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "row-reverse",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{flex-direction:row-reverse;column-gap:5px}#a{}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "cross-flex-start",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{height:81px;align-items:flex-start}#a{padding:2px}#b{height:30px;margin-top:3px;margin-bottom:4px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "cross-flex-end",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{height:81px;align-items:flex-end}#a{padding:2px}#b{height:30px;margin-top:3px;margin-bottom:4px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "cross-center",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{height:81px;align-items:center}#a{padding:2px}#b{height:30px;margin-top:3px;margin-bottom:4px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "cross-stretch",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{height:81px;align-items:stretch}#a{padding:2px}#b{height:30px;margin-top:3px;margin-bottom:4px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "main-flex-start",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{column-gap:7px;justify-content:flex-start}#a{}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "main-flex-end",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{column-gap:7px;justify-content:flex-end}#a{}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "main-center",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{column-gap:7px;justify-content:center}#a{}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "main-space-between",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{column-gap:7px;justify-content:space-between}#a{}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "main-space-around",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{column-gap:7px;justify-content:space-around}#a{}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "main-space-evenly",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{column-gap:7px;justify-content:space-evenly}#a{}#b{}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "cross-auto",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{height:81px}#a{margin-top:auto}#b{margin-top:auto;margin-bottom:auto}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "cross-auto-overflow",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{height:10px;align-items:center}#a{margin-top:auto}#b{margin-bottom:auto}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "self-align",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{height:81px;align-items:center}#a{align-self:flex-end}#b{align-self:flex-start}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "auto-height-stretch",
+    "html": "<div id=a>AB CD DE AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{flex:1;min-width:0;padding:2px}#b{width:40px;height:70px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "stretch-descendant-percent",
+    "html": "<div id=a><div id=inner></div></div><div id=b>DE</div>",
+    "css": "#probe{height:81px}#a{flex:1;min-width:0}#b{flex:1;min-width:0}#inner{height:50%;width:50%}",
+    "measure": [
+      "probe",
+      "a",
+      "b",
+      "inner"
+    ]
+  },
+  {
+    "id": "empty-padding",
+    "html": "<div id=a></div><div id=b></div>",
+    "css": "#probe{}#a{flex:1;padding:3px;border:2px solid red}#b{flex:2;padding:5px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "negative-margin",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{}#a{margin-left:-7px;margin-right:-3px}#b{margin-top:-3px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "min-max-cross",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{height:81px}#a{max-height:30px}#b{min-height:90px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "three-space-between",
+    "html": "<div id=a>A</div><div id=b>BC</div><div id=c>DE</div>",
+    "css": "#probe{width:301.3px;column-gap:2.7px;justify-content:space-between}",
+    "measure": [
+      "probe",
+      "a",
+      "b",
+      "c"
+    ]
+  },
+  {
+    "id": "three-space-around",
+    "html": "<div id=a>A</div><div id=b>BC</div><div id=c>DE</div>",
+    "css": "#probe{width:301.3px;column-gap:2.7px;justify-content:space-around}",
+    "measure": [
+      "probe",
+      "a",
+      "b",
+      "c"
+    ]
+  },
+  {
+    "id": "three-space-evenly",
+    "html": "<div id=a>A</div><div id=b>BC</div><div id=c>DE</div>",
+    "css": "#probe{width:301.3px;column-gap:2.7px;justify-content:space-evenly}",
+    "measure": [
+      "probe",
+      "a",
+      "b",
+      "c"
+    ]
+  },
+  {
+    "id": "three-auto-margins",
+    "html": "<div id=a>A</div><div id=b>BC</div><div id=c>DE</div>",
+    "css": "#probe{width:301.3px}#a{margin-left:auto}#b{margin-left:auto}#c{margin-right:auto}",
+    "measure": [
+      "probe",
+      "a",
+      "b",
+      "c"
+    ]
+  },
+  {
+    "id": "reverse-start",
+    "html": "<div id=a>A</div><div id=b>BC</div><div id=c>DE</div>",
+    "css": "#probe{width:301.3px;column-gap:2.7px;flex-direction:row-reverse;justify-content:start}",
+    "measure": [
+      "probe",
+      "a",
+      "b",
+      "c"
+    ]
+  },
+  {
+    "id": "reverse-end",
+    "html": "<div id=a>A</div><div id=b>BC</div><div id=c>DE</div>",
+    "css": "#probe{width:301.3px;column-gap:2.7px;flex-direction:row-reverse;justify-content:end}",
+    "measure": [
+      "probe",
+      "a",
+      "b",
+      "c"
+    ]
+  },
+  {
+    "id": "reverse-center",
+    "html": "<div id=a>A</div><div id=b>BC</div><div id=c>DE</div>",
+    "css": "#probe{width:301.3px;column-gap:2.7px;flex-direction:row-reverse;justify-content:center}",
+    "measure": [
+      "probe",
+      "a",
+      "b",
+      "c"
+    ]
+  },
+  {
+    "id": "overflow-center",
+    "html": "<div id=a>A</div><div id=b>BC</div><div id=c>DE</div>",
+    "css": "#probe{width:33.3px;justify-content:center}",
+    "measure": [
+      "probe",
+      "a",
+      "b",
+      "c"
+    ]
+  },
+  {
+    "id": "relative-flex-item",
+    "html": "<div id=a>AB</div><div id=b>CD</div>",
+    "css": "#probe{height:61px;align-items:center}#a{position:relative;left:3.7px;top:2.3px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "anonymous-item",
+    "html": "AB CD<div id=a>DE</div><div id=b>AB</div>",
+    "css": "#probe{column-gap:5px;justify-content:space-between}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "preserved-indentation",
+    "html": "\n <div id=a>AB</div> \n <div id=b>CD</div>\n",
+    "css": "#probe{white-space:pre;column-gap:5px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "display-contents",
+    "html": "<div id=contents><div id=a>AB</div><div id=b>CD</div></div>",
+    "css": "#contents{display:contents}#probe{column-gap:5px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "nested-definite-flex",
+    "html": "<div id=a><div id=one>AB</div><div id=two>CD</div></div><div id=b>DE</div>",
+    "css": "#a{display:flex;flex:1;min-width:0}#one,#two{flex:1;min-width:0}#b{width:40px}",
+    "measure": [
+      "probe",
+      "a",
+      "b",
+      "one",
+      "two"
+    ]
+  },
+  {
+    "id": "auto-height-clamped",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#probe{max-height:30px}#a{width:40px}#b{height:80px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "empty-flex",
+    "html": "",
+    "css": "#probe{justify-content:space-evenly}",
+    "measure": [
+      "probe"
+    ]
+  },
+  {
+    "id": "cross-percent-indefinite",
+    "html": "<div id=a>AB CD</div><div id=b>DE</div>",
+    "css": "#a{height:50%}#b{height:80px}",
+    "measure": [
+      "probe",
+      "a",
+      "b"
+    ]
+  }
+]

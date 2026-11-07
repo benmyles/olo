@@ -1,0 +1,6245 @@
+{
+  "scope": "Initial integrated horizontal row flex page formatting, shared text intrinsic memoization and partial alignment/border syntax. No Stripe or website acceptance.",
+  "parent": "f31aed72 CSS checkpoint; origin/main d1d0438b merged as d2763007",
+  "main_sync": {
+    "workspace_build": "2m10s",
+    "changes": "Native menu state and video GPU decode/render; no web/Browser engine code imported; changed HACKING and relevant interfaces read",
+    "pushed": true
+  },
+  "checks": {
+    "default-tests-final": {
+      "build": [
+        "Finished `release` profile [optimized + debuginfo] target(s) in 24.39s"
+      ],
+      "passed": 293,
+      "failed": 0,
+      "ignored": 2,
+      "log_sha256": "acfe4898cbf1e486b34d29dcd337bd02104f89b884544336d217f13f3aa6ec05"
+    },
+    "all-features-final": {
+      "build": [
+        "Finished `release` profile [optimized + debuginfo] target(s) in 22.28s"
+      ],
+      "passed": 279,
+      "failed": 0,
+      "ignored": 1,
+      "log_sha256": "1b7840c519c06e7ba117f25a23320c30c29c543a732bc1fc37aaf01984f51c19"
+    },
+    "workspace-final": {
+      "build": [
+        "Finished `release` profile [optimized + debuginfo] target(s) in 15.82s"
+      ],
+      "passed": 0,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "9ba32ce9e551ba4e6c7cda794f5deeead63dc4291b70ff57108cdc1ba2e34824"
+    },
+    "clippy-final": {
+      "build": [
+        "Finished `dev` profile [optimized + debuginfo] target(s) in 3.22s"
+      ],
+      "passed": 0,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "95f750727a6495c41c78e2adc9608b868550a365dce18fad0b4b778067311634"
+    },
+    "examples-final": {
+      "build": [
+        "Finished `release` profile [optimized + debuginfo] target(s) in 5.97s"
+      ],
+      "passed": 0,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "c6a4cb982f8a8ec98fbf06963ca116d133921a196ee5ffd746b74e52a86ad4dd"
+    }
+  },
+  "reference": {
+    "scope": "Original integrated horizontal flex page geometry; not site acceptance",
+    "version": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/157.0.8103.38",
+      "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "jsVersion": "15.7.112.23"
+    },
+    "date": "2026-11-06",
+    "captured_before_implementation": false,
+    "provenance": "Initial invalid font-coverage reference was disqualified. Corrected36 cases captured after initial implementation, before alignment fixes;16 additional cases captured before their native validation.",
+    "pages": 52,
+    "native_dprs": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "observations": 260,
+    "rectangles": 825,
+    "hashes": {
+      "cases.json": "b4c64e45f8c7af490868eecf28fde8de5b389758d37a89a3813159b1740eb4cc",
+      "chrome.json": "5b0d543dd05b38f9084ec4994df14d401462f1270726dbafcf2d13447e8c967d",
+      "capture.py": "e6a18a31c4ca6877c8ea42cab070e572ef389d0239f7bb2a53974e64e3f6d7e8",
+      "README.md": "d1ba2edd2437dfa434a9002c4e592dd1dd73708f6bc958edffb9a805f859eab1"
+    },
+    "font_sha256": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb"
+  },
+  "definite_reference": {
+    "lines": 320,
+    "positions_and_border_widths": 1095,
+    "full_production_pipeline_pass": true,
+    "independent_scalar_reference_unchanged": true
+  },
+  "intermediate_reports": {
+    "native-third.json": {
+      "total": 180,
+      "failed": 140,
+      "disqualified": true,
+      "sha256": "d7a2edb060d821aef23b7d25d277fb6b4a00dfcfed87915380cd6806667b4edb",
+      "failures": [
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 90,
+              "x": 0,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 31.125,
+              "x": 90,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 90.0,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 90.0,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "auto-text",
+          "passed": false,
+          "scale": 1.0
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 40,
+              "width": 40,
+              "x": 0,
+              "y": 0
+            },
+            "b": {
+              "height": 40,
+              "width": 31.125,
+              "x": 40,
+              "y": 0
+            },
+            "probe": {
+              "height": 40,
+              "width": 70,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 40.0,
+              "width": 40.0,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "b": {
+              "height": 40.0,
+              "width": 40.0,
+              "x": 40.0,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 40.0,
+              "width": 70.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "text-shrink",
+          "passed": false,
+          "scale": 1.0
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 40,
+              "width": 37.15625,
+              "x": 0,
+              "y": 0
+            },
+            "b": {
+              "height": 40,
+              "width": 12.84375,
+              "x": 37.15625,
+              "y": 0
+            },
+            "probe": {
+              "height": 40,
+              "width": 50,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 40.0,
+              "width": 34.609375,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "b": {
+              "height": 40.0,
+              "width": 15.390625,
+              "x": 34.609375,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 40.0,
+              "width": 50.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "text-min-zero",
+          "passed": false,
+          "scale": 1.0
+        }
+      ]
+    },
+    "native-valid-font-first.json": {
+      "total": 180,
+      "failed": 2,
+      "disqualified": false,
+      "sha256": "23c73d6138a6cdf539d44428b356f7c17ffad04b9f63a2377b3a907fe1c1395c",
+      "failures": [
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 90,
+              "x": 54.65625,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40,
+              "x": 206.328125,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 90.0,
+              "x": 54.65625,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 206.3125,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "main-space-evenly",
+          "passed": false,
+          "scale": 1.0
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 90.01250457763672,
+              "x": 54.650001525878906,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 206.3249969482422,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 90.0125,
+              "x": 54.65,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 206.3125,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "main-space-evenly",
+          "passed": false,
+          "scale": 1.25
+        }
+      ]
+    },
+    "native-260-first.json": {
+      "total": 260,
+      "failed": 18,
+      "disqualified": false,
+      "sha256": "88ef25b4fde80657d142ba6b6a3fd3a2c7566fca0c5cb5f917c381bef136b6f2",
+      "failures": [
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20,
+              "x": 0,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40,
+              "x": 120.65625,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40,
+              "x": 261.296875,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.296875,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.0,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 120.640625,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 261.296875,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.296875,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "three-space-between",
+          "passed": false,
+          "scale": 1.0
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20,
+              "x": 32.640625,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40,
+              "x": 120.640625,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40,
+              "x": 228.625,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.296875,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.0,
+              "x": 32.640625,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 120.640625,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 228.640625,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.296875,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "three-space-around",
+          "passed": false,
+          "scale": 1.0
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20,
+              "x": 67.09375,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40,
+              "x": 154.203125,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40,
+              "x": 194.203125,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.296875,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.0,
+              "x": 67.09375,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 154.1875,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 194.1875,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.296875,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "three-auto-margins",
+          "passed": false,
+          "scale": 1.0
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20,
+              "x": 183.328125,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40,
+              "x": 140.640625,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40,
+              "x": 97.953125,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.296875,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.0,
+              "x": 183.34375,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 140.65625,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 97.96875,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.296875,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "reverse-center",
+          "passed": false,
+          "scale": 1.0
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 90,
+              "x": 0,
+              "y": 0
+            },
+            "b": {
+              "height": 80,
+              "width": 40,
+              "x": 90,
+              "y": 0
+            },
+            "probe": {
+              "height": 80,
+              "width": 301,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 80.0,
+              "width": 90.0,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "b": {
+              "height": 80.0,
+              "width": 40.0,
+              "x": 90.0,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 80.0,
+              "width": 301.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "cross-percent-indefinite",
+          "passed": false,
+          "scale": 1.0
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20.012500762939453,
+              "x": 0,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 120.6500015258789,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 261.2875061035156,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.3000183105469,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.0125,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 120.63749999999999,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 261.2875,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.3,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "three-space-between",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20.012500762939453,
+              "x": 48.962501525878906,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 120.63750457763672,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 212.3249969482422,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.3000183105469,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.0125,
+              "x": 48.9625,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 120.63749999999999,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 212.3125,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.3,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "three-space-evenly",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20.012500762939453,
+              "x": 67.0875015258789,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 154.1875,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 194.1999969482422,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.3000183105469,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.0125,
+              "x": 67.075,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 154.16250000000002,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 194.175,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.3,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "three-auto-margins",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20.012500762939453,
+              "x": 183.3500061035156,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 140.6374969482422,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 97.9250030517578,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.3000183105469,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.0125,
+              "x": 183.3625,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 140.65000000000003,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 97.93750000000001,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.3,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "reverse-center",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 155.5,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40.01250076293945,
+              "x": 260.9875183105469,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 155.4875,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0125,
+              "x": 260.9875,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "anonymous-item",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 90.01250457763672,
+              "x": 0,
+              "y": 0
+            },
+            "b": {
+              "height": 80,
+              "width": 40.01250076293945,
+              "x": 90.01250457763672,
+              "y": 0
+            },
+            "probe": {
+              "height": 80,
+              "width": 301,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 80.0,
+              "width": 90.0125,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "b": {
+              "height": 80.0,
+              "width": 40.0125,
+              "x": 90.0125,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 80.0,
+              "width": 301.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "cross-percent-indefinite",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20,
+              "x": 67.09375,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40,
+              "x": 154.1979217529297,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40,
+              "x": 194.1979217529297,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.29168701171875,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.0,
+              "x": 67.09375,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 154.1875,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 194.1875,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.2916666666667,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "three-auto-margins",
+          "passed": false,
+          "scale": 1.5
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 90,
+              "x": 0,
+              "y": 0
+            },
+            "b": {
+              "height": 80,
+              "width": 40,
+              "x": 90,
+              "y": 0
+            },
+            "probe": {
+              "height": 80,
+              "width": 301,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 80.0,
+              "width": 90.0,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "b": {
+              "height": 80.0,
+              "width": 40.0,
+              "x": 90.0,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 80.0,
+              "width": 301.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "cross-percent-indefinite",
+          "passed": false,
+          "scale": 1.5
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20.008930206298828,
+              "x": 67.08928680419922,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40.00893020629883,
+              "x": 154.1875,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40.00893020629883,
+              "x": 194.19644165039065,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.2946472167969,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.008928571428573,
+              "x": 67.08035714285714,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.00892857142857,
+              "x": 154.16964285714283,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.00892857142857,
+              "x": 194.17857142857142,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.29464285714283,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "three-auto-margins",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 40.00893020629883,
+              "x": 155.5,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40.00893020629883,
+              "x": 260.9910888671875,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 40.00892857142857,
+              "x": 155.49107142857142,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.00892857142857,
+              "x": 260.99107142857144,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "anonymous-item",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 90.0089340209961,
+              "x": 0,
+              "y": 0
+            },
+            "b": {
+              "height": 80,
+              "width": 40.00893020629883,
+              "x": 90.0089340209961,
+              "y": 0
+            },
+            "probe": {
+              "height": 80,
+              "width": 301,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 80.0,
+              "width": 90.00892857142857,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "b": {
+              "height": 80.0,
+              "width": 40.00892857142857,
+              "x": 90.00892857142857,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 80.0,
+              "width": 301.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "cross-percent-indefinite",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 20,
+              "x": 67.1015625,
+              "y": 0
+            },
+            "b": {
+              "height": 20,
+              "width": 40,
+              "x": 154.1953125,
+              "y": 0
+            },
+            "c": {
+              "height": 20,
+              "width": 40,
+              "x": 194.1953125,
+              "y": 0
+            },
+            "probe": {
+              "height": 20,
+              "width": 301.296875,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 20.0,
+              "width": 20.0,
+              "x": 67.09375,
+              "y": 0.0
+            },
+            "b": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 154.1875,
+              "y": 0.0
+            },
+            "c": {
+              "height": 20.0,
+              "width": 40.0,
+              "x": 194.1875,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 20.0,
+              "width": 301.296875,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "three-auto-margins",
+          "passed": false,
+          "scale": 2.0
+        },
+        {
+          "expected": {
+            "a": {
+              "height": 20,
+              "width": 90,
+              "x": 0,
+              "y": 0
+            },
+            "b": {
+              "height": 80,
+              "width": 40,
+              "x": 90,
+              "y": 0
+            },
+            "probe": {
+              "height": 80,
+              "width": 301,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "got": {
+            "a": {
+              "height": 80.0,
+              "width": 90.0,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "b": {
+              "height": 80.0,
+              "width": 40.0,
+              "x": 90.0,
+              "y": 0.0
+            },
+            "probe": {
+              "height": 80.0,
+              "width": 301.0,
+              "x": 0.0,
+              "y": 0.0
+            }
+          },
+          "id": "cross-percent-indefinite",
+          "passed": false,
+          "scale": 2.0
+        }
+      ]
+    }
+  },
+  "corrected_final_geometry": {
+    "layouts": 260,
+    "rectangles": 825,
+    "matching": 260,
+    "tolerance_css_px": 0.0001,
+    "verified_by": "final default and all-feature release suites; last standalone native-260-second.json is before identity-key memoization/unsupported-context guards, with unchanged geometry algorithms"
+  },
+  "raw_disqualified_capture": {
+    "reason": "Missing characters in original tiny font triggered Chrome system fallback. Removed from engine comparison denominator; corrected reference capture after initial implementation is explicitly documented.",
+    "paths": {
+      "cases-invalid-font-coverage.json": "32517573a90ef70e703d977e934ea7ee9a145ba16993b3fed6321b247afb1f7b",
+      "chrome-invalid-font-coverage.json": "a3eedc1ea739a21309bf7e3aae8ea209d6879a12bf7df4b5f075f8f6ef4cafad",
+      "chrome-180-valid.json": "1db202c1a3f108f82ff4d8d7775ccb30ac52fd9625e3391227b8f636569953e8"
+    }
+  },
+  "historical_failures": [
+    "Initial property-registry insertion was not sorted for binary name lookup; all15 normal flow tests errored during defaults until ordering was corrected.",
+    "Capture JavaScript quoting and later whitespace coverage guard errors were corrected; owned Chrome closed/awaited on failures.",
+    "Corrected180 cases had2 fractional alignment failures;260 expanded cases had18 alignment/percentage-height failures. Reference values and tolerance were not changed to fix them."
+  ],
+  "production_sha256": {
+    "crates/web/src/css/properties/parse.rs": "8729ecb757e48f6caa90941162d676f9df1382acd7ab0ec18a747ed9cda8c60d",
+    "crates/web/src/css/properties/registry.rs": "a3060f71dd6483f8695c92763e29759c915f2d610ae2378b4a70ac98bc078c03",
+    "crates/web/src/layout/flow.rs": "ae85496c9060bb295113a70dfce168c865703d78e58ff73a64c15301609b9e5a",
+    "crates/web/src/layout/tree.rs": "f569ceb1530542c0acf594123cac1aa5237918a484d9070d74d26c2e05e35d17",
+    "crates/web/src/layout/used.rs": "1610168ae8b066989c136c448031d64b96327612bbdba7e3553f3a75337055cb",
+    "crates/web/src/layout/flex_flow.rs": "2dcbb03da9e3607e4ed247b3e80f078eef9e3b6cdb0e0631ba5cbf44f90adacd"
+  },
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+  "live_https": {
+    "pid": 497859,
+    "executable": "/var/tmp/olo-browser-stripe/flex-format/browser-after",
+    "sha256": "96cb13613c9ed7686ca11eafd33fcf667c72539a8ef67954b5709cbbb22ba51e",
+    "window": {
+      "id": 1,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "pid": 497859,
+      "workspace": 0,
+      "minimized": false,
+      "focused": true,
+      "kept": false,
+      "groupable": true,
+      "output": "HEADLESS-1",
+      "frame": {
+        "x": 48,
+        "y": 40,
+        "width": 1010,
+        "height": 731
+      },
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "least": [
+        650,
+        511
+      ],
+      "tab_frame": {
+        "x": 48,
+        "y": 40,
+        "width": 100,
+        "height": 21
+      },
+      "stack": 0,
+      "surface": 32
+    },
+    "tree": [
+      {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "https://stripe.com/",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 577.5,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "flow layout Unsupported(\"foreign box layout\")",
+            "x": 69.0,
+            "y": 733.5,
+            "width": 968.0,
+            "height": 16.5,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  "visual": {
+    "scope": "Original visible integrated flex row component; native15 mode/scale reviews, not Chrome pixels or website acceptance.",
+    "source_sha256": "9ecc2f179b7cbfc5c35f4466ee8678c338e86619b3e803dab85d9c4e1150e0b7",
+    "pid": 497859,
+    "rows": [
+      {
+        "theme": "light",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.64,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.552,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 97.248,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.81625,
+              "y": 272.84,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 328.01624,
+              "y": 296.84,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 558.30414,
+              "y": 293.84,
+              "width": 162.992,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 558.0641,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.016006,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.5051,
+              "y": 427.208,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.94263,
+              "y": 426.84,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.552,
+              "y": 427.208,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 159.17188,
+              "y": 515.208,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.82812,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.5,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 579.83997,
+              "width": 451.584,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "light",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.4,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.84,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.352005,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 97.048004,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.6225,
+              "y": 273.04,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 327.8225,
+              "y": 297.04,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 558.1135,
+              "y": 293.84,
+              "width": 162.99197,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 557.87354,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.015991,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.302,
+              "y": 427.008,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.7395,
+              "y": 426.63998,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.352005,
+              "y": 427.008,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 158.9625,
+              "y": 514.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.6375,
+              "y": 514.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.3,
+              "y": 514.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 578.64,
+              "width": 451.584,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "light",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.30667,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.218666,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 96.914665,
+              "y": 317.84,
+              "width": 171.80798,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.49335,
+              "y": 272.50665,
+              "width": 189.056,
+              "height": 12.319992,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 327.69333,
+              "y": 296.50665,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 557.976,
+              "y": 293.84,
+              "width": 162.992,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 557.73596,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.016006,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.177,
+              "y": 426.208,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.6145,
+              "y": 425.84,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.218666,
+              "y": 426.208,
+              "width": 100.992,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 158.84375,
+              "y": 513.5413,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.5104,
+              "y": 513.5413,
+              "width": 134.19199,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.17706,
+              "y": 513.5413,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 577.83997,
+              "width": 451.584,
+              "height": 15.9999695,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 733.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "light",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.28571,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 167.06857,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 214.33142,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.12343,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 96.81943,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.39215,
+              "y": 273.2686,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 327.59213,
+              "y": 297.2686,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 557.8778,
+              "y": 293.84,
+              "width": 162.99197,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 557.6378,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.015991,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.0788,
+              "y": 426.77942,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.5163,
+              "y": 426.4114,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.12343,
+              "y": 426.77942,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 158.75,
+              "y": 513.6366,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.4107,
+              "y": 513.6366,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.0804,
+              "y": 513.6366,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 577.83997,
+              "width": 451.584,
+              "height": 15.9999695,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 733.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "light",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.64,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.552,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 97.248,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.82407,
+              "y": 272.84,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 328.02405,
+              "y": 296.84,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 558.31195,
+              "y": 293.84,
+              "width": 162.992,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 558.0719,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.016006,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.5051,
+              "y": 427.208,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.95044,
+              "y": 426.84,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.552,
+              "y": 427.208,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 159.17188,
+              "y": 515.208,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.84375,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.5078,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 579.83997,
+              "width": 451.584,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 733.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "dark",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.64,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.552,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 97.248,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.81625,
+              "y": 272.84,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 328.01624,
+              "y": 296.84,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 558.30414,
+              "y": 293.84,
+              "width": 162.992,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 558.0641,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.016006,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.5051,
+              "y": 427.208,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.94263,
+              "y": 426.84,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.552,
+              "y": 427.208,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 159.17188,
+              "y": 515.208,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.82812,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.5,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 579.83997,
+              "width": 451.584,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "dark",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.4,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.84,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.352005,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 97.048004,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.6225,
+              "y": 273.04,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 327.8225,
+              "y": 297.04,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 558.1135,
+              "y": 293.84,
+              "width": 162.99197,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 557.87354,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.015991,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.302,
+              "y": 427.008,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.7395,
+              "y": 426.63998,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.352005,
+              "y": 427.008,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 158.9625,
+              "y": 514.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.6375,
+              "y": 514.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.3,
+              "y": 514.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 578.64,
+              "width": 451.584,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "dark",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.30667,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.218666,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 96.914665,
+              "y": 317.84,
+              "width": 171.80798,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.49335,
+              "y": 272.50665,
+              "width": 189.056,
+              "height": 12.319992,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 327.69333,
+              "y": 296.50665,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 557.976,
+              "y": 293.84,
+              "width": 162.992,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 557.73596,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.016006,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.177,
+              "y": 426.208,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.6145,
+              "y": 425.84,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.218666,
+              "y": 426.208,
+              "width": 100.992,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 158.84375,
+              "y": 513.5413,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.5104,
+              "y": 513.5413,
+              "width": 134.19199,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.17706,
+              "y": 513.5413,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 577.83997,
+              "width": 451.584,
+              "height": 15.9999695,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 733.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "dark",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.28571,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 167.06857,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 214.33142,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.12343,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 96.81943,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.39215,
+              "y": 273.2686,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 327.59213,
+              "y": 297.2686,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 557.8778,
+              "y": 293.84,
+              "width": 162.99197,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 557.6378,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.015991,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.0788,
+              "y": 426.77942,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.5163,
+              "y": 426.4114,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.12343,
+              "y": 426.77942,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 158.75,
+              "y": 513.6366,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.4107,
+              "y": 513.6366,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.0804,
+              "y": 513.6366,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 577.83997,
+              "width": 451.584,
+              "height": 15.9999695,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 733.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "dark",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.64,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.552,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 97.248,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.82407,
+              "y": 272.84,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 328.02405,
+              "y": 296.84,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 558.31195,
+              "y": 293.84,
+              "width": 162.992,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 558.0719,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.016006,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.5051,
+              "y": 427.208,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.95044,
+              "y": 426.84,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.552,
+              "y": 427.208,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 159.17188,
+              "y": 515.208,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.84375,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.5078,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 579.83997,
+              "width": 451.584,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 733.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "night",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.64,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.552,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 97.248,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.81625,
+              "y": 272.84,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 328.01624,
+              "y": 296.84,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 558.30414,
+              "y": 293.84,
+              "width": 162.992,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 558.0641,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.016006,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.5051,
+              "y": 427.208,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.94263,
+              "y": 426.84,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.552,
+              "y": 427.208,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 159.17188,
+              "y": 515.208,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.82812,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.5,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 579.83997,
+              "width": 451.584,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "night",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.4,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.84,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.352005,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 97.048004,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.6225,
+              "y": 273.04,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 327.8225,
+              "y": 297.04,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 558.1135,
+              "y": 293.84,
+              "width": 162.99197,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 557.87354,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.015991,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.302,
+              "y": 427.008,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.7395,
+              "y": 426.63998,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.352005,
+              "y": 427.008,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 158.9625,
+              "y": 514.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.6375,
+              "y": 514.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.3,
+              "y": 514.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 578.64,
+              "width": 451.584,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "night",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.30667,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.218666,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 96.914665,
+              "y": 317.84,
+              "width": 171.80798,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.49335,
+              "y": 272.50665,
+              "width": 189.056,
+              "height": 12.319992,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 327.69333,
+              "y": 296.50665,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 557.976,
+              "y": 293.84,
+              "width": 162.992,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 557.73596,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.016006,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.177,
+              "y": 426.208,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.6145,
+              "y": 425.84,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.218666,
+              "y": 426.208,
+              "width": 100.992,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 158.84375,
+              "y": 513.5413,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.5104,
+              "y": 513.5413,
+              "width": 134.19199,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.17706,
+              "y": 513.5413,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 577.83997,
+              "width": 451.584,
+              "height": 15.9999695,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 733.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "night",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.28571,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 167.06857,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 214.33142,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.12343,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 96.81943,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.39215,
+              "y": 273.2686,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 327.59213,
+              "y": 297.2686,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 557.8778,
+              "y": 293.84,
+              "width": 162.99197,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 557.6378,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.015991,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.0788,
+              "y": 426.77942,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.5163,
+              "y": 426.4114,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.12343,
+              "y": 426.77942,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 158.75,
+              "y": 513.6366,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.4107,
+              "y": 513.6366,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.0804,
+              "y": 513.6366,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 577.83997,
+              "width": 451.584,
+              "height": 15.9999695,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 733.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        }
+      },
+      {
+        "theme": "night",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "tree": {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "file:///var/tmp/olo-browser-stripe/flex-format/visual.html",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/flex-format/visual.html\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 74.464005,
+              "y": 166.64,
+              "width": 273.648,
+              "height": 24.120003,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Measured text, flexible widths and retained layout.",
+              "x": 74.552,
+              "y": 213.76001,
+              "width": 376.816,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "Flexible text wraps inside",
+              "x": 97.552,
+              "y": 293.84,
+              "width": 185.568,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "its resolved item width.",
+              "x": 97.248,
+              "y": 317.84,
+              "width": 171.808,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "This item stretches to the",
+              "x": 326.82407,
+              "y": 272.84,
+              "width": 189.056,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "row height.",
+              "x": 328.02405,
+              "y": 296.84,
+              "width": 82.70401,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Centered on the cross",
+              "x": 558.31195,
+              "y": 293.84,
+              "width": 162.992,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "axis.",
+              "x": 558.0719,
+              "y": 318.208,
+              "width": 31.631989,
+              "height": 12.016006,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": "First in source",
+              "x": 652.5051,
+              "y": 427.208,
+              "width": 102.672,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Middle item",
+              "x": 381.95044,
+              "y": 426.84,
+              "width": 86.672,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": "Last in source",
+              "x": 97.552,
+              "y": 427.208,
+              "width": 100.99199,
+              "height": 11.951996,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 159.17188,
+              "y": 515.208,
+              "width": 134.192,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 389.84375,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Automatic margin",
+              "x": 620.5078,
+              "y": 515.208,
+              "width": 134.19202,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": "Component demonstration only. Stripe remains unaccepted.",
+              "x": 73.976,
+              "y": 579.83997,
+              "width": 451.584,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "Original flex page layout",
+              "x": 69.0,
+              "y": 733.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        }
+      }
+    ],
+    "images": {
+      "light-1.png": "4354060351d1e1a2130de6451d1f757984f84752629579866f1519299ea16b6a",
+      "light-1.25.png": "044c4b2e79c8bc75f8060a81c5bc535645998af5617ccb8543108de3effdd1eb",
+      "light-1.5.png": "bea47472f042e816222bf53093f50aa32078ee662374b905928c6b3de6d9d82a",
+      "light-1.75.png": "f90b70e157e6defd57b324721edb47105774d2edba2b2c867a665348aa8ef761",
+      "light-2.png": "98f06593a0531c16f728b107415329c367a2d1b30d1b5c19a08cf2eb35af8508",
+      "dark-1.png": "ced27ddf1220a7078572fc09b320d5fbc35730563ad76ded3e97a65edde1e7e9",
+      "dark-1.25.png": "3e6139e51844bb213347583b43c96e3a3f733ab0068e7b338d22b41095a7cdf0",
+      "dark-1.5.png": "138f1ab2d3a730dbf7d47b075d44b5c617f67fbdf9fd0c1727d211fadff408b0",
+      "dark-1.75.png": "0855fccbd83e47849ecd886574f9475b7dda896707083f27d1056fcec2a7f972",
+      "dark-2.png": "f8b346c8266e0da5ce23c0bafb7db9f9f1cd7956412b68f3d77b28967799f9ac",
+      "night-1.png": "ced27ddf1220a7078572fc09b320d5fbc35730563ad76ded3e97a65edde1e7e9",
+      "night-1.25.png": "3e6139e51844bb213347583b43c96e3a3f733ab0068e7b338d22b41095a7cdf0",
+      "night-1.5.png": "138f1ab2d3a730dbf7d47b075d44b5c617f67fbdf9fd0c1727d211fadff408b0",
+      "night-1.75.png": "0855fccbd83e47849ecd886574f9475b7dda896707083f27d1056fcec2a7f972",
+      "night-2.png": "f8b346c8266e0da5ce23c0bafb7db9f9f1cd7956412b68f3d77b28967799f9ac",
+      "contact-1.png": "c03136ea72f834ba99090c85df90d6cd2bd574c612c30e781dc1b7e3576c7949",
+      "contact-1.25.png": "11885849b36e44c01cf383e4b5b710442ee6c399b86f62221bb1ead9fdcd028b",
+      "contact-1.5.png": "c6646ae8341f07138c50beb26b72994afd77859862edd9f527ca075d068bede7",
+      "contact-1.75.png": "b478ecc88af9b47c70187b74179bf3f66647e2e3249c8fbd22e23177bf105394",
+      "contact-2.png": "6dd743c2330c2c8691a3b15a5c2f286cb779914cba59e1e8ce625c77e10fe22b"
+    }
+  },
+  "native_cost_summary": [
+    {
+      "variant": "before",
+      "rss_kib": 108892,
+      "idle": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "hitches": 1,
+      "maximum_client_draw_ms": 6.1,
+      "median_report_to_client_move_ms": 5.648,
+      "maximum_report_to_client_move_ms": 9.159
+    },
+    {
+      "variant": "after",
+      "rss_kib": 108308,
+      "idle": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "hitches": 1,
+      "maximum_client_draw_ms": 6.08,
+      "median_report_to_client_move_ms": 8.926,
+      "maximum_report_to_client_move_ms": 9.211
+    }
+  ],
+  "cost_limits": "Worker retained-metric controls are absolute new-layout measurements with fixed mode order, not a parent-engine speedup. Ordinary samples record compiler waits/discards/Cargo contexts. Native scroll samples overlap compiler context; no causal speedup or complete host/presentation isolation is established.",
+  "nonpasses": [
+    "Actual Stripe foreign box construction; no useful native site content or actual carousel geometry.",
+    "Small ordinary pipeline median811.81\u2192813.75us (~0.24%) remains an open performance finding.",
+    "Native samples each have1 hitch; first-motion median5.648\u21928.926ms/max9.159\u21929.211ms. The target8.3ms latency is unmet; compiler overlap is recorded without causal attribution.",
+    "Prior image/ordinary/environment/state/intrinsic/shorthand/fuzz nonpasses remain open.",
+    "Five earlier flex shorthand fit-content() observations remain nonpasses.",
+    "Column/RTL/wrap/order/baseline/complex alignment, replaced/negative inner bases, nested/contained/complex text intrinsic contributions and border-image resets remain incomplete."
+  ],
+  "cleanup": {
+    "owned_reference_chrome_closed_and_exit_awaited": true,
+    "browser_closed_and_exit_awaited": true,
+    "owned_screens_stopped": true,
+    "personal_install_or_reload": false
+  },
+  "acceptance": {
+    "stripe_configurations": 0,
+    "sites": 0,
+    "corpus_configurations": 0,
+    "goal": "active",
+    "next": "Inspect/implement the actual foreign-content blocker; keep Stripe as the only site."
+  }
+}

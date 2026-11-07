@@ -1,0 +1,2919 @@
+{
+  "scope": "Frozen release ordinary text cost around browser worker changes.\n\nROOT OUTPUT.json [BASELINE]; ROOT owns page/scene-before/after in /var/tmp.\nStop own builds and GUI checks first. Seven rotated samples,\none performance CPU. Wait for rustc; record concurrent Cargo/test processes\nseparately (these samples do not establish complete host isolation).\nIndependent component fixtures provide separate semantic evidence.\nNo network, JS, form interaction, GPU, presentation or website speed coverage.\n",
+  "before": "f31aed72 web core, frozen default examples; merged main d1d0438b has no web changes",
+  "cpu": 0,
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "binaries": {
+    "page-before": "5b6557847f10da9712ef8cf1c4d7c8d7f0b7e94e067f4eead0cfbf03e93e849a",
+    "page-after": "fe191ec7d3d39464a2b429e433594d80f07ffb3d65e1436763475917e1f0f189",
+    "scene-before": "a9a9ef3a7ad29cfd978ad869c4ca0ddae371f689d75f1477eb22e8b336428332",
+    "scene-after": "23bea801f1708e499cf6650464ea5c3c4070277bb5d46aa517885b531719d743"
+  },
+  "observations": [
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 0,
+      "rss_kib": 9060,
+      "before_context": {
+        "loadavg": [
+          13.505859375,
+          9.7392578125,
+          9.29345703125
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          13.505859375,
+          9.7392578125,
+          9.29345703125
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 844.4344833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8832.13815,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 0,
+      "rss_kib": 9116,
+      "before_context": {
+        "loadavg": [
+          13.505859375,
+          9.7392578125,
+          9.29345703125
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 816.5246666666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9470.83815,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 1,
+      "rss_kib": 9164,
+      "before_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 838.96435,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9329.91955,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 1,
+      "rss_kib": 9356,
+      "before_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 811.8118833333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8646.824466666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 2,
+      "rss_kib": 9060,
+      "before_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 816.7495833333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8946.909116666668,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 2,
+      "rss_kib": 9120,
+      "before_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {
+          "500286": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 813.7452666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8577.447916666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 3,
+      "rss_kib": 9112,
+      "before_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1021.0993333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8875.105316666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 3,
+      "rss_kib": 9052,
+      "before_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 800.4184166666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8881.981616666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 4,
+      "rss_kib": 9104,
+      "before_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 797.0206000000001,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8487.974933333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 4,
+      "rss_kib": 9088,
+      "before_context": {
+        "loadavg": [
+          12.74462890625,
+          9.6435546875,
+          9.2646484375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 797.0509666666668,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8796.686766666668,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 5,
+      "rss_kib": 9188,
+      "before_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 796.2225666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8509.98905,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 5,
+      "rss_kib": 9288,
+      "before_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 997.2860000000001,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8446.337266666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 6,
+      "rss_kib": 9116,
+      "before_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 801.1697,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8893.539683333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 6,
+      "rss_kib": 9116,
+      "before_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 810.7394666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8623.272633333332,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 0,
+      "rss_kib": 8084,
+      "before_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 221.2845,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3513.4618666666665,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 0,
+      "rss_kib": 8328,
+      "before_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 188.0460833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3191.38895,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 1,
+      "rss_kib": 8156,
+      "before_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 188.54005,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3189.7246999999998,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 1,
+      "rss_kib": 8028,
+      "before_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {
+          "504287": "cargo"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 217.74753333333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3306.6980666666664,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 2,
+      "rss_kib": 8136,
+      "before_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {
+          "504287": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {
+          "504287": "cargo"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 201.39213333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3341.8731166666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 2,
+      "rss_kib": 8204,
+      "before_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {
+          "504287": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {
+          "504287": "cargo"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 201.15246666666664,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3506.0261333333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 3,
+      "rss_kib": 8008,
+      "before_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {
+          "504287": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 191.07928333333336,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3246.7762833333336,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 3,
+      "rss_kib": 8192,
+      "before_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 209.40456666666665,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3449.7780500000003,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 4,
+      "rss_kib": 8216,
+      "before_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 190.60098333333332,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3192.350733333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 4,
+      "rss_kib": 8172,
+      "before_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 195.73231666666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3688.7456,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 5,
+      "rss_kib": 8176,
+      "before_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 184.84484999999998,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3190.4230000000002,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 5,
+      "rss_kib": 8160,
+      "before_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 202.97743333333332,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3203.64405,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 6,
+      "rss_kib": 7976,
+      "before_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 184.49436666666665,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3366.131333333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 6,
+      "rss_kib": 8164,
+      "before_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          8.87841796875,
+          9.09375,
+          9.09765625
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 206.95146666666668,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3832.864966666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    }
+  ],
+  "discarded": [
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 2,
+      "rss_kib": 7992,
+      "before_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {
+          "504287": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          11.8837890625,
+          9.5166015625,
+          9.2255859375
+        ],
+        "build_processes": {
+          "504287": "cargo",
+          "504306": "rustc"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 200.12448333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3477.344433333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 2,
+      "rss_kib": 8024,
+      "before_context": {
+        "loadavg": [
+          10.83740234375,
+          9.45947265625,
+          9.2138671875
+        ],
+        "build_processes": {
+          "504287": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          10.83740234375,
+          9.45947265625,
+          9.2138671875
+        ],
+        "build_processes": {
+          "504287": "cargo",
+          "504796": "rustc"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 209.61929999999998,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3284.6623833333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    }
+  ],
+  "build_waits": [
+    {
+      "loadavg": [
+        4.58154296875,
+        7.1162109375,
+        8.47216796875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500324": "rustc",
+        "500327": "rustc",
+        "500328": "rustc",
+        "500342": "rustc",
+        "500366": "rustc",
+        "500369": "rustc",
+        "500386": "rustc",
+        "500409": "rustc",
+        "500500": "rustc",
+        "500531": "rustc",
+        "500560": "rustc",
+        "500569": "rustc",
+        "500580": "rustc",
+        "500588": "rustc",
+        "500617": "rustc",
+        "500623": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        4.58154296875,
+        7.1162109375,
+        8.47216796875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500324": "rustc",
+        "500327": "rustc",
+        "500328": "rustc",
+        "500342": "rustc",
+        "500366": "rustc",
+        "500369": "rustc",
+        "500386": "rustc",
+        "500409": "rustc",
+        "500500": "rustc",
+        "500531": "rustc",
+        "500560": "rustc",
+        "500569": "rustc",
+        "500580": "rustc",
+        "500588": "rustc",
+        "500617": "rustc",
+        "500623": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        4.58154296875,
+        7.1162109375,
+        8.47216796875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500324": "rustc",
+        "500327": "rustc",
+        "500328": "rustc",
+        "500342": "rustc",
+        "500366": "rustc",
+        "500369": "rustc",
+        "500386": "rustc",
+        "500409": "rustc",
+        "500500": "rustc",
+        "500531": "rustc",
+        "500560": "rustc",
+        "500580": "rustc",
+        "500588": "rustc",
+        "500617": "rustc",
+        "500623": "rustc",
+        "500693": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        4.58154296875,
+        7.1162109375,
+        8.47216796875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500324": "rustc",
+        "500327": "rustc",
+        "500342": "rustc",
+        "500366": "rustc",
+        "500386": "rustc",
+        "500409": "rustc",
+        "500500": "rustc",
+        "500531": "rustc",
+        "500560": "rustc",
+        "500580": "rustc",
+        "500588": "rustc",
+        "500617": "rustc",
+        "500623": "rustc",
+        "500693": "rustc",
+        "500726": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        4.58154296875,
+        7.1162109375,
+        8.47216796875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500324": "rustc",
+        "500327": "rustc",
+        "500342": "rustc",
+        "500366": "rustc",
+        "500386": "rustc",
+        "500500": "rustc",
+        "500531": "rustc",
+        "500560": "rustc",
+        "500580": "rustc",
+        "500588": "rustc",
+        "500617": "rustc",
+        "500623": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        5.65625,
+        7.29736328125,
+        8.5234375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500324": "rustc",
+        "500327": "rustc",
+        "500342": "rustc",
+        "500366": "rustc",
+        "500386": "rustc",
+        "500500": "rustc",
+        "500531": "rustc",
+        "500560": "rustc",
+        "500580": "rustc",
+        "500588": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        5.65625,
+        7.29736328125,
+        8.5234375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500324": "rustc",
+        "500327": "rustc",
+        "500342": "rustc",
+        "500366": "rustc",
+        "500386": "rustc",
+        "500500": "rustc",
+        "500531": "rustc",
+        "500560": "rustc",
+        "500580": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        5.65625,
+        7.29736328125,
+        8.5234375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500327": "rustc",
+        "500342": "rustc",
+        "500366": "rustc",
+        "500386": "rustc",
+        "500500": "rustc",
+        "500531": "rustc",
+        "500560": "rustc",
+        "500580": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501040": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        5.65625,
+        7.29736328125,
+        8.5234375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500327": "rustc",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500500": "rustc",
+        "500531": "rustc",
+        "500560": "rustc",
+        "500580": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501040": "rustc",
+        "501053": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        5.65625,
+        7.29736328125,
+        8.5234375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500327": "rustc",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500500": "rustc",
+        "500531": "rustc",
+        "500580": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501040": "rustc",
+        "501053": "rustc",
+        "501145": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        5.65625,
+        7.29736328125,
+        8.5234375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500327": "rustc",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500531": "rustc",
+        "500580": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501040": "rustc",
+        "501053": "rustc",
+        "501145": "rustc",
+        "501170": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        5.65625,
+        7.29736328125,
+        8.5234375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500327": "rustc",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500531": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501040": "rustc",
+        "501053": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501307": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        5.65625,
+        7.29736328125,
+        8.5234375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500327": "rustc",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500531": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501040": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501307": "rustc",
+        "501319": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        5.65625,
+        7.29736328125,
+        8.5234375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500531": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501040": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501307": "rustc",
+        "501319": "rustc",
+        "501333": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        6.80517578125,
+        7.50830078125,
+        8.58544921875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501040": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501307": "rustc",
+        "501319": "rustc",
+        "501333": "rustc",
+        "501384": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        6.80517578125,
+        7.50830078125,
+        8.58544921875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501040": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501307": "rustc",
+        "501319": "rustc",
+        "501384": "rustc",
+        "501528": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        6.80517578125,
+        7.50830078125,
+        8.58544921875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500617": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501307": "rustc",
+        "501319": "rustc",
+        "501384": "rustc",
+        "501528": "rustc",
+        "501558": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        6.80517578125,
+        7.50830078125,
+        8.58544921875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501307": "rustc",
+        "501319": "rustc",
+        "501384": "rustc",
+        "501528": "rustc",
+        "501558": "rustc",
+        "501573": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        6.80517578125,
+        7.50830078125,
+        8.58544921875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501307": "rustc",
+        "501319": "rustc",
+        "501384": "rustc",
+        "501528": "rustc",
+        "501558": "rustc",
+        "501573": "rustc",
+        "501692": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        6.80517578125,
+        7.50830078125,
+        8.58544921875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501319": "rustc",
+        "501384": "rustc",
+        "501558": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501718": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        7.70166015625,
+        7.6826171875,
+        8.63623046875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501319": "rustc",
+        "501384": "rustc",
+        "501558": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501718": "rustc",
+        "501740": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        7.70166015625,
+        7.6826171875,
+        8.63623046875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500772": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501319": "rustc",
+        "501384": "rustc",
+        "501558": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501718": "rustc",
+        "501740": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        7.70166015625,
+        7.6826171875,
+        8.63623046875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501319": "rustc",
+        "501384": "rustc",
+        "501558": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501740": "rustc",
+        "501807": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        7.70166015625,
+        7.6826171875,
+        8.63623046875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "500989": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501319": "rustc",
+        "501384": "rustc",
+        "501558": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501740": "rustc",
+        "501807": "rustc",
+        "501888": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        7.70166015625,
+        7.6826171875,
+        8.63623046875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500693": "rustc",
+        "500726": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501319": "rustc",
+        "501384": "rustc",
+        "501558": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501740": "rustc",
+        "501807": "rustc",
+        "501888": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        8.4462890625,
+        7.83740234375,
+        8.681640625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500726": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501319": "rustc",
+        "501558": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501740": "rustc",
+        "501807": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        8.4462890625,
+        7.83740234375,
+        8.681640625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500342": "rustc",
+        "500386": "rustc",
+        "500726": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501558": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501740": "rustc",
+        "501807": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        8.4462890625,
+        7.83740234375,
+        8.681640625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500386": "rustc",
+        "500726": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501558": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501740": "rustc",
+        "501807": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502042": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        9.21142578125,
+        8.00634765625,
+        8.73193359375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500386": "rustc",
+        "500726": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501740": "rustc",
+        "501807": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502042": "rustc",
+        "502053": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        9.21142578125,
+        8.00634765625,
+        8.73193359375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500386": "rustc",
+        "500726": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501740": "rustc",
+        "501807": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502053": "rustc",
+        "502209": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        9.75537109375,
+        8.13916015625,
+        8.77099609375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500386": "rustc",
+        "500726": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501740": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502053": "rustc",
+        "502209": "rustc",
+        "502274": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        9.75537109375,
+        8.13916015625,
+        8.77099609375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500386": "rustc",
+        "500726": "rustc",
+        "501001": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502053": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        9.75537109375,
+        8.13916015625,
+        8.77099609375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500386": "rustc",
+        "500726": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502053": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        9.75537109375,
+        8.13916015625,
+        8.77099609375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500386": "rustc",
+        "500726": "rustc",
+        "501145": "rustc",
+        "501170": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502053": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502454": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        10.81640625,
+        8.38623046875,
+        8.84765625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501170": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502053": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502454": "rustc",
+        "502540": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        10.81640625,
+        8.38623046875,
+        8.84765625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501170": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502053": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502454": "rustc",
+        "502540": "rustc",
+        "502567": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        10.81640625,
+        8.38623046875,
+        8.84765625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502053": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502540": "rustc",
+        "502567": "rustc",
+        "502617": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        10.81640625,
+        8.38623046875,
+        8.84765625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502053": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502540": "rustc",
+        "502567": "rustc",
+        "502617": "rustc",
+        "502646": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        10.81640625,
+        8.38623046875,
+        8.84765625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502053": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502672": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        10.81640625,
+        8.38623046875,
+        8.84765625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502672": "rustc",
+        "502703": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.39208984375,
+        8.5458984375,
+        8.89697265625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502672": "rustc",
+        "502703": "rustc",
+        "502740": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.39208984375,
+        8.5458984375,
+        8.89697265625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501573": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502672": "rustc",
+        "502740": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.39208984375,
+        8.5458984375,
+        8.89697265625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502672": "rustc",
+        "502740": "rustc",
+        "502801": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.39208984375,
+        8.5458984375,
+        8.89697265625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502672": "rustc",
+        "502740": "rustc",
+        "502801": "rustc",
+        "502827": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.39208984375,
+        8.5458984375,
+        8.89697265625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502672": "rustc",
+        "502740": "rustc",
+        "502827": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.92138671875,
+        8.703125,
+        8.9462890625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502672": "rustc",
+        "502740": "rustc",
+        "502827": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.92138671875,
+        8.703125,
+        8.9462890625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502209": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502740": "rustc",
+        "502827": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.92138671875,
+        8.703125,
+        8.9462890625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502029": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502740": "rustc",
+        "502827": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.92138671875,
+        8.703125,
+        8.9462890625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502740": "rustc",
+        "502827": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.92138671875,
+        8.703125,
+        8.9462890625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501888": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502740": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.92138671875,
+        8.703125,
+        8.9462890625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501921": "rustc",
+        "501930": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502740": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.92138671875,
+        8.703125,
+        8.9462890625
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501930": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502646": "rustc",
+        "502740": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        12.96875,
+        8.97412109375,
+        9.03271484375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501930": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502740": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        12.96875,
+        8.97412109375,
+        9.03271484375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501930": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502435": "rustc",
+        "502567": "rustc",
+        "502740": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        12.96875,
+        8.97412109375,
+        9.03271484375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501930": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502567": "rustc",
+        "502740": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        12.96875,
+        8.97412109375,
+        9.03271484375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501930": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502740": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        13.5322265625,
+        9.1572265625,
+        9.091796875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "501930": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502740": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        13.5322265625,
+        9.1572265625,
+        9.091796875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502740": "rustc",
+        "502913": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        13.5322265625,
+        9.1572265625,
+        9.091796875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "502274": "rustc",
+        "502403": "rustc",
+        "502740": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        13.5322265625,
+        9.1572265625,
+        9.091796875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "502274": "rustc",
+        "502740": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        13.81005859375,
+        9.28759765625,
+        9.13427734375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "502274": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        14.455078125,
+        9.5751953125,
+        9.2294921875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "501692": "rustc",
+        "502274": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        14.455078125,
+        9.5751953125,
+        9.2294921875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "502274": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        14.455078125,
+        9.5751953125,
+        9.2294921875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "502274": "rustc",
+        "503660": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        14.455078125,
+        9.5751953125,
+        9.2294921875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "500726": "rustc",
+        "503660": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        14.138671875,
+        9.67138671875,
+        9.26513671875
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "503660": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        13.1142578125,
+        9.599609375,
+        9.24609375
+      ],
+      "build_processes": {
+        "500286": "cargo",
+        "503817": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.8837890625,
+        9.5166015625,
+        9.2255859375
+      ],
+      "build_processes": {
+        "504287": "cargo",
+        "504306": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.09228515625,
+        9.3916015625,
+        9.1865234375
+      ],
+      "build_processes": {
+        "504287": "cargo",
+        "504352": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        11.43310546875,
+        9.5517578125,
+        9.2421875
+      ],
+      "build_processes": {
+        "504287": "cargo",
+        "504505": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        10.83740234375,
+        9.45947265625,
+        9.2138671875
+      ],
+      "build_processes": {
+        "504287": "cargo",
+        "504796": "rustc"
+      }
+    }
+  ]
+}

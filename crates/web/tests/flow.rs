@@ -82,6 +82,175 @@ fn rect(doc: &olo_web::dom::Document, l: &layout::Layout, name: &str) -> layout:
     l.bounds(id(doc, l, name)).unwrap()
 }
 #[test]
+fn integrated_flex_pages_match_independent_chrome_at_five_native_scales() {
+    use sha2::{Digest, Sha256};
+    let cases: serde_json::Value = serde_json::from_str(include_str!("flex-flow-fixtures/cases.json")).unwrap();
+    let reference: serde_json::Value = serde_json::from_str(include_str!("flex-flow-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(include_bytes!("flex-flow-fixtures/cases.json"))), reference["cases_sha256"]);
+    let s = scope();
+    let mut e = Engine::default();
+    let mut failures = Vec::new();
+    let mut results = Vec::new();
+    for row in reference["rows"].as_array().unwrap() {
+        let case = cases.as_array().unwrap().iter().find(|c| c["id"] == row["id"]).unwrap();
+        let scale = row["scale"].as_f64().unwrap();
+        let html = format!("<div id=probe>{}</div>", case["html"].as_str().unwrap());
+        let css = format!("#probe{{display:flex;width:301px;flex-direction:row;flex-wrap:nowrap}}{}", case["css"].as_str().unwrap());
+        let (d, t) = tree_scaled(&html, &css, &s, 1, scale);
+        let c = cache(&mut e, &s, t);
+        let mut j = layout::Job::new(&mut e, &s, c, layout::Viewport { width: 800., height: 600., scale }, Default::default(), None).unwrap();
+        while !j.step(1).unwrap().finished {}
+        let l = j.finish().unwrap();
+        let origin = rect(&d, &l, "probe");
+        let mut got = serde_json::Map::new();
+        let mut passed = true;
+        for name in case["measure"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()) {
+            let r = rect(&d, &l, name);
+            let expected = &row["rects"][name];
+            for (key, value) in [("x", r.x - origin.x), ("y", r.y - origin.y), ("width", r.width), ("height", r.height)] {
+                passed &= (value - expected[key].as_f64().unwrap()).abs() < 0.0001;
+            }
+            got.insert(name.into(), serde_json::json!({"x":r.x-origin.x,"y":r.y-origin.y,"width":r.width,"height":r.height}));
+        }
+        let result = serde_json::json!({"id":row["id"],"scale":scale,"got":got,"expected":row["rects"],"passed":passed});
+        if !passed {
+            failures.push(result.clone());
+        }
+        results.push(result);
+        // A fresh width job consumes the published intrinsic cache; slices do
+        // not alter geometry or force a new preparation/font generation.
+        let mut j = layout::Job::new(&mut e, &s, l.cache().clone(), layout::Viewport { width: 800., height: 600., scale }, Default::default(), None).unwrap();
+        while !j.step(17).unwrap().finished {}
+        let again = j.finish().unwrap();
+        for name in case["measure"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()) {
+            assert_eq!(rect(&d, &l, name), rect(&d, &again, name));
+        }
+    }
+    if let Ok(path) = std::env::var("OLO_FLEX_FLOW_REPORT") {
+        std::fs::write(path, serde_json::to_vec_pretty(&results).unwrap()).unwrap();
+    }
+    assert_eq!(results.len(), 260);
+    assert!(failures.is_empty(), "{}", serde_json::to_string_pretty(&failures).unwrap());
+}
+#[test]
+fn definite_flex_reference_runs_through_production_css_and_page_layout() {
+    let cases: serde_json::Value = serde_json::from_str(include_str!("flex-fixtures/cases.json")).unwrap();
+    let reference: serde_json::Value = serde_json::from_str(include_str!("flex-fixtures/chrome.json")).unwrap();
+    let s = scope();
+    let mut e = Engine::default();
+    let mut failures = Vec::new();
+    for row in reference["rows"].as_array().unwrap() {
+        let case = cases.as_array().unwrap().iter().find(|c| c["id"] == row["id"]).unwrap();
+        let scale = row["scale"].as_f64().unwrap();
+        let mut html = String::from("<div id=probe>");
+        let mut css = format!("#probe{{display:flex;align-items:flex-start;width:{}px;height:10px;column-gap:{}px}}", case["available"], case["gap"]);
+        for (index, i) in case["items"].as_array().unwrap().iter().enumerate() {
+            html.push_str(&format!("<div id=a{index}></div>"));
+            let max = i["max"].as_f64().map_or("none".into(), |v| format!("{v}px"));
+            css.push_str(&format!("#a{index}{{height:10px;flex-basis:{}px;flex-grow:{};flex-shrink:{};min-width:{}px;max-width:{max};border-style:solid", i["base"], i["grow"], i["shrink"], i["min"]));
+            for (side, ix) in [("left", 0), ("right", 1)] {
+                for property in ["padding", "margin", "border"] {
+                    css.push_str(&format!(";{property}-{side}{}:{}px", if property == "border" { "-width" } else { "" }, i[property][ix]));
+                }
+            }
+            css.push('}');
+        }
+        html.push_str("</div>");
+        let (d, t) = tree_scaled(&html, &css, &s, 1, scale);
+        let c = cache(&mut e, &s, t);
+        let mut j = layout::Job::new(&mut e, &s, c, layout::Viewport { width: 800., height: 600., scale }, Default::default(), None).unwrap();
+        while !j.step(1).unwrap().finished {}
+        let l = j.finish().unwrap();
+        let origin = rect(&d, &l, "probe");
+        for (index, expected) in row["items"].as_array().unwrap().iter().enumerate() {
+            let r = rect(&d, &l, &format!("a{index}"));
+            if (r.x - origin.x - expected["x"].as_f64().unwrap()).abs() >= 0.0001 || (r.width - expected["border_box"].as_f64().unwrap()).abs() >= 0.0001 {
+                failures.push(serde_json::json!({"id":row["id"],"scale":scale,"index":index,"x":r.x-origin.x,"width":r.width,"expected":expected}));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", serde_json::to_string_pretty(&failures).unwrap());
+}
+#[test]
+fn flex_reflow_keeps_intrinsics_and_rejects_unimplemented_contexts() {
+    let s = scope();
+    let mut e = Engine::default();
+    let (_, t) = tree("<div id=probe><div id=a>AB CD</div><div id=b>DE</div></div>", "#probe{display:flex}#a,#b{flex:1;min-width:0}", &s, 1);
+    let prepared = cache(&mut e, &s, t);
+    // Explicit bases/minima need no intrinsic measurements in this first job.
+    let first = fit(&mut e, &s, prepared.clone(), 400., 1);
+    assert!(Arc::ptr_eq(first.cache(), &prepared));
+    let (_, t) = tree("<div id=probe><div id=a>AB CD</div><div id=b>DE</div></div>", "#probe{display:flex}#a,#b{flex-grow:1}", &s, 1);
+    let prepared = cache(&mut e, &s, t);
+    let first = fit(&mut e, &s, prepared.clone(), 400., 1);
+    assert!(!Arc::ptr_eq(first.cache(), &prepared));
+    assert!(Arc::ptr_eq(first.cache().text(0).unwrap(), prepared.text(0).unwrap()));
+    let mut run = |cache| {
+        let mut j = layout::Job::new(&mut e, &s, cache, layout::Viewport { width: 100., height: 800., scale: 1. }, Default::default(), None).unwrap();
+        while !j.step(1).unwrap().finished {}
+        let work = j.progress().work;
+        (j.finish().unwrap(), work)
+    };
+    let (fresh, fresh_work) = run(prepared);
+    let (reused, reused_work) = run(first.cache().clone());
+    assert!(reused_work < fresh_work);
+    for (id, _) in fresh.cache().tree().iter() {
+        assert_eq!(fresh.bounds(id), reused.bounds(id));
+    }
+    for (input, css, reason) in [
+        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;flex-wrap:wrap}", "wrapping flex formatting"),
+        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;direction:rtl}", "non-LTR-row flex formatting"),
+        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;align-items:baseline}", "flex baseline alignment"),
+        ("<div id=probe><div style='order:1'>AB</div></div>", "#probe{display:flex}", "ordered flex items"),
+        ("<div id=probe><div><div>AB</div></div></div>", "#probe{display:flex}", "nested flex item intrinsic contributions"),
+        ("<div id=probe><div>AB</div></div>", "#probe{display:flex}#probe>div{box-sizing:border-box;flex:1;min-width:0;padding:5px}", "negative border-box flex inner basis"),
+    ] {
+        let (_, t) = tree(input, css, &s, 1);
+        let c = cache(&mut e, &s, t);
+        let mut j = layout::Job::new(&mut e, &s, c, layout::Viewport { width: 400., height: 800., scale: 1. }, Default::default(), None).unwrap();
+        loop {
+            match j.step(1) {
+                Ok(p) => assert!(!p.finished, "unexpected support: {reason}"),
+                Err(error) => {
+                    assert!(matches!(error,layout::Error::Unsupported(r) if r==reason), "{error:?}");
+                    break;
+                }
+            }
+        }
+        assert!(matches!(j.finish(), Err(layout::Error::Failed)));
+    }
+}
+
+#[test]
+fn flex_intrinsic_work_obeys_global_quota_and_cancellation() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let s = scope();
+    let mut e = Engine::default();
+    let (_, t) = tree(&format!("<div id=probe><div>{}</div></div>", "AB CD ".repeat(1000)), "#probe{display:flex}", &s, 1);
+    let c = cache(&mut e, &s, t);
+    let viewport = layout::Viewport { width: 400., height: 800., scale: 1. };
+    let mut j = layout::Job::new(&mut e, &s, c.clone(), viewport, layout::Limits { work: 80, ..Default::default() }, None).unwrap();
+    loop {
+        match j.step(1) {
+            Ok(p) => assert!(!p.finished),
+            Err(error) => {
+                assert!(matches!(error, layout::Error::Limit));
+                break;
+            }
+        }
+    }
+    assert!(matches!(j.step(1), Err(layout::Error::Failed)));
+    assert!(matches!(j.finish(), Err(layout::Error::Failed)));
+    let cancel = AtomicBool::new(false);
+    let mut j = layout::Job::new(&mut e, &s, c, viewport, Default::default(), Some(&cancel)).unwrap();
+    while j.progress().work < 80 {
+        assert!(!j.step(1).unwrap().finished);
+    }
+    cancel.store(true, Ordering::Relaxed);
+    assert!(matches!(j.step(1), Err(layout::Error::Cancelled)));
+    assert!(matches!(j.finish(), Err(layout::Error::Failed)));
+}
+#[test]
 fn block_width_padding_border_auto_margins_and_percentages() {
     let s = scope();
     let mut e = Engine::default();

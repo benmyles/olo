@@ -1622,7 +1622,7 @@ context, before bidi/shaping. Typed inherited `white-space-collapse` and
 `text-wrap-mode` longhands support the two-longhand `white-space` shorthand,
 legacy aliases, arbitrary ordering, defaults, CSS-wide resets and pending
 substitution. Discard and white-space-trim remain unsupported. The registry has
-95 longhands and 18 shorthands; this does not imply complete used-value/layout support.
+98 longhands and 19 shorthands; this does not imply complete used-value/layout support.
 
 `WhiteSpace::for_style` binds the prepared text settings to frozen computed
 styles. Hosts supply one Arc source and an exact partition of nonempty UTF-8
@@ -1915,7 +1915,7 @@ including constructors/finish is worker-only. Immutable Tree/Cache/Layout are
 Send + Sync; failures poison publication. Allocation is not fallible, quotas
 are not a sandbox, and there is no whole-process memory guarantee.
 
-The stage explicitly rejects flex/grid/table/ruby/list formatting, replaced
+The initial normal-flow stage explicitly rejects grid/table/ruby/list formatting, replaced
 objects/controls/br/wbr, floating/absolute/fixed/clearance and vertical layout,
 scrollbar-dependent overflow, intrinsic/fit-content sizes, nonzero inline
 edges/borders and positioned/vertically aligned inline boxes. Mixed inline
@@ -1941,8 +1941,8 @@ References: [normal block widths](https://www.w3.org/TR/CSS22/visudet.html#block
 
 `layout::flex::Job` is now a separate original worker stage for definite
 single-line content-size distribution. It consumes used nonnegative content
-bases/min/max, non-content extents and grow/shrink factors; it does not yet
-construct or lay out flex boxes. It reconstructs checked device-grid quanta,
+bases/min/max, non-content extents and grow/shrink factors; a separate integrated
+page formatter now constructs and lays out the initial supported flex boxes. It reconstructs checked device-grid quanta,
 normalizes factors to float32, rebuilds ordered cumulative weights after each
 constraint freeze, and distributes from the end with rounded remaining-space
 updates. Partial factors preserve leftover alignment space; min/max violations
@@ -1956,7 +1956,8 @@ item plus a remaining-space scalar. Payload accounting excludes capacity,
 headers and allocator overhead. Negative inner bases (possible with border-box
 basis/decorations), intrinsic/auto bases, percentage resolution, line breaking,
 order/alignment, item/cross-size construction and complete flex formatting
-remain outside this stage. The normal page formatter still rejects flex.
+remain outside this scalar stage. The page formatter now supplies initial row
+item sizes, intrinsic measures and alignment; complete Flexbox remains open.
 
 Original independent `tests/flex-fixtures`:64 numeric content-box cases ×5
 verified native DPRs =320 lines /1,095 content widths, all within0.0001 CSS px.
@@ -1964,10 +1965,61 @@ Unequal/partial/zero factors, weighted shrink, coupled/conflicting min/max,
 negative margins, decorations and fractional lengths/gaps are covered. Chrome
 geometry was captured before writing the solver; its computed widths are not
 native inputs. The tests prepare ordinary used numeric lengths from authored
-numbers; they do not validate the CSS/style pipeline or website pixels.
+numbers; the scalar test alone does not validate CSS/style or website pixels. An
+additional test now runs these same320 lines through production HTML/CSS/style
+and page formatting, comparing all1,095 border widths and positions.
 `examples/flex_bench` separately measures new worker preparation/measure/drop,
 constructor/128-visit latency and payload with deterministic size/remaining
-hashes. There is no existing page-layout counterpart until it is connected.
+hashes. This remains distinct from the integrated page formatter measurement.
+
+### Initial integrated flex page formatting
+
+`layout/flow` now owns a cold flex-frame stack for horizontal LTR nowrap rows,
+including row-reverse. The box builder preserves blockified element items and
+anonymous text items (whitespace-only direct text does not create an item, even
+with preserved whitespace). Item construction resolves numeric/percentage or
+content/auto bases, box decorations and constraints and automatic text minima.
+It uses the original scalar distribution stage, then normal-flow child layout,
+initial main/cross alignment and auto margins. An auto-height line is measured
+before stretching eligible children; stretched child heights are definite for
+percentage descendants. An unresolved percentage height is not a computed auto
+height and does not qualify for stretch. Alignment retains/distributes layout
+quanta rather than independently dropping each fractional remainder.
+
+The three initial single-keyword alignment longhands are registered with normal/
+auto defaults and `all` reset membership. Complex/baseline/compound grammar is
+not complete. The initial border shorthand expands12 registered width/style/
+color longhands with omitted defaults and shared pending substitution; complete
+border-image resets remain unimplemented. These syntax additions are not claims
+that every border/alignment value has complete painting or layout.
+
+Text intrinsic measurement runs only when needed, using retained original
+shaping. The cache keys immutable shared Text identity, so repeated equal text
+is measured once and width-only jobs reuse it. Cache publication shares the text
+array, keeps prior snapshots immutable and only publishes on success; failed or
+cancelled work cannot leak partial metrics or geometry. Normal pages allocate
+no intrinsic map. Payload accounting separates occupied hash entries from hash
+capacity/controls/headers and process RSS. Intrinsic and scalar worker slices
+charge the parent work quota and check cancellation; as with existing normal
+text layout, these are cooperative worker actions, not strict wall-clock slices.
+
+The independent `tests/flex-flow-fixtures` has52 authored pages ×5 verified
+native Wayland DPRs =260 layouts/825 rectangles. All match within0.0001 CSS px,
+with reference bytes/tolerance unchanged after capture. Original64-case320-line
+geometry also matches through the whole CSS pipeline. Cache reuse, budget
+invariance, cancellation/global quotas and explicit unsupported contexts have
+separate checks. An initial fixture with missing-font characters was disqualified
+and corrected, not counted as an engine failure/pass; README and evidence record
+capture timing honestly. These are component geometry results, not site pixels.
+
+Remaining explicit gaps include column/RTL/wrap/order/baseline, replaced items,
+negative inner border-box bases, nested/contained intrinsic contributions and
+complex/decorated text intrinsic contexts. Some nested rows work when their main
+sizes are independently definite. The real Stripe retry clears flex box-tree
+construction but stops at foreign box layout before the page formatter executes;
+Stripe content and its carousel geometry remain unobserved. `flex_flow_bench`
+measures new worker layout versus retained-metric controls, separate from the
+frozen ordinary page/scene and native scroll/idle before/after measurements.
 
 ### Initial static page paint and native shell
 

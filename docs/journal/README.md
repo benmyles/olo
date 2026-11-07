@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Original browser flex page layout
+
+*16:35* — The original Rust formatter now resolves row item widths, measured text, cross alignment and stretch, reverse order and auto margins. Checked at five native scales in light, dark and night modes with structured agent content. Independent component geometry matches320 definite lines and260 page cases; this authored demo is not Stripe acceptance or native website darkening. Real Stripe now stops at foreign box layout.
+
+![Original browser flex page layout](2026-11-06/163521-original-browser-flex-page-layout.png)
+
 ### Browser query-container lengths, dark 2x
 
 *14:21* — The same native component after live mode/scale changes. Fifteen configured mode/scale reviews and visual checks; no Chrome pixel, forced-dark website or night-output acceptance.
