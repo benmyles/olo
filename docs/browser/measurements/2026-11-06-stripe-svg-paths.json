@@ -33,5 +33,11 @@
     "Arc tolerance 0.001 user units; device-scale arc accuracy unproven.",
     "Float32 retained geometry; small nonzero arc radii <=1e-5 and extreme arc coordinates rejected.",
     "Payload excludes capacity, headers, source storage and allocator overhead."
-  ]
+  ],
+  "integration": {
+    "origin_main": "56c9d81b532129e12bea9f3d534d9cbf09a475e3",
+    "merge": "bc18a515",
+    "release_workspace": "pass, 2m55s",
+    "merged_svg_tests": "6 passed"
+  }
 }

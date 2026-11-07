@@ -4617,3 +4617,9 @@ Raw observations are in `/var/tmp/olo-browser-stripe/svg`; committed summary is
 Next: actual failing element diagnosis and SVG presentation cascade, viewport,
 replaced sizing and retained scene integration, followed by independent pixels
 and real Stripe retry. Keep all prior performance/fidelity nonpasses open.
+
+Fetched through restored `gh` credentials and merged origin/main56c9d81b
+(VA-API AV1/VP9 video decode) as bc18a515. Read the updated HACKING video rules.
+Merged `cargo build --release --workspace` passes in2m55s; six SVG regressions
+pass again after integration. No personal-session install/reload, no GUI changes
+or new GUI acceptance claimed. Both Stripe Agent Screens remain stopped.
