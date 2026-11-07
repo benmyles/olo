@@ -296,6 +296,8 @@ pub struct BuildJob<'a> {
     progress: Progress,
     fallbacks: layout::Fallbacks,
     failed: bool,
+    /// Text decoration metrics per font (see `line_metrics`).
+    font_lines: std::collections::HashMap<usize, (f64, f64, f64, f64)>,
 }
 fn color(s: &Style, p: P) -> Result<[u8; 4]> {
     Ok(s.used_color(p)?.srgb8_clipped())
@@ -358,6 +360,7 @@ impl<'a> BuildJob<'a> {
             progress: Progress::default(),
             fallbacks: layout::Fallbacks::default(),
             failed: false,
+            font_lines: Default::default(),
         })
     }
     pub fn progress(&self) -> Progress {
@@ -576,7 +579,7 @@ impl<'a> BuildJob<'a> {
         let prepared = text.text().prepared();
         // Styles are immutable for this build. Consecutive glyphs usually
         // belong to the same span: resolve/convert its paint color once.
-        let mut paint_color = None;
+        let mut paint_color: Option<(u32, [u8; 4], Option<([u8; 4], K)>)> = None;
         let mut image_owners = Vec::new();
         if HAS_IMAGES {
             let mut child = layout.cache().tree().get(id).ok_or(Error::Invalid)?.first_child;
@@ -616,7 +619,7 @@ impl<'a> BuildJob<'a> {
                 // A shifted run (superscript) draws above the line's baseline.
                 let baseline = baseline - (text.shift(f) * scale).round() / scale;
                 let mut pen = 0i64;
-                let mut segment: Option<(u32, Point, [u8; 4], Rect, u32)> = None;
+                let mut segment: Option<(u32, Point, [u8; 4], Rect, u32, Option<([u8; 4], K)>)> = None;
                 for gi in f.glyphs.clone() {
                     check(self.cancel)?;
                     self.progress.glyphs += 1;
@@ -626,16 +629,21 @@ impl<'a> BuildJob<'a> {
                     let g = run.glyphs[gi as usize];
                     let mapping = prepared.mapping_at_output(g.cluster).ok_or(Error::Invalid)?;
                     let span = source.spans.get(mapping.span as usize).ok_or(Error::Invalid)?;
-                    let c = match paint_color {
-                        Some((owner, color)) if owner == mapping.span => color,
+                    let (c, deco) = match paint_color {
+                        Some((owner, color, deco)) if owner == mapping.span => (color, deco),
                         _ => {
                             let s = layout.cache().tree().styles().snapshot(span.style_node).ok_or(Error::Stale)?;
                             let mut c = color(s, P::Color)?;
                             if !visible(s) {
                                 c[3] = 0
                             }
-                            paint_color = Some((mapping.span, c));
-                            c
+                            // text-decoration-line, in text-decoration-color.
+                            let deco = match s.value(P::TextDecorationLine) {
+                                Value::Keyword(k @ (K::Underline | K::Overline | K::LineThrough)) if c[3] != 0 => Some((s.used_color(P::TextDecorationColor)?.srgb8_clipped(), *k)),
+                                _ => None,
+                            };
+                            paint_color = Some((mapping.span, c, deco));
+                            (c, deco)
                         }
                     };
                     // A cluster shared across different paint styles needs caret clipping.
@@ -651,8 +659,9 @@ impl<'a> BuildJob<'a> {
                     let input_start = if mapping.kind == crate::text::prepare::MappingKind::Copy { mapping.input.start + (g.cluster - mapping.output.start) } else { mapping.input.start };
                     let semantic_control = !controls.is_empty() && controls.binary_search_by_key(&span.range.start, |c| c.offset).is_ok();
                     if semantic_control && input_end <= span.range.end {
-                        if let Some((start, origin, color, bounds, _)) = segment.take() {
-                            self.emit(group, true, bounds, Primitive::Text { owner: id, fragment: fi, glyphs: start..gi, origin, color }, clip)?;
+                        if let Some((start, origin, color, bounds, _, deco)) = segment.take() {
+                            let end_x = at.x + f.x + pen as f64 * factor;
+                            self.segment(group, clip, id, fi, start..gi, origin, color, bounds, deco, end_x, baseline, &run.font, run.size)?;
                         }
                         pen += i64::from(g.x_advance);
                         continue;
@@ -672,26 +681,88 @@ impl<'a> BuildJob<'a> {
                         width: r.width * factor,
                         height: r.height * factor,
                     });
-                    if let Some((start, start_at, old, b, span_index)) = segment.take() {
-                        if old == c && span_index == hit_span && gi - start < 64 {
-                            segment = Some((start, start_at, c, bounds.map_or(b, |n| union(b, n)), span_index));
+                    if let Some((start, start_at, old, b, span_index, old_deco)) = segment.take() {
+                        if old == c && span_index == hit_span && old_deco == deco && gi - start < 64 {
+                            segment = Some((start, start_at, c, bounds.map_or(b, |n| union(b, n)), span_index, deco));
                         } else {
-                            self.emit(group, true, b, Primitive::Text { owner: id, fragment: fi, glyphs: start..gi, origin: start_at, color: old }, clip)?;
+                            self.segment(group, clip, id, fi, start..gi, start_at, old, b, old_deco, origin.x, baseline, &run.font, run.size)?;
                         }
                     }
-                    if segment.is_none()
-                        && let Some(b) = bounds
-                        && c[3] != 0
-                    {
-                        segment = Some((gi, origin, c, b, hit_span));
+                    if segment.is_none() && (bounds.is_some() || deco.is_some()) && c[3] != 0 {
+                        segment = Some((gi, origin, c, bounds.unwrap_or(Rect { x: origin.x, y: baseline, width: 0., height: 0. }), hit_span, deco));
                     }
                 }
-                if let Some((start, origin, c, b, _)) = segment {
-                    self.emit(group, true, b, Primitive::Text { owner: id, fragment: fi, glyphs: start..f.glyphs.end, origin, color: c }, clip)?;
+                if let Some((start, origin, c, b, _, deco)) = segment {
+                    let end_x = at.x + f.x + pen as f64 * factor;
+                    self.segment(group, clip, id, fi, start..f.glyphs.end, origin, c, b, deco, end_x, baseline, &run.font, run.size)?;
                 }
             }
         }
         Ok(())
+    }
+    /// One run of glyphs in one colour, with its text decoration under it
+    /// (CSS Text Decoration 3 §2): the line from the font's underline
+    /// metrics, or a tenth of an em below the baseline and a fourteenth
+    /// thick without them; line-through through the middle of the
+    /// x-height; overline at the ascent.
+    #[allow(clippy::too_many_arguments)]
+    fn segment(
+        &mut self,
+        group: (u32, u8),
+        clip: u32,
+        id: BoxId,
+        fragment: u32,
+        glyphs: Range<u32>,
+        origin: Point,
+        color: [u8; 4],
+        bounds: Rect,
+        deco: Option<([u8; 4], K)>,
+        end_x: f64,
+        baseline: f64,
+        font: &Arc<crate::text::shaping::GlyphFont>,
+        size: f64,
+    ) -> Result<()> {
+        if let Some((line_color, line)) = deco
+            && line_color[3] != 0
+            && end_x > origin.x
+        {
+            let (position, thickness, x_height, ascent) = self.line_metrics(font);
+            let factor = size / f64::from(font.units_per_em());
+            let scale = self.layout.device_scale();
+            let thickness = ((thickness * factor * scale).round() / scale).max(1. / scale);
+            let y = match line {
+                K::Underline => baseline - position * factor,
+                K::LineThrough => baseline - x_height * factor / 2. - thickness / 2.,
+                _ => baseline - ascent * factor,
+            };
+            let y = (y * scale).round() / scale;
+            self.emit(group, false, Rect { x: origin.x, y, width: end_x - origin.x, height: thickness }, Primitive::Fill { color: line_color }, clip)?;
+        }
+        if bounds.width > 0. && bounds.height > 0. {
+            self.emit(group, true, bounds, Primitive::Text { owner: id, fragment, glyphs, origin, color }, clip)?;
+        }
+        Ok(())
+    }
+    /// A font's underline position (above the baseline, usually negative)
+    /// and thickness, x-height and ascent, in font units, kept per font.
+    fn line_metrics(&mut self, font: &Arc<crate::text::shaping::GlyphFont>) -> (f64, f64, f64, f64) {
+        let key = Arc::as_ptr(font) as usize;
+        if let Some(m) = self.font_lines.get(&key) {
+            return *m;
+        }
+        let upem = f64::from(font.units_per_em());
+        let m = match font.selection().parsed() {
+            Ok(face) => {
+                let (position, thickness) = face.underline_metrics().map_or((-upem / 10., upem / 14.), |u| (f64::from(u.position), f64::from(u.thickness).max(1.)));
+                let x_height = face.x_height().map_or(upem / 2., f64::from);
+                (position, thickness, x_height, f64::from(face.ascender()))
+            }
+            Err(_) => (-upem / 10., upem / 14., upem / 2., upem * 0.8),
+        };
+        if self.font_lines.len() < 256 {
+            self.font_lines.insert(key, m);
+        }
+        m
     }
     pub fn step(&mut self, budget: usize) -> Result<Progress> {
         if self.failed {

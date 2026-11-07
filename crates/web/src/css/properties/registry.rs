@@ -46,6 +46,7 @@ pub(super) enum Expansion {
     Radius,
     Background,
     TextWrap,
+    TextDecoration,
 }
 macro_rules! keyword_registry {
     ($($id:ident => $name:literal),* $(,)?) => {
@@ -89,12 +90,14 @@ keyword_registry! {
     Double => "double",
     End => "end",
     Evenodd => "evenodd",
+    LineThrough => "line-through",
     Nonzero => "nonzero",
     Fill => "fill",
     FitContent => "fit-content",
     Fixed => "fixed",
     FlexStart => "flex-start",
     FlexEnd => "flex-end",
+    Overline => "overline",
     Pretty => "pretty",
     SpaceBetween => "space-between",
     SpaceAround => "space-around",
@@ -120,6 +123,8 @@ keyword_registry! {
     Ltr => "ltr",
     MatchParent => "match-parent",
     Stable => "stable",
+    Underline => "underline",
+    Wavy => "wavy",
     WebkitCenter => "-webkit-center",
     WebkitLeft => "-webkit-left",
     WebkitRight => "-webkit-right",
@@ -328,6 +333,10 @@ property_registry! {
     TextAlign, "text-align", Grammar::Keywords(&[Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify,Keyword::MatchParent,Keyword::JustifyAll,Keyword::WebkitCenter,Keyword::WebkitLeft,Keyword::WebkitRight]), "start", true;
     TextAlignLast, "text-align-last", Grammar::Keywords(&[Keyword::Auto,Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify]), "auto", true;
     TextDecorationColor, "text-decoration-color", Grammar::Color(&[]), "currentcolor", false;
+    // Decorations propagate to in-flow descendants (CSS Text Decoration 3
+    // §2.1); inheriting the line approximates that.
+    TextDecorationLine, "text-decoration-line", Grammar::Keywords(&[Keyword::None,Keyword::Underline,Keyword::Overline,Keyword::LineThrough]), "none", true;
+    TextDecorationStyle, "text-decoration-style", Grammar::Keywords(&[Keyword::Solid,Keyword::Double,Keyword::Dotted,Keyword::Dashed,Keyword::Wavy]), "solid", false;
     TextOrientation, "text-orientation", Grammar::Keywords(&[Keyword::Mixed,Keyword::Upright,Keyword::Sideways]), "mixed", true;
     TextWrapMode, "text-wrap-mode", Grammar::Keywords(&[Keyword::Wrap,Keyword::Nowrap]), "wrap", true;
     TextWrapStyle, "text-wrap-style", Grammar::Keywords(&[Keyword::Auto,Keyword::Balance,Keyword::Stable,Keyword::Pretty]), "auto", true;
@@ -360,7 +369,8 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
-    All, "all", [AlignContent,AlignItems,AlignSelf,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    WebkitTextDecoration, "-webkit-text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor], TextDecoration;
+    All, "all", [AlignContent,AlignItems,AlignSelf,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextOrientation,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
     // Logical border shorthands map to physical sides for horizontal-tb,
@@ -401,6 +411,7 @@ shorthand_registry! {
     PlaceContent, "place-content", [AlignContent,JustifyContent], Repeat;
     PlaceItems, "place-items", [AlignItems,JustifyItems], Repeat;
     PlaceSelf, "place-self", [AlignSelf,JustifySelf], Repeat;
+    TextDecoration, "text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor], TextDecoration;
     TextWrap, "text-wrap", [TextWrapMode,TextWrapStyle], TextWrap;
     WhiteSpace, "white-space", [WhiteSpaceCollapse,TextWrapMode], WhiteSpace;
 }

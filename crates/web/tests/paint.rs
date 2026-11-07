@@ -662,3 +662,21 @@ fn background_image_layers_tile_position_size_and_clip() {
     assert_eq!(px(&t, 5, 35), [255, 0, 0, 255]);
     assert_eq!(px(&t, 35, 5), [0, 0, 255, 255]);
 }
+
+#[test]
+fn text_decoration_underline_and_line_through_paint_under_the_text() {
+    let mut p = paint::Engine::default();
+    // Without a decoration, the glyph's ink reaches down to some row; an
+    // underline paints below that, in the text's colour; the line's own
+    // colour when given; line-through crosses the x-height.
+    let s = scene("<div>AA</div>", "div{color:black;text-decoration:none}", &mut p);
+    let plain = render(&mut p, &s);
+    let ink_bottom = (0..20).filter(|&y| pixel(&plain, 4, y) != [255; 4]).max().expect("glyph ink");
+    let s = scene("<div><span id=u>AA</span> <span id=l>AA</span></div>", "div{color:black}#u{text-decoration:underline}#l{text-decoration:line-through red}", &mut p);
+    let t = render(&mut p, &s);
+    let column = |x: usize| (0..20).filter(|&y| pixel(&t, x, y) != [255; 4]).collect::<Vec<_>>();
+    let under = column(4);
+    assert!(under.iter().any(|&y| y > ink_bottom && pixel(&t, 4, y) == [0, 0, 0, 255]), "underline below the ink ({ink_bottom}): {under:?}");
+    assert!((0..100).any(|x| (0..20).any(|y| pixel(&t, x, y) == [255, 0, 0, 255])), "red line-through");
+    assert!((28..48).any(|x| column(x).iter().all(|&y| y <= ink_bottom)), "the space between the spans is not underlined");
+}

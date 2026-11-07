@@ -91,7 +91,15 @@ impl Tree for DomTree<'_> {
         Ok(self.document.attributes_ns(node)?.map(|a| Attribute { namespace: a.namespace.map_or("", dom::AttributeNamespace::uri), local_name: a.local_name, value: a.value }))
     }
     fn state(&self, node: NodeId, pseudo: Option<PseudoElement>, state: State) -> Result<bool> {
-        self.states.ok_or(Error::StateUnavailable)?.state(node, pseudo, state)
+        match self.states {
+            Some(states) => states.state(node, pseudo, state),
+            // Link-ness is the document's, not interaction state: an `a` or
+            // `area` with an href (HTML §4.6.1), without a state source too.
+            None if matches!(state, State::AnyLink | State::Link) && pseudo.is_none() => {
+                Ok(self.document.namespace(node)? == Some(dom::Namespace::Html) && matches!(self.document.name(node)?, Some("a" | "area")) && self.document.attribute(node, "href")?.is_some())
+            }
+            None => Err(Error::StateUnavailable),
+        }
     }
     fn direction(&self, node: NodeId) -> Result<bool> {
         self.states.ok_or(Error::StateUnavailable)?.direction(node)

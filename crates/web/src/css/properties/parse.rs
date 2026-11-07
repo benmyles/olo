@@ -136,6 +136,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 Expansion::WideOnly => Err(Error::Invalid),
                 Expansion::WhiteSpace => white_space(&parts),
                 Expansion::TextWrap => text_wrap(&parts),
+                Expansion::TextDecoration => text_decoration(&parts, limits, cancelled),
                 Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
                 Expansion::Grid | Expansion::Radius | Expansion::Background => unreachable!("these shorthands parse before part collection"),
                 Expansion::Border => border(&parts, properties, limits, cancelled),
@@ -260,6 +261,51 @@ fn ratio(parts: &[Component<'_>]) -> Result<Value> {
         [_] | [_, _] => Ok(Value::Keyword(Keyword::Auto)),
         _ => Err(Error::Invalid),
     }
+}
+/// `text-decoration: <line>+ || <style> || <color>` (CSS Text Decoration 3
+/// §2.4); a thickness is not supported.
+fn text_decoration(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Assignments> {
+    if parts.is_empty() || parts.len() > 4 {
+        return Err(Error::Invalid);
+    }
+    let (mut line, mut style, mut color) = (None, None, None);
+    for c in parts {
+        if c.kind() == Kind::Ident {
+            let name = c.text().unwrap();
+            if let Some((_, k)) = [("none", Keyword::None), ("underline", Keyword::Underline), ("overline", Keyword::Overline), ("line-through", Keyword::LineThrough)]
+                .into_iter()
+                .find(|(s, _)| name.eq_ignore_ascii_case(s))
+            {
+                // Several lines combine; the first kept decides the paint.
+                if line.is_none() || line == Some(Keyword::None) {
+                    line = Some(k);
+                }
+                continue;
+            }
+            if let Some((_, k)) = [("solid", Keyword::Solid), ("double", Keyword::Double), ("dotted", Keyword::Dotted), ("dashed", Keyword::Dashed), ("wavy", Keyword::Wavy)]
+                .into_iter()
+                .find(|(s, _)| name.eq_ignore_ascii_case(s))
+            {
+                if style.replace(k).is_some() {
+                    return Err(Error::Invalid);
+                }
+                continue;
+            }
+        }
+        if color.is_some() {
+            return Err(Error::Invalid);
+        }
+        match component(Grammar::Color(&[]), *c, limits, cancelled) {
+            Ok(v) => color = Some(v),
+            Err(Error::Invalid) => return Err(Error::Invalid),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(smallvec::smallvec![
+        Assignment { property: Property::TextDecorationLine, value: Value::Keyword(line.unwrap_or(Keyword::None)) },
+        Assignment { property: Property::TextDecorationStyle, value: Value::Keyword(style.unwrap_or(Keyword::Solid)) },
+        Assignment { property: Property::TextDecorationColor, value: color.unwrap_or(Value::Color(color::Value::CurrentColor)) },
+    ])
 }
 /// `text-wrap: <'text-wrap-mode'> || <'text-wrap-style'>` (CSS Text 4 §5.1).
 fn text_wrap(parts: &[Component<'_>]) -> Result<Assignments> {
