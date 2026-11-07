@@ -1,4 +1,5 @@
 //! Typed property declarations, before cascade and layout. Worker-only APIs.
+pub mod animation;
 mod clip;
 mod content;
 mod decoration;
@@ -108,6 +109,7 @@ pub enum Value {
     Transforms(Transforms),
     Features(Features),
     Content(Content),
+    Animation(animation::Animations),
     Pending(Arc<Pending>),
 }
 

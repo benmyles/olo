@@ -115,6 +115,31 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
         }
         return grid::parse_shorthand(shorthand, values, limits, cancelled);
     }
+    // Animation lists, longhands and the shorthand, take any number of
+    // components (comma groups).
+    let animation = match name {
+        Name::Longhand(property) => matches!(property.grammar(), Grammar::Animation(_)),
+        Name::Shorthand(shorthand) => matches!(shorthand.expansion(), Expansion::Animation),
+    };
+    if animation {
+        let parts: Vec<Component<'_>> = values.clone().filter(|c| c.kind() != Kind::Whitespace).collect();
+        if let [c] = parts.as_slice()
+            && c.kind() == Kind::Ident
+            && let Some(wide) = wide(c.text().unwrap())
+        {
+            return Ok(name.wide(wide));
+        }
+        if parts.is_empty() {
+            return Err(Error::Invalid);
+        }
+        return match name {
+            Name::Longhand(property) => {
+                let Grammar::Animation(field) = property.grammar() else { return Err(Error::Invalid) };
+                Ok(smallvec::smallvec![Assignment { property, value: super::animation::parse_list(field, &parts)? }])
+            }
+            Name::Shorthand(_) => super::animation::parse_shorthand(&parts),
+        };
+    }
     let mut parts = SmallVec::<[Component<'_>; 4]>::new();
     for c in values.clone().filter(|c| c.kind() != Kind::Whitespace) {
         if parts.len() == 4 {
@@ -152,7 +177,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 Expansion::TextDecoration => text_decoration(&parts, limits, cancelled),
                 Expansion::ListStyle => list_style(&parts, limits, cancelled),
                 Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
-                Expansion::Grid | Expansion::Radius | Expansion::Background | Expansion::Font => unreachable!("these shorthands parse before part collection"),
+                Expansion::Grid | Expansion::Radius | Expansion::Background | Expansion::Font | Expansion::Animation => unreachable!("these shorthands parse before part collection"),
                 Expansion::Border => border(&parts, properties, limits, cancelled),
                 Expansion::Quad | Expansion::Repeat => {
                     if parts.len() > properties.len() {
@@ -503,6 +528,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
 pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     check(cancelled)?;
     match grammar {
+        Grammar::Animation(field) => super::animation::parse_list(field, &[c]),
         Grammar::ClipPath => super::clip::parse(&[c], limits, cancelled),
         Grammar::FontWidth => font::width(c, limits, cancelled),
         Grammar::Overflow => {

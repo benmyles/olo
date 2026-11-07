@@ -32,6 +32,7 @@ pub(super) enum Grammar {
     Features,
     Ratio,
     Content,
+    Animation(super::animation::Field),
 }
 #[derive(Clone, Copy)]
 pub(super) enum Expansion {
@@ -49,6 +50,7 @@ pub(super) enum Expansion {
     TextDecoration,
     ListStyle,
     Font,
+    Animation,
 }
 macro_rules! keyword_registry {
     ($($id:ident => $name:literal),* $(,)?) => {
@@ -63,6 +65,13 @@ keyword_registry! {
     Absolute => "absolute",
     All => "all",
     Alpha => "alpha",
+    Alternate => "alternate",
+    AlternateReverse => "alternate-reverse",
+    Backwards => "backwards",
+    Forwards => "forwards",
+    Paused => "paused",
+    Reverse => "reverse",
+    Running => "running",
     Anywhere => "anywhere",
     Auto => "auto",
     AutoPhrase => "auto-phrase",
@@ -227,6 +236,14 @@ property_registry! {
     AlignContent, "align-content", Grammar::Keywords(&[Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::SpaceBetween,Keyword::SpaceAround,Keyword::SpaceEvenly,Keyword::Baseline]), "normal", false;
     AlignItems, "align-items", Grammar::Keywords(&[Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Baseline]), "normal", false;
     AlignSelf, "align-self", Grammar::Keywords(&[Keyword::Auto,Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Baseline]), "auto", false;
+    AnimationDelay, "animation-delay", Grammar::Animation(super::animation::Field::Delay), "0s", false;
+    AnimationDirection, "animation-direction", Grammar::Animation(super::animation::Field::Direction), "normal", false;
+    AnimationDuration, "animation-duration", Grammar::Animation(super::animation::Field::Duration), "0s", false;
+    AnimationFillMode, "animation-fill-mode", Grammar::Animation(super::animation::Field::Fill), "none", false;
+    AnimationIterationCount, "animation-iteration-count", Grammar::Animation(super::animation::Field::Count), "1", false;
+    AnimationName, "animation-name", Grammar::Animation(super::animation::Field::Name), "none", false;
+    AnimationPlayState, "animation-play-state", Grammar::Animation(super::animation::Field::PlayState), "running", false;
+    AnimationTimingFunction, "animation-timing-function", Grammar::Animation(super::animation::Field::Easing), "ease", false;
     AspectRatio, "aspect-ratio", Grammar::Ratio, "auto", false;
     BackgroundClip, "background-clip", Grammar::Keywords(&[Keyword::BorderBox,Keyword::PaddingBox,Keyword::ContentBox,Keyword::Text]), "border-box", false;
     BackgroundColor, "background-color", Grammar::Color(&[]), "transparent", false;
@@ -398,6 +415,7 @@ shorthand_registry! {
     WebkitMask, "-webkit-mask", [MaskImage,MaskPosition,MaskSize,MaskRepeat], Background;
     WebkitTextDecoration, "-webkit-text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor], TextDecoration;
     All, "all", [AlignContent,AlignItems,AlignSelf,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextOrientation,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    Animation, "animation", [AnimationName,AnimationDuration,AnimationTimingFunction,AnimationDelay,AnimationIterationCount,AnimationDirection,AnimationFillMode,AnimationPlayState], Animation;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
     // Logical border shorthands map to physical sides for horizontal-tb,
@@ -469,6 +487,10 @@ impl Name {
                 .find(|(s, _)| rest.eq_ignore_ascii_case(s))
         {
             return Some(Self::Longhand(p.1));
+        }
+        // -webkit-animation and its longhands: the standard ones.
+        if name.len() > 8 && name[..8].eq_ignore_ascii_case("-webkit-") && name[8..].to_ascii_lowercase().starts_with("animation") {
+            return Self::parse(&name[8..]);
         }
         if let Ok(i) = Property::ALL.binary_search_by(|p| ascii_cmp(p.as_str(), name)) {
             return Some(Self::Longhand(Property::ALL[i]));

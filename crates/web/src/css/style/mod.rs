@@ -245,6 +245,7 @@ pub enum Value {
     Transforms(p::Transforms),
     Features(p::Features),
     Content(p::Content),
+    Animation(p::animation::Animations),
     /// Explicit nonzero oblique angle in degrees; bare oblique is a keyword.
     Oblique(f64),
 }
