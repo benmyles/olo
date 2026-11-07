@@ -7,6 +7,7 @@ struct Node {
     count: u8,
     leaf: bool,
 }
+#[derive(Clone)]
 pub(super) struct Index {
     nodes: Box<[Node]>,
     ids: Box<[u32]>,

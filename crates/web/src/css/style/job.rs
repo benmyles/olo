@@ -199,12 +199,16 @@ pub(crate) fn attribute_keys(name: &str, old: Option<&str>, new: Option<&str>) -
     keys
 }
 /// What patching a tree in place came to (see `Job::patch`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Patched {
     /// Every difference is paint-only: a layout of the tree before serves.
     pub geometry_kept: bool,
     /// Elements whose style changed.
     pub changed: usize,
+    /// Those elements.
+    pub nodes: Vec<NodeId>,
+    /// Pseudo-elements whose style changed.
+    pub pseudos: usize,
 }
 /// Worker job: parent-before-child traversal, bounded steps and a readable
 /// completed prefix. The caller sends progress/results to the UI and checks
@@ -1150,6 +1154,8 @@ impl<'a> Job<'a> {
         let name = |job: &Self, n: NodeId| job.document.name(n).ok().flatten().unwrap_or("?").to_owned();
         let mut geometry_kept = true;
         let mut changed = 0usize;
+        let mut changed_nodes = Vec::new();
+        let mut pseudos_changed = 0usize;
         let mut done = std::collections::HashSet::new();
         // The elements asked for, then the subtrees of those that changed
         // what they inherit.
@@ -1197,6 +1203,7 @@ impl<'a> Job<'a> {
                     geometry_kept = false;
                 }
                 changed += 1;
+                changed_nodes.push(node);
             }
             let pseudos = self.compute_pseudos(node, &style, &h)?;
             // The pseudo-elements must be the ones there before.
@@ -1221,6 +1228,7 @@ impl<'a> Job<'a> {
                 }
                 self.tree.report.value_fallbacks += usize::from(s.dependencies().fallbacks);
                 undo.push((at, std::mem::replace(&mut entry.style, s), entry.matched.clone()));
+                pseudos_changed += 1;
             }
             if below {
                 // Its descendants, parents before children (the tree's
@@ -1235,7 +1243,7 @@ impl<'a> Job<'a> {
                 queue.extend(descendants);
             }
         }
-        Ok(Ok(Patched { geometry_kept, changed }))
+        Ok(Ok(Patched { geometry_kept, changed, nodes: changed_nodes, pseudos: pseudos_changed }))
     }
     /// An element's style computed: its hints and inline declarations, its
     /// rules (the ones recorded before cascaded again when only its inline

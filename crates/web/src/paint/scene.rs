@@ -66,6 +66,9 @@ pub struct Command {
     /// Under a `position: sticky` box (that box): painted apart, moved by
     /// the scroll (see `layout::Sticky`).
     pub(super) sticky: Option<BoxId>,
+    /// A live surface's image (see `image::Image::live`): shown through a
+    /// layer of its own when nothing bends, fades or cuts it.
+    pub(super) surface: bool,
 }
 /// The axis-aligned bounds of `r` mapped through `m`.
 pub(super) fn aabb(m: [f64; 6], r: Rect) -> Rect {
@@ -81,6 +84,9 @@ pub(super) fn aabb(m: [f64; 6], r: Rect) -> Rect {
 }
 /// A command's bounds in document space, its transform applied.
 pub(super) fn extent(c: &Command, transforms: &[[f64; 6]]) -> Rect {
+    extent_of(c, transforms)
+}
+fn extent_of(c: &Command, transforms: &[[f64; 6]]) -> Rect {
     if c.transform == NONE { c.bounds } else { aabb(transforms[c.transform as usize], c.bounds) }
 }
 /// A box painted as a whole at an opacity (CSS Color 4 §2.2): its commands
@@ -115,6 +121,32 @@ pub enum LayerKind {
     Page,
     Fixed,
     Sticky(BoxId),
+    /// A live surface (a canvas scripts keep drawing on), shown with the
+    /// page from its image as it is, not through tiles: the box's.
+    Surface(BoxId),
+}
+/// How a transformed box's matrix was made: its box, the matrix of the
+/// transformed box above it (or NONE), its border box and its own matrix
+/// about its origin; so a changed `transform` patches the table without
+/// building the scene again.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct TransformEntry {
+    owner: BoxId,
+    parent: u32,
+    outer: Rect,
+    about: [f64; 6],
+}
+/// A box's `transform` about its `transform-origin`, as a matrix in the
+/// document's space; None without a transform.
+fn about_of(s: &Style, outer: Rect) -> Option<[f64; 6]> {
+    let Value::Transforms(t) = s.value(P::Transform) else { return None };
+    let local = t.matrix(outer.width, outer.height);
+    let (ox, oy) = match s.value(P::TransformOrigin) {
+        Value::Positions(p) if !p.0.is_empty() => (decoration::resolve_any(&p.0[0].0, outer.width), decoration::resolve_any(&p.0[0].1, outer.height)),
+        _ => (outer.width / 2., outer.height / 2.),
+    };
+    let (ox, oy) = (outer.x + ox, outer.y + oy);
+    Some(crate::css::properties::multiply_transforms([1., 0., 0., 1., ox, oy], crate::css::properties::multiply_transforms(local, [1., 0., 0., 1., -ox, -oy])))
 }
 /// A run of commands in paint order that are shown the same way.
 pub struct Stratum {
@@ -129,8 +161,9 @@ pub struct Scene {
     /// Cumulative affine matrices of transformed boxes, document space to
     /// document space (CSS Transforms 1 §6).
     pub(super) transforms: Box<[[f64; 6]]>,
-    pub(super) vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
-    pub(super) vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
+    pub(super) transform_entries: Box<[TransformEntry]>,
+    pub(super) vector_geometry: Arc<std::collections::HashMap<u32, crate::svg::used::Geometry>>,
+    pub(super) vector_clips: Arc<std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>>,
     /// The commands in paint order cut into strata: runs of the page's own
     /// commands, and the fixed and sticky boxes' layers between them, each
     /// indexed by place. The first is always a page run (the base, with
@@ -343,7 +376,7 @@ impl Scene {
             match &c.primitive {
                 Primitive::Image { image, .. } => {
                     0u8.hash(&mut h);
-                    (tree.image(*image).map_or(0, |i| Arc::as_ptr(i) as usize)).hash(&mut h);
+                    tree.image(*image).map_or(0, |i| i.serial()).hash(&mut h);
                 }
                 Primitive::Vector { vector, origin, .. } => {
                     1u8.hash(&mut h);
@@ -443,6 +476,103 @@ impl Scene {
         self.query_stratum(i, region, &mut hits, cancel)?;
         Ok((self.signature_parts(&hits, cancel)?.0, !hits.is_empty()))
     }
+    /// A surface stratum's image and where it shows (document coordinates):
+    /// the live image of the one command it holds.
+    pub fn surface(&self, i: usize) -> Option<(Rect, &Arc<crate::image::Image>)> {
+        let stratum = self.strata.get(i)?;
+        let LayerKind::Surface(_) = stratum.kind else { return None };
+        let c = self.commands.get(*stratum.index.ids().first()? as usize)?;
+        let Primitive::Image { image, .. } = c.primitive else { return None };
+        let image = self.layout.cache().tree().image(image)?;
+        let bounds = if c.clip == NONE { c.bounds } else { intersection(c.bounds, self.clips[c.clip as usize].rect) };
+        Some((bounds, image))
+    }
+    /// This scene over `layout` (the same boxes, with new styles) with the
+    /// matrices of the `changed` boxes made again from their styles, and
+    /// those under them composed again: a changed `transform` without
+    /// building the scene. None when a box's transform came or went
+    /// (the scene's structure would differ): build it then.
+    pub fn with_transforms(&self, layout: Arc<layout::Layout>, changed: &[BoxId], cancel: Option<&AtomicBool>) -> Result<Option<Arc<Scene>>> {
+        let tree = layout.cache().tree();
+        let mut entries = self.transform_entries.to_vec();
+        let mut touched = vec![false; entries.len()];
+        for &id in changed {
+            check(cancel)?;
+            let s = tree.style(id).ok_or(Error::Invalid)?;
+            let Some(i) = entries.iter().position(|e| e.owner == id) else {
+                // Never transformed; one that is now needs the scene built.
+                if matches!(s.value(P::Transform), Value::Transforms(_)) {
+                    return Ok(None);
+                }
+                continue;
+            };
+            let Some(about) = about_of(s, entries[i].outer) else { return Ok(None) };
+            if entries[i].parent == NONE && crate::css::properties::is_identity(about) {
+                return Ok(None);
+            }
+            entries[i].about = about;
+            touched[i] = true;
+        }
+        if !touched.iter().any(|&t| t) {
+            // Nothing transformed changed: the same scene over the new layout.
+            return Ok(Some(Arc::new(Scene {
+                extent: self.extent,
+                layout,
+                commands: self.commands.clone(),
+                clips: self.clips.clone(),
+                groups: self.groups.clone(),
+                transforms: self.transforms.clone(),
+                transform_entries: self.transform_entries.clone(),
+                vector_geometry: self.vector_geometry.clone(),
+                vector_clips: self.vector_clips.clone(),
+                strata: self.strata.iter().map(|s| Stratum { kind: s.kind, index: s.index.clone() }).collect(),
+                base: self.base,
+                canvas: self.canvas,
+            })));
+        }
+        let mut transforms = self.transforms.to_vec();
+        for i in 0..entries.len() {
+            let parent = entries[i].parent;
+            if parent != NONE && touched[parent as usize] {
+                touched[i] = true;
+            }
+            if touched[i] {
+                let m = if parent == NONE { entries[i].about } else { crate::css::properties::multiply_transforms(transforms[parent as usize], entries[i].about) };
+                if !m.iter().all(|v| v.is_finite()) {
+                    return Err(Error::Invalid);
+                }
+                transforms[i] = m;
+            }
+        }
+        let mut extent = Rect::default();
+        for c in &self.commands {
+            let reach = extent_of(c, &transforms);
+            extent = union(extent, if c.clip == NONE { reach } else { intersection(reach, self.clip_extent_with(c.clip, &transforms)) });
+        }
+        let mut strata = Vec::with_capacity(self.strata.len());
+        for stratum in &self.strata {
+            check(cancel)?;
+            strata.push(Stratum { kind: stratum.kind, index: index::Index::over(&self.commands, &transforms, stratum.index.ids().to_vec(), cancel)? });
+        }
+        Ok(Some(Arc::new(Scene {
+            extent,
+            layout,
+            commands: self.commands.clone(),
+            clips: self.clips.clone(),
+            groups: self.groups.clone(),
+            transforms: transforms.into_boxed_slice(),
+            transform_entries: entries.into_boxed_slice(),
+            vector_geometry: self.vector_geometry.clone(),
+            vector_clips: self.vector_clips.clone(),
+            strata: strata.into_boxed_slice(),
+            base: self.base,
+            canvas: self.canvas,
+        })))
+    }
+    fn clip_extent_with(&self, clip: u32, transforms: &[[f64; 6]]) -> Rect {
+        let c = &self.clips[clip as usize];
+        if c.transform == NONE { c.rect } else { aabb(transforms[c.transform as usize], c.rect) }
+    }
     /// The node at document point (x, y) with the page scrolled by `scroll`
     /// in a viewport `height` tall: the topmost command there in paint
     /// order, strata from the top down, each tested where it is shown
@@ -453,7 +583,7 @@ impl Scene {
         let mut hits = Vec::new();
         for (i, stratum) in self.strata.iter().enumerate().rev() {
             let py = match stratum.kind {
-                LayerKind::Page => y,
+                LayerKind::Page | LayerKind::Surface(_) => y,
                 LayerKind::Fixed => y - scroll,
                 LayerKind::Sticky(root) => y - stickies.iter().find(|s| s.root == root).map_or(0., |s| s.offset(scroll, height)),
             };
@@ -562,11 +692,14 @@ pub struct BuildJob<'a> {
     groups: Vec<Group>,
     current_group: u32,
     transforms: Vec<[f64; 6]>,
+    transform_entries: Vec<TransformEntry>,
     current_transform: u32,
     /// The box being painted is fixed to the viewport (or under one).
     current_fixed: bool,
     /// The sticky box the one being painted is under, if any.
     current_sticky: Option<BoxId>,
+    /// The command being emitted is a live surface's image.
+    current_surface: bool,
     vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
@@ -633,8 +766,10 @@ impl<'a> BuildJob<'a> {
             current_transform: NONE,
             current_fixed: false,
             current_sticky: None,
+            current_surface: false,
             vector_geometry: Default::default(),
             vector_clips: Default::default(),
+            transform_entries: Vec::new(),
             vector_clip_bytes: 0,
             svg_viewports: None,
             next: 0,
@@ -666,7 +801,8 @@ impl<'a> BuildJob<'a> {
         if self.draft.len() >= self.limits.commands {
             return Err(Error::Limit);
         }
-        let command = Command { bounds, primitive, clip, group: self.current_group, transform: self.current_transform, fixed: self.current_fixed, sticky: self.current_sticky };
+        let command =
+            Command { bounds, primitive, clip, group: self.current_group, transform: self.current_transform, fixed: self.current_fixed, sticky: self.current_sticky, surface: self.current_surface };
         let reach = extent(&command, &self.transforms);
         self.extent = union(self.extent, if clip == NONE { reach } else { intersection(reach, self.clip_extent(clip)) });
         self.draft.push(Draft { context, slot, text, command });
@@ -678,15 +814,8 @@ impl<'a> BuildJob<'a> {
     }
     /// The box's `transform` about its `transform-origin`, composed with its
     /// parent's: the matrix its subtree paints through.
-    fn transform_of(&mut self, s: &Style, outer: Rect, parent: u32) -> Result<u32> {
-        let Value::Transforms(t) = s.value(P::Transform) else { return Ok(parent) };
-        let local = t.matrix(outer.width, outer.height);
-        let (ox, oy) = match s.value(P::TransformOrigin) {
-            Value::Positions(p) if !p.0.is_empty() => (decoration::resolve_any(&p.0[0].0, outer.width), decoration::resolve_any(&p.0[0].1, outer.height)),
-            _ => (outer.width / 2., outer.height / 2.),
-        };
-        let (ox, oy) = (outer.x + ox, outer.y + oy);
-        let about = crate::css::properties::multiply_transforms([1., 0., 0., 1., ox, oy], crate::css::properties::multiply_transforms(local, [1., 0., 0., 1., -ox, -oy]));
+    fn transform_of(&mut self, id: BoxId, s: &Style, outer: Rect, parent: u32) -> Result<u32> {
+        let Some(about) = about_of(s, outer) else { return Ok(parent) };
         let m = if parent == NONE { about } else { crate::css::properties::multiply_transforms(self.transforms[parent as usize], about) };
         if !m.iter().all(|v| v.is_finite()) {
             return Err(Error::Invalid);
@@ -698,6 +827,7 @@ impl<'a> BuildJob<'a> {
             return Err(Error::Limit);
         }
         self.transforms.push(m);
+        self.transform_entries.push(TransformEntry { owner: id, parent, outer, about });
         Ok(self.transforms.len() as u32 - 1)
     }
     #[allow(clippy::too_many_arguments)]
@@ -1130,7 +1260,7 @@ impl<'a> BuildJob<'a> {
                     }
                     // A transformed box paints its subtree through its matrix
                     // and is a stacking context (CSS Transforms 1 §3).
-                    let transformed = self.transform_of(s, outer, parent_transform)?;
+                    let transformed = self.transform_of(id, s, outer, parent_transform)?;
                     if transformed != parent_transform {
                         // OLO_TRANSFORM_DEBUG: which boxes paint through a matrix.
                         if std::env::var_os("OLO_TRANSFORM_DEBUG").is_some() {
@@ -1253,7 +1383,13 @@ impl<'a> BuildJob<'a> {
                     if visible(s) {
                         self.decorate(id, s, g, outer, group, clip, false)?;
                         if let BoxKind::BlockImage { image } = b.kind {
-                            self.emit(group, true, outer, Primitive::Image { owner: id, image }, clip)?;
+                            // A live surface (a canvas being animated) goes
+                            // in a layer of its own: what is around it is
+                            // kept while it changes.
+                            self.current_surface = tree.image(image).is_some_and(|i| i.live());
+                            let emitted = self.emit(group, true, outer, Primitive::Image { owner: id, image }, clip);
+                            self.current_surface = false;
+                            emitted?;
                         }
                     }
                     if let BoxKind::BlockVector { vector } = b.kind {
@@ -1319,16 +1455,33 @@ impl<'a> BuildJob<'a> {
             path.extend([if z < 0 { 1 } else { 3 }, (z as i64 - i64::from(i32::MIN)) as u32, i as u32]);
             self.contexts[i].path = path;
         }
+        let timing = std::env::var_os("OLO_WEB_TIMING").map(|_| std::time::Instant::now());
         let contexts = &self.contexts;
         let key = |d: &Draft| contexts[d.context as usize].path.iter().copied().chain(std::iter::once(u32::from(d.slot)));
         self.draft.sort_by(|a, b| key(a).cmp(key(b)).then(a.text.cmp(&b.text)));
         let commands: Box<[Command]> = self.draft.into_iter().map(|d| d.command).collect();
+        let sorted_ms = timing.map_or(0., |t| t.elapsed().as_secs_f64() * 1000.);
         // Strata: runs of commands shown the same way, in paint order; the
         // first always a page run, for the base with the background.
         let mut runs: Vec<(LayerKind, Vec<u32>)> = vec![(LayerKind::Page, Vec::new())];
         for i in 0..commands.len() as u32 {
             let c = &commands[i as usize];
-            let kind = if c.fixed {
+            // A surface's image is a layer of its own where it is shown
+            // as it is: not under a transform, an opacity group, a fixed
+            // or sticky box, nor a rounded or transformed clip (a straight
+            // clip only cuts the layer).
+            let surface = c.surface
+                && !c.fixed
+                && c.sticky.is_none()
+                && c.transform == NONE
+                && c.group == NONE
+                && (c.clip == NONE || {
+                    let clip = &self.clips[c.clip as usize];
+                    clip.radii.is_none() && clip.transform == NONE
+                });
+            let kind = if let (true, Primitive::Image { owner, .. }) = (surface, &c.primitive) {
+                LayerKind::Surface(*owner)
+            } else if c.fixed {
                 LayerKind::Fixed
             } else if let Some(root) = c.sticky {
                 LayerKind::Sticky(root)
@@ -1336,7 +1489,7 @@ impl<'a> BuildJob<'a> {
                 LayerKind::Page
             };
             match runs.last_mut() {
-                Some((k, ids)) if *k == kind => ids.push(i),
+                Some((k, ids)) if *k == kind && !matches!(kind, LayerKind::Surface(_)) => ids.push(i),
                 _ => runs.push((kind, vec![i])),
             }
         }
@@ -1348,6 +1501,15 @@ impl<'a> BuildJob<'a> {
             check(self.cancel)?;
             strata.push(Stratum { kind, index: index::Index::over(&commands, &self.transforms, ids, self.cancel)? });
         }
+        if let Some(t) = timing {
+            eprintln!(
+                "scene finish: sort {sorted_ms:.2} ms, strata {:.2} ms ({} commands, {} contexts, {} strata)",
+                t.elapsed().as_secs_f64() * 1000. - sorted_ms,
+                commands.len(),
+                self.contexts.len(),
+                strata.len()
+            );
+        }
         Ok(Arc::new(Scene {
             extent: self.extent,
             layout: self.layout,
@@ -1355,8 +1517,9 @@ impl<'a> BuildJob<'a> {
             clips: self.clips.into_boxed_slice(),
             groups: self.groups.into_boxed_slice(),
             transforms: self.transforms.into_boxed_slice(),
-            vector_geometry: self.vector_geometry,
-            vector_clips: self.vector_clips,
+            transform_entries: self.transform_entries.into_boxed_slice(),
+            vector_geometry: Arc::new(self.vector_geometry),
+            vector_clips: Arc::new(self.vector_clips),
             strata: strata.into_boxed_slice(),
             base: self.options.canvas,
             canvas: self.canvas,

@@ -43,6 +43,8 @@ pub enum Resource {
 }
 pub struct Page {
     images: Option<Arc<crate::image::Set>>,
+    /// The interaction the scene was rendered with.
+    rendered_interaction: Interaction,
     pub document: Document,
     pub scene: Arc<paint::Scene>,
     pub title: String,
@@ -414,58 +416,7 @@ impl Measurer {
     /// whether its rules must be matched again. None when the changes
     /// are anything else (or too many): the full incremental job's.
     fn patchable(&self, doc: &Document, revision: u64) -> std::result::Result<Vec<(crate::dom::NodeId, bool)>, String> {
-        let name = |n: crate::dom::NodeId| doc.name(n).ok().flatten().unwrap_or("?").to_owned();
-        let changes = doc.changes_since(revision).ok_or_else(|| "the changes since are gone".to_owned())?;
-        if changes.is_empty() {
-            return Err("no changes".to_owned());
-        }
-        if changes.len() > 256 {
-            return Err(format!("{} changes", changes.len()));
-        }
-        let has_keys = self.rules.has_keys();
-        let invalidation = self.rules.invalidation();
-        let mut nodes: Vec<(crate::dom::NodeId, bool)> = Vec::new();
-        let mut add = |node, rematch: bool| match nodes.iter_mut().find(|(n, _)| *n == node) {
-            Some(entry) => entry.1 |= rematch,
-            None => nodes.push((node, rematch)),
-        };
-        for (_, change) in changes {
-            // A detached element (one a script is making) has no style to
-            // patch, and nothing in the document follows it.
-            if let crate::dom::Change::Style(n) | crate::dom::Change::Attribute { node: n, .. } = change
-                && !doc.is_connected(*n).unwrap_or(false)
-            {
-                continue;
-            }
-            match change {
-                crate::dom::Change::Style(n) => {
-                    if has_keys.attributes.contains("style") {
-                        return Err("a :has() tests [style]".to_owned());
-                    }
-                    let (down, beside) = invalidation.reach_of(std::iter::once("[style".to_owned()));
-                    if !down.is_empty() || !beside.is_empty() {
-                        return Err("a selector reaches from [style]".to_owned());
-                    }
-                    add(*n, false);
-                }
-                crate::dom::Change::Attribute { node, name: attribute, old, new } => {
-                    let keys = style::attribute_keys(attribute, old.as_deref(), new.as_deref());
-                    if has_keys.attribute_flips(attribute, old.as_deref(), new.as_deref()) || keys.iter().skip(1).any(|k| has_keys.has_key(k)) {
-                        return Err(format!("<{}> {attribute}: a :has() tests it", name(*node)));
-                    }
-                    let (down, beside) = invalidation.reach_of(keys.into_iter());
-                    if !down.is_empty() || !beside.is_empty() {
-                        return Err(format!("<{}> {attribute}: selectors reach from it", name(*node)));
-                    }
-                    add(*node, true);
-                }
-                crate::dom::Change::Node(n) => return Err(format!("<{}> attributes", name(*n))),
-                crate::dom::Change::Text(n) => return Err(format!("text in <{}>", doc.parent(*n).ok().flatten().map(name).unwrap_or_default())),
-                crate::dom::Change::Children { node, elements } => return Err(format!("children of <{}>{}", name(*node), if *elements { " (elements)" } else { "" })),
-                crate::dom::Change::Unknown => return Err("an unknown change".to_owned()),
-            }
-        }
-        Ok(nodes)
+        patchable(doc, &self.rules, revision)
     }
     /// Style and lay out `doc` as it is now. The previous measurement is
     /// consumed: when a few elements' own declarations changed and
@@ -1167,9 +1118,10 @@ pub fn finish_with(
     let interaction_mask = rules.state_mask();
     let previous = if rules_reused { previous } else { None };
     let (scene, stylesheet_issues, fallbacks) =
-        render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, &scope, shaper, painter, viewport, cancel, previous, &mut progress)?;
+        render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, &scope, shaper, painter, viewport, cancel, previous, None, &mut progress)?;
     Ok(Page {
         images,
+        rendered_interaction: Interaction::default(),
         document: doc,
         scene,
         title,
@@ -1260,10 +1212,30 @@ impl Page {
             self.interaction_mask = self.rules.state_mask();
             self.media = media;
         }
-        let previous = self.scene.layout().clone();
+        let previous_scene = self.scene.clone();
+        let previous = previous_scene.layout().clone();
+        // The previous scene stands for patching while it shows the same
+        // interaction (another hover is restyled whole).
+        let patchable_scene = (self.rendered_interaction == self.interaction).then_some(&previous_scene);
         let before_render = std::time::Instant::now();
-        let (scene, stylesheet_issues, fallbacks) =
-            render(&doc, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, &self.scope, shaper, painter, viewport, cancel, Some(&previous), &mut progress)?;
+        let (scene, stylesheet_issues, fallbacks) = render(
+            &doc,
+            self.images.as_ref(),
+            &self.rules,
+            self.quirks,
+            self.resource_issues,
+            self.interaction,
+            host,
+            &self.scope,
+            shaper,
+            painter,
+            viewport,
+            cancel,
+            Some(&previous),
+            patchable_scene,
+            &mut progress,
+        )?;
+        self.rendered_interaction = self.interaction;
         let after_render = std::time::Instant::now();
         let mut title = String::new();
         let mut next = Some(doc.root());
@@ -1319,12 +1291,70 @@ impl Page {
         }
         let scope = &self.scope;
         let (scene, issues, fallbacks) =
-            render(&self.document, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, None, &mut progress)?;
+            render(&self.document, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, None, None, &mut progress)?;
+        self.rendered_interaction = self.interaction;
         self.scene = scene;
         self.stylesheet_issues = issues;
         self.fallbacks = fallbacks;
         Ok(())
     }
+}
+/// The elements whose styles the changes to `doc` since `revision` (the
+/// styles' document revision) can be patched over, each with whether its
+/// rules must be matched again; or why the whole tree must be styled.
+fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> std::result::Result<Vec<(crate::dom::NodeId, bool)>, String> {
+    let name = |n: crate::dom::NodeId| doc.name(n).ok().flatten().unwrap_or("?").to_owned();
+    let changes = doc.changes_since(revision).ok_or_else(|| "the changes since are gone".to_owned())?;
+    if changes.is_empty() {
+        return Err("no changes".to_owned());
+    }
+    if changes.len() > 256 {
+        return Err(format!("{} changes", changes.len()));
+    }
+    let has_keys = rules.has_keys();
+    let invalidation = rules.invalidation();
+    let mut nodes: Vec<(crate::dom::NodeId, bool)> = Vec::new();
+    let mut add = |node, rematch: bool| match nodes.iter_mut().find(|(n, _)| *n == node) {
+        Some(entry) => entry.1 |= rematch,
+        None => nodes.push((node, rematch)),
+    };
+    for (_, change) in changes {
+        // A detached element (one a script is making) has no style to
+        // patch, and nothing in the document follows it.
+        if let crate::dom::Change::Style(n) | crate::dom::Change::Attribute { node: n, .. } = change
+            && !doc.is_connected(*n).unwrap_or(false)
+        {
+            continue;
+        }
+        match change {
+            crate::dom::Change::Style(n) => {
+                if has_keys.attributes.contains("style") {
+                    return Err("a :has() tests [style]".to_owned());
+                }
+                let (down, beside) = invalidation.reach_of(std::iter::once("[style".to_owned()));
+                if !down.is_empty() || !beside.is_empty() {
+                    return Err("a selector reaches from [style]".to_owned());
+                }
+                add(*n, false);
+            }
+            crate::dom::Change::Attribute { node, name: attribute, old, new } => {
+                let keys = style::attribute_keys(attribute, old.as_deref(), new.as_deref());
+                if has_keys.attribute_flips(attribute, old.as_deref(), new.as_deref()) || keys.iter().skip(1).any(|k| has_keys.has_key(k)) {
+                    return Err(format!("<{}> {attribute}: a :has() tests it", name(*node)));
+                }
+                let (down, beside) = invalidation.reach_of(keys.into_iter());
+                if !down.is_empty() || !beside.is_empty() {
+                    return Err(format!("<{}> {attribute}: selectors reach from it", name(*node)));
+                }
+                add(*node, true);
+            }
+            crate::dom::Change::Node(n) => return Err(format!("<{}> attributes", name(*n))),
+            crate::dom::Change::Text(n) => return Err(format!("text in <{}>", doc.parent(*n).ok().flatten().map(name).unwrap_or_default())),
+            crate::dom::Change::Children { node, elements } => return Err(format!("children of <{}>{}", name(*node), if *elements { " (elements)" } else { "" })),
+            crate::dom::Change::Unknown => return Err("an unknown change".to_owned()),
+        }
+    }
+    Ok(nodes)
 }
 #[allow(clippy::too_many_arguments)]
 fn render(
@@ -1341,6 +1371,7 @@ fn render(
     viewport: layout::Viewport,
     cancel: Option<&AtomicBool>,
     previous: Option<&layout::Layout>,
+    previous_scene: Option<&Arc<paint::Scene>>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
     // The previous layout's styles stand in only while they were computed
@@ -1359,11 +1390,32 @@ fn render(
     if let Some(t) = timing {
         stamps[5] = t.elapsed().as_secs_f64() * 1000.;
     }
-    let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), previous: previous_styles, generation: rules.generation() }, Default::default(), cancel)?;
-    while !job.step(128, |_| host)?.finished {
-        progress(Phase::Styles, job.progress().styled)
+    // The changes since the previous scene patched over its styles (as a
+    // measurement's are) when they can be; else every element styled anew,
+    // taking the previous styles where nothing changed.
+    let mut patched: Option<style::Patched> = None;
+    let mut styles = None;
+    if let (Some(p), Some(_)) = (previous_styles, previous_scene)
+        && let Ok(nodes) = patchable(doc, rules, p.document_revision())
+    {
+        let mut tree = p.clone();
+        let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation() };
+        if let Some(result) = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)? {
+            patched = Some(result);
+            styles = Some(Arc::new(tree));
+        }
     }
-    let styles = Arc::new(job.finish()?);
+    let styles = match styles {
+        Some(styles) => styles,
+        None => {
+            let mut job =
+                style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), previous: previous_styles, generation: rules.generation() }, Default::default(), cancel)?;
+            while !job.step(128, |_| host)?.finished {
+                progress(Phase::Styles, job.progress().styled)
+            }
+            Arc::new(job.finish()?)
+        }
+    };
     if let Some(t) = timing {
         stamps[0] = t.elapsed().as_secs_f64() * 1000.;
     }
@@ -1388,6 +1440,20 @@ fn render(
         }
     };
     let kept = previous.filter(|p| styles.geometry_kept() && p.device_scale() == viewport.scale && same_bindings(p));
+    let kept_layout = kept.is_some();
+    let why_not_kept = match previous {
+        _ if kept_layout => "",
+        None => "nothing before",
+        Some(_) if !styles.geometry_kept() => "geometry changed",
+        Some(p) if p.device_scale() != viewport.scale => "another scale",
+        Some(p) => {
+            if std::env::var_os("OLO_WEB_TIMING").is_some() {
+                let count = |s: Option<&Arc<crate::image::Set>>| s.map(|s| s.bound_nodes().count() as i64).unwrap_or(-1);
+                eprintln!("  layout not kept: {} images bound before, {} now", count(p.cache().tree().images()), count(images));
+            }
+            "other images bound"
+        }
+    };
     let layout = if let Some(p) = kept {
         fallbacks.merge(&p.cache().fallbacks());
         if let Some(t) = timing {
@@ -1435,23 +1501,66 @@ fn render(
     }
     let box_count = layout.cache().tree().boxes().len();
     progress(Phase::Paint, 0);
-    let canvas = host.system_color(css::color::SystemColor::Canvas, host.scheme())?.srgb8_clipped();
-    let mut job = paint::BuildJob::new(doc, layout, painter, paint::Options { canvas }, Default::default(), cancel)?;
-    while !job.step(32)?.finished {
-        progress(Phase::Paint, job.progress().boxes)
+    // Only transforms changed, over the same boxes: the previous scene
+    // with its matrices patched, not built again (a carousel sliding, a
+    // card growing on hover).
+    let mut scene = None;
+    let mut transforms_patched = false;
+    if let (Some(patched), Some(previous_scene), true) = (&patched, previous_scene, kept_layout)
+        && patched.pseudos == 0
+    {
+        let old = previous_scene.layout().cache().tree();
+        let new = layout.cache().tree();
+        let mut boxes = Vec::new();
+        let only_transforms = patched.nodes.iter().all(|&node| match (old.styles().snapshot(node), new.styles().snapshot(node)) {
+            (Some(a), Some(b)) if a.differs_only_in_transform(b) => {
+                boxes.extend(new.boxes_of(node));
+                true
+            }
+            _ => false,
+        });
+        if only_transforms {
+            scene = previous_scene.with_transforms(layout.clone(), &boxes, cancel)?;
+            transforms_patched = scene.is_some();
+        }
     }
-    fallbacks.merge(job.fallbacks());
-    let scene = job.finish()?;
+    let mut built_ms = timing.map_or(0., |t| t.elapsed().as_secs_f64() * 1000.);
+    let scene = match scene {
+        Some(scene) => scene,
+        None => {
+            let canvas = host.system_color(css::color::SystemColor::Canvas, host.scheme())?.srgb8_clipped();
+            let mut job = paint::BuildJob::new(doc, layout, painter, paint::Options { canvas }, Default::default(), cancel)?;
+            while !job.step(32)?.finished {
+                progress(Phase::Paint, job.progress().boxes)
+            }
+            fallbacks.merge(job.fallbacks());
+            built_ms = timing.map_or(0., |t| t.elapsed().as_secs_f64() * 1000.);
+            job.finish()?
+        }
+    };
     if let Some(t) = timing {
         stamps[4] = t.elapsed().as_secs_f64() * 1000.;
         eprintln!(
-            "render: before style {:.1} ms, style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms, paint {:.1} ms ({} boxes)",
+            "render: before style {:.1} ms, style {:.1} ms{}, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms, paint {:.1} ms ({} build {:.1}, finish {:.1}; {} boxes)",
             stamps[5],
             stamps[0] - stamps[5],
+            match &patched {
+                Some(p) => format!(" (patched, {} changed, {} pseudos)", p.changed, p.pseudos),
+                None => String::new(),
+            },
             stamps[1] - stamps[0],
             stamps[2] - stamps[1],
             stamps[3] - stamps[2],
             stamps[4] - stamps[3],
+            if transforms_patched {
+                "transforms patched;"
+            } else if kept_layout {
+                "layout kept;"
+            } else {
+                why_not_kept
+            },
+            built_ms - stamps[3],
+            stamps[4] - built_ms,
             box_count
         );
     }

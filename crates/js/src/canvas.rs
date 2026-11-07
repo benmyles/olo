@@ -118,7 +118,15 @@ impl Canvas {
             return self.last_image.clone();
         }
         self.dirty = false;
-        self.last_image = olo_web::image::Image::from_premultiplied(self.pixmap.width(), self.pixmap.height(), self.pixmap.data().to_vec(), 1., Default::default(), None).ok();
+        let mut image = olo_web::image::Image::from_premultiplied(self.pixmap.width(), self.pixmap.height(), self.pixmap.data().to_vec(), 1., Default::default(), None).ok();
+        // Drawn on again after it was shown: an animating surface, shown
+        // through a layer of its own from now on.
+        if self.last_image.is_some()
+            && let Some(image) = &mut image
+        {
+            olo_web::image::Image::set_live(image);
+        }
+        self.last_image = image;
         self.last_image.clone()
     }
     fn paint(&self, style: &Style) -> Paint<'static> {

@@ -14,13 +14,16 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
-2026-11-07 evening: the homepage renders as Chrome does at 1000 × 700,
+2026-11-08 midday: the homepage renders as Chrome does at 1000 × 700,
 1× (static sections within a pixel; JOURNAL 2026-11-07), with its
 scripts run (V8), its WebGL scenes drawn on the GPU, its workers,
 fonts, SVG (`<use>`, masks, text) and the live page's animations
-(the hero wave, the bento scenes, the marquee, the counter) at ~20%
-of a core: scripts 300 ms, renders 65 ms, measurements 130 ms per
-2 s. Hover opens the navigation menus. Not yet compared: the animated
+(the hero wave, the bento scenes, the marquee, the counter) at
+13.9–14.9% of a core against Chrome's 15.6% (`tools/dev/cost`, 10 s
+at steady state; JOURNAL 2026-11-08 midday): per 2 s, scripts 85–130
+ms, renders 60–100 ms, measurements ~50 ms, tiles ~28 ms. The pricing
+page renders as Chrome (JOURNAL 2026-11-07 night). Hover opens the
+navigation menus. Not yet compared: the animated
 states at the same moment of the page's clock, the pricing page and a
 navigation journey (click, scroll, back), the narrow viewport, dark
 mode and the other scales. No configuration is accepted.

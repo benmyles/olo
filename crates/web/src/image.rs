@@ -46,6 +46,18 @@ pub struct Image {
     density: f64,
     /// Every pixel is opaque: drawn at 1:1, rows are copied, not blended.
     opaque: bool,
+    /// Its identity: unique to each image ever made (an address is not:
+    /// the next image may land where a dropped one was), for telling
+    /// whether what a tile or layer shows is still the same image.
+    serial: u64,
+    /// A surface scripts keep drawing on (a canvas drawn on again after
+    /// it was shown): the scene shows it through a layer of its own, so
+    /// what is around it is kept while it changes.
+    live: bool,
+}
+static SERIALS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+fn serial() -> u64 {
+    SERIALS.fetch_add(1, Ordering::Relaxed)
 }
 /// Whether every alpha byte is 255 (vectorised: 16 bytes a step).
 fn all_opaque(rgba: &[u8]) -> bool {
@@ -65,7 +77,7 @@ impl Image {
             return Err(Error::Invalid);
         }
         let opaque = all_opaque(&rgba);
-        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density, opaque }))
+        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density, opaque, serial: serial(), live: false }))
     }
     /// The natural size in CSS pixels.
     pub fn natural(&self) -> (f64, f64) {
@@ -124,7 +136,7 @@ impl Image {
         }
         check(cancel)?;
         let opaque = all_opaque(&rgba);
-        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density: 1., opaque }))
+        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density: 1., opaque, serial: serial(), live: false }))
     }
     pub fn width(&self) -> u32 {
         self.width
@@ -135,6 +147,20 @@ impl Image {
     /// Whether every pixel is opaque.
     pub fn opaque(&self) -> bool {
         self.opaque
+    }
+    /// Its identity (see the field).
+    pub fn serial(&self) -> u64 {
+        self.serial
+    }
+    /// Whether this is a live surface (see the field).
+    pub fn live(&self) -> bool {
+        self.live
+    }
+    /// Mark a just-made image a live surface (before it is shared).
+    pub fn set_live(image: &mut Arc<Self>) {
+        if let Some(i) = Arc::get_mut(image) {
+            i.live = true;
+        }
     }
     pub fn rgba(&self) -> &[u8] {
         &self.rgba

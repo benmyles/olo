@@ -87,21 +87,34 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   document is re-rendered from a snapshot when it changes (incremental
   style through selector invalidation sets and kept matches, prepared
   texts kept, tiles kept by signature so only what changed repaints,
-  WebGL canvases read back asynchronously; 6–10 ms a render on
-  stripe.com, coalesced to 10 a second), and nothing runs while nothing
-  is due. Measurements after inline style changes patch the previous
-  styles in place (0.05–0.1 ms an element; JOURNAL 2026-11-07 evening);
-  prepared texts are reused by index. Next, in order: incremental
-  layout (a relayout of stripe.com/pricing's 4800 boxes is 17 ms spread
-  evenly over per-box work, `layout profile:` under OLO_WEB_TIMING; only
-  laying out what changed, by reusing subtrees at formatting context
-  roots whose inputs are unchanged, cuts it); CSS gradients rasterised
-  once and blitted (3 ms a tile on stripe.com/pricing); a SIMD or GPU
-  transformed image blit (0.6 ms a tile for a skewed canvas); dynamic
-  `import()` fetching off the scripts' thread (21 graphs, 1.2 s of a
-  load, in turn); canvases composited on the GPU without readback;
-  numeric GL opcodes; a window resize reaching the live page's scripts
-  (innerWidth/innerHeight, `resize`, measurements at the new size).
+  WebGL canvases read back asynchronously, coalesced to 10 a second),
+  and nothing runs while nothing is due. Measurements after inline
+  style changes patch the previous styles in place (0.05–0.1 ms an
+  element; JOURNAL 2026-11-07 evening); prepared texts are reused by
+  index. Live renders patch styles from the change log too, and a
+  change of `transform` alone patches the scene's matrices (0.4 ms a
+  render instead of 4.9); an animating canvas is a surface layer (one
+  image upload a frame, the tiles under it kept). stripe.com at steady
+  state: Olo 13.9–14.9% of a core against Chrome's 15.6% (JOURNAL
+  2026-11-08 midday). Next, in order: incremental layout (a text change
+  in the GDP counter is a full style, layout and scene job twice a
+  second, 17 ms for the render and 13 ms for the measurement, 90 ms of
+  every 2 s; stripe.com/pricing's 4800 boxes relay out in 17 ms spread
+  evenly over per-box work, `layout profile:` under OLO_WEB_TIMING; lay
+  out only the block that changed, keep the rest); a V8 CPU profile of
+  the live page (scripts are 85–130 ms per 2 s: the page's own work or
+  our natives?); an animating transform as a moving layer placed by the
+  window (the marquee repaints 4 tiles a frame); hover restyles patched
+  (`restyle` is a full job: 15 ms on stripe.com, 30 on pricing); CSS
+  gradients rasterised once and blitted (3 ms a tile on
+  stripe.com/pricing); canvases read back as BGRA, then composited on
+  the GPU without readback; dynamic `import()` fetching off the
+  scripts' thread (21 graphs, 1.2 s of a load, in turn); numeric GL
+  opcodes; a window resize reaching the live page's scripts
+  (innerWidth/innerHeight, `resize`, measurements at the new size);
+  a new image bound after load relays out the page (pricing: 55, 59,
+  61 images bound over its first seconds) where a box whose size is
+  known should only repaint.
 - [ ] Performance, the first priority: styling Stripe is 34 ms (was 115:
   pseudo-element buckets, ancestor Bloom filter, hashed keys, root/
   attribute/:is() buckets, sparse computed values, chained custom

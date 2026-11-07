@@ -483,11 +483,19 @@ impl Context {
                 }
             }
         }
-        self.last = if self.premultiplied_alpha {
+        let mut image = if self.premultiplied_alpha {
             olo_web::image::Image::from_premultiplied(w, h, rgba, 1., Default::default(), None).ok()
         } else {
             olo_web::image::Image::from_rgba(w, h, rgba, Default::default(), None).ok()
         };
+        // Drawn on again after it was shown: an animating surface, shown
+        // through a layer of its own from now on.
+        if self.last.is_some()
+            && let Some(image) = &mut image
+        {
+            olo_web::image::Image::set_live(image);
+        }
+        self.last = image;
         self.last.clone()
     }
     /// The drawing buffer's pixels for another canvas's texture: straight

@@ -177,6 +177,10 @@ impl Tree {
     pub fn boxes(&self) -> &[BoxNode] {
         &self.boxes
     }
+    /// The boxes a document node generated, in tree order.
+    pub fn boxes_of(&self, node: NodeId) -> impl Iterator<Item = BoxId> + '_ {
+        self.boxes.iter().enumerate().filter(move |(_, b)| b.node == node).filter_map(|(i, _)| BoxId::new(i).ok())
+    }
     pub fn iter(&self) -> impl Iterator<Item = (BoxId, &BoxNode)> {
         self.boxes.iter().enumerate().map(|(i, b)| (BoxId::new(i).unwrap(), b))
     }

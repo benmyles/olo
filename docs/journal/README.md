@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### stripe.com live at 14% of a core, under Chrome's 15.6%
+
+*09:38* — The hero's WebGL canvas is a surface layer (one image upload a frame instead of twelve tiles rasterised), the marquee's transform patches the scene's matrices instead of rebuilding it, and live renders patch styles from the change log as measurements do.
+
+![stripe.com live at 14% of a core, under Chrome's 15.6%](2026-11-07/093828-stripe-com-live-at-14-of-a-core-under-chrome-s-1.png)
+
 ### Browser: sticky and fixed positioning as layers over the page
 
 *08:48* — A sticky navigation bar stuck at the top, a section heading stuck under it, a sticky bar at the bottom, at the section the stuck bar's link scrolled to. The scene's commands are cut into strata in paint order: the page's runs, the fixed layer and each sticky box's layer, painted in order, the fixed one unscrolled and each sticky one shifted as the scroll has it; hit-testing follows the same order.

@@ -715,6 +715,15 @@ impl Style {
     /// colours, opacity, shadows, visibility, …): then a layout made for
     /// one serves the other.
     pub fn differs_only_in_paint(&self, other: &Self) -> bool {
+        self.differs_only_in(other, paint_only)
+    }
+    /// Whether every difference from `other` is in `transform` or
+    /// `transform-origin`: the same boxes, painted the same, through
+    /// another matrix (a scene's matrices patched, not built again).
+    pub fn differs_only_in_transform(&self, other: &Self) -> bool {
+        self.differs_only_in(other, |p| matches!(p, Property::Transform | Property::TransformOrigin))
+    }
+    fn differs_only_in(&self, other: &Self, paint_only: impl Fn(Property) -> bool) -> bool {
         if !Arc::ptr_eq(&self.defaults, &other.defaults) || self.axes != other.axes || self.line_height != other.line_height {
             return false;
         }

@@ -5872,3 +5872,58 @@ redo only what changed.
   breakpoints. The reference superscripts are right: super, sub and
   length `vertical-align` shift a span's baseline already, and are no
   longer counted as fallbacks.
+
+## 2026-11-08, midday: the live page's cost against Chrome
+
+![stripe.com live at 14% of a core](../journal/2026-11-07/093828-stripe-com-live-at-14-of-a-core-under-chrome-s-1.png)
+
+- **Measured, not guessed.** Chrome on stripe.com at steady state (its
+  five processes, over 10 s, from /proc) uses 15.6% of a core; Olo used
+  23.1% (`tools/dev/cost`: the page thread 21.6%, the window 1.4%).
+  Per 2 s the page thread spent ~65 ms in scripts, ~130 ms in 19 renders
+  (6–7 ms each: a rebuilt scene for six `style` changes of one `ul`,
+  the marquee's transform) and ~170 ms repainting tiles (12 of 38 a
+  render: the ones under the hero's WebGL canvas, redrawn every frame).
+- **A surface layer.** A canvas drawn on again after it was shown is a
+  live image (`Image::live`); the scene gives its command a stratum of
+  its own (`LayerKind::Surface`, when nothing bends, fades or cuts it)
+  and the worker sends that stratum as the image itself, kept by the
+  image's identity (`Image::serial`, unique to each image ever made:
+  the address a tile signature used before can be reused by the next
+  frame's image), placed with the page and drawn by the GPU, linearly
+  sampled when its backing store is at another density. The twelve
+  tiles under the hero stay cached; the canvas costs one BGRA swap and
+  upload a frame (~0.8 ms for 1000 × 625).
+- **Layer tiles keyed by their own content.** A page run above a
+  layer hashed the whole stratum into every tile's key, so the marquee's
+  motion repainted the twelve tiles of the run over the hero each
+  frame. A tile's key is the signature of what the stratum paints there
+  and the stratum's place: 5 of 51 tiles repaint a frame (the surface
+  and the four tiles the marquee crosses).
+- **Live renders patch.** A live render styled every element anew
+  (0.9 ms, with the previous styles where nothing changed) and rebuilt
+  the scene (3.4 ms for 2000 boxes). Now the changes since the previous
+  scene patch its styles as a measurement's do (`patchable` on the
+  change log, `Job::patch` over a copy; 0.3 ms), and when the elements
+  that changed differ only in `transform`/`transform-origin`
+  (`Style::differs_only_in_transform`), the scene's matrices are
+  patched: each transformed box's entry (its box, parent matrix, border
+  box, own matrix about its origin) is made again from the new style
+  and those under it composed again, the strata indexed again over
+  the same commands (`Scene::with_transforms`, 0.1 ms). A render is
+  0.4 ms instead of 4.9; 35 of 40 renders take that path, the rest are
+  the counter's text change (a full job, 17 ms).
+- **Result.** Olo at 13.9–14.9% of a core (page thread 12.3–12.9%,
+  window 1.4%) against Chrome's 15.6%. Per 2 s: scripts 85–130 ms
+  (V8 and our natives; the page's own work varies with its clock),
+  renders 60–100 ms (16 patched at ~2 ms with snapshot and canvases;
+  3 full for the GDP counter's text at 17 ms), measurements ~50 ms (3
+  full jobs for the same text at 13 ms; 119 patched in place at 0.1
+  ms), tiles ~28 ms. Next, by size: the full jobs for a text change
+  (incremental layout: relay out the block that changed, keep the
+  rest), the scripts (a V8 CPU profile of the live page to see whether
+  the time is the page's or our natives'), the marquee as a moving
+  layer placed by the window (no tiles repainted), hover restyles
+  patched (they are full jobs), the canvas read back as BGRA and
+  then shared with the GPU without a readback at all.
+

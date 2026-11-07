@@ -497,7 +497,7 @@ impl Render for Browser {
         let focused = self.interaction.focus;
         let document_snapshot = self.document_snapshot.clone();
         let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image, l.fixed, l.sticky)).collect();
-        let layers: Vec<(worker::Placement, Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>)> = self.layers.iter().map(|l| (l.placement, l.tiles.clone())).collect();
+        let layers: Vec<(worker::Placement, bool, Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>)> = self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone())).collect();
         let viewport = self.viewport.clone();
         let scroll = self.scroll;
         let extent = self.extent;
@@ -535,7 +535,7 @@ impl Render for Browser {
                     // shifted as the scroll has it (CSS Positioned Layout 3 §3.4).
                     let scroll_css = f64::from(scroll) / scale;
                     let height_css = f64::from(f32::from(bounds.size.height));
-                    for (placement, layer_tiles) in &layers {
+                    for (placement, scaled, layer_tiles) in &layers {
                         let (dy, scrolled) = match placement {
                             worker::Placement::Page => (0., true),
                             worker::Placement::Fixed => (0., false),
@@ -547,7 +547,9 @@ impl Render for Browser {
                                 point(bounds.left() + px((f64::from(r.x) / scale) as f32), bounds.top() + px(y as f32)),
                                 size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
                             );
-                            let _ = window.paint_image_nearest(b, image.clone());
+                            // Tiles texel for pixel; a surface at another
+                            // density sampled linearly (as Chrome scales a canvas).
+                            let _ = if *scaled { window.paint_image(b, Default::default(), image.clone(), 0, false) } else { window.paint_image_nearest(b, image.clone()) };
                         }
                     }
                     let shift = |st: &olo_web::layout::Sticky| st.offset(scroll_css, height_css);

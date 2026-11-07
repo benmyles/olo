@@ -87,6 +87,10 @@ pub enum Placement {
 pub struct LayerTiles {
     pub placement: Placement,
     pub tiles: Vec<(paint::DeviceRect, Arc<RenderImage>)>,
+    /// The images are drawn at their rectangles' sizes, not texel for
+    /// pixel (a canvas's backing store at another density): sampled
+    /// linearly, on the GPU.
+    pub scaled: bool,
 }
 pub enum Reply {
     Status(u64, String),
@@ -1115,11 +1119,52 @@ fn render(
     // tiles with nothing of the stratum skipped.
     let mut layers: Vec<LayerTiles> = Vec::new();
     for (si, stratum) in scene.strata().iter().enumerate() {
+        if let paint::LayerKind::Surface(_) = stratum.kind {
+            // A live surface: its image shown as it is, scrolled with the
+            // page, kept by its identity (no tiles to paint: what is around
+            // it stays as it was while it changes).
+            let Some((bounds, image)) = scene.surface(si) else {
+                layers.push(LayerTiles { placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                continue;
+            };
+            let x = (bounds.x * scale).round() as i32;
+            let y = (bounds.y * scale).round() as i32;
+            let width = ((bounds.x + bounds.width) * scale).round() as i32 - x;
+            let height = ((bounds.y + bounds.height) * scale).round() as i32 - y;
+            if width <= 0 || height <= 0 {
+                layers.push(LayerTiles { placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                continue;
+            }
+            let region = paint::DeviceRect { x, y, width: width as u32, height: height as u32 };
+            *clock = clock.wrapping_add(1);
+            // In the tile cache under the stratum's own key, by the image's identity.
+            let key = (i32::MAX - si as i32, i32::MAX);
+            let signature = image.serial();
+            let shown = if let Some((shown, stamp, kept)) = cache.get_mut(&key)
+                && *kept == signature
+            {
+                *stamp = *clock;
+                shown.clone()
+            } else {
+                let mut bytes = image.rgba().to_vec();
+                for p in bytes.as_chunks_mut::<4>().0 {
+                    p.swap(0, 2)
+                }
+                let shown = olo_ui::widgets::image_view::from_bgra(image.width(), image.height(), bytes).ok_or("Surface upload failed")?;
+                cache.insert(key, (shown.clone(), *clock, signature));
+                repainted += 1;
+                shown
+            };
+            total += 1;
+            let scaled = image.width() != region.width || image.height() != region.height;
+            layers.push(LayerTiles { placement: Placement::Page, tiles: vec![(region, shown)], scaled });
+            continue;
+        }
         let (x0, y0, x1, y1) = match stratum.kind {
-            paint::LayerKind::Page => (0, top, r.key.width as i32, scroll + r.key.height as i32),
+            paint::LayerKind::Page | paint::LayerKind::Surface(_) => (0, top, r.key.width as i32, scroll + r.key.height as i32),
             paint::LayerKind::Fixed | paint::LayerKind::Sticky(_) => {
                 let Some(extent) = scene.stratum_extent(si) else {
-                    layers.push(LayerTiles { placement: Placement::Fixed, tiles: Vec::new() });
+                    layers.push(LayerTiles { placement: Placement::Fixed, tiles: Vec::new(), scaled: false });
                     continue;
                 };
                 let (limit_x, limit_y) = if stratum.kind == paint::LayerKind::Fixed { (f64::from(r.key.width), f64::from(r.key.height)) } else { (f64::INFINITY, f64::INFINITY) };
@@ -1131,14 +1176,13 @@ fn render(
             }
         };
         let placement = match stratum.kind {
-            paint::LayerKind::Page => Placement::Page,
+            paint::LayerKind::Page | paint::LayerKind::Surface(_) => Placement::Page,
             paint::LayerKind::Fixed => Placement::Fixed,
             paint::LayerKind::Sticky(root) => match stickies.iter().find(|s| s.root == root) {
                 Some(st) => Placement::Sticky(*st),
                 None => Placement::Page,
             },
         };
-        let layer_signature = if si == 0 { 0 } else { scene.stratum_signature(si, Some(&r.cancel))? };
         let mut layer_tiles = Vec::new();
         for y in (y0..y1).step_by(256) {
             for x in (x0..x1).step_by(256) {
@@ -1191,7 +1235,7 @@ fn render(
                     }
                     use std::hash::{Hash, Hasher};
                     let mut h = std::hash::DefaultHasher::new();
-                    (signature, layer_signature, si).hash(&mut h);
+                    (signature, si).hash(&mut h);
                     h.finish()
                 };
                 // Each stratum's tiles apart in the cache (x stays below 2^16).
@@ -1229,7 +1273,7 @@ fn render(
             }
         }
         if si > 0 {
-            layers.push(LayerTiles { placement, tiles: layer_tiles });
+            layers.push(LayerTiles { placement, tiles: layer_tiles, scaled: false });
         }
     }
     TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);
