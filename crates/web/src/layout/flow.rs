@@ -261,6 +261,10 @@ pub struct PrepareJob<'a> {
     scope: &'a Scope,
     tree: Arc<Tree>,
     texts: Vec<Arc<inline::Text>>,
+    /// An earlier preparation: a source whose text, spans, styles, edges
+    /// and controls are as they were takes its text from it by index,
+    /// without computing a key.
+    previous: Option<Arc<Cache>>,
     shared: HashMap<TextKey, Arc<inline::Text>>,
     glyph_geometry_bytes: usize,
     fallbacks: Fallbacks,
@@ -280,6 +284,7 @@ impl<'a> PrepareJob<'a> {
             scope,
             tree,
             texts: Vec::new(),
+            previous: None,
             shared: HashMap::new(),
             glyph_geometry_bytes: 0,
             fallbacks: Fallbacks::default(),
@@ -294,13 +299,67 @@ impl<'a> PrepareJob<'a> {
     }
     /// Start from an earlier preparation's texts: those whose identity is
     /// unchanged are kept, not shaped again.
-    pub fn with_previous(mut self, previous: &Cache) -> Self {
+    pub fn with_previous(mut self, previous: &Arc<Cache>) -> Self {
         if self.shared.is_empty() && previous.shared.len() <= self.limits.cached_texts {
             self.shared = previous.shared.as_ref().clone();
         }
+        self.previous = Some(previous.clone());
         self
     }
+    /// Whether source `index` is, to the shaper, the same as the previous
+    /// preparation's at that index: the same text, spans and controls,
+    /// and styles the same as before (a kept style is the same object).
+    fn unchanged_since(&self, index: usize, old_tree: &Tree) -> bool {
+        let (Some(old), Some(new)) = (old_tree.sources.get(index), self.tree.sources.get(index)) else { return false };
+        if !(Arc::ptr_eq(&old.source, &new.source) || *old.source == *new.source) || old.spans.len() != new.spans.len() {
+            return false;
+        }
+        let (Some(container_old), Some(container_new)) = (old_tree.style(old.container), self.tree.style(new.container)) else { return false };
+        if !container_old.same_as(container_new) {
+            return false;
+        }
+        for (a, b) in old.spans.iter().zip(new.spans.iter()) {
+            if a.range != b.range || a.node != b.node {
+                return false;
+            }
+            match (old_tree.styles.snapshot(a.style_node), self.tree.styles.snapshot(b.style_node)) {
+                (Some(x), Some(y)) if x.same_as(y) => {}
+                _ => return false,
+            }
+        }
+        let (controls_old, controls_new) = (old_tree.controls(index as u32), self.tree.controls(index as u32));
+        if controls_old.len() != controls_new.len() || controls_old.iter().zip(controls_new).any(|(x, y)| x.offset != y.offset || x.kind != y.kind) {
+            return false;
+        }
+        match (old_tree.inline_boxes(index as u32), self.tree.inline_boxes(index as u32)) {
+            (Some(o), Some(n)) => {
+                if o.len() != n.len() {
+                    return false;
+                }
+                for (x, y) in o.iter().zip(n) {
+                    if x.range != y.range || x.first != y.first || x.last != y.last || x.node != y.node {
+                        return false;
+                    }
+                    match (old_tree.styles.snapshot(x.node), self.tree.styles.snapshot(y.node)) {
+                        (Some(p), Some(q)) if p.same_as(q) => {}
+                        _ => return false,
+                    }
+                }
+            }
+            (None, None) => {}
+            _ => return false,
+        }
+        true
+    }
     fn one(&mut self, index: usize) -> Result<Arc<inline::Text>> {
+        // The same source as last time: its text, by index.
+        if let Some(previous) = self.previous.clone()
+            && let Some(text) = previous.texts.get(index)
+            && self.unchanged_since(index, &previous.tree)
+        {
+            self.progress.reused_texts += 1;
+            return Ok(text.clone());
+        }
         let source = &self.tree.sources[index];
         let container = source.container;
         let style = self.tree.style(container).ok_or(Error::Invalid)?;

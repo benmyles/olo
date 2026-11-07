@@ -694,10 +694,11 @@ fn render(
                             page::ResourceKind::Image => None,
                         })
                     };
+                    let refresh_started = Instant::now();
                     match measurer.refresh(doc, Some(&cancel), &mut resource) {
                         Ok(true) => {
                             if timing {
-                                eprintln!("  measuring: stylesheets changed, rules remade");
+                                eprintln!("  measuring: stylesheets changed, rules remade in {:.0} ms", refresh_started.elapsed().as_secs_f64() * 1000.);
                             }
                             host = PageHost::new(measurer.scope(), &key);
                         }
