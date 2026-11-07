@@ -694,7 +694,11 @@ impl Style {
         for p in Property::ALL {
             let (a, b) = (self.value(*p), other.value(*p));
             if !a.same(b) {
-                out.push(p.as_str().to_string());
+                if std::env::var_os("OLO_STYLE_DIFF").is_some() {
+                    out.push(format!("{} ({a:?} → {b:?})", p.as_str()));
+                } else {
+                    out.push(p.as_str().to_string());
+                }
             }
         }
         if !(Arc::ptr_eq(&self.font, &other.font) || self.font.request == other.font.request) {

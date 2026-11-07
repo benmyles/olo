@@ -89,6 +89,9 @@ struct Styled {
     end: u32,
     /// Which pseudo-element this entry styles, if not the element itself.
     pseudo: Option<PseudoElement>,
+    /// The rules that matched (ids and specificities), for an element whose
+    /// inline style changes later: its cascade without matching again.
+    matched: Option<Arc<[(u32, selectors::Specificity)]>>,
 }
 /// Completed styles for one immutable connected light document. No DOM,
 /// stylesheet, parent or state-source borrow survives completion.
@@ -223,6 +226,9 @@ pub struct Job<'a> {
 struct Incremental<'a> {
     tree: &'a StyleTree,
     nodes: std::collections::HashSet<NodeId>,
+    /// Elements whose inline style changed and nothing else: their own
+    /// values recompute, what selectors match does not.
+    style_only: std::collections::HashSet<NodeId>,
     children: std::collections::HashSet<NodeId>,
     /// Nodes with a change somewhere below them (ancestors-or-self of the
     /// changed): a reused element outside this set keeps its whole subtree.
@@ -295,6 +301,97 @@ impl<'a> Job<'a> {
                 let has_keys = rules.has_keys();
                 let uses_has = !has_keys.is_empty();
                 let uses_empty = rules.uses_empty();
+                let invalidation = rules.invalidation();
+                let mut style_only = std::collections::HashSet::new();
+                // The descendants (and later siblings' subtrees) an
+                // attribute change can reach through selectors.
+                let invalidate = |n: NodeId, keys: Vec<String>, nodes: &mut std::collections::HashSet<NodeId>| {
+                    let (down, beside) = invalidation.reach_of(keys.iter().cloned());
+                    let before = nodes.len();
+                    let diagnose = std::env::var_os("OLO_STYLE_TIMING").is_some();
+                    let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut std::collections::HashSet<NodeId>| {
+                        if reach.is_empty() {
+                            return;
+                        }
+                        let mut next = document.first_child(root).ok().flatten();
+                        let mut depth = 0usize;
+                        while let Some(e) = next {
+                            if document.node_type(e).ok() == Some(crate::dom::NodeType::Element) && reach.reaches(document, e) {
+                                nodes.insert(e);
+                            }
+                            let child = document.first_child(e).ok().flatten();
+                            if child.is_some() {
+                                depth += 1;
+                                next = child;
+                                continue;
+                            }
+                            let mut at = e;
+                            loop {
+                                if let Some(sibling) = document.next_sibling(at).ok().flatten() {
+                                    next = Some(sibling);
+                                    break;
+                                }
+                                if depth == 0 {
+                                    next = None;
+                                    break;
+                                }
+                                depth -= 1;
+                                match document.parent(at).ok().flatten() {
+                                    Some(p) if p != root => at = p,
+                                    _ => {
+                                        next = None;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    walk(n, &down, nodes);
+                    if !beside.is_empty() {
+                        let mut sibling = document.next_sibling(n).ok().flatten();
+                        while let Some(e) = sibling {
+                            if document.node_type(e).ok() == Some(crate::dom::NodeType::Element) {
+                                if beside.reaches(document, e) {
+                                    nodes.insert(e);
+                                }
+                                walk(e, &beside, nodes);
+                            }
+                            sibling = document.next_sibling(e).ok().flatten();
+                        }
+                    }
+                    if diagnose && nodes.len() > before {
+                        eprintln!(
+                            "  invalidation: {:?} on <{}> reaches {} more (down: universal {}, {} tags, {} classes, {} ids, {} attrs; beside: universal {}, {} classes)",
+                            keys,
+                            document.name(n).ok().flatten().unwrap_or("?"),
+                            nodes.len() - before,
+                            down.universal,
+                            down.tags.len(),
+                            down.classes.len(),
+                            down.ids.len(),
+                            down.attributes.len(),
+                            beside.universal,
+                            beside.classes.len()
+                        );
+                    }
+                };
+                let element_keys = |n: NodeId| -> Vec<String> {
+                    let mut keys = Vec::new();
+                    if let Ok(Some(name)) = document.name(n) {
+                        keys.push(format!("t:{}", name.to_ascii_lowercase()));
+                    }
+                    if let Ok(attributes) = document.attributes_ns(n) {
+                        for a in attributes {
+                            keys.push(format!("[{}", a.local_name.to_ascii_lowercase()));
+                            if a.local_name == "id" {
+                                keys.push(format!("#{}", a.value));
+                            } else if a.local_name == "class" {
+                                keys.extend(a.value.split_ascii_whitespace().map(|c| format!(".{c}")));
+                            }
+                        }
+                    }
+                    keys
+                };
                 let dirty_ancestors = |n: NodeId, nodes: &mut std::collections::HashSet<NodeId>| {
                     let mut at = document.parent(n).ok().flatten();
                     while let Some(a) = at {
@@ -312,15 +409,41 @@ impl<'a> Job<'a> {
                             if uses_has && has_keys.touches(document, *n) {
                                 dirty_ancestors(*n, &mut nodes);
                             }
+                            // Which attribute is unknown: every key it carries.
+                            let keys = element_keys(*n);
+                            invalidate(*n, keys, &mut nodes);
+                        }
+                        crate::dom::Change::Attribute { node: n, name, old, new } => {
+                            nodes.insert(*n);
+                            if uses_has && has_keys.touches(document, *n) {
+                                dirty_ancestors(*n, &mut nodes);
+                            }
+                            // The keys that changed: the attribute's name, and
+                            // for id/class the values that came or went.
+                            let mut keys = vec![format!("[{name}")];
+                            let (old, new) = (old.as_deref().unwrap_or(""), new.as_deref().unwrap_or(""));
+                            if &**name == "class" {
+                                let before: std::collections::HashSet<&str> = old.split_ascii_whitespace().collect();
+                                let after: std::collections::HashSet<&str> = new.split_ascii_whitespace().collect();
+                                keys.extend(before.symmetric_difference(&after).map(|c| format!(".{c}")));
+                            } else if &**name == "id" {
+                                if old != new {
+                                    keys.push(format!("#{old}"));
+                                    keys.push(format!("#{new}"));
+                                }
+                            }
+                            invalidate(*n, keys, &mut nodes);
                         }
                         // Inline style: declared values only; :has()
                         // ancestors are touched only when an argument tests
-                        // the attribute.
+                        // the attribute, descendants when a selector does.
                         crate::dom::Change::Style(n) => {
-                            nodes.insert(*n);
+                            style_only.insert(*n);
                             if uses_has && (has_keys.universal || has_keys.attributes.contains("style")) {
+                                nodes.insert(*n);
                                 dirty_ancestors(*n, &mut nodes);
                             }
+                            invalidate(*n, vec!["[style".to_owned()], &mut nodes);
                         }
                         crate::dom::Change::Children(n) => {
                             geometry_kept = false;
@@ -343,7 +466,7 @@ impl<'a> Job<'a> {
                 }
                 let why_not = (!geometry_kept).then(|| "the document's structure or text changed".to_owned());
                 let mut below = std::collections::HashSet::new();
-                for &n in nodes.iter().chain(&children) {
+                for &n in nodes.iter().chain(&children).chain(&style_only) {
                     let mut at = Some(n);
                     while let Some(a) = at {
                         if !below.insert(a) {
@@ -352,7 +475,7 @@ impl<'a> Job<'a> {
                         at = document.parent(a).ok().flatten();
                     }
                 }
-                Some(Incremental { tree, nodes, children, below, geometry_kept, why_not })
+                Some(Incremental { tree, nodes, style_only, children, below, geometry_kept, why_not })
             }),
             same: Vec::new(),
             inherited_same: Vec::new(),
@@ -714,13 +837,15 @@ impl<'a> Job<'a> {
         // is the same as before (or it is the root).
         if let Some(inc) = &self.previous
             && !inc.nodes.contains(&node)
+            && !inc.style_only.contains(&node)
             && !parent_node.is_some_and(|p| inc.children.contains(&p))
             && parent.is_none_or(|i| self.inherited_same[i])
             && let Some(i) = inc.tree.index(node)
         {
             let style = inc.tree.styles[i].style.clone();
+            let matched = inc.tree.styles[i].matched.clone();
             let index = self.tree.styles.len();
-            self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None });
+            self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None, matched });
             self.same.push(true);
             self.inherited_same.push(true);
             if self.root.is_none() {
@@ -737,7 +862,7 @@ impl<'a> Job<'a> {
                     let style = inc.tree.styles[p as usize].style.clone();
                     let at = self.tree.styles.len() as u32;
                     self.account.add(&style);
-                    self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1), end: at + 1, pseudo: Some(pseudo) });
+                    self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1), end: at + 1, pseudo: Some(pseudo), matched: None });
                     self.same.push(true);
                     self.inherited_same.push(true);
                     self.tree.pseudos.insert((node, pseudo), at);
@@ -770,6 +895,7 @@ impl<'a> Job<'a> {
                             parent_box: old.parent_box.and_then(|p| NonZeroU32::new((i64::from(p.get()) + delta) as u32)),
                             end: (i64::from(old.end) + delta) as u32,
                             pseudo: old.pseudo,
+                            matched: old.matched.clone(),
                         });
                         self.same.push(true);
                         self.inherited_same.push(true);
@@ -835,22 +961,42 @@ impl<'a> Job<'a> {
         if let Some(t) = self.timing.as_mut() {
             t.hints += mark_hints;
         }
-        let cascade = self
-            .rules
-            .match_element_with_hints(
-                &dom,
-                node,
-                selectors::MatchOptions { quirks: self.options.quirks, ..Default::default() },
-                Some(&inline),
-                Some(&hints),
-                parent.map(|p| p as &dyn cascade::Inherited),
-                self.limits.cascade,
-                self.limits.matching,
-                &mut self.scratch,
-                Some(&self.ancestors),
-                self.cancelled,
-            )
-            .map_err(Error::cascade)?;
+        // An element whose inline style changed and nothing selectors see:
+        // its rules from before, cascaded with the new declarations.
+        let previous_matched = self.previous.as_ref().and_then(|inc| {
+            if !inc.style_only.contains(&node) || inc.nodes.contains(&node) || parent_node.is_some_and(|p| inc.children.contains(&p)) {
+                return None;
+            }
+            inc.tree.index(node).and_then(|i| inc.tree.styles[i].matched.clone())
+        });
+        let (cascade, matched) = match previous_matched {
+            Some(matched) => {
+                let cascade = self
+                    .rules
+                    .cascade_from_matched(&dom, node, &matched, Some(&inline), Some(&hints), parent.map(|p| p as &dyn cascade::Inherited), self.limits.cascade, self.cancelled)
+                    .map_err(Error::cascade)?;
+                (cascade, matched)
+            }
+            None => {
+                let (cascade, record) = self
+                    .rules
+                    .match_element_recorded(
+                        &dom,
+                        node,
+                        selectors::MatchOptions { quirks: self.options.quirks, ..Default::default() },
+                        Some(&inline),
+                        Some(&hints),
+                        parent.map(|p| p as &dyn cascade::Inherited),
+                        self.limits.cascade,
+                        self.limits.matching,
+                        &mut self.scratch,
+                        Some(&self.ancestors),
+                        self.cancelled,
+                    )
+                    .map_err(Error::cascade)?;
+                (cascade, Arc::from(record))
+            }
+        };
         let mark_match = clock.map(|c| c.elapsed().as_secs_f64()).unwrap_or(0.);
         if let Some(t) = self.timing.as_mut() {
             t.matching += mark_match - mark_hints;
@@ -923,8 +1069,12 @@ impl<'a> Job<'a> {
             }
         }
         self.same.push(same);
+        // Children keep their styles when what they inherit is unchanged;
+        // the descendants whose selectors an attribute change can reach
+        // are in `nodes` already (the invalidation sets), so this holds
+        // for attribute changes too.
         self.inherited_same.push(same || self.previous.as_ref().and_then(|inc| inc.tree.index(node)).is_some_and(|i| self.previous.as_ref().unwrap().tree.styles[i].style.inherited_same(&style)));
-        self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None });
+        self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None, matched: Some(matched) });
         if self.root.is_none() {
             self.root = Some(index);
         }
@@ -1017,7 +1167,7 @@ impl<'a> Job<'a> {
                 {
                     inc.geometry_kept = inc.tree.pseudos.get(&(node, pseudo)).is_some_and(|&p| inc.tree.styles[p as usize].style.differs_only_in_paint(&style));
                 }
-                self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1), end: at + 1, pseudo: Some(pseudo) });
+                self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1), end: at + 1, pseudo: Some(pseudo), matched: None });
                 self.same.push(false);
                 self.inherited_same.push(false);
                 self.tree.pseudos.insert((node, pseudo), at);

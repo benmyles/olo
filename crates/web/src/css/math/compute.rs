@@ -9,7 +9,7 @@ impl Value {
     pub(crate) fn same(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Constant(a), Self::Constant(b)) => a.ty == b.ty && a.value.to_bits() == b.value.to_bits(),
-            (Self::Expression(a), Self::Expression(b)) => Arc::ptr_eq(a, b),
+            (Self::Expression(a), Self::Expression(b)) => Arc::ptr_eq(a, b) || a.same(b),
             _ => false,
         }
     }

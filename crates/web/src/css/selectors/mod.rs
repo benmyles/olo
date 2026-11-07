@@ -340,6 +340,121 @@ impl Selectors {
         }
         keys
     }
+    /// The invalidation sets of every selector (see `Invalidation`).
+    pub fn invalidation(&self) -> Invalidation {
+        let mut out = Invalidation::default();
+        let mut subject = Vec::new();
+        for complex in &self.complexes {
+            if complex.steps.end <= complex.steps.start + 1 {
+                continue;
+            }
+            // A :has() argument (anchored at its subject) is not a selector
+            // of its own: changes in it are followed through `has_keys`.
+            let first = &self.steps[complex.steps.start as usize];
+            if self.tests[first.tests.start as usize..first.tests.end as usize].iter().any(|t| matches!(t, Test::Structural(Structural::Anchor))) {
+                continue;
+            }
+            subject.clear();
+            self.compound_keys(complex.steps.end - 1, 0, &mut subject);
+            let mut reach = Reach::default();
+            reach.add(&subject);
+            // Walking from the subject leftwards: once a sibling combinator
+            // is crossed, changes to the left reach the subject as a later
+            // sibling's descendant.
+            let mut sibling = false;
+            for step_index in (complex.steps.start..complex.steps.end - 1).rev() {
+                let relation = self.steps[step_index as usize + 1].relation;
+                sibling |= matches!(relation, Relation::Next | Relation::Later);
+                let mut keys: Vec<String> = Vec::new();
+                let mut keyless = false;
+                self.compound_invalidation_keys(step_index, 0, &mut keys, &mut keyless);
+                let (map, any) = if sibling { (&mut out.siblings, &mut out.any_siblings) } else { (&mut out.descendants, &mut out.any_descendants) };
+                if keyless {
+                    if std::env::var_os("OLO_STYLE_TIMING").is_some() {
+                        let step = &self.steps[step_index as usize];
+                        let kinds: Vec<String> = self.tests[step.tests.start as usize..step.tests.end as usize]
+                            .iter()
+                            .map(|t| match t {
+                                Test::Structural(s) => format!("{s:?}"),
+                                Test::State(s) => format!(":{s:?}"),
+                                Test::Pseudo(p) => format!("::{p:?}"),
+                                Test::Logical { mode, .. } => format!("{mode:?}()"),
+                                Test::Nth(_) => "nth".into(),
+                                Test::Lang { .. } => "lang".into(),
+                                Test::Dir(_) => "dir".into(),
+                                Test::Type { name, .. } if *name == ANY => "*".into(),
+                                Test::Type { .. } => "type".into(),
+                                Test::Id(_) => "id".into(),
+                                Test::Class(_) => "class".into(),
+                                Test::Attr { .. } => "attr".into(),
+                            })
+                            .collect();
+                        eprintln!("  keyless compound [{}] in {}", kinds.join("+"), self.subject_summary(complex.steps.end - 1));
+                    }
+                    any.extend(&reach);
+                }
+                for k in keys {
+                    map.entry(k).or_default().extend(&reach);
+                }
+            }
+        }
+        out
+    }
+    /// Every key an element must carry for this compound to match it
+    /// (any one changing can change the match); `keyless` when the compound
+    /// has none (or a logical branch has none).
+    fn compound_invalidation_keys(&self, step: u32, depth: usize, out: &mut Vec<String>, keyless: &mut bool) {
+        let step = &self.steps[step as usize];
+        let tests = &self.tests[step.tests.start as usize..step.tests.end as usize];
+        let mut keyed = false;
+        for test in tests {
+            match test {
+                Test::Type { name, .. } if *name != ANY => {
+                    out.push(format!("t:{}", self.symbols[*name as usize].to_ascii_lowercase()));
+                    keyed = true;
+                }
+                Test::Id(n) => {
+                    out.push(format!("#{}", self.symbols[*n as usize]));
+                    keyed = true;
+                }
+                Test::Class(n) => {
+                    out.push(format!(".{}", self.symbols[*n as usize]));
+                    keyed = true;
+                }
+                Test::Attr { name, .. } => {
+                    out.push(format!("[{}", self.symbols[*name as usize].to_ascii_lowercase()));
+                    keyed = true;
+                }
+                // :has() follows its own keys (the subtree); :is/:where/:not
+                // branches contribute theirs.
+                Test::Logical { mode: Logical::Has, .. } => keyed = true,
+                Test::Logical { list, .. } if depth < 4 => {
+                    let links = &self.links[self.lists[*list as usize].links.start as usize..self.lists[*list as usize].links.end as usize];
+                    for &i in links {
+                        let complex = &self.complexes[i as usize];
+                        for inner in complex.steps.start..complex.steps.end {
+                            self.compound_invalidation_keys(inner, depth + 1, out, keyless);
+                        }
+                    }
+                    keyed = true;
+                }
+                Test::Lang { .. } => {
+                    out.push("[lang".to_owned());
+                    keyed = true;
+                }
+                Test::State(_) | Test::Structural(_) | Test::Nth(_) | Test::Dir(_) | Test::Pseudo(_) | Test::Logical { .. } => {}
+                Test::Type { .. } => {}
+            }
+        }
+        // States follow interaction and structure the tree (sibling and
+        // child-list changes), handled apart; a compound with nothing else
+        // (`:hover`, `:first-child`) is not keyless. One with nothing at
+        // all (`*`) is.
+        let no_keys_needed = !keyed && !tests.is_empty() && tests.iter().all(|t| matches!(t, Test::State(_) | Test::Structural(_) | Test::Nth(_) | Test::Dir(_) | Test::Pseudo(_)));
+        if !keyed && !no_keys_needed {
+            *keyless = true;
+        }
+    }
     /// Whether any selector addresses a pseudo-element (`::before`, …).
     pub fn has_pseudo_elements(&self) -> bool {
         self.complexes.iter().any(|c| c.pseudo.is_some())
@@ -396,6 +511,103 @@ pub struct HasKeys {
     pub attributes: std::collections::HashSet<String>,
     /// An argument compound with no key at all (`:has(> *)`, `:has(:hover)`).
     pub universal: bool,
+}
+/// The subjects a key's change can reach: elements with one of these tags,
+/// ids, classes or attribute names (or every element, when universal).
+#[derive(Default, Clone, Debug)]
+pub struct Reach {
+    pub tags: std::collections::HashSet<String>,
+    pub ids: std::collections::HashSet<String>,
+    pub classes: std::collections::HashSet<String>,
+    pub attributes: std::collections::HashSet<String>,
+    pub universal: bool,
+}
+impl Reach {
+    pub fn is_empty(&self) -> bool {
+        !self.universal && self.tags.is_empty() && self.ids.is_empty() && self.classes.is_empty() && self.attributes.is_empty()
+    }
+    fn add(&mut self, keys: &[SubjectKey]) {
+        for k in keys {
+            match k {
+                SubjectKey::Universal | SubjectKey::Root => self.universal = true,
+                SubjectKey::Id(v) => {
+                    self.ids.insert(v.to_string());
+                }
+                SubjectKey::Class(v) => {
+                    self.classes.insert(v.to_string());
+                }
+                SubjectKey::Type(v) => {
+                    self.tags.insert(v.to_ascii_lowercase());
+                }
+                SubjectKey::Attr(v) => {
+                    self.attributes.insert(v.to_ascii_lowercase());
+                }
+            }
+        }
+    }
+    pub fn extend(&mut self, other: &Reach) {
+        self.universal |= other.universal;
+        self.tags.extend(other.tags.iter().cloned());
+        self.ids.extend(other.ids.iter().cloned());
+        self.classes.extend(other.classes.iter().cloned());
+        self.attributes.extend(other.attributes.iter().cloned());
+    }
+    /// Whether the element (its tag, id, classes, attribute names) is reached.
+    pub fn reaches(&self, doc: &crate::dom::Document, node: crate::dom::NodeId) -> bool {
+        if self.universal {
+            return true;
+        }
+        if !self.tags.is_empty()
+            && let Ok(Some(name)) = doc.name(node)
+            && self.tags.contains(&name.to_ascii_lowercase())
+        {
+            return true;
+        }
+        if self.ids.is_empty() && self.classes.is_empty() && self.attributes.is_empty() {
+            return false;
+        }
+        let Ok(attributes) = doc.attributes_ns(node) else { return true };
+        for a in attributes {
+            if !self.attributes.is_empty() && self.attributes.contains(&a.local_name.to_ascii_lowercase()) {
+                return true;
+            }
+            if a.local_name == "id" && self.ids.contains(a.value) {
+                return true;
+            }
+            if a.local_name == "class" && !self.classes.is_empty() && a.value.split_ascii_whitespace().any(|c| self.classes.contains(c)) {
+                return true;
+            }
+        }
+        false
+    }
+}
+/// What a change to an element's tag, id, class or attribute can affect
+/// elsewhere: for each key found in a compound other than the subject's,
+/// the subjects it reaches among the element's descendants (descendant
+/// and child combinators) or its later siblings and their descendants
+/// (sibling combinators). A keyless compound (`:hover > .x`, `:not(.a) .b`)
+/// reaches its subjects from any change.
+#[derive(Default, Clone, Debug)]
+pub struct Invalidation {
+    pub descendants: std::collections::HashMap<String, Reach>,
+    pub siblings: std::collections::HashMap<String, Reach>,
+    pub any_descendants: Reach,
+    pub any_siblings: Reach,
+}
+impl Invalidation {
+    /// Keys are written "t:tag", "#id", ".class", "[attr".
+    pub fn reach_of(&self, keys: impl Iterator<Item = String>) -> (Reach, Reach) {
+        let (mut d, mut s) = (self.any_descendants.clone(), self.any_siblings.clone());
+        for k in keys {
+            if let Some(r) = self.descendants.get(&k) {
+                d.extend(r);
+            }
+            if let Some(r) = self.siblings.get(&k) {
+                s.extend(r);
+            }
+        }
+        (d, s)
+    }
 }
 impl HasKeys {
     pub fn is_empty(&self) -> bool {

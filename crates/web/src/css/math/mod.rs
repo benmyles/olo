@@ -215,7 +215,7 @@ pub trait Context {
 }
 pub struct NoContext;
 impl Context for NoContext {}
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 enum Op {
     Constant,
@@ -272,6 +272,17 @@ pub struct Program {
     ty: NumericType,
     dependencies: Dependencies,
     stack: usize,
+}
+impl Program {
+    /// The same calculation (instruction by instruction): a program computed
+    /// anew from the same expression reads as unchanged.
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        self.ty == other.ty
+            && self.dependencies == other.dependencies
+            && self.stack == other.stack
+            && self.code.len() == other.code.len()
+            && self.code.iter().zip(&other.code).all(|(a, b)| a.op == b.op && a.arg == b.arg && a.value.to_bits() == b.value.to_bits())
+    }
 }
 #[derive(Clone)]
 pub enum Value {

@@ -274,10 +274,14 @@ pub struct Memory {
 /// document, so mutation cannot invalidate a live Rust view/iterator.
 /// One change to the document, for restyling only what changed: the
 /// revision it made, and what.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Change {
-    /// An element's attributes changed (its own matching inputs).
+    /// An element's attributes changed (its own matching inputs), which
+    /// one unknown.
     Node(NodeId),
+    /// One attribute set, changed or removed: its name and the values
+    /// before and after, for telling which selectors could care.
+    Attribute { node: NodeId, name: Box<str>, old: Option<Box<str>>, new: Option<Box<str>> },
     /// An element's `style` attribute changed: its declared values, never
     /// what selectors match (unless one tests the attribute itself).
     Style(NodeId),
@@ -813,11 +817,17 @@ impl Document {
                     return Err(Error::RevisionOverflow);
                 }
                 let old = old.value;
+                let previous: Box<str> = if normalized.as_ref() == "style" { Box::from("") } else { Box::from(self.text(old)) };
                 let new = self.store_text(value, self.owned_len(old))?;
                 self.free_text(old);
                 self.attributes.get_mut(attr).value = new;
                 let id = self.handle(at);
-                self.bump_with(if normalized.as_ref() == "style" { Change::Style(id) } else { Change::Node(id) })?;
+                let change = if normalized.as_ref() == "style" {
+                    Change::Style(id)
+                } else {
+                    Change::Attribute { node: id, name: Box::from(normalized.as_ref()), old: Some(previous), new: Some(Box::from(self.text(new))) }
+                };
+                self.bump_with(change)?;
                 return Ok(true);
             }
             last = Some(attr);
@@ -839,7 +849,9 @@ impl Document {
             *attributes = Some(attr);
         }
         let id = self.handle(at);
-        self.bump_with(if normalized.as_ref() == "style" { Change::Style(id) } else { Change::Node(id) })?;
+        let change =
+            if normalized.as_ref() == "style" { Change::Style(id) } else { Change::Attribute { node: id, name: Box::from(normalized.as_ref()), old: None, new: Some(Box::from(self.text(value))) } };
+        self.bump_with(change)?;
         Ok(true)
     }
 
@@ -887,7 +899,12 @@ impl Document {
             let a = self.attributes.get(attr);
             if Some(a.name.atom()) == atom {
                 let id = self.handle(at);
-                self.bump_with(Change::Node(id))?;
+                let change = if normalized.as_ref() == "style" {
+                    Change::Style(id)
+                } else {
+                    Change::Attribute { node: id, name: Box::from(normalized.as_ref()), old: Some(Box::from(self.text(a.value))), new: None }
+                };
+                self.bump_with(change)?;
                 let a = self.attributes.remove(attr);
                 if let Some(previous) = previous {
                     self.attributes.get_mut(previous).next = a.next;

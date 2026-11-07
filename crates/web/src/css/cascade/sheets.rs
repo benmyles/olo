@@ -79,6 +79,7 @@ pub struct RuleSet {
     index: Index,
     issues: Vec<Issue>,
     has_keys: selectors::HasKeys,
+    invalidation: selectors::Invalidation,
     uses_empty: bool,
 }
 #[derive(Clone, Copy)]
@@ -474,8 +475,9 @@ impl SheetBuilder {
             );
         }
         let has_keys = selectors.has_keys();
+        let invalidation = selectors.invalidation();
         let uses_empty = selectors.uses_empty();
-        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues, has_keys, uses_empty })
+        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues, has_keys, invalidation, uses_empty })
     }
 }
 fn fold_arc(s: Arc<str>) -> Arc<str> {
@@ -509,6 +511,9 @@ impl RuleSet {
     }
     pub fn has_keys(&self) -> &selectors::HasKeys {
         &self.has_keys
+    }
+    pub fn invalidation(&self) -> &selectors::Invalidation {
+        &self.invalidation
     }
     pub fn uses_empty(&self) -> bool {
         self.uses_empty
@@ -553,6 +558,81 @@ impl RuleSet {
         scratch: &mut MatchScratch,
         ancestors: Option<&selectors::AncestorFilter>,
         cancelled: Option<&'a AtomicBool>,
+    ) -> Result<Cascade<'a>> {
+        self.match_inner(tree, node, options, inline, hints, parent, limits, match_limits, scratch, ancestors, cancelled, None)
+    }
+    /// As `match_element_with_hints`, also answering which rules matched
+    /// (ids and specificities, in candidate order) for `cascade_from_matched`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn match_element_recorded<'a, T: selectors::Tree>(
+        &'a self,
+        tree: &T,
+        node: T::Node,
+        options: selectors::MatchOptions<'_, T::Node>,
+        inline: Option<&'a [p::Declaration]>,
+        hints: Option<&'a [p::Declaration]>,
+        parent: Option<&'a dyn Inherited>,
+        limits: Limits,
+        match_limits: selectors::MatchLimits,
+        scratch: &mut MatchScratch,
+        ancestors: Option<&selectors::AncestorFilter>,
+        cancelled: Option<&'a AtomicBool>,
+    ) -> Result<(Cascade<'a>, Vec<(u32, selectors::Specificity)>)> {
+        let mut record = Vec::new();
+        let cascade = self.match_inner(tree, node, options, inline, hints, parent, limits, match_limits, scratch, ancestors, cancelled, Some(&mut record))?;
+        Ok((cascade, record))
+    }
+    /// The cascade of an element whose matched rules are known from before
+    /// (its inline style changed, nothing selectors see): no matching.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cascade_from_matched<'a, T: selectors::Tree>(
+        &'a self,
+        tree: &T,
+        node: T::Node,
+        matched: &[(u32, selectors::Specificity)],
+        inline: Option<&'a [p::Declaration]>,
+        hints: Option<&'a [p::Declaration]>,
+        parent: Option<&'a dyn Inherited>,
+        limits: Limits,
+        cancelled: Option<&'a AtomicBool>,
+    ) -> Result<Cascade<'a>> {
+        check(cancelled)?;
+        let has_parent =
+            if let Some(parent) = tree.parent(node).map_err(Error::Selectors)? { matches!(tree.content(parent).map_err(Error::Selectors)?, selectors::Content::Element(_)) } else { false };
+        let mut builder = Builder::new(limits, cancelled);
+        for &(id, specificity) in matched {
+            let rule = self.rules.get(id as usize).ok_or(Error::Invalid)?;
+            for (declaration, d) in rule.declarations.iter().enumerate() {
+                builder.add(d, Priority { origin: rule.origin, layer: rule.layer, specificity, order: rule.order, declaration: declaration as u32, rule: u64::from(id) + 1, ..Default::default() })?;
+            }
+        }
+        if let Some(inline) = inline {
+            for (i, d) in inline.iter().enumerate() {
+                builder.add(d, Priority { inline: true, order: u64::MAX, rule: u64::MAX, declaration: i as u32, ..Default::default() })?;
+            }
+        }
+        if let Some(hints) = hints {
+            for (i, d) in hints.iter().enumerate() {
+                builder.add(d, Priority { origin: Origin::PresentationalHint, rule: u64::MAX - 1, declaration: i as u32, ..Default::default() })?;
+            }
+        }
+        builder.finish(has_parent, parent)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn match_inner<'a, T: selectors::Tree>(
+        &'a self,
+        tree: &T,
+        node: T::Node,
+        options: selectors::MatchOptions<'_, T::Node>,
+        inline: Option<&'a [p::Declaration]>,
+        hints: Option<&'a [p::Declaration]>,
+        parent: Option<&'a dyn Inherited>,
+        limits: Limits,
+        match_limits: selectors::MatchLimits,
+        scratch: &mut MatchScratch,
+        ancestors: Option<&selectors::AncestorFilter>,
+        cancelled: Option<&'a AtomicBool>,
+        mut record: Option<&mut Vec<(u32, selectors::Specificity)>>,
     ) -> Result<Cascade<'a>> {
         check(cancelled)?;
         if options.visited_style {
@@ -656,6 +736,9 @@ impl RuleSet {
             scratch.progress.rejected += progress.rejected;
             work = work.checked_add(progress.work).ok_or(Error::Limit)?;
             if let Some(specificity) = matched {
+                if let Some(r) = record.as_deref_mut() {
+                    r.push((id, specificity));
+                }
                 for (declaration, d) in rule.declarations.iter().enumerate() {
                     builder.add(d, Priority { origin: rule.origin, layer: rule.layer, specificity, order: rule.order, declaration: declaration as u32, rule: id as u64 + 1, ..Default::default() })?;
                 }
