@@ -20,7 +20,7 @@
 #              session entry, udev rules, PAM services, the login screen's
 #              unit, user and folders (data/session, udev, pam, systemd,
 #              sysusers, tmpfiles)
-#   VERSION
+#   VERSION, LICENSE
 # It builds nothing: run `cargo build --release --workspace` first (the
 # installer is part of the workspace). Publishing (a GitHub release with
 # these four files) is a separate, deliberate step.
@@ -49,6 +49,8 @@ for d in session udev pam systemd sysusers tmpfiles; do
     cp -r "data/$d" "$STAGE/olo/system/"
 done
 echo "$VERSION" > "$STAGE/olo/VERSION"
+# (MIT: the notice goes with every copy.)
+cp LICENSE "$STAGE/olo/LICENSE"
 BUNDLE="olo-$VERSION-$ARCH.tar.zst"
 tar -C "$STAGE" --owner=0 --group=0 --numeric-owner --sort=name -cf - olo | zstd -q -19 -T0 -o "$OUT/$BUNDLE" -f
 (cd "$OUT" && sha256sum "$BUNDLE" > "$BUNDLE.sha256")

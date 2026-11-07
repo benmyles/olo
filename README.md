@@ -49,3 +49,10 @@ style guide, [docs/TODO.md](docs/TODO.md) the work list, and
 
 Olo was called Tabula until October 2026; installs from then upgrade in
 place, keeping everything.
+
+## Licence
+
+Olo is under the MIT License ([LICENSE](LICENSE)). It carries others'
+work under their own licences: GPUI (Apache 2.0), Smithay (MIT), the
+Noto fonts (SIL Open Font License 1.1), Haiku's cursors (MIT), and the
+crates listed in its source.
