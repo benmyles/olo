@@ -85,6 +85,10 @@ impl Prepared {
     pub fn scope(&self) -> &Scope {
         &self.scope
     }
+    /// What the stylesheets declared that the engine dropped.
+    pub fn issues(&self) -> &[css::cascade::Issue] {
+        self.rules.issues()
+    }
 }
 fn media_for(host: &impl Host, viewport: layout::Viewport) -> css::media::Media {
     css::media::Media::screen(viewport.width, viewport.height, viewport.scale, host.scheme() == css::color::Scheme::Dark)

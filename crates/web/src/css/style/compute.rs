@@ -173,6 +173,7 @@ fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_
         p::Value::Sizes(s) => Value::Sizes(s.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
         p::Value::Positions(p) => Value::Positions(p.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
         p::Value::Repeats(r) => Value::Repeats(r),
+        p::Value::Features(f) => Value::Features(f),
         p::Value::Transforms(t) => Value::Transforms(t.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
         p::Value::Images(images) => {
             let colors = context::Color { numeric };

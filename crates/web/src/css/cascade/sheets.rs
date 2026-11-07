@@ -7,8 +7,10 @@ use std::collections::HashMap;
 #[derive(Clone, Debug)]
 pub enum Issue {
     Invalid,
-    Property(p::Error),
-    Selector(selectors::Error),
+    /// A declaration the engine dropped, and its property name.
+    Property(p::Error, Box<str>),
+    /// A selector the engine dropped, and its source (bounded).
+    Selector(selectors::Error, Box<str>),
     AtRule(Arc<str>),
     Nesting,
 }
@@ -256,7 +258,14 @@ impl SheetBuilder {
                             continue;
                         }
                         Err(e @ selectors::Error::Unsupported(_)) => {
-                            self.issue(Issue::Selector(e))?;
+                            let mut parts = rule.value().filter(|c| c.kind() != Kind::Whitespace);
+                            let text = match (parts.next(), parts.last()) {
+                                (Some(first), Some(last)) => &syntax.source()[first.span().start as usize..last.span().end as usize],
+                                (Some(only), None) => &syntax.source()[only.span().start as usize..only.span().end as usize],
+                                _ => "",
+                            };
+                            let end = text.char_indices().nth(80).map_or(text.len(), |(i, _)| i);
+                            self.issue(Issue::Selector(e, text[..end].into()))?;
                             continue;
                         }
                         Err(e) => return Err(Error::Selectors(e)),
@@ -274,7 +283,7 @@ impl SheetBuilder {
                         }
                         match p::Declaration::compile(&d, self.limits.properties, cancelled) {
                             Ok(d) => declarations.push(d),
-                            Err(e @ (p::Error::Invalid | p::Error::UnknownProperty | p::Error::Unsupported(_))) => self.issue(Issue::Property(e))?,
+                            Err(e @ (p::Error::Invalid | p::Error::UnknownProperty | p::Error::Unsupported(_))) => self.issue(Issue::Property(e, d.name().unwrap_or("").into()))?,
                             Err(e) => return Err(Error::Property(e)),
                         }
                     }

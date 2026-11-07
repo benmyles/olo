@@ -242,6 +242,7 @@ pub enum Value {
     Positions(p::Positions),
     Repeats(p::Repeats),
     Transforms(p::Transforms),
+    Features(p::Features),
     /// Explicit nonzero oblique angle in degrees; bare oblique is a keyword.
     Oblique(f64),
 }
@@ -264,6 +265,7 @@ impl Value {
             (Self::Positions(a), Self::Positions(b)) => Arc::ptr_eq(&a.0, &b.0),
             (Self::Repeats(a), Self::Repeats(b)) => Arc::ptr_eq(&a.0, &b.0),
             (Self::Transforms(a), Self::Transforms(b)) => a.same(b),
+            (Self::Features(a), Self::Features(b)) => Arc::ptr_eq(&a.0, &b.0) || a == b,
             (Self::Oblique(a), Self::Oblique(b)) => a.to_bits() == b.to_bits(),
             _ => false,
         }
@@ -286,6 +288,7 @@ impl Value {
             Self::Positions(p) => p.reserved_bytes(),
             Self::Repeats(r) => r.reserved_bytes(),
             Self::Transforms(t) => t.reserved_bytes(),
+            Self::Features(f) => f.reserved_bytes(),
             _ => 0,
         }
     }

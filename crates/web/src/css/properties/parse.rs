@@ -42,7 +42,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
     }
     // Decoration values (image lists, shadows, radii) take any number of components.
     if let Name::Longhand(property) = name
-        && matches!(property.grammar(), Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms)
+        && matches!(property.grammar(), Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features)
     {
         let parts: Vec<Component<'_>> = values.clone().filter(|c| c.kind() != Kind::Whitespace).collect();
         if let [c] = parts.as_slice()
@@ -61,6 +61,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             Grammar::Repeats => decoration::parse_repeats(&parts)?,
             Grammar::Shadows => decoration::parse_shadows(&parts, limits, cancelled)?,
             Grammar::Transforms => transform::parse_transforms(&parts, limits, cancelled)?,
+            Grammar::Features => font::parse_features(&parts)?,
             _ => decoration::parse_radius(&parts, limits, cancelled)?,
         };
         return Ok(smallvec::smallvec![Assignment { property, value }]);
@@ -129,6 +130,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             match s.expansion() {
                 Expansion::WideOnly => Err(Error::Invalid),
                 Expansion::WhiteSpace => white_space(&parts),
+                Expansion::TextWrap => text_wrap(&parts),
                 Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
                 Expansion::Grid | Expansion::Radius | Expansion::Background => unreachable!("these shorthands parse before part collection"),
                 Expansion::Border => border(&parts, properties, limits, cancelled),
@@ -209,7 +211,28 @@ fn border(parts: &[Component<'_>], properties: &[Property], limits: Limits, canc
     }
     let [width, style, color] = found;
     let values = [width.unwrap_or(Value::Keyword(Keyword::Medium)), style.unwrap_or(Value::Keyword(Keyword::None)), color.unwrap_or(Value::Color(color::Value::CurrentColor))];
-    Ok(properties.iter().enumerate().map(|(index, &property)| Assignment { property, value: values[index / 4].clone() }).collect())
+    // The longhands come in width, style, colour groups of one side each
+    // (`border-top`), two (`border-block`) or four (`border`).
+    let sides = properties.len() / 3;
+    Ok(properties.iter().enumerate().map(|(index, &property)| Assignment { property, value: values[index / sides].clone() }).collect())
+}
+/// `text-wrap: wrap | nowrap | balance | stable | pretty`: the mode longhand;
+/// the style keywords keep wrapping on (CSS Text 4 §5.1), their line
+/// balancing is not implemented.
+fn text_wrap(parts: &[Component<'_>]) -> Result<Assignments> {
+    let [c] = parts else { return Err(Error::Invalid) };
+    if c.kind() != Kind::Ident {
+        return Err(Error::Invalid);
+    }
+    let name = c.text().unwrap();
+    let mode = if name.eq_ignore_ascii_case("nowrap") {
+        Keyword::Nowrap
+    } else if ["wrap", "balance", "stable", "pretty"].iter().any(|k| name.eq_ignore_ascii_case(k)) {
+        Keyword::Wrap
+    } else {
+        return Err(Error::Invalid);
+    };
+    Ok(smallvec::smallvec![Assignment { property: Property::TextWrapMode, value: Value::Keyword(mode) }])
 }
 // CSS Text 4's interoperable two-longhand shorthand. white-space-trim and
 // discard are not implemented; their syntax must fail, never silently reset.
@@ -295,7 +318,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
                 _ => Keyword::Row,
             }))
         }
-        Grammar::Tracks | Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms => {
+        Grammar::Tracks | Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features => {
             unreachable!("parsed before part collection")
         }
         Grammar::Color(keywords) => {
@@ -364,7 +387,7 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
             Numeric::compile(c, NumericKind::LengthPercentage, Range::Nonnegative, limits, cancelled).map(Value::Numeric)
         }
         Grammar::Display | Grammar::FontFamily | Grammar::FontStyle | Grammar::Tracks | Grammar::GridLine | Grammar::GridAutoFlow => Err(Error::Invalid),
-        Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms => Err(Error::Invalid),
+        Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features => Err(Error::Invalid),
     }
 }
 fn wide(s: &str) -> Option<variables::Wide> {

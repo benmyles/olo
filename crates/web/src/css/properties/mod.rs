@@ -13,7 +13,7 @@ use super::{Component, Components, Kind, Statement, StatementKind, color, math, 
 pub use clip::{GeometryBox, Inset, LocalUrl};
 pub use decoration::{Direction, Image, Images, Positions, RadialSize, Radius, RepeatAxis, Repeats, Shadow, Shadows, Size, Sizes, Stop};
 pub use display::{Display, Inner, Internal, Outer};
-pub use font::{Families, Family, GenericFamily};
+pub use font::{Families, Family, Feature, Features, GenericFamily};
 pub use grid::{AutoRepeat, Entry as TrackEntry, GridLine, Track, TrackSize, Tracks};
 pub use numeric::{Numeric, NumericKind, Range};
 pub use registry::{Keyword, Name, Property, Shorthand};
@@ -104,6 +104,7 @@ pub enum Value {
     Positions(Positions),
     Repeats(Repeats),
     Transforms(Transforms),
+    Features(Features),
     Pending(Arc<Pending>),
 }
 
@@ -134,6 +135,7 @@ impl Value {
             Self::Positions(p) => p.reserved_bytes(),
             Self::Repeats(r) => r.reserved_bytes(),
             Self::Transforms(t) => t.reserved_bytes(),
+            Self::Features(f) => f.reserved_bytes(),
             Self::Color(v) => v.expression_reserved_bytes(),
             Self::Pending(v) => size_of::<Pending>() + 2 * size_of::<usize>() + v.tokens.arena_reserved_bytes(),
             _ => 0,
@@ -195,6 +197,10 @@ impl Declaration {
             let value = variables::Value::compile(values, limits.variables(), cancelled).map_err(variable_error)?;
             return Ok(Self::Custom { name: name.into(), important, value });
         }
+        if inert(name) {
+            // Accepted and dropped: nothing a static rendering shows.
+            return Ok(Self::Known { important, values: Assignments::new() });
+        }
         let name = Name::parse(name).ok_or(Error::UnknownProperty)?;
         parse::preflight(values.clone(), limits, cancelled)?;
         let pending = variables::inspect(values.clone(), limits.variables(), cancelled).map_err(variable_error)?;
@@ -211,5 +217,88 @@ impl Declaration {
         match self {
             Self::Known { important, .. } | Self::Custom { important, .. } => *important,
         }
+    }
+}
+
+/// Properties that change nothing in a static rendering (interaction,
+/// transitions, scrolling, platform hints), accepted so a page's stylesheet
+/// issues count what it actually misses. Sorted, ASCII lower case.
+const INERT: &[&str] = &[
+    "-moz-osx-font-smoothing",
+    "-moz-tab-size",
+    "-moz-text-size-adjust",
+    "-moz-user-select",
+    "-ms-overflow-style",
+    "-ms-text-size-adjust",
+    "-ms-user-select",
+    "-o-tab-size",
+    "-webkit-font-smoothing",
+    "-webkit-overflow-scrolling",
+    "-webkit-tap-highlight-color",
+    "-webkit-text-size-adjust",
+    "-webkit-touch-callout",
+    "-webkit-user-drag",
+    "-webkit-user-select",
+    "anchor-name",
+    "anchor-scope",
+    "backface-visibility",
+    "contain-intrinsic-size",
+    "container-name",
+    "cursor",
+    "forced-color-adjust",
+    "overscroll-behavior",
+    "overscroll-behavior-x",
+    "overscroll-behavior-y",
+    "print-color-adjust",
+    "scroll-behavior",
+    "scroll-margin",
+    "scroll-margin-block",
+    "scroll-margin-bottom",
+    "scroll-margin-inline",
+    "scroll-margin-left",
+    "scroll-margin-right",
+    "scroll-margin-top",
+    "scroll-padding",
+    "scroll-padding-block",
+    "scroll-padding-bottom",
+    "scroll-padding-inline",
+    "scroll-padding-left",
+    "scroll-padding-right",
+    "scroll-padding-top",
+    "scroll-snap-align",
+    "scroll-snap-stop",
+    "scroll-snap-type",
+    "scrollbar-color",
+    "scrollbar-gutter",
+    "scrollbar-width",
+    "speak",
+    "tab-size",
+    "text-size-adjust",
+    "touch-action",
+    "transition",
+    "transition-behavior",
+    "transition-delay",
+    "transition-duration",
+    "transition-property",
+    "transition-timing-function",
+    "user-select",
+    "will-change",
+];
+fn inert(name: &str) -> bool {
+    if name.len() > 32 || !name.is_ascii() {
+        return false;
+    }
+    let mut buffer = [0u8; 32];
+    for (target, source) in buffer.iter_mut().zip(name.bytes()) {
+        *target = source.to_ascii_lowercase();
+    }
+    let lower = std::str::from_utf8(&buffer[..name.len()]).unwrap_or("");
+    INERT.binary_search(&lower).is_ok()
+}
+#[cfg(test)]
+mod inert_tests {
+    #[test]
+    fn inert_names_are_sorted() {
+        assert!(super::INERT.windows(2).all(|w| w[0] < w[1]));
     }
 }

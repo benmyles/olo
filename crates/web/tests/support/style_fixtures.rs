@@ -257,7 +257,7 @@ fn evaluate_case(dir: &Path, case: &Json) -> Result<()> {
     }
     let rules = builder.finish(None).map_err(error)?;
     for issue in rules.issues() {
-        if !matches!(issue, cascade::Issue::Invalid | cascade::Issue::Property(p::Error::Invalid)) {
+        if !matches!(issue, cascade::Issue::Invalid | cascade::Issue::Property(p::Error::Invalid, _)) {
             return Err(unsupported(format!("stylesheet context: {issue:?}")));
         }
     }

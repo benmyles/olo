@@ -29,6 +29,7 @@ pub(super) enum Grammar {
     Repeats,
     Shadows,
     Transforms,
+    Features,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Expansion {
@@ -42,6 +43,7 @@ pub(super) enum Expansion {
     Grid,
     Radius,
     Background,
+    TextWrap,
 }
 macro_rules! keyword_registry {
     ($($id:ident => $name:literal),* $(,)?) => {
@@ -246,6 +248,7 @@ property_registry! {
     FloodColor, "flood-color", Grammar::Color(&[]), "black", false;
     FloodOpacity, "flood-opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", false;
     FontFamily, "font-family", Grammar::FontFamily, "serif", true;
+    FontFeatureSettings, "font-feature-settings", Grammar::Features, "normal", true;
     FontSize, "font-size", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::XxSmall,Keyword::XSmall,Keyword::Small,Keyword::Medium,Keyword::Large,Keyword::XLarge,Keyword::XxLarge,Keyword::XxxLarge,Keyword::Larger,Keyword::Smaller,Keyword::Math]), "medium", true;
     FontStyle, "font-style", Grammar::FontStyle, "normal", true;
     FontWeight, "font-weight", Grammar::Numeric(NumericKind::Number, Range::FontWeight, &[Keyword::Normal,Keyword::Bold,Keyword::Bolder,Keyword::Lighter]), "normal", true;
@@ -349,12 +352,24 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
-    All, "all", [AlignContent,AlignItems,AlignSelf,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [AlignContent,AlignItems,AlignSelf,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
+    // Logical border shorthands map to physical sides for horizontal-tb,
+    // left-to-right, as the logical insets and margins do.
+    BorderBlock, "border-block", [BorderTopWidth,BorderBottomWidth,BorderTopStyle,BorderBottomStyle,BorderTopColor,BorderBottomColor], Border;
+    BorderBlockEnd, "border-block-end", [BorderBottomWidth,BorderBottomStyle,BorderBottomColor], Border;
+    BorderBlockStart, "border-block-start", [BorderTopWidth,BorderTopStyle,BorderTopColor], Border;
+    BorderBottom, "border-bottom", [BorderBottomWidth,BorderBottomStyle,BorderBottomColor], Border;
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
+    BorderInline, "border-inline", [BorderLeftWidth,BorderRightWidth,BorderLeftStyle,BorderRightStyle,BorderLeftColor,BorderRightColor], Border;
+    BorderInlineEnd, "border-inline-end", [BorderRightWidth,BorderRightStyle,BorderRightColor], Border;
+    BorderInlineStart, "border-inline-start", [BorderLeftWidth,BorderLeftStyle,BorderLeftColor], Border;
+    BorderLeft, "border-left", [BorderLeftWidth,BorderLeftStyle,BorderLeftColor], Border;
     BorderRadius, "border-radius", [BorderTopLeftRadius,BorderTopRightRadius,BorderBottomRightRadius,BorderBottomLeftRadius], Radius;
+    BorderRight, "border-right", [BorderRightWidth,BorderRightStyle,BorderRightColor], Border;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
+    BorderTop, "border-top", [BorderTopWidth,BorderTopStyle,BorderTopColor], Border;
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;
     Flex, "flex", [FlexGrow,FlexShrink,FlexBasis], Flex;
     FlexFlow, "flex-flow", [FlexDirection,FlexWrap], Unordered;
@@ -378,6 +393,7 @@ shorthand_registry! {
     PlaceContent, "place-content", [AlignContent,JustifyContent], Repeat;
     PlaceItems, "place-items", [AlignItems,JustifyItems], Repeat;
     PlaceSelf, "place-self", [AlignSelf,JustifySelf], Repeat;
+    TextWrap, "text-wrap", [TextWrapMode], TextWrap;
     WhiteSpace, "white-space", [WhiteSpaceCollapse,TextWrapMode], WhiteSpace;
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

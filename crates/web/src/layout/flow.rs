@@ -90,8 +90,9 @@ fn style_runs(
             continue;
         }
         let shift = baseline_shift(s, parent_size);
+        let features = shaping::features_of(s);
         let same_font = s.font().request == style.font().request && s.font().context() == style.font().context();
-        if same_font && s.line_height() == style.line_height() && shift == 0. {
+        if same_font && s.line_height() == style.line_height() && shift == 0. && features == shaping::features_of(style) {
             continue;
         }
         let start = boundary(prepared, span.range.start)?;
@@ -104,6 +105,7 @@ fn style_runs(
             && last.request == s.font().request
             && last.line_height == s.line_height()
             && last.shift == shift
+            && last.features == features
         {
             last.range.end = end;
             continue;
@@ -123,6 +125,7 @@ fn style_runs(
             ascent: metrics.ascent.max(0.),
             descent: (-metrics.descent).max(0.),
             shift,
+            features,
         });
     }
     Ok(runs)
@@ -318,12 +321,14 @@ impl<'a> PrepareJob<'a> {
                     (Arc::as_ptr(s.font()) as usize).hash(&mut hash);
                     s.line_height().to_bits().hash(&mut hash);
                     baseline_shift(s, style.font().request.size).to_bits().hash(&mut hash);
+                    shaping::features_of(s).hash(&mut hash);
                 }
             }
             // Spacing shapes into the glyph advances, so it is part of the identity.
             let size = style.font().request.size;
             style.used_text_spacing(crate::css::style::Property::LetterSpacing, size, Default::default(), self.cancel).unwrap_or(0.).to_bits().hash(&mut hash);
             style.used_text_spacing(crate::css::style::Property::WordSpacing, size, Default::default(), self.cancel).unwrap_or(0.).to_bits().hash(&mut hash);
+            shaping::features_of(style).hash(&mut hash);
             (Arc::as_ptr(style.font()) as usize, source.source.clone(), hash.finish())
         });
         if let Some(text) = key.as_ref().and_then(|key| self.shared.get(key))

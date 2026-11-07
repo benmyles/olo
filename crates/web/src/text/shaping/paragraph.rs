@@ -150,6 +150,8 @@ pub struct StyleRun {
     pub descent: f64,
     /// Baseline shift, up positive (superscripts), in CSS px.
     pub shift: f64,
+    /// `font-feature-settings`, passed to shaping.
+    pub features: Arc<[crate::css::properties::Feature]>,
 }
 impl Paragraph {
     pub fn request(&self) -> &FontRequest {
@@ -244,6 +246,8 @@ pub struct ParagraphJob<'a> {
     styles: Vec<StyleRun>,
     /// Each style run's first-available font, resolved once.
     style_primaries: Vec<Option<Arc<GlyphFont>>>,
+    /// The paragraph's own `font-feature-settings`, for text outside any style run.
+    features: Arc<[crate::css::properties::Feature]>,
 }
 impl<'a> ParagraphJob<'a> {
     /// Differently styled ranges: their boundaries become shaping breaks and
@@ -398,6 +402,7 @@ impl<'a> ParagraphJob<'a> {
             inline_objects: Box::default(),
             styles: Vec::new(),
             style_primaries: Vec::new(),
+            features: Arc::from([]),
         })
     }
     /// Explicit inline box edges isolate shaping context without inserting
@@ -490,7 +495,9 @@ impl<'a> ParagraphJob<'a> {
             return Err(Error::Stale);
         }
         let base = if style.axes().direction == crate::css::style::Direction::Rtl { BaseDirection::Rtl } else { BaseDirection::Ltr };
-        Self::for_layout(engine, scope, style.font().request.clone(), source, base, limits, cancel)
+        let mut job = Self::for_layout(engine, scope, style.font().request.clone(), source, base, limits, cancel)?;
+        job.features = features_of(style);
+        Ok(job)
     }
     pub fn progress(&self) -> Progress {
         self.progress
@@ -530,6 +537,8 @@ impl<'a> ParagraphJob<'a> {
         let para = self.analysis.paragraphs.get(p.paragraph).ok_or(Error::Invalid)?;
         let context_end = para.range.end - usize::from(self.allow_lf && self.analysis.source.as_bytes()[para.range.end - 1] == b'\n');
         let context = shaping_context(para.range.start..context_end, p.range.clone(), &self.shaping_breaks)?;
+        let settings = self.styles.get(p.style as usize).map_or(&self.features, |s| &s.features);
+        let features: smallvec::SmallVec<[Feature; 4]> = settings.iter().map(|f| Feature::new(harfrust::Tag::new(&f.tag), f.value, ..)).collect();
         let mut run = self.engine.shape_run(
             p.font.selection(),
             self.analysis.source.clone(),
@@ -538,7 +547,7 @@ impl<'a> ParagraphJob<'a> {
                 direction: if p.level % 2 == 0 { Direction::LeftToRight } else { Direction::RightToLeft },
                 script: p.script,
                 language: Some(self.scope.language()),
-                features: &[],
+                features: &features,
                 beginning_of_text: p.range.start == context.start,
                 end_of_text: p.range.end == context.end,
                 context: Some((context.start, context.end)),
@@ -686,5 +695,13 @@ impl<'a> ParagraphJob<'a> {
             font_context: self.scope.context(),
             shaping_breaks: self.shaping_breaks,
         })
+    }
+}
+
+/// A style's `font-feature-settings` as shaping features (none for `normal`).
+pub fn features_of(style: &Style) -> Arc<[crate::css::properties::Feature]> {
+    match style.value(crate::css::style::Property::FontFeatureSettings) {
+        crate::css::style::Value::Features(f) => f.0.clone(),
+        _ => Arc::from([]),
     }
 }

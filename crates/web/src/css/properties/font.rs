@@ -177,3 +177,63 @@ pub(super) fn width(c: Component<'_>, limits: Limits, cancelled: Option<&AtomicB
     }
     Numeric::compile(c, NumericKind::Percentage, Range::Nonnegative, limits, cancelled).map(Value::Numeric)
 }
+
+/// `font-feature-settings`: OpenType feature tags and values, passed to
+/// shaping as given (CSS Fonts 4 §7.4).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Features(pub Arc<[Feature]>);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Feature {
+    pub tag: [u8; 4],
+    pub value: u32,
+}
+impl Features {
+    pub(crate) fn reserved_bytes(&self) -> usize {
+        self.0.len() * size_of::<Feature>()
+    }
+}
+/// `normal | [ <string> [ <integer> | on | off ]? ]#`.
+pub(super) fn parse_features(parts: &[Component<'_>]) -> Result<Value> {
+    if let [c] = parts
+        && c.kind() == Kind::Ident
+        && c.text().unwrap().eq_ignore_ascii_case("normal")
+    {
+        return Ok(Value::Keyword(Keyword::Normal));
+    }
+    let mut out = Vec::new();
+    for group in parts.split(|c| c.kind() == Kind::Comma) {
+        let (tag, value) = match group {
+            [tag] => (*tag, None),
+            [tag, value] => (*tag, Some(*value)),
+            _ => return Err(Error::Invalid),
+        };
+        if tag.kind() != Kind::String {
+            return Err(Error::Invalid);
+        }
+        let text = tag.text().unwrap();
+        if text.len() != 4 || !text.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
+            return Err(Error::Invalid);
+        }
+        let value = match value {
+            None => 1,
+            Some(c) if c.kind() == Kind::Ident && c.text().unwrap().eq_ignore_ascii_case("on") => 1,
+            Some(c) if c.kind() == Kind::Ident && c.text().unwrap().eq_ignore_ascii_case("off") => 0,
+            Some(c) if c.kind() == Kind::Integer => {
+                let v = c.number().map(|n| n.value).unwrap_or(-1.);
+                if !(0. ..=u32::MAX as f64).contains(&v) {
+                    return Err(Error::Invalid);
+                }
+                v as u32
+            }
+            _ => return Err(Error::Invalid),
+        };
+        out.push(Feature { tag: text.as_bytes().try_into().unwrap(), value });
+        if out.len() > 32 {
+            return Err(Error::Limit);
+        }
+    }
+    if out.is_empty() {
+        return Err(Error::Invalid);
+    }
+    Ok(Value::Features(Features(out.into())))
+}
