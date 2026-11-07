@@ -6445,7 +6445,17 @@ changes (`power_profile::watch`, its `PropertiesChanged`) and UPower's
 `set` does (`follow_now`: a sleeping NVIDIA GPU asked, waking it a
 moment, as applying its preset does anyway; the processors' preset
 after the daemon's own). It's woken by nothing else: idle, it costs
-nothing. `set` keeps the whole tuning (the plan, each GPU's Custom
+nothing. It holds NVIDIA's GPU open (NVML, opened at its first change
+and never closed: `gpu_tuning::nvml`), and that is what keeps the GPU's
+clock lock: with persistence off, NVIDIA's driver shuts a GPU down
+whole when the last program holding it closes it, its lock and power
+limit with it (open-gpu-kernel-modules' `nv_close_device` →
+`rm_shutdown_adapter`), so a lock set by a program that then exits
+lasts only while another has the GPU open (Ben, 2026-11-07: "changing
+the power mode in prefs -> power doesn't change the clock setting of
+the nvidia gpu?"). Held, the GPU still sleeps: on the ThinkPad (driver
+615, fine-grained runtime D3) it suspended 25 s after its last use with
+NVML open, video memory off; closing NVML is what woke it. `set` keeps the whole tuning (the plan, each GPU's Custom
 knobs) and applies what's in force now. One password, at the first
 Apply; Power Modes offers Apply while the service isn't there, or is
 from an older build (the installed program compared with the

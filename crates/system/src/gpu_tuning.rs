@@ -362,6 +362,17 @@ fn xe_caps(device: &Path) -> Option<XeCaps> {
 }
 
 /// NVIDIA's library, loaded once (None without NVIDIA's driver).
+/// NVML, opened once and kept open for the life of the process. That is
+/// what keeps an NVIDIA GPU's tuning: with persistence off, when the last
+/// program holding the GPU closes it the driver shuts the GPU down
+/// whole, and a clock lock or power limit set on it goes with it
+/// (open-gpu-kernel-modules' `nv_close_device` → `nv_stop_device` →
+/// `rm_shutdown_adapter`), so a lock set and let go of lasted only while
+/// something else had the GPU open. `olo-gpu-tune follow`, which runs
+/// for the whole boot, holds it this way from its first change; the GPU
+/// still sleeps (fine-grained runtime D3: held, a 615 driver's laptop
+/// GPU suspended 25 s after its last use, video memory off), so holding
+/// it costs nothing idle. Never shut down early.
 fn nvml() -> Option<&'static nvml_wrapper::Nvml> {
     static NVML: std::sync::OnceLock<Option<nvml_wrapper::Nvml>> = std::sync::OnceLock::new();
     NVML.get_or_init(|| nvml_wrapper::Nvml::init().ok()).as_ref()
