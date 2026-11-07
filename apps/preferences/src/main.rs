@@ -201,15 +201,20 @@ impl Prefs {
             self.open(p, cx);
         }
         // A tab alone: the panel opens on it (Deskbar's Ethernet menu:
-        // `network --tab Ethernet`).
-        if let (None, Some(tab), Some(Panel::Network)) = (&show, &tab, panels.last().and_then(|p| Panel::from_arg(p))) {
+        // `network --tab Ethernet`; the GPUs panel's old names, Power's
+        // Graphics tab).
+        let last = panels.last().map(|p| p.as_str());
+        let tab = tab.or_else(|| matches!(last, Some("gpus" | "gpu" | "graphics" | "nvidia")).then(|| "Graphics".to_owned()));
+        if let (None, Some(tab), Some(panel @ (Panel::Network | Panel::Power))) = (&show, &tab, last.and_then(Panel::from_arg)) {
             let (me, tab) = (cx.entity(), tab.clone());
             cx.defer(move |cx| {
-                let view = me.read(cx).windows.iter().find(|w| w.panel == Some(Panel::Network)).and_then(|w| w.view.clone());
+                let view = me.read(cx).windows.iter().find(|w| w.panel == Some(panel)).and_then(|w| w.view.clone());
                 if let Some(view) = view {
                     view.update(cx, |v, cx| {
-                        if let panel::State::Network(st) = &mut v.state {
-                            network::show_tab(st, &tab);
+                        match &mut v.state {
+                            panel::State::Network(st) => network::show_tab(st, &tab),
+                            panel::State::Power(st) => power::show_tab(st, &tab),
+                            _ => {}
                         }
                         cx.notify();
                     });

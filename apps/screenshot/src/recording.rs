@@ -566,7 +566,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         _ => None,
     });
     let settings = all.as_ref().map(|s| s.screen_recording.clone());
-    // As asked, else as Preferences ▸ GPUs has it, else the most
+    // As asked, else as Preferences ▸ Power ▸ Graphics has it, else the most
     // powerful there is.
     let chosen = option(args, "--encoder").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.encoder.clone()));
     // A window on a background: what it's made of.
@@ -601,7 +601,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu, nvidia or vaapi")?,
         None => olo_video::Choice::Auto,
     };
-    // H.264, HEVC or AV1: as asked, else as Preferences ▸ GPUs has it (on
+    // H.264, HEVC or AV1: as asked, else as Preferences ▸ Power ▸ Graphics has it (on
     // the processor, H.264 whatever it says: the processor makes only that;
     // through VA-API, AV1, the only one Fedora's drivers make).
     let codec = match option(args, "--codec") {

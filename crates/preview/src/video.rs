@@ -100,13 +100,15 @@ impl Picture {
 fn yuv_to_rgba(f: &olo_ui::gpui::YuvFrame) -> Vec<u8> {
     let m = f.rgb_matrix();
     let (w, h) = (f.width as usize, f.height as usize);
-    let cw = w.div_ceil(2);
-    let sample = |plane: &[u8], i: usize| if f.deep { f32::from(u16::from_le_bytes([plane[i * 2], plane[i * 2 + 1]])) / 65535.0 } else { f32::from(plane[i]) / 255.0 };
+    // (Wherever its planes are: rows at their pitch.)
+    let ((luma, pitch_y), (chroma, pitch_uv)) = (f.luma(), f.chroma());
+    let bytes = if f.deep { 2 } else { 1 };
+    let sample = |plane: &[u8], at: usize| if f.deep { f32::from(u16::from_le_bytes([plane[at], plane[at + 1]])) / 65535.0 } else { f32::from(plane[at]) / 255.0 };
     let mut out = vec![255u8; w * h * 4];
     for y in 0..h {
         for x in 0..w {
-            let c = (y / 2) * cw + x / 2;
-            let v = [sample(&f.y, y * w + x), sample(&f.uv, c * 2), sample(&f.uv, c * 2 + 1), 1.0];
+            let c = (y / 2) * pitch_uv + (x / 2) * 2 * bytes;
+            let v = [sample(luma, y * pitch_y + x * bytes), sample(chroma, c), sample(chroma, c + bytes), 1.0];
             for (k, o) in out[(y * w + x) * 4..][..3].iter_mut().enumerate() {
                 let r: f32 = (0..4).map(|col| m[col][k] * v[col]).sum();
                 *o = (r.clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -162,7 +164,7 @@ impl Pic {
             Pic::Ready(Picture::Bgra { data, .. }) => data.len(),
             Pic::Ready(Picture::Deep { data, .. }) => data.len() * 2,
             #[cfg(feature = "gpui")]
-            Pic::Ready(Picture::Yuv(f)) => f.y.len() + f.uv.len(),
+            Pic::Ready(Picture::Yuv(f)) => f.bytes(),
         }
     }
 
@@ -180,7 +182,7 @@ impl Pic {
                     uv.push(u);
                     uv.push(v);
                 }
-                Some(YuvFrame { stream, width: p.width as u32, height: p.height as u32, deep: false, y: p.y.clone(), uv, matrix: YuvMatrix::Bt601, full_range: false })
+                Some(YuvFrame { stream, width: p.width as u32, height: p.height as u32, deep: false, y: p.y.clone(), uv, matrix: YuvMatrix::Bt601, full_range: false, memory: None })
             }
             Pic::Planes(f) if !(hdr && f.is_hdr()) => {
                 let y = f.yuv420()?;
@@ -189,7 +191,7 @@ impl Pic {
                     2020 => YuvMatrix::Bt2020,
                     _ => YuvMatrix::Bt601,
                 };
-                Some(YuvFrame { stream, width: y.width, height: y.height, deep: y.deep, y: y.y, uv: y.uv, matrix, full_range: y.full_range })
+                Some(YuvFrame { stream, width: y.width, height: y.height, deep: y.deep, y: y.y, uv: y.uv, matrix, full_range: y.full_range, memory: None })
             }
             _ => None,
         }
@@ -668,14 +670,15 @@ pub struct Options {
 /// Preferences ▸ Video's default).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Device {
-    /// The person's choice (Preferences ▸ GPUs ▸ Video Playback), read
+    /// The person's choice (Preferences ▸ Power ▸ Graphics ▸ Video Playback), read
     /// by the player's worker.
     #[default]
     Default,
     /// The built-in GPU where its driver decodes the video (Intel's:
     /// AV1 and VP9 with Fedora's driver, H.264 and HEVC too with the
-    /// full one), else NVIDIA's where there is one and the computer isn't
-    /// on battery (waking it costs power), else the processor.
+    /// full one), else NVIDIA's where there is one, on battery too (Ben,
+    /// 2026-11-06: its decoder with the GPU in its power-saving preset
+    /// costs less than the processor's cores), else the processor.
     Automatic,
     /// NVIDIA's GPU (NVDEC).
     Nvidia,
@@ -950,11 +953,19 @@ const ON_INTEL: &str = "Intel's GPU (VA-API)";
 const ON_OTHER_GPU: &str = "the built-in GPU (VA-API)";
 const ON_PROCESSOR: &str = "the processor";
 
+/// A GPU decoder's pictures left in the memory they're copied into, for
+/// the window's GPU to copy from as they are (`YuvMemory`); the processor
+/// copies them out into planes with `OLO_VIDEO_HELD=0`, to compare.
+#[cfg(feature = "gpui")]
+fn held() -> bool {
+    std::env::var_os("OLO_VIDEO_HELD").is_none_or(|v| v != "0")
+}
+
 /// A picture as a GPU decoded it, for the window to draw: its matrix
 /// from H.273's number (else by its height, as players guess).
 #[cfg(feature = "gpui")]
 #[allow(clippy::too_many_arguments)]
-fn gpu_picture(stream: u64, width: u32, height: u32, deep: bool, y: Vec<u8>, uv: Vec<u8>, matrix: u8, full_range: bool) -> olo_ui::gpui::YuvFrame {
+fn gpu_picture(stream: u64, width: u32, height: u32, deep: bool, (y, uv, memory): (Vec<u8>, Vec<u8>, Option<olo_ui::gpui::YuvMemory>), matrix: u8, full_range: bool) -> olo_ui::gpui::YuvFrame {
     use olo_ui::gpui::YuvMatrix;
     let matrix = match matrix {
         1 => YuvMatrix::Bt709,
@@ -963,7 +974,7 @@ fn gpu_picture(stream: u64, width: u32, height: u32, deep: bool, y: Vec<u8>, uv:
         _ if height >= 720 => YuvMatrix::Bt709,
         _ => YuvMatrix::Bt601,
     };
-    olo_ui::gpui::YuvFrame { stream, width, height, deep, y, uv, matrix, full_range }
+    olo_ui::gpui::YuvFrame { stream, width, height, deep, y, uv, matrix, full_range, memory }
 }
 
 impl Decoder {
@@ -973,8 +984,9 @@ impl Decoder {
         #[cfg(feature = "gpui")]
         {
             // (The person's choice, read here: off the window's thread.)
+            let video = olo_ui::settings::current().map(|s| s.video.clone()).unwrap_or_default();
             let device = match device {
-                Device::Default => olo_ui::settings::current().and_then(|s| Device::parse(&s.video.decoder)).filter(|d| *d != Device::Default).unwrap_or(Device::Automatic),
+                Device::Default => Device::parse(&video.decoder).filter(|d| *d != Device::Default).unwrap_or(Device::Automatic),
                 d => d,
             };
             // Intel's (or AMD's) GPU, for what its driver decodes: AV1
@@ -982,16 +994,18 @@ impl Decoder {
             // full one (Olo Doctor installs it).
             let va = Some(va_codec(codec)).filter(|c| planes && olo_vaapi::decode::available(*c));
             // Automatic: the built-in GPU where it decodes this (already
-            // awake, and the screen's), else NVIDIA's on mains power.
+            // awake, and the screen's), else NVIDIA's, on battery too.
             let (intel, nvidia) = match device {
                 Device::Nvidia => (false, true),
                 Device::Intel => (true, false),
-                Device::Automatic => (va.is_some(), va.is_none() && !olo_video::on_battery() && olo_video::nvdec::available()),
+                Device::Automatic => (va.is_some(), va.is_none() && olo_video::nvdec::available() && (video.nvidia_on_battery || !olo_video::on_battery())),
                 Device::Processor | Device::Default => (false, false),
             };
             if intel && let Some(c) = va {
                 match olo_vaapi::decode::Decoder::new(c) {
-                    Ok(dec) => {
+                    Ok(mut dec) => {
+                        // (Its pictures left where the GPU copies them.)
+                        dec.hold(held());
                         let on = if dec.driver().contains("Intel") { ON_INTEL } else { ON_OTHER_GPU };
                         let hevc = (codec == Codec::Hevc).then(|| demux.hevc().map(|(c, _)| c)).flatten();
                         return Ok((Decoder::Va(Box::new(Va { dec, hevc, fresh: true })), on));
@@ -1007,7 +1021,11 @@ impl Decoder {
                     Codec::Av1 => (olo_video::nvdec::Codec::Av1, None),
                 };
                 match olo_video::nvdec::Nvdec::new(c) {
-                    Ok(dec) => return Ok((Decoder::Nv(Box::new(Nv { dec, hevc, fresh: true })), ON_NVIDIA)),
+                    Ok(mut dec) => {
+                        // (As VA-API's: left where they're copied.)
+                        dec.hold(held());
+                        return Ok((Decoder::Nv(Box::new(Nv { dec, hevc, fresh: true })), ON_NVIDIA));
+                    }
                     Err(e) => tracing::info!("video: NVDEC: {e}; the processor decodes"),
                 }
             }
@@ -1217,7 +1235,16 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                 }
                 let stream = m.lock().unwrap().yuv.unwrap_or(0);
                 for pic in nv_out.drain(..) {
-                    let frame = Arc::new(gpu_picture(stream, pic.width, pic.height, pic.deep, pic.y, pic.uv, pic.matrix, pic.full_range));
+                    let planes = match pic.held {
+                        Some(held) => {
+                            let (ptr, len, y, uv) = (held.ptr(), held.len(), held.y, held.uv);
+                            // SAFETY: the decoder's memory, unchanged while
+                            // `held` (kept with it) lives.
+                            (Vec::new(), Vec::new(), Some(unsafe { olo_ui::gpui::YuvMemory::new(ptr, len, y, uv, Box::new(held)) }))
+                        }
+                        None => (pic.y, pic.uv, None),
+                    };
+                    let frame = Arc::new(gpu_picture(stream, pic.width, pic.height, pic.deep, planes, pic.matrix, pic.full_range));
                     if !push(&mut times, from, &mut lead, &|| Pic::Ready(Picture::Yuv(frame.clone()))) {
                         break;
                     }
@@ -1251,7 +1278,18 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     while times.peek().is_some_and(|Reverse((e, _))| *e < pic.pts) {
                         times.pop();
                     }
-                    let frame = Arc::new(gpu_picture(stream, pic.width, pic.height, pic.deep, pic.y, pic.uv, pic.matrix, pic.full_range));
+                    // (Left where the GPU copied it: the window's GPU copies
+                    // it from there, the processor copying nothing.)
+                    let planes = match pic.held {
+                        Some(held) => {
+                            let (ptr, len, y, uv) = (held.ptr(), held.len(), held.y, held.uv);
+                            // SAFETY: the decoder's memory, unchanged while
+                            // `held` (kept with it) lives.
+                            (Vec::new(), Vec::new(), Some(unsafe { olo_ui::gpui::YuvMemory::new(ptr, len, y, uv, Box::new(held)) }))
+                        }
+                        None => (pic.y, pic.uv, None),
+                    };
+                    let frame = Arc::new(gpu_picture(stream, pic.width, pic.height, pic.deep, planes, pic.matrix, pic.full_range));
                     if !push(&mut times, from, &mut lead, &|| Pic::Ready(Picture::Yuv(frame.clone()))) {
                         break;
                     }

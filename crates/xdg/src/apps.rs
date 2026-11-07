@@ -58,7 +58,6 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("datetime", "Date & Time", "datetime"),
     ("default-apps", "Default Apps", "default-apps"),
     ("display", "Display", "display"),
-    ("gpus", "GPUs", "gpu"),
     ("integrations", "Integrations", "integrations"),
     ("keyboard", "Keyboard", "keyboard"),
     ("network", "Network", "network-prefs"),

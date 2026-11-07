@@ -9,8 +9,8 @@ use olo_ui::{
 };
 
 use crate::{
-    PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, display, form::Ui, gpus, integrations, keyboard, network, notifications, performance, power, screensaver,
-    security, security_keys, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces,
+    PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security,
+    security_keys, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,7 +27,6 @@ pub enum Panel {
     DefaultApps,
     Display,
     /// Each GPU's tuning.
-    Gpus,
     Integrations,
     Keyboard,
     Network,
@@ -57,7 +56,6 @@ impl Panel {
         Panel::DateTime,
         Panel::DefaultApps,
         Panel::Display,
-        Panel::Gpus,
         Panel::Integrations,
         Panel::Keyboard,
         Panel::Network,
@@ -81,7 +79,8 @@ impl Panel {
         Panel::ALL.iter().copied().find(|p| p.arg() == s).or(match s {
             "mouse" | "trackpad" => Some(Panel::Touchpad),
             "screen" | "displays" => Some(Panel::Display),
-            "gpu" | "graphics" | "nvidia" => Some(Panel::Gpus),
+            // (GPUs were a panel of their own: Power's Graphics now.)
+            "gpus" | "gpu" | "graphics" | "nvidia" => Some(Panel::Power),
             "screen-saver" | "screensavers" => Some(Panel::ScreenSaver),
             "background" => Some(Panel::Backgrounds),
             "export" | "import" | "backups" => Some(Panel::Backup),
@@ -113,7 +112,6 @@ impl Panel {
             Panel::DateTime => "datetime",
             Panel::DefaultApps => "default-apps",
             Panel::Display => "display",
-            Panel::Gpus => "gpus",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
             Panel::Network => "network",
@@ -145,7 +143,6 @@ impl Panel {
             Panel::DateTime => "Date & Time",
             Panel::DefaultApps => "Default Apps",
             Panel::Display => "Display",
-            Panel::Gpus => "GPUs",
             Panel::Integrations => "Integrations",
             Panel::Keyboard => "Keyboard",
             Panel::Network => "Network",
@@ -177,7 +174,6 @@ impl Panel {
             Panel::DateTime => "datetime",
             Panel::DefaultApps => "default-apps",
             Panel::Display => "display",
-            Panel::Gpus => "gpu",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
             Panel::Network => "network-prefs",
@@ -215,8 +211,6 @@ impl Panel {
             // With its panel beside it: what it is, how Olo draws for it
             // and why. As tall as the display's rows (`Fit`).
             Panel::Display => (940, 520),
-            // Two GPUs side by side, each its presets and knobs.
-            Panel::Gpus => (900, 448),
             Panel::Integrations => (460, 600),
             Panel::Keyboard => (520, 736),
             // Seven tabs; Hosts' four columns; Shaping's two ways side by side.
@@ -224,9 +218,10 @@ impl Panel {
             Panel::Notifications => (440, 700),
             // Its Watchdog tab's thresholds two by two, each a pair of sliders.
             Panel::Performance => (900, 560),
-            // Two columns: the power mode and the battery, when idle and
-            // caffeinated beside them.
-            Panel::Power => (880, 420),
+            // Three tabs: the power modes and what each sets (a grid of
+            // the processors and each GPU), the GPUs side by side, and the
+            // battery with when idle beside it.
+            Panel::Power => (900, 520),
             Panel::ScreenSaver => (500, 400),
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),
@@ -259,7 +254,6 @@ impl Panel {
                 | Panel::Backup
                 | Panel::Integrations
                 | Panel::DefaultApps
-                | Panel::Gpus
         )
     }
 
@@ -279,7 +273,6 @@ impl Panel {
                 | Panel::Backup
                 | Panel::Integrations
                 | Panel::DefaultApps
-                | Panel::Gpus
         )
     }
 
@@ -338,8 +331,7 @@ impl Panel {
             | Panel::Notifications
             | Panel::Performance
             | Panel::Integrations
-            | Panel::DefaultApps
-            | Panel::Gpus => {}
+            | Panel::DefaultApps => {}
         }
     }
 }
@@ -350,7 +342,6 @@ pub enum State {
     Keyboard(keyboard::State),
     Backgrounds(workspaces::BackgroundsState),
     Display(display::State),
-    Gpus(Box<gpus::State>),
     Sound(sound::State),
     DateTime(Box<datetime::State>),
     DefaultApps(Box<default_apps::State>),
@@ -375,7 +366,6 @@ impl State {
             Panel::Keyboard => State::Keyboard(keyboard::State::new(cx)),
             Panel::Backgrounds => State::Backgrounds(Default::default()),
             Panel::Display => State::Display(Default::default()),
-            Panel::Gpus => State::Gpus(Box::new(gpus::State::new())),
             Panel::Sound => State::Sound(sound::State::new(cx)),
             Panel::DateTime => State::DateTime(Box::new(datetime::State::new(cx))),
             Panel::DefaultApps => State::DefaultApps(Box::new(default_apps::State::new(cx))),
@@ -426,14 +416,16 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
     }
     let s = settings.unwrap_or_default();
     let prefs = v.prefs.downgrade();
+    // (Power's Defaults and Revert are its Battery & Idle tab's: its other
+    // tabs have Apply and Revert of their own, for the computer.)
+    let resettable = panel.resettable() && !matches!(&v.state, State::Power(st) if st.tab != 2);
     let mut ui = Ui::new(window, cx, &s, prefs, &mut v.fields);
-    ui.resets(panel.resettable());
+    ui.resets(resettable);
     let power = power.as_ref();
     match (panel, &mut v.state) {
         (Panel::Appearance, _) => appearance::ui(&mut ui),
         (Panel::Backgrounds, State::Backgrounds(st)) => workspaces::backgrounds_ui(&mut ui, st),
         (Panel::Display, State::Display(st)) => display::ui(&mut ui, &outputs, power, &server, st),
-        (Panel::Gpus, State::Gpus(st)) => gpus::ui(&mut ui, st),
         (Panel::Keyboard, State::Keyboard(st)) => keyboard::ui(&mut ui, power, &server, st),
         (Panel::Power, State::Power(st)) => power::ui(&mut ui, power, &server, st),
         (Panel::ScreenSaver, State::ScreenSaver(st)) => screensaver::ui(&mut ui, &server, st),
@@ -466,7 +458,7 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
     // scrolls.)
     let body = div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).children(items);
     let root = root.child(body);
-    if !panel.resettable() {
+    if !resettable {
         return root;
     }
 

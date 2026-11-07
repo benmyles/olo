@@ -58,6 +58,9 @@ struct AdapterCapabilities {
     shader_info: bool,
     full_screen_exclusive: bool,
     external_memory: bool,
+    /// Olo: the host's memory imported as buffers (VK_EXT_external_memory_host):
+    /// the alignment its pointers and sizes need.
+    host_memory: Option<u64>,
     timing: bool,
     bugs: SystemBugs,
     dual_source_blending: bool,
@@ -89,7 +92,9 @@ unsafe fn inspect_adapter(
         vk::PhysicalDevicePortabilitySubsetPropertiesKHR::default();
 
     let mut driver_properties = vk::PhysicalDeviceDriverPropertiesKHR::default();
+    let mut host_memory_properties = vk::PhysicalDeviceExternalMemoryHostPropertiesEXT::default();
     let mut properties2_khr = vk::PhysicalDeviceProperties2KHR::default()
+        .push_next(&mut host_memory_properties)
         .push_next(&mut inline_uniform_block_properties)
         .push_next(&mut timeline_semaphore_properties)
         .push_next(&mut descriptor_indexing_properties)
@@ -210,6 +215,14 @@ unsafe fn inspect_adapter(
             &vk::KHR_EXTERNAL_MEMORY_FD_NAME
         });
 
+    let host_memory = (supported_extensions.contains(&vk::KHR_EXTERNAL_MEMORY_NAME)
+        && supported_extensions.contains(&vk::EXT_EXTERNAL_MEMORY_HOST_NAME))
+    .then_some(
+        host_memory_properties
+            .min_imported_host_pointer_alignment
+            .max(1),
+    );
+
     let timing = if properties.limits.timestamp_compute_and_graphics == vk::FALSE {
         log::info!("No timing because of queue support");
         false
@@ -290,6 +303,7 @@ unsafe fn inspect_adapter(
         shader_info,
         full_screen_exclusive,
         external_memory,
+        host_memory,
         timing,
         bugs,
         dual_source_blending,
@@ -494,6 +508,12 @@ impl super::Context {
             if capabilities.full_screen_exclusive {
                 device_extensions.push(vk::EXT_FULL_SCREEN_EXCLUSIVE_NAME);
             }
+            if capabilities.host_memory.is_some() {
+                if !capabilities.external_memory {
+                    device_extensions.push(vk::KHR_EXTERNAL_MEMORY_NAME);
+                }
+                device_extensions.push(vk::EXT_EXTERNAL_MEMORY_HOST_NAME);
+            }
             if capabilities.external_memory {
                 device_extensions.push(vk::KHR_EXTERNAL_MEMORY_NAME);
                 device_extensions.push(if cfg!(target_os = "windows") {
@@ -613,6 +633,12 @@ impl super::Context {
             } else {
                 None
             },
+            host_memory: capabilities.host_memory.map(|align| {
+                (
+                    ash::ext::external_memory_host::Device::new(&instance.core, &device_core),
+                    align,
+                )
+            }),
             external_memory: if capabilities.external_memory {
                 #[cfg(not(target_os = "windows"))]
                 use khr::external_memory_fd::Device;

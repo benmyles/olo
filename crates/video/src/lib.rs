@@ -990,7 +990,8 @@ mod tests {
                     })
                     .collect();
                 sent += aac::FRAME;
-                for au in aac.encode(&frame).unwrap() {
+                // (A frame's coded unit, once the encoder has one.)
+                if let Some(au) = aac.encode(&frame).unwrap() {
                     mp4.add_sound(&au).unwrap();
                 }
             }

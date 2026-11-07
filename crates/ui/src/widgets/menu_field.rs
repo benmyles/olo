@@ -16,6 +16,9 @@ type OnChange = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 pub struct MenuField {
     id: SharedString,
     label: Option<SharedString>,
+    /// What agents (and the settings index) call it when it shows no
+    /// label of its own (`name`).
+    name: Option<SharedString>,
     quiet: bool,
     divider: Option<f32>,
     options: Vec<SharedString>,
@@ -27,11 +30,18 @@ pub struct MenuField {
 
 impl MenuField {
     pub fn new(id: impl Into<SharedString>, options: Vec<SharedString>, selected: usize) -> MenuField {
-        MenuField { id: id.into(), label: None, quiet: false, divider: None, options, selected, width: None, enabled: true, on_change: None }
+        MenuField { id: id.into(), label: None, name: None, quiet: false, divider: None, options, selected, width: None, enabled: true, on_change: None }
     }
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+
+    /// Its name for agents, with no label shown: a field in a grid, named
+    /// by its row and column ("Processors in Power Saver").
+    pub fn name(mut self, name: impl Into<SharedString>) -> Self {
+        self.name = Some(name.into());
         self
     }
 
@@ -76,7 +86,7 @@ impl RenderOnce for MenuField {
         let width = self.width.unwrap_or((label_w + m::TEXT_INSET + widest + 12.0 + 18.0).ceil());
         let current = self.options.get(self.selected).cloned().unwrap_or_default();
         let label = self.label.clone();
-        let name = self.label.clone().map(|l| SharedString::from(l.trim_end_matches(':').to_string())).unwrap_or_default();
+        let name = self.label.clone().map(|l| SharedString::from(l.trim_end_matches(':').to_string())).or_else(|| self.name.clone()).unwrap_or_default();
         let (options, selected, on_change) = (self.options.clone(), self.selected, self.on_change.clone());
         let id = self.id.clone();
         let shown = current.clone();

@@ -1030,7 +1030,7 @@ impl Doc {
             && prev.read(cx).is_video()
         {
             let zoom = prev.read(cx).video_zoom();
-            // What decodes it: the default (Preferences ▸ GPUs), or one
+            // What decodes it: the default (Preferences ▸ Power ▸ Graphics), or one
             // chosen for it; and what does now.
             let (with, now, gpus) = (prev.read(cx).decode_with(), prev.read(cx).decoding(), prev.read(cx).decoders());
             use olo_preview::video::Device;
@@ -1038,7 +1038,7 @@ impl Doc {
                 .item(format!("Decoding on {}", now.unwrap_or("…")), "")
                 .enabled(false)
                 .separator()
-                .item("Default (Preferences ▸ GPUs)", "decode-default")
+                .item("Default (Preferences ▸ Power)", "decode-default")
                 .checked(with == Device::Default)
                 .item("Automatic", "decode-auto")
                 .checked(with == Device::Automatic)

@@ -684,7 +684,7 @@ const COMMITS: [&str; 5] = ["Apply", "Revert", "Save", "Save Changes", "Done"];
 
 /// A commit row (Apply, Revert…) with something close under it. The row acts on what's above it and ends that group, so what
 /// follows is a new section, `metrics::SECTION` under it; closer, the
-/// row reads as the start of what follows (Preferences ▸ GPUs' Screen
+/// row reads as the start of what follows (Preferences ▸ Power ▸ Graphics' Screen
 /// Recordings box was 15 pt under its Apply, as close as the rows above
 /// were to each other).
 fn after_commit(p: &Parts, out: &mut Vec<Finding>) {

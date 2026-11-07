@@ -46,16 +46,21 @@ pub fn themed(name: &str) -> Option<PathBuf> {
 /// Play `path` once, off the UI thread (a short sound; gives up after
 /// ten seconds).
 pub fn play(path: &Path) {
+    let path = path.to_owned();
+    std::thread::spawn(move || play_to_end(&path));
+}
+
+/// Play `path` once on this thread, returning when it's done (or after
+/// ten seconds).
+pub fn play_to_end(path: &Path) {
     let input = olo_preview::input::Input::file(path);
-    std::thread::spawn(move || {
-        let player = olo_preview::audio::Player::start(&input);
-        let start = Instant::now();
-        while !player.state.finished.load(Ordering::Relaxed) && player.state.error.lock().unwrap().is_none() && start.elapsed() < Duration::from_secs(10) {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        // Let the server drain what it has before the stream goes.
-        std::thread::sleep(Duration::from_millis(200));
-    });
+    let player = olo_preview::audio::Player::start(&input);
+    let start = Instant::now();
+    while !player.state.finished.load(Ordering::Relaxed) && player.state.error.lock().unwrap().is_none() && start.elapsed() < Duration::from_secs(10) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // Let the server drain what it has before the stream goes.
+    std::thread::sleep(Duration::from_millis(200));
 }
 
 #[cfg(test)]

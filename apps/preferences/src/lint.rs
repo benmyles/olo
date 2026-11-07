@@ -56,6 +56,8 @@ fn outputs() -> Vec<OutputInfo> {
         hdr: (number == Some(0)).then_some(true),
         sdr_nits: 203.0,
         hdr_needs_boot: false,
+        // (The built-in one a touch screen, taking touches.)
+        touch: (number == Some(0)).then_some(true),
     };
     vec![
         display(

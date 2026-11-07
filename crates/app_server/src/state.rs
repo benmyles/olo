@@ -150,6 +150,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// The pointer hidden: a finger has been the pointer since a mouse or
     /// touchpad last moved it.
     pub touch_hides_pointer: bool,
+    /// Touch screens plugged in (their touches go to `touch_output`).
+    pub touch_screens: usize,
     /// Which way the fingers' scroll goes (natural or not), for clients.
     pub scroll_direction: (smithay::backend::input::AxisRelativeDirection, smithay::backend::input::AxisRelativeDirection),
     /// A finger scroll's stop held back from a Chromium window, and when
@@ -1178,6 +1180,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             pinching: false,
             touch_pointer: None,
             touch_hides_pointer: false,
+            touch_screens: 0,
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             held_stop: None,
             repoint_queued: false,

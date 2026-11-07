@@ -470,6 +470,13 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
             to.configure_output(&name, OutputConfig { rotation: Some(olo_protocol::ROTATIONS[i]), ..Default::default() });
         });
     }
+    // A touch screen on it (Ben, 2026-11-06): its touches taken, or not
+    // (on by default; a pen goes on working).
+    if let Some(touch) = o.touch {
+        let (name, to) = (o.name.clone(), server.clone());
+        let check = CheckBox::new("Touch screen", touch).id(format!("touch-{}", o.name)).on_toggle(move |on, _, _| to.configure_output(&name, OutputConfig { touch: Some(on), ..Default::default() }));
+        ui.add(div().pl(px(label_w)).child(check));
+    }
     // Extend the desktop, or show another display's picture.
     if outputs.len() > 1 {
         let sources: Vec<OutputInfo> = outputs.iter().filter(|x| x.name != o.name && x.mirror_of.is_none()).cloned().collect();

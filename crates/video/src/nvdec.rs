@@ -57,7 +57,123 @@ pub struct Picture {
     /// 2: not said).
     pub matrix: u8,
     pub full_range: bool,
+    /// Its planes left where they were copied from the GPU
+    /// (`Nvdec::hold`), `y` and `uv` then empty.
+    pub held: Option<Held>,
 }
+
+/// A picture left in the memory it was copied into from the GPU
+/// (`Nvdec::hold`): page-aligned, a whole number of pages, which a
+/// window's GPU can copy from as it is (`gpui::YuvMemory`), the
+/// processor copying nothing. Its luma at `y`, its chroma (Cb and Cr
+/// interleaved) at `uv`: each an offset and a row pitch, in bytes. The
+/// memory is the decoder's again when this is dropped.
+pub struct Held {
+    mem: std::sync::Arc<Pages>,
+    pub y: (usize, usize),
+    pub uv: (usize, usize),
+}
+
+impl Held {
+    /// Where its memory starts.
+    pub fn ptr(&self) -> *const u8 {
+        self.mem.ptr
+    }
+
+    /// How long it is (a whole number of pages).
+    pub fn len(&self) -> usize {
+        self.mem.layout.size()
+    }
+
+    /// Never empty.
+    pub fn is_empty(&self) -> bool {
+        false
+    }
+
+    /// Its memory.
+    pub fn bytes(&self) -> &[u8] {
+        // SAFETY: ours, this long, unchanged while held (only memory
+        // nothing holds is written).
+        unsafe { std::slice::from_raw_parts(self.mem.ptr, self.mem.layout.size()) }
+    }
+}
+
+/// Page-aligned memory of ours, pinned for the GPU's copy engine where
+/// CUDA lets it be (registered with the decoder's context: its copy then
+/// goes by DMA, not through the processor as into pageable memory).
+struct Pages {
+    ptr: *mut u8,
+    layout: std::alloc::Layout,
+    /// The context it's registered with (kept alive till it's let go).
+    pinned: Option<std::sync::Arc<Cuda>>,
+}
+
+impl Pages {
+    /// `size` bytes, registered with `cuda` (current on this thread) if
+    /// it takes them.
+    fn new(size: usize, cuda: &std::sync::Arc<Cuda>) -> Option<Pages> {
+        let layout = std::alloc::Layout::from_size_align(size.next_multiple_of(4096), 4096).ok()?;
+        // SAFETY: a non-zero size.
+        let ptr = unsafe { std::alloc::alloc(layout) };
+        if ptr.is_null() {
+            return None;
+        }
+        // SAFETY: our memory, this long; the context current (the caller's).
+        let pinned = cuda.register.and_then(|reg| (unsafe { reg(ptr.cast(), layout.size(), 0) } == 0).then(|| cuda.clone()));
+        Some(Pages { ptr, layout, pinned })
+    }
+}
+
+// SAFETY: plain memory, written only while nothing else holds it.
+unsafe impl Send for Pages {}
+unsafe impl Sync for Pages {}
+
+impl Drop for Pages {
+    fn drop(&mut self) {
+        // SAFETY: registered with this context (pushed on this thread for
+        // the call), then allocated with this layout, once.
+        unsafe {
+            if let Some(cuda) = self.pinned.take()
+                && let Some(unregister) = cuda.unregister
+            {
+                (cuda.push)(cuda.ctx);
+                unregister(self.ptr.cast());
+                let mut was = null_mut();
+                (cuda.pop)(&mut was);
+            }
+            std::alloc::dealloc(self.ptr, self.layout);
+        }
+    }
+}
+
+/// NVDEC's CUDA context, shared by the decoder and the memory registered
+/// with it (`Pages`): destroyed when the last of them goes, so a picture
+/// a window still draws from stays registered till it's let go. It keeps
+/// libcuda loaded as long.
+struct Cuda {
+    ctx: *mut c_void,
+    destroy: CuCtxDestroy,
+    push: CuCtxPush,
+    pop: CuCtxPop,
+    register: Option<CuMemHostRegister>,
+    unregister: Option<CuMemHostUnregister>,
+    _lib: Lib,
+}
+
+// SAFETY: a CUDA context may be made current on any thread (pushed and
+// popped around each use).
+unsafe impl Send for Cuda {}
+unsafe impl Sync for Cuda {}
+
+impl Drop for Cuda {
+    fn drop(&mut self) {
+        // SAFETY: ours, once, after everything made in it.
+        unsafe { (self.destroy)(self.ctx) };
+    }
+}
+
+/// The most pictures held at once (past it, copied out).
+const HELD: usize = 16;
 
 type CuInit = unsafe extern "C" fn(u32) -> i32;
 type CuDeviceGet = unsafe extern "C" fn(*mut i32, i32) -> i32;
@@ -65,6 +181,8 @@ type CuCtxCreate = unsafe extern "C" fn(*mut *mut c_void, u32, i32) -> i32;
 type CuCtxDestroy = unsafe extern "C" fn(*mut c_void) -> i32;
 type CuCtxPush = unsafe extern "C" fn(*mut c_void) -> i32;
 type CuCtxPop = unsafe extern "C" fn(*mut *mut c_void) -> i32;
+type CuMemHostRegister = unsafe extern "C" fn(*mut c_void, usize, u32) -> i32;
+type CuMemHostUnregister = unsafe extern "C" fn(*mut c_void) -> i32;
 type CuMemcpy2D = unsafe extern "C" fn(*const Memcpy2D) -> i32;
 type CreateParser = unsafe extern "C" fn(*mut parse::CUvideoparser, *mut parse::CUVIDPARSERPARAMS) -> i32;
 type ParseData = unsafe extern "C" fn(parse::CUvideoparser, *mut parse::CUVIDSOURCEDATAPACKET) -> i32;
@@ -103,7 +221,6 @@ const MEMORY_HOST: u32 = 1;
 const MEMORY_DEVICE: u32 = 2;
 
 struct Fns {
-    cu_destroy: CuCtxDestroy,
     cu_push: CuCtxPush,
     cu_pop: CuCtxPop,
     memcpy: CuMemcpy2D,
@@ -137,6 +254,12 @@ struct State {
     /// it has (0: a new parser, not told yet).
     surfaces: u32,
     told: u32,
+    /// Pictures left where they're copied (`Nvdec::hold`), and the memory
+    /// they're copied into, used again once nothing holds it.
+    hold: bool,
+    pages: Vec<std::sync::Arc<Pages>>,
+    /// The context (the decoder's, shared with the memory registered).
+    cuda: std::sync::Arc<Cuda>,
 }
 
 pub struct Nvdec {
@@ -144,7 +267,7 @@ pub struct Nvdec {
     ctx: *mut c_void,
     parser: parse::CUvideoparser,
     create_parser: CreateParser,
-    _libs: (Lib, Lib),
+    _cuvid: Lib,
 }
 
 // SAFETY: the decoder is used from one thread at a time (the player's
@@ -169,8 +292,10 @@ impl Nvdec {
             let cu_device: CuDeviceGet = cuda.get("cuDeviceGet")?;
             let cu_create: CuCtxCreate = cuda.get("cuCtxCreate_v2")?;
             let lock_create: LockCreate = cuvid.get("cuvidCtxLockCreate")?;
+            let cu_destroy: CuCtxDestroy = cuda.get("cuCtxDestroy_v2")?;
+            let register: Option<CuMemHostRegister> = cuda.get("cuMemHostRegister_v2").or_else(|_| cuda.get("cuMemHostRegister")).ok();
+            let unregister: Option<CuMemHostUnregister> = cuda.get("cuMemHostUnregister").ok();
             let fns = Fns {
-                cu_destroy: cuda.get("cuCtxDestroy_v2")?,
                 cu_push: cuda.get("cuCtxPushCurrent_v2")?,
                 cu_pop: cuda.get("cuCtxPopCurrent_v2")?,
                 memcpy: cuda.get("cuMemcpy2D_v2")?,
@@ -193,19 +318,39 @@ impl Nvdec {
                 return Err("CUDA found no GPU".into());
             }
             let mut ctx = null_mut();
-            if cu_create(&mut ctx, 0, device) != 0 {
+            // (Blocking sync: waiting for a copy, the thread sleeps rather
+            // than spinning, as CUDA's default does.)
+            const CU_CTX_SCHED_BLOCKING_SYNC: u32 = 0x04;
+            if cu_create(&mut ctx, CU_CTX_SCHED_BLOCKING_SYNC, device) != 0 {
                 return Err("CUDA couldn't make a context".into());
             }
+            let cuda = std::sync::Arc::new(Cuda { ctx, destroy: cu_destroy, push: fns.cu_push, pop: fns.cu_pop, register, unregister, _lib: cuda });
             let mut lock: dec::CUvideoctxlock = null_mut();
             if lock_create(&mut lock, ctx) != 0 {
-                (fns.cu_destroy)(ctx);
                 return Err("NVDEC couldn't lock its context".into());
             }
             // (cuCtxCreate made it current here: let it go till it's used.)
             let mut was = null_mut();
             (fns.cu_pop)(&mut was);
-            let state = Box::new(State { fns, codec, lock, decoder: null_mut(), width: 0, height: 0, deep: false, matrix: 2, full_range: false, out: Vec::new(), error: None, surfaces: 0, told: 0 });
-            let mut me = Nvdec { state, ctx, parser: null_mut(), create_parser, _libs: (cuda, cuvid) };
+            let state = Box::new(State {
+                fns,
+                codec,
+                lock,
+                decoder: null_mut(),
+                width: 0,
+                height: 0,
+                deep: false,
+                matrix: 2,
+                full_range: false,
+                out: Vec::new(),
+                error: None,
+                surfaces: 0,
+                told: 0,
+                hold: false,
+                pages: Vec::new(),
+                cuda,
+            });
+            let mut me = Nvdec { state, ctx, parser: null_mut(), create_parser, _cuvid: cuvid };
             me.make_parser()?;
             Ok(me)
         }
@@ -275,6 +420,13 @@ impl Nvdec {
         out.append(&mut self.state.out);
     }
 
+    /// Pictures left in the memory they're copied into from the GPU
+    /// (`Held`), for a window's GPU to copy from as they are, rather than
+    /// copied again into planes.
+    pub fn hold(&mut self, on: bool) {
+        self.state.hold = on;
+    }
+
     /// After a seek: nothing held, a stream starting again (its decoder
     /// kept if the format is the same).
     pub fn reset(&mut self) {
@@ -298,7 +450,9 @@ impl Drop for Nvdec {
             let mut was = null_mut();
             (self.state.fns.cu_pop)(&mut was);
             (self.state.fns.lock_destroy)(self.state.lock);
-            (self.state.fns.cu_destroy)(self.ctx);
+            // (The context goes with the last of what holds it: memory a
+            // window still draws from may.)
+            self.state.pages.clear();
         }
     }
 }
@@ -420,9 +574,28 @@ unsafe extern "C" fn on_display(user: *mut c_void, info: *mut parse::CUVIDPARSER
     let bytes = if s.deep { 2 } else { 1 };
     let (w, h) = (s.width as usize, s.height as usize);
     let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
-    let mut y = vec![0u8; w * h * bytes];
-    let mut uv = vec![0u8; cw * ch * 2 * bytes];
-    let copy = |src: u64, dst: &mut [u8], row: usize, rows: usize| {
+    // Held: rows at a pitch in page-aligned memory of ours (the chroma
+    // on a page of its own), memory nothing holds used again.
+    let (row_y, row_uv) = (w * bytes, cw * 2 * bytes);
+    let held_pitch = row_y.next_multiple_of(256);
+    let uv_at = (held_pitch * h).next_multiple_of(4096);
+    let held_size = uv_at + held_pitch * ch;
+    let pages = if s.hold {
+        match s.pages.iter().find(|p| std::sync::Arc::strong_count(p) == 1 && p.layout.size() >= held_size) {
+            Some(p) => Some(p.clone()),
+            None if s.pages.len() < HELD => Pages::new(held_size, &s.cuda).map(|p| {
+                let p = std::sync::Arc::new(p);
+                s.pages.retain(|q| q.layout.size() >= held_size || std::sync::Arc::strong_count(q) > 1);
+                s.pages.push(p.clone());
+                p
+            }),
+            None => None,
+        }
+    } else {
+        None
+    };
+    let (mut y, mut uv) = if pages.is_some() { (Vec::new(), Vec::new()) } else { (vec![0u8; row_y * h], vec![0u8; row_uv * ch]) };
+    let copy = |src: u64, dst: *mut u8, dst_pitch: usize, row: usize, rows: usize| {
         let m = Memcpy2D {
             src_x_in_bytes: 0,
             src_y: 0,
@@ -434,25 +607,32 @@ unsafe extern "C" fn on_display(user: *mut c_void, info: *mut parse::CUVIDPARSER
             dst_x_in_bytes: 0,
             dst_y: 0,
             dst_memory_type: MEMORY_HOST,
-            dst_host: dst.as_mut_ptr().cast(),
+            dst_host: dst.cast(),
             dst_device: 0,
             dst_array: null_mut(),
-            dst_pitch: row,
+            dst_pitch,
             width_in_bytes: row,
             height: rows,
         };
-        // SAFETY: the mapped surface's rows into ours, `rows` of `row`.
+        // SAFETY: the mapped surface's rows into ours, `rows` of `row`
+        // at `dst_pitch`, which ours holds (below).
         unsafe { (s.fns.memcpy)(&m) }
     };
     // (The chroma plane after the luma's rows, rounded up to even.)
     let chroma_at = ptr + u64::from(pitch) * ((h as u64 + 1) & !1);
-    let ok = copy(ptr, &mut y, w * bytes, h) == 0 && copy(chroma_at, &mut uv, cw * 2 * bytes, ch) == 0;
+    let ok = match &pages {
+        // SAFETY: `held_size` bytes of ours: the luma's rows from 0, the
+        // chroma's from `uv_at`.
+        Some(p) => copy(ptr, p.ptr, held_pitch, row_y, h) == 0 && copy(chroma_at, unsafe { p.ptr.add(uv_at) }, held_pitch, row_uv, ch) == 0,
+        None => copy(ptr, y.as_mut_ptr(), row_y, row_y, h) == 0 && copy(chroma_at, uv.as_mut_ptr(), row_uv, row_uv, ch) == 0,
+    };
     // SAFETY: mapped above.
     unsafe { (s.fns.unmap)(s.decoder, ptr) };
     if !ok {
         s.error = Some("NVDEC couldn't copy a picture".into());
         return 0;
     }
-    s.out.push(Picture { pts: info.timestamp, width: s.width, height: s.height, deep: s.deep, y, uv, matrix: s.matrix, full_range: s.full_range });
+    let held = pages.map(|mem| Held { mem, y: (0, held_pitch), uv: (uv_at, held_pitch) });
+    s.out.push(Picture { pts: info.timestamp, width: s.width, height: s.height, deep: s.deep, y, uv, matrix: s.matrix, full_range: s.full_range, held });
     1
 }

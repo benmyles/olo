@@ -13,67 +13,133 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Viewer: 4K60 video plays smoothly, decoded in hardware** (below, in
-  Not started), with the decoding device chosen in the Viewer and its
-  default in Preferences.
-
 ## Not started (highest priority first)
 
-- **Viewer: 4K60 video plays smoothly, decoded in hardware** (Ben,
-  2026-11-06): "the viewer app can't even play 4k video at 60fps
-  smoothly. idk if it's currently being hardware accelerated but it must
-  use hardware acceleration for all common formats including av1, vp9,
-  h264/5 etc. and it must be accelerated on cpu (simd), intel xe and
-  nvidia". Today every picture is decoded in software on the CPU
-  (`olo-preview`'s `video.rs`: OpenH264, rav1d, filmcraft-vp9,
-  rust_h265), converted YUV to RGB on the CPU and uploaded. To do: decode
-  on the GPU where there is one, NVIDIA's NVDEC (CUVID, loaded at run
-  time as NVENC already is for recording) and Intel Xe's VA-API (as
-  `olo_vaapi` already encodes AV1), for AV1, VP9, H.264 and HEVC (8- and
-  10-bit), picked per file and machine with the CPU as the fallback;
-  keep the pictures on the GPU (dmabuf or the decoder's surface imported
-  as a texture, YUV to RGB in a shader) rather than copying them back;
-  and make the CPU path itself fast (SIMD in the YUV conversion and
-  scaling, the decoders' own SIMD turned on, threads). Measured on 4K60
-  samples of each format on this machine's Intel GPU and its NVIDIA, and
-  CPU only: every frame shown on time (no drops over a minute), the
-  cost per frame, and seeking. Everything native (no ffmpeg or GStreamer).
-  Ben, 2026-11-06: "make it so that you can choose the decoding device in
-  the viewer menu and also set the default decoding device in preferences
-  somewhere. please priotize this todo after what you're currently doing":
-  the Viewer's View menu (or a Video menu) chooses the device for the
-  video showing (Automatic, NVIDIA's GPU, the Intel GPU, the processor),
-  saying which is decoding now; Preferences (a Video or Media pane) sets
-  the default every app's playing uses (the Viewer, Quick Look). Next
-  after the screen recording work.
-  Done so far: pictures drawn by the GPU from their planes (H.264 29.6 →
-  60 frames a second at 4K, HEVC 24.4 → 59.8, AV1 52.2 → 60; the
-  window's work 18–25 ms → 0.5 ms a frame); NVDEC for H.264, HEVC, VP9
-  and AV1 (HEVC 246% of a core → 41.6%, H.264 100% → 29%, AV1 368% →
-  26%), handing over to the processor if it fails; View ▸ Decode With
-  (saying what decodes now) and Preferences ▸ GPUs ▸ Video Playback.
-  Intel's GPU decodes all four through VA-API (bit-exact against the
-  reference decoder; 4K60 at 60 with 21–25% of a core; a minute of
-  each, H.264, HEVC and AV1, with 0, 1 and 0 pictures dropped, NVDEC's
-  H.264 5), offered in both choices; Automatic takes
-  it where it decodes the video. H.264 and HEVC need RPM Fusion's full
-  driver (Fedora's leaves them out), which Olo Doctor installs (Ben,
-  2026-11-06: "we don't care about fedora's silly no-proprietary
-  stance, just have it install whatever gets the job done and olo
-  doctor manage it").
-  Still to do: pictures kept on the GPU rather than copied back
-  (NVDEC's through CUDA–Vulkan interop, VA-API's as dmabufs; the copy
-  and upload are most of the 1.1 ms a frame left); VP9 at 4K and
-  10-bit video checked on samples (none here yet, and nothing here
-  encodes VP9). The
-  processor's own: rav1d's and OpenH264's assembly is built in now
-  (4K AV1 32 → 85 pictures a second, H.264 45 → 53–98), and 8-bit
-  pictures are kept as bytes rather than 16-bit samples (1523b172: 4K60
-  AV1 on the processor 1,510 of 3,600 pictures dropped in a minute → 3,
-  its video thread 57% of a core → 17.5%, its kernel time 23.5% →
-  0.1%).
+- **The Olo installer: stock Fedora 45 to Olo in one GUI** (Ben,
+  2026-11-06: "build a polished, robust olo installer so that someone
+  can download/install a stock fedora 45 then download the olo installer
+  (i just made the olo repo public!) and run it and they get a full
+  screen gui app that \"olo-fies\" their fedora. the installer should
+  have windows 95 setup.exe vibes but windows 95 crossed with beos,
+  because... well olo is a beos successor in spirit. also the installer
+  should have a note somewhere that it is a work of love dedicated to the
+  late english lab samwise. do a thorough test of the installer and the
+  whole download-install-use process in a vm/qemu or somerhing"). One
+  program downloaded from the public repository's releases, run on a
+  stock Fedora 45 Workstation (GNOME, as it comes), full screen: a Setup
+  in Windows 95's spirit (the deep blue gradient backdrop, the big
+  title, the Welcome, Licence, Choose, Copying files with its progress
+  bar, Finish) drawn in BeOS's look (its yellow tabs, its grey panels
+  and bevels, its fonts), saying throughout what it does and why. It
+  installs what Olo needs (packages through PackageKit, RPM Fusion where
+  wanted, Rust only if it builds), Olo itself (prebuilt, or built from
+  the repository with its progress shown), the session at the login
+  screen, and offers Olo's own login screen and boot splash; it can be
+  stopped and run again (each step checks what's done), and says what to
+  do when something fails. Its About (and a line on its last page):
+  that Olo is a work of love, dedicated to the late Samwise, an English
+  Labrador. Tested whole in a VM (QEMU with KVM: a fresh Fedora 45
+  Workstation install, the installer downloaded and run, a reboot into
+  Olo, Olo used: its apps opened, a file opened, Preferences changed),
+  screenshots of every step kept, at the VM's screen's scale and 2×.
+
+- **Nothing of GNOME's needed: Olo's own in its place** (Ben, 2026-11-06:
+  "if we are still reliant on any gnome services or settings, create olo
+  replacements for it so we don't need any gnome stuff"). What Olo still
+  leans on (a look on 2026-11-06): GDM (olo-login replaces it once Ben
+  switches over); GNOME Keyring at login (`pam_gnome_keyring` in
+  olo-login's PAM services, the session finishing the keyring's start,
+  `crates/session/src/keyring.rs`, and the Secret portal pointed at it
+  in `graphical.rs`'s portals.conf: olo-secrets takes over from it after
+  the fact, `apps/secrets/src/gnome.rs`), to be olo-secrets unlocked by
+  the login password itself (a PAM module of Olo's, as pam_olo_face is)
+  and serving the Secret portal; and dconf (dconf-service running; Olo
+  writes GTK's theme, fonts and cursor as `org.gnome.desktop.interface`
+  keys, `olo_system::dconf`, which unsandboxed GTK apps read), to be a
+  settings source of Olo's that GTK reads (its GSettings backend, or the
+  settings portal for what reads it). Audit the rest (autostart's
+  GNOME-only entries, `toolkits.rs`, the portal's GNOME interfaces, any
+  gnome-* or gsd-* process that starts) and replace what's found; Olo
+  Doctor says if any GNOME service is still running.
+
+- **A window opened from a floating one opens on top of it** (Ben,
+  2026-11-06: "if i'm in a floating window like prefs -> sound and click
+  e.g. try it for the voice processing and that opens another window,
+  that other window should open on top not under the one i launched it
+  from"). A window an app opens (Preferences ▸ Sound ▸ Voice Processing's
+  Try It, any dialog or panel opened from a floating window) is placed
+  and stacked above the window it was opened from, and has the focus:
+  app_server's new-window placement (shell/xdg.rs) raising a new
+  toplevel above its app's (or its parent's) floating windows, for
+  every app, not only Preferences.
 
 ## Done, waiting for Ben to try or confirm
+
+- **The start-up screen's sound says "olo"** (Ben, 2026-11-06: "a
+  startup sound that is like \"ooollllooooo\" reminiscent of the mac
+  startup sound but saying olo in the same style as that mac sound";
+  "make sure that in the sound prefs i can also preview the olo chime
+  sound"). Done (3e6d7b43; HACKING, the session's start-up screen): a
+  start-up chime's bright chord voiced "ooo-lll-ooo" through gliding
+  formants, the default start-up sound; Preferences ▸ Sound ▸ Starting
+  Up chooses it or the old swell, and Play plays the one chosen. Made by
+  synthesis and checked by its spectrum, not by ear: to try,
+  Preferences ▸ Sound ▸ Play, and say how it should sound (more "o", a
+  clearer "l", brighter, longer): its formants, timing and chord are
+  easy to change.
+
+- **Display: a touch screen's touch turned off and on** (Ben,
+  2026-11-06: "in display prefs for touchscreen displays have an option
+  to enable/disable the touch functionality on the screen (enabled by
+  default)"). Done (HACKING, "The touch screen"): Preferences ▸ Display
+  shows "Touch screen" for the display a touch screen is on, checked by
+  default; unchecked, app_server ignores that screen's fingers (the pen
+  goes on working), kept per display. To try: Preferences ▸ Display ▸
+  the built-in display ▸ uncheck Touch screen, and touch it.
+
+- **Viewer: 4K60 video plays smoothly, decoded in hardware** (Ben,
+  2026-11-06: "the viewer app can't even play 4k video at 60fps
+  smoothly … it must use hardware acceleration for all common formats
+  including av1, vp9, h264/5 etc. and it must be accelerated on cpu
+  (simd), intel xe and nvidia"; "make it so that you can choose the
+  decoding device in the viewer menu and also set the default decoding
+  device in preferences somewhere"). Done (HACKING, `crates/preview`'s
+  Video): H.264, HEVC, VP9 and AV1 (8- and 10-bit) decode on Intel's GPU
+  (VA-API, through RPM Fusion's driver for H.264 and HEVC, which Olo
+  Doctor installs) and NVIDIA's (NVDEC), bit-exact against the reference
+  decoders, with the processor (rav1d's and OpenH264's SIMD built in) as
+  the fallback; pictures drawn by the GPU from their planes, held where
+  the decoder copies them and copied from there by the window's GPU.
+  View ▸ Decode With chooses for the video showing; Preferences ▸ Power
+  ▸ Graphics ▸ Video Playback sets the default (Automatic: the built-in
+  GPU where it decodes the video, else NVIDIA's, on battery too). A
+  minute of 4K60, the Viewer's share of a core: Intel's GPU 7–8% for
+  every format (0–3 pictures dropped of 3600), NVIDIA's 7.0% (none
+  dropped), the processor 175–251% (AV1 3 dropped, VP9 7: the pure-Rust
+  VP9 and HEVC decoders have no SIMD of their own). To try: open a 4K
+  video in the Viewer; View ▸ Decode With says what decodes it.
+
+- **Preferences ▸ Power: every power setting in one place, each
+  scenario a setting** (Ben, 2026-11-06: "automatic should also wake the
+  nvidia card on battery if it is the best choice"; "just have it
+  default to waking the nvidia card in power saving mode on battery";
+  "centralize the gpu power settings and cpu power settings to all be
+  under the prefs -> power section, and have all these scenarios
+  configurable with reasonable defaults"). Done (HACKING, "Power: the
+  processors' and each GPU's"): Power has three tabs. Power Modes: the
+  mode, and a grid of what each mode and running on battery put the
+  processors (Saving Power, Balanced, Fastest: governor, energy
+  preference, turbo, the firmware's platform profile) and each GPU
+  (Cooler and Quieter, Balanced, Fastest, Custom) on; on battery the
+  mode's by default, but NVIDIA's GPU on Cooler and Quieter. Graphics:
+  each GPU's state and Custom settings, Screen Recordings, Video
+  Playback (Automatic wakes NVIDIA's GPU on battery too, on by default,
+  a checkbox). Battery & Idle: what Power had. The GPUs panel is gone
+  (its names open Graphics). `olo-gpu-follow` follows the power supply
+  as well as the mode and sets the processors too. To try: Power ▸ Power
+  Modes ▸ Apply (your password once: it installs the new follower), then
+  unplug: NVIDIA's GPU goes to Cooler and Quieter (Graphics says what
+  it's on); a 4K video plays on it on battery.
 
 - **Olo's own login screen and boot splash** (Ben, 2026-11-01; "neither
   of those are blocked on me", 2026-11-06). Done (HACKING, "The login
@@ -1908,6 +1974,21 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Agent Screens: Escape crashed the screen viewer**~~ (Ben, 2026-11-06:
+  "in agent screens i hit escape and it crashed see the logs it just
+  happened"). olo-screen panicked (crash report
+  olo-screen-3508739-1794028779015, 21:19): "cannot read
+  olo_screen::viewer::Viewer while it is already being updated", at
+  crates/ui/src/menu.rs:1186. The viewer's key handler (viewer.rs
+  `key`, inside the Viewer's own update) asks `menu::shortcut_command`
+  whether the key is a menu's shortcut; the menu bar, built on demand
+  since `MenuBar::of` (d1d0438b), reads the Viewer to build its menus,
+  which GPUI refuses mid-update. A regression of that change: the bar
+  must answer from what it built last when its view is busy (or be
+  built without reading it then), for every app whose key handlers ask.
+  Fixed (3a1cd2e4): GPUI's `Entity::try_read`; the bar answers from what it
+  built last while its app is being updated; its test asks from inside.
 
 - ~~**Deskbar's tray icons: either click shows their menu**~~ (Ben,
   2026-11-06): "in the deskbar, left clicking or right clicking an icon

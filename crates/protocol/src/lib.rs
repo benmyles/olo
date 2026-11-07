@@ -1297,6 +1297,10 @@ pub struct OutputInfo {
     /// panel whose HDR Intel's driver doesn't drive: Olo Doctor offers it).
     #[serde(default)]
     pub hdr_needs_boot: bool,
+    /// A touch screen is on it: whether its touches are taken
+    /// (`OutputConfig::touch`). None: no touch screen.
+    #[serde(default)]
+    pub touch: Option<bool>,
 }
 
 /// The number display `output` (a connector) goes by, from the main
@@ -1390,6 +1394,9 @@ pub struct OutputConfig {
     /// SDR's white in HDR, cd/m² (`color::SDR_NITS` unless set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sdr_nits: Option<f32>,
+    /// Its touch screen's touches taken (a display with one). None: on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub touch: Option<bool>,
 }
 
 impl OutputConfig {
@@ -1409,6 +1416,7 @@ impl OutputConfig {
             color_mode: self.color_mode.or(other.color_mode),
             hdr: self.hdr.or(other.hdr),
             sdr_nits: self.sdr_nits.or(other.sdr_nits),
+            touch: self.touch.or(other.touch),
         }
     }
 }
@@ -1456,12 +1464,14 @@ pub struct Settings {
     pub shortcuts: Option<ShortcutSettings>,
     pub tiling: TilingSettings,
     pub tracker: TrackerSettings,
-    /// Screen recordings (Preferences ▸ GPUs ▸ Screen Recordings).
+    /// Screen recordings (Preferences ▸ Power ▸ Graphics ▸ Screen Recordings).
     pub screen_recording: ScreenRecordingSettings,
-    /// Video played (Preferences ▸ GPUs ▸ Video Playback).
+    /// Video played (Preferences ▸ Power ▸ Graphics ▸ Video Playback).
     pub video: VideoSettings,
     /// Olo's start-up sound as a session starts (Preferences ▸ Sound).
     pub startup_sound: bool,
+    /// Which start-up sound.
+    pub startup_chime: StartupChime,
     pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub ai: AiSettings,
@@ -1608,15 +1618,52 @@ pub struct TrackerSettings {
 #[serde(default)]
 pub struct VideoSettings {
     /// What decodes it, unless the Viewer is told otherwise (View ▸
-    /// Decode With): "auto" (NVIDIA's GPU on mains power, else the
-    /// processor), "nvidia" (NVDEC), "intel" (the built-in GPU, VA-API)
-    /// or "cpu".
+    /// Decode With): "auto" (the built-in GPU where it decodes the video,
+    /// else NVIDIA's, else the processor), "nvidia" (NVDEC), "intel" (the
+    /// built-in GPU, VA-API) or "cpu".
     pub decoder: String,
+    /// "auto" wakes NVIDIA's GPU on battery too (it's then on its
+    /// battery preset, Preferences ▸ Power): its decoder costs less than
+    /// the processor's cores. Off, the processor decodes on battery.
+    pub nvidia_on_battery: bool,
 }
 
 impl Default for VideoSettings {
     fn default() -> Self {
-        VideoSettings { decoder: "auto".into() }
+        VideoSettings { decoder: "auto".into(), nvidia_on_battery: true }
+    }
+}
+
+/// Olo's start-up sound (olo-notifications' `startup.rs`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupChime {
+    /// A start-up chime's chord saying "olo" (Ben, 2026-11-06).
+    #[default]
+    Olo,
+    /// A warm swell rising into a ninth chord.
+    Swell,
+}
+
+impl StartupChime {
+    pub const ALL: [StartupChime; 2] = [StartupChime::Olo, StartupChime::Swell];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            StartupChime::Olo => "olo",
+            StartupChime::Swell => "swell",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            StartupChime::Olo => "Olo saying its name",
+            StartupChime::Swell => "A rising swell",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<StartupChime> {
+        StartupChime::ALL.into_iter().find(|c| c.id() == s)
     }
 }
 
@@ -1908,6 +1955,12 @@ impl DisplaySettings {
     /// The brightness kept for a display (full when none was).
     pub fn brightness_for(&self, key: &str, connector: &str) -> f32 {
         self.config(key, connector).and_then(|c| c.brightness).unwrap_or(1.0).clamp(0.0, 1.0)
+    }
+
+    /// Whether a display's touch screen's touches are taken (on unless
+    /// turned off).
+    pub fn touch_for(&self, key: &str, connector: &str) -> bool {
+        self.config(key, connector).and_then(|c| c.touch).unwrap_or(true)
     }
 
     pub fn rotation_for(&self, key: &str, connector: &str) -> u16 {
@@ -2260,6 +2313,7 @@ impl Default for Settings {
             screen_recording: ScreenRecordingSettings::default(),
             video: VideoSettings::default(),
             startup_sound: true,
+            startup_chime: StartupChime::default(),
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             ai: AiSettings::default(),
@@ -2589,6 +2643,7 @@ mod tests {
             hdr: None,
             sdr_nits: color::SDR_NITS,
             hdr_needs_boot: false,
+            touch: None,
         };
         let one = [out("eDP-1", 0, None), out("HDMI-A-1", 0, Some("eDP-1"))];
         assert_eq!(display_number(&one, "eDP-1"), None);
@@ -2606,6 +2661,21 @@ mod tests {
         assert_eq!(display_label(0), "D0");
     }
     use super::*;
+
+    /// A touch screen's touches are taken unless its display says
+    /// otherwise; off is kept, merged like the rest.
+    #[test]
+    fn touch_is_on_unless_turned_off() {
+        let mut d = DisplaySettings::default();
+        assert!(d.touch_for("eDP-1", "eDP-1"));
+        d.outputs.insert("eDP-1".into(), OutputConfig { touch: Some(false), ..Default::default() });
+        assert!(!d.touch_for("eDP-1", "eDP-1"));
+        let merged = OutputConfig { brightness: Some(0.5), ..Default::default() }.or(&OutputConfig { touch: Some(false), ..Default::default() });
+        assert_eq!(merged.touch, Some(false));
+        // (On isn't written: it's the default.)
+        let on = serde_json::to_string(&OutputConfig::default()).unwrap();
+        assert!(!on.contains("touch"), "{on}");
+    }
 
     #[test]
     fn display_settings_merge_key_and_connector() {

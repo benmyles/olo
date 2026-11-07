@@ -22,9 +22,25 @@ fn ivf(data: &[u8]) -> Vec<&[u8]> {
 
 fn md5_of(p: &Picture) -> String {
     let mut c = md5::Context::new();
-    c.consume(&p.y);
-    c.consume(&p.uv);
-    format!("{:x}", c.compute())
+    match &p.held {
+        // Left where the GPU copied it: its rows, at their pitch.
+        Some(h) => {
+            let bytes = if p.deep { 2 } else { 1 };
+            let (row_y, row_uv) = ((p.width * bytes) as usize, (p.width.div_ceil(2) * 2 * bytes) as usize);
+            let m = h.bytes();
+            for r in 0..p.height as usize {
+                c.consume(&m[h.y.0 + r * h.y.1..][..row_y]);
+            }
+            for r in 0..p.height.div_ceil(2) as usize {
+                c.consume(&m[h.uv.0 + r * h.uv.1..][..row_uv]);
+            }
+        }
+        None => {
+            c.consume(&p.y);
+            c.consume(&p.uv);
+        }
+    }
+    format!("{:x}", c.finalize())
 }
 
 /// Decodes `name` and checks each picture against its MD5s.
@@ -145,4 +161,43 @@ fn hevc_with_b_frames() {
 fn hevc_films() {
     check_nal(Codec::Hevc, "hevc-bbb.h265");
     check_nal(Codec::Hevc, "hevc-bear.h265");
+}
+
+/// Pictures left where the GPU copied them (`Decoder::hold`) are the same
+/// pictures: every one kept (the first held, the rest, once none of the
+/// decoder's memory is free, copied out), and each let go at once (one
+/// piece of memory used again and again).
+#[test]
+fn held_pictures_are_the_same() {
+    if !available(Codec::Vp9) {
+        eprintln!("no GPU here decodes VP9 through VA-API: not checked");
+        return;
+    }
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
+    let data = std::fs::read(dir.join("vp9-25fps.ivf")).unwrap();
+    let sums = std::fs::read_to_string(dir.join("vp9-25fps.ivf.md5")).unwrap();
+    let want: Vec<&str> = sums.lines().collect();
+    // Kept.
+    let mut d = Decoder::new(Codec::Vp9).unwrap();
+    d.hold(true);
+    let mut kept = Vec::new();
+    for (i, frame) in ivf(&data).into_iter().enumerate() {
+        d.decode(frame, i as i64, &mut kept).unwrap();
+    }
+    let held = kept.iter().filter(|p| p.held.is_some()).count();
+    assert!(held > 0 && held < kept.len(), "{held} of {} held", kept.len());
+    assert_eq!(kept.iter().map(md5_of).collect::<Vec<_>>(), want);
+    // Let go.
+    let mut d = Decoder::new(Codec::Vp9).unwrap();
+    d.hold(true);
+    let mut sums = Vec::new();
+    for (i, frame) in ivf(&data).into_iter().enumerate() {
+        let mut out = Vec::new();
+        d.decode(frame, i as i64, &mut out).unwrap();
+        for p in out {
+            assert!(p.held.is_some(), "picture {} not held", sums.len());
+            sums.push(md5_of(&p));
+        }
+    }
+    assert_eq!(sums, want);
 }

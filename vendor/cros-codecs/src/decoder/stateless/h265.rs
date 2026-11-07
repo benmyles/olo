@@ -720,13 +720,15 @@ where
             + self.codec.rps.ref_pic_set_st_foll[0..self.codec.rps.num_poc_st_foll].len();
 
         let dpb_len = self.codec.dpb.entries().len();
+        // Olo: said as a debug note (it was a warning): ordinary streams
+        // do this every picture, and FFmpeg decodes them without a word.
         if dpb_len != total_rps_len {
-            log::warn!(
+            log::debug!(
                 "The total RPS length {} is not the same as the DPB length {}",
                 total_rps_len,
                 dpb_len
             );
-            log::warn!("A reference pic may be in more than one RPS list. This is against the specification. See 8.3.2. NOTE 5")
+            log::debug!("A reference pic may be in more than one RPS list. This is against the specification. See 8.3.2. NOTE 5")
         }
 
         // According to Chromium, unavailable reference pictures are handled by

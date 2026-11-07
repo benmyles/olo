@@ -111,7 +111,7 @@ pub use util::smol_timeout;
 pub use util::{FutureExt, Timeout, arc_cow::ArcCow};
 pub use view::*;
 pub use window::*;
-pub use yuv::{YuvFrame, YuvMatrix};
+pub use yuv::{YuvFrame, YuvMatrix, YuvMemory};
 
 use std::{any::Any, borrow::BorrowMut, future::Future};
 use taffy::TaffyLayoutEngine;
