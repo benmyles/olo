@@ -67,11 +67,11 @@ something nobody here has is in "Blocked", with what it waits for.
   10-bit video checked on samples (none here yet, and nothing here
   encodes VP9). The
   processor's own: rav1d's and OpenH264's assembly is built in now
-  (4K AV1 32 → 85 pictures a second, H.264 45 → 53–98); still, every
-  decoder's pictures are copied as 16-bit samples (25 MB a 4K
-  picture, even 8-bit video's) and then made 8-bit planes: keep 8-bit
-  video's planes as bytes (the video thread spends a quarter of a core
-  in the kernel at 4K60 AV1, faulting in those copies).
+  (4K AV1 32 → 85 pictures a second, H.264 45 → 53–98), and 8-bit
+  pictures are kept as bytes rather than 16-bit samples (1523b172: 4K60
+  AV1 on the processor 1,510 of 3,600 pictures dropped in a minute → 3,
+  its video thread 57% of a core → 17.5%, its kernel time 23.5% →
+  0.1%).
 
 ## Done, waiting for Ben to try or confirm
 

@@ -92,13 +92,42 @@ pub mod av1 {
         pub full_range: bool,
     }
 
+    /// A frame's samples, plane by plane (Y, Cb, Cr; the last two empty
+    /// in monochrome): bytes for 8-bit video, 16-bit words for deeper (a
+    /// 4K 8-bit picture is 12 MB, not 25, and copied as it is).
+    pub(crate) enum Planes {
+        Bytes([Vec<u8>; 3]),
+        Words([Vec<u16>; 3]),
+    }
+
+    impl Planes {
+        /// Planes as words narrowed to bytes when they are 8-bit (`bpc`).
+        fn fit(self, bpc: u32) -> Planes {
+            match self {
+                Planes::Words(w) if bpc <= 8 => Planes::Bytes(w.map(|p| p.into_iter().map(|v| v as u8).collect())),
+                p => p,
+            }
+        }
+    }
+
+    /// `$body` with `$p` the planes' samples, bytes or words: each loop
+    /// over samples made for both.
+    macro_rules! planes {
+        ($planes:expr, $p:ident => $body:expr) => {
+            match $planes {
+                Planes::Bytes($p) => $body,
+                Planes::Words($p) => $body,
+            }
+        };
+    }
+
     pub struct Frame {
         pub width: u32,
         pub height: u32,
         bpc: u32,
         /// Chroma subsampling shifts (x, y); `None` for monochrome.
         chroma: Option<(u32, u32)>,
-        planes: [Vec<u16>; 3],
+        planes: Planes,
         stride: [usize; 3],
         matrix: u32,
         full_range: bool,
@@ -229,31 +258,38 @@ pub mod av1 {
                 },
                 None => (DAV1D_MC_UNKNOWN, false, super::hdr::PRI_UNKNOWN, super::hdr::TRC_UNKNOWN),
             };
-            let mut planes: [Vec<u16>; 3] = Default::default();
+            let (mut bytes, mut words): ([Vec<u8>; 3], [Vec<u16>; 3]) = Default::default();
             let mut stride = [0; 3];
             let n = if chroma.is_some() { 3 } else { 1 };
-            for (i, plane) in planes.iter_mut().enumerate().take(n) {
+            for i in 0..n {
                 let (sx, sy) = if i == 0 { (0, 0) } else { chroma.unwrap() };
                 let (pw, ph) = ((w + sx as usize) >> sx, (h + sy as usize) >> sy);
                 let Some(base) = pic.data[i] else { return Err("missing plane".into()) };
                 let line = pic.stride[(i > 0) as usize];
-                plane.reserve_exact(pw * ph);
+                // Row by row as they are (8-bit as bytes).
+                if bpc > 8 {
+                    words[i].reserve_exact(pw * ph);
+                } else {
+                    bytes[i].reserve_exact(pw * ph);
+                }
                 for y in 0..ph {
                     let row = unsafe { base.as_ptr().cast::<u8>().offset(line * y as isize) };
                     if bpc > 8 {
-                        plane.extend_from_slice(unsafe { std::slice::from_raw_parts(row.cast::<u16>(), pw) });
+                        words[i].extend_from_slice(unsafe { std::slice::from_raw_parts(row.cast::<u16>(), pw) });
                     } else {
-                        plane.extend(unsafe { std::slice::from_raw_parts(row, pw) }.iter().map(|&v| v as u16));
+                        bytes[i].extend_from_slice(unsafe { std::slice::from_raw_parts(row, pw) });
                     }
                 }
                 stride[i] = pw;
             }
+            let planes = if bpc > 8 { Planes::Words(words) } else { Planes::Bytes(bytes) };
             Ok(Frame { width: w as u32, height: h as u32, bpc, chroma, planes, stride, matrix, full_range, primaries, transfer, peak: 0.0 })
         }
 
         fn sample(&self, plane: usize, x: u32, y: u32) -> f32 {
             let (sx, sy) = if plane == 0 { (0, 0) } else { self.chroma.unwrap_or((0, 0)) };
-            self.planes[plane][(y >> sy) as usize * self.stride[plane] + (x >> sx) as usize] as f32
+            let i = (y >> sy) as usize * self.stride[plane] + (x >> sx) as usize;
+            planes!(&self.planes, p => p[plane][i] as f32)
         }
 
         /// Luma as an 8-bit value: an alpha plane.
@@ -268,9 +304,9 @@ pub mod av1 {
         /// row by row, `stride` samples a row; `matrix` as dav1d's
         /// `DAV1D_MC_*` (ISO/IEC 23091-4's matrix coefficients).
         #[allow(clippy::too_many_arguments)]
-        pub(crate) fn from_planes(width: u32, height: u32, bpc: u32, chroma: Option<(u32, u32)>, planes: [Vec<u16>; 3], stride: [usize; 3], matrix: u32, full_range: bool) -> Frame {
+        pub(crate) fn from_planes(width: u32, height: u32, bpc: u32, chroma: Option<(u32, u32)>, planes: Planes, stride: [usize; 3], matrix: u32, full_range: bool) -> Frame {
             let (primaries, transfer) = (super::hdr::PRI_UNKNOWN, super::hdr::TRC_UNKNOWN);
-            Frame { width, height, bpc, chroma, planes, stride, matrix, full_range, primaries, transfer, peak: 0.0 }
+            Frame { width, height, bpc, chroma, planes: planes.fit(bpc), stride, matrix, full_range, primaries, transfer, peak: 0.0 }
         }
 
         /// What its container says of its colour, where the stream itself
@@ -288,6 +324,14 @@ pub mod av1 {
                 self.peak = c.peak.unwrap_or(0.0);
             }
             self
+        }
+
+        /// The bytes its samples take.
+        pub fn bytes(&self) -> usize {
+            match &self.planes {
+                Planes::Bytes(p) => p.iter().map(Vec::len).sum(),
+                Planes::Words(p) => p.iter().map(|v| v.len() * 2).sum(),
+            }
         }
 
         /// HDR (PQ or HLG): its light goes past SDR's white.
@@ -312,7 +356,7 @@ pub mod av1 {
         pub(crate) fn synthetic(width: u32, height: u32, bpc: u32, chroma: (u32, u32), planes: [Vec<u16>; 3], matrix: u32, full_range: bool) -> Frame {
             let cw = (width as usize + chroma.0 as usize) >> chroma.0;
             let (primaries, transfer) = (super::hdr::PRI_UNKNOWN, super::hdr::TRC_UNKNOWN);
-            Frame { width, height, bpc, chroma: Some(chroma), planes, stride: [width as usize, cw, cw], matrix, full_range, primaries, transfer, peak: 0.0 }
+            Frame { width, height, bpc, chroma: Some(chroma), planes: Planes::Words(planes).fit(bpc), stride: [width as usize, cw, cw], matrix, full_range, primaries, transfer, peak: 0.0 }
         }
 
         /// Kr and Kb; unspecified is BT.601, as libavif and browsers assume.
@@ -338,29 +382,44 @@ pub mod av1 {
             }
             let (w, h) = (self.width as usize, self.height as usize);
             let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
-            let deep = self.bpc > 8;
-            let shift = 16 - self.bpc.min(16);
-            let (mut y, mut uv) = (Vec::with_capacity(w * h * if deep { 2 } else { 1 }), Vec::with_capacity(cw * ch * if deep { 4 } else { 2 }));
-            for row in 0..h {
-                let line = &self.planes[0][row * self.stride[0]..][..w];
-                if deep {
-                    y.extend(line.iter().flat_map(|&v| (v << shift).to_le_bytes()));
-                } else {
-                    y.extend(line.iter().map(|&v| v as u8));
-                }
-            }
-            for row in 0..ch {
-                let (us, vs) = (&self.planes[1][row * self.stride[1]..][..cw], &self.planes[2][row * self.stride[2]..][..cw]);
-                for (&u, &v) in us.iter().zip(vs) {
-                    if deep {
-                        uv.extend_from_slice(&(u << shift).to_le_bytes());
-                        uv.extend_from_slice(&(v << shift).to_le_bytes());
+            let deep = matches!(self.planes, Planes::Words(_));
+            let (y, uv) = match &self.planes {
+                // 8-bit: luma as it is, chroma interleaved.
+                Planes::Bytes(p) => {
+                    let mut y = Vec::with_capacity(w * h);
+                    if self.stride[0] == w {
+                        y.extend_from_slice(&p[0][..w * h]);
                     } else {
-                        uv.push(u as u8);
-                        uv.push(v as u8);
+                        for row in 0..h {
+                            y.extend_from_slice(&p[0][row * self.stride[0]..][..w]);
+                        }
                     }
+                    let mut uv = vec![0u8; cw * ch * 2];
+                    for (row, out) in uv.chunks_exact_mut(cw * 2).enumerate() {
+                        let (us, vs) = (&p[1][row * self.stride[1]..][..cw], &p[2][row * self.stride[2]..][..cw]);
+                        for (o, (&u, &v)) in out.as_chunks_mut::<2>().0.iter_mut().zip(us.iter().zip(vs)) {
+                            *o = [u, v];
+                        }
+                    }
+                    (y, uv)
                 }
-            }
+                // Deeper: 16-bit little-endian, in the high bits.
+                Planes::Words(p) => {
+                    let shift = 16 - self.bpc.min(16);
+                    let (mut y, mut uv) = (Vec::with_capacity(w * h * 2), Vec::with_capacity(cw * ch * 4));
+                    for row in 0..h {
+                        y.extend(p[0][row * self.stride[0]..][..w].iter().flat_map(|&v| (v << shift).to_le_bytes()));
+                    }
+                    for row in 0..ch {
+                        let (us, vs) = (&p[1][row * self.stride[1]..][..cw], &p[2][row * self.stride[2]..][..cw]);
+                        for (&u, &v) in us.iter().zip(vs) {
+                            uv.extend_from_slice(&(u << shift).to_le_bytes());
+                            uv.extend_from_slice(&(v << shift).to_le_bytes());
+                        }
+                    }
+                    (y, uv)
+                }
+            };
             let matrix = match self.matrix {
                 DAV1D_MC_BT709 => 709,
                 DAV1D_MC_BT2020_NCL | DAV1D_MC_BT2020_CL => 2020,
@@ -397,18 +456,20 @@ pub mod av1 {
                 let top = n - 1;
                 let byte = |v: i32| (v >> 16).clamp(0, 255) as u8;
                 let mut out = vec![255u8; w as usize * h as usize * 4];
-                for (y, row) in out.chunks_exact_mut(w as usize * 4).enumerate() {
-                    let ly = &self.planes[0][y * self.stride[0]..][..w as usize];
-                    let cy = (y >> sy) * self.stride[1];
-                    let (us, vs) = (&self.planes[1][cy..], &self.planes[2][cy..]);
-                    for (x, (px, &l)) in row.as_chunks_mut::<4>().0.iter_mut().zip(ly).enumerate() {
-                        let (u, v) = (us[x >> sx] as usize & top, vs[x >> sx] as usize & top);
-                        let l = luma[l as usize & top];
-                        px[0] = byte(l + cr_r[v]);
-                        px[1] = byte(l + cr_g[v] + cb_g[u]);
-                        px[2] = byte(l + cb_b[u]);
+                planes!(&self.planes, p => {
+                    for (y, row) in out.chunks_exact_mut(w as usize * 4).enumerate() {
+                        let ly = &p[0][y * self.stride[0]..][..w as usize];
+                        let cy = (y >> sy) * self.stride[1];
+                        let (us, vs) = (&p[1][cy..], &p[2][cy..]);
+                        for (x, (px, &l)) in row.as_chunks_mut::<4>().0.iter_mut().zip(ly).enumerate() {
+                            let (u, v) = (us[x >> sx] as usize & top, vs[x >> sx] as usize & top);
+                            let l = luma[l as usize & top];
+                            px[0] = byte(l + cr_r[v]);
+                            px[1] = byte(l + cr_g[v] + cb_g[u]);
+                            px[2] = byte(l + cb_b[u]);
+                        }
                     }
-                }
+                });
                 return out;
             }
             self.to_rgba_exact()
@@ -473,31 +534,33 @@ pub mod av1 {
             let step = |v: i32| (v >> 16).clamp(0, STEPS as i32 - 1) as usize;
             let (w, h) = (self.width as usize, self.height as usize);
             let mut out = vec![T::default(); w * h * 4];
-            let rows = |first: usize, chunk: &mut [T]| {
-                for (i, row) in chunk.chunks_exact_mut(w * 4).enumerate() {
-                    let y = first + i;
-                    let ly = &self.planes[0][y * self.stride[0]..][..w];
-                    let cy = (y >> sy) * self.stride[1];
-                    let (us, vs) = (&self.planes[1][cy..], &self.planes[2][cy..]);
-                    for (x, (px, &l)) in row.chunks_exact_mut(4).zip(ly).enumerate() {
-                        let (u, v) = (us[x >> sx] as usize & top, vs[x >> sx] as usize & top);
-                        let l = luma[l as usize & top];
-                        px.copy_from_slice(&f(step(l + cr_r[v]), step(l + cr_g[v] + cb_g[u]), step(l + cb_b[u])));
-                    }
-                }
-            };
             let threads = if w * h >= 1 << 20 { std::thread::available_parallelism().map_or(1, |n| n.get()).min(8) } else { 1 };
-            if threads <= 1 {
-                rows(0, &mut out);
-            } else {
-                let per = h.div_ceil(threads);
-                std::thread::scope(|scope| {
-                    for (k, chunk) in out.chunks_mut(per * w * 4).enumerate() {
-                        let rows = &rows;
-                        scope.spawn(move || rows(k * per, chunk));
+            planes!(&self.planes, p => {
+                let rows = |first: usize, chunk: &mut [T]| {
+                    for (i, row) in chunk.chunks_exact_mut(w * 4).enumerate() {
+                        let y = first + i;
+                        let ly = &p[0][y * self.stride[0]..][..w];
+                        let cy = (y >> sy) * self.stride[1];
+                        let (us, vs) = (&p[1][cy..], &p[2][cy..]);
+                        for (x, (px, &l)) in row.chunks_exact_mut(4).zip(ly).enumerate() {
+                            let (u, v) = (us[x >> sx] as usize & top, vs[x >> sx] as usize & top);
+                            let l = luma[l as usize & top];
+                            px.copy_from_slice(&f(step(l + cr_r[v]), step(l + cr_g[v] + cb_g[u]), step(l + cb_b[u])));
+                        }
                     }
-                });
-            }
+                };
+                if threads <= 1 {
+                    rows(0, &mut out);
+                } else {
+                    let per = h.div_ceil(threads);
+                    std::thread::scope(|scope| {
+                        for (k, chunk) in out.chunks_mut(per * w * 4).enumerate() {
+                            let rows = &rows;
+                            scope.spawn(move || rows(k * per, chunk));
+                        }
+                    });
+                }
+            });
             out
         }
 
@@ -551,6 +614,7 @@ pub mod av1 {
 /// so the same conversion to RGBA and BGRA, posters and player.
 pub mod vp9 {
     pub use super::av1::Frame;
+    use super::av1::Planes;
     /// Whether a sample starts with a key frame, and its stream's facts.
     pub use filmcraft_vp9::{KeyframeInfo, is_keyframe, keyframe_info};
     use rav1d::include::dav1d::headers::*;
@@ -619,18 +683,25 @@ pub mod vp9 {
             return None;
         }
         let (cw, ch) = (p.chroma_width as usize, p.chroma_height as usize);
-        let copy = |plane: &filmcraft_vp9::Plane, stride: usize, pw: usize, ph: usize| -> Option<Vec<u16>> {
+        // Cropped row by row, as they are (8-bit as bytes).
+        fn rows<T: Copy>(v: &[T], stride: usize, pw: usize, ph: usize) -> Option<Vec<T>> {
             let mut out = Vec::with_capacity(pw * ph);
             for y in 0..ph {
-                let row = y * stride;
-                match plane {
-                    filmcraft_vp9::Plane::U8(v) => out.extend(v.get(row..row + pw)?.iter().map(|&s| s as u16)),
-                    filmcraft_vp9::Plane::U16(v) => out.extend_from_slice(v.get(row..row + pw)?),
-                }
+                out.extend_from_slice(v.get(y * stride..y * stride + pw)?);
             }
             Some(out)
+        }
+        let words = |plane: &filmcraft_vp9::Plane, stride: usize, pw: usize, ph: usize| -> Option<Vec<u16>> {
+            match plane {
+                filmcraft_vp9::Plane::U8(v) => Some(rows(v, stride, pw, ph)?.into_iter().map(u16::from).collect()),
+                filmcraft_vp9::Plane::U16(v) => rows(v, stride, pw, ph),
+            }
         };
-        let planes = [copy(&p.y, p.y_stride, w, h)?, copy(&p.u, p.uv_stride, cw, ch)?, copy(&p.v, p.uv_stride, cw, ch)?];
+        use filmcraft_vp9::Plane::U8;
+        let planes = match (&p.y, &p.u, &p.v) {
+            (U8(y), U8(u), U8(v)) => Planes::Bytes([rows(y, p.y_stride, w, h)?, rows(u, p.uv_stride, cw, ch)?, rows(v, p.uv_stride, cw, ch)?]),
+            _ => Planes::Words([words(&p.y, p.y_stride, w, h)?, words(&p.u, p.uv_stride, cw, ch)?, words(&p.v, p.uv_stride, cw, ch)?]),
+        };
         let chroma = Some((p.subsampling_x as u32, p.subsampling_y as u32));
         let f = Frame::from_planes(p.width, p.height, p.bit_depth, chroma, planes, [w, cw, cw], matrix(p.color.color_space), p.color.full_range);
         // (VP9 says BT.2020 by its colour space; its transfer only the
@@ -645,6 +716,7 @@ pub mod vp9 {
 /// streams), its pictures as AV1's [`Frame`]s.
 pub mod hevc {
     pub use super::av1::Frame;
+    use super::av1::Planes;
     use rav1d::include::dav1d::headers::*;
 
     /// What a track's HEVCDecoderConfigurationRecord says (MP4's `hvcC`,
@@ -786,13 +858,18 @@ pub mod hevc {
             _ => return None,
         };
         let (cw, ch) = ((w + sx) >> sx, (h + sy) >> sy);
-        let plane = |p: &rust_h265::PixelData, n: usize| -> Option<Vec<u16>> {
+        use rust_h265::PixelData::{U8, U16};
+        let words = |p: &rust_h265::PixelData, n: usize| -> Option<Vec<u16>> {
             match p {
-                rust_h265::PixelData::U8(v) => Some(v.get(..n)?.iter().map(|&s| s as u16).collect()),
-                rust_h265::PixelData::U16(v) => Some(v.get(..n)?.to_vec()),
+                U8(v) => Some(v.get(..n)?.iter().map(|&s| s as u16).collect()),
+                U16(v) => Some(v.get(..n)?.to_vec()),
             }
         };
-        let planes = [plane(&f.y, w * h)?, plane(&f.u, cw * ch)?, plane(&f.v, cw * ch)?];
+        // (8-bit as bytes, as decoded.)
+        let planes = match (&f.y, &f.u, &f.v) {
+            (U8(y), U8(u), U8(v)) => Planes::Bytes([y.get(..w * h)?.to_vec(), u.get(..cw * ch)?.to_vec(), v.get(..cw * ch)?.to_vec()]),
+            _ => Planes::Words([words(&f.y, w * h)?, words(&f.u, cw * ch)?, words(&f.v, cw * ch)?]),
+        };
         let matrix = colour.matrix.unwrap_or(if h >= 720 { DAV1D_MC_BT709 } else { DAV1D_MC_BT601 });
         Some(Frame::from_planes(f.width, f.height, f.bit_depth as u32, Some((sx as u32, sy as u32)), planes, [w, cw, cw], matrix, colour.full_range).with_colour(&colour))
     }

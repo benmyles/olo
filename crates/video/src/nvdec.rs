@@ -336,6 +336,11 @@ unsafe extern "C" fn on_sequence(user: *mut c_void, format: *mut parse::CUVIDEOF
         s.error = Some(format!("this GPU's NVDEC doesn't decode {:?} {}×{} at {} bits", s.codec, f.coded_width, f.coded_height, 8 + f.bit_depth_luma_minus8));
         return 0;
     }
+    // (Nor pictures smaller than it takes: VP9's 128 × 128 here.)
+    if f.coded_width < u32::from(caps.nMinWidth) || f.coded_height < u32::from(caps.nMinHeight) {
+        s.error = Some(format!("{}×{} is smaller than this GPU's NVDEC decodes {:?} ({}×{} at least)", f.coded_width, f.coded_height, s.codec, caps.nMinWidth, caps.nMinHeight));
+        return 0;
+    }
     let surfaces = u32::from(f.min_num_decode_surfaces).max(1) + 4;
     let vsd = &f.video_signal_description;
     // (video_format: 3 bits, then video_full_range_flag.)

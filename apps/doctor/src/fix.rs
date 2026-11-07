@@ -92,14 +92,16 @@ pub enum Step {
     UpdatePackages {
         names: Vec<String>,
     },
-    /// Add a package repository: its release package (`url`, as the
-    /// repository's own instructions give it), downloaded and installed
-    /// (it brings the repository's settings and signing keys, which
-    /// every package from it is then checked against), and the package
-    /// lists read again.
+    /// Add a package repository: its release package downloaded from
+    /// the first of `urls` that has it (the maker's own server, then its
+    /// mirrors' redirector: each tried up to `TRIES` times, as a
+    /// redirector sends each try to another mirror and one may be out of
+    /// date) and installed (it brings the repository's settings and
+    /// signing keys, which every package from it is then checked
+    /// against), and the package lists read again.
     InstallRepository {
         name: String,
-        url: String,
+        urls: Vec<String>,
     },
     /// Install `name` from its maker's latest GitHub release, its
     /// published SHA-256 checked, to `to` (`crate::releases`): a program
@@ -166,10 +168,10 @@ impl Step {
                 let ids: Vec<String> = waiting.into_iter().filter(|p| names.iter().any(|n| n == p.name())).map(|p| p.id).collect();
                 olo_system::packages::update(ids, &mut said).map_err(|e| format!("{}: {e}", self.describe()))
             }
-            Step::InstallRepository { url, .. } => {
+            Step::InstallRepository { urls, .. } => {
                 let fail = |e: String| format!("{}: {e}", self.describe());
                 said(olo_system::packages::Progress::Status("Downloading"));
-                let bytes = crate::releases::download(url, 16 << 20, &mut |_, _| {}).map_err(fail)?;
+                let (url, bytes) = release_package(urls).map_err(fail)?;
                 // (Where PackageKit, as root, reads it; gone after.)
                 let name = url.rsplit('/').next().filter(|n| n.ends_with(".rpm")).unwrap_or("release.rpm");
                 let dir = std::env::temp_dir().join(format!("olo-doctor-{}", std::process::id()));
@@ -403,6 +405,33 @@ fn unit(name: &str, action: &UnitAction) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
+/// How many times each place a release package might be is tried.
+const TRIES: usize = 3;
+
+/// A repository's release package from the first of `urls` that has one
+/// (an RPM: its lead's magic, not a mirror's error page), each tried up
+/// to `TRIES` times; where it came from, and its bytes. Every place's
+/// answer said when none has it.
+fn release_package(urls: &[String]) -> Result<(String, Vec<u8>), String> {
+    let mut why = Vec::new();
+    for url in urls {
+        for _ in 0..TRIES {
+            match crate::releases::download(url, 16 << 20, &mut |_, _| {}) {
+                Ok(bytes) if is_rpm(&bytes) => return Ok((url.clone(), bytes)),
+                Ok(_) => why.push(format!("{url} sent something other than a package")),
+                Err(e) => why.push(e),
+            }
+        }
+    }
+    why.dedup();
+    Err(if why.is_empty() { "nowhere to download it from".into() } else { why.join("; ") })
+}
+
+/// An RPM package's lead (its first four bytes).
+fn is_rpm(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xed, 0xab, 0xee, 0xdb])
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -430,6 +459,36 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
     use super::*;
+
+    /// A release package from the first place that has one: a stale
+    /// mirror's 404 and a page that isn't a package passed over, every
+    /// answer said when nowhere has it (a local server for the places).
+    #[test]
+    fn a_release_package_comes_from_the_first_place_that_has_it() {
+        use std::io::{Read, Write};
+        let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in server.incoming().flatten() {
+                let mut stream = stream;
+                let mut buf = [0u8; 1024];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let path = String::from_utf8_lossy(&buf[..n]).split_whitespace().nth(1).unwrap_or("").to_owned();
+                let (status, body): (&str, &[u8]) = match path.as_str() {
+                    "/good.rpm" => ("200 OK", &[0xed, 0xab, 0xee, 0xdb, 3, 0]),
+                    "/page.rpm" => ("200 OK", b"<html>busy</html>"),
+                    _ => ("404 Not Found", b""),
+                };
+                let _ = write!(stream, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                let _ = stream.write_all(body);
+            }
+        });
+        let at = |p: &str| format!("http://127.0.0.1:{port}/{p}");
+        let (url, bytes) = release_package(&[at("stale.rpm"), at("page.rpm"), at("good.rpm")]).unwrap();
+        assert_eq!((url, bytes.len()), (at("good.rpm"), 6));
+        let why = release_package(&[at("stale.rpm"), at("page.rpm")]).unwrap_err();
+        assert!(why.contains("answered 404") && why.contains("something other than a package"), "{why}");
+    }
 
     #[test]
     fn steps_round_trip() {
@@ -460,5 +519,18 @@ mod tests {
         // No such pid (the largest allowed is far below), and a signal
         // 0 never changes anything.
         assert!(Step::Signal { pid: i32::MAX, signal: 0 }.run().is_ok());
+    }
+}
+
+#[cfg(test)]
+mod live {
+    /// `cargo test -p olo-doctor -- --ignored rpm_fusion`: RPM Fusion's
+    /// nonfree release package for Fedora 45, from where the fix looks.
+    #[test]
+    #[ignore = "the network"]
+    fn rpm_fusion_s_release_package_is_there() {
+        let file = "nonfree/fedora/rpmfusion-nonfree-release-45.noarch.rpm";
+        let (url, bytes) = super::release_package(&[format!("https://download1.rpmfusion.org/{file}"), format!("https://mirrors.rpmfusion.org/{file}")]).unwrap();
+        assert!(url.starts_with("https://download1.rpmfusion.org/") && bytes.len() > 4096, "{url}: {} bytes", bytes.len());
     }
 }
