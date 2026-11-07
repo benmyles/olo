@@ -491,6 +491,21 @@ struct Frame {
     queries: QueryBasis,
     /// A text box laying out its atomic inlines before its lines.
     atomic_host: bool,
+    /// A block formatting context root: floats inside it stay here.
+    bfc: bool,
+    /// This frame's content box relative to its block formatting context's
+    /// content box (prospective: before margins collapse).
+    bfc_origin: Point,
+    /// The floats of this formatting context (a root only), margin boxes in
+    /// its content coordinates.
+    floats: Vec<FloatBox>,
+    /// This box floats (left or not), placed when its content is built.
+    float_left: Option<bool>,
+}
+#[derive(Clone, Copy, Debug)]
+struct FloatBox {
+    left: bool,
+    rect: Rect,
 }
 struct Completed {
     before: Strut,
@@ -587,6 +602,10 @@ impl<'a> Job<'a> {
                 through: false,
                 queries: QueryBasis::viewport(viewport),
                 atomic_host: false,
+                bfc: true,
+                bfc_origin: Point::default(),
+                floats: Vec::new(),
+                float_left: None,
             }],
             flex: Vec::new(),
             containers: Vec::new(),
@@ -621,6 +640,7 @@ impl<'a> Job<'a> {
         let frame = self.stack.last().ok_or(Error::Invalid)?;
         let parent = frame.used;
         let queries = frame.queries;
+        let (parent_origin, parent_cursor, parent_pending, parent_collapsing) = (frame.bfc_origin, frame.cursor, frame.pending.value(), frame.at_start && frame.collapse_top);
         let cache = self.cache.clone();
         let b = cache.tree.get(id).ok_or(Error::Invalid)?;
         let BoxKind::Block { flow_root, root, .. } = b.kind else { return Err(Error::Invalid) };
@@ -628,6 +648,7 @@ impl<'a> Job<'a> {
         if style.font().context() != self.scope.context() {
             return Err(Error::Stale);
         }
+        let mut float_left = None;
         let mut used = if let Some(a) = self.active_absolute.as_ref().filter(|a| a.id == id) {
             a.used
         } else if let Some(used) = self.flex_child_used(id)? {
@@ -637,9 +658,38 @@ impl<'a> Job<'a> {
         } else if let Some(used) = self.atomic_used(id, style, parent, queries)? {
             used
         } else {
-            Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?
+            let mut used = Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
+            float_left = self.float_side(style);
+            if float_left.is_some() {
+                // A float is a formatting context of its own, shrink-to-fit
+                // wide unless sized, its auto margins zero (CSS 2.2 §10.3.5).
+                used.bfc = true;
+                let extra = used.padding.horizontal() + used.border.horizontal();
+                // The block width equation does not apply: the margins are
+                // the specified ones, auto being zero.
+                used.margin.left = used::length(style, P::MarginLeft, Some(parent.width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
+                used.margin.right = used::length(style, P::MarginRight, Some(parent.width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
+                if matches!(style.value(P::Width), Value::Keyword(K::Auto)) {
+                    let (widths, _) = self.intrinsic_content_of(id, queries, parent.width, 0, false)?;
+                    let available = (parent.width - extra - used.margin.horizontal()).max(0.);
+                    used.width = widths.max_content.min(available).max(widths.min_content.min(available)).max(0.);
+                }
+            }
+            used
         };
         used.bfc |= flow_root || root;
+        let prospective_y = if float_left.is_some() {
+            parent_cursor + if parent_collapsing { 0. } else { parent_pending }
+        } else if parent_collapsing {
+            0.
+        } else {
+            parent_cursor + parent_pending.max(used.margin.top)
+        };
+        let bfc_origin = if used.bfc {
+            Point::default()
+        } else {
+            Point { x: parent_origin.x + used.margin.left + used.relative.x + used.border.left + used.padding.left, y: parent_origin.y + prospective_y + used.border.top + used.padding.top }
+        };
         if container_flow::is_table(style) {
             self.begin_table(id, style, &mut used, parent.width, queries)?;
         }
@@ -672,7 +722,120 @@ impl<'a> Job<'a> {
             through,
             queries,
             atomic_host: false,
+            bfc: used.bfc,
+            bfc_origin,
+            floats: Vec::new(),
+            float_left,
         });
+        Ok(())
+    }
+    /// `float: left | right` on a box in normal flow (not a flex or grid
+    /// item, not absolutely positioned).
+    fn float_side(&self, style: &crate::css::style::Style) -> Option<bool> {
+        let parent = self.stack.last()?;
+        if self.flex.last().is_some_and(|f| f.id == parent.id) || self.containers.last().is_some_and(|c| c.id == parent.id) || parent.atomic_host {
+            return None;
+        }
+        match style.value(P::Float) {
+            Value::Keyword(K::Left | K::InlineStart) => Some(true),
+            Value::Keyword(K::Right | K::InlineEnd) => Some(false),
+            _ => None,
+        }
+    }
+    /// The frame holding the current formatting context's floats.
+    fn bfc_index(&self) -> usize {
+        self.stack.iter().rposition(|f| f.bfc).unwrap_or(0)
+    }
+    /// The prospective y of the next in-flow thing in the current frame, in
+    /// the formatting context's coordinates.
+    fn flow_y(&self) -> f64 {
+        let f = self.stack.last().expect("a frame");
+        f.bfc_origin.y + f.cursor + if f.at_start && f.collapse_top { 0. } else { f.pending.value() }
+    }
+    /// Place a float whose margin box is `width` × `height` (CSS 2.2 §9.5.1):
+    /// at the current y or lower, against its containing block's edge or the
+    /// floats already there, never above an earlier float; record it.
+    fn place_float(&mut self, id: BoxId, left: bool, margin: Edges, width: f64, height: f64) -> Result<()> {
+        let bfc = self.bfc_index();
+        let f = self.stack.last().ok_or(Error::Invalid)?;
+        let (origin, container_width) = (f.bfc_origin, f.used.width);
+        let mut y = self.flow_y();
+        for fb in &self.stack[bfc].floats {
+            y = y.max(fb.rect.y);
+        }
+        let (bound_left, bound_right) = (origin.x, origin.x + container_width);
+        let mut candidates: Vec<f64> = self.stack[bfc].floats.iter().map(|fb| fb.rect.y + fb.rect.height).filter(|b| *b > y).collect();
+        candidates.sort_by(|a, b| a.total_cmp(b));
+        candidates.insert(0, y);
+        let mut placed = None;
+        for y in candidates {
+            let (mut l, mut r) = (bound_left, bound_right);
+            for fb in &self.stack[bfc].floats {
+                if fb.rect.y < y + height.max(1.) && fb.rect.y + fb.rect.height > y {
+                    if fb.left {
+                        l = l.max(fb.rect.x + fb.rect.width);
+                    } else {
+                        r = r.min(fb.rect.x);
+                    }
+                }
+            }
+            if r - l >= width || (l == bound_left && r == bound_right) {
+                placed = Some((if left { l } else { r - width }, y));
+                break;
+            }
+        }
+        let (x, y) = placed.ok_or(Error::Invalid)?;
+        if ![x, y, width, height].iter().all(|v| v.is_finite()) {
+            return Err(Error::Invalid);
+        }
+        let g = &mut self.geometry[id.index()];
+        g.border_box.x = used::grid(x - origin.x + margin.left, self.scale);
+        g.border_box.y = used::grid(y - origin.y + margin.top, self.scale);
+        if self.stack[bfc].floats.len() >= self.limits.boxes {
+            return Err(Error::Limit);
+        }
+        self.stack[bfc].floats.push(FloatBox { left, rect: Rect { x, y, width, height } });
+        Ok(())
+    }
+    /// The floats beside a paragraph starting now in the current frame, in
+    /// the paragraph's coordinates.
+    fn exclusions(&self) -> Vec<inline::Exclusion> {
+        let bfc = self.bfc_index();
+        let f = self.stack.last().expect("a frame");
+        let y0 = self.flow_y();
+        self.stack[bfc]
+            .floats
+            .iter()
+            .filter(|fb| fb.rect.y + fb.rect.height > y0)
+            .map(|fb| inline::Exclusion {
+                top: fb.rect.y - y0,
+                bottom: fb.rect.y + fb.rect.height - y0,
+                left: fb.left.then_some(fb.rect.x + fb.rect.width - f.bfc_origin.x),
+                right: (!fb.left).then_some(fb.rect.x - f.bfc_origin.x),
+            })
+            .collect()
+    }
+    /// `clear`: move the frame's cursor below the floats of that side
+    /// (CSS 2.2 §9.5.2); clearance ends margin collapsing above the box.
+    fn clear(&mut self, style: &crate::css::style::Style) -> Result<()> {
+        let (left, right) = match style.value(P::Clear) {
+            Value::Keyword(K::Left | K::InlineStart) => (true, false),
+            Value::Keyword(K::Right | K::InlineEnd) => (false, true),
+            Value::Keyword(K::Both) => (true, true),
+            _ => return Ok(()),
+        };
+        let bfc = self.bfc_index();
+        let bottom = self.stack[bfc].floats.iter().filter(|fb| if fb.left { left } else { right }).map(|fb| fb.rect.y + fb.rect.height).fold(f64::NEG_INFINITY, f64::max);
+        if bottom == f64::NEG_INFINITY {
+            return Ok(());
+        }
+        let f = self.stack.last_mut().ok_or(Error::Invalid)?;
+        let current = f.bfc_origin.y + f.cursor + if f.at_start && f.collapse_top { 0. } else { f.pending.value() };
+        if bottom > current {
+            f.cursor = bottom - f.bfc_origin.y;
+            f.pending = Strut::default();
+            f.at_start = false;
+        }
         Ok(())
     }
     fn place(&mut self, id: BoxId, result: Completed) -> Result<()> {
@@ -724,8 +887,12 @@ impl<'a> Job<'a> {
         } else {
             (Vec::new(), Vec::new())
         };
+        let exclusions = self.exclusions();
         let lay_out = |job: &mut Self, break_width: Option<f64>| -> Result<inline::Layout> {
             let mut j = inline::Job::for_style_with_spacing_at_scale(job.engine, text.clone(), style, job.scope, available, job.scale, job.limits.text, job.cancel, spacing.clone())?;
+            if !exclusions.is_empty() {
+                j = j.with_exclusions(exclusions.clone())?;
+            }
             if let Some(w) = break_width {
                 j = j.with_break_width(w)?;
             }
@@ -975,7 +1142,13 @@ impl<'a> Job<'a> {
                     self.defer_absolute(child)?;
                     continue;
                 }
-                let b = &self.cache.tree.boxes[child.index()];
+                let cache = self.cache.clone();
+                let b = &cache.tree.boxes[child.index()];
+                if matches!(b.kind, BoxKind::Block { .. } | BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. })
+                    && let Some(s) = cache.tree.style(child)
+                {
+                    self.clear(s)?;
+                }
                 match b.kind {
                     BoxKind::Block { .. } => self.enter(child)?,
                     BoxKind::InlineContent { source } => {
@@ -1006,6 +1179,10 @@ impl<'a> Job<'a> {
                                 through: false,
                                 queries,
                                 atomic_host: true,
+                                bfc: false,
+                                bfc_origin: self.stack.last().map_or(Point::default(), |p| p.bfc_origin),
+                                floats: Vec::new(),
+                                float_left: None,
                             });
                         } else {
                             let r = self.text(child, source)?;
@@ -1035,7 +1212,17 @@ impl<'a> Job<'a> {
                             used.margin.right = flexed.margin.right;
                         }
                         self.geometry[child.index()] = super::images::geometry(used);
-                        self.place(child, Completed { before: Strut::new(used.margin.top), after: Strut::new(used.margin.bottom), through: false, relative_y: 0. })?;
+                        if let Some(left) = self.float_side(s).filter(|_| flexed.is_none()) {
+                            // A floated image: its specified margins, auto being zero.
+                            let mut margin = used.margin;
+                            margin.left = used::length(s, P::MarginLeft, Some(parent.width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
+                            margin.right = used::length(s, P::MarginRight, Some(parent.width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
+                            self.geometry[child.index()].margin = margin;
+                            let g = self.geometry[child.index()];
+                            self.place_float(child, left, margin, g.border_box.width + margin.horizontal(), g.border_box.height + margin.vertical())?;
+                        } else {
+                            self.place(child, Completed { before: Strut::new(used.margin.top), after: Strut::new(used.margin.bottom), through: false, relative_y: 0. })?;
+                        }
                         self.progress.boxes += 1;
                     }
                     BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. } | BoxKind::Viewport => return Err(Error::Invalid),
@@ -1047,6 +1234,15 @@ impl<'a> Job<'a> {
                     f.pending = Strut::default();
                 }
                 self.finish_table(f.id);
+                // A formatting context root contains its floats (CSS 2.2 §10.6.7).
+                if f.bfc && !f.floats.is_empty() {
+                    let bottom = f.floats.iter().map(|fb| fb.rect.y + fb.rect.height).fold(0f64, f64::max);
+                    let flow = f.cursor + if f.collapse_bottom { 0. } else { f.pending.value() };
+                    if bottom > flow {
+                        f.cursor = bottom;
+                        f.pending = Strut::default();
+                    }
+                }
                 let auto = f.cursor + if f.collapse_bottom { 0. } else { f.pending.value() };
                 let height = f.used.height(auto.max(0.));
                 let g = &mut self.geometry[f.id.index()];
@@ -1063,6 +1259,9 @@ impl<'a> Job<'a> {
                     self.progress.finished = self.absolute_at == self.absolute.len();
                 } else if self.stack.is_empty() {
                     self.progress.finished = self.absolute_at == self.absolute.len()
+                } else if let Some(left) = f.float_left {
+                    let g = self.geometry[f.id.index()];
+                    self.place_float(f.id, left, f.used.margin, g.border_box.width + f.used.margin.horizontal(), g.border_box.height + f.used.margin.vertical())?;
                 } else {
                     self.place(f.id, result)?
                 }

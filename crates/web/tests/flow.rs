@@ -760,9 +760,7 @@ fn semantic_opportunities_cannot_reuse_literal_unicode_nowrap_cache_entries() {
 fn unimplemented_placement_renders_in_flow_and_records_the_node() {
     let scope = scope();
     let host = native_host::NativeHost(scope);
-    for (declaration, fallback) in
-        [("position:fixed", "position: fixed as absolute"), ("float:left", "float in normal flow"), ("clear:both", "clear ignored"), ("position:sticky", "position: sticky as relative")]
-    {
+    for (declaration, fallback) in [("position:fixed", "position: fixed as absolute"), ("position:sticky", "position: sticky as relative")] {
         let doc = html::parse(Arc::from(format!("<!doctype html><div style='{declaration}'>A</div>")), Default::default(), None).unwrap().document;
         let mut sheets = SheetBuilder::new(Default::default());
         sheets.add_sheet(&Syntax::parse(Arc::from(olo_web::page::UA), Default::default(), None).unwrap(), Origin::UserAgent, None).unwrap();

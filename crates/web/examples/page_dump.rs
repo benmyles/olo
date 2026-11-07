@@ -191,7 +191,7 @@ fn main() {
                     let Some(s) = tree.style(id) else { continue };
                     let f = &s.font().request;
                     let face = prepared_scope.first_available(f, None).ok().and_then(|sel| prepared_scope.catalog().face(sel.face).ok().map(|face| face.families.join("/")));
-                    println!("  face {}", face.unwrap_or_default());
+                    println!("  face {} float {:?} clear {:?}", face.unwrap_or_default(), s.value(P::Float), s.value(P::Clear));
                     println!(
                         "{:?} <{} class=\"{classes}\"> bounds {:?}\n  font {:?} size {} weight {} letter-spacing {} line-height {} max-width {} color {:?}",
                         b.kind,
@@ -237,6 +237,11 @@ fn main() {
                         && let Some(text) = layout.cache().tree().text_source(source)
                     {
                         println!("    text {:?}", &text.source[..text.source.len().min(120)]);
+                        if let Some(lines) = layout.text_layout(id) {
+                            for (i, l) in lines.lines().iter().enumerate().take(12) {
+                                println!("    line {i}: gap {:.1} offset {:.1} advance {:.1} ascent {:.1} descent {:.1}", l.gap, l.offset, l.advance, l.ascent, l.descent);
+                            }
+                        }
                     }
                 }
             }

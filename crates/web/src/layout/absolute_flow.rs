@@ -188,6 +188,10 @@ impl Job<'_> {
             through: false,
             queries: d.queries,
             atomic_host: false,
+            bfc: true,
+            bfc_origin: Point::default(),
+            floats: Vec::new(),
+            float_left: None,
         });
         self.enter(d.id)
     }

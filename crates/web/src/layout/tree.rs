@@ -667,12 +667,15 @@ impl<'a> BuildJob<'a> {
                         _ => Keyword::Static,
                     };
                     let absolute = position == Keyword::Absolute;
-                    if !matches!(s.value(Property::Float), Value::Keyword(Keyword::None)) {
-                        self.note("float in normal flow", node);
-                    }
-                    if !matches!(s.value(Property::Clear), Value::Keyword(Keyword::None)) {
-                        self.note("clear ignored", node);
-                    }
+                    // A float is block-level (CSS 2.2 §9.7): an inline-level
+                    // box floated becomes a block formatting context.
+                    let floated = !absolute && !matches!(s.value(Property::Float), Value::Keyword(Keyword::None));
+                    let display = match display {
+                        Display::Box { outer: Outer::Inline, inner, list_item } if floated => {
+                            Display::Box { outer: Outer::Block, inner: if inner == Inner::Flow { Inner::FlowRoot } else { inner }, list_item }
+                        }
+                        other => other,
+                    };
                     if namespace == Some(crate::dom::Namespace::Svg) && name == Some("svg") {
                         if display == Display::Contents {
                             continue;
@@ -770,7 +773,7 @@ impl<'a> BuildJob<'a> {
                             continue;
                         };
                         match display {
-                            Display::Box { outer: Outer::Inline, .. } if !absolute => self.append_object(node, container, node, BoxKind::InlineImage { image })?,
+                            Display::Box { outer: Outer::Inline, .. } if !absolute && !floated => self.append_object(node, container, node, BoxKind::InlineImage { image })?,
                             _ => {
                                 self.flush()?;
                                 let id = self.add(node, node, BoxKind::BlockImage { image }, container)?;

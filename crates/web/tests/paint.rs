@@ -680,3 +680,44 @@ fn text_decoration_underline_and_line_through_paint_under_the_text() {
     assert!((0..100).any(|x| (0..20).any(|y| pixel(&t, x, y) == [255, 0, 0, 255])), "red line-through");
     assert!((28..48).any(|x| column(x).iter().all(|&y| y <= ink_bottom)), "the space between the spans is not underlined");
 }
+
+#[test]
+fn floats_shorten_lines_beside_them_and_clear_moves_below() {
+    let mut p = paint::Engine::default();
+    // A 30px left float, 20px tall, in a 100px container: the first line of
+    // the paragraph starts after it, the lines below it start at 0; a right
+    // float keeps lines off its left edge; a cleared block sits below.
+    let s = scene(
+        "<div id=c><div id=f></div><p>AA AA AA AA AA AA</p><div id=r></div><p id=q>BB BB BB</p><div id=k>C</div></div>",
+        "#c{width:100px}#f{float:left;width:30px;height:20px;background:blue}#r{float:right;width:40px;height:20px;background:red}#k{clear:both}",
+        &mut p,
+    );
+    let layout = s.layout();
+    let tree = layout.cache().tree();
+    let text_of = |id: layout::BoxId| layout.text_layout(id).unwrap();
+    let paragraphs: Vec<_> = tree.iter().filter(|(_, b)| matches!(b.kind, layout::BoxKind::InlineContent { .. })).map(|(id, _)| id).collect();
+    let first = text_of(paragraphs[0]);
+    assert!(first.lines().len() >= 2, "{}", first.lines().len());
+    assert_eq!(first.lines()[0].offset, 30., "first line starts after the float");
+    assert_eq!(first.lines()[1].offset, 0., "the second line (y 20) is below the 20px float");
+    let second = text_of(paragraphs[1]);
+    // The right float is placed at the second paragraph's top: its lines end
+    // before x = 60 (100 - 40).
+    for line in second.lines().iter().take(1) {
+        assert!(line.offset + line.advance <= 60.5, "line beside the right float: offset {} advance {}", line.offset, line.advance);
+    }
+    // The cleared block is below both floats' bottoms.
+    let right_float = tree
+        .iter()
+        .find(|(id, b)| matches!(b.kind, layout::BoxKind::Block { .. }) && layout.bounds(*id).is_some_and(|r| r.width == 40.))
+        .map(|(id, _)| layout.bounds(id).unwrap())
+        .expect("right float");
+    let k = tree
+        .iter()
+        .filter(|(id, b)| matches!(b.kind, layout::BoxKind::Block { .. }) && layout.bounds(*id).is_some_and(|r| r.width == 100.))
+        .map(|(id, _)| layout.bounds(id).unwrap())
+        .last()
+        .expect("cleared block");
+    assert!(k.y >= right_float.y + right_float.height, "cleared block y {} below float bottom {}", k.y, right_float.y + right_float.height);
+    assert!(right_float.x == 60., "right float against the right edge: {:?}", right_float);
+}

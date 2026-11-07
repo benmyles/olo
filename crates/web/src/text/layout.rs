@@ -544,8 +544,22 @@ pub struct Fragment {
     pub level: u8,
     run: u32,
 }
+/// A float's reach into a paragraph (CSS 2.2 §9.5): lines whose box meets
+/// `top..bottom` start at or after `left` (a left float's right edge) and
+/// end at or before `right` (a right float's left edge), in the paragraph's
+/// coordinates.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Exclusion {
+    pub top: f64,
+    pub bottom: f64,
+    pub left: Option<f64>,
+    pub right: Option<f64>,
+}
 #[derive(Clone, Debug)]
 pub struct Line {
+    /// Space above the line box: a line moved below a float it could not
+    /// fit beside.
+    pub gap: f64,
     pub source: Range<u32>,
     pub text: Range<u32>,
     pub fragments: Range<u32>,
@@ -583,10 +597,10 @@ impl Layout {
         if fragment.run & OWNED == 0 { self.text.paragraph.runs.get(fragment.run as usize) } else { self.owned.get((fragment.run & !OWNED) as usize).map(Arc::as_ref) }
     }
     pub fn baseline(&self, line: usize) -> Option<f64> {
-        (line < self.lines.len()).then(|| self.lines[..line].iter().map(|l| l.ascent + l.descent).sum::<f64>() + self.lines[line].ascent)
+        (line < self.lines.len()).then(|| self.lines[..line].iter().map(|l| l.gap + l.ascent + l.descent).sum::<f64>() + self.lines[line].gap + self.lines[line].ascent)
     }
     pub fn height(&self) -> f64 {
-        self.lines.iter().map(|l| l.ascent + l.descent).sum()
+        self.lines.iter().map(|l| l.gap + l.ascent + l.descent).sum()
     }
     /// A fragment's baseline shift (superscripts up, positive).
     pub fn shift(&self, fragment: &Fragment) -> f64 {
@@ -623,6 +637,10 @@ pub struct Job<'a> {
     progress: Progress,
     failed: bool,
     objects: Option<Box<objects::Objects>>,
+    /// Floats beside the paragraph, and the current line's band and gap.
+    exclusions: Vec<Exclusion>,
+    band: (f64, f64),
+    gap: f64,
 }
 impl<'a> Job<'a> {
     pub fn for_style(
@@ -719,9 +737,61 @@ impl<'a> Job<'a> {
             progress: Progress::default(),
             failed: false,
             objects: None,
+            exclusions: Vec::new(),
+            band: (0., options.width),
+            gap: 0.,
         };
         job.begin()?;
         Ok(job)
+    }
+    /// Floats the lines flow around. Configure before stepping.
+    pub fn with_exclusions(mut self, exclusions: Vec<Exclusion>) -> Result<Self> {
+        check(self.cancel)?;
+        if self.failed || self.progress.work != 0 || self.scan != 0 || !self.lines.is_empty() {
+            return Err(Error::Invalid);
+        }
+        if exclusions.len() > 4096 || exclusions.iter().any(|e| ![e.top, e.bottom, e.left.unwrap_or(0.), e.right.unwrap_or(0.)].iter().all(|v| v.is_finite())) {
+            return Err(Error::Limit);
+        }
+        self.exclusions = exclusions;
+        self.begin_line();
+        Ok(self)
+    }
+    /// The band the line starting at `y` with the strut's height may use.
+    fn band_at(&self, y: f64, height: f64) -> (f64, f64) {
+        let (mut left, mut right) = (0f64, self.options.width);
+        for e in &self.exclusions {
+            if e.top < y + height && e.bottom > y {
+                if let Some(l) = e.left {
+                    left = left.max(l);
+                }
+                if let Some(r) = e.right {
+                    right = right.min(r);
+                }
+            }
+        }
+        (left, right.max(left))
+    }
+    /// Start a line: its band beside the floats, moved down past floats
+    /// that leave it no room (CSS 2.2 §9.5: a line box that cannot fit
+    /// beside a float is shifted below it).
+    fn begin_line(&mut self) {
+        let mut y: f64 = self.lines.iter().map(|l| l.gap + l.ascent + l.descent).sum();
+        let top = y;
+        let height = self.options.line_height.max(1.);
+        self.band = self.band_at(y, height);
+        for _ in 0..self.exclusions.len() {
+            if self.band.1 - self.band.0 >= 1. || self.band_at(y, height) == (0., self.options.width) {
+                break;
+            }
+            let Some(next) = self.exclusions.iter().filter(|e| e.top < y + height && e.bottom > y).map(|e| e.bottom).fold(None, |m: Option<f64>, b| Some(m.map_or(b, |m| m.min(b)))) else { break };
+            if next <= y {
+                break;
+            }
+            y = next;
+            self.band = self.band_at(y, height);
+        }
+        self.gap = y - top;
     }
     /// Metrics for every semantic object in this context. Configure before
     /// stepping; an omitted item is an error rather than disappearing text.
@@ -783,6 +853,7 @@ impl<'a> Job<'a> {
                 return Err(Error::Invalid);
             }
             self.lines.push(Line {
+                gap: 0.,
                 source: 0..0,
                 text: 0..0,
                 fragments: 0..0,
@@ -841,7 +912,8 @@ impl<'a> Job<'a> {
         self.break_width() + epsilon
     }
     fn break_width(&self) -> f64 {
-        self.options.break_width.map_or(self.options.width, |w| w.min(self.options.width))
+        let band = self.band.1 - self.band.0;
+        self.options.break_width.map_or(band, |w| w.min(band))
     }
     pub fn step(&mut self, budget: usize) -> Result<Progress> {
         if self.failed {
@@ -1069,6 +1141,7 @@ impl<'a> Job<'a> {
             return Err(Error::Invalid);
         }
         self.lines.push(Line {
+            gap: self.gap,
             source: self.from..point.offset,
             text: visible,
             fragments: first as u32..self.fragments.len() as u32,
@@ -1080,29 +1153,32 @@ impl<'a> Job<'a> {
             ascent,
             descent,
         });
+        self.begin_line();
         Ok(chosen)
     }
     fn aligned_offset(&self, advance: f64, end: Kind) -> f64 {
         let align = if end == Kind::Required { self.options.last_align.unwrap_or(self.options.align) } else { self.options.align };
-        match align {
-            Align::Left => 0.,
-            Align::Right => self.options.width - advance,
-            Align::Center => (self.options.width - advance) / 2.,
-            Align::Start => {
-                if self.options.rtl {
-                    self.options.width - advance
-                } else {
-                    0.
+        let width = self.band.1 - self.band.0;
+        self.band.0
+            + match align {
+                Align::Left => 0.,
+                Align::Right => width - advance,
+                Align::Center => (width - advance) / 2.,
+                Align::Start => {
+                    if self.options.rtl {
+                        width - advance
+                    } else {
+                        0.
+                    }
+                }
+                Align::End => {
+                    if self.options.rtl {
+                        0.
+                    } else {
+                        width - advance
+                    }
                 }
             }
-            Align::End => {
-                if self.options.rtl {
-                    0.
-                } else {
-                    self.options.width - advance
-                }
-            }
-        }
     }
     pub fn finish(self) -> Result<Layout> {
         if self.failed {
