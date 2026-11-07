@@ -14,6 +14,7 @@
 //! say when).
 
 mod daemon;
+mod plymouth;
 mod vt;
 mod worker;
 

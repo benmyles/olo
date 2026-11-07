@@ -46,6 +46,7 @@ pub mod night;
 pub mod osd;
 pub mod overview;
 pub mod pace;
+pub mod plymouth;
 pub mod power;
 pub mod private;
 pub mod rescue;

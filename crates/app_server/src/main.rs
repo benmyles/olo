@@ -7,6 +7,7 @@ static POSSIBLE_BACKENDS: &[&str] = &[
     "--headless [WxH] : Render offscreen with no display (automated UI tests).",
     #[cfg(feature = "udev")]
     "--probe-gpus : List the DRM devices and what each can do (safe beside a running desktop).",
+    "--plymouth-theme DIR [--scale S] : Make Olo's boot splash (a Plymouth theme, plymouth.rs) in DIR.",
 ];
 
 #[cfg(feature = "profile-with-tracy-mem")]
@@ -36,6 +37,11 @@ fn main() {
     }
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
+    // The boot splash made (no compositor: nothing below runs).
+    let args: Vec<String> = ::std::env::args().collect();
+    if args.iter().any(|a| a == "--plymouth-theme") {
+        std::process::exit(app_server::plymouth::run(&args));
+    }
     use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     tracing_subscriber::fmt().compact().with_env_filter(env_filter).finish().with(tracing_subscriber::filter::filter_fn(|m| !bogus_error(m))).init();

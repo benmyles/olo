@@ -5,6 +5,8 @@
 #   tools/install-login.sh --switch   ...and make it the login screen from
 #                                     the next start (GDM stays installed)
 #   tools/install-login.sh --revert   GDM the login screen again
+#   tools/install-login.sh --plymouth          Olo's boot splash too
+#   tools/install-login.sh --revert-plymouth   Fedora's boot splash again
 #
 # Installs, as root, what a login screen's user (olo-greeter, not the
 # person) can run and read: the programs its session and the person's
@@ -20,17 +22,59 @@
 # Switching changes what the computer starts into: it's for the person
 # to choose, and --revert undoes it. Nothing is switched without
 # --switch.
+#
+# --plymouth makes Olo's boot splash (crates/app_server/src/plymouth.rs)
+# at the scale the computer's own screen is at in Olo, as the person
+# running this (their settings), installs it as Plymouth's theme, tells
+# Plymouth to draw device pixels (DeviceScale=1: the theme's pictures
+# are made for the screen, never stretched) and makes the start-up image
+# (initramfs) again, the splash being in it. Run it again after changing
+# that screen's scale. --revert-plymouth puts plymouthd.conf back as it
+# was and makes the start-up image again.
 set -eu
 cd "$(dirname "$0")/.."
 as_root() {
     if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi
 }
 
+PLYMOUTH_CONF=/etc/plymouth/plymouthd.conf
+PLYMOUTH_THEME=/usr/share/plymouth/themes/olo
+
 case "${1:-}" in
 --revert)
     as_root systemctl disable olo-login.service
     as_root systemctl enable gdm.service
     echo "GDM is the login screen again from the next start."
+    exit 0
+    ;;
+--plymouth)
+    cargo build --release -p app_server
+    made=$(mktemp -d /var/tmp/olo-plymouth.XXXXXX)
+    trap 'rm -rf "$made"' EXIT
+    target/release/olo-app-server --plymouth-theme "$made"
+    as_root rm -rf "$PLYMOUTH_THEME"
+    as_root install -d -m 755 "$PLYMOUTH_THEME"
+    as_root install -m 644 "$made"/* "$PLYMOUTH_THEME/"
+    # (The first time, what was there kept for --revert-plymouth.)
+    if [ -e "$PLYMOUTH_CONF" ] && [ ! -e "$PLYMOUTH_CONF.before-olo" ]; then
+        as_root cp -p "$PLYMOUTH_CONF" "$PLYMOUTH_CONF.before-olo"
+    fi
+    printf '%s\n' "# Olo's boot splash (tools/install-login.sh --plymouth;" \
+        "# --revert-plymouth puts back what was here)." \
+        "[Daemon]" "Theme=olo" "DeviceScale=1" | as_root tee "$PLYMOUTH_CONF" >/dev/null
+    as_root dracut --force --regenerate-all
+    echo "Olo's boot splash shows from the next start; tools/install-login.sh --revert-plymouth goes back."
+    exit 0
+    ;;
+--revert-plymouth)
+    if [ -e "$PLYMOUTH_CONF.before-olo" ]; then
+        as_root mv -f "$PLYMOUTH_CONF.before-olo" "$PLYMOUTH_CONF"
+    else
+        as_root rm -f "$PLYMOUTH_CONF"
+    fi
+    as_root rm -rf "$PLYMOUTH_THEME"
+    as_root dracut --force --regenerate-all
+    echo "Fedora's boot splash shows again from the next start."
     exit 0
     ;;
 esac

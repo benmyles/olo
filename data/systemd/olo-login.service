@@ -2,10 +2,16 @@
 Description=Olo's login screen
 Documentation=https://github.com/benmyles/olo/blob/main/docs/HACKING.md
 
-# In the console's place on the first terminal, after the boot's splash.
+# In the console's place on the first terminal.
 Conflicts=getty@tty1.service
-After=getty@tty1.service systemd-user-sessions.service plymouth-quit-wait.service rc-local.service
-# (Plymouth gone either way if it fails.)
+After=getty@tty1.service
+# The boot's splash handed over as GDM does: olo-login tells Plymouth to
+# let go of the screen and, once the login screen shows, to quit leaving
+# its picture there (so no console flashes between); Plymouth's own quit
+# isn't run. Gone either way if olo-login fails.
+Conflicts=plymouth-quit.service
+After=plymouth-quit.service
+After=rc-local.service plymouth-start.service systemd-user-sessions.service
 OnFailure=plymouth-quit.service
 
 [Service]
