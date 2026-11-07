@@ -207,8 +207,17 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         section(ui, st, &devices, Kind::Output);
         section(ui, st, &devices, Kind::Input);
         ui.bbox("Starting Up", |ui| {
-            let on = ui.s.startup_sound;
+            let (on, chime) = (ui.s.startup_sound, ui.s.startup_chime);
             ui.check("Play a sound when Olo starts", on, |s, v| s.startup_sound = v);
+            // Which, and a listen to it (Ben, 2026-11-06: "make sure that
+            // in the sound prefs i can also preview the olo chime sound").
+            let choices: Vec<(olo_protocol::StartupChime, &str)> = olo_protocol::StartupChime::ALL.iter().map(|c| (*c, c.name())).collect();
+            ui.enabled_if(on, |ui| {
+                ui.row(|ui| {
+                    ui.choose("startup-chime", &choices, &chime, |f| f.label("Sound:"), |s, v| s.startup_chime = v);
+                    ui.button("Play", move |_, _| play_startup(chime));
+                });
+            });
         });
     });
     let right = ui.collect(|ui| voice_section(ui, st, &devices));
@@ -431,4 +440,17 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
             airpods_output(ui, &dev);
         }
     });
+}
+
+/// Olo's start-up sound played now: `olo-notifications --startup-sound`
+/// (beside this program), which makes it, plays it and goes.
+fn play_startup(chime: olo_protocol::StartupChime) {
+    if cfg!(test) {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else { return };
+    let notifications = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)")).with_file_name("olo-notifications");
+    if let Err(e) = std::process::Command::new(&notifications).arg("--startup-sound").arg(chime.id()).stdin(std::process::Stdio::null()).spawn() {
+        tracing::warn!("{}: {e}", notifications.display());
+    }
 }

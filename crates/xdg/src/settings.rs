@@ -232,6 +232,8 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "sound", tab: "", group: "Input", name: "Input level", role: "Slider" },
     Setting { panel: "sound", tab: "", group: "Input", name: "Mute", role: "CheckBox" },
     Setting { panel: "sound", tab: "", group: "Starting Up", name: "Play a sound when Olo starts", role: "CheckBox" },
+    Setting { panel: "sound", tab: "", group: "Starting Up", name: "Sound", role: "ComboBox" },
+    Setting { panel: "sound", tab: "", group: "Starting Up", name: "Play", role: "Button" },
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Clean up the microphone's sound", role: "CheckBox" },
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Tuned for", role: "ComboBox" },
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Background noise", role: "ComboBox" },

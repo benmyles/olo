@@ -975,6 +975,15 @@ fn main() -> std::process::ExitCode {
         Some(_) => return cli::usage(),
         None => None,
     };
+    // The start-up sound, played now (Preferences ▸ Sound's Play).
+    if args.first().map(String::as_str) == Some("--startup-sound") {
+        let chime = args.get(1).map_or(Some(olo_protocol::StartupChime::default()), |c| olo_protocol::StartupChime::parse(c));
+        let Some(chime) = chime else {
+            eprintln!("olo-notifications: --startup-sound takes olo or swell");
+            return std::process::ExitCode::FAILURE;
+        };
+        return std::process::ExitCode::from(startup::play_now(chime) as u8);
+    }
     // Anything else is a command for the running service.
     if !args.is_empty() {
         return cli::run(address.as_deref(), &args);
