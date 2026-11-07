@@ -341,11 +341,20 @@ fn processes(fs: &Path) -> Vec<Proc> {
         let Ok(meta) = dir.metadata() else { continue };
         let cmdline = std::fs::read(dir.join("cmdline")).unwrap_or_default();
         let first = cmdline.split(|b| *b == 0).next().unwrap_or(&[]);
-        let mut name = String::from_utf8_lossy(first).rsplit('/').next().unwrap_or("").to_owned();
+        let exe = std::fs::read_link(dir.join("exe")).ok().map(|p| p.to_string_lossy().into_owned());
+        let first = String::from_utf8_lossy(first);
+        // (Chrome writes its whole command line into its first word, with
+        // spaces: "…/chrome --type=gpu-process …". Its program is then its
+        // executable's, or the first word's up to a space.)
+        let first = if first.contains(' ') {
+            exe.as_deref().map(|e| e.trim_end_matches(" (deleted)").to_owned()).unwrap_or_else(|| first.split(' ').next().unwrap_or("").to_owned())
+        } else {
+            first.into_owned()
+        };
+        let mut name = first.rsplit('/').next().unwrap_or("").to_owned();
         if name.is_empty() {
             name = std::fs::read_to_string(dir.join("comm")).unwrap_or_default().trim().to_owned();
         }
-        let exe = std::fs::read_link(dir.join("exe")).ok().map(|p| p.to_string_lossy().into_owned());
         let scope = scope_of(&std::fs::read_to_string(dir.join("cgroup")).unwrap_or_default());
         v.push(Proc { pid, uid: meta.uid(), name, exe, scope });
     }
@@ -514,6 +523,7 @@ pub fn scan(roots: &Roots) -> Report {
     util_clamp(roots, &mut r);
     let gpus = pci_devices(&roots.fs);
     idle_gpu(roots, &gpus, &mut r);
+    gpu_stuck(roots, &gpus, &procs, &mut r);
     gpu_driver(roots, &gpus, &mut r);
     intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
@@ -1288,6 +1298,109 @@ fn idle_gpu(roots: &Roots, pcis: &[Pci], r: &mut Report) {
         ),
         fix: Some(Fix { label: "Let It Sleep".into(), root: true, steps }),
     });
+}
+
+/// NVIDIA's kernel modules, in the order they're unloaded (each before
+/// what it uses): its DRM driver first, `nvidia` itself last.
+const NVIDIA_MODULES: [&str; 5] = ["nvidia_drm", "nvidia_modeset", "nvidia_uvm", "nvidia_peermem", "nvidia"];
+/// The services that keep NVIDIA's GPUs open: NVIDIA's own and Olo's GPU
+/// follower (`olo-gpu-tune follow`, which holds NVML), stopped while its
+/// driver starts again and started after (those running or meant to:
+/// one a failed try left stopped is started again too).
+const NVIDIA_SERVICES: [&str; 3] = ["nvidia-powerd.service", "nvidia-persistenced.service", "olo-gpu-follow.service"];
+/// Olo's own that can't be quit to free a card: the session's.
+const SESSION_PROGRAMS: [&str; 3] = ["olo-app-server", "olo-session", "olo-wlproxy"];
+
+/// A graphics card whose power management failed: the kernel has it in
+/// an error state (`runtime_status` "error") and its driver doesn't
+/// answer until it starts again, as NVIDIA's after memory ran out
+/// (2026-11-07: NVML said "an internal driver error occurred"). NVIDIA's
+/// is started again without restarting the computer (Ben: "i don't want
+/// you to restart the machine just fix the card/driver or whatever"):
+/// what of the person's uses it quit, NVIDIA's services stopped, its
+/// modules unloaded (refused at once while anything still uses them),
+/// the card reset and found on the bus again (`Step::RestartPciDevice`:
+/// fresh power management), its driver loaded by udev as at start (the
+/// card's PCI alias names nvidia_drm), the services started again.
+fn gpu_stuck(roots: &Roots, pcis: &[Pci], procs: &[Proc], r: &mut Report) {
+    for p in pcis.iter().filter(|p| p.display() && read(&p.dir.join("power/runtime_status")).as_deref() == Some("error")) {
+        let maker = p.maker();
+        let id = format!("gpu:stuck:{}", p.address);
+        let title = format!("The {maker} graphics card stopped answering");
+        let broken = "Its power management failed (the kernel has it in an error state) and its driver doesn't answer, so nothing can use it: video it would decode, screen recordings it would encode, a display on its ports.";
+        if p.vendor != 0x10de || p.driver.as_deref() != Some("nvidia") {
+            r.findings.push(Finding { id, severity: Severity::Problem, title, detail: format!("{broken} Restarting the computer starts it again."), fix: None });
+            continue;
+        }
+        // Its device nodes: its DRM card and render node, and NVIDIA's own
+        // (/dev/nvidia0, nvidiactl, nvidia-uvm…).
+        let mut nodes: Vec<String> = std::fs::read_dir(p.dir.join("drm"))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with("card") || n.starts_with("renderD"))
+            .map(|n| format!("/dev/dri/{n}"))
+            .collect();
+        nodes.sort();
+        let uses = |link: &str| link.starts_with("/dev/nvidia") || nodes.iter().any(|n| n == link);
+        let holds = |pid: i32| {
+            std::fs::read_dir(roots.fs.join("proc").join(pid.to_string()).join("fd"))
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter_map(|f| std::fs::read_link(f.path()).ok())
+                .any(|l| uses(&l.to_string_lossy()))
+        };
+        let users: Vec<&Proc> = procs.iter().filter(|q| q.uid == roots.uid && holds(q.pid)).collect();
+        if users.iter().any(|q| SESSION_PROGRAMS.contains(&q.name.as_str())) {
+            r.findings.push(Finding {
+                id,
+                severity: Severity::Problem,
+                title,
+                detail: format!(
+                    "{broken} Olo can start it again without restarting the computer, but the session's display server has it open for a display on its ports: unplug that display, then Check Again."
+                ),
+                fix: None,
+            });
+            continue;
+        }
+        let services: Vec<&str> = NVIDIA_SERVICES.into_iter().filter(|u| (roots.units)(u).is_ok_and(|s| s.active || s.enabled)).collect();
+        let mut steps: Vec<Step> = users.iter().map(|q| Step::Signal { pid: q.pid, signal: libc::SIGTERM }).collect();
+        steps.push(Step::RestartGpu {
+            address: p.address.clone(),
+            modules: NVIDIA_MODULES.into_iter().filter(|m| roots.fs.join("sys/module").join(m).exists()).map(String::from).collect(),
+            services: services.iter().map(|u| (*u).to_owned()).collect(),
+            in_use_by: std::iter::once("/dev/nvidia*".to_owned()).chain(nodes.iter().cloned()).collect(),
+        });
+        // What it quits, each program once: "chrome (processes 1 and 2)".
+        let mut programs: Vec<(&str, Vec<i32>)> = Vec::new();
+        for q in &users {
+            match programs.iter_mut().find(|(n, _)| *n == q.name) {
+                Some((_, pids)) => pids.push(q.pid),
+                None => programs.push((&q.name, vec![q.pid])),
+            }
+        }
+        let named: Vec<String> = programs
+            .iter()
+            .map(|(n, pids)| match pids.as_slice() {
+                [pid] => format!("{n}, process {pid}"),
+                [rest @ .., last] => format!("{n}, processes {} and {last}", rest.iter().map(i32::to_string).collect::<Vec<_>>().join(", ")),
+                [] => String::new(),
+            })
+            .collect();
+        let quits = if named.is_empty() { String::new() } else { format!("it quits what uses it ({}: open them again after), ", named.join("; ")) };
+        let stops = if services.is_empty() { String::new() } else { format!(" ({} stopped meanwhile)", services.iter().map(|u| u.trim_end_matches(".service")).collect::<Vec<_>>().join(" and ")) };
+        r.findings.push(Finding {
+            id,
+            severity: Severity::Problem,
+            title,
+            detail: format!(
+                "{broken} The fix starts it again without restarting the computer: {quits}NVIDIA's driver is unloaded{stops}, the card reset and found on the bus again, and the driver loads as at start. If it still doesn't answer, restarting the computer does."
+            ),
+            fix: Some(Fix { label: "Start It Again".into(), root: true, steps }),
+        });
+    }
 }
 
 /// A graphics card no driver has, when one tried (nouveau loaded and
@@ -2659,6 +2772,80 @@ mod tests {
         assert!(r.find("gpu:idle").is_none() && r.find("sound:builtin").is_none());
         assert!(r.fine.iter().any(|f| f.title == "The NVIDIA graphics card sleeps when unused"));
         let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    /// NVIDIA's card with its power management failed: started again
+    /// without a restart, what uses it quit first, nvidia-powerd stopped
+    /// and started; none offered while the session's display server has
+    /// it open; nothing said once it answers again.
+    #[test]
+    fn a_stuck_nvidia_card_is_started_again() {
+        let (fs, roots) = machine("stuck-gpu");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let card = "sys/bus/pci/devices/0000:01:00.0";
+        w(&format!("{card}/class"), "0x030000\n");
+        w(&format!("{card}/vendor"), "0x10de\n");
+        w(&format!("{card}/power/runtime_status"), "error\n");
+        std::fs::create_dir_all(fs.join(format!("{card}/drm/card1"))).unwrap();
+        std::fs::create_dir_all(fs.join(format!("{card}/drm/renderD129"))).unwrap();
+        std::fs::create_dir_all(fs.join("sys/bus/pci/drivers/nvidia")).unwrap();
+        std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers/nvidia"), fs.join(format!("{card}/driver"))).unwrap();
+        for m in ["nvidia", "nvidia_drm", "nvidia_modeset", "nvidia_uvm"] {
+            std::fs::create_dir_all(fs.join("sys/module").join(m)).unwrap();
+        }
+        // Two of Chrome's processes on its render node, Activity Monitor
+        // on NVIDIA's own node, Deskbar on neither.
+        let open = |pid: u32, cmd: &str, node: &str| {
+            w(&format!("proc/{pid}/cmdline"), &format!("{cmd}\0"));
+            std::fs::create_dir_all(fs.join(format!("proc/{pid}/fd"))).unwrap();
+            std::os::unix::fs::symlink(node, fs.join(format!("proc/{pid}/fd/9"))).unwrap();
+        };
+        open(950, "/opt/chrome/chrome", "/dev/dri/renderD129");
+        // (Its command line rewritten into one word, as Chrome does.)
+        open(951, "/opt/chrome/chrome --type=gpu-process --user-data-dir=/tmp/x/profile", "/dev/dri/renderD129");
+        open(952, "/home/me/.local/bin/olo-activity", "/dev/nvidia0");
+        open(953, "/home/me/.local/bin/olo-tracker", "/dev/dri/renderD128");
+        // nvidia-powerd running; Olo's follower installed but stopped (a
+        // failed try): both stopped meanwhile, and started after.
+        let roots = Roots {
+            units: Box::new(|name: &str| -> Result<UnitState, String> {
+                Ok(UnitState { loaded: true, active: name == "nvidia-powerd.service", enabled: name != "nvidia-persistenced.service", path: None })
+            }),
+            ..roots
+        };
+        let f = scan(&roots).find("gpu:stuck:0000:01:00.0").cloned().expect("the stuck card");
+        assert_eq!((f.title.as_str(), f.severity), ("The NVIDIA graphics card stopped answering", Severity::Problem));
+        assert!(f.detail.contains("it quits what uses it (chrome, processes 950 and 951; olo-activity, process 952: open them again after)"), "{}", f.detail);
+        assert!(f.detail.contains("(nvidia-powerd and olo-gpu-follow stopped meanwhile)"), "{}", f.detail);
+        let fix = f.fix.expect("a fix");
+        assert_eq!((fix.label.as_str(), fix.root), ("Start It Again", true));
+        let quit = |pid| Step::Signal { pid, signal: libc::SIGTERM };
+        assert_eq!(
+            fix.steps,
+            vec![
+                quit(950),
+                quit(951),
+                quit(952),
+                Step::RestartGpu {
+                    address: "0000:01:00.0".into(),
+                    modules: ["nvidia_drm", "nvidia_modeset", "nvidia_uvm", "nvidia"].map(String::from).to_vec(),
+                    services: ["nvidia-powerd.service", "olo-gpu-follow.service"].map(String::from).to_vec(),
+                    in_use_by: ["/dev/nvidia*", "/dev/dri/card1", "/dev/dri/renderD129"].map(String::from).to_vec(),
+                },
+            ]
+        );
+        // The display server has it open (a display on its port): it
+        // can't be freed, so no fix, and what to do.
+        open(954, "/home/me/.local/bin/olo-app-server", "/dev/dri/card1");
+        let f = scan(&roots).find("gpu:stuck:0000:01:00.0").cloned().unwrap();
+        assert!(f.fix.is_none() && f.detail.contains("unplug that display"), "{}", f.detail);
+        // Answering again: nothing to say.
+        w(&format!("{card}/power/runtime_status"), "active\n");
+        assert!(scan(&roots).find("gpu:stuck:0000:01:00.0").is_none());
     }
 
     #[test]

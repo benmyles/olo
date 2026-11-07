@@ -8375,6 +8375,31 @@ scan made for the sudo user). What it looks for:
   `data/udev/72-olo-idle-gpu.rules` (runtime power management for such
   cards, at every start) and sets it now. On the ThinkPad P1 Gen 9 the
   RTX PRO 2000 went from D0 to D3cold.
+- **A graphics card that stopped answering** (`gpu_stuck`: its
+  `power/runtime_status` "error", the kernel's word for power
+  management that failed, its driver not answering until it starts
+  again: NVIDIA's after memory ran out on 2026-11-07, NVML saying "an
+  internal driver error occurred"). NVIDIA's is started again without
+  restarting the computer (Ben: "i don't want you to restart the
+  machine just fix the card/driver or whatever"), Start It Again: the
+  person's programs with its nodes open quit (`/dev/nvidia*`, its
+  `/dev/dri` card and render node; named, each program once: Chrome
+  writes its whole command line into its first word, so a process is
+  named by its executable then), then one root step,
+  `Step::RestartGpu`: the services that keep it open stopped
+  (nvidia-powerd, nvidia-persistenced, Olo's own olo-gpu-follow, which
+  holds NVML), its modules unloaded in order (nvidia_drm,
+  nvidia_modeset, nvidia_uvm, nvidia_peermem, nvidia: `delete_module`
+  with `O_NONBLOCK`, refused at once while anything has them open,
+  asked again for 8 s, then the error names what has the nodes open),
+  the card reset (`reset`: FLR, else its bus), taken off the bus and
+  found again (`remove`, its bridge's `rescan`: a fresh device, its
+  power management new), udev loading its driver by the card's PCI
+  alias (nvidia_drm's) as at start, and the services started. Failing
+  partway it leaves nothing off: the card's `uevent` told "add" (the
+  driver loaded again) and the services started. Not while the
+  session's display server has it open (a display on its ports): then
+  what to do. Another maker's card stuck: said, a restart its fix.
 - **A graphics card with no working driver** (NVIDIA's, no driver
   bound; nouveau loaded and gone says it tried): NVIDIA's driver
   (`akmod-nvidia`, built for each kernel) installed from the system's
