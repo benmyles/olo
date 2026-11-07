@@ -90,6 +90,94 @@ impl PlatformAtlas for BladeAtlas {
         }
     }
 
+    fn create_shared(
+        &self,
+        key: &AtlasKey,
+        size: Size<DevicePixels>,
+    ) -> Option<crate::SharedTexture> {
+        let mut lock = self.0.lock();
+        if lock.tiles_by_key.contains_key(key) {
+            return None;
+        }
+        let (width, height) = (
+            u32::try_from(size.width.0).ok()?,
+            u32::try_from(size.height.0).ok()?,
+        );
+        if width == 0 || height == 0 || width > 8192 || height > 8192 {
+            return None;
+        }
+        let format = gpu::TextureFormat::Rgba8Unorm;
+        let raw = lock.gpu.create_texture(gpu::TextureDesc {
+            name: "shared",
+            format,
+            size: gpu::Extent {
+                width,
+                height,
+                depth: 1,
+            },
+            array_layer_count: 1,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: gpu::TextureDimension::D2,
+            usage: gpu::TextureUsage::COPY
+                | gpu::TextureUsage::RESOURCE
+                | gpu::TextureUsage::TARGET,
+            external: Some(gpu::ExternalMemorySource::Fd(None)),
+        });
+        let Some(gpu::ExternalMemorySource::Fd(Some(fd))) =
+            lock.gpu.get_external_texture_source(raw)
+        else {
+            lock.gpu.destroy_texture(raw);
+            return None;
+        };
+        // SAFETY: the exported handle is new and ours (the GPU layer keeps no copy).
+        let fd = unsafe { <std::os::fd::OwnedFd as std::os::fd::FromRawFd>::from_raw_fd(fd) };
+        let memory_size = lock.gpu.texture_memory_size(raw);
+        let device_uuid = lock.gpu.device_uuid();
+        let raw_view = lock.gpu.create_texture_view(
+            raw,
+            gpu::TextureViewDesc {
+                name: "",
+                format,
+                dimension: gpu::ViewDimension::D2,
+                subresources: &Default::default(),
+            },
+        );
+        let kind = key.texture_kind();
+        let list = &mut lock.storage[kind];
+        let index = list.free_list.pop();
+        let id = AtlasTextureId {
+            index: index.unwrap_or(list.textures.len()) as u32,
+            kind,
+        };
+        let mut texture = BladeAtlasTexture {
+            id,
+            allocator: etagere::BucketedAtlasAllocator::new(size.into()),
+            format,
+            raw,
+            raw_view,
+            live_atlas_keys: 0,
+        };
+        let tile = texture.allocate(size)?;
+        match index {
+            Some(ix) => list.textures[ix] = Some(texture),
+            None => list.textures.push(Some(texture)),
+        }
+        lock.initializations.push(id);
+        lock.tiles_by_key.insert(key.clone(), tile);
+        Some(crate::SharedTexture {
+            fd,
+            memory_size,
+            device_uuid,
+            width,
+            height,
+        })
+    }
+
+    fn device_uuid(&self) -> Option<[u8; 16]> {
+        Some(self.0.lock().gpu.device_uuid())
+    }
+
     fn remove(&self, key: &AtlasKey) {
         let mut lock = self.0.lock();
 

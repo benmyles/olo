@@ -590,6 +590,37 @@ impl Realm {
     pub fn canvases_pending(&self) -> bool {
         self.state.borrow().gl.values().any(webgl::Context::readback_pending)
     }
+    /// Animating WebGL canvases that would draw their frames into textures
+    /// of the window's renderer (shown with no copy): each with its size and
+    /// its GPU's UUID (the window's must match). Each is asked for once.
+    pub fn shared_wanted(&mut self) -> Vec<(NodeId, u32, u32, [u8; 16])> {
+        let mut s = self.state.borrow_mut();
+        s.gl.iter_mut().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.wants_shared().map(|(w, h, uuid)| (*n, w, h, uuid))).collect()
+    }
+    /// The window's shared textures for canvas `node`: (key, memory, its
+    /// size, width, height).
+    pub fn provide_shared(&mut self, node: NodeId, textures: Vec<(u64, std::os::fd::OwnedFd, u64, u32, u32)>) -> Vec<u64> {
+        let mut s = self.state.borrow_mut();
+        match s.gl.get_mut(&node) {
+            Some(c) => {
+                c.provide_shared(textures);
+                c.take_released_shared()
+            }
+            None => textures.into_iter().map(|t| t.0).collect(),
+        }
+    }
+    /// Canvas `node` shows where the window can't show a shared texture:
+    /// its frames are read back from now on.
+    pub fn refuse_shared(&mut self, node: NodeId) {
+        if let Some(c) = self.state.borrow_mut().gl.get_mut(&node) {
+            c.refuse_shared();
+        }
+    }
+    /// The shared textures the canvases let go of, for the window to free.
+    pub fn released_shared(&mut self) -> Vec<u64> {
+        let mut s = self.state.borrow_mut();
+        s.gl.values_mut().flat_map(|c| c.take_released_shared()).collect()
+    }
     /// Whether a canvas in the page was drawn on since it was last shown
     /// (a render shows the drawing; nothing else in the document changed).
     pub fn canvases_dirty(&self) -> bool {

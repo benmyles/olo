@@ -60,6 +60,10 @@ pub enum Message {
     /// coordinates in CSS px).
     Input(olo_js::Input),
     Recycle(Vec<Arc<RenderImage>>),
+    /// The window's shared textures for WebGL canvases (see
+    /// `Reply::SharedWanted`): per canvas, (key, memory, its size, width,
+    /// height), none when the window can't share with the canvas's GPU.
+    SharedTextures(Vec<(olo_web::dom::NodeId, Vec<SharedHandle>)>),
     RecycleTargets(Arc<crate::navigation::FocusTargets>),
 }
 #[derive(Clone)]
@@ -93,7 +97,12 @@ pub enum Placement {
 }
 /// One of the page's layers above its base: tiles (device coordinates in
 /// the layer's own space) and how they are placed.
+/// A shared texture handed to the page: key, memory, memory size, width, height.
+pub type SharedHandle = (u64, std::os::fd::OwnedFd, u64, u32, u32);
 pub struct LayerTiles {
+    /// A canvas frame in a shared texture (where, its key, whether its
+    /// colours are premultiplied) instead of tiles.
+    pub shared: Option<(paint::DeviceRect, u64, bool)>,
     pub placement: Placement,
     pub tiles: Vec<(paint::DeviceRect, Arc<RenderImage>)>,
     /// The images are drawn at their rectangles' sizes, not texel for
@@ -127,6 +136,11 @@ pub enum Reply {
     /// runs over fixed and sticky layers before them); empty when the
     /// base is all there is.
     Layers(u64, Vec<LayerTiles>),
+    /// Animating WebGL canvases that would draw into textures of the
+    /// window's renderer: each with its size and its GPU's UUID.
+    SharedWanted(u64, Vec<(olo_web::dom::NodeId, u32, u32, [u8; 16])>),
+    /// Shared textures the page let go of, for the window to free.
+    DropShared(Vec<u64>),
     Error(u64, String),
 }
 /// Which pass of a page: the static page first, shown at once, then the
@@ -166,6 +180,8 @@ struct Live {
     /// worker wakes at the next frame.
     wants_frame: bool,
     render_due: bool,
+    /// Canvases whose last frame is in a shared texture, with its key.
+    shared_frames: Vec<(olo_web::dom::NodeId, u64)>,
 }
 /// RGBA (the engine's tiles and images, premultiplied) as BGRA, for the
 /// kit's premultiplied pictures (`from_premultiplied_bgra`: the GPU makes
@@ -469,6 +485,25 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             drop(images);
                             continue;
                         }
+                        Message::SharedTextures(list) => {
+                            if let Some(live) = cached.as_mut().and_then(|c| c.live.as_mut()) {
+                                let mut released = Vec::new();
+                                for (node, textures) in list {
+                                    if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                                        eprintln!("  shared: {} textures given for a canvas", textures.len());
+                                    }
+                                    released.extend(live.realm.provide_shared(node, textures));
+                                }
+                                if !released.is_empty() {
+                                    proxy.send(Reply::DropShared(released));
+                                }
+                                live.render_due = true;
+                            } else {
+                                // No page to draw into them: the window frees them.
+                                proxy.send(Reply::DropShared(list.into_iter().flat_map(|(_, t)| t.into_iter().map(|t| t.0)).collect()));
+                            }
+                            continue;
+                        }
                         Message::RecycleTargets(targets) => {
                             drop(targets);
                             continue;
@@ -482,6 +517,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             Message::Loaded(id, result) => kept.push_back(Message::Loaded(id, result)),
                             Message::Wake => kept.push_back(Message::Wake),
                             Message::Recycle(images) => drop(images),
+                            Message::SharedTextures(list) => kept.push_back(Message::SharedTextures(list)),
                             Message::RecycleTargets(targets) => drop(targets),
                         }
                     }
@@ -626,6 +662,20 @@ fn render(
                 eprintln!("  canvases before render: {}", live.realm.canvas_states());
             }
             let canvases = live.realm.canvases();
+            // Canvases whose frame is in a shared texture: refused below if
+            // the scene can't show them as a surface.
+            live.shared_frames = canvases.iter().filter_map(|(n, i)| i.shared_texture().map(|(k, _)| (*n, k))).collect();
+            let wanted = live.realm.shared_wanted();
+            if !wanted.is_empty() && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                eprintln!("  shared: wanted for {} canvases ({:?})", wanted.len(), wanted.iter().map(|w| (w.1, w.2)).collect::<Vec<_>>());
+            }
+            if !wanted.is_empty() {
+                proxy.send(Reply::SharedWanted(r.id, wanted));
+            }
+            let released = live.realm.released_shared();
+            if !released.is_empty() {
+                proxy.send(Reply::DropShared(released));
+            }
             let canvases_ms = before_canvases.elapsed().as_secs_f64() * 1000.;
             let before_rerender = Instant::now();
             // A readback still in flight shows at the next render: soon.
@@ -892,6 +942,7 @@ fn render(
                 next_frame_ms: 0.,
                 wants_frame: false,
                 render_due: false,
+                shared_frames: Vec::new(),
             });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
@@ -1261,13 +1312,14 @@ fn render(
     // its own extent; every tile kept by the stratum's signature there,
     // tiles with nothing of the stratum skipped.
     let mut layers: Vec<LayerTiles> = Vec::new();
+    let mut shown_shared: Vec<u64> = Vec::new();
     for (si, stratum) in scene.strata().iter().enumerate() {
         if let paint::LayerKind::Surface(_) = stratum.kind {
             // A live surface: its image shown as it is, scrolled with the
             // page, kept by its identity (no tiles to paint: what is around
             // it stays as it was while it changes).
             let Some((bounds, image)) = scene.surface(si) else {
-                layers.push(LayerTiles { placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                layers.push(LayerTiles { shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                 continue;
             };
             let x = (bounds.x * scale).round() as i32;
@@ -1275,10 +1327,18 @@ fn render(
             let width = ((bounds.x + bounds.width) * scale).round() as i32 - x;
             let height = ((bounds.y + bounds.height) * scale).round() as i32 - y;
             if width <= 0 || height <= 0 {
-                layers.push(LayerTiles { placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                layers.push(LayerTiles { shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                 continue;
             }
             let region = paint::DeviceRect { x, y, width: width as u32, height: height as u32 };
+            // A frame in a shared texture: the window shows the texture.
+            if let Some((key, premultiplied)) = image.shared_texture() {
+                shown_shared.push(key);
+                total += 1;
+                let scaled = image.width() != region.width || image.height() != region.height;
+                layers.push(LayerTiles { shared: Some((region, key, premultiplied)), placement: Placement::Page, tiles: Vec::new(), scaled });
+                continue;
+            }
             *clock = clock.wrapping_add(1);
             // In the tile cache under the stratum's own key, by the image's identity.
             let key = (i32::MAX - si as i32, i32::MAX);
@@ -1298,7 +1358,7 @@ fn render(
             };
             total += 1;
             let scaled = image.width() != region.width || image.height() != region.height;
-            layers.push(LayerTiles { placement: Placement::Page, tiles: vec![(region, shown)], scaled });
+            layers.push(LayerTiles { shared: None, placement: Placement::Page, tiles: vec![(region, shown)], scaled });
             continue;
         }
         let (x0, y0, x1, y1) = match stratum.kind {
@@ -1317,14 +1377,14 @@ fn render(
                     sy1 = sy1.min(((c.y + c.height) * scale).ceil() as i32);
                 }
                 if sx1 <= sx0 || sy1 <= sy0 {
-                    layers.push(LayerTiles { placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                    layers.push(LayerTiles { shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                     continue;
                 }
                 ((sx0 - dx).div_euclid(256) * 256, (sy0 - dy).div_euclid(256) * 256, sx1 - dx, sy1 - dy)
             }
             paint::LayerKind::Fixed | paint::LayerKind::Sticky(_) => {
                 let Some(extent) = scene.stratum_extent(si) else {
-                    layers.push(LayerTiles { placement: Placement::Fixed, tiles: Vec::new(), scaled: false });
+                    layers.push(LayerTiles { shared: None, placement: Placement::Fixed, tiles: Vec::new(), scaled: false });
                     continue;
                 };
                 let (limit_x, limit_y) = if stratum.kind == paint::LayerKind::Fixed { (f64::from(r.key.width), f64::from(r.key.height)) } else { (f64::INFINITY, f64::INFINITY) };
@@ -1444,10 +1504,20 @@ fn render(
             }
         }
         if si > 0 {
-            layers.push(LayerTiles { placement, tiles: layer_tiles, scaled: false });
+            layers.push(LayerTiles { shared: None, placement, tiles: layer_tiles, scaled: false });
         }
     }
     TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);
+    // A canvas whose frame is in a shared texture but which the scene shows
+    // otherwise (under a transform, in a group): read back from now on.
+    if let Some(live) = cached.live.as_mut() {
+        for (node, key) in std::mem::take(&mut live.shared_frames) {
+            if !shown_shared.contains(&key) {
+                live.realm.refuse_shared(node);
+                live.render_due = true;
+            }
+        }
+    }
     if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() && !layers.is_empty() {
         eprintln!("  layers: {} ({} tiles)", layers.len(), layers.iter().map(|l| l.tiles.len()).sum::<usize>());
     }

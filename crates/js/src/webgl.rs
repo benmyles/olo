@@ -36,6 +36,18 @@ impl Default for VertexState {
     }
 }
 
+/// The GPU the window's renderer draws on (its UUID): WebGL draws on the
+/// same one, so frames can be shared with no copy (and a page's canvas does
+/// not wake a second GPU). Set before the first canvas; zero: any.
+static PREFERRED_DEVICE: std::sync::Mutex<[u8; 16]> = std::sync::Mutex::new([0; 16]);
+/// Draw WebGL on the GPU with this UUID (see `PREFERRED_DEVICE`).
+pub fn prefer_device(uuid: [u8; 16]) {
+    if let Ok(mut d) = PREFERRED_DEVICE.lock() {
+        *d = uuid;
+    }
+}
+/// EGL_PLATFORM_DEVICE_EXT
+const PLATFORM_DEVICE_EXT: khronos_egl::Enum = 0x313F;
 /// The thread's EGL: display and config, shared by every canvas's context.
 struct Display {
     egl: khronos_egl::DynamicInstance<khronos_egl::EGL1_4>,
@@ -64,6 +76,14 @@ impl Display {
         unsafe {
             let egl = khronos_egl::DynamicInstance::<khronos_egl::EGL1_4>::load_required().map_err(|e| format!("EGL: {e}"))?;
             let platform = egl.upcast::<khronos_egl::EGL1_5>();
+            // The window's GPU when it said which (and EGL can name devices).
+            let preferred = PREFERRED_DEVICE.lock().map(|d| *d).unwrap_or([0; 16]);
+            if preferred != [0; 16]
+                && let Some(egl15) = platform
+                && let Some(found) = Self::on_device(&egl, egl15, preferred)
+            {
+                return Ok(found);
+            }
             let display = match platform {
                 Some(egl15) => egl15
                     .get_platform_display(PLATFORM_SURFACELESS_MESA, khronos_egl::DEFAULT_DISPLAY, &[khronos_egl::ATTRIB_NONE])
@@ -84,6 +104,56 @@ impl Display {
             Ok(Self { egl, display, config })
         }
     }
+    /// The display of the EGL device whose GL is on GPU `uuid`: each device
+    /// tried (EGL_EXT_device_enumeration), a context made on it and asked
+    /// its GL_DEVICE_UUID_EXT.
+    unsafe fn on_device(egl: &khronos_egl::DynamicInstance<khronos_egl::EGL1_4>, egl15: &khronos_egl::DynamicInstance<khronos_egl::EGL1_5>, uuid: [u8; 16]) -> Option<Self> {
+        // SAFETY: EGL entry points called with their C signatures; displays
+        // and contexts made here are made current only to be asked, then let go.
+        unsafe {
+            let query = egl.get_proc_address("eglQueryDevicesEXT")?;
+            let query = std::mem::transmute::<extern "system" fn(), unsafe extern "system" fn(i32, *mut *mut std::ffi::c_void, *mut i32) -> u32>(query);
+            let mut devices = [std::ptr::null_mut(); 16];
+            let mut count = 0i32;
+            if query(devices.len() as i32, devices.as_mut_ptr(), &mut count) == 0 {
+                return None;
+            }
+            for &device in devices.iter().take(count.max(0) as usize) {
+                let Ok(display) = egl15.get_platform_display(PLATFORM_DEVICE_EXT, device, &[khronos_egl::ATTRIB_NONE]) else { continue };
+                if egl.initialize(display).is_err() {
+                    continue;
+                }
+                if egl.bind_api(khronos_egl::OPENGL_ES_API).is_err() {
+                    continue;
+                }
+                let attributes = [khronos_egl::RENDERABLE_TYPE, khronos_egl::OPENGL_ES3_BIT, khronos_egl::SURFACE_TYPE, 0, khronos_egl::NONE];
+                let Ok(Some(config)) = egl.choose_first_config(display, &attributes) else { continue };
+                let Ok(context) = egl.create_context(display, config, None, &[khronos_egl::CONTEXT_CLIENT_VERSION, 3, khronos_egl::NONE]) else { continue };
+                if egl.make_current(display, None, None, Some(context)).is_err() {
+                    let _ = egl.destroy_context(display, context);
+                    continue;
+                }
+                let gl = glow::Context::from_loader_function(|s| egl.get_proc_address(s).map_or(std::ptr::null(), |p| p as *const std::ffi::c_void));
+                let found = gl.supported_extensions().contains("GL_EXT_memory_object")
+                    && egl.get_proc_address("glGetUnsignedBytevEXT").is_some_and(|f| {
+                        let f = std::mem::transmute::<extern "system" fn(), unsafe extern "system" fn(u32, *mut u8)>(f);
+                        let mut id = [0u8; 16];
+                        f(DEVICE_UUID, id.as_mut_ptr());
+                        id == uuid
+                    });
+                let _ = egl.make_current(display, None, None, None);
+                let _ = egl.destroy_context(display, context);
+                CURRENT.with(|c| c.set(0));
+                if !found {
+                    let _ = egl.terminate(display);
+                }
+                if found {
+                    return Some(Self { egl: khronos_egl::DynamicInstance::<khronos_egl::EGL1_4>::load_required().ok()?, display, config });
+                }
+            }
+            None
+        }
+    }
 }
 /// A canvas's own GL: its EGL context (WebGL contexts share nothing, and
 /// GL state is per context), with glow over it.
@@ -92,6 +162,29 @@ pub struct Gl {
     context: khronos_egl::Context,
     pub gl: glow::Context,
     pub es3: bool,
+    /// GL_EXT_memory_object_fd: memory another API exported, drawn into
+    /// here (a canvas shown by the window's renderer with no copy).
+    interop: Option<Interop>,
+}
+/// The entry points of GL_EXT_memory_object(_fd), and the GPU's UUID.
+struct Interop {
+    create_memory_objects: unsafe extern "system" fn(i32, *mut u32),
+    delete_memory_objects: unsafe extern "system" fn(i32, *const u32),
+    import_memory_fd: unsafe extern "system" fn(u32, u64, u32, i32),
+    tex_storage_mem_2d: unsafe extern "system" fn(u32, i32, u32, i32, i32, u32, u64),
+    device_uuid: [u8; 16],
+}
+/// GL_HANDLE_TYPE_OPAQUE_FD_EXT
+const HANDLE_TYPE_OPAQUE_FD: u32 = 0x9586;
+/// GL_DEVICE_UUID_EXT
+const DEVICE_UUID: u32 = 0x9597;
+/// A texture of the window's renderer imported into a canvas's context: its
+/// memory object, the GL texture over it, and a framebuffer to blit into.
+struct SharedTarget {
+    key: u64,
+    memory: u32,
+    texture: glow::Texture,
+    framebuffer: glow::Framebuffer,
 }
 impl Gl {
     /// A new context on the thread's display (made on first use; its
@@ -127,7 +220,8 @@ impl Gl {
             d.egl.make_current(d.display, None, None, Some(context)).map_err(|e| format!("EGL current: {e}"))?;
             CURRENT.with(|c| c.set(context.as_ptr() as usize));
             let gl = glow::Context::from_loader_function(|s| d.egl.get_proc_address(s).map_or(std::ptr::null(), |p| p as *const std::ffi::c_void));
-            Ok(Self { display, context, gl, es3 })
+            let interop = Interop::load(d, &gl);
+            Ok(Self { display, context, gl, es3, interop })
         }
     }
     /// Make this context current (another canvas's could be).
@@ -147,6 +241,35 @@ impl Gl {
         self.current();
         // SAFETY: GL strings from a current context.
         unsafe { self.gl.get_parameter_string(glow::RENDERER) }
+    }
+}
+impl Interop {
+    /// The extension's entry points and the device UUID, if the context has
+    /// GL_EXT_memory_object_fd.
+    unsafe fn load(d: &Display, gl: &glow::Context) -> Option<Self> {
+        let extensions = gl.supported_extensions();
+        if !extensions.contains("GL_EXT_memory_object") || !extensions.contains("GL_EXT_memory_object_fd") {
+            return None;
+        }
+        let get = |name: &str| d.egl.get_proc_address(name).map(|p| p as *const std::ffi::c_void).filter(|p| !p.is_null());
+        // SAFETY: each pointer is the named GL entry point, called with its
+        // C signature.
+        unsafe {
+            let create_memory_objects = std::mem::transmute::<*const std::ffi::c_void, unsafe extern "system" fn(i32, *mut u32)>(get("glCreateMemoryObjectsEXT")?);
+            let delete_memory_objects = std::mem::transmute::<*const std::ffi::c_void, unsafe extern "system" fn(i32, *const u32)>(get("glDeleteMemoryObjectsEXT")?);
+            let import_memory_fd = std::mem::transmute::<*const std::ffi::c_void, unsafe extern "system" fn(u32, u64, u32, i32)>(get("glImportMemoryFdEXT")?);
+            let tex_storage_mem_2d = std::mem::transmute::<*const std::ffi::c_void, unsafe extern "system" fn(u32, i32, u32, i32, i32, u32, u64)>(get("glTexStorageMem2DEXT")?);
+            let get_unsigned_bytes = std::mem::transmute::<*const std::ffi::c_void, unsafe extern "system" fn(u32, *mut u8)>(get("glGetUnsignedBytevEXT")?);
+            let mut device_uuid = [0u8; 16];
+            get_unsigned_bytes(DEVICE_UUID, device_uuid.as_mut_ptr());
+            Some(Self { create_memory_objects, delete_memory_objects, import_memory_fd, tex_storage_mem_2d, device_uuid })
+        }
+    }
+}
+impl Gl {
+    /// The GPU this context draws on, if it can import shared memory.
+    pub fn interop_uuid(&self) -> Option<[u8; 16]> {
+        self.interop.as_ref().map(|i| i.device_uuid)
     }
 }
 impl Drop for Gl {
@@ -266,6 +389,19 @@ pub struct Context {
     pending: Option<(usize, u32, u32)>,
     unpack_flip_y: bool,
     unpack_premultiply: bool,
+    /// Textures of the window's renderer this canvas's frames are blitted
+    /// into (a ring: the window shows one while the next is drawn), and the
+    /// next to draw into; empty until given (`provide_shared`).
+    shared: Vec<SharedTarget>,
+    shared_next: usize,
+    /// The size the ring was asked for, so it is asked once.
+    shared_asked: Option<(u32, u32)>,
+    /// Shared textures this canvas let go of (resized), for the window to
+    /// let go of too.
+    shared_released: Vec<u64>,
+    /// The canvas shows where the window can't show a shared texture (under
+    /// a transform, in a group): read back instead.
+    shared_refused: bool,
 }
 impl Context {
     pub fn new(gl: Rc<Gl>, width: u32, height: u32, premultiplied_alpha: bool, preserve_drawing_buffer: bool, alpha: bool) -> Result<Self, String> {
@@ -309,6 +445,11 @@ impl Context {
                 pending: None,
                 unpack_flip_y: false,
                 unpack_premultiply: false,
+                shared: Vec::new(),
+                shared_next: 0,
+                shared_asked: None,
+                shared_released: Vec::new(),
+                shared_refused: false,
             };
             this.attach();
             g.bind_framebuffer(glow::FRAMEBUFFER, Some(this.framebuffer));
@@ -347,6 +488,7 @@ impl Context {
         self.pending = None;
         self.width = width;
         self.height = height;
+        self.release_shared();
         self.gl.current();
         // SAFETY: as in `new`.
         unsafe {
@@ -361,6 +503,144 @@ impl Context {
     }
     pub fn readback_pending(&self) -> bool {
         self.pending.is_some()
+    }
+    /// How many shared textures, at what size, this canvas would draw its
+    /// frames into: an animating canvas (drawn again after it was shown)
+    /// whose context can import memory, not yet given or asked for them.
+    pub fn wants_shared(&mut self) -> Option<(u32, u32, [u8; 16])> {
+        let uuid = self.gl.interop_uuid()?;
+        if self.shared_refused || !self.alpha || self.last.is_none() || !self.shared.is_empty() || self.shared_asked == Some((self.width, self.height)) {
+            return None;
+        }
+        // Small canvases cost little to read back.
+        if u64::from(self.width) * u64::from(self.height) < 128 * 128 {
+            return None;
+        }
+        self.shared_asked = Some((self.width, self.height));
+        Some((self.width, self.height, uuid))
+    }
+    /// The window's textures for this canvas's frames: imported, each with a
+    /// framebuffer. Textures of another size than the canvas's now (it was
+    /// resized meanwhile) are let go of at once.
+    pub fn provide_shared(&mut self, textures: Vec<(u64, std::os::fd::OwnedFd, u64, u32, u32)>) {
+        let Some(interop) = self.gl.interop.as_ref() else {
+            self.shared_released.extend(textures.into_iter().map(|t| t.0));
+            return;
+        };
+        self.gl.current();
+        let mut made = Vec::new();
+        for (key, fd, size, w, h) in textures {
+            if (w, h) != (self.width, self.height) || !self.shared.is_empty() {
+                self.shared_released.push(key);
+                continue;
+            }
+            // SAFETY: GL_EXT_memory_object_fd on the current context; the fd
+            // is given to GL, which owns it from the import on.
+            unsafe {
+                let g = &self.gl.gl;
+                let mut memory = 0u32;
+                (interop.create_memory_objects)(1, &mut memory);
+                (interop.import_memory_fd)(memory, size, HANDLE_TYPE_OPAQUE_FD, std::os::fd::IntoRawFd::into_raw_fd(fd));
+                let Ok(texture) = g.create_texture() else {
+                    (interop.delete_memory_objects)(1, &memory);
+                    self.shared_released.push(key);
+                    continue;
+                };
+                g.bind_texture(glow::TEXTURE_2D, Some(texture));
+                (interop.tex_storage_mem_2d)(glow::TEXTURE_2D, 1, glow::RGBA8, w as i32, h as i32, memory, 0);
+                g.bind_texture(glow::TEXTURE_2D, None);
+                let Ok(framebuffer) = g.create_framebuffer() else {
+                    g.delete_texture(texture);
+                    (interop.delete_memory_objects)(1, &memory);
+                    self.shared_released.push(key);
+                    continue;
+                };
+                g.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
+                g.framebuffer_texture_2d(glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::TEXTURE_2D, Some(texture), 0);
+                let complete = g.check_framebuffer_status(glow::FRAMEBUFFER) == glow::FRAMEBUFFER_COMPLETE;
+                self.rebind_framebuffer();
+                if !complete || g.get_error() != glow::NO_ERROR {
+                    g.delete_framebuffer(framebuffer);
+                    g.delete_texture(texture);
+                    (interop.delete_memory_objects)(1, &memory);
+                    self.shared_released.push(key);
+                    continue;
+                }
+                made.push(SharedTarget { key, memory, texture, framebuffer });
+            }
+        }
+        if made.len() >= 2 {
+            self.shared = made;
+            self.shared_next = 0;
+            self.dirty = true;
+        } else {
+            // Too few to draw one while another shows: let go of them.
+            let keys: Vec<u64> = made.iter().map(|t| t.key).collect();
+            self.shared = made;
+            self.release_shared();
+            let _ = keys;
+        }
+    }
+    /// Lets go of the shared textures (resized, refused, dropped).
+    fn release_shared(&mut self) {
+        if self.shared.is_empty() {
+            return;
+        }
+        self.gl.current();
+        let targets = std::mem::take(&mut self.shared);
+        for t in targets {
+            // SAFETY: this context's own objects.
+            unsafe {
+                let g = &self.gl.gl;
+                g.delete_framebuffer(t.framebuffer);
+                g.delete_texture(t.texture);
+                if let Some(i) = self.gl.interop.as_ref() {
+                    (i.delete_memory_objects)(1, &t.memory);
+                }
+            }
+            self.shared_released.push(t.key);
+        }
+    }
+    /// The shared textures let go of since asked, for the window.
+    pub fn take_released_shared(&mut self) -> Vec<u64> {
+        std::mem::take(&mut self.shared_released)
+    }
+    /// The window can't show this canvas from a shared texture: frames are
+    /// read back from now on.
+    pub fn refuse_shared(&mut self) {
+        self.shared_refused = true;
+        self.release_shared();
+        self.dirty = true;
+    }
+    /// The frame into the next shared texture, the right way up: blitted on
+    /// the GPU, finished before it is shown. Its key, or None without a ring.
+    fn draw_shared(&mut self) -> Option<u64> {
+        if self.shared.len() < 2 {
+            return None;
+        }
+        let t = &self.shared[self.shared_next];
+        let (key, target) = (t.key, t.framebuffer);
+        self.gl.current();
+        // SAFETY: blitting between this context's framebuffers.
+        unsafe {
+            let g = &self.gl.gl;
+            let scissor = g.is_enabled(glow::SCISSOR_TEST);
+            if scissor {
+                g.disable(glow::SCISSOR_TEST);
+            }
+            g.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.framebuffer));
+            g.bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(target));
+            let (w, h) = (self.width as i32, self.height as i32);
+            g.blit_framebuffer(0, 0, w, h, 0, h, w, 0, glow::COLOR_BUFFER_BIT, glow::NEAREST);
+            if scissor {
+                g.enable(glow::SCISSOR_TEST);
+            }
+            self.rebind_framebuffer();
+            // Done before the window samples it (another API, no semaphore).
+            g.finish();
+        }
+        self.shared_next = (self.shared_next + 1) % self.shared.len();
+        Some(key)
     }
     pub fn width(&self) -> u32 {
         self.width
@@ -459,6 +739,18 @@ impl Context {
             return self.last.clone();
         }
         let was_dirty = self.dirty;
+        // An animating canvas with a ring: the frame stays on the GPU, the
+        // image only names the texture it is in.
+        if was_dirty && !self.shared.is_empty() {
+            self.dirty = false;
+            if let Some(key) = self.draw_shared() {
+                self.last = Some(olo_web::image::Image::shared(self.width, self.height, key, self.premultiplied_alpha));
+                return self.last.clone();
+            }
+        }
+        if !was_dirty && !self.shared.is_empty() && self.last.as_ref().is_some_and(|l| l.shared_texture().is_some()) {
+            return self.last.clone();
+        }
         self.dirty = false;
         let timing = std::env::var_os("OLO_CANVAS_TIMING").map(|_| std::time::Instant::now());
         let read = self.read_back_async(was_dirty);
@@ -1072,6 +1364,7 @@ impl Context {
 }
 impl Drop for Context {
     fn drop(&mut self) {
+        self.release_shared();
         self.gl.current();
         // SAFETY: deleting this context's own objects on the current context.
         unsafe {

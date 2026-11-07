@@ -45,7 +45,24 @@ impl super::Context {
                         .core
                         .get_physical_device_memory_properties(self.physical_device)
                 };
-                let memory_type_index = memory_types.ilog2();
+                // Olo: memory made to share (exported) on the device itself,
+                // not the highest type allowed (which may be the host's: a
+                // texture another API draws into each frame, sampled each frame).
+                let device_local = (0..memory_properties.memory_type_count).find(|&i| {
+                    memory_types & (1 << i) != 0
+                        && memory_properties.memory_types[i as usize]
+                            .property_flags
+                            .contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                });
+                let exporting = !matches!(
+                    e,
+                    crate::ExternalMemorySource::Fd(Some(_))
+                        | crate::ExternalMemorySource::HostAllocation(_)
+                ) && !matches!(e, crate::ExternalMemorySource::Dma(Some(_)));
+                let memory_type_index = match device_local {
+                    Some(i) if exporting => i,
+                    _ => memory_types.ilog2(),
+                };
                 let memory_type: vk::MemoryType =
                     memory_properties.memory_types[memory_type_index as usize];
 
@@ -374,6 +391,31 @@ impl super::Context {
         texture: super::Texture,
     ) -> Option<crate::ExternalMemorySource> {
         texture.external
+    }
+
+    /// Olo: the size of the memory a texture is bound to (what another API
+    /// importing its exported memory is told).
+    pub fn texture_memory_size(&self, texture: super::Texture) -> u64 {
+        unsafe {
+            self.device
+                .core
+                .get_image_memory_requirements(texture.raw)
+                .size
+        }
+    }
+
+    /// Olo: the device's UUID (VkPhysicalDeviceIDProperties), to tell whether
+    /// another API's context (GL's `GL_DEVICE_UUID_EXT`) is on the same GPU,
+    /// so memory exported here can be imported there.
+    pub fn device_uuid(&self) -> [u8; 16] {
+        let mut id = vk::PhysicalDeviceIDProperties::default();
+        let mut properties = vk::PhysicalDeviceProperties2::default().push_next(&mut id);
+        unsafe {
+            self.instance
+                .get_physical_device_properties2
+                .get_physical_device_properties2(self.physical_device, &mut properties);
+        }
+        id.device_uuid
     }
 
     pub fn get_external_buffer_source(

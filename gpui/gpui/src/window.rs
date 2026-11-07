@@ -4305,6 +4305,83 @@ impl Window {
         self.paint_image_sampled(bounds, Corners::default(), data, 0, false, true)
     }
 
+    /// Olo: a texture of the window's renderer another API draws into, shown
+    /// with no copy ([`Window::paint_shared_texture`]); None where the
+    /// renderer can't share memory. Let go with [`Window::drop_shared_texture`].
+    pub fn create_shared_texture(
+        &mut self,
+        width: u32,
+        height: u32,
+    ) -> Option<(crate::ImageId, crate::SharedTexture)> {
+        let id = crate::ImageId::fresh();
+        let key = RenderImageParams {
+            image_id: id,
+            frame_index: 0,
+            deep: false,
+        }
+        .into();
+        let shared = self.sprite_atlas.create_shared(
+            &key,
+            size(DevicePixels(width as i32), DevicePixels(height as i32)),
+        )?;
+        Some((id, shared))
+    }
+
+    /// Olo: the GPU the window's renderer draws on (its UUID), for another
+    /// API to draw on the same one and share textures with it.
+    pub fn renderer_device_uuid(&self) -> Option<[u8; 16]> {
+        self.sprite_atlas.device_uuid()
+    }
+
+    /// Olo: shared texture `id` at `bounds`, its colours premultiplied or not,
+    /// texel for pixel (`nearest`) or sampled.
+    pub fn paint_shared_texture(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        id: crate::ImageId,
+        premultiplied: bool,
+        nearest: bool,
+    ) {
+        self.invalidator.debug_assert_paint();
+        let scale_factor = self.scale_factor();
+        let bounds = bounds.scale(scale_factor);
+        let key = RenderImageParams {
+            image_id: id,
+            frame_index: 0,
+            deep: false,
+        }
+        .into();
+        let Ok(Some(tile)) = self.sprite_atlas.get_or_insert_with(&key, &mut || Ok(None)) else {
+            return;
+        };
+        let content_mask = self.content_mask().scale(scale_factor);
+        let opacity = self.element_opacity();
+        self.next_frame.scene.insert_primitive(PolychromeSprite {
+            order: 0,
+            nearest: u32::from(nearest) | if premultiplied { 8 } else { 0 },
+            grayscale: false,
+            bounds: bounds
+                .map_origin(|origin| origin.floor())
+                .map_size(|size| size.ceil()),
+            content_mask,
+            corner_radii: Corners::default(),
+            tile,
+            opacity,
+        });
+    }
+
+    /// Olo: lets shared texture `id` go (its memory freed once the other API
+    /// has let go of it too).
+    pub fn drop_shared_texture(&mut self, id: crate::ImageId) {
+        let key = RenderImageParams {
+            image_id: id,
+            frame_index: 0,
+            deep: false,
+        }
+        .into();
+        self.sprite_atlas.remove(&key);
+    }
+
     /// Olo: paints triangles of an image, each corner a point in the
     /// window and where in the image (0–1 across it) it shows, the image
     /// tinted (white leaves it as it is): a picture bent in perspective

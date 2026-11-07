@@ -54,6 +54,10 @@ pub struct Image {
     /// it was shown): the scene shows it through a layer of its own, so
     /// what is around it is kept while it changes.
     live: bool,
+    /// Its pixels are in a texture of the window's renderer (that texture's
+    /// key, and whether they are premultiplied), not here: a WebGL canvas's
+    /// frame never read back. Shown as a surface layer; rasterised, nothing.
+    shared: Option<(u64, bool)>,
 }
 static SERIALS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 fn serial() -> u64 {
@@ -77,7 +81,7 @@ impl Image {
             return Err(Error::Invalid);
         }
         let opaque = all_opaque(&rgba);
-        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density, opaque, serial: serial(), live: false }))
+        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density, opaque, serial: serial(), live: false, shared: None }))
     }
     /// The natural size in CSS pixels.
     pub fn natural(&self) -> (f64, f64) {
@@ -136,7 +140,7 @@ impl Image {
         }
         check(cancel)?;
         let opaque = all_opaque(&rgba);
-        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density: 1., opaque, serial: serial(), live: false }))
+        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density: 1., opaque, serial: serial(), live: false, shared: None }))
     }
     pub fn width(&self) -> u32 {
         self.width
@@ -155,6 +159,15 @@ impl Image {
     /// Whether this is a live surface (see the field).
     pub fn live(&self) -> bool {
         self.live
+    }
+    /// An image whose pixels are in shared texture `key` of the window's
+    /// renderer (see the field): a live surface, `width` × `height`.
+    pub fn shared(width: u32, height: u32, key: u64, premultiplied: bool) -> Arc<Self> {
+        Arc::new(Self { width: width.max(1), height: height.max(1), rgba: Box::new([]), density: 1., opaque: false, serial: serial(), live: true, shared: Some((key, premultiplied)) })
+    }
+    /// The shared texture its pixels are in, and whether premultiplied.
+    pub fn shared_texture(&self) -> Option<(u64, bool)> {
+        self.shared
     }
     /// Mark a just-made image a live surface (before it is shared).
     pub fn set_live(image: &mut Arc<Self>) {

@@ -60,6 +60,11 @@ struct Browser {
     /// told, a live page's 60 frames a second filled the GPU's memory),
     /// then sent to the worker to be dropped there.
     retired: Vec<Arc<RenderImage>>,
+    /// Canvases asking for shared textures (made at the next paint, which
+    /// has the renderer), the page's shared textures, and those to free.
+    shared_requests: Vec<(olo_web::dom::NodeId, u32, u32, [u8; 16])>,
+    shared_keys: Vec<u64>,
+    shared_retired: Vec<u64>,
     labels: Vec<worker::Label>,
     status: String,
     blocked_action: Option<&'static str>,
@@ -132,6 +137,9 @@ impl Browser {
             tiles: Vec::new(),
             layers: Vec::new(),
             retired: Vec::new(),
+            shared_requests: Vec::new(),
+            shared_keys: Vec::new(),
+            shared_retired: Vec::new(),
             labels: Vec::new(),
             status: "Loading…".into(),
             blocked_action: None,
@@ -153,6 +161,11 @@ impl Browser {
         }
         if let Some(old) = &self.key {
             self.scroll = (f64::from(self.scroll) * scale / old.scale).round() as i32;
+            // Another document: its page's shared textures go with it.
+            if old.source != key.source || old.revision != key.revision {
+                self.shared_retired.append(&mut self.shared_keys);
+                self.shared_requests.clear();
+            }
         }
         self.status = "Loading…".into();
         let shown = std::mem::take(&mut self.tiles).into_iter().map(|(_, image)| image).collect();
@@ -460,6 +473,13 @@ impl Browser {
                 self.recycle(old.into_iter().flat_map(|l| l.tiles.into_iter().map(|(_, image)| image)).filter(|i| !kept.contains(&Arc::as_ptr(i))).collect());
                 return;
             }
+            worker::Reply::SharedWanted(id, wanted) if id == self.id => {
+                self.shared_requests.extend(wanted);
+            }
+            worker::Reply::DropShared(keys) => {
+                self.shared_keys.retain(|k| !keys.contains(k));
+                self.shared_retired.extend(keys);
+            }
             worker::Reply::Layers(_, layers) => {
                 self.recycle(layers.into_iter().flat_map(|l| l.tiles.into_iter().map(|(_, image)| image)).collect());
                 return;
@@ -510,7 +530,13 @@ impl Render for Browser {
         let focused = self.interaction.focus;
         let document_snapshot = self.document_snapshot.clone();
         let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image, l.fixed, l.sticky)).collect();
-        let layers: Vec<(worker::Placement, bool, Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>)> = self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone())).collect();
+        let layers: Vec<(worker::Placement, bool, Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>, Option<(olo_web::paint::DeviceRect, u64, bool)>)> =
+            self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone(), l.shared)).collect();
+        let shared_requests = std::mem::take(&mut self.shared_requests);
+        let shared_retired = std::mem::take(&mut self.shared_retired);
+        let made_shared: std::rc::Rc<std::cell::RefCell<Vec<u64>>> = Default::default();
+        let made_into = made_shared.clone();
+        let me_shared = cx.entity();
         let viewport = self.viewport.clone();
         let scroll = self.scroll;
         let extent = self.extent;
@@ -540,6 +566,58 @@ impl Render for Browser {
                     }
                     let _ = recycle.send(worker::Message::Recycle(retired));
                 }
+                for key in &shared_retired {
+                    window.drop_shared_texture(olo_ui::gpui::ImageId(*key as usize));
+                }
+                // WebGL draws on the window's GPU (frames shared with no copy;
+                // a page's canvas wakes no other GPU). Said before any canvas.
+                static NAMED: std::sync::Once = std::sync::Once::new();
+                NAMED.call_once(|| {
+                    if let Some(uuid) = window.renderer_device_uuid() {
+                        olo_js::webgl::prefer_device(uuid);
+                    }
+                });
+                // Shared textures for animating WebGL canvases: three each
+                // (one shown, one drawn into, one spare), on the canvas's GPU
+                // only (else none: it stays read back).
+                if !shared_requests.is_empty() {
+                    let mut given = Vec::new();
+                    for (node, w, h, uuid) in shared_requests {
+                        let mut textures = Vec::new();
+                        for _ in 0..3 {
+                            let made = window.create_shared_texture(w, h);
+                            if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                                eprintln!(
+                                    "  shared: made {:?} (window GPU {:02x?}, canvas GPU {:02x?})",
+                                    made.as_ref().map(|(id, t)| (id.0, t.memory_size)),
+                                    made.as_ref().map(|(_, t)| t.device_uuid),
+                                    uuid
+                                );
+                            }
+                            match made {
+                                Some((id, t)) if t.device_uuid == uuid => {
+                                    made_into.borrow_mut().push(id.0 as u64);
+                                    textures.push((id.0 as u64, t.fd, t.memory_size, t.width, t.height));
+                                }
+                                Some((id, _)) => window.drop_shared_texture(id),
+                                None => {}
+                            }
+                        }
+                        if textures.len() < 3 {
+                            for (key, ..) in textures.drain(..) {
+                                window.drop_shared_texture(olo_ui::gpui::ImageId(key as usize));
+                                made_into.borrow_mut().retain(|k| *k != key);
+                            }
+                        }
+                        given.push((node, textures));
+                    }
+                    let _ = recycle.send(worker::Message::SharedTextures(given));
+                    let made: Vec<u64> = std::mem::take(&mut *made_into.borrow_mut());
+                    if !made.is_empty() {
+                        let me = me_shared.clone();
+                        cx.defer(move |cx| me.update(cx, |v, _| v.shared_keys.extend(made)));
+                    }
+                }
                 let bounds = style::snap(window, bounds);
                 let scale = f64::from(window.scale_factor());
                 window.note_scroll([0., (f64::from(scroll) / scale) as f32, 0., (extent - f64::from(f32::from(bounds.size.height))).max(0.) as f32]);
@@ -558,7 +636,16 @@ impl Render for Browser {
                     // shifted as the scroll has it (CSS Positioned Layout 3 §3.4).
                     let scroll_css = f64::from(scroll) / scale;
                     let height_css = f64::from(f32::from(bounds.size.height));
-                    for (placement, scaled, layer_tiles) in &layers {
+                    for (placement, scaled, layer_tiles, shared) in &layers {
+                        // A canvas frame in a shared texture, with the page.
+                        if let Some((r, key, premultiplied)) = shared {
+                            let b = Bounds::new(
+                                point(bounds.left() + px((f64::from(r.x) / scale) as f32), bounds.top() + px((f64::from(r.y - scroll) / scale) as f32)),
+                                size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
+                            );
+                            window.paint_shared_texture(b, olo_ui::gpui::ImageId(*key as usize), *premultiplied, !*scaled);
+                            continue;
+                        }
                         let (dy, scrolled) = match placement {
                             worker::Placement::Page | worker::Placement::Moved { .. } => (0., true),
                             worker::Placement::Fixed => (0., false),

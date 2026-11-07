@@ -187,6 +187,10 @@ impl Engine {
             match &c.primitive {
                 Primitive::Image { owner, image } => {
                     let image = scene.layout.cache().tree().image(*image).ok_or(Error::Invalid)?;
+                    // Its pixels are in the window's renderer: shown as a surface.
+                    if image.shared_texture().is_some() {
+                        continue;
+                    }
                     let geometry = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
                     let mut bounds = c.bounds;
                     bounds.x += geometry.border_width.left + geometry.padding.left;

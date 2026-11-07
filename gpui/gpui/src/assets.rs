@@ -32,6 +32,16 @@ impl AssetSource for () {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ImageId(pub usize);
 
+/// Olo: every image's id, RenderImages' and shared textures' alike.
+static NEXT_IMAGE_ID: AtomicUsize = AtomicUsize::new(0);
+
+impl ImageId {
+    /// Olo: an id no image has had.
+    pub fn fresh() -> Self {
+        ImageId(NEXT_IMAGE_ID.fetch_add(1, SeqCst))
+    }
+}
+
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub(crate) struct RenderImageParams {
     pub(crate) image_id: ImageId,
@@ -86,10 +96,8 @@ impl Eq for RenderImage {}
 impl RenderImage {
     /// Create a new image from the given data.
     pub fn new(data: impl Into<SmallVec<[Frame; 1]>>) -> Self {
-        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
-
         Self {
-            id: ImageId(NEXT_ID.fetch_add(1, SeqCst)),
+            id: ImageId::fresh(),
             scale_factor: 1.0,
             data: data.into(),
             color_space: Gamut::Srgb,

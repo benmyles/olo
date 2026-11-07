@@ -1141,6 +1141,36 @@ pub(crate) trait PlatformAtlas: Send + Sync {
         build: &mut dyn FnMut() -> Result<Option<(Size<DevicePixels>, Cow<'a, [u8]>)>>,
     ) -> Result<Option<AtlasTile>>;
     fn remove(&self, key: &AtlasKey);
+    /// Olo: a texture of its own for `key`, its memory exported for another
+    /// API to draw into (see [`SharedTexture`]); None where the renderer
+    /// can't share memory.
+    fn create_shared(&self, _key: &AtlasKey, _size: Size<DevicePixels>) -> Option<SharedTexture> {
+        None
+    }
+    /// Olo: the renderer's GPU (its UUID), where it can share memory.
+    fn device_uuid(&self) -> Option<[u8; 16]> {
+        None
+    }
+}
+
+/// Olo: a texture of the window's renderer whose memory another API (a
+/// page's WebGL, in GL) imports and draws into, shown with no copy made:
+/// RGBA, eight bits a channel, `width` × `height` pixels, rows from the
+/// top. The other API owns `fd` (an opaque Vulkan memory handle) once it
+/// imports it, told `memory_size`; `device_uuid` must be its device's.
+#[derive(Debug)]
+pub struct SharedTexture {
+    /// The memory, as an opaque handle (VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD).
+    #[cfg(unix)]
+    pub fd: std::os::fd::OwnedFd,
+    /// The memory's size in bytes.
+    pub memory_size: u64,
+    /// The GPU's UUID.
+    pub device_uuid: [u8; 16],
+    /// In pixels.
+    pub width: u32,
+    /// In pixels.
+    pub height: u32,
 }
 
 struct AtlasTextureList<T> {
