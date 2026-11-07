@@ -267,6 +267,11 @@ impl Selectors {
     pub fn compile(values: Components<'_>, options: CompileOptions<'_>, limits: CompileLimits, cancelled: Option<&AtomicBool>) -> Result<Self> {
         compile::compile(values, options, limits, cancelled)
     }
+    /// Whether any selector depends on an element's descendants (`:has()`,
+    /// `:empty`): then a change below an element can change its style.
+    pub fn depends_on_descendants(&self) -> bool {
+        self.tests.iter().any(|t| matches!(t, Test::Logical { mode: Logical::Has, .. } | Test::Structural(Structural::Empty)))
+    }
     /// Whether any selector addresses a pseudo-element (`::before`, …).
     pub fn has_pseudo_elements(&self) -> bool {
         self.complexes.iter().any(|c| c.pseudo.is_some())

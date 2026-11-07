@@ -141,6 +141,16 @@ impl Computed {
     pub fn invalid() -> Self {
         Self { value: None, animation_tainted: false }
     }
+    /// Whether two computed values are the same: both invalid, or the same
+    /// tokens (the same allocation, or spelled the same).
+    pub fn same(&self, other: &Self) -> bool {
+        self.animation_tainted == other.animation_tainted
+            && match (&self.value, &other.value) {
+                (None, None) => true,
+                (Some(a), Some(b)) => a.arena_identity() == b.arena_identity() || a.source_spelling() == b.source_spelling(),
+                _ => false,
+            }
+    }
     pub fn components(&self) -> Option<Components<'_>> {
         self.value.as_ref().map(Value::components)
     }

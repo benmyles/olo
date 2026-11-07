@@ -234,6 +234,16 @@ impl<'a, N: Copy + PartialEq> KeyCache<'a, N> {
 /// Past this many elements a match keeps no keys (a selector walking far).
 const KEYS: usize = 96;
 impl Selectors {
+    /// Highest specificity among matching branches, or None. Tree/state
+    /// errors are explicit failures, not false matches or ignored branches.
+    pub fn matches<T: Tree>(&self, tree: &T, node: T::Node, options: MatchOptions<'_, T::Node>, limits: MatchLimits, cancelled: Option<&AtomicBool>) -> Result<Option<Specificity>> {
+        if !matches!(tree.content(node)?, Content::Element(_)) {
+            return Ok(None);
+        }
+        let mut keys = KeyCache::default();
+        let mut matcher = self.matcher(tree, node, options, limits, cancelled, &mut keys)?;
+        Ok(matcher.matches(self.root, limits.work)?.0)
+    }
     /// A matcher for one element, for testing many selector lists against it.
     pub fn matcher<'a, 'k, T: Tree>(
         &'a self,

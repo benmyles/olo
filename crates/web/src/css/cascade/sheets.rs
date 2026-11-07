@@ -500,6 +500,9 @@ impl RuleSet {
     pub fn has_pseudo_elements(&self) -> bool {
         self.selectors.has_pseudo_elements()
     }
+    pub fn depends_on_descendants(&self) -> bool {
+        self.selectors.depends_on_descendants()
+    }
     /// Whether any rule addresses this pseudo-element.
     pub fn has_pseudo(&self, pseudo: selectors::PseudoElement) -> bool {
         self.index.pseudo.contains_key(&pseudo)

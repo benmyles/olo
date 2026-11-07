@@ -14,6 +14,11 @@ pub struct JobOptions<'a> {
     /// Immutable state snapshot, including semantic direction. Missing state
     /// is an explicit matcher error if a selector needs it.
     pub states: Option<&'a dyn selectors::StateSource>,
+    /// The styles of an earlier revision of the same document, with the
+    /// same rules, defaults and states: an element whose own attributes,
+    /// siblings and parent's style are unchanged since keeps its style
+    /// without matching or computing.
+    pub previous: Option<&'a StyleTree>,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct JobLimits {
@@ -58,6 +63,8 @@ impl Default for JobLimits {
 pub struct Progress {
     pub visited: usize,
     pub styled: usize,
+    /// Of those, styles kept from the previous tree.
+    pub reused: usize,
     pub finished: bool,
 }
 /// Unsupported/unknown declarations remain visible in diagnostics; an eval
@@ -180,6 +187,17 @@ pub struct Job<'a> {
     ancestors: selectors::AncestorFilter,
     /// The elements on the way down, with their keys, to take out again.
     chain: Vec<(NodeId, SmallVec<[u64; 6]>)>,
+    /// Incremental restyle: the previous tree and what changed since it
+    /// (elements whose attributes changed; nodes whose children changed).
+    previous: Option<Incremental<'a>>,
+    /// Per styled entry: whether it is the same as in the previous tree,
+    /// so its children may keep theirs.
+    same: Vec<bool>,
+}
+struct Incremental<'a> {
+    tree: &'a StyleTree,
+    nodes: std::collections::HashSet<NodeId>,
+    children: std::collections::HashSet<NodeId>,
 }
 #[derive(Default)]
 struct Timing {
@@ -218,6 +236,52 @@ impl<'a> Job<'a> {
             }),
             ancestors: Default::default(),
             chain: Vec::new(),
+            previous: options.previous.and_then(|tree| {
+                if tree.document != document.id() || tree.generation != options.generation {
+                    return None;
+                }
+                let changes = document.changes_since(tree.revision)?;
+                let mut nodes = std::collections::HashSet::new();
+                let mut children = std::collections::HashSet::new();
+                // With :has() or :empty in the rules, an element's style can
+                // change with its descendants: every ancestor of a change
+                // is restyled too (a chain, not a subtree).
+                let subtree_sensitive = rules.depends_on_descendants();
+                let mut dirty_ancestors = |n: NodeId, nodes: &mut std::collections::HashSet<NodeId>| {
+                    let mut at = document.parent(n).ok().flatten();
+                    while let Some(a) = at {
+                        if !nodes.insert(a) {
+                            break;
+                        }
+                        at = document.parent(a).ok().flatten();
+                    }
+                };
+                for (_, change) in changes {
+                    match change {
+                        crate::dom::Change::Node(n) => {
+                            nodes.insert(*n);
+                            if subtree_sensitive {
+                                dirty_ancestors(*n, &mut nodes);
+                            }
+                        }
+                        crate::dom::Change::Children(n) => {
+                            children.insert(*n);
+                            if subtree_sensitive {
+                                nodes.insert(*n);
+                                dirty_ancestors(*n, &mut nodes);
+                            }
+                        }
+                        crate::dom::Change::Text(n) => {
+                            if subtree_sensitive {
+                                dirty_ancestors(*n, &mut nodes);
+                            }
+                        }
+                        crate::dom::Change::Unknown => return None,
+                    }
+                }
+                Some(Incremental { tree, nodes, children })
+            }),
+            same: Vec::new(),
             tree: StyleTree {
                 document: document.id(),
                 revision: document.revision(),
@@ -529,6 +593,45 @@ impl<'a> Job<'a> {
         if self.tree.styles.len() >= self.limits.elements || self.tree.styles.len() >= u32::MAX as usize || node.slot() as usize >= self.limits.slots {
             return Err(Error::Limit);
         }
+        let parent_node = self.document.parent(node).map_err(Error::Dom)?;
+        let parent = parent_node.and_then(|n| self.tree.index(n));
+        let parent_box = parent
+            .and_then(|i| if matches!(self.tree.styles[i].style.value(Property::Display), Value::Display(Display::Contents)) { self.tree.styles[i].parent_box } else { NonZeroU32::new(i as u32 + 1) });
+        // Incremental: the previous style stands when this element's
+        // attributes and its siblings are unchanged and its parent's style
+        // is the same as before (or it is the root).
+        if let Some(inc) = &self.previous
+            && !inc.nodes.contains(&node)
+            && !parent_node.is_some_and(|p| inc.children.contains(&p))
+            && parent.is_none_or(|i| self.same[i])
+            && let Some(i) = inc.tree.index(node)
+        {
+            let style = inc.tree.styles[i].style.clone();
+            let index = self.tree.styles.len();
+            self.tree.styles.push(Styled { node, style, parent_box });
+            self.same.push(true);
+            if self.root.is_none() {
+                self.root = Some(index);
+            }
+            if self.tree.slots.len() <= node.slot() as usize {
+                self.tree.slots.resize(node.slot() as usize + 1, None);
+            }
+            self.tree.slots[node.slot() as usize] = NonZeroU32::new(index as u32 + 1);
+            self.account.add(&self.tree.styles[index].style);
+            for pseudo in [PseudoElement::Before, PseudoElement::After] {
+                if let Some(&p) = inc.tree.pseudos.get(&(node, pseudo)) {
+                    let style = inc.tree.styles[p as usize].style.clone();
+                    let at = self.tree.styles.len() as u32;
+                    self.account.add(&style);
+                    self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1) });
+                    self.same.push(true);
+                    self.tree.pseudos.insert((node, pseudo), at);
+                }
+            }
+            self.progress.styled += 1;
+            self.progress.reused += 1;
+            return Ok(());
+        }
         let clock = self.timing.as_ref().map(|_| std::time::Instant::now());
         let mut hints = Vec::new();
         if self.document.namespace(node).map_err(Error::Dom)? == Some(crate::dom::Namespace::Html) {
@@ -557,9 +660,6 @@ impl<'a> Job<'a> {
                 }
             }
         }
-        let parent = self.document.parent(node).map_err(Error::Dom)?.and_then(|n| self.tree.index(n));
-        let parent_box = parent
-            .and_then(|i| if matches!(self.tree.styles[i].style.value(Property::Display), Value::Display(Display::Contents)) { self.tree.styles[i].parent_box } else { NonZeroU32::new(i as u32 + 1) });
         let parent = parent.map(|i| &self.tree.styles[i].style);
         let root = self.root.map(|i| &self.tree.styles[i].style);
         let layout_parent = parent_box.map(|i| match self.tree.styles[i.get() as usize - 1].style.value(Property::Display) {
@@ -622,6 +722,9 @@ impl<'a> Job<'a> {
         }
         let index = self.tree.styles.len();
         self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
+        // Computed afresh: the same as before only if every value is.
+        let same = self.previous.as_ref().and_then(|inc| inc.tree.index(node)).is_some_and(|i| self.previous.as_ref().unwrap().tree.styles[i].style.same_as(&style));
+        self.same.push(same);
         self.tree.styles.push(Styled { node, style, parent_box });
         if self.root.is_none() {
             self.root = Some(index);
@@ -709,6 +812,7 @@ impl<'a> Job<'a> {
                 self.account.add(&style);
                 let at = self.tree.styles.len() as u32;
                 self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1) });
+                self.same.push(false);
                 self.tree.pseudos.insert((node, pseudo), at);
             }
         }
@@ -732,8 +836,9 @@ impl<'a> Job<'a> {
     pub fn finish(self) -> Result<StyleTree> {
         if let Some(t) = &self.timing {
             eprintln!(
-                "style timing: {} elements, {} candidates ({:.1} per element; {} rejected, {} compounds, {} tests, {} steps): hints {:.1} ms, matching {:.1} ms, computing {:.1} ms, pseudo {:.1} ms; font cache {:?}",
-                t.elements,
+                "style timing: {} elements ({} reused), {} candidates ({:.1} per element; {} rejected, {} compounds, {} tests, {} steps): hints {:.1} ms, matching {:.1} ms, computing {:.1} ms, pseudo {:.1} ms; font cache {:?}",
+                t.elements + self.progress.reused,
+                self.progress.reused,
                 t.candidates,
                 t.candidates as f64 / t.elements.max(1) as f64,
                 self.scratch.progress.rejected,
@@ -746,6 +851,19 @@ impl<'a> Job<'a> {
                 t.pseudo * 1000.,
                 self.fonts.stats()
             );
+            match (&self.options.previous, &self.previous) {
+                (Some(tree), None) => eprintln!(
+                    "  incremental: off (previous tree document {} revision {} generation {}; this document {} revision {}; log reaches: {})",
+                    tree.document,
+                    tree.revision,
+                    tree.generation,
+                    self.document.id(),
+                    self.document.revision(),
+                    self.document.changes_since(tree.revision).map(|c| c.len().to_string()).unwrap_or_else(|| "no".into())
+                ),
+                (Some(_), Some(inc)) => eprintln!("  incremental: {} changed elements, {} changed child lists", inc.nodes.len(), inc.children.len()),
+                _ => {}
+            }
             let ms: Vec<String> = compute::PHASES.iter().map(|p| format!("{:.1}", p.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e6)).collect();
             eprintln!(
                 "  computing: resolver {} ms, fonts {} ms, declared {} ms, coupled {} ms, customs {} ms ({} elements merged {} inherited entries), reuse {} ms",

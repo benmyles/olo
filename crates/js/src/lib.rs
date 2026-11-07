@@ -67,7 +67,7 @@ pub struct Fetched {
 pub type Fetcher = Box<dyn FnMut(&str, &str, &str) -> Result<Fetched, String>>;
 /// Lays out the document as it is now, for what scripts measure; the
 /// browser supplies one (olo_web::page::Measurer behind a host).
-pub type Measure = Box<dyn FnMut(&Document) -> Option<olo_web::page::Measured>>;
+pub type Measure = Box<dyn FnMut(&Document, Option<&olo_web::page::Measured>) -> Option<olo_web::page::Measured>>;
 /// How often scripts may have the page laid out, and for how long in all:
 /// past these, measurements come from the last layout.
 const LAYOUTS: usize = 400;
@@ -346,7 +346,7 @@ impl State {
         if stale && self.measure.is_some() && self.report.layouts < LAYOUTS && self.layout_seconds < LAYOUT_SECONDS {
             let started = Instant::now();
             let measure = self.measure.as_mut()?;
-            if let Some(m) = measure(&self.document) {
+            if let Some(m) = measure(&self.document, self.measured.as_ref()) {
                 self.measured = Some(m);
             }
             let took = started.elapsed().as_secs_f64();

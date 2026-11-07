@@ -283,7 +283,7 @@ fn render(
                 let mut shaper = shaping::Engine::default();
                 let cancel = r.cancel.clone();
                 let timing = std::env::var_os("OLO_BROWSER_TIMING").is_some();
-                Box::new(move |doc: &olo_web::dom::Document| match measurer.measure(doc, &host, &mut shaper, viewport, Some(&cancel)) {
+                Box::new(move |doc: &olo_web::dom::Document, previous: Option<&page::Measured>| match measurer.measure(doc, &host, &mut shaper, viewport, previous, Some(&cancel)) {
                     Ok(m) => {
                         if timing {
                             let [a, b, c, d] = m.phases_ms();

@@ -96,13 +96,39 @@ fn main() {
     let measurer = prepared.measurer();
     let mut shaper = shaping::Engine::default();
     let mut best = [f64::INFINITY; 4];
+    let mut last = None;
     for _ in 0..rounds {
-        let m = measurer.measure(prepared.document(), &host, &mut shaper, viewport, None).unwrap();
+        let m = measurer.measure(prepared.document(), &host, &mut shaper, viewport, None, None).unwrap();
         let p = m.phases_ms();
         for i in 0..4 {
             best[i] = best[i].min(p[i]);
         }
         println!("style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms", p[0], p[1], p[2], p[3]);
+        last = Some(m);
     }
     println!("best: style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms", best[0], best[1], best[2], best[3]);
+    // Incremental: a class toggled on one element deep in the page, then on
+    // the body, each measured against the previous measurement.
+    let mut doc = prepared.into_document();
+    let elements: Vec<_> = {
+        let mut out = Vec::new();
+        let mut stack = vec![doc.root()];
+        while let Some(n) = stack.pop() {
+            if doc.node_type(n).unwrap() == olo_web::dom::NodeType::Element {
+                out.push(n);
+            }
+            let children: Vec<_> = doc.children(n).unwrap().collect();
+            stack.extend(children.into_iter().rev());
+        }
+        out
+    };
+    let body = elements.iter().copied().find(|&n| doc.name(n).unwrap() == Some("body")).unwrap();
+    for (what, node) in [("a deep element", elements[elements.len() / 2]), ("the body", body)] {
+        let was = doc.attribute(node, "class").unwrap().unwrap_or("").to_owned();
+        doc.set_attribute(node, "class", format!("{was} bench-toggled")).unwrap();
+        let m = measurer.measure(&doc, &host, &mut shaper, viewport, last.as_ref(), None).unwrap();
+        let p = m.phases_ms();
+        println!("after a class toggle on {what}: style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms", p[0], p[1], p[2], p[3]);
+        last = Some(m);
+    }
 }

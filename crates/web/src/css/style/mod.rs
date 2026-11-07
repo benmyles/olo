@@ -331,6 +331,28 @@ impl Dictionary {
     fn chain(&self) -> impl Iterator<Item = &Dictionary> {
         std::iter::successors(Some(self), |d| d.parent.as_deref())
     }
+    /// Whether two dictionaries hold the same names with the same values,
+    /// level by level (shared levels compare by pointer).
+    fn same_as(&self, other: &Self) -> bool {
+        let mut a = Some(self);
+        let mut b = Some(other);
+        loop {
+            match (a, b) {
+                (None, None) => return true,
+                (Some(x), Some(y)) => {
+                    if !std::ptr::eq(x, y) && (x.values.len() != y.values.len() || !x.values.iter().zip(y.values.iter()).all(|(p, q)| p.name == q.name && p.value.same(&q.value))) {
+                        return false;
+                    }
+                    if std::ptr::eq(x, y) {
+                        return true;
+                    }
+                    a = x.parent.as_deref();
+                    b = y.parent.as_deref();
+                }
+                _ => return false,
+            }
+        }
+    }
 }
 /// Typed initial declarations and their contextual computed baseline are
 /// compiled once per host generation, shared by all its element styles.
@@ -349,6 +371,11 @@ pub struct Defaults {
     empty_customs: Arc<Dictionary>,
 }
 impl Defaults {
+    /// Whether these defaults are the host's as it is now (its revision and
+    /// device scale), so styles made with them can be kept.
+    pub fn is_current(&self, host: &impl Host) -> bool {
+        self.revision == host.revision() && self.device_scale == host.device_scale() && self.initial_font.context == host.font_context()
+    }
     pub fn new(host: &impl Host, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Arc<Self>> {
         check(cancelled)?;
         if !host.device_scale().is_finite() || host.device_scale() <= 0. {
@@ -441,6 +468,7 @@ pub struct Dependencies {
 /// A coherent generation's computed values; logical aliases are queried using
 /// this element's axes. No parent/cascade/source tree is retained. Sparse
 /// overrides and unchanged fonts/custom dictionaries share immutable storage.
+#[derive(Clone)]
 pub struct Style {
     defaults: Arc<Defaults>,
     values: Arc<[Entry]>,
@@ -606,6 +634,18 @@ impl Style {
     }
     pub fn overrides_share(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.values, &other.values)
+    }
+    /// Whether two styles are the same in every value (so children styled
+    /// against either compute the same): the sparse entries, the font,
+    /// the custom properties, the axes.
+    pub fn same_as(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.defaults, &other.defaults)
+            && self.axes == other.axes
+            && self.line_height == other.line_height
+            && (Arc::ptr_eq(&self.values, &other.values)
+                || self.values.len() == other.values.len() && self.values.iter().zip(other.values.iter()).all(|(a, b)| a.property == b.property && a.value.same(&b.value)))
+            && (Arc::ptr_eq(&self.font, &other.font) || self.font.request == other.font.request && self.font.context == other.font.context)
+            && (Arc::ptr_eq(&self.customs, &other.customs) || self.customs.same_as(&other.customs))
     }
     pub fn custom(&self, name: &str) -> Option<variables::Computed> {
         self.customs.get(name).cloned()

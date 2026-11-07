@@ -90,6 +90,10 @@ impl Prepared {
     pub fn document(&self) -> &Document {
         &self.document
     }
+    /// The document, to change and measure again (benchmarks).
+    pub fn into_document(self) -> Document {
+        self.document
+    }
     /// A measurer for this page as prepared: styles and lays it out on
     /// demand (scripts' measurements, benchmarks).
     pub fn measurer(&self) -> Measurer {
@@ -309,15 +313,28 @@ impl Measurer {
         self.media
     }
     /// Style and lay out `doc` as it is now.
-    pub fn measure(&self, doc: &Document, host: &impl Host, shaper: &mut shaping::Engine, viewport: layout::Viewport, cancel: Option<&AtomicBool>) -> Result<Measured> {
+    pub fn measure(&self, doc: &Document, host: &impl Host, shaper: &mut shaping::Engine, viewport: layout::Viewport, previous: Option<&Measured>, cancel: Option<&AtomicBool>) -> Result<Measured> {
         if host.font_context() != self.scope.context() {
             return Err(style::Error::Stale.into());
         }
         let started = std::time::Instant::now();
         let mut phases = [0f64; 4];
-        let defaults = Defaults::new(host, Default::default(), cancel)?;
+        // The previous measurement's defaults, while the host is the same:
+        // styles compare equal only against the same defaults.
+        let defaults = match previous.filter(|m| m.defaults.is_current(host)) {
+            Some(m) => m.defaults.clone(),
+            None => Defaults::new(host, Default::default(), cancel)?,
+        };
         let snapshot = interaction::Snapshot::new(doc, Interaction::default(), cancel);
-        let mut job = style::Job::new(doc, &self.rules, defaults, style::JobOptions { quirks: self.quirks, states: Some(&snapshot), ..Default::default() }, Default::default(), cancel)?;
+        let previous_styles = previous.map(|m| m.layout.cache().tree().styles().as_ref());
+        let mut job = style::Job::new(
+            doc,
+            &self.rules,
+            defaults.clone(),
+            style::JobOptions { quirks: self.quirks, states: Some(&snapshot), previous: previous_styles, ..Default::default() },
+            Default::default(),
+            cancel,
+        )?;
         while !job.step(256, |_| host)?.finished {}
         let styles = Arc::new(job.finish()?);
         phases[0] = started.elapsed().as_secs_f64() * 1000.;
@@ -347,7 +364,7 @@ impl Measurer {
             }
             index.entry(b.node).or_insert(id);
         }
-        Ok(Measured { layout, index, revision: doc.revision(), viewport, phases })
+        Ok(Measured { layout, index, revision: doc.revision(), viewport, phases, defaults })
     }
 }
 /// One layout of the document, queried by node.
@@ -357,6 +374,7 @@ pub struct Measured {
     revision: u64,
     viewport: layout::Viewport,
     phases: [f64; 4],
+    defaults: Arc<Defaults>,
 }
 impl Measured {
     /// Milliseconds spent styling, building boxes, preparing text and

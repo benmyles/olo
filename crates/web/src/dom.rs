@@ -272,9 +272,28 @@ pub struct Memory {
 /// References to a removed node fail even after its slot is reused; IDs
 /// from another navigation/document always fail. Read methods borrow the
 /// document, so mutation cannot invalidate a live Rust view/iterator.
+/// One change to the document, for restyling only what changed: the
+/// revision it made, and what.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Change {
+    /// An element's attributes changed (its own matching inputs).
+    Node(NodeId),
+    /// A text node's data changed (what its parent lays out).
+    Text(NodeId),
+    /// A node's child list changed: children inserted, removed or moved
+    /// (every child's sibling-dependent matching, and what the node holds).
+    Children(NodeId),
+    /// A change the log does not describe: everything may have changed.
+    Unknown,
+}
+/// How many changes the log keeps before giving up on describing them.
+const CHANGES: usize = 1 << 16;
 pub struct Document {
     id: u64,
     revision: u64,
+    /// Changes since `changes_from`, each with the revision it made.
+    changes: Vec<(u64, Change)>,
+    changes_from: u64,
     source: Arc<str>,
     nodes: Vec<Node>,
     free_nodes: Link,
@@ -313,6 +332,8 @@ impl Document {
         Ok(Self {
             id,
             revision: 0,
+            changes: Vec::new(),
+            changes_from: 0,
             source,
             nodes: vec![Node::new(Data::Document, 1)],
             free_nodes: None,
@@ -368,9 +389,27 @@ impl Document {
         }
         Ok(link(id.slot as usize))
     }
+    /// A mutation the log cannot describe: restyles start over.
     fn bump(&mut self) -> Result<()> {
+        self.bump_with(Change::Unknown)
+    }
+    fn bump_with(&mut self, change: Change) -> Result<()> {
         self.revision = self.revision.checked_add(1).ok_or(Error::RevisionOverflow)?;
+        if self.changes.len() >= CHANGES {
+            self.changes.clear();
+            self.changes_from = self.revision;
+        }
+        self.changes.push((self.revision, change));
         Ok(())
+    }
+    /// The changes made after `revision`, oldest first, or None when the log
+    /// no longer reaches back that far (then everything may have changed).
+    pub fn changes_since(&self, revision: u64) -> Option<&[(u64, Change)]> {
+        if revision < self.changes_from {
+            return None;
+        }
+        let start = self.changes.partition_point(|(r, _)| *r <= revision);
+        Some(&self.changes[start..])
     }
     fn can_allocate(&self) -> Result<()> {
         self.can_allocate_count(1)
@@ -632,7 +671,8 @@ impl Document {
             Data::Text(v) | Data::Comment(v) | Data::ProcessingInstruction { data: v, .. } => *v = new,
             _ => unreachable!(),
         }
-        self.bump()?;
+        let id = self.handle(at);
+        self.bump_with(Change::Text(id))?;
         Ok(true)
     }
 
@@ -659,7 +699,8 @@ impl Document {
             let end = old.start as usize + old.len as usize;
             if self.source.get(end..).is_some_and(|rest| text.as_ptr() == rest.as_ptr() && text.len() <= rest.len()) {
                 self.replace_character_value(at, TextValue { start: old.start, len: old.len + text.len() as u32 });
-                self.bump()?;
+                let id = self.handle(at);
+                self.bump_with(Change::Text(id))?;
                 return Ok(true);
             }
         }
@@ -673,7 +714,8 @@ impl Document {
             let value = self.growing.get_mut(NonZeroU32::new(old.start).unwrap());
             if value.capacity() >= required {
                 value.push_str(&text);
-                self.bump()?;
+                let id = self.handle(at);
+                self.bump_with(Change::Text(id))?;
                 return Ok(true);
             }
         }
@@ -696,7 +738,8 @@ impl Document {
         self.owned_bytes += value.capacity();
         let slot = self.growing.insert(value);
         self.replace_character_value(at, TextValue { start: slot.get(), len: u32::MAX - 1 });
-        self.bump()?;
+        let id = self.handle(at);
+        self.bump_with(Change::Text(id))?;
         Ok(true)
     }
 
@@ -769,7 +812,8 @@ impl Document {
                 let new = self.store_text(value, self.owned_len(old))?;
                 self.free_text(old);
                 self.attributes.get_mut(attr).value = new;
-                self.bump()?;
+                let id = self.handle(at);
+                self.bump_with(Change::Node(id))?;
                 return Ok(true);
             }
             last = Some(attr);
@@ -790,7 +834,8 @@ impl Document {
             let (Data::Element { attributes, .. } | Data::Template { attributes, .. }) = &mut self.nodes[index(at)].data else { unreachable!() };
             *attributes = Some(attr);
         }
-        self.bump()?;
+        let id = self.handle(at);
+        self.bump_with(Change::Node(id))?;
         Ok(true)
     }
 
@@ -823,7 +868,8 @@ impl Document {
                 *attributes = Some(attr);
             }
             last = Some(attr);
-            self.bump()?;
+            let id = self.handle(node);
+            self.bump_with(Change::Node(id))?;
         }
         Ok(())
     }
@@ -836,7 +882,8 @@ impl Document {
         while let Some(attr) = next {
             let a = self.attributes.get(attr);
             if Some(a.name.atom()) == atom {
-                self.bump()?;
+                let id = self.handle(at);
+                self.bump_with(Change::Node(id))?;
                 let a = self.attributes.remove(attr);
                 if let Some(previous) = previous {
                     self.attributes.get_mut(previous).next = a.next;
@@ -873,10 +920,11 @@ impl Document {
     }
     pub fn detach(&mut self, id: NodeId) -> Result<bool> {
         let at = self.resolve(id)?;
-        if self.nodes[index(at)].parent.is_none() {
+        let Some(parent) = self.nodes[index(at)].parent else {
             return Ok(false);
-        }
-        self.bump()?;
+        };
+        let parent = self.handle(parent);
+        self.bump_with(Change::Children(parent))?;
         self.unlink(at);
         Ok(true)
     }
@@ -983,8 +1031,15 @@ impl Document {
         } else if inserted.iter().any(|id| matches!(self.nodes[index(*id)].data, Data::Doctype(_))) {
             return Err(Error::Hierarchy);
         }
-        self.bump()?;
+        let parent_id = self.handle(parent);
+        self.bump_with(Change::Children(parent_id))?;
         for &child in inserted.as_ref() {
+            if let Some(old) = self.nodes[index(child)].parent
+                && old != parent
+            {
+                let old = self.handle(old);
+                self.changes.push((self.revision, Change::Children(old)));
+            }
             self.unlink(child);
             let previous = if let Some(before) = before { self.nodes[index(before)].previous } else { self.nodes[index(parent)].last };
             let n = &mut self.nodes[index(child)];
@@ -1142,7 +1197,13 @@ impl Document {
         if matches!(self.nodes[index(root)].data, Data::Document | Data::Fragment { host: Some(_) }) {
             return Err(Error::Hierarchy);
         }
-        self.bump()?;
+        match self.nodes[index(root)].parent {
+            Some(parent) => {
+                let parent = self.handle(parent);
+                self.bump_with(Change::Children(parent))?;
+            }
+            None => self.bump()?,
+        }
         self.unlink(root);
         let mut cursor = root;
         let mut removed = 0;
