@@ -77,9 +77,13 @@ impl Engine {
                 mask = if c.clip == u32::MAX {
                     None
                 } else {
-                    let r = scene.clips[c.clip as usize];
+                    let clip = &scene.clips[c.clip as usize];
                     let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
-                    if let Some(r) = local(r) {
+                    if let Some(radii) = &clip.radii {
+                        if let Some(path) = super::decoration::path(clip.rect, radii, scale, region) {
+                            m.fill_path(&path, FillRule::Winding, true, transform);
+                        }
+                    } else if let Some(r) = local(clip.rect) {
                         let path = PathBuilder::from_rect(r);
                         m.fill_path(&path, FillRule::Winding, false, transform);
                     }
@@ -151,6 +155,12 @@ impl Engine {
                     if let Some(r) = local(c.bounds) {
                         out.fill_rect(r, &paint(*color), transform, mask.as_ref());
                     }
+                }
+                Primitive::Decoration { owner, outer } => {
+                    let tree = scene.layout.cache().tree();
+                    let s = tree.style(*owner).ok_or(Error::Invalid)?;
+                    let g = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
+                    super::decoration::raster(&mut out, s, g, *outer, scale, region, mask.as_ref(), self.limits(), cancel)?;
                 }
                 Primitive::Border { owner, colors } => {
                     let b = scene.layout.geometry(*owner).ok_or(Error::Invalid)?.border_width;

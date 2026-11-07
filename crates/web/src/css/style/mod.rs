@@ -98,7 +98,7 @@ pub struct Limits {
 }
 impl Default for Limits {
     fn default() -> Self {
-        Self { properties: 128, custom_properties: 65536, retained_bytes: 16 * 1024 * 1024, work: 4_000_000, math: Default::default(), color: Default::default() }
+        Self { properties: 256, custom_properties: 65536, retained_bytes: 16 * 1024 * 1024, work: 4_000_000, math: Default::default(), color: Default::default() }
     }
 }
 fn check(cancelled: Option<&AtomicBool>) -> Result<()> {
@@ -235,6 +235,12 @@ pub enum Value {
     Inset(p::Inset),
     Tracks(p::Tracks),
     GridLine(p::GridLine),
+    Radius(p::Radius),
+    Images(p::Images<color::Computed>),
+    Shadows(p::Shadows<color::Computed>),
+    Sizes(p::Sizes),
+    Positions(p::Positions),
+    Repeats(p::Repeats),
     /// Explicit nonzero oblique angle in degrees; bare oblique is a keyword.
     Oblique(f64),
 }
@@ -250,6 +256,12 @@ impl Value {
             (Self::Inset(a), Self::Inset(b)) => a.same(b),
             (Self::Tracks(a), Self::Tracks(b)) => a.same(b),
             (Self::GridLine(a), Self::GridLine(b)) => a == b,
+            (Self::Radius(a), Self::Radius(b)) => a.same(b),
+            (Self::Images(a), Self::Images(b)) => Arc::ptr_eq(&a.0, &b.0),
+            (Self::Shadows(a), Self::Shadows(b)) => Arc::ptr_eq(&a.0, &b.0),
+            (Self::Sizes(a), Self::Sizes(b)) => Arc::ptr_eq(&a.0, &b.0),
+            (Self::Positions(a), Self::Positions(b)) => Arc::ptr_eq(&a.0, &b.0),
+            (Self::Repeats(a), Self::Repeats(b)) => Arc::ptr_eq(&a.0, &b.0),
             (Self::Oblique(a), Self::Oblique(b)) => a.to_bits() == b.to_bits(),
             _ => false,
         }
@@ -265,6 +277,12 @@ impl Value {
             Self::Inset(s) => s.reserved_bytes(),
             Self::Tracks(t) => t.reserved_bytes(),
             Self::GridLine(l) => l.reserved_bytes(),
+            Self::Radius(r) => r.reserved_bytes(),
+            Self::Images(i) => i.reserved_bytes(),
+            Self::Shadows(s) => s.reserved_bytes(),
+            Self::Sizes(s) => s.reserved_bytes(),
+            Self::Positions(p) => p.reserved_bytes(),
+            Self::Repeats(r) => r.reserved_bytes(),
             _ => 0,
         }
     }

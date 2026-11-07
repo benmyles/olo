@@ -29,8 +29,10 @@ Next, in impact order (each removes a fallback kind or a visible gap):
 - [ ] Styled inline runs: a paragraph shaped from several fonts/sizes
   (46 inlines flattened into their paragraph's typography).
 - [ ] Flex wrapping (8), vertical-align (23 images), opacity groups (45).
-- [ ] Paint: background images and gradients, border-radius, box-shadow,
-  transforms, opacity groups, dashed/dotted borders, inline backgrounds.
+- [x] Paint: gradients, border-radius, box-shadow, rounded overflow clips.
+- [ ] Paint: `url()` background images, `background-clip: text`, inset
+  shadows, transforms, opacity groups, dashed/dotted borders, inline
+  backgrounds, rounded borders with differing sides.
 - [ ] Text: letter-spacing/word-spacing (95), word-break/overflow-wrap (525),
   text-decoration, text-transform.
 - [ ] Form controls drawn with the kit's look; canvas/iframe placeholders.

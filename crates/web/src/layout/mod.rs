@@ -171,10 +171,10 @@ pub struct Edges {
     pub left: f64,
 }
 impl Edges {
-    fn horizontal(self) -> f64 {
+    pub fn horizontal(self) -> f64 {
         self.left + self.right
     }
-    fn vertical(self) -> f64 {
+    pub fn vertical(self) -> f64 {
         self.top + self.bottom
     }
 }

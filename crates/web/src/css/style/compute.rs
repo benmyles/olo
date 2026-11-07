@@ -169,6 +169,18 @@ fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_
         p::Value::Inset(shape) => Value::Inset(shape.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
         p::Value::Tracks(tracks) => Value::Tracks(tracks.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
         p::Value::GridLine(line) => Value::GridLine(line),
+        p::Value::Radius(r) => Value::Radius(r.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
+        p::Value::Sizes(s) => Value::Sizes(s.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
+        p::Value::Positions(p) => Value::Positions(p.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
+        p::Value::Repeats(r) => Value::Repeats(r),
+        p::Value::Images(images) => {
+            let colors = context::Color { numeric };
+            Value::Images(images.computed(&colors, &colors.numeric, limits.math, limits.color, cancelled).map_err(Error::property)?)
+        }
+        p::Value::Shadows(shadows) => {
+            let colors = context::Color { numeric };
+            Value::Shadows(shadows.computed(&colors, &colors.numeric, limits.math, limits.color, cancelled).map_err(Error::property)?)
+        }
         p::Value::Keyword(k @ (Keyword::Thin | Keyword::Medium | Keyword::Thick))
             if matches!(property, Property::BorderTopWidth | Property::BorderRightWidth | Property::BorderBottomWidth | Property::BorderLeftWidth) =>
         {

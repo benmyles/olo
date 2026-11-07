@@ -5369,3 +5369,31 @@ stripe.com now renders in Sohne (journal screenshot): the heading,
 navigation and buttons match Chrome's typography. The same 759 fallbacks
 remain; letter-spacing and the superscript's vertical-align/font-size
 (flattened inline typography) are the next visible text differences.
+
+## 2026-11-06 (late): rounded corners, gradients and shadows
+
+New property grammars (`css/properties/decoration.rs`): the four corner
+radii and `border-radius` (with `/`), `background-image` with
+`linear-gradient`/`radial-gradient` (and `repeating-`, `-webkit-`
+prefixes, angles, `to` sides and corners, colour hints as stops, radial
+shapes/sizes/positions) and `url()`, `background-size/position/repeat/
+clip/origin`, the `background` shorthand (per layer image, position
+`/ size`, repeat, box keywords, a colour on the last layer), and
+`box-shadow` lists. Colours in these values are generic over
+specified/computed, so stops compute with the element's `currentcolor`
+and colour scheme.
+
+A box whose style has any of these paints through one `Decoration`
+primitive (`paint/decoration.rs`): outer shadows last-first, each a
+rounded shape blurred by three box blurs on an alpha mask with the box
+cut out (DestinationOut), then the background colour and gradient layers
+clipped to the border, padding or content box per `background-clip`,
+then a uniform rounded border as an even-odd ring between the outer and
+inset rounded rectangles (mixed sides fall back to the straight painter,
+recorded). Overflow-clipping boxes with radii clip their descendants to
+a rounded path. `url()` backgrounds, `background-clip: text` and inset
+shadows are recorded fallbacks for now. The style property limit rose to
+256 (141 longhands now).
+
+Stripe: rounded buttons and the header's shadow (journal screenshot);
+stylesheet issues fell from 1,770 to 1,185.

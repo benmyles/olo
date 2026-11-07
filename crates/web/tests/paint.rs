@@ -471,3 +471,37 @@ fn structured_text_matches_linear_cluster_reference_and_preserves_literal_zwsp()
         assert!(values.contains('\u{200b}'), "DOM-authored zero-width spaces must not be filtered");
     }
 }
+
+#[test]
+fn rounded_corners_gradients_and_shadows_paint_from_style() {
+    let mut p = paint::Engine::default();
+    // A 40×40 box with 10px radii at (10,10): the corner pixel outside the
+    // curve stays white, the centre is red, the straight edge mid-side is red.
+    let s = scene("<div id=b></div>", "div{width:40px;height:40px;margin:10px;background:red;border-radius:10px}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 10, 10), [255; 4], "corner outside the curve");
+    assert_eq!(pixel(&t, 30, 30), [255, 0, 0, 255]);
+    assert_eq!(pixel(&t, 30, 10), [255, 0, 0, 255], "top edge, mid side");
+    assert_eq!(pixel(&t, 15, 15), [255, 0, 0, 255], "inside the curve");
+    // A horizontal gradient from red to blue: red at the left, blue at the right.
+    let s = scene("<div></div>", "div{width:100px;height:20px;background:linear-gradient(to right, red, blue)}", &mut p);
+    let t = render(&mut p, &s);
+    let left = pixel(&t, 1, 10);
+    let right = pixel(&t, 98, 10);
+    assert!(left[0] > 240 && left[2] < 15, "{left:?}");
+    assert!(right[2] > 240 && right[0] < 15, "{right:?}");
+    let middle = pixel(&t, 50, 10);
+    assert!(middle[0] > 100 && middle[2] > 100, "{middle:?}");
+    // A box shadow below and to the right, blurred: darkens pixels outside the box.
+    let s = scene("<div></div>", "div{width:40px;height:40px;margin:10px;background:white;box-shadow:10px 10px 6px rgba(0,0,0,0.8)}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 30, 30), [255; 4], "box interior stays white");
+    assert!(pixel(&t, 55, 55)[0] < 120, "shadow below-right: {:?}", pixel(&t, 55, 55));
+    assert_eq!(pixel(&t, 5, 5), [255; 4], "no shadow above-left");
+    // A rounded uniform border paints as a ring; the corner pixel stays white.
+    let s = scene("<div></div>", "div{width:30px;height:30px;margin:10px;border:5px solid blue;border-radius:12px}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 10, 10), [255; 4]);
+    assert_eq!(pixel(&t, 25, 12), [0, 0, 255, 255], "top border mid side");
+    assert_eq!(pixel(&t, 25, 25), [255; 4], "interior");
+}

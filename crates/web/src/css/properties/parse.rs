@@ -40,6 +40,48 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
         }
         return grid::parse_tracks(values, limits, cancelled).map(|value| smallvec::smallvec![Assignment { property, value }]);
     }
+    // Decoration values (image lists, shadows, radii) take any number of components.
+    if let Name::Longhand(property) = name
+        && matches!(property.grammar(), Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius)
+    {
+        let parts: Vec<Component<'_>> = values.clone().filter(|c| c.kind() != Kind::Whitespace).collect();
+        if let [c] = parts.as_slice()
+            && c.kind() == Kind::Ident
+            && let Some(wide) = wide(c.text().unwrap())
+        {
+            return Ok(name.wide(wide));
+        }
+        if parts.is_empty() {
+            return Err(Error::Invalid);
+        }
+        let value = match property.grammar() {
+            Grammar::Images => decoration::parse_images(&parts, limits, cancelled)?,
+            Grammar::Sizes => decoration::parse_sizes(&parts, limits, cancelled)?,
+            Grammar::Positions => decoration::parse_positions(&parts, limits, cancelled)?,
+            Grammar::Repeats => decoration::parse_repeats(&parts)?,
+            Grammar::Shadows => decoration::parse_shadows(&parts, limits, cancelled)?,
+            _ => decoration::parse_radius(&parts, limits, cancelled)?,
+        };
+        return Ok(smallvec::smallvec![Assignment { property, value }]);
+    }
+    if let Name::Shorthand(shorthand) = name
+        && matches!(shorthand.expansion(), Expansion::Radius | Expansion::Background)
+    {
+        let parts: Vec<Component<'_>> = values.clone().filter(|c| c.kind() != Kind::Whitespace).collect();
+        if let [c] = parts.as_slice()
+            && c.kind() == Kind::Ident
+            && let Some(wide) = wide(c.text().unwrap())
+        {
+            return Ok(name.wide(wide));
+        }
+        if parts.is_empty() {
+            return Err(Error::Invalid);
+        }
+        return match shorthand.expansion() {
+            Expansion::Radius => decoration::parse_radius_shorthand(&parts, shorthand.properties(), limits, cancelled),
+            _ => decoration::parse_background(&parts, shorthand.properties(), limits, cancelled),
+        };
+    }
     if let Name::Shorthand(shorthand) = name
         && matches!(shorthand.expansion(), Expansion::Grid)
     {
@@ -87,7 +129,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 Expansion::WideOnly => Err(Error::Invalid),
                 Expansion::WhiteSpace => white_space(&parts),
                 Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
-                Expansion::Grid => unreachable!("grid shorthands parse before part collection"),
+                Expansion::Grid | Expansion::Radius | Expansion::Background => unreachable!("these shorthands parse before part collection"),
                 Expansion::Border => border(&parts, properties, limits, cancelled),
                 Expansion::Quad | Expansion::Repeat => {
                     if parts.len() > properties.len() {
@@ -252,7 +294,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
                 _ => Keyword::Row,
             }))
         }
-        Grammar::Tracks => unreachable!("track lists parse before part collection"),
+        Grammar::Tracks | Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius => unreachable!("parsed before part collection"),
         Grammar::Color(keywords) => {
             if parts.len() == 1
                 && let Some(k) = keyword(parts[0], keywords)
@@ -319,6 +361,7 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
             Numeric::compile(c, NumericKind::LengthPercentage, Range::Nonnegative, limits, cancelled).map(Value::Numeric)
         }
         Grammar::Display | Grammar::FontFamily | Grammar::FontStyle | Grammar::Tracks | Grammar::GridLine | Grammar::GridAutoFlow => Err(Error::Invalid),
+        Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius => Err(Error::Invalid),
     }
 }
 fn wide(s: &str) -> Option<variables::Wide> {
@@ -344,7 +387,7 @@ fn unsupported_function(c: Component<'_>) -> Result<()> {
         Ok(())
     }
 }
-fn color_error(e: color::Error) -> Error {
+pub(super) fn color_error(e: color::Error) -> Error {
     match e {
         color::Error::Invalid => Error::Invalid,
         color::Error::Unsupported(s) => Error::Unsupported(s),

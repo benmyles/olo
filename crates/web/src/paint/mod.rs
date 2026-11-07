@@ -1,6 +1,7 @@
 //! Retained native page paint commands and bounded CPU raster tiles. Worker-only.
 //! Outline rasterization is not yet Chromium font rasterization or full CSS paint.
 mod border;
+pub mod decoration;
 mod glyph;
 mod image;
 mod index;

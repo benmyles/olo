@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: Stripe with rounded buttons and shadows
+
+*21:59* — border-radius, background gradients and box-shadow paint from the box's style: rounded fills, rings and clips, linear and radial gradients through tiny-skia shaders, blurred shadows on an alpha layer with the box cut out. Stripe's buttons and header now carry their radii and shadow.
+
+![Browser: Stripe with rounded buttons and shadows](2026-11-06/215934-browser-stripe-with-rounded-buttons-and-shadows.png)
+
 ### Browser: Stripe in its own web font
 
 *21:44* — @font-face rules are parsed, their WOFF2/WOFF sources fetched relative to their stylesheet and decoded in Rust (Brotli stream, transformed glyf/loca and hmtx rebuilt), and the page is styled and shaped with a font scope that holds its web faces (unicode-range respected). Stripe's heading, navigation and buttons render in Sohne.

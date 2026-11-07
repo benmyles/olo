@@ -1,5 +1,6 @@
 //! Typed property declarations, before cascade and layout. Worker-only APIs.
 mod clip;
+mod decoration;
 mod display;
 mod flex;
 mod font;
@@ -9,6 +10,7 @@ mod parse;
 mod registry;
 use super::{Component, Components, Kind, Statement, StatementKind, color, math, variables};
 pub use clip::{GeometryBox, Inset, LocalUrl};
+pub use decoration::{Direction, Image, Images, Positions, RadialSize, Radius, RepeatAxis, Repeats, Shadow, Shadows, Size, Sizes, Stop};
 pub use display::{Display, Inner, Internal, Outer};
 pub use font::{Families, Family, GenericFamily};
 pub use grid::{AutoRepeat, Entry as TrackEntry, GridLine, Track, TrackSize, Tracks};
@@ -93,6 +95,12 @@ pub enum Value {
     Inset(Inset),
     Tracks(Tracks),
     GridLine(GridLine),
+    Radius(Radius),
+    Images(Images<color::Value>),
+    Shadows(Shadows<color::Value>),
+    Sizes(Sizes),
+    Positions(Positions),
+    Repeats(Repeats),
     Pending(Arc<Pending>),
 }
 
@@ -116,6 +124,12 @@ impl Value {
             Self::Inset(s) => s.reserved_bytes(),
             Self::Tracks(t) => t.reserved_bytes(),
             Self::GridLine(l) => l.reserved_bytes(),
+            Self::Radius(r) => r.reserved_bytes(),
+            Self::Images(i) => i.reserved_bytes(),
+            Self::Shadows(s) => s.reserved_bytes(),
+            Self::Sizes(s) => s.reserved_bytes(),
+            Self::Positions(p) => p.reserved_bytes(),
+            Self::Repeats(r) => r.reserved_bytes(),
             Self::Color(v) => v.expression_reserved_bytes(),
             Self::Pending(v) => size_of::<Pending>() + 2 * size_of::<usize>() + v.tokens.arena_reserved_bytes(),
             _ => 0,

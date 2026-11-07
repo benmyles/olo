@@ -18,11 +18,35 @@ impl Default for Options {
 }
 #[derive(Clone, Debug)]
 pub enum Primitive {
-    Image { owner: BoxId, image: u32 },
-    Vector { owner: BoxId, vector: u32, origin: Point },
-    Fill { color: [u8; 4] },
-    Border { owner: BoxId, colors: [[u8; 4]; 4] },
-    Text { owner: BoxId, fragment: u32, glyphs: Range<u32>, origin: Point, color: [u8; 4] },
+    Image {
+        owner: BoxId,
+        image: u32,
+    },
+    Vector {
+        owner: BoxId,
+        vector: u32,
+        origin: Point,
+    },
+    Fill {
+        color: [u8; 4],
+    },
+    Border {
+        owner: BoxId,
+        colors: [[u8; 4]; 4],
+    },
+    /// Shadows, backgrounds (colour, gradients) and borders with rounded
+    /// corners, painted from the owner's style; `outer` is its border box.
+    Decoration {
+        owner: BoxId,
+        outer: Rect,
+    },
+    Text {
+        owner: BoxId,
+        fragment: u32,
+        glyphs: Range<u32>,
+        origin: Point,
+        color: [u8; 4],
+    },
 }
 #[derive(Clone, Debug)]
 pub struct Command {
@@ -30,10 +54,17 @@ pub struct Command {
     pub primitive: Primitive,
     pub(super) clip: u32,
 }
+/// A clip for descendants of an overflow-clipping box: its padding box,
+/// rounded when the box has corner radii.
+#[derive(Clone, Debug)]
+pub struct Clip {
+    pub rect: Rect,
+    pub radii: Option<decoration::Radii>,
+}
 pub struct Scene {
     pub(super) layout: Arc<layout::Layout>,
     pub(super) commands: Box<[Command]>,
-    pub(super) clips: Box<[Rect]>,
+    pub(super) clips: Box<[Clip]>,
     pub(super) vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     pub(super) vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     pub(super) index: index::Index,
@@ -46,7 +77,7 @@ impl Scene {
         &self.layout
     }
     pub fn node(&self, command: u32) -> Option<crate::dom::NodeId> {
-        if let Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } = self.commands.get(command as usize)?.primitive {
+        if let Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } | Primitive::Decoration { owner, .. } = self.commands.get(command as usize)?.primitive {
             self.layout.cache().tree().get(owner).map(|b| b.node)
         } else {
             self.text_node(command)
@@ -139,7 +170,7 @@ impl Scene {
     /// Clipped ink bounds for structured text. Empty clips never become actions.
     pub fn visible_bounds(&self, command: u32) -> Option<Rect> {
         let c = self.commands.get(command as usize)?;
-        let bounds = if c.clip == NONE { c.bounds } else { intersection(c.bounds, self.clips[c.clip as usize]) };
+        let bounds = if c.clip == NONE { c.bounds } else { intersection(c.bounds, self.clips[c.clip as usize].rect) };
         (bounds.width > 0. && bounds.height > 0.).then_some(bounds)
     }
     pub fn content_extent(&self) -> Rect {
@@ -150,7 +181,7 @@ impl Scene {
     }
     pub fn command_payload_bytes(&self) -> usize {
         self.commands.len() * size_of::<Command>()
-            + self.clips.len() * size_of::<Rect>()
+            + self.clips.len() * size_of::<Clip>()
             + self.index.payload_bytes()
             + self.vector_geometry.capacity() * (size_of::<(u32, crate::svg::used::Geometry)>() + 1)
             + self.vector_geometry.values().map(|g| g.payload_bytes()).sum::<usize>()
@@ -164,7 +195,7 @@ impl Scene {
         self.index.query(&self.commands, region, out, cancel)?;
         out.retain(|&id| {
             let c = &self.commands[id as usize];
-            c.clip == NONE || intersects(self.clips[c.clip as usize], region)
+            c.clip == NONE || intersects(self.clips[c.clip as usize].rect, region)
         });
         Ok(())
     }
@@ -211,7 +242,7 @@ pub struct BuildJob<'a> {
     extent: Rect,
     states: Vec<State>,
     draft: Vec<Draft>,
-    clips: Vec<Rect>,
+    clips: Vec<Clip>,
     vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
@@ -302,12 +333,44 @@ impl<'a> BuildJob<'a> {
         if self.draft.len() >= self.limits.commands {
             return Err(Error::Limit);
         }
-        self.extent = union(self.extent, if clip == NONE { bounds } else { intersection(bounds, self.clips[clip as usize]) });
+        self.extent = union(self.extent, if clip == NONE { bounds } else { intersection(bounds, self.clips[clip as usize].rect) });
         self.draft.push(Draft { context, slot, text, command: Command { bounds, primitive, clip } });
         Ok(())
     }
     #[allow(clippy::too_many_arguments)]
     fn decorate(&mut self, id: BoxId, s: &Style, g: layout::Geometry, outer: Rect, group: (u32, u8), clip: u32, text: bool) -> Result<()> {
+        let radii = decoration::radii(s, outer);
+        let images = matches!(s.value(P::BackgroundImage), Value::Images(_));
+        let shadows = matches!(s.value(P::BoxShadow), Value::Shadows(_));
+        if decoration::rounded(&radii) || images || shadows {
+            if let Value::Images(list) = s.value(P::BackgroundImage)
+                && list.0.iter().flatten().any(|i| matches!(i, crate::css::properties::Image::Url(_)))
+            {
+                self.note("background image not loaded", id);
+            }
+            if matches!(s.value(P::BackgroundClip), Value::Keyword(K::Text)) {
+                self.note("background-clip: text not painted", id);
+            }
+            if let Value::Shadows(list) = s.value(P::BoxShadow)
+                && list.0.iter().any(|s| s.inset)
+            {
+                self.note("inset box-shadow not painted", id);
+            }
+            if decoration::rounded(&radii) {
+                let colors: Vec<[u8; 4]> = [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor].iter().map(|p| color(s, *p)).collect::<Result<_>>()?;
+                let widths = [g.border_width.top, g.border_width.right, g.border_width.bottom, g.border_width.left];
+                let visible: Vec<usize> = (0..4).filter(|&i| widths[i] > 0. && colors[i][3] != 0).collect();
+                if !visible.is_empty() && !(visible.len() == 4 && visible.iter().all(|&i| colors[i] == colors[0])) {
+                    self.note("rounded border with differing sides painted square", id);
+                }
+            }
+            let reach = decoration::shadow_extent(s);
+            let bounds = Rect { x: outer.x - reach.left, y: outer.y - reach.top, width: outer.width + reach.left + reach.right, height: outer.height + reach.top + reach.bottom };
+            if !valid(bounds) {
+                return Err(Error::Invalid);
+            }
+            return self.emit(group, text, bounds, Primitive::Decoration { owner: id, outer }, clip);
+        }
         let bg = color(s, P::BackgroundColor)?;
         if self.canvas_owner != Some(id) && bg[3] != 0 {
             self.emit(group, text, outer, Primitive::Fill { color: bg }, clip)?;
@@ -599,7 +662,7 @@ impl<'a> BuildJob<'a> {
             if !valid(outer) {
                 return Err(Error::Invalid);
             }
-            self.extent = union(self.extent, if clip == NONE { outer } else { intersection(outer, self.clips[clip as usize]) });
+            self.extent = union(self.extent, if clip == NONE { outer } else { intersection(outer, self.clips[clip as usize].rect) });
             let local = g.content_box();
             let origin = Point { x: parent.x + local.x, y: parent.y + local.y };
             let mut children_clip = clip;
@@ -650,13 +713,17 @@ impl<'a> BuildJob<'a> {
                             width: (outer.width - g.border_width.left - g.border_width.right).max(0.),
                             height: (outer.height - g.border_width.top - g.border_width.bottom).max(0.),
                         };
-                        let old = if clip == NONE { Rect { x: -1e30, y: -1e30, width: 2e30, height: 2e30 } } else { self.clips[clip as usize] };
+                        let old = if clip == NONE { Rect { x: -1e30, y: -1e30, width: 2e30, height: 2e30 } } else { self.clips[clip as usize].rect };
                         let clip_rect = intersection(
                             old,
                             Rect { x: if x { p.x } else { old.x }, y: if y { p.y } else { old.y }, width: if x { p.width } else { old.width }, height: if y { p.height } else { old.height } },
                         );
+                        // Rounded boxes clip to their rounded padding box (one axis
+                        // clipped keeps the curve, which is what Chrome does too).
+                        let radii = decoration::radii(s, outer);
+                        let radii = if x && y && decoration::rounded(&radii) && clip_rect == p { Some(decoration::inset_radii(&radii, g.border_width)) } else { None };
                         children_clip = self.clips.len() as u32;
-                        self.clips.push(clip_rect);
+                        self.clips.push(Clip { rect: clip_rect, radii });
                     }
                 }
                 BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. } => {}

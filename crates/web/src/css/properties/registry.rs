@@ -22,6 +22,12 @@ pub(super) enum Grammar {
     Tracks,
     GridLine,
     GridAutoFlow,
+    Radius,
+    Images,
+    Sizes,
+    Positions,
+    Repeats,
+    Shadows,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Expansion {
@@ -33,6 +39,8 @@ pub(super) enum Expansion {
     Repeat,
     Unordered,
     Grid,
+    Radius,
+    Background,
 }
 macro_rules! keyword_registry {
     ($($id:ident => $name:literal),* $(,)?) => {
@@ -122,6 +130,7 @@ keyword_registry! {
     Relative => "relative",
     Ridge => "ridge",
     Right => "right",
+    PaddingBox => "padding-box",
     Row => "row",
     RowDense => "row dense",
     Dense => "dense",
@@ -140,6 +149,7 @@ keyword_registry! {
     Static => "static",
     Sticky => "sticky",
     Stretch => "stretch",
+    Text => "text",
     Stroke => "stroke",
     Sub => "sub",
     Super => "super",
@@ -183,9 +193,17 @@ property_registry! {
     AlignContent, "align-content", Grammar::Keywords(&[Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::SpaceBetween,Keyword::SpaceAround,Keyword::SpaceEvenly,Keyword::Baseline]), "normal", false;
     AlignItems, "align-items", Grammar::Keywords(&[Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Baseline]), "normal", false;
     AlignSelf, "align-self", Grammar::Keywords(&[Keyword::Auto,Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Baseline]), "auto", false;
+    BackgroundClip, "background-clip", Grammar::Keywords(&[Keyword::BorderBox,Keyword::PaddingBox,Keyword::ContentBox,Keyword::Text]), "border-box", false;
     BackgroundColor, "background-color", Grammar::Color(&[]), "transparent", false;
+    BackgroundImage, "background-image", Grammar::Images, "none", false;
+    BackgroundOrigin, "background-origin", Grammar::Keywords(&[Keyword::BorderBox,Keyword::PaddingBox,Keyword::ContentBox]), "padding-box", false;
+    BackgroundPosition, "background-position", Grammar::Positions, "0% 0%", false;
+    BackgroundRepeat, "background-repeat", Grammar::Repeats, "repeat", false;
+    BackgroundSize, "background-size", Grammar::Sizes, "auto", false;
     BlockSize, "block-size", Grammar::Size(SizeKind::Preferred), "auto", false;
     BorderBottomColor, "border-bottom-color", Grammar::Color(&[]), "currentcolor", false;
+    BorderBottomLeftRadius, "border-bottom-left-radius", Grammar::Radius, "0", false;
+    BorderBottomRightRadius, "border-bottom-right-radius", Grammar::Radius, "0", false;
     BorderBottomStyle, "border-bottom-style", Grammar::Keywords(&[Keyword::None,Keyword::Hidden,Keyword::Dotted,Keyword::Dashed,Keyword::Solid,Keyword::Double,Keyword::Groove,Keyword::Ridge,Keyword::Inset,Keyword::Outset]), "none", false;
     BorderBottomWidth, "border-bottom-width", Grammar::Numeric(NumericKind::Length, Range::Nonnegative, &[Keyword::Thin,Keyword::Medium,Keyword::Thick]), "medium", false;
     BorderLeftColor, "border-left-color", Grammar::Color(&[]), "currentcolor", false;
@@ -195,9 +213,12 @@ property_registry! {
     BorderRightStyle, "border-right-style", Grammar::Keywords(&[Keyword::None,Keyword::Hidden,Keyword::Dotted,Keyword::Dashed,Keyword::Solid,Keyword::Double,Keyword::Groove,Keyword::Ridge,Keyword::Inset,Keyword::Outset]), "none", false;
     BorderRightWidth, "border-right-width", Grammar::Numeric(NumericKind::Length, Range::Nonnegative, &[Keyword::Thin,Keyword::Medium,Keyword::Thick]), "medium", false;
     BorderTopColor, "border-top-color", Grammar::Color(&[]), "currentcolor", false;
+    BorderTopLeftRadius, "border-top-left-radius", Grammar::Radius, "0", false;
+    BorderTopRightRadius, "border-top-right-radius", Grammar::Radius, "0", false;
     BorderTopStyle, "border-top-style", Grammar::Keywords(&[Keyword::None,Keyword::Hidden,Keyword::Dotted,Keyword::Dashed,Keyword::Solid,Keyword::Double,Keyword::Groove,Keyword::Ridge,Keyword::Inset,Keyword::Outset]), "none", false;
     BorderTopWidth, "border-top-width", Grammar::Numeric(NumericKind::Length, Range::Nonnegative, &[Keyword::Thin,Keyword::Medium,Keyword::Thick]), "medium", false;
     Bottom, "bottom", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
+    BoxShadow, "box-shadow", Grammar::Shadows, "none", false;
     BoxSizing, "box-sizing", Grammar::Keywords(&[Keyword::ContentBox,Keyword::BorderBox]), "content-box", false;
     CaretColor, "caret-color", Grammar::Color(&[Keyword::Auto]), "auto", true;
     Clear, "clear", Grammar::Keywords(&[Keyword::None,Keyword::Left,Keyword::Right,Keyword::Both,Keyword::InlineStart,Keyword::InlineEnd]), "none", false;
@@ -321,9 +342,11 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
-    All, "all", [AlignContent,AlignItems,AlignSelf,BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [AlignContent,AlignItems,AlignSelf,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
+    BorderRadius, "border-radius", [BorderTopLeftRadius,BorderTopRightRadius,BorderBottomRightRadius,BorderBottomLeftRadius], Radius;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;
     Flex, "flex", [FlexGrow,FlexShrink,FlexBasis], Flex;

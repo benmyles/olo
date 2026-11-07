@@ -1,0 +1,711 @@
+//! Box decoration values: corner radii, background images (gradients and
+//! URLs) with their size, position and repeat, and box shadows. Colours are
+//! generic so one type serves specified (`color::Value`) and computed
+//! (`color::Computed`) values.
+use super::*;
+/// One corner's horizontal and vertical radii.
+#[derive(Clone, Debug)]
+pub struct Radius {
+    pub x: Numeric,
+    pub y: Numeric,
+}
+impl Radius {
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        self.x.same(&other.x) && self.y.same(&other.y)
+    }
+    pub(crate) fn reserved_bytes(&self) -> usize {
+        self.x.expression().memory().accounted_reserved_bytes + self.y.expression().memory().accounted_reserved_bytes
+    }
+    pub fn computed(&self, context: &impl math::Context, limits: math::Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
+        Ok(Self { x: self.x.computed(context, true, limits, cancelled)?, y: self.y.computed(context, true, limits, cancelled)? })
+    }
+}
+#[derive(Clone, Debug)]
+pub struct Stop<C> {
+    pub color: C,
+    /// Along the gradient line; a length-percentage, or none for even spacing.
+    pub position: Option<Numeric>,
+}
+/// Where a linear gradient points: an angle, or a side/corner as unit steps.
+#[derive(Clone, Debug)]
+pub enum Direction {
+    Angle(Numeric),
+    To { x: i8, y: i8 },
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RadialSize {
+    ClosestSide,
+    FarthestSide,
+    ClosestCorner,
+    FarthestCorner,
+}
+#[derive(Clone, Debug)]
+pub enum Image<C> {
+    Url(Arc<str>),
+    Linear { direction: Direction, stops: Box<[Stop<C>]>, repeating: bool },
+    Radial { circle: bool, size: RadialSize, explicit: Option<(Numeric, Numeric)>, at: (Numeric, Numeric), stops: Box<[Stop<C>]>, repeating: bool },
+}
+/// `background-image`'s layers, first on top. `none` is the keyword.
+#[derive(Clone, Debug)]
+pub struct Images<C>(pub Arc<[Option<Image<C>>]>);
+#[derive(Clone, Debug)]
+pub struct Shadow<C> {
+    /// None takes the box's `color`.
+    pub color: Option<C>,
+    pub x: Numeric,
+    pub y: Numeric,
+    pub blur: Numeric,
+    pub spread: Numeric,
+    pub inset: bool,
+}
+#[derive(Clone, Debug)]
+pub struct Shadows<C>(pub Arc<[Shadow<C>]>);
+#[derive(Clone, Debug)]
+pub enum Size {
+    Auto,
+    Cover,
+    Contain,
+    /// Width and height; None is auto.
+    Explicit(Option<Numeric>, Option<Numeric>),
+}
+#[derive(Clone, Debug)]
+pub struct Sizes(pub Arc<[Size]>);
+/// Horizontal and vertical offsets, each a length-percentage (keywords are percentages).
+#[derive(Clone, Debug)]
+pub struct Positions(pub Arc<[(Numeric, Numeric)]>);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RepeatAxis {
+    Repeat,
+    NoRepeat,
+    Space,
+    Round,
+}
+#[derive(Clone, Debug)]
+pub struct Repeats(pub Arc<[(RepeatAxis, RepeatAxis)]>);
+fn bytes(n: &Numeric) -> usize {
+    n.expression().memory().accounted_reserved_bytes
+}
+impl<C> Images<C> {
+    pub(crate) fn reserved_bytes(&self) -> usize {
+        self.0.len() * size_of::<Option<Image<C>>>()
+            + self
+                .0
+                .iter()
+                .flatten()
+                .map(|i| match i {
+                    Image::Url(u) => u.len(),
+                    Image::Linear { stops, .. } | Image::Radial { stops, .. } => stops.len() * size_of::<Stop<C>>() + stops.iter().filter_map(|s| s.position.as_ref()).map(bytes).sum::<usize>(),
+                })
+                .sum::<usize>()
+    }
+}
+impl Images<color::Value> {
+    pub fn computed(&self, colors: &impl color::Context, numeric: &impl math::Context, math: math::Limits, limits: color::Limits, cancelled: Option<&AtomicBool>) -> Result<Images<color::Computed>> {
+        let stop = |s: &Stop<color::Value>| -> Result<Stop<color::Computed>> {
+            Ok(Stop {
+                color: s.color.computed(colors, limits, cancelled).map_err(super::parse::color_error)?,
+                position: s.position.as_ref().map(|p| p.computed(numeric, true, math, cancelled)).transpose()?,
+            })
+        };
+        let mut out = Vec::with_capacity(self.0.len());
+        for image in self.0.iter() {
+            check(cancelled)?;
+            out.push(match image {
+                None => None,
+                Some(Image::Url(u)) => Some(Image::Url(u.clone())),
+                Some(Image::Linear { direction, stops, repeating }) => Some(Image::Linear {
+                    direction: match direction {
+                        Direction::Angle(a) => Direction::Angle(a.computed(numeric, false, math, cancelled)?),
+                        Direction::To { x, y } => Direction::To { x: *x, y: *y },
+                    },
+                    stops: stops.iter().map(stop).collect::<Result<Vec<_>>>()?.into(),
+                    repeating: *repeating,
+                }),
+                Some(Image::Radial { circle, size, explicit, at, stops, repeating }) => Some(Image::Radial {
+                    circle: *circle,
+                    size: *size,
+                    explicit: explicit.as_ref().map(|(w, h)| Ok::<_, Error>((w.computed(numeric, true, math, cancelled)?, h.computed(numeric, true, math, cancelled)?))).transpose()?,
+                    at: (at.0.computed(numeric, true, math, cancelled)?, at.1.computed(numeric, true, math, cancelled)?),
+                    stops: stops.iter().map(stop).collect::<Result<Vec<_>>>()?.into(),
+                    repeating: *repeating,
+                }),
+            });
+        }
+        Ok(Images(out.into()))
+    }
+}
+impl<C> Shadows<C> {
+    pub(crate) fn reserved_bytes(&self) -> usize {
+        self.0.len() * size_of::<Shadow<C>>() + self.0.iter().map(|s| bytes(&s.x) + bytes(&s.y) + bytes(&s.blur) + bytes(&s.spread)).sum::<usize>()
+    }
+}
+impl Shadows<color::Value> {
+    pub fn computed(&self, colors: &impl color::Context, numeric: &impl math::Context, math: math::Limits, limits: color::Limits, cancelled: Option<&AtomicBool>) -> Result<Shadows<color::Computed>> {
+        let mut out = Vec::with_capacity(self.0.len());
+        for s in self.0.iter() {
+            check(cancelled)?;
+            out.push(Shadow {
+                color: s.color.as_ref().map(|c| c.computed(colors, limits, cancelled).map_err(super::parse::color_error)).transpose()?,
+                x: s.x.computed(numeric, false, math, cancelled)?,
+                y: s.y.computed(numeric, false, math, cancelled)?,
+                blur: s.blur.computed(numeric, false, math, cancelled)?,
+                spread: s.spread.computed(numeric, false, math, cancelled)?,
+                inset: s.inset,
+            });
+        }
+        Ok(Shadows(out.into()))
+    }
+}
+impl Sizes {
+    pub(crate) fn reserved_bytes(&self) -> usize {
+        self.0.len() * size_of::<Size>()
+    }
+    pub fn computed(&self, numeric: &impl math::Context, math: math::Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
+        let mut out = Vec::with_capacity(self.0.len());
+        for s in self.0.iter() {
+            out.push(match s {
+                Size::Explicit(w, h) => {
+                    Size::Explicit(w.as_ref().map(|v| v.computed(numeric, true, math, cancelled)).transpose()?, h.as_ref().map(|v| v.computed(numeric, true, math, cancelled)).transpose()?)
+                }
+                other => other.clone(),
+            });
+        }
+        Ok(Self(out.into()))
+    }
+}
+impl Positions {
+    pub(crate) fn reserved_bytes(&self) -> usize {
+        self.0.len() * size_of::<(Numeric, Numeric)>()
+    }
+    pub fn computed(&self, numeric: &impl math::Context, math: math::Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
+        let mut out = Vec::with_capacity(self.0.len());
+        for (x, y) in self.0.iter() {
+            out.push((x.computed(numeric, true, math, cancelled)?, y.computed(numeric, true, math, cancelled)?));
+        }
+        Ok(Self(out.into()))
+    }
+}
+impl Repeats {
+    pub(crate) fn reserved_bytes(&self) -> usize {
+        self.0.len() * 2
+    }
+}
+fn is(c: Component<'_>, word: &str) -> bool {
+    c.kind() == Kind::Ident && c.text().unwrap().eq_ignore_ascii_case(word)
+}
+fn length(c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Numeric> {
+    Numeric::compile(c, NumericKind::LengthPercentage, Range::Nonnegative, limits, cancelled)
+}
+fn length_any(c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Numeric> {
+    Numeric::compile(c, NumericKind::LengthPercentage, Range::All, limits, cancelled)
+}
+fn percent(value: f64) -> Numeric {
+    Numeric::scalar(value, math::Dimension::Percentage, Range::All)
+}
+/// `<length-percentage>{1,2}` for one corner.
+pub(super) fn parse_radius(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
+    match parts {
+        [one] => {
+            let x = length(*one, limits, cancelled)?;
+            Ok(Value::Radius(Radius { x: x.clone(), y: x }))
+        }
+        [x, y] => Ok(Value::Radius(Radius { x: length(*x, limits, cancelled)?, y: length(*y, limits, cancelled)? })),
+        _ => Err(Error::Invalid),
+    }
+}
+/// The `border-radius` shorthand: up to four horizontal radii, `/`, up to four vertical.
+pub(super) fn parse_radius_shorthand(parts: &[Component<'_>], properties: &[Property], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Assignments> {
+    let (horizontal, vertical) = match parts.iter().position(|c| c.character() == Some('/')) {
+        Some(i) => (&parts[..i], Some(&parts[i + 1..])),
+        None => (parts, None),
+    };
+    let four = |group: &[Component<'_>]| -> Result<[Numeric; 4]> {
+        let values: Vec<Numeric> = group.iter().map(|c| length(*c, limits, cancelled)).collect::<Result<_>>()?;
+        Ok(match values.as_slice() {
+            [a] => [a.clone(), a.clone(), a.clone(), a.clone()],
+            [a, b] => [a.clone(), b.clone(), a.clone(), b.clone()],
+            [a, b, c] => [a.clone(), b.clone(), c.clone(), b.clone()],
+            [a, b, c, d] => [a.clone(), b.clone(), c.clone(), d.clone()],
+            _ => return Err(Error::Invalid),
+        })
+    };
+    let h = four(horizontal)?;
+    let v = match vertical {
+        Some(v) => four(v)?,
+        None => h.clone(),
+    };
+    // top-left, top-right, bottom-right, bottom-left
+    Ok(properties.iter().zip(h.into_iter().zip(v)).map(|(&property, (x, y))| Assignment { property, value: Value::Radius(Radius { x, y }) }).collect())
+}
+/// `<color-stop-list>` after the gradient's leading arguments.
+fn stops(groups: &[&[Component<'_>]], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Box<[Stop<color::Value>]>> {
+    let mut out = Vec::new();
+    for group in groups {
+        check(cancelled)?;
+        let mut color = None;
+        let mut positions = Vec::new();
+        for c in group.iter() {
+            if matches!(c.kind(), Kind::Dimension | Kind::IntegerDimension | Kind::Percentage | Kind::IntegerPercentage | Kind::Number | Kind::Integer)
+                || c.kind() == Kind::Function && c.text().unwrap().eq_ignore_ascii_case("calc")
+            {
+                positions.push(length_any(*c, limits, cancelled)?);
+            } else if color.is_none() {
+                let values = c.children().between(c.at, c.after());
+                color = Some(color::Value::parse(values, limits.color(), cancelled).map_err(super::parse::color_error)?);
+            } else {
+                return Err(Error::Invalid);
+            }
+        }
+        match (color, positions.len()) {
+            (Some(color), 0) => out.push(Stop { color, position: None }),
+            (Some(color), 1) => out.push(Stop { color, position: positions.pop() }),
+            (Some(color), 2) => {
+                // Two positions: the same colour twice (CSS Images 4).
+                let second = positions.pop();
+                let first = positions.pop();
+                out.push(Stop { color: color.clone(), position: first });
+                out.push(Stop { color, position: second });
+            }
+            // A bare hint between colours: kept as a position-only stop later; skip now.
+            (None, 1) => {}
+            _ => return Err(Error::Invalid),
+        }
+        if out.len() > 256 {
+            return Err(Error::Limit);
+        }
+    }
+    if out.len() < 2 {
+        return Err(Error::Invalid);
+    }
+    Ok(out.into())
+}
+fn split_commas<'a, 'b>(parts: &'b [Component<'a>]) -> Vec<&'b [Component<'a>]> {
+    parts.split(|c| c.kind() == Kind::Comma).collect()
+}
+fn gradient(c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Option<Image<color::Value>>> {
+    let name = c.text().unwrap().to_ascii_lowercase();
+    let name = name.strip_prefix("-webkit-").unwrap_or(&name);
+    let (repeating, kind) = match name.strip_prefix("repeating-") {
+        Some(rest) => (true, rest),
+        None => (false, name),
+    };
+    if !matches!(kind, "linear-gradient" | "radial-gradient") {
+        return Ok(None);
+    }
+    let parts: Vec<_> = c.children().filter(|c| c.kind() != Kind::Whitespace).collect();
+    let groups = split_commas(&parts);
+    if groups.is_empty() {
+        return Err(Error::Invalid);
+    }
+    if kind == "linear-gradient" {
+        let first = groups[0];
+        let mut direction = Direction::To { x: 0, y: 1 };
+        let mut skip = 0;
+        if let [angle] = first
+            && matches!(angle.kind(), Kind::Dimension | Kind::IntegerDimension)
+            && angle.unit().is_some_and(|u| ["deg", "grad", "rad", "turn"].iter().any(|k| u.eq_ignore_ascii_case(k)))
+        {
+            direction = Direction::Angle(Numeric::compile(*angle, NumericKind::Angle, Range::All, limits, cancelled)?);
+            skip = 1;
+        } else if let [zero] = first
+            && zero.number().is_some_and(|n| n.value == 0.)
+            && matches!(zero.kind(), Kind::Number | Kind::Integer)
+        {
+            direction = Direction::Angle(Numeric::scalar(0., math::Dimension::Angle, Range::All));
+            skip = 1;
+        } else if first.first().is_some_and(|c| is(*c, "to")) {
+            let (mut x, mut y) = (0i8, 0i8);
+            for side in &first[1..] {
+                if is(*side, "left") {
+                    x = -1;
+                } else if is(*side, "right") {
+                    x = 1;
+                } else if is(*side, "top") {
+                    y = -1;
+                } else if is(*side, "bottom") {
+                    y = 1;
+                } else {
+                    return Err(Error::Invalid);
+                }
+            }
+            if x == 0 && y == 0 || first.len() > 3 {
+                return Err(Error::Invalid);
+            }
+            direction = Direction::To { x, y };
+            skip = 1;
+        } else if first.iter().any(|c| matches!(c.kind(), Kind::Ident) && c.text().is_some_and(|t| t.eq_ignore_ascii_case("in"))) {
+            // Colour interpolation methods: the default is used.
+            skip = 1;
+        }
+        return Ok(Some(Image::Linear { direction, stops: stops(&groups[skip..], limits, cancelled)?, repeating }));
+    }
+    // radial-gradient([ <shape> || <size> ]? [ at <position> ]?, stops)
+    let first = groups[0];
+    let mut circle = false;
+    let mut size = RadialSize::FarthestCorner;
+    let mut explicit = None;
+    let mut at = (percent(50.), percent(50.));
+    let mut skip = 0;
+    let has_prelude = first.iter().any(|c| {
+        c.kind() == Kind::Ident
+            && !is(*c, "transparent")
+            && !is(*c, "currentcolor")
+            && (is(*c, "circle") || is(*c, "ellipse") || is(*c, "at") || is(*c, "closest-side") || is(*c, "farthest-side") || is(*c, "closest-corner") || is(*c, "farthest-corner"))
+    }) || !first.is_empty() && first.iter().all(|c| matches!(c.kind(), Kind::Dimension | Kind::IntegerDimension | Kind::Percentage | Kind::IntegerPercentage)) && groups.len() > 2;
+    if has_prelude {
+        skip = 1;
+        let mut i = 0;
+        let mut lengths = Vec::new();
+        while i < first.len() {
+            let c = first[i];
+            if is(c, "circle") {
+                circle = true;
+            } else if is(c, "ellipse") {
+                circle = false;
+            } else if is(c, "closest-side") {
+                size = RadialSize::ClosestSide;
+            } else if is(c, "farthest-side") {
+                size = RadialSize::FarthestSide;
+            } else if is(c, "closest-corner") {
+                size = RadialSize::ClosestCorner;
+            } else if is(c, "farthest-corner") {
+                size = RadialSize::FarthestCorner;
+            } else if is(c, "at") {
+                at = position(&first[i + 1..], limits, cancelled)?;
+                break;
+            } else if matches!(c.kind(), Kind::Dimension | Kind::IntegerDimension | Kind::Percentage | Kind::IntegerPercentage) {
+                lengths.push(length(c, limits, cancelled)?);
+            } else {
+                return Err(Error::Invalid);
+            }
+            i += 1;
+        }
+        match lengths.as_slice() {
+            [] => {}
+            [r] => {
+                circle = true;
+                explicit = Some((r.clone(), r.clone()));
+            }
+            [w, h] => explicit = Some((w.clone(), h.clone())),
+            _ => return Err(Error::Invalid),
+        }
+    }
+    Ok(Some(Image::Radial { circle, size, explicit, at, stops: stops(&groups[skip..], limits, cancelled)?, repeating }))
+}
+/// `<bg-position>`: keywords and lengths, as a pair of length-percentages.
+fn position(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<(Numeric, Numeric)> {
+    let mut x = None;
+    let mut y = None;
+    let mut values = Vec::new();
+    for c in parts {
+        if is(*c, "left") {
+            x = Some(percent(0.));
+        } else if is(*c, "right") {
+            x = Some(percent(100.));
+        } else if is(*c, "top") {
+            y = Some(percent(0.));
+        } else if is(*c, "bottom") {
+            y = Some(percent(100.));
+        } else if is(*c, "center") {
+            values.push(percent(50.));
+        } else {
+            values.push(length_any(*c, limits, cancelled)?);
+        }
+    }
+    if parts.len() > 4 {
+        return Err(Error::Invalid);
+    }
+    let mut values = values.into_iter();
+    let x = match x {
+        Some(x) => x,
+        None => values.next().unwrap_or_else(|| percent(50.)),
+    };
+    let y = match y {
+        Some(y) => y,
+        None => values.next().unwrap_or_else(|| percent(50.)),
+    };
+    Ok((x, y))
+}
+fn image(c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Option<Image<color::Value>>> {
+    match c.kind() {
+        Kind::Url => Ok(Some(Image::Url(Arc::from(c.text().unwrap())))),
+        Kind::Function if c.text().unwrap().eq_ignore_ascii_case("url") || c.text().unwrap().eq_ignore_ascii_case("src") => {
+            Ok(c.children().find(|c| c.kind() == Kind::String).and_then(|c| c.text()).map(|t| Image::Url(Arc::from(t))))
+        }
+        Kind::Function => gradient(c, limits, cancelled),
+        _ => Ok(None),
+    }
+}
+/// `background-image`: `none | <image>`, comma-separated layers.
+pub(super) fn parse_images(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
+    let mut out = Vec::new();
+    for group in split_commas(parts) {
+        check(cancelled)?;
+        match group {
+            [c] if is(*c, "none") => out.push(None),
+            [c] => match image(*c, limits, cancelled)? {
+                Some(i) => out.push(Some(i)),
+                None => return Err(if c.kind() == Kind::Function { Error::Unsupported("image function") } else { Error::Invalid }),
+            },
+            _ => return Err(Error::Invalid),
+        }
+        if out.len() > 64 {
+            return Err(Error::Limit);
+        }
+    }
+    if out.is_empty() {
+        return Err(Error::Invalid);
+    }
+    if out.len() == 1 && out[0].is_none() {
+        return Ok(Value::Keyword(Keyword::None));
+    }
+    Ok(Value::Images(Images(out.into())))
+}
+pub(super) fn parse_sizes(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
+    let mut out = Vec::new();
+    for group in split_commas(parts) {
+        out.push(match group {
+            [c] if is(*c, "cover") => Size::Cover,
+            [c] if is(*c, "contain") => Size::Contain,
+            [c] if is(*c, "auto") => Size::Auto,
+            [w] => Size::Explicit(Some(length(*w, limits, cancelled)?), None),
+            [w, h] => Size::Explicit(if is(*w, "auto") { None } else { Some(length(*w, limits, cancelled)?) }, if is(*h, "auto") { None } else { Some(length(*h, limits, cancelled)?) }),
+            _ => return Err(Error::Invalid),
+        });
+        if out.len() > 64 {
+            return Err(Error::Limit);
+        }
+    }
+    Ok(Value::Sizes(Sizes(out.into())))
+}
+pub(super) fn parse_positions(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
+    let mut out = Vec::new();
+    for group in split_commas(parts) {
+        if group.is_empty() {
+            return Err(Error::Invalid);
+        }
+        out.push(position(group, limits, cancelled)?);
+        if out.len() > 64 {
+            return Err(Error::Limit);
+        }
+    }
+    Ok(Value::Positions(Positions(out.into())))
+}
+pub(super) fn parse_repeats(parts: &[Component<'_>]) -> Result<Value> {
+    let axis = |c: Component<'_>| {
+        if is(c, "repeat") {
+            Some(RepeatAxis::Repeat)
+        } else if is(c, "no-repeat") {
+            Some(RepeatAxis::NoRepeat)
+        } else if is(c, "space") {
+            Some(RepeatAxis::Space)
+        } else if is(c, "round") {
+            Some(RepeatAxis::Round)
+        } else {
+            None
+        }
+    };
+    let mut out = Vec::new();
+    for group in split_commas(parts) {
+        out.push(match group {
+            [c] if is(*c, "repeat-x") => (RepeatAxis::Repeat, RepeatAxis::NoRepeat),
+            [c] if is(*c, "repeat-y") => (RepeatAxis::NoRepeat, RepeatAxis::Repeat),
+            [c] => {
+                let a = axis(*c).ok_or(Error::Invalid)?;
+                (a, a)
+            }
+            [x, y] => (axis(*x).ok_or(Error::Invalid)?, axis(*y).ok_or(Error::Invalid)?),
+            _ => return Err(Error::Invalid),
+        });
+        if out.len() > 64 {
+            return Err(Error::Limit);
+        }
+    }
+    Ok(Value::Repeats(Repeats(out.into())))
+}
+/// `box-shadow`: `none | <shadow>#`.
+pub(super) fn parse_shadows(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
+    if let [c] = parts
+        && is(*c, "none")
+    {
+        return Ok(Value::Keyword(Keyword::None));
+    }
+    let mut out = Vec::new();
+    for group in split_commas(parts) {
+        check(cancelled)?;
+        let mut color = None;
+        let mut inset = false;
+        let mut lengths = Vec::new();
+        for c in group {
+            if is(*c, "inset") {
+                inset = true;
+            } else if matches!(c.kind(), Kind::Dimension | Kind::IntegerDimension | Kind::Number | Kind::Integer) || c.kind() == Kind::Function && c.text().unwrap().eq_ignore_ascii_case("calc") {
+                lengths.push(Numeric::compile(*c, NumericKind::Length, Range::All, limits, cancelled)?);
+            } else if color.is_none() {
+                let values = c.children().between(c.at, c.after());
+                color = Some(color::Value::parse(values, limits.color(), cancelled).map_err(super::parse::color_error)?);
+            } else {
+                return Err(Error::Invalid);
+            }
+        }
+        if lengths.len() < 2 || lengths.len() > 4 {
+            return Err(Error::Invalid);
+        }
+        let zero = || Numeric::scalar(0., math::Dimension::Length, Range::All);
+        let mut it = lengths.into_iter();
+        let (x, y) = (it.next().unwrap(), it.next().unwrap());
+        let blur = it.next().unwrap_or_else(zero);
+        let spread = it.next().unwrap_or_else(zero);
+        out.push(Shadow { color, x, y, blur, spread, inset });
+        if out.len() > 32 {
+            return Err(Error::Limit);
+        }
+    }
+    if out.is_empty() {
+        return Err(Error::Invalid);
+    }
+    Ok(Value::Shadows(Shadows(out.into())))
+}
+/// The `background` shorthand: per layer an image, a position (with `/ size`),
+/// a repeat and attachment/box keywords; a colour on the last layer only.
+pub(super) fn parse_background(parts: &[Component<'_>], properties: &[Property], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Assignments> {
+    let groups = split_commas(parts);
+    let mut images = Vec::new();
+    let mut positions = Vec::new();
+    let mut sizes = Vec::new();
+    let mut repeats = Vec::new();
+    let mut color = None;
+    let mut clip = None;
+    for (index, group) in groups.iter().enumerate() {
+        check(cancelled)?;
+        let last = index + 1 == groups.len();
+        let mut layer_image = None;
+        let mut layer_position = None;
+        let mut layer_size = None;
+        let mut layer_repeat = None;
+        let mut boxes = Vec::new();
+        let mut i = 0;
+        while i < group.len() {
+            let c = group[i];
+            if c.character() == Some('/') {
+                // Size follows a position.
+                let mut j = i + 1;
+                let mut size_parts = Vec::new();
+                while j < group.len()
+                    && (is(group[j], "auto")
+                        || is(group[j], "cover")
+                        || is(group[j], "contain")
+                        || matches!(group[j].kind(), Kind::Dimension | Kind::IntegerDimension | Kind::Percentage | Kind::IntegerPercentage | Kind::Number | Kind::Integer))
+                    && size_parts.len() < 2
+                {
+                    size_parts.push(group[j]);
+                    j += 1;
+                }
+                if size_parts.is_empty() || layer_position.is_none() {
+                    return Err(Error::Invalid);
+                }
+                let Value::Sizes(s) = parse_sizes(&size_parts, limits, cancelled)? else { return Err(Error::Invalid) };
+                layer_size = Some(s.0[0].clone());
+                i = j;
+                continue;
+            }
+            if is(c, "none")
+                || c.kind() == Kind::Url
+                || c.kind() == Kind::Function
+                    && !c.text().unwrap().eq_ignore_ascii_case("calc")
+                    && !c.text().unwrap().eq_ignore_ascii_case("var")
+                    && image(c, limits, cancelled).map(|i| i.is_some()).unwrap_or(false)
+            {
+                if layer_image.is_some() {
+                    return Err(Error::Invalid);
+                }
+                layer_image = Some(if is(c, "none") { None } else { image(c, limits, cancelled)? });
+                i += 1;
+                continue;
+            }
+            if is(c, "repeat") || is(c, "no-repeat") || is(c, "repeat-x") || is(c, "repeat-y") || is(c, "space") || is(c, "round") {
+                let mut j = i + 1;
+                let mut rep = vec![c];
+                if j < group.len() && (is(group[j], "repeat") || is(group[j], "no-repeat") || is(group[j], "space") || is(group[j], "round")) && !is(c, "repeat-x") && !is(c, "repeat-y") {
+                    rep.push(group[j]);
+                    j += 1;
+                }
+                let Value::Repeats(r) = parse_repeats(&rep)? else { return Err(Error::Invalid) };
+                layer_repeat = Some(r.0[0]);
+                i = j;
+                continue;
+            }
+            if is(c, "scroll") || is(c, "fixed") || is(c, "local") {
+                i += 1;
+                continue;
+            }
+            if is(c, "border-box") || is(c, "padding-box") || is(c, "content-box") || is(c, "text") {
+                boxes.push(c);
+                i += 1;
+                continue;
+            }
+            if is(c, "left")
+                || is(c, "right")
+                || is(c, "top")
+                || is(c, "bottom")
+                || is(c, "center")
+                || matches!(c.kind(), Kind::Dimension | Kind::IntegerDimension | Kind::Percentage | Kind::IntegerPercentage | Kind::Number | Kind::Integer)
+            {
+                let mut j = i;
+                let mut pos = Vec::new();
+                while j < group.len()
+                    && pos.len() < 4
+                    && (is(group[j], "left")
+                        || is(group[j], "right")
+                        || is(group[j], "top")
+                        || is(group[j], "bottom")
+                        || is(group[j], "center")
+                        || matches!(group[j].kind(), Kind::Dimension | Kind::IntegerDimension | Kind::Percentage | Kind::IntegerPercentage | Kind::Number | Kind::Integer))
+                {
+                    pos.push(group[j]);
+                    j += 1;
+                }
+                layer_position = Some(position(&pos, limits, cancelled)?);
+                i = j;
+                continue;
+            }
+            // Anything else is the colour, allowed on the last layer only.
+            if !last || color.is_some() {
+                return Err(Error::Invalid);
+            }
+            let values = c.children().between(c.at, c.after());
+            color = Some(color::Value::parse(values, limits.color(), cancelled).map_err(super::parse::color_error)?);
+            i += 1;
+        }
+        if let Some(b) = boxes.last() {
+            clip = Some(if is(*b, "text") {
+                Keyword::Text
+            } else if is(*b, "padding-box") {
+                Keyword::PaddingBox
+            } else if is(*b, "content-box") {
+                Keyword::ContentBox
+            } else {
+                Keyword::BorderBox
+            });
+        }
+        images.push(layer_image.unwrap_or(None));
+        positions.push(layer_position.unwrap_or_else(|| (percent(0.), percent(0.))));
+        sizes.push(layer_size.unwrap_or(Size::Auto));
+        repeats.push(layer_repeat.unwrap_or((RepeatAxis::Repeat, RepeatAxis::Repeat)));
+    }
+    let image_value = if images.iter().all(Option::is_none) { Value::Keyword(Keyword::None) } else { Value::Images(Images(images.into())) };
+    let mut out = Assignments::new();
+    for &property in properties {
+        let value = match property {
+            Property::BackgroundColor => color.clone().map_or(Value::Wide(variables::Wide::Initial), Value::Color),
+            Property::BackgroundImage => image_value.clone(),
+            Property::BackgroundPosition => Value::Positions(Positions(positions.clone().into())),
+            Property::BackgroundSize => Value::Sizes(Sizes(sizes.clone().into())),
+            Property::BackgroundRepeat => Value::Repeats(Repeats(repeats.clone().into())),
+            Property::BackgroundClip => clip.map_or(Value::Wide(variables::Wide::Initial), Value::Keyword),
+            _ => Value::Wide(variables::Wide::Initial),
+        };
+        out.push(Assignment { property, value });
+    }
+    Ok(out)
+}
