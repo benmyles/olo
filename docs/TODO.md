@@ -13,6 +13,28 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+- **Preferences ▸ Power: every power setting in one place, each
+  scenario a setting** (Ben, 2026-11-06: "automatic should also wake the
+  nvidia card on battery if it is the best choice"; "just have it
+  default to waking the nvidia card in power saving mode on battery";
+  "also while you're at it let's centralize the gpu power settings and
+  cpu power settings to all be under the prefs -> power section, and
+  have all these scenarios configurable with reasonable defaults").
+  Video's Automatic wakes NVIDIA's GPU on battery too (where the
+  built-in GPU doesn't decode the video), the GPU then in its
+  power-saving preset. Preferences ▸ Power holds what Preferences ▸ GPUs
+  and the power mode hold now, and the processor's settings: for each
+  power mode and for running on battery, the processor's preset (its
+  energy preference, turbo) and each GPU's (Cooler and Quieter,
+  Balanced, Fastest, or its own knobs), on battery defaulting to the
+  mode's except NVIDIA's GPU on Cooler and Quieter; applied by the root
+  service that follows the power mode (`olo-gpu-follow`), which follows
+  mains and battery too; video playback's and recording's GPU choices
+  there as well. Laid out for 1280 × 800 (tabs if it needs them).
+  Also: NVDEC's held pictures copied into pinned memory (CUDA's DMA
+  rather than its pageable copy through the processor, its video thread
+  15.8% of a core at 4K60).
+
 - **Viewer: 4K60 video plays smoothly, decoded in hardware** (below, in
   Not started), with the decoding device chosen in the Viewer and its
   default in Preferences.
