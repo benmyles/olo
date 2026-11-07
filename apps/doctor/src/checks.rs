@@ -1232,17 +1232,23 @@ fn intel_video(roots: &Roots, pcis: &[Pci], r: &mut Report) {
     }
     let what = "Fedora's driver for the Intel graphics leaves out H.264 and HEVC (for their patents), so those videos are decoded by the processor (a whole core for 4K at 60 frames a second) or by waking the NVIDIA card. RPM Fusion's full driver decodes them on the Intel GPU, with a quarter of a core.";
     let atomic = roots.fs.join("run/ostree-booted").exists();
-    let found = (roots.packages)(&[INTEL_MEDIA]);
+    let found = (roots.packages)(&[INTEL_MEDIA, "rpmfusion-free-release", "rpmfusion-nonfree-release"]);
     let (detail, fix) = match (&found, version, atomic) {
         (_, _, true) | (None, _, _) | (_, None, _) => (format!("{what} Add RPM Fusion's free and nonfree repositories and install {INTEL_MEDIA}, as rpmfusion.org says."), None),
         (Some(packages), Some(version), false) => {
             let mut steps = Vec::new();
             let there = packages.iter().any(|(n, _)| n == INTEL_MEDIA);
             if !there {
-                for kind in ["free", "nonfree"] {
+                // (A repository added already, as a fix stopped half way
+                // leaves it, isn't added again.)
+                let added = |kind: &str| packages.iter().any(|(n, installed)| *installed && *n == format!("rpmfusion-{kind}-release"));
+                for kind in ["free", "nonfree"].into_iter().filter(|k| !added(k)) {
+                    let file = format!("{kind}/fedora/rpmfusion-{kind}-release-{version}.noarch.rpm");
                     steps.push(Step::InstallRepository {
                         name: format!("RPM Fusion ({kind})"),
-                        url: format!("https://mirrors.rpmfusion.org/{kind}/fedora/rpmfusion-{kind}-release-{version}.noarch.rpm"),
+                        // RPM Fusion's own server, then a mirror (its
+                        // redirector's choice: one may be out of date).
+                        urls: vec![format!("https://download1.rpmfusion.org/{file}"), format!("https://mirrors.rpmfusion.org/{file}")],
                     });
                 }
             }
@@ -2207,11 +2213,28 @@ mod tests {
         assert_eq!(
             fix.steps,
             vec![
-                Step::InstallRepository { name: "RPM Fusion (free)".into(), url: "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-45.noarch.rpm".into() },
-                Step::InstallRepository { name: "RPM Fusion (nonfree)".into(), url: "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-45.noarch.rpm".into() },
+                Step::InstallRepository {
+                    name: "RPM Fusion (free)".into(),
+                    urls: vec![
+                        "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-45.noarch.rpm".into(),
+                        "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-45.noarch.rpm".into()
+                    ]
+                },
+                Step::InstallRepository {
+                    name: "RPM Fusion (nonfree)".into(),
+                    urls: vec![
+                        "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-45.noarch.rpm".into(),
+                        "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-45.noarch.rpm".into()
+                    ]
+                },
                 Step::InstallPackages { names: vec!["intel-media-driver".into()] },
             ]
         );
+        // Half done (the free repository added, the nonfree one not, as a
+        // mirror's 404 left it, 2026-11-06): the rest.
+        let roots = Roots { packages: Box::new(|_| Some(vec![("rpmfusion-free-release".into(), true)])), ..roots };
+        let fix = scan(&roots).find("video:intel").unwrap().fix.clone().unwrap();
+        assert_eq!(fix.steps.iter().map(Step::describe).collect::<Vec<_>>(), ["Adding the RPM Fusion (nonfree) repository", "Installing intel-media-driver"]);
         // RPM Fusion there: only the driver.
         let roots = Roots { packages: Box::new(|_| Some(vec![("intel-media-driver".into(), false)])), ..roots };
         let fix = scan(&roots).find("video:intel").unwrap().fix.clone().unwrap();
