@@ -35,7 +35,8 @@
 //!   where the kit's text starts (`metrics::TEXT_INSET`);
 //! - `bullet.png`: the kit's •, a bullet's advance wide;
 //! - `olo.plymouth`: two-step's settings: the background, the prompt's
-//!   face and size (Noto Sans, Olo's, at the line's size), the update
+//!   face and size (Noto Sans, Olo's, at the line's size in whole pixels:
+//!   the start-up image's label-freetype reads no fractions), the update
 //!   modes' bar and words.
 
 use std::path::{Path, PathBuf};
@@ -258,11 +259,11 @@ fn hex(c: [u8; 4]) -> String {
     format!("0x{:02x}{:02x}{:02x}", c[0], c[1], c[2])
 }
 
-/// A face and size for Pango (points at 96 dpi: three quarters of a
-/// pixel), at `px` device pixels.
-fn pango(face: &str, px: f64) -> String {
-    let pt = (px * 0.75 * 100.0).round() / 100.0;
-    format!("{face} {pt}")
+/// A face at `px` device pixels, as both of Plymouth's label plugins
+/// read it ("Noto Sans 30px": Pango's, and label-freetype's, the one in
+/// the start-up image, which reads whole numbers only).
+fn font(face: &str, px: f64) -> String {
+    format!("{face} {}px", px.round())
 }
 
 /// `olo.plymouth`: two-step's settings for the theme at `scale`.
@@ -313,8 +314,8 @@ UseEndAnimation=false
 [reboot]
 UseEndAnimation=false
 ",
-        font = pango("Noto Sans", text),
-        title = pango("Noto Sans Bold", text),
+        font = font("Noto Sans", text),
+        title = font("Noto Sans Bold", text),
         bar_bg = hex(p.document_background),
         bar_fg = hex(p.status_bar),
         bar_w = px(FIELD_WIDTH),
@@ -392,8 +393,9 @@ mod tests {
         assert!(s.contains("ModuleName=two-step"));
         assert!(s.contains(&format!("ImageDir={THEME_DIR}")));
         assert!(s.contains("BackgroundStartColor=0x1e1e22"));
-        // 15 points at 2× is 30 pixels, 22.5 Pango points.
-        assert!(s.contains("Font=Noto Sans 22.5\n"));
+        // 15 points at 2× is 30 pixels.
+        assert!(s.contains("Font=Noto Sans 30px\n"));
+        assert!(settings(1.25).contains("Font=Noto Sans 19px\n"));
         assert!(s.contains("ProgressBarWidth=656\n"));
     }
 

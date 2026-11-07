@@ -46,6 +46,11 @@ What Olo changed, so far (see "Every frame on time" in
   cycle, and a test session's app_server stopped there); the DRM
   surfaces' `commit_pending` takes the state then the pending lock, as
   everything else does, and `vrr_supported` reads its lock once.
+- A GPU plugged in on another seat isn't this seat's: `UdevBackend`
+  passes on a device added only when its `ID_SEAT` is the backend's, as
+  it already chose the GPUs it starts with (upstream offered every new
+  card, and logind refused app_server the other seat's, which it logged
+  as an error: found loading vkms on a seat of its own for a test).
 - The damage tracker warns of a step of a frame over 4 ms: beginning
   it, an element's draw (naming the element, its place and kind), or
   finishing it (`slow frame: …`), so a slow frame says where it went.

@@ -2532,9 +2532,9 @@ low to high, each note a sine with a little of its octave and twelfth,
 a soft attack and long decay, spread in stereo, with a light Schroeder
 room, 3.2 s at −6 dBFS, written to the cache as a WAV and played as
 Notifications' sounds are (`OLO_STARTUP_WAV=FILE cargo test -p
-olo-notifications startup_wav` writes it out to listen to). Taking over
-the boot itself (Plymouth's place) and the login screen (GDM's) wait for
-a try on the machine: they change what it boots into.
+olo-notifications startup_wav` writes it out to listen to). Before the
+session, the boot shows the same picture (Plymouth's theme) and Olo's
+own login screen asks who: "The login screen and boot splash" below.
 Their connections do end when app_server restarts in place, and each
 kind of client has its way back: an Olo app re-executes itself with
 its state saved, as for an upgrade, and reconnects (olo-ui
@@ -3029,6 +3029,102 @@ places below.
   session on it (`TSESSION_SESSION_EXE=…/tabula-session`), open windows,
   then point `OLO_UPGRADE_FROM` (`TABULA_UPGRADE_FROM` for the old
   session) at this tree and `kill -USR2` the session.
+
+## The login screen and boot splash (apps/login, apps/greeter, crates/greet; app_server plymouth.rs)
+
+Olo's own login screen, in GDM's place, and its boot splash, in
+Plymouth's theme's. `tools/install-login.sh` installs the login screen
+beside GDM (programs into `/usr/local/libexec/olo`, Olo's data into
+`/usr/local/share/olo`, its PAM services, user and unit); `--switch`
+makes it the login screen from the next start and `--revert` gives GDM
+back; `--plymouth` installs the boot splash and `--revert-plymouth`
+takes it out. What the machine starts into is the person's to choose:
+nothing switches without those.
+
+**The pieces.**
+
+* `olo-greet` (crates/greet): what they say to each other, a JSON line
+  each way. The greeter's `Request`s (`Users`, `Sessions`, `Begin`,
+  `Answer`, `Start`, `Cancel`, `Power`) and the daemon's `Event`s
+  (`Prompt`, `Failed`, `Authenticated`, `Started`, …) on
+  `/run/olo-login/greeter.sock` (`OLO_LOGIN_SOCKET`; only the greeter's
+  user may connect); a worker's `ToWorker`/`FromWorker` on its pipes.
+  `pam.rs` is PAM through the dlopen'd libpam, its conversation asked
+  of a closure (`pam_start_confdir` for a test's own stack);
+  `users::all` the people who can log in (`/etc/passwd`'s, with
+  AccountsService's pictures) and `sessions::all` the
+  `wayland-sessions` (Olo's first).
+* `olo-login --daemon [--programs DIR] [--vt N] [--test DIR]`
+  (apps/login, root): the seat's terminal, the greeter's session, and
+  for each login a worker per way in, all at once (`--worker WAY USER`:
+  the password through the `olo-login` PAM service, a fingerprint
+  through `olo-login-fingerprint`, the face through `olo-login-face`,
+  `data/pam`); the first way in wins and the others stop. The winner
+  opens logind's session through PAM (`pam_systemd`) and becomes the
+  person (setsid, the terminal, their groups, gid, uid) to run their
+  session once the greeter has gone. The greeter's own session is a
+  worker too, as the `olo-greeter` user (`data/sysusers`) through
+  `olo-login-greeter` (in without a question), running `olo-session
+  --tty-udev --greeter`; it comes back when it ends and when the person
+  logs out.
+* `olo-session --greeter`: app_server and `olo-greeter` alone, no
+  upgrades watched; the greeter quitting ends it.
+* `olo-greeter` (apps/greeter): a layer surface on every display, the
+  first holding the keyboard: the person's picture, who (a choice when
+  there are several), their password, what the ways in say ("Place your
+  finger on the reader"), the session, and Sleep, Restart and Shut
+  Down. It remembers who logged in last and their session
+  (`$XDG_STATE_HOME/olo/greeter.json`, in `/var/lib/olo-greeter`).
+* **Plymouth handed over as GDM does** (apps/login `plymouth.rs`,
+  Plymouth's own protocol on its abstract socket): told to let go of the
+  screen before the greeter's session takes it, then, once the greeter
+  connects, to quit leaving its picture there, so no console shows
+  between; told to quit outright (the console back, saying why) if the
+  greeter's session ends first or hasn't shown in 30 s. Its unit
+  conflicts with `plymouth-quit.service` and comes after it, as
+  `gdm.service` does.
+
+**The boot splash** (app_server `plymouth.rs`): `olo-app-server
+--plymouth-theme DIR [--scale S]` makes a theme for Plymouth's two-step
+plugin from the start-up screen's own drawing (`veil.rs`): the wordmark
+on Olo's dark, its four icons lit one by one as the boot goes, "Starting
+Olo…" under them; the wordmark alone as the computer shuts down; a
+disk's passphrase asked in the kit's focused text well (the login
+screen's field) in the icon row's place, the kit's bullets in it. Two-step
+stretches its pictures for device scale 2, so the theme is made at the
+scale the computer's own screen is at in Olo (the built-in panel's,
+else the main display's) and Plymouth draws device pixels
+(`DeviceScale=1`): pixel for pixel on every screen, the start-up
+screen's size on the computer's own. Change that screen's scale and run
+`tools/install-login.sh --plymouth` again (it makes the start-up image
+again, the splash being in it). Why each file is as it is (two-step's
+centring, its frame choice, where it starts the bullets) is in the
+module's comment.
+
+**Testing.** Never with the real PAM, the machine's seat or its boot:
+
+* `cargo test -p olo-login` (`a_login_from_start_to_finish`: the daemon
+  with `--test DIR`, a greeter asking who and which sessions, a wrong
+  password and the right one through a worker's PAM conversation on a
+  stand-in stack, `DIR/pam/olo-login` as `pam_exec` of a script, the
+  session started, run and ended); `cargo test -p olo-greet`.
+* The greeter on a screen: `olo-login --daemon --test DIR` with
+  `DIR/pam/olo-login` (a stand-in stack) and `DIR/root` (`etc/passwd`,
+  `usr/share/wayland-sessions`, `var/lib/AccountsService/icons`), then
+  `olo-greeter` in a tsession with `OLO_LOGIN_SOCKET=DIR/greeter.sock`;
+  review it at every scale, light and dark.
+* The boot splash: `cargo test -p app_server plymouth` (the frames match
+  the watermark above the row, the field sits on the row to a pixel on
+  screens of either parity, the first bullet where the kit's text
+  starts, the measures the kit's); `OLO_PLYMOUTH_SHEET=DIR cargo test
+  -p app_server plymouth_sheet` draws it as two-step would, at each
+  scale; and `tools/dev/plymouth-check [--scale S] [--size WxH] [--keep
+  DIR]` tries it in the real Plymouth: a start-up image of this kernel
+  (dracut as you, the theme appended) booted in a VM of its own, its
+  screens checked against the theme pixel for pixel, and a LUKS disk's
+  passphrase typed through the VM's keyboard. (plymouthd on a vkms seat
+  can't do: its renderers draw only with a virtual console of their own,
+  which would switch your screen.)
 
 ## Testing: headless sessions
 

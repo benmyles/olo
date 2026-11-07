@@ -73,15 +73,32 @@ something nobody here has is in "Blocked", with what it waits for.
   video's planes as bytes (the video thread spends a quarter of a core
   in the kernel at 4K60 AV1, faulting in those copies).
 
-- **Olo's own login screen and boot splash** (Ben, 2026-11-01; not
-  blocked: "neither of those are blocked on me", 2026-11-06). A display
-  manager in GDM's place (a daemon owning the seat, PAM and logind's
-  session, a greeter on the kit: the person, their picture, the
-  password, Touch ID and face, the sessions) and the boot in Plymouth's
-  (the start-up screen's picture as a theme), built and tried headless
-  and on a vkms seat; switching the machine over is Ben's to say.
-
 ## Done, waiting for Ben to try or confirm
+
+- **Olo's own login screen and boot splash** (Ben, 2026-11-01; "neither
+  of those are blocked on me", 2026-11-06). Done (HACKING, "The login
+  screen and boot splash"): `olo-login`, a display manager in GDM's
+  place (root, the seat's terminal, PAM and logind's session, a worker
+  per way in: password, fingerprint, face, all at once); `olo-greeter`
+  on the kit in its own session as its own user (the person, their
+  picture, the password, what the fingerprint reader and face unlock
+  say, the sessions, Sleep, Restart, Shut Down); and the boot splash, the
+  start-up screen's picture as a Plymouth theme made at the panel's
+  scale, a disk's passphrase asked in the kit's field, handed over to
+  the login screen as GDM does. Tried headless: a whole login through
+  the daemon on a stand-in PAM stack (`cargo test -p olo-login`), the
+  greeter reviewed at every scale in light and dark, and the boot splash
+  booted in the real Plymouth in a VM (`tools/dev/plymouth-check`: every
+  frame pixel for pixel at 1, 1.25, 1.5, 1.75 and 2×, the LUKS prompt
+  typed into). Not tried: the daemon as root on a real seat (on a vkms
+  seat its greeter would need the machine's PAM and logind, and
+  plymouthd can't draw there without switching Ben's screen). To try:
+  `tools/install-login.sh` installs it beside GDM (asks for sudo once);
+  `--switch` makes it the login screen from the next start, `--plymouth`
+  the boot splash (it makes the start-up image again); `--revert` and
+  `--revert-plymouth` go back. The first start after switching is the
+  real test; GDM stays installed, and Ctrl+Alt+F3's console can run
+  `--revert` if the login screen doesn't show.
 
 - **StyledEdit: ⌘-click opens a link; pictures on the web shown** (from
   the StyledEdit entry: "Not done"). Done (HACKING, Markdown): the
