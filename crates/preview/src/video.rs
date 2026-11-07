@@ -297,9 +297,11 @@ struct Shared {
     /// Make them Y'CbCr planes where they can be (`Picture::Yuv`), of this
     /// stream.
     yuv: Option<u64>,
-    /// What's asked to decode, and what does ("NVIDIA's GPU (NVDEC)").
+    /// What's asked to decode, and what does ("NVIDIA's GPU (NVDEC)"),
+    /// and which GPUs could.
     device: Device,
     decoding: &'static str,
+    decoders: Decoders,
     /// Make an HDR picture HDR10's (`Video::draw_hdr`: a window drawing
     /// in HDR10 shows it), rather than mapped for SDR.
     hdr: bool,
@@ -478,14 +480,19 @@ impl Video {
         (p.map(Picture::into_image), next)
     }
 
-    /// Whether the stream's pictures are HDR (PQ or HLG), as far as it
-    /// has been seen.
     /// What decodes its pictures now ("NVIDIA's GPU (NVDEC)", "the
     /// processor"), once it has started.
     pub fn decoding(&self) -> &'static str {
         self.shared.0.lock().unwrap().decoding
     }
 
+    /// Which GPUs here decode its stream, once it has started.
+    pub fn decoders(&self) -> Decoders {
+        self.shared.0.lock().unwrap().decoders
+    }
+
+    /// Whether the stream's pictures are HDR (PQ or HLG), as far as it
+    /// has been seen.
     pub fn is_hdr(&self) -> bool {
         self.shared.0.lock().unwrap().stream_hdr
     }
@@ -591,8 +598,10 @@ pub enum Device {
     /// by the player's worker.
     #[default]
     Default,
-    /// NVIDIA's GPU where there is one and the computer isn't on battery
-    /// (waking it costs power), else the processor.
+    /// The built-in GPU where its driver decodes the video (Intel's
+    /// decodes AV1 and VP9), else NVIDIA's where there is one and the
+    /// computer isn't on battery (waking it costs power), else the
+    /// processor.
     Automatic,
     /// NVIDIA's GPU (NVDEC).
     Nvidia,
@@ -600,6 +609,32 @@ pub enum Device {
     Intel,
     /// The processor (OpenH264, rust_h265, filmcraft-vp9, rav1d).
     Processor,
+}
+
+/// Which GPUs here decode a stream (as planes for a window's GPU).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Decoders {
+    /// NVIDIA's (NVDEC: H.264, HEVC, VP9, AV1).
+    pub nvidia: bool,
+    /// Intel's or AMD's (VA-API: AV1 and VP9 with Fedora's drivers).
+    pub intel: bool,
+}
+
+impl Decoders {
+    #[cfg(feature = "gpui")]
+    fn of(planes: bool, codec: Codec) -> Decoders {
+        let va = match codec {
+            Codec::Av1 => Some(olo_vaapi::decode::Codec::Av1),
+            Codec::Vp9 => Some(olo_vaapi::decode::Codec::Vp9),
+            Codec::H264 | Codec::Hevc => None,
+        };
+        Decoders { nvidia: planes && olo_video::nvdec::available(), intel: planes && va.is_some_and(olo_vaapi::decode::available) }
+    }
+
+    #[cfg(not(feature = "gpui"))]
+    fn of(_: bool, _: Codec) -> Decoders {
+        Decoders::default()
+    }
 }
 
 impl Device {
@@ -781,6 +816,9 @@ enum Decoder {
     /// NVIDIA's GPU (pictures as planes for the window's GPU).
     #[cfg(feature = "gpui")]
     Nv(Box<Nv>),
+    /// Intel's or AMD's GPU through VA-API: AV1 and VP9 (as planes too).
+    #[cfg(feature = "gpui")]
+    Va(Box<olo_vaapi::decode::Decoder>),
 }
 
 /// NVDEC, and what it needs of the stream: HEVC's parameter sets and its
@@ -812,7 +850,25 @@ impl Nv {
 
 /// The names said of what decodes.
 const ON_NVIDIA: &str = "NVIDIA's GPU (NVDEC)";
+const ON_INTEL: &str = "Intel's GPU (VA-API)";
+const ON_OTHER_GPU: &str = "the built-in GPU (VA-API)";
 const ON_PROCESSOR: &str = "the processor";
+
+/// A picture as a GPU decoded it, for the window to draw: its matrix
+/// from H.273's number (else by its height, as players guess).
+#[cfg(feature = "gpui")]
+#[allow(clippy::too_many_arguments)]
+fn gpu_picture(stream: u64, width: u32, height: u32, deep: bool, y: Vec<u8>, uv: Vec<u8>, matrix: u8, full_range: bool) -> olo_ui::gpui::YuvFrame {
+    use olo_ui::gpui::YuvMatrix;
+    let matrix = match matrix {
+        1 => YuvMatrix::Bt709,
+        9 | 10 => YuvMatrix::Bt2020,
+        5 | 6 => YuvMatrix::Bt601,
+        _ if height >= 720 => YuvMatrix::Bt709,
+        _ => YuvMatrix::Bt601,
+    };
+    olo_ui::gpui::YuvFrame { stream, width, height, deep, y, uv, matrix, full_range }
+}
 
 impl Decoder {
     /// A decoder on `device` (NVIDIA's GPU only for pictures as planes,
@@ -825,11 +881,31 @@ impl Decoder {
                 Device::Default => olo_ui::settings::current().and_then(|s| Device::parse(&s.video.decoder)).filter(|d| *d != Device::Default).unwrap_or(Device::Automatic),
                 d => d,
             };
-            let nvidia = match device {
-                Device::Nvidia => true,
-                Device::Automatic => !olo_video::on_battery() && olo_video::nvdec::available(),
-                Device::Intel | Device::Processor | Device::Default => false,
+            // Intel's (or AMD's) GPU, for what its driver decodes: AV1
+            // and VP9 as Fedora's drivers have it.
+            let va = match codec {
+                Codec::Av1 => Some(olo_vaapi::decode::Codec::Av1),
+                Codec::Vp9 => Some(olo_vaapi::decode::Codec::Vp9),
+                Codec::H264 | Codec::Hevc => None,
+            }
+            .filter(|c| planes && olo_vaapi::decode::available(*c));
+            // Automatic: the built-in GPU where it decodes this (already
+            // awake, and the screen's), else NVIDIA's on mains power.
+            let (intel, nvidia) = match device {
+                Device::Nvidia => (false, true),
+                Device::Intel => (true, false),
+                Device::Automatic => (va.is_some(), va.is_none() && !olo_video::on_battery() && olo_video::nvdec::available()),
+                Device::Processor | Device::Default => (false, false),
             };
+            if intel && let Some(c) = va {
+                match olo_vaapi::decode::Decoder::new(c) {
+                    Ok(dec) => {
+                        let on = if dec.driver().contains("Intel") { ON_INTEL } else { ON_OTHER_GPU };
+                        return Ok((Decoder::Va(Box::new(dec)), on));
+                    }
+                    Err(e) => tracing::info!("video: VA-API: {e}; the processor decodes"),
+                }
+            }
             if nvidia && planes {
                 let (c, hevc) = match codec {
                     Codec::H264 => (olo_video::nvdec::Codec::H264, None),
@@ -878,9 +954,15 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
         (sh.device, sh.yuv.is_some())
     };
     let (mut dec, decoding) = Decoder::on(device, planes, codec, demux.as_ref())?;
-    m.lock().unwrap().decoding = decoding;
+    {
+        let mut sh = m.lock().unwrap();
+        sh.decoding = decoding;
+        sh.decoders = Decoders::of(planes, codec);
+    }
     #[cfg(feature = "gpui")]
     let mut nv_out: Vec<olo_video::nvdec::Picture> = Vec::new();
+    #[cfg(feature = "gpui")]
+    let mut va_out: Vec<olo_vaapi::decode::Picture> = Vec::new();
     let colour = demux.colour();
     // Presentation times of packets sent and not yet out: decoders hand
     // pictures back in display order, so each takes the earliest.
@@ -967,6 +1049,8 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                         n.dec.reset();
                         n.fresh = true;
                     }
+                    #[cfg(feature = "gpui")]
+                    Decoder::Va(v) => v.reset(),
                     _ => dec = Decoder::new(codec, demux.as_ref())?,
                 }
                 times.clear();
@@ -1037,15 +1121,33 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                 }
                 let stream = m.lock().unwrap().yuv.unwrap_or(0);
                 for pic in nv_out.drain(..) {
-                    use olo_ui::gpui::{YuvFrame, YuvMatrix};
-                    let matrix = match pic.matrix {
-                        1 => YuvMatrix::Bt709,
-                        9 | 10 => YuvMatrix::Bt2020,
-                        5 | 6 => YuvMatrix::Bt601,
-                        _ if pic.height >= 720 => YuvMatrix::Bt709,
-                        _ => YuvMatrix::Bt601,
-                    };
-                    let frame = Arc::new(YuvFrame { stream, width: pic.width, height: pic.height, deep: pic.deep, y: pic.y, uv: pic.uv, matrix, full_range: pic.full_range });
+                    let frame = Arc::new(gpu_picture(stream, pic.width, pic.height, pic.deep, pic.y, pic.uv, pic.matrix, pic.full_range));
+                    if !push(&mut times, from, &mut lead, &|| Pic::Ready(Picture::Yuv(frame.clone()))) {
+                        break;
+                    }
+                }
+            }
+            // Intel's GPU: a picture for each sample shown, with its
+            // time (as VP9's on the processor). One it can't decode: the
+            // processor from where this stream started.
+            #[cfg(feature = "gpui")]
+            (Decoder::Va(v), p) => {
+                va_out.clear();
+                let failed = p.as_ref().and_then(|p| v.decode(&p.data, (p.pts * 1e6) as i64, &mut va_out).err());
+                if let Some(e) = failed {
+                    tracing::info!("video {}: VA-API: {e}; the processor decodes", input.name);
+                    dec = Decoder::new(codec, demux.as_ref())?;
+                    m.lock().unwrap().decoding = ON_PROCESSOR;
+                    demux.seek(from);
+                    times.clear();
+                    continue;
+                }
+                let stream = m.lock().unwrap().yuv.unwrap_or(0);
+                for pic in va_out.drain(..) {
+                    while times.peek().is_some_and(|Reverse((e, _))| *e < pic.pts) {
+                        times.pop();
+                    }
+                    let frame = Arc::new(gpu_picture(stream, pic.width, pic.height, pic.deep, pic.y, pic.uv, pic.matrix, pic.full_range));
                     if !push(&mut times, from, &mut lead, &|| Pic::Ready(Picture::Yuv(frame.clone()))) {
                         break;
                     }

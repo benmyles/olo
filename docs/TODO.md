@@ -52,12 +52,17 @@ something nobody here has is in "Blocked", with what it waits for.
   and AV1 (HEVC 246% of a core → 41.6%, H.264 100% → 29%, AV1 368% →
   26%), handing over to the processor if it fails; View ▸ Decode With
   (saying what decodes now) and Preferences ▸ GPUs ▸ Video Playback.
-  Still to do: Intel's VA-API decoding (cros-codecs' parsers, VA-API
-  opened at run time), and "Intel GPU" in both choices; NVDEC's
-  pictures kept on the GPU (CUDA–Vulkan interop) rather than copied
-  back (the copy and upload are most of the 1.2 ms a frame left); VP9
-  and 10-bit through NVDEC checked on samples; the CPU path's SIMD; a
-  minute of each format with no frame dropped.
+  Intel's GPU decodes AV1 and VP9 through VA-API (bit-exact against
+  the reference decoder; 4K60 AV1 at 60, 22% of a core), offered in
+  both choices; Automatic takes it where it decodes the video. Fedora's
+  Intel driver has no H.264 or HEVC, so those stay on NVDEC or the
+  processor there.
+  Still to do: pictures kept on the GPU rather than copied back
+  (NVDEC's through CUDA–Vulkan interop, VA-API's as dmabufs; the copy
+  and upload are most of the 1.1 ms a frame left); VP9 at 4K and
+  10-bit video checked on samples (none here yet, and nothing here
+  encodes VP9); the CPU path's SIMD; a minute of each format with no
+  frame dropped.
 
 - **Olo's own login screen and boot splash** (Ben, 2026-11-01; not
   blocked: "neither of those are blocked on me", 2026-11-06). A display

@@ -1,5 +1,5 @@
-//! AV1 through VA-API, for Intel's and AMD's GPUs: what Fedora's own
-//! drivers encode (iHD and Mesa leave out the patented codecs, so no
+//! AV1 through VA-API, for Intel's and AMD's GPUs (decoding AV1 and VP9
+//! is [`decode`]'s): what Fedora's own drivers encode (iHD and Mesa leave out the patented codecs, so no
 //! H.264 or HEVC there, but AV1 profile 0 on Intel's Xe and Arc GPUs and
 //! AMD's from RDNA3 on). The ThinkPad's Intel GPU records the screen
 //! this way while the NVIDIA one sleeps.
@@ -29,6 +29,8 @@ use std::{
 };
 
 use va_sys as va;
+
+pub mod decode;
 
 /// A library opened at run time, closed when dropped.
 struct Lib(*mut c_void);
@@ -106,6 +108,9 @@ struct Api {
     create_image: unsafe extern "C" fn(Dpy, *mut va::VAImageFormat, c_int, c_int, *mut va::VAImage) -> St,
     put_image: unsafe extern "C" fn(Dpy, va::VASurfaceID, va::VAImageID, c_int, c_int, c_uint, c_uint, c_int, c_int, c_uint, c_uint) -> St,
     destroy_image: unsafe extern "C" fn(Dpy, va::VAImageID) -> St,
+    /// Copies a surface as it is (libva 2.12 on; the driver's copy
+    /// engine).
+    copy: Option<unsafe extern "C" fn(Dpy, *mut va::VACopyObject, *mut va::VACopyObject, va::VACopyOption) -> St>,
     // (Kept open while the functions are used.)
     _va: Lib,
     _drm: Lib,
@@ -146,6 +151,7 @@ impl Api {
                 create_image: lib.get("vaCreateImage")?,
                 put_image: lib.get("vaPutImage")?,
                 destroy_image: lib.get("vaDestroyImage")?,
+                copy: lib.get("vaCopy").ok(),
                 _va: lib,
                 _drm: drm,
             })
@@ -206,17 +212,24 @@ impl Display {
     /// The entrypoint AV1 profile 0 is encoded through (the low-power
     /// one first: Intel's Xe has only that), if any.
     fn av1_entrypoint(&self) -> Option<va::VAEntrypoint> {
+        let list = self.entrypoints(va::VAProfileAV1Profile0);
+        [va::VAEntrypointEncSliceLP, va::VAEntrypointEncSlice].into_iter().find(|e| list.contains(e))
+    }
+
+    /// What the driver does with `profile` (decodes it, `VLD`; encodes
+    /// it), none if it doesn't know it.
+    fn entrypoints(&self, profile: va::VAProfile) -> Vec<va::VAEntrypoint> {
         // SAFETY: our display.
         let max = unsafe { (self.api.max_num_entrypoints)(self.dpy) }.max(0) as usize;
         let mut list = vec![0 as va::VAEntrypoint; max];
         let mut n = 0;
         // SAFETY: `list` holds the most there can be.
-        let st = unsafe { (self.api.query_config_entrypoints)(self.dpy, va::VAProfileAV1Profile0, list.as_mut_ptr(), &mut n) };
+        let st = unsafe { (self.api.query_config_entrypoints)(self.dpy, profile, list.as_mut_ptr(), &mut n) };
         if st != va::VA_STATUS_SUCCESS as St {
-            return None;
+            return Vec::new();
         }
         list.truncate(n.max(0) as usize);
-        [va::VAEntrypointEncSliceLP, va::VAEntrypointEncSlice].into_iter().find(|e| list.contains(e))
+        list
     }
 
     /// The values of `kinds` for AV1 encoding through `entry`.

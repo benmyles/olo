@@ -210,6 +210,11 @@ pub const VA_PADDING_LOW: u32 = 4;
 pub const VA_PADDING_MEDIUM: u32 = 8;
 pub const VA_PADDING_HIGH: u32 = 16;
 pub const VA_PADDING_LARGE: u32 = 32;
+pub const VA_EXEC_SYNC: u32 = 0;
+pub const VA_EXEC_ASYNC: u32 = 1;
+pub const VA_EXEC_MODE_DEFAULT: u32 = 0;
+pub const VA_EXEC_MODE_POWER_SAVING: u32 = 1;
+pub const VA_EXEC_MODE_PERFORMANCE: u32 = 2;
 pub const VA_RT_FORMAT_YUV420: u32 = 1;
 pub const VA_RT_FORMAT_YUV422: u32 = 2;
 pub const VA_RT_FORMAT_YUV444: u32 = 4;
@@ -256,6 +261,11 @@ pub const VA_SURFACE_ATTRIB_SETTABLE: u32 = 2;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_VA: u32 = 1;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_V4L2: u32 = 2;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_USER_PTR: u32 = 4;
+pub const VA_SURFACE_EXTBUF_DESC_ENABLE_TILING: u32 = 1;
+pub const VA_SURFACE_EXTBUF_DESC_CACHED: u32 = 2;
+pub const VA_SURFACE_EXTBUF_DESC_UNCACHED: u32 = 4;
+pub const VA_SURFACE_EXTBUF_DESC_WC: u32 = 8;
+pub const VA_SURFACE_EXTBUF_DESC_PROTECTED: u32 = 2147483648;
 pub const VA_SURFACE_ATTRIB_USAGE_HINT_GENERIC: u32 = 0;
 pub const VA_SURFACE_ATTRIB_USAGE_HINT_DECODER: u32 = 1;
 pub const VA_SURFACE_ATTRIB_USAGE_HINT_ENCODER: u32 = 2;
@@ -264,6 +274,16 @@ pub const VA_SURFACE_ATTRIB_USAGE_HINT_VPP_WRITE: u32 = 8;
 pub const VA_SURFACE_ATTRIB_USAGE_HINT_DISPLAY: u32 = 16;
 pub const VA_SURFACE_ATTRIB_USAGE_HINT_EXPORT: u32 = 32;
 pub const VA_PROGRESSIVE: u32 = 1;
+pub const VA_SLICE_DATA_FLAG_ALL: u32 = 0;
+pub const VA_SLICE_DATA_FLAG_BEGIN: u32 = 1;
+pub const VA_SLICE_DATA_FLAG_MIDDLE: u32 = 2;
+pub const VA_SLICE_DATA_FLAG_END: u32 = 4;
+pub const VA_PICTURE_H264_INVALID: u32 = 1;
+pub const VA_PICTURE_H264_TOP_FIELD: u32 = 2;
+pub const VA_PICTURE_H264_BOTTOM_FIELD: u32 = 4;
+pub const VA_PICTURE_H264_SHORT_TERM_REFERENCE: u32 = 8;
+pub const VA_PICTURE_H264_LONG_TERM_REFERENCE: u32 = 16;
+pub const VA_PICTURE_H264_NON_EXISTING: u32 = 32;
 pub const VA_CODED_BUF_STATUS_PICTURE_AVE_QP_MASK: u32 = 255;
 pub const VA_CODED_BUF_STATUS_LARGE_SLICE_MASK: u32 = 256;
 pub const VA_CODED_BUF_STATUS_SLICE_OVERFLOW_MASK: u32 = 512;
@@ -334,6 +354,13 @@ pub const VA_FOURCC_ARGB64: u32 = 877089345;
 pub const VA_FOURCC_ABGR64: u32 = 877085249;
 pub const VA_FOURCC_XYUV: u32 = 1448434008;
 pub const VA_FOURCC_Q416: u32 = 909194321;
+pub const VA_PICTURE_HEVC_INVALID: u32 = 1;
+pub const VA_PICTURE_HEVC_FIELD_PIC: u32 = 2;
+pub const VA_PICTURE_HEVC_BOTTOM_FIELD: u32 = 4;
+pub const VA_PICTURE_HEVC_LONG_TERM_REFERENCE: u32 = 8;
+pub const VA_PICTURE_HEVC_RPS_ST_CURR_BEFORE: u32 = 16;
+pub const VA_PICTURE_HEVC_RPS_ST_CURR_AFTER: u32 = 32;
+pub const VA_PICTURE_HEVC_RPS_LT_CURR: u32 = 64;
 pub const VA_CHROMA_SITING_UNKNOWN: u32 = 0;
 pub const VA_CHROMA_SITING_VERTICAL_TOP: u32 = 1;
 pub const VA_CHROMA_SITING_VERTICAL_CENTER: u32 = 2;
@@ -616,6 +643,60 @@ impl Default for _VASurfaceAttrib {
     }
 }
 pub type VASurfaceAttrib = _VASurfaceAttrib;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VASurfaceAttribExternalBuffers {
+    pub pixel_format: u32,
+    pub width: u32,
+    pub height: u32,
+    pub data_size: u32,
+    pub num_planes: u32,
+    pub pitches: [u32; 4usize],
+    pub offsets: [u32; 4usize],
+    pub buffers: *mut usize,
+    pub num_buffers: u32,
+    pub flags: u32,
+    pub private_data: *mut ::std::os::raw::c_void,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASurfaceAttribExternalBuffers"]
+        [::std::mem::size_of::<_VASurfaceAttribExternalBuffers>() - 80usize];
+    ["Alignment of _VASurfaceAttribExternalBuffers"]
+        [::std::mem::align_of::<_VASurfaceAttribExternalBuffers>() - 8usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::pixel_format"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, pixel_format) - 0usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::width"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, width) - 4usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::height"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, height) - 8usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::data_size"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, data_size) - 12usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::num_planes"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, num_planes) - 16usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::pitches"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, pitches) - 20usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::offsets"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, offsets) - 36usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::buffers"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, buffers) - 56usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::num_buffers"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, num_buffers) - 64usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::flags"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, flags) - 68usize];
+    ["Offset of field: _VASurfaceAttribExternalBuffers::private_data"]
+        [::std::mem::offset_of!(_VASurfaceAttribExternalBuffers, private_data) - 72usize];
+};
+impl Default for _VASurfaceAttribExternalBuffers {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VASurfaceAttribExternalBuffers = _VASurfaceAttribExternalBuffers;
 pub type VABufferID = VAGenericID;
 pub const VAPictureParameterBufferType: VABufferType = 0;
 pub const VAIQMatrixBufferType: VABufferType = 1;
@@ -1387,6 +1468,1173 @@ impl Default for _VAEncMiscParameterFrameRate {
 }
 pub type VAEncMiscParameterFrameRate = _VAEncMiscParameterFrameRate;
 #[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VAPictureH264 {
+    pub picture_id: VASurfaceID,
+    pub frame_idx: u32,
+    pub flags: u32,
+    pub TopFieldOrderCnt: i32,
+    pub BottomFieldOrderCnt: i32,
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureH264"][::std::mem::size_of::<_VAPictureH264>() - 36usize];
+    ["Alignment of _VAPictureH264"][::std::mem::align_of::<_VAPictureH264>() - 4usize];
+    ["Offset of field: _VAPictureH264::picture_id"]
+        [::std::mem::offset_of!(_VAPictureH264, picture_id) - 0usize];
+    ["Offset of field: _VAPictureH264::frame_idx"]
+        [::std::mem::offset_of!(_VAPictureH264, frame_idx) - 4usize];
+    ["Offset of field: _VAPictureH264::flags"]
+        [::std::mem::offset_of!(_VAPictureH264, flags) - 8usize];
+    ["Offset of field: _VAPictureH264::TopFieldOrderCnt"]
+        [::std::mem::offset_of!(_VAPictureH264, TopFieldOrderCnt) - 12usize];
+    ["Offset of field: _VAPictureH264::BottomFieldOrderCnt"]
+        [::std::mem::offset_of!(_VAPictureH264, BottomFieldOrderCnt) - 16usize];
+    ["Offset of field: _VAPictureH264::va_reserved"]
+        [::std::mem::offset_of!(_VAPictureH264, va_reserved) - 20usize];
+};
+pub type VAPictureH264 = _VAPictureH264;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VAPictureParameterBufferH264 {
+    pub CurrPic: VAPictureH264,
+    pub ReferenceFrames: [VAPictureH264; 16usize],
+    pub picture_width_in_mbs_minus1: u16,
+    pub picture_height_in_mbs_minus1: u16,
+    pub bit_depth_luma_minus8: u8,
+    pub bit_depth_chroma_minus8: u8,
+    pub num_ref_frames: u8,
+    pub seq_fields: _VAPictureParameterBufferH264__bindgen_ty_1,
+    pub num_slice_groups_minus1: u8,
+    pub slice_group_map_type: u8,
+    pub slice_group_change_rate_minus1: u16,
+    pub pic_init_qp_minus26: i8,
+    pub pic_init_qs_minus26: i8,
+    pub chroma_qp_index_offset: i8,
+    pub second_chroma_qp_index_offset: i8,
+    pub pic_fields: _VAPictureParameterBufferH264__bindgen_ty_2,
+    pub frame_num: u16,
+    pub va_reserved: [u32; 8usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VAPictureParameterBufferH264__bindgen_ty_1 {
+    pub bits: _VAPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Default, Copy, Clone)]
+pub struct _VAPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1 {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 3usize]>,
+    pub __bindgen_padding_0: u8,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1"][::std::mem::size_of::<
+        _VAPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VAPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1"][::std::mem::align_of::<
+        _VAPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1,
+    >() - 4usize];
+};
+impl _VAPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1 {
+    #[inline]
+    pub fn chroma_format_idc(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_chroma_format_idc(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn chroma_format_idc_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_chroma_format_idc_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn residual_colour_transform_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_residual_colour_transform_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn residual_colour_transform_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_residual_colour_transform_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn gaps_in_frame_num_value_allowed_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_gaps_in_frame_num_value_allowed_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn gaps_in_frame_num_value_allowed_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_gaps_in_frame_num_value_allowed_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn frame_mbs_only_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_frame_mbs_only_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn frame_mbs_only_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_frame_mbs_only_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mb_adaptive_frame_field_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_mb_adaptive_frame_field_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mb_adaptive_frame_field_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mb_adaptive_frame_field_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn direct_8x8_inference_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_direct_8x8_inference_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn direct_8x8_inference_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_direct_8x8_inference_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn MinLumaBiPredSize8x8(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_MinLumaBiPredSize8x8(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn MinLumaBiPredSize8x8_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_MinLumaBiPredSize8x8_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn log2_max_frame_num_minus4(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 4u8) as u32) }
+    }
+    #[inline]
+    pub fn set_log2_max_frame_num_minus4(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 4u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn log2_max_frame_num_minus4_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                4u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_log2_max_frame_num_minus4_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                4u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn pic_order_cnt_type(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_pic_order_cnt_type(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn pic_order_cnt_type_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_pic_order_cnt_type_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn log2_max_pic_order_cnt_lsb_minus4(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 4u8) as u32) }
+    }
+    #[inline]
+    pub fn set_log2_max_pic_order_cnt_lsb_minus4(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(14usize, 4u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn log2_max_pic_order_cnt_lsb_minus4_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                14usize,
+                4u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_log2_max_pic_order_cnt_lsb_minus4_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                14usize,
+                4u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn delta_pic_order_always_zero_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(18usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_delta_pic_order_always_zero_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(18usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn delta_pic_order_always_zero_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                18usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_delta_pic_order_always_zero_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                18usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        chroma_format_idc: u32,
+        residual_colour_transform_flag: u32,
+        gaps_in_frame_num_value_allowed_flag: u32,
+        frame_mbs_only_flag: u32,
+        mb_adaptive_frame_field_flag: u32,
+        direct_8x8_inference_flag: u32,
+        MinLumaBiPredSize8x8: u32,
+        log2_max_frame_num_minus4: u32,
+        pic_order_cnt_type: u32,
+        log2_max_pic_order_cnt_lsb_minus4: u32,
+        delta_pic_order_always_zero_flag: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 3usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 3usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let chroma_format_idc: u32 = unsafe { ::std::mem::transmute(chroma_format_idc) };
+            chroma_format_idc as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let residual_colour_transform_flag: u32 =
+                unsafe { ::std::mem::transmute(residual_colour_transform_flag) };
+            residual_colour_transform_flag as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let gaps_in_frame_num_value_allowed_flag: u32 =
+                unsafe { ::std::mem::transmute(gaps_in_frame_num_value_allowed_flag) };
+            gaps_in_frame_num_value_allowed_flag as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let frame_mbs_only_flag: u32 = unsafe { ::std::mem::transmute(frame_mbs_only_flag) };
+            frame_mbs_only_flag as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let mb_adaptive_frame_field_flag: u32 =
+                unsafe { ::std::mem::transmute(mb_adaptive_frame_field_flag) };
+            mb_adaptive_frame_field_flag as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let direct_8x8_inference_flag: u32 =
+                unsafe { ::std::mem::transmute(direct_8x8_inference_flag) };
+            direct_8x8_inference_flag as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let MinLumaBiPredSize8x8: u32 = unsafe { ::std::mem::transmute(MinLumaBiPredSize8x8) };
+            MinLumaBiPredSize8x8 as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 4u8, {
+            let log2_max_frame_num_minus4: u32 =
+                unsafe { ::std::mem::transmute(log2_max_frame_num_minus4) };
+            log2_max_frame_num_minus4 as u64
+        });
+        __bindgen_bitfield_unit.set(12usize, 2u8, {
+            let pic_order_cnt_type: u32 = unsafe { ::std::mem::transmute(pic_order_cnt_type) };
+            pic_order_cnt_type as u64
+        });
+        __bindgen_bitfield_unit.set(14usize, 4u8, {
+            let log2_max_pic_order_cnt_lsb_minus4: u32 =
+                unsafe { ::std::mem::transmute(log2_max_pic_order_cnt_lsb_minus4) };
+            log2_max_pic_order_cnt_lsb_minus4 as u64
+        });
+        __bindgen_bitfield_unit.set(18usize, 1u8, {
+            let delta_pic_order_always_zero_flag: u32 =
+                unsafe { ::std::mem::transmute(delta_pic_order_always_zero_flag) };
+            delta_pic_order_always_zero_flag as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferH264__bindgen_ty_1"]
+        [::std::mem::size_of::<_VAPictureParameterBufferH264__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VAPictureParameterBufferH264__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAPictureParameterBufferH264__bindgen_ty_1>() - 4usize];
+    ["Offset of field: _VAPictureParameterBufferH264__bindgen_ty_1::bits"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264__bindgen_ty_1, bits) - 0usize];
+    ["Offset of field: _VAPictureParameterBufferH264__bindgen_ty_1::value"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264__bindgen_ty_1, value) - 0usize];
+};
+impl Default for _VAPictureParameterBufferH264__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VAPictureParameterBufferH264__bindgen_ty_2 {
+    pub bits: _VAPictureParameterBufferH264__bindgen_ty_2__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Default, Copy, Clone)]
+pub struct _VAPictureParameterBufferH264__bindgen_ty_2__bindgen_ty_1 {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>,
+    pub __bindgen_padding_0: u16,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferH264__bindgen_ty_2__bindgen_ty_1"][::std::mem::size_of::<
+        _VAPictureParameterBufferH264__bindgen_ty_2__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VAPictureParameterBufferH264__bindgen_ty_2__bindgen_ty_1"][::std::mem::align_of::<
+        _VAPictureParameterBufferH264__bindgen_ty_2__bindgen_ty_1,
+    >() - 4usize];
+};
+impl _VAPictureParameterBufferH264__bindgen_ty_2__bindgen_ty_1 {
+    #[inline]
+    pub fn entropy_coding_mode_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_entropy_coding_mode_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn entropy_coding_mode_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_entropy_coding_mode_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn weighted_pred_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_weighted_pred_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn weighted_pred_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_weighted_pred_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn weighted_bipred_idc(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_weighted_bipred_idc(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn weighted_bipred_idc_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_weighted_bipred_idc_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn transform_8x8_mode_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_transform_8x8_mode_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn transform_8x8_mode_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_transform_8x8_mode_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn field_pic_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_field_pic_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn field_pic_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_field_pic_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn constrained_intra_pred_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_constrained_intra_pred_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn constrained_intra_pred_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_constrained_intra_pred_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn pic_order_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_pic_order_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn pic_order_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_pic_order_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn deblocking_filter_control_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_deblocking_filter_control_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn deblocking_filter_control_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_deblocking_filter_control_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn redundant_pic_cnt_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_redundant_pic_cnt_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn redundant_pic_cnt_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_redundant_pic_cnt_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reference_pic_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reference_pic_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reference_pic_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reference_pic_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        entropy_coding_mode_flag: u32,
+        weighted_pred_flag: u32,
+        weighted_bipred_idc: u32,
+        transform_8x8_mode_flag: u32,
+        field_pic_flag: u32,
+        constrained_intra_pred_flag: u32,
+        pic_order_present_flag: u32,
+        deblocking_filter_control_present_flag: u32,
+        redundant_pic_cnt_present_flag: u32,
+        reference_pic_flag: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 2usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 2usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let entropy_coding_mode_flag: u32 =
+                unsafe { ::std::mem::transmute(entropy_coding_mode_flag) };
+            entropy_coding_mode_flag as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 1u8, {
+            let weighted_pred_flag: u32 = unsafe { ::std::mem::transmute(weighted_pred_flag) };
+            weighted_pred_flag as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 2u8, {
+            let weighted_bipred_idc: u32 = unsafe { ::std::mem::transmute(weighted_bipred_idc) };
+            weighted_bipred_idc as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let transform_8x8_mode_flag: u32 =
+                unsafe { ::std::mem::transmute(transform_8x8_mode_flag) };
+            transform_8x8_mode_flag as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let field_pic_flag: u32 = unsafe { ::std::mem::transmute(field_pic_flag) };
+            field_pic_flag as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let constrained_intra_pred_flag: u32 =
+                unsafe { ::std::mem::transmute(constrained_intra_pred_flag) };
+            constrained_intra_pred_flag as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let pic_order_present_flag: u32 =
+                unsafe { ::std::mem::transmute(pic_order_present_flag) };
+            pic_order_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let deblocking_filter_control_present_flag: u32 =
+                unsafe { ::std::mem::transmute(deblocking_filter_control_present_flag) };
+            deblocking_filter_control_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let redundant_pic_cnt_present_flag: u32 =
+                unsafe { ::std::mem::transmute(redundant_pic_cnt_present_flag) };
+            redundant_pic_cnt_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let reference_pic_flag: u32 = unsafe { ::std::mem::transmute(reference_pic_flag) };
+            reference_pic_flag as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferH264__bindgen_ty_2"]
+        [::std::mem::size_of::<_VAPictureParameterBufferH264__bindgen_ty_2>() - 4usize];
+    ["Alignment of _VAPictureParameterBufferH264__bindgen_ty_2"]
+        [::std::mem::align_of::<_VAPictureParameterBufferH264__bindgen_ty_2>() - 4usize];
+    ["Offset of field: _VAPictureParameterBufferH264__bindgen_ty_2::bits"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264__bindgen_ty_2, bits) - 0usize];
+    ["Offset of field: _VAPictureParameterBufferH264__bindgen_ty_2::value"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264__bindgen_ty_2, value) - 0usize];
+};
+impl Default for _VAPictureParameterBufferH264__bindgen_ty_2 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferH264"]
+        [::std::mem::size_of::<_VAPictureParameterBufferH264>() - 672usize];
+    ["Alignment of _VAPictureParameterBufferH264"]
+        [::std::mem::align_of::<_VAPictureParameterBufferH264>() - 4usize];
+    ["Offset of field: _VAPictureParameterBufferH264::CurrPic"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, CurrPic) - 0usize];
+    ["Offset of field: _VAPictureParameterBufferH264::ReferenceFrames"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, ReferenceFrames) - 36usize];
+    ["Offset of field: _VAPictureParameterBufferH264::picture_width_in_mbs_minus1"][::std::mem::offset_of!(
+        _VAPictureParameterBufferH264,
+        picture_width_in_mbs_minus1
+    ) - 612usize];
+    ["Offset of field: _VAPictureParameterBufferH264::picture_height_in_mbs_minus1"][::std::mem::offset_of!(
+        _VAPictureParameterBufferH264,
+        picture_height_in_mbs_minus1
+    ) - 614usize];
+    ["Offset of field: _VAPictureParameterBufferH264::bit_depth_luma_minus8"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, bit_depth_luma_minus8) - 616usize];
+    ["Offset of field: _VAPictureParameterBufferH264::bit_depth_chroma_minus8"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, bit_depth_chroma_minus8) - 617usize];
+    ["Offset of field: _VAPictureParameterBufferH264::num_ref_frames"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, num_ref_frames) - 618usize];
+    ["Offset of field: _VAPictureParameterBufferH264::seq_fields"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, seq_fields) - 620usize];
+    ["Offset of field: _VAPictureParameterBufferH264::num_slice_groups_minus1"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, num_slice_groups_minus1) - 624usize];
+    ["Offset of field: _VAPictureParameterBufferH264::slice_group_map_type"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, slice_group_map_type) - 625usize];
+    ["Offset of field: _VAPictureParameterBufferH264::slice_group_change_rate_minus1"][::std::mem::offset_of!(
+        _VAPictureParameterBufferH264,
+        slice_group_change_rate_minus1
+    )
+        - 626usize];
+    ["Offset of field: _VAPictureParameterBufferH264::pic_init_qp_minus26"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, pic_init_qp_minus26) - 628usize];
+    ["Offset of field: _VAPictureParameterBufferH264::pic_init_qs_minus26"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, pic_init_qs_minus26) - 629usize];
+    ["Offset of field: _VAPictureParameterBufferH264::chroma_qp_index_offset"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, chroma_qp_index_offset) - 630usize];
+    ["Offset of field: _VAPictureParameterBufferH264::second_chroma_qp_index_offset"][::std::mem::offset_of!(
+        _VAPictureParameterBufferH264,
+        second_chroma_qp_index_offset
+    ) - 631usize];
+    ["Offset of field: _VAPictureParameterBufferH264::pic_fields"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, pic_fields) - 632usize];
+    ["Offset of field: _VAPictureParameterBufferH264::frame_num"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, frame_num) - 636usize];
+    ["Offset of field: _VAPictureParameterBufferH264::va_reserved"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferH264, va_reserved) - 640usize];
+};
+impl Default for _VAPictureParameterBufferH264 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAPictureParameterBufferH264 = _VAPictureParameterBufferH264;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VAIQMatrixBufferH264 {
+    pub ScalingList4x4: [[u8; 16usize]; 6usize],
+    pub ScalingList8x8: [[u8; 64usize]; 2usize],
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAIQMatrixBufferH264"][::std::mem::size_of::<_VAIQMatrixBufferH264>() - 240usize];
+    ["Alignment of _VAIQMatrixBufferH264"]
+        [::std::mem::align_of::<_VAIQMatrixBufferH264>() - 4usize];
+    ["Offset of field: _VAIQMatrixBufferH264::ScalingList4x4"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferH264, ScalingList4x4) - 0usize];
+    ["Offset of field: _VAIQMatrixBufferH264::ScalingList8x8"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferH264, ScalingList8x8) - 96usize];
+    ["Offset of field: _VAIQMatrixBufferH264::va_reserved"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferH264, va_reserved) - 224usize];
+};
+impl Default for _VAIQMatrixBufferH264 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAIQMatrixBufferH264 = _VAIQMatrixBufferH264;
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VASliceParameterBufferH264 {
+    pub slice_data_size: u32,
+    pub slice_data_offset: u32,
+    pub slice_data_flag: u32,
+    pub slice_data_bit_offset: u16,
+    pub first_mb_in_slice: u16,
+    pub slice_type: u8,
+    pub direct_spatial_mv_pred_flag: u8,
+    pub num_ref_idx_l0_active_minus1: u8,
+    pub num_ref_idx_l1_active_minus1: u8,
+    pub cabac_init_idc: u8,
+    pub slice_qp_delta: i8,
+    pub disable_deblocking_filter_idc: u8,
+    pub slice_alpha_c0_offset_div2: i8,
+    pub slice_beta_offset_div2: i8,
+    pub RefPicList0: [VAPictureH264; 32usize],
+    pub RefPicList1: [VAPictureH264; 32usize],
+    pub luma_log2_weight_denom: u8,
+    pub chroma_log2_weight_denom: u8,
+    pub luma_weight_l0_flag: u8,
+    pub luma_weight_l0: [i16; 32usize],
+    pub luma_offset_l0: [i16; 32usize],
+    pub chroma_weight_l0_flag: u8,
+    pub chroma_weight_l0: [[i16; 2usize]; 32usize],
+    pub chroma_offset_l0: [[i16; 2usize]; 32usize],
+    pub luma_weight_l1_flag: u8,
+    pub luma_weight_l1: [i16; 32usize],
+    pub luma_offset_l1: [i16; 32usize],
+    pub chroma_weight_l1_flag: u8,
+    pub chroma_weight_l1: [[i16; 2usize]; 32usize],
+    pub chroma_offset_l1: [[i16; 2usize]; 32usize],
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASliceParameterBufferH264"]
+        [::std::mem::size_of::<_VASliceParameterBufferH264>() - 3128usize];
+    ["Alignment of _VASliceParameterBufferH264"]
+        [::std::mem::align_of::<_VASliceParameterBufferH264>() - 4usize];
+    ["Offset of field: _VASliceParameterBufferH264::slice_data_size"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, slice_data_size) - 0usize];
+    ["Offset of field: _VASliceParameterBufferH264::slice_data_offset"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, slice_data_offset) - 4usize];
+    ["Offset of field: _VASliceParameterBufferH264::slice_data_flag"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, slice_data_flag) - 8usize];
+    ["Offset of field: _VASliceParameterBufferH264::slice_data_bit_offset"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, slice_data_bit_offset) - 12usize];
+    ["Offset of field: _VASliceParameterBufferH264::first_mb_in_slice"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, first_mb_in_slice) - 14usize];
+    ["Offset of field: _VASliceParameterBufferH264::slice_type"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, slice_type) - 16usize];
+    ["Offset of field: _VASliceParameterBufferH264::direct_spatial_mv_pred_flag"][::std::mem::offset_of!(
+        _VASliceParameterBufferH264,
+        direct_spatial_mv_pred_flag
+    ) - 17usize];
+    ["Offset of field: _VASliceParameterBufferH264::num_ref_idx_l0_active_minus1"][::std::mem::offset_of!(
+        _VASliceParameterBufferH264,
+        num_ref_idx_l0_active_minus1
+    ) - 18usize];
+    ["Offset of field: _VASliceParameterBufferH264::num_ref_idx_l1_active_minus1"][::std::mem::offset_of!(
+        _VASliceParameterBufferH264,
+        num_ref_idx_l1_active_minus1
+    ) - 19usize];
+    ["Offset of field: _VASliceParameterBufferH264::cabac_init_idc"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, cabac_init_idc) - 20usize];
+    ["Offset of field: _VASliceParameterBufferH264::slice_qp_delta"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, slice_qp_delta) - 21usize];
+    ["Offset of field: _VASliceParameterBufferH264::disable_deblocking_filter_idc"][::std::mem::offset_of!(
+        _VASliceParameterBufferH264,
+        disable_deblocking_filter_idc
+    ) - 22usize];
+    ["Offset of field: _VASliceParameterBufferH264::slice_alpha_c0_offset_div2"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, slice_alpha_c0_offset_div2) - 23usize];
+    ["Offset of field: _VASliceParameterBufferH264::slice_beta_offset_div2"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, slice_beta_offset_div2) - 24usize];
+    ["Offset of field: _VASliceParameterBufferH264::RefPicList0"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, RefPicList0) - 28usize];
+    ["Offset of field: _VASliceParameterBufferH264::RefPicList1"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, RefPicList1) - 1180usize];
+    ["Offset of field: _VASliceParameterBufferH264::luma_log2_weight_denom"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, luma_log2_weight_denom) - 2332usize];
+    ["Offset of field: _VASliceParameterBufferH264::chroma_log2_weight_denom"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, chroma_log2_weight_denom) - 2333usize];
+    ["Offset of field: _VASliceParameterBufferH264::luma_weight_l0_flag"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, luma_weight_l0_flag) - 2334usize];
+    ["Offset of field: _VASliceParameterBufferH264::luma_weight_l0"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, luma_weight_l0) - 2336usize];
+    ["Offset of field: _VASliceParameterBufferH264::luma_offset_l0"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, luma_offset_l0) - 2400usize];
+    ["Offset of field: _VASliceParameterBufferH264::chroma_weight_l0_flag"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, chroma_weight_l0_flag) - 2464usize];
+    ["Offset of field: _VASliceParameterBufferH264::chroma_weight_l0"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, chroma_weight_l0) - 2466usize];
+    ["Offset of field: _VASliceParameterBufferH264::chroma_offset_l0"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, chroma_offset_l0) - 2594usize];
+    ["Offset of field: _VASliceParameterBufferH264::luma_weight_l1_flag"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, luma_weight_l1_flag) - 2722usize];
+    ["Offset of field: _VASliceParameterBufferH264::luma_weight_l1"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, luma_weight_l1) - 2724usize];
+    ["Offset of field: _VASliceParameterBufferH264::luma_offset_l1"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, luma_offset_l1) - 2788usize];
+    ["Offset of field: _VASliceParameterBufferH264::chroma_weight_l1_flag"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, chroma_weight_l1_flag) - 2852usize];
+    ["Offset of field: _VASliceParameterBufferH264::chroma_weight_l1"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, chroma_weight_l1) - 2854usize];
+    ["Offset of field: _VASliceParameterBufferH264::chroma_offset_l1"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, chroma_offset_l1) - 2982usize];
+    ["Offset of field: _VASliceParameterBufferH264::va_reserved"]
+        [::std::mem::offset_of!(_VASliceParameterBufferH264, va_reserved) - 3112usize];
+};
+pub type VASliceParameterBufferH264 = _VASliceParameterBufferH264;
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct _VACodedBufferSegment {
     pub size: u32,
@@ -1506,6 +2754,7399 @@ const _: () = {
         [::std::mem::offset_of!(_VAImage, va_reserved) - 104usize];
 };
 pub type VAImage = _VAImage;
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VAPictureHEVC {
+    pub picture_id: VASurfaceID,
+    pub pic_order_cnt: i32,
+    pub flags: u32,
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureHEVC"][::std::mem::size_of::<_VAPictureHEVC>() - 28usize];
+    ["Alignment of _VAPictureHEVC"][::std::mem::align_of::<_VAPictureHEVC>() - 4usize];
+    ["Offset of field: _VAPictureHEVC::picture_id"]
+        [::std::mem::offset_of!(_VAPictureHEVC, picture_id) - 0usize];
+    ["Offset of field: _VAPictureHEVC::pic_order_cnt"]
+        [::std::mem::offset_of!(_VAPictureHEVC, pic_order_cnt) - 4usize];
+    ["Offset of field: _VAPictureHEVC::flags"]
+        [::std::mem::offset_of!(_VAPictureHEVC, flags) - 8usize];
+    ["Offset of field: _VAPictureHEVC::va_reserved"]
+        [::std::mem::offset_of!(_VAPictureHEVC, va_reserved) - 12usize];
+};
+pub type VAPictureHEVC = _VAPictureHEVC;
+pub const VACopyObjectSurface: VACopyObjectType = 0;
+pub const VACopyObjectBuffer: VACopyObjectType = 1;
+pub type VACopyObjectType = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VACopyObject {
+    pub obj_type: VACopyObjectType,
+    pub object: _VACopyObject__bindgen_ty_1,
+    pub va_reserved: [u32; 8usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VACopyObject__bindgen_ty_1 {
+    pub surface_id: VASurfaceID,
+    pub buffer_id: VABufferID,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VACopyObject__bindgen_ty_1"]
+        [::std::mem::size_of::<_VACopyObject__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VACopyObject__bindgen_ty_1"]
+        [::std::mem::align_of::<_VACopyObject__bindgen_ty_1>() - 4usize];
+    ["Offset of field: _VACopyObject__bindgen_ty_1::surface_id"]
+        [::std::mem::offset_of!(_VACopyObject__bindgen_ty_1, surface_id) - 0usize];
+    ["Offset of field: _VACopyObject__bindgen_ty_1::buffer_id"]
+        [::std::mem::offset_of!(_VACopyObject__bindgen_ty_1, buffer_id) - 0usize];
+};
+impl Default for _VACopyObject__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VACopyObject"][::std::mem::size_of::<_VACopyObject>() - 40usize];
+    ["Alignment of _VACopyObject"][::std::mem::align_of::<_VACopyObject>() - 4usize];
+    ["Offset of field: _VACopyObject::obj_type"]
+        [::std::mem::offset_of!(_VACopyObject, obj_type) - 0usize];
+    ["Offset of field: _VACopyObject::object"]
+        [::std::mem::offset_of!(_VACopyObject, object) - 4usize];
+    ["Offset of field: _VACopyObject::va_reserved"]
+        [::std::mem::offset_of!(_VACopyObject, va_reserved) - 8usize];
+};
+impl Default for _VACopyObject {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VACopyObject = _VACopyObject;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VACopyOption {
+    pub bits: _VACopyOption__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VACopyOption__bindgen_ty_1 {
+    pub _bitfield_align_1: [u32; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VACopyOption__bindgen_ty_1"]
+        [::std::mem::size_of::<_VACopyOption__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VACopyOption__bindgen_ty_1"]
+        [::std::mem::align_of::<_VACopyOption__bindgen_ty_1>() - 4usize];
+};
+impl _VACopyOption__bindgen_ty_1 {
+    #[inline]
+    pub fn va_copy_sync(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_va_copy_sync(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn va_copy_sync_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_va_copy_sync_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn va_copy_mode(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 4u8) as u32) }
+    }
+    #[inline]
+    pub fn set_va_copy_mode(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 4u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn va_copy_mode_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                4u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_va_copy_mode_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                4u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 26u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 26u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                26u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                26u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        va_copy_sync: u32,
+        va_copy_mode: u32,
+        reserved: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let va_copy_sync: u32 = unsafe { ::std::mem::transmute(va_copy_sync) };
+            va_copy_sync as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 4u8, {
+            let va_copy_mode: u32 = unsafe { ::std::mem::transmute(va_copy_mode) };
+            va_copy_mode as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 26u8, {
+            let reserved: u32 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VACopyOption"][::std::mem::size_of::<_VACopyOption>() - 4usize];
+    ["Alignment of _VACopyOption"][::std::mem::align_of::<_VACopyOption>() - 4usize];
+    ["Offset of field: _VACopyOption::bits"][::std::mem::offset_of!(_VACopyOption, bits) - 0usize];
+    ["Offset of field: _VACopyOption::value"]
+        [::std::mem::offset_of!(_VACopyOption, value) - 0usize];
+};
+impl Default for _VACopyOption {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VACopyOption = _VACopyOption;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VAPictureParameterBufferHEVC {
+    pub CurrPic: VAPictureHEVC,
+    pub ReferenceFrames: [VAPictureHEVC; 15usize],
+    pub pic_width_in_luma_samples: u16,
+    pub pic_height_in_luma_samples: u16,
+    pub pic_fields: _VAPictureParameterBufferHEVC__bindgen_ty_1,
+    pub sps_max_dec_pic_buffering_minus1: u8,
+    pub bit_depth_luma_minus8: u8,
+    pub bit_depth_chroma_minus8: u8,
+    pub pcm_sample_bit_depth_luma_minus1: u8,
+    pub pcm_sample_bit_depth_chroma_minus1: u8,
+    pub log2_min_luma_coding_block_size_minus3: u8,
+    pub log2_diff_max_min_luma_coding_block_size: u8,
+    pub log2_min_transform_block_size_minus2: u8,
+    pub log2_diff_max_min_transform_block_size: u8,
+    pub log2_min_pcm_luma_coding_block_size_minus3: u8,
+    pub log2_diff_max_min_pcm_luma_coding_block_size: u8,
+    pub max_transform_hierarchy_depth_intra: u8,
+    pub max_transform_hierarchy_depth_inter: u8,
+    pub init_qp_minus26: i8,
+    pub diff_cu_qp_delta_depth: u8,
+    pub pps_cb_qp_offset: i8,
+    pub pps_cr_qp_offset: i8,
+    pub log2_parallel_merge_level_minus2: u8,
+    pub num_tile_columns_minus1: u8,
+    pub num_tile_rows_minus1: u8,
+    pub column_width_minus1: [u16; 19usize],
+    pub row_height_minus1: [u16; 21usize],
+    pub slice_parsing_fields: _VAPictureParameterBufferHEVC__bindgen_ty_2,
+    pub log2_max_pic_order_cnt_lsb_minus4: u8,
+    pub num_short_term_ref_pic_sets: u8,
+    pub num_long_term_ref_pic_sps: u8,
+    pub num_ref_idx_l0_default_active_minus1: u8,
+    pub num_ref_idx_l1_default_active_minus1: u8,
+    pub pps_beta_offset_div2: i8,
+    pub pps_tc_offset_div2: i8,
+    pub num_extra_slice_header_bits: u8,
+    pub st_rps_bits: u32,
+    pub va_reserved: [u32; 8usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VAPictureParameterBufferHEVC__bindgen_ty_1 {
+    pub bits: _VAPictureParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Default, Copy, Clone)]
+pub struct _VAPictureParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1 {
+    pub _bitfield_align_1: [u16; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1"][::std::mem::size_of::<
+        _VAPictureParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VAPictureParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1"][::std::mem::align_of::<
+        _VAPictureParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1,
+    >() - 4usize];
+};
+impl _VAPictureParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1 {
+    #[inline]
+    pub fn chroma_format_idc(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_chroma_format_idc(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn chroma_format_idc_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_chroma_format_idc_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn separate_colour_plane_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_separate_colour_plane_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn separate_colour_plane_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_separate_colour_plane_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn pcm_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_pcm_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn pcm_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_pcm_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn scaling_list_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_scaling_list_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn scaling_list_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_scaling_list_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn transform_skip_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_transform_skip_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn transform_skip_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_transform_skip_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn amp_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_amp_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn amp_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_amp_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn strong_intra_smoothing_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_strong_intra_smoothing_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn strong_intra_smoothing_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_strong_intra_smoothing_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn sign_data_hiding_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_sign_data_hiding_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn sign_data_hiding_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_sign_data_hiding_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn constrained_intra_pred_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_constrained_intra_pred_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn constrained_intra_pred_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_constrained_intra_pred_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn cu_qp_delta_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_cu_qp_delta_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn cu_qp_delta_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_cu_qp_delta_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn weighted_pred_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(11usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_weighted_pred_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(11usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn weighted_pred_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                11usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_weighted_pred_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                11usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn weighted_bipred_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_weighted_bipred_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn weighted_bipred_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_weighted_bipred_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn transquant_bypass_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(13usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_transquant_bypass_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(13usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn transquant_bypass_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                13usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_transquant_bypass_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                13usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn tiles_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_tiles_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(14usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn tiles_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                14usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_tiles_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                14usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn entropy_coding_sync_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(15usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_entropy_coding_sync_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(15usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn entropy_coding_sync_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                15usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_entropy_coding_sync_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                15usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn pps_loop_filter_across_slices_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(16usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_pps_loop_filter_across_slices_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(16usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn pps_loop_filter_across_slices_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                16usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_pps_loop_filter_across_slices_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                16usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn loop_filter_across_tiles_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(17usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_loop_filter_across_tiles_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(17usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn loop_filter_across_tiles_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                17usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_loop_filter_across_tiles_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                17usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn pcm_loop_filter_disabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(18usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_pcm_loop_filter_disabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(18usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn pcm_loop_filter_disabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                18usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_pcm_loop_filter_disabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                18usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn NoPicReorderingFlag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(19usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_NoPicReorderingFlag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(19usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn NoPicReorderingFlag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                19usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_NoPicReorderingFlag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                19usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn NoBiPredFlag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(20usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_NoBiPredFlag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(20usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn NoBiPredFlag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                20usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_NoBiPredFlag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                20usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn ReservedBits(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(21usize, 11u8) as u32) }
+    }
+    #[inline]
+    pub fn set_ReservedBits(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(21usize, 11u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn ReservedBits_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                21usize,
+                11u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_ReservedBits_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                21usize,
+                11u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        chroma_format_idc: u32,
+        separate_colour_plane_flag: u32,
+        pcm_enabled_flag: u32,
+        scaling_list_enabled_flag: u32,
+        transform_skip_enabled_flag: u32,
+        amp_enabled_flag: u32,
+        strong_intra_smoothing_enabled_flag: u32,
+        sign_data_hiding_enabled_flag: u32,
+        constrained_intra_pred_flag: u32,
+        cu_qp_delta_enabled_flag: u32,
+        weighted_pred_flag: u32,
+        weighted_bipred_flag: u32,
+        transquant_bypass_enabled_flag: u32,
+        tiles_enabled_flag: u32,
+        entropy_coding_sync_enabled_flag: u32,
+        pps_loop_filter_across_slices_enabled_flag: u32,
+        loop_filter_across_tiles_enabled_flag: u32,
+        pcm_loop_filter_disabled_flag: u32,
+        NoPicReorderingFlag: u32,
+        NoBiPredFlag: u32,
+        ReservedBits: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let chroma_format_idc: u32 = unsafe { ::std::mem::transmute(chroma_format_idc) };
+            chroma_format_idc as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let separate_colour_plane_flag: u32 =
+                unsafe { ::std::mem::transmute(separate_colour_plane_flag) };
+            separate_colour_plane_flag as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let pcm_enabled_flag: u32 = unsafe { ::std::mem::transmute(pcm_enabled_flag) };
+            pcm_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let scaling_list_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(scaling_list_enabled_flag) };
+            scaling_list_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let transform_skip_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(transform_skip_enabled_flag) };
+            transform_skip_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let amp_enabled_flag: u32 = unsafe { ::std::mem::transmute(amp_enabled_flag) };
+            amp_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let strong_intra_smoothing_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(strong_intra_smoothing_enabled_flag) };
+            strong_intra_smoothing_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let sign_data_hiding_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(sign_data_hiding_enabled_flag) };
+            sign_data_hiding_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let constrained_intra_pred_flag: u32 =
+                unsafe { ::std::mem::transmute(constrained_intra_pred_flag) };
+            constrained_intra_pred_flag as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let cu_qp_delta_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(cu_qp_delta_enabled_flag) };
+            cu_qp_delta_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(11usize, 1u8, {
+            let weighted_pred_flag: u32 = unsafe { ::std::mem::transmute(weighted_pred_flag) };
+            weighted_pred_flag as u64
+        });
+        __bindgen_bitfield_unit.set(12usize, 1u8, {
+            let weighted_bipred_flag: u32 = unsafe { ::std::mem::transmute(weighted_bipred_flag) };
+            weighted_bipred_flag as u64
+        });
+        __bindgen_bitfield_unit.set(13usize, 1u8, {
+            let transquant_bypass_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(transquant_bypass_enabled_flag) };
+            transquant_bypass_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(14usize, 1u8, {
+            let tiles_enabled_flag: u32 = unsafe { ::std::mem::transmute(tiles_enabled_flag) };
+            tiles_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(15usize, 1u8, {
+            let entropy_coding_sync_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(entropy_coding_sync_enabled_flag) };
+            entropy_coding_sync_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(16usize, 1u8, {
+            let pps_loop_filter_across_slices_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(pps_loop_filter_across_slices_enabled_flag) };
+            pps_loop_filter_across_slices_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(17usize, 1u8, {
+            let loop_filter_across_tiles_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(loop_filter_across_tiles_enabled_flag) };
+            loop_filter_across_tiles_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(18usize, 1u8, {
+            let pcm_loop_filter_disabled_flag: u32 =
+                unsafe { ::std::mem::transmute(pcm_loop_filter_disabled_flag) };
+            pcm_loop_filter_disabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(19usize, 1u8, {
+            let NoPicReorderingFlag: u32 = unsafe { ::std::mem::transmute(NoPicReorderingFlag) };
+            NoPicReorderingFlag as u64
+        });
+        __bindgen_bitfield_unit.set(20usize, 1u8, {
+            let NoBiPredFlag: u32 = unsafe { ::std::mem::transmute(NoBiPredFlag) };
+            NoBiPredFlag as u64
+        });
+        __bindgen_bitfield_unit.set(21usize, 11u8, {
+            let ReservedBits: u32 = unsafe { ::std::mem::transmute(ReservedBits) };
+            ReservedBits as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferHEVC__bindgen_ty_1"]
+        [::std::mem::size_of::<_VAPictureParameterBufferHEVC__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VAPictureParameterBufferHEVC__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAPictureParameterBufferHEVC__bindgen_ty_1>() - 4usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC__bindgen_ty_1::bits"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC__bindgen_ty_1, bits) - 0usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC__bindgen_ty_1::value"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC__bindgen_ty_1, value) - 0usize];
+};
+impl Default for _VAPictureParameterBufferHEVC__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VAPictureParameterBufferHEVC__bindgen_ty_2 {
+    pub bits: _VAPictureParameterBufferHEVC__bindgen_ty_2__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VAPictureParameterBufferHEVC__bindgen_ty_2__bindgen_ty_1 {
+    pub _bitfield_align_1: [u32; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferHEVC__bindgen_ty_2__bindgen_ty_1"][::std::mem::size_of::<
+        _VAPictureParameterBufferHEVC__bindgen_ty_2__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VAPictureParameterBufferHEVC__bindgen_ty_2__bindgen_ty_1"][::std::mem::align_of::<
+        _VAPictureParameterBufferHEVC__bindgen_ty_2__bindgen_ty_1,
+    >() - 4usize];
+};
+impl _VAPictureParameterBufferHEVC__bindgen_ty_2__bindgen_ty_1 {
+    #[inline]
+    pub fn lists_modification_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_lists_modification_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn lists_modification_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_lists_modification_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn long_term_ref_pics_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_long_term_ref_pics_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn long_term_ref_pics_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_long_term_ref_pics_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn sps_temporal_mvp_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_sps_temporal_mvp_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn sps_temporal_mvp_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_sps_temporal_mvp_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn cabac_init_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_cabac_init_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn cabac_init_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_cabac_init_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn output_flag_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_output_flag_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn output_flag_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_output_flag_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn dependent_slice_segments_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_dependent_slice_segments_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn dependent_slice_segments_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_dependent_slice_segments_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn pps_slice_chroma_qp_offsets_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_pps_slice_chroma_qp_offsets_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn pps_slice_chroma_qp_offsets_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_pps_slice_chroma_qp_offsets_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn sample_adaptive_offset_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_sample_adaptive_offset_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn sample_adaptive_offset_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_sample_adaptive_offset_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn deblocking_filter_override_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_deblocking_filter_override_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn deblocking_filter_override_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_deblocking_filter_override_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn pps_disable_deblocking_filter_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_pps_disable_deblocking_filter_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn pps_disable_deblocking_filter_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_pps_disable_deblocking_filter_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn slice_segment_header_extension_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_slice_segment_header_extension_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn slice_segment_header_extension_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_slice_segment_header_extension_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn RapPicFlag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(11usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_RapPicFlag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(11usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn RapPicFlag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                11usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_RapPicFlag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                11usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn IdrPicFlag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_IdrPicFlag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn IdrPicFlag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_IdrPicFlag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn IntraPicFlag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(13usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_IntraPicFlag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(13usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn IntraPicFlag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                13usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_IntraPicFlag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                13usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn ReservedBits(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 18u8) as u32) }
+    }
+    #[inline]
+    pub fn set_ReservedBits(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(14usize, 18u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn ReservedBits_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                14usize,
+                18u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_ReservedBits_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                14usize,
+                18u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        lists_modification_present_flag: u32,
+        long_term_ref_pics_present_flag: u32,
+        sps_temporal_mvp_enabled_flag: u32,
+        cabac_init_present_flag: u32,
+        output_flag_present_flag: u32,
+        dependent_slice_segments_enabled_flag: u32,
+        pps_slice_chroma_qp_offsets_present_flag: u32,
+        sample_adaptive_offset_enabled_flag: u32,
+        deblocking_filter_override_enabled_flag: u32,
+        pps_disable_deblocking_filter_flag: u32,
+        slice_segment_header_extension_present_flag: u32,
+        RapPicFlag: u32,
+        IdrPicFlag: u32,
+        IntraPicFlag: u32,
+        ReservedBits: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let lists_modification_present_flag: u32 =
+                unsafe { ::std::mem::transmute(lists_modification_present_flag) };
+            lists_modification_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 1u8, {
+            let long_term_ref_pics_present_flag: u32 =
+                unsafe { ::std::mem::transmute(long_term_ref_pics_present_flag) };
+            long_term_ref_pics_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let sps_temporal_mvp_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(sps_temporal_mvp_enabled_flag) };
+            sps_temporal_mvp_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let cabac_init_present_flag: u32 =
+                unsafe { ::std::mem::transmute(cabac_init_present_flag) };
+            cabac_init_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let output_flag_present_flag: u32 =
+                unsafe { ::std::mem::transmute(output_flag_present_flag) };
+            output_flag_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let dependent_slice_segments_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(dependent_slice_segments_enabled_flag) };
+            dependent_slice_segments_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let pps_slice_chroma_qp_offsets_present_flag: u32 =
+                unsafe { ::std::mem::transmute(pps_slice_chroma_qp_offsets_present_flag) };
+            pps_slice_chroma_qp_offsets_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let sample_adaptive_offset_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(sample_adaptive_offset_enabled_flag) };
+            sample_adaptive_offset_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let deblocking_filter_override_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(deblocking_filter_override_enabled_flag) };
+            deblocking_filter_override_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let pps_disable_deblocking_filter_flag: u32 =
+                unsafe { ::std::mem::transmute(pps_disable_deblocking_filter_flag) };
+            pps_disable_deblocking_filter_flag as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let slice_segment_header_extension_present_flag: u32 =
+                unsafe { ::std::mem::transmute(slice_segment_header_extension_present_flag) };
+            slice_segment_header_extension_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(11usize, 1u8, {
+            let RapPicFlag: u32 = unsafe { ::std::mem::transmute(RapPicFlag) };
+            RapPicFlag as u64
+        });
+        __bindgen_bitfield_unit.set(12usize, 1u8, {
+            let IdrPicFlag: u32 = unsafe { ::std::mem::transmute(IdrPicFlag) };
+            IdrPicFlag as u64
+        });
+        __bindgen_bitfield_unit.set(13usize, 1u8, {
+            let IntraPicFlag: u32 = unsafe { ::std::mem::transmute(IntraPicFlag) };
+            IntraPicFlag as u64
+        });
+        __bindgen_bitfield_unit.set(14usize, 18u8, {
+            let ReservedBits: u32 = unsafe { ::std::mem::transmute(ReservedBits) };
+            ReservedBits as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferHEVC__bindgen_ty_2"]
+        [::std::mem::size_of::<_VAPictureParameterBufferHEVC__bindgen_ty_2>() - 4usize];
+    ["Alignment of _VAPictureParameterBufferHEVC__bindgen_ty_2"]
+        [::std::mem::align_of::<_VAPictureParameterBufferHEVC__bindgen_ty_2>() - 4usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC__bindgen_ty_2::bits"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC__bindgen_ty_2, bits) - 0usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC__bindgen_ty_2::value"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC__bindgen_ty_2, value) - 0usize];
+};
+impl Default for _VAPictureParameterBufferHEVC__bindgen_ty_2 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAPictureParameterBufferHEVC"]
+        [::std::mem::size_of::<_VAPictureParameterBufferHEVC>() - 604usize];
+    ["Alignment of _VAPictureParameterBufferHEVC"]
+        [::std::mem::align_of::<_VAPictureParameterBufferHEVC>() - 4usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::CurrPic"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, CurrPic) - 0usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::ReferenceFrames"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, ReferenceFrames) - 28usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::pic_width_in_luma_samples"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        pic_width_in_luma_samples
+    ) - 448usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::pic_height_in_luma_samples"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        pic_height_in_luma_samples
+    ) - 450usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::pic_fields"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, pic_fields) - 452usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::sps_max_dec_pic_buffering_minus1"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        sps_max_dec_pic_buffering_minus1
+    )
+        - 456usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::bit_depth_luma_minus8"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, bit_depth_luma_minus8) - 457usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::bit_depth_chroma_minus8"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, bit_depth_chroma_minus8) - 458usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::pcm_sample_bit_depth_luma_minus1"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        pcm_sample_bit_depth_luma_minus1
+    )
+        - 459usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::pcm_sample_bit_depth_chroma_minus1"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        pcm_sample_bit_depth_chroma_minus1
+    )
+        - 460usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::log2_min_luma_coding_block_size_minus3"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        log2_min_luma_coding_block_size_minus3
+    )
+        - 461usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::log2_diff_max_min_luma_coding_block_size"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        log2_diff_max_min_luma_coding_block_size
+    )
+        - 462usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::log2_min_transform_block_size_minus2"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        log2_min_transform_block_size_minus2
+    )
+        - 463usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::log2_diff_max_min_transform_block_size"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        log2_diff_max_min_transform_block_size
+    )
+        - 464usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::log2_min_pcm_luma_coding_block_size_minus3"] [:: std :: mem :: offset_of ! (_VAPictureParameterBufferHEVC , log2_min_pcm_luma_coding_block_size_minus3) - 465usize] ;
+    ["Offset of field: _VAPictureParameterBufferHEVC::log2_diff_max_min_pcm_luma_coding_block_size"] [:: std :: mem :: offset_of ! (_VAPictureParameterBufferHEVC , log2_diff_max_min_pcm_luma_coding_block_size) - 466usize] ;
+    ["Offset of field: _VAPictureParameterBufferHEVC::max_transform_hierarchy_depth_intra"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        max_transform_hierarchy_depth_intra
+    )
+        - 467usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::max_transform_hierarchy_depth_inter"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        max_transform_hierarchy_depth_inter
+    )
+        - 468usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::init_qp_minus26"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, init_qp_minus26) - 469usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::diff_cu_qp_delta_depth"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, diff_cu_qp_delta_depth) - 470usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::pps_cb_qp_offset"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, pps_cb_qp_offset) - 471usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::pps_cr_qp_offset"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, pps_cr_qp_offset) - 472usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::log2_parallel_merge_level_minus2"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        log2_parallel_merge_level_minus2
+    )
+        - 473usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::num_tile_columns_minus1"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, num_tile_columns_minus1) - 474usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::num_tile_rows_minus1"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, num_tile_rows_minus1) - 475usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::column_width_minus1"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, column_width_minus1) - 476usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::row_height_minus1"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, row_height_minus1) - 514usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::slice_parsing_fields"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, slice_parsing_fields) - 556usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::log2_max_pic_order_cnt_lsb_minus4"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        log2_max_pic_order_cnt_lsb_minus4
+    )
+        - 560usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::num_short_term_ref_pic_sets"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        num_short_term_ref_pic_sets
+    ) - 561usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::num_long_term_ref_pic_sps"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        num_long_term_ref_pic_sps
+    ) - 562usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::num_ref_idx_l0_default_active_minus1"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        num_ref_idx_l0_default_active_minus1
+    )
+        - 563usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::num_ref_idx_l1_default_active_minus1"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        num_ref_idx_l1_default_active_minus1
+    )
+        - 564usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::pps_beta_offset_div2"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, pps_beta_offset_div2) - 565usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::pps_tc_offset_div2"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, pps_tc_offset_div2) - 566usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::num_extra_slice_header_bits"][::std::mem::offset_of!(
+        _VAPictureParameterBufferHEVC,
+        num_extra_slice_header_bits
+    ) - 567usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::st_rps_bits"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, st_rps_bits) - 568usize];
+    ["Offset of field: _VAPictureParameterBufferHEVC::va_reserved"]
+        [::std::mem::offset_of!(_VAPictureParameterBufferHEVC, va_reserved) - 572usize];
+};
+impl Default for _VAPictureParameterBufferHEVC {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAPictureParameterBufferHEVC = _VAPictureParameterBufferHEVC;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VASliceParameterBufferHEVC {
+    pub slice_data_size: u32,
+    pub slice_data_offset: u32,
+    pub slice_data_flag: u32,
+    pub slice_data_byte_offset: u32,
+    pub slice_segment_address: u32,
+    pub RefPicList: [[u8; 15usize]; 2usize],
+    pub LongSliceFlags: _VASliceParameterBufferHEVC__bindgen_ty_1,
+    pub collocated_ref_idx: u8,
+    pub num_ref_idx_l0_active_minus1: u8,
+    pub num_ref_idx_l1_active_minus1: u8,
+    pub slice_qp_delta: i8,
+    pub slice_cb_qp_offset: i8,
+    pub slice_cr_qp_offset: i8,
+    pub slice_beta_offset_div2: i8,
+    pub slice_tc_offset_div2: i8,
+    pub luma_log2_weight_denom: u8,
+    pub delta_chroma_log2_weight_denom: i8,
+    pub delta_luma_weight_l0: [i8; 15usize],
+    pub luma_offset_l0: [i8; 15usize],
+    pub delta_chroma_weight_l0: [[i8; 2usize]; 15usize],
+    pub ChromaOffsetL0: [[i8; 2usize]; 15usize],
+    pub delta_luma_weight_l1: [i8; 15usize],
+    pub luma_offset_l1: [i8; 15usize],
+    pub delta_chroma_weight_l1: [[i8; 2usize]; 15usize],
+    pub ChromaOffsetL1: [[i8; 2usize]; 15usize],
+    pub five_minus_max_num_merge_cand: u8,
+    pub num_entry_point_offsets: u16,
+    pub entry_offset_to_subset_array: u16,
+    pub slice_data_num_emu_prevn_bytes: u16,
+    pub va_reserved: [u32; 2usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VASliceParameterBufferHEVC__bindgen_ty_1 {
+    pub value: u32,
+    pub fields: _VASliceParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VASliceParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1 {
+    pub _bitfield_align_1: [u32; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASliceParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::size_of::<_VASliceParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VASliceParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1"][::std::mem::align_of::<
+        _VASliceParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1,
+    >() - 4usize];
+};
+impl _VASliceParameterBufferHEVC__bindgen_ty_1__bindgen_ty_1 {
+    #[inline]
+    pub fn LastSliceOfPic(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_LastSliceOfPic(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn LastSliceOfPic_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_LastSliceOfPic_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn dependent_slice_segment_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_dependent_slice_segment_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn dependent_slice_segment_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_dependent_slice_segment_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn slice_type(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_slice_type(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn slice_type_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_slice_type_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn color_plane_id(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_color_plane_id(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn color_plane_id_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_color_plane_id_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn slice_sao_luma_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_slice_sao_luma_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn slice_sao_luma_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_slice_sao_luma_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn slice_sao_chroma_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_slice_sao_chroma_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn slice_sao_chroma_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_slice_sao_chroma_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mvd_l1_zero_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_mvd_l1_zero_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mvd_l1_zero_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mvd_l1_zero_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn cabac_init_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_cabac_init_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn cabac_init_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_cabac_init_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn slice_temporal_mvp_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_slice_temporal_mvp_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn slice_temporal_mvp_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_slice_temporal_mvp_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn slice_deblocking_filter_disabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(11usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_slice_deblocking_filter_disabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(11usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn slice_deblocking_filter_disabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                11usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_slice_deblocking_filter_disabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                11usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn collocated_from_l0_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_collocated_from_l0_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn collocated_from_l0_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_collocated_from_l0_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn slice_loop_filter_across_slices_enabled_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(13usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_slice_loop_filter_across_slices_enabled_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(13usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn slice_loop_filter_across_slices_enabled_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                13usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_slice_loop_filter_across_slices_enabled_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                13usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 18u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(14usize, 18u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                14usize,
+                18u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                14usize,
+                18u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        LastSliceOfPic: u32,
+        dependent_slice_segment_flag: u32,
+        slice_type: u32,
+        color_plane_id: u32,
+        slice_sao_luma_flag: u32,
+        slice_sao_chroma_flag: u32,
+        mvd_l1_zero_flag: u32,
+        cabac_init_flag: u32,
+        slice_temporal_mvp_enabled_flag: u32,
+        slice_deblocking_filter_disabled_flag: u32,
+        collocated_from_l0_flag: u32,
+        slice_loop_filter_across_slices_enabled_flag: u32,
+        reserved: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let LastSliceOfPic: u32 = unsafe { ::std::mem::transmute(LastSliceOfPic) };
+            LastSliceOfPic as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 1u8, {
+            let dependent_slice_segment_flag: u32 =
+                unsafe { ::std::mem::transmute(dependent_slice_segment_flag) };
+            dependent_slice_segment_flag as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 2u8, {
+            let slice_type: u32 = unsafe { ::std::mem::transmute(slice_type) };
+            slice_type as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 2u8, {
+            let color_plane_id: u32 = unsafe { ::std::mem::transmute(color_plane_id) };
+            color_plane_id as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let slice_sao_luma_flag: u32 = unsafe { ::std::mem::transmute(slice_sao_luma_flag) };
+            slice_sao_luma_flag as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let slice_sao_chroma_flag: u32 =
+                unsafe { ::std::mem::transmute(slice_sao_chroma_flag) };
+            slice_sao_chroma_flag as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let mvd_l1_zero_flag: u32 = unsafe { ::std::mem::transmute(mvd_l1_zero_flag) };
+            mvd_l1_zero_flag as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let cabac_init_flag: u32 = unsafe { ::std::mem::transmute(cabac_init_flag) };
+            cabac_init_flag as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let slice_temporal_mvp_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(slice_temporal_mvp_enabled_flag) };
+            slice_temporal_mvp_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(11usize, 1u8, {
+            let slice_deblocking_filter_disabled_flag: u32 =
+                unsafe { ::std::mem::transmute(slice_deblocking_filter_disabled_flag) };
+            slice_deblocking_filter_disabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(12usize, 1u8, {
+            let collocated_from_l0_flag: u32 =
+                unsafe { ::std::mem::transmute(collocated_from_l0_flag) };
+            collocated_from_l0_flag as u64
+        });
+        __bindgen_bitfield_unit.set(13usize, 1u8, {
+            let slice_loop_filter_across_slices_enabled_flag: u32 =
+                unsafe { ::std::mem::transmute(slice_loop_filter_across_slices_enabled_flag) };
+            slice_loop_filter_across_slices_enabled_flag as u64
+        });
+        __bindgen_bitfield_unit.set(14usize, 18u8, {
+            let reserved: u32 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASliceParameterBufferHEVC__bindgen_ty_1"]
+        [::std::mem::size_of::<_VASliceParameterBufferHEVC__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VASliceParameterBufferHEVC__bindgen_ty_1"]
+        [::std::mem::align_of::<_VASliceParameterBufferHEVC__bindgen_ty_1>() - 4usize];
+    ["Offset of field: _VASliceParameterBufferHEVC__bindgen_ty_1::value"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC__bindgen_ty_1, value) - 0usize];
+    ["Offset of field: _VASliceParameterBufferHEVC__bindgen_ty_1::fields"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC__bindgen_ty_1, fields) - 0usize];
+};
+impl Default for _VASliceParameterBufferHEVC__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASliceParameterBufferHEVC"]
+        [::std::mem::size_of::<_VASliceParameterBufferHEVC>() - 264usize];
+    ["Alignment of _VASliceParameterBufferHEVC"]
+        [::std::mem::align_of::<_VASliceParameterBufferHEVC>() - 4usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_data_size"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, slice_data_size) - 0usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_data_offset"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, slice_data_offset) - 4usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_data_flag"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, slice_data_flag) - 8usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_data_byte_offset"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, slice_data_byte_offset) - 12usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_segment_address"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, slice_segment_address) - 16usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::RefPicList"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, RefPicList) - 20usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::LongSliceFlags"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, LongSliceFlags) - 52usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::collocated_ref_idx"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, collocated_ref_idx) - 56usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::num_ref_idx_l0_active_minus1"][::std::mem::offset_of!(
+        _VASliceParameterBufferHEVC,
+        num_ref_idx_l0_active_minus1
+    ) - 57usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::num_ref_idx_l1_active_minus1"][::std::mem::offset_of!(
+        _VASliceParameterBufferHEVC,
+        num_ref_idx_l1_active_minus1
+    ) - 58usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_qp_delta"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, slice_qp_delta) - 59usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_cb_qp_offset"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, slice_cb_qp_offset) - 60usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_cr_qp_offset"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, slice_cr_qp_offset) - 61usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_beta_offset_div2"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, slice_beta_offset_div2) - 62usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_tc_offset_div2"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, slice_tc_offset_div2) - 63usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::luma_log2_weight_denom"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, luma_log2_weight_denom) - 64usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::delta_chroma_log2_weight_denom"][::std::mem::offset_of!(
+        _VASliceParameterBufferHEVC,
+        delta_chroma_log2_weight_denom
+    ) - 65usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::delta_luma_weight_l0"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, delta_luma_weight_l0) - 66usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::luma_offset_l0"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, luma_offset_l0) - 81usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::delta_chroma_weight_l0"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, delta_chroma_weight_l0) - 96usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::ChromaOffsetL0"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, ChromaOffsetL0) - 126usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::delta_luma_weight_l1"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, delta_luma_weight_l1) - 156usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::luma_offset_l1"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, luma_offset_l1) - 171usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::delta_chroma_weight_l1"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, delta_chroma_weight_l1) - 186usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::ChromaOffsetL1"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, ChromaOffsetL1) - 216usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::five_minus_max_num_merge_cand"][::std::mem::offset_of!(
+        _VASliceParameterBufferHEVC,
+        five_minus_max_num_merge_cand
+    ) - 246usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::num_entry_point_offsets"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, num_entry_point_offsets) - 248usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::entry_offset_to_subset_array"][::std::mem::offset_of!(
+        _VASliceParameterBufferHEVC,
+        entry_offset_to_subset_array
+    ) - 250usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::slice_data_num_emu_prevn_bytes"][::std::mem::offset_of!(
+        _VASliceParameterBufferHEVC,
+        slice_data_num_emu_prevn_bytes
+    ) - 252usize];
+    ["Offset of field: _VASliceParameterBufferHEVC::va_reserved"]
+        [::std::mem::offset_of!(_VASliceParameterBufferHEVC, va_reserved) - 256usize];
+};
+impl Default for _VASliceParameterBufferHEVC {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VASliceParameterBufferHEVC = _VASliceParameterBufferHEVC;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VAIQMatrixBufferHEVC {
+    pub ScalingList4x4: [[u8; 16usize]; 6usize],
+    pub ScalingList8x8: [[u8; 64usize]; 6usize],
+    pub ScalingList16x16: [[u8; 64usize]; 6usize],
+    pub ScalingList32x32: [[u8; 64usize]; 2usize],
+    pub ScalingListDC16x16: [u8; 6usize],
+    pub ScalingListDC32x32: [u8; 2usize],
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAIQMatrixBufferHEVC"][::std::mem::size_of::<_VAIQMatrixBufferHEVC>() - 1016usize];
+    ["Alignment of _VAIQMatrixBufferHEVC"]
+        [::std::mem::align_of::<_VAIQMatrixBufferHEVC>() - 4usize];
+    ["Offset of field: _VAIQMatrixBufferHEVC::ScalingList4x4"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferHEVC, ScalingList4x4) - 0usize];
+    ["Offset of field: _VAIQMatrixBufferHEVC::ScalingList8x8"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferHEVC, ScalingList8x8) - 96usize];
+    ["Offset of field: _VAIQMatrixBufferHEVC::ScalingList16x16"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferHEVC, ScalingList16x16) - 480usize];
+    ["Offset of field: _VAIQMatrixBufferHEVC::ScalingList32x32"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferHEVC, ScalingList32x32) - 864usize];
+    ["Offset of field: _VAIQMatrixBufferHEVC::ScalingListDC16x16"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferHEVC, ScalingListDC16x16) - 992usize];
+    ["Offset of field: _VAIQMatrixBufferHEVC::ScalingListDC32x32"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferHEVC, ScalingListDC32x32) - 998usize];
+    ["Offset of field: _VAIQMatrixBufferHEVC::va_reserved"]
+        [::std::mem::offset_of!(_VAIQMatrixBufferHEVC, va_reserved) - 1000usize];
+};
+impl Default for _VAIQMatrixBufferHEVC {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAIQMatrixBufferHEVC = _VAIQMatrixBufferHEVC;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VADecPictureParameterBufferVP9 {
+    pub frame_width: u16,
+    pub frame_height: u16,
+    pub reference_frames: [VASurfaceID; 8usize],
+    pub pic_fields: _VADecPictureParameterBufferVP9__bindgen_ty_1,
+    pub filter_level: u8,
+    pub sharpness_level: u8,
+    pub log2_tile_rows: u8,
+    pub log2_tile_columns: u8,
+    pub frame_header_length_in_bytes: u8,
+    pub first_partition_size: u16,
+    pub mb_segment_tree_probs: [u8; 7usize],
+    pub segment_pred_probs: [u8; 3usize],
+    pub profile: u8,
+    pub bit_depth: u8,
+    pub va_reserved: [u32; 8usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VADecPictureParameterBufferVP9__bindgen_ty_1 {
+    pub bits: _VADecPictureParameterBufferVP9__bindgen_ty_1__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Default, Copy, Clone)]
+pub struct _VADecPictureParameterBufferVP9__bindgen_ty_1__bindgen_ty_1 {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferVP9__bindgen_ty_1__bindgen_ty_1"][::std::mem::size_of::<
+        _VADecPictureParameterBufferVP9__bindgen_ty_1__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VADecPictureParameterBufferVP9__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferVP9__bindgen_ty_1__bindgen_ty_1>()
+            - 4usize];
+};
+impl _VADecPictureParameterBufferVP9__bindgen_ty_1__bindgen_ty_1 {
+    #[inline]
+    pub fn subsampling_x(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_subsampling_x(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn subsampling_x_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_subsampling_x_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn subsampling_y(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_subsampling_y(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn subsampling_y_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_subsampling_y_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn frame_type(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_frame_type(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn frame_type_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_frame_type_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn show_frame(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_show_frame(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn show_frame_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_show_frame_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn error_resilient_mode(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_error_resilient_mode(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn error_resilient_mode_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_error_resilient_mode_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn intra_only(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_intra_only(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn intra_only_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_intra_only_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn allow_high_precision_mv(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_allow_high_precision_mv(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn allow_high_precision_mv_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_allow_high_precision_mv_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mcomp_filter_type(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(7usize, 3u8) as u32) }
+    }
+    #[inline]
+    pub fn set_mcomp_filter_type(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(7usize, 3u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mcomp_filter_type_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                3u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mcomp_filter_type_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                3u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn frame_parallel_decoding_mode(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_frame_parallel_decoding_mode(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn frame_parallel_decoding_mode_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_frame_parallel_decoding_mode_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reset_frame_context(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(11usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reset_frame_context(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(11usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reset_frame_context_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                11usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reset_frame_context_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                11usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn refresh_frame_context(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(13usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_refresh_frame_context(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(13usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn refresh_frame_context_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                13usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_refresh_frame_context_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                13usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn frame_context_idx(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_frame_context_idx(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(14usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn frame_context_idx_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                14usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_frame_context_idx_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                14usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn segmentation_enabled(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(16usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_segmentation_enabled(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(16usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn segmentation_enabled_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                16usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_segmentation_enabled_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                16usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn segmentation_temporal_update(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(17usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_segmentation_temporal_update(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(17usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn segmentation_temporal_update_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                17usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_segmentation_temporal_update_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                17usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn segmentation_update_map(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(18usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_segmentation_update_map(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(18usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn segmentation_update_map_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                18usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_segmentation_update_map_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                18usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn last_ref_frame(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(19usize, 3u8) as u32) }
+    }
+    #[inline]
+    pub fn set_last_ref_frame(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(19usize, 3u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn last_ref_frame_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                19usize,
+                3u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_last_ref_frame_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                19usize,
+                3u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn last_ref_frame_sign_bias(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(22usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_last_ref_frame_sign_bias(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(22usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn last_ref_frame_sign_bias_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                22usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_last_ref_frame_sign_bias_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                22usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn golden_ref_frame(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(23usize, 3u8) as u32) }
+    }
+    #[inline]
+    pub fn set_golden_ref_frame(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(23usize, 3u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn golden_ref_frame_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                23usize,
+                3u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_golden_ref_frame_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                23usize,
+                3u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn golden_ref_frame_sign_bias(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(26usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_golden_ref_frame_sign_bias(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(26usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn golden_ref_frame_sign_bias_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                26usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_golden_ref_frame_sign_bias_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                26usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn alt_ref_frame(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(27usize, 3u8) as u32) }
+    }
+    #[inline]
+    pub fn set_alt_ref_frame(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(27usize, 3u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn alt_ref_frame_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                27usize,
+                3u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_alt_ref_frame_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                27usize,
+                3u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn alt_ref_frame_sign_bias(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(30usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_alt_ref_frame_sign_bias(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(30usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn alt_ref_frame_sign_bias_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                30usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_alt_ref_frame_sign_bias_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                30usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn lossless_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(31usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_lossless_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(31usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn lossless_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                31usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_lossless_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                31usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        subsampling_x: u32,
+        subsampling_y: u32,
+        frame_type: u32,
+        show_frame: u32,
+        error_resilient_mode: u32,
+        intra_only: u32,
+        allow_high_precision_mv: u32,
+        mcomp_filter_type: u32,
+        frame_parallel_decoding_mode: u32,
+        reset_frame_context: u32,
+        refresh_frame_context: u32,
+        frame_context_idx: u32,
+        segmentation_enabled: u32,
+        segmentation_temporal_update: u32,
+        segmentation_update_map: u32,
+        last_ref_frame: u32,
+        last_ref_frame_sign_bias: u32,
+        golden_ref_frame: u32,
+        golden_ref_frame_sign_bias: u32,
+        alt_ref_frame: u32,
+        alt_ref_frame_sign_bias: u32,
+        lossless_flag: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let subsampling_x: u32 = unsafe { ::std::mem::transmute(subsampling_x) };
+            subsampling_x as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 1u8, {
+            let subsampling_y: u32 = unsafe { ::std::mem::transmute(subsampling_y) };
+            subsampling_y as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let frame_type: u32 = unsafe { ::std::mem::transmute(frame_type) };
+            frame_type as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let show_frame: u32 = unsafe { ::std::mem::transmute(show_frame) };
+            show_frame as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let error_resilient_mode: u32 = unsafe { ::std::mem::transmute(error_resilient_mode) };
+            error_resilient_mode as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let intra_only: u32 = unsafe { ::std::mem::transmute(intra_only) };
+            intra_only as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let allow_high_precision_mv: u32 =
+                unsafe { ::std::mem::transmute(allow_high_precision_mv) };
+            allow_high_precision_mv as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 3u8, {
+            let mcomp_filter_type: u32 = unsafe { ::std::mem::transmute(mcomp_filter_type) };
+            mcomp_filter_type as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let frame_parallel_decoding_mode: u32 =
+                unsafe { ::std::mem::transmute(frame_parallel_decoding_mode) };
+            frame_parallel_decoding_mode as u64
+        });
+        __bindgen_bitfield_unit.set(11usize, 2u8, {
+            let reset_frame_context: u32 = unsafe { ::std::mem::transmute(reset_frame_context) };
+            reset_frame_context as u64
+        });
+        __bindgen_bitfield_unit.set(13usize, 1u8, {
+            let refresh_frame_context: u32 =
+                unsafe { ::std::mem::transmute(refresh_frame_context) };
+            refresh_frame_context as u64
+        });
+        __bindgen_bitfield_unit.set(14usize, 2u8, {
+            let frame_context_idx: u32 = unsafe { ::std::mem::transmute(frame_context_idx) };
+            frame_context_idx as u64
+        });
+        __bindgen_bitfield_unit.set(16usize, 1u8, {
+            let segmentation_enabled: u32 = unsafe { ::std::mem::transmute(segmentation_enabled) };
+            segmentation_enabled as u64
+        });
+        __bindgen_bitfield_unit.set(17usize, 1u8, {
+            let segmentation_temporal_update: u32 =
+                unsafe { ::std::mem::transmute(segmentation_temporal_update) };
+            segmentation_temporal_update as u64
+        });
+        __bindgen_bitfield_unit.set(18usize, 1u8, {
+            let segmentation_update_map: u32 =
+                unsafe { ::std::mem::transmute(segmentation_update_map) };
+            segmentation_update_map as u64
+        });
+        __bindgen_bitfield_unit.set(19usize, 3u8, {
+            let last_ref_frame: u32 = unsafe { ::std::mem::transmute(last_ref_frame) };
+            last_ref_frame as u64
+        });
+        __bindgen_bitfield_unit.set(22usize, 1u8, {
+            let last_ref_frame_sign_bias: u32 =
+                unsafe { ::std::mem::transmute(last_ref_frame_sign_bias) };
+            last_ref_frame_sign_bias as u64
+        });
+        __bindgen_bitfield_unit.set(23usize, 3u8, {
+            let golden_ref_frame: u32 = unsafe { ::std::mem::transmute(golden_ref_frame) };
+            golden_ref_frame as u64
+        });
+        __bindgen_bitfield_unit.set(26usize, 1u8, {
+            let golden_ref_frame_sign_bias: u32 =
+                unsafe { ::std::mem::transmute(golden_ref_frame_sign_bias) };
+            golden_ref_frame_sign_bias as u64
+        });
+        __bindgen_bitfield_unit.set(27usize, 3u8, {
+            let alt_ref_frame: u32 = unsafe { ::std::mem::transmute(alt_ref_frame) };
+            alt_ref_frame as u64
+        });
+        __bindgen_bitfield_unit.set(30usize, 1u8, {
+            let alt_ref_frame_sign_bias: u32 =
+                unsafe { ::std::mem::transmute(alt_ref_frame_sign_bias) };
+            alt_ref_frame_sign_bias as u64
+        });
+        __bindgen_bitfield_unit.set(31usize, 1u8, {
+            let lossless_flag: u32 = unsafe { ::std::mem::transmute(lossless_flag) };
+            lossless_flag as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferVP9__bindgen_ty_1"]
+        [::std::mem::size_of::<_VADecPictureParameterBufferVP9__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VADecPictureParameterBufferVP9__bindgen_ty_1"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferVP9__bindgen_ty_1>() - 4usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9__bindgen_ty_1::bits"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9__bindgen_ty_1, bits) - 0usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9__bindgen_ty_1::value"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9__bindgen_ty_1, value) - 0usize];
+};
+impl Default for _VADecPictureParameterBufferVP9__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferVP9"]
+        [::std::mem::size_of::<_VADecPictureParameterBufferVP9>() - 92usize];
+    ["Alignment of _VADecPictureParameterBufferVP9"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferVP9>() - 4usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::frame_width"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, frame_width) - 0usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::frame_height"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, frame_height) - 2usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::reference_frames"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, reference_frames) - 4usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::pic_fields"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, pic_fields) - 36usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::filter_level"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, filter_level) - 40usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::sharpness_level"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, sharpness_level) - 41usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::log2_tile_rows"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, log2_tile_rows) - 42usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::log2_tile_columns"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, log2_tile_columns) - 43usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::frame_header_length_in_bytes"][::std::mem::offset_of!(
+        _VADecPictureParameterBufferVP9,
+        frame_header_length_in_bytes
+    ) - 44usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::first_partition_size"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, first_partition_size) - 46usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::mb_segment_tree_probs"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, mb_segment_tree_probs) - 48usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::segment_pred_probs"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, segment_pred_probs) - 55usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::profile"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, profile) - 58usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::bit_depth"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, bit_depth) - 59usize];
+    ["Offset of field: _VADecPictureParameterBufferVP9::va_reserved"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferVP9, va_reserved) - 60usize];
+};
+impl Default for _VADecPictureParameterBufferVP9 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VADecPictureParameterBufferVP9 = _VADecPictureParameterBufferVP9;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VASegmentParameterVP9 {
+    pub segment_flags: _VASegmentParameterVP9__bindgen_ty_1,
+    pub filter_level: [[u8; 2usize]; 4usize],
+    pub luma_ac_quant_scale: i16,
+    pub luma_dc_quant_scale: i16,
+    pub chroma_ac_quant_scale: i16,
+    pub chroma_dc_quant_scale: i16,
+    pub va_reserved: [u32; 4usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VASegmentParameterVP9__bindgen_ty_1 {
+    pub fields: _VASegmentParameterVP9__bindgen_ty_1__bindgen_ty_1,
+    pub value: u16,
+}
+#[repr(C)]
+#[repr(align(2))]
+#[derive(Default, Copy, Clone)]
+pub struct _VASegmentParameterVP9__bindgen_ty_1__bindgen_ty_1 {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
+    pub __bindgen_padding_0: u8,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASegmentParameterVP9__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::size_of::<_VASegmentParameterVP9__bindgen_ty_1__bindgen_ty_1>() - 2usize];
+    ["Alignment of _VASegmentParameterVP9__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::align_of::<_VASegmentParameterVP9__bindgen_ty_1__bindgen_ty_1>() - 2usize];
+};
+impl _VASegmentParameterVP9__bindgen_ty_1__bindgen_ty_1 {
+    #[inline]
+    pub fn segment_reference_enabled(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u16) }
+    }
+    #[inline]
+    pub fn set_segment_reference_enabled(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn segment_reference_enabled_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_segment_reference_enabled_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn segment_reference(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 2u8) as u16) }
+    }
+    #[inline]
+    pub fn set_segment_reference(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn segment_reference_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                2u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_segment_reference_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn segment_reference_skipped(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u16) }
+    }
+    #[inline]
+    pub fn set_segment_reference_skipped(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn segment_reference_skipped_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_segment_reference_skipped_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        segment_reference_enabled: u16,
+        segment_reference: u16,
+        segment_reference_skipped: u16,
+    ) -> __BindgenBitfieldUnit<[u8; 1usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let segment_reference_enabled: u16 =
+                unsafe { ::std::mem::transmute(segment_reference_enabled) };
+            segment_reference_enabled as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 2u8, {
+            let segment_reference: u16 = unsafe { ::std::mem::transmute(segment_reference) };
+            segment_reference as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let segment_reference_skipped: u16 =
+                unsafe { ::std::mem::transmute(segment_reference_skipped) };
+            segment_reference_skipped as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASegmentParameterVP9__bindgen_ty_1"]
+        [::std::mem::size_of::<_VASegmentParameterVP9__bindgen_ty_1>() - 2usize];
+    ["Alignment of _VASegmentParameterVP9__bindgen_ty_1"]
+        [::std::mem::align_of::<_VASegmentParameterVP9__bindgen_ty_1>() - 2usize];
+    ["Offset of field: _VASegmentParameterVP9__bindgen_ty_1::fields"]
+        [::std::mem::offset_of!(_VASegmentParameterVP9__bindgen_ty_1, fields) - 0usize];
+    ["Offset of field: _VASegmentParameterVP9__bindgen_ty_1::value"]
+        [::std::mem::offset_of!(_VASegmentParameterVP9__bindgen_ty_1, value) - 0usize];
+};
+impl Default for _VASegmentParameterVP9__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASegmentParameterVP9"][::std::mem::size_of::<_VASegmentParameterVP9>() - 36usize];
+    ["Alignment of _VASegmentParameterVP9"]
+        [::std::mem::align_of::<_VASegmentParameterVP9>() - 4usize];
+    ["Offset of field: _VASegmentParameterVP9::segment_flags"]
+        [::std::mem::offset_of!(_VASegmentParameterVP9, segment_flags) - 0usize];
+    ["Offset of field: _VASegmentParameterVP9::filter_level"]
+        [::std::mem::offset_of!(_VASegmentParameterVP9, filter_level) - 2usize];
+    ["Offset of field: _VASegmentParameterVP9::luma_ac_quant_scale"]
+        [::std::mem::offset_of!(_VASegmentParameterVP9, luma_ac_quant_scale) - 10usize];
+    ["Offset of field: _VASegmentParameterVP9::luma_dc_quant_scale"]
+        [::std::mem::offset_of!(_VASegmentParameterVP9, luma_dc_quant_scale) - 12usize];
+    ["Offset of field: _VASegmentParameterVP9::chroma_ac_quant_scale"]
+        [::std::mem::offset_of!(_VASegmentParameterVP9, chroma_ac_quant_scale) - 14usize];
+    ["Offset of field: _VASegmentParameterVP9::chroma_dc_quant_scale"]
+        [::std::mem::offset_of!(_VASegmentParameterVP9, chroma_dc_quant_scale) - 16usize];
+    ["Offset of field: _VASegmentParameterVP9::va_reserved"]
+        [::std::mem::offset_of!(_VASegmentParameterVP9, va_reserved) - 20usize];
+};
+impl Default for _VASegmentParameterVP9 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VASegmentParameterVP9 = _VASegmentParameterVP9;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VASliceParameterBufferVP9 {
+    pub slice_data_size: u32,
+    pub slice_data_offset: u32,
+    pub slice_data_flag: u32,
+    pub seg_param: [VASegmentParameterVP9; 8usize],
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASliceParameterBufferVP9"]
+        [::std::mem::size_of::<_VASliceParameterBufferVP9>() - 316usize];
+    ["Alignment of _VASliceParameterBufferVP9"]
+        [::std::mem::align_of::<_VASliceParameterBufferVP9>() - 4usize];
+    ["Offset of field: _VASliceParameterBufferVP9::slice_data_size"]
+        [::std::mem::offset_of!(_VASliceParameterBufferVP9, slice_data_size) - 0usize];
+    ["Offset of field: _VASliceParameterBufferVP9::slice_data_offset"]
+        [::std::mem::offset_of!(_VASliceParameterBufferVP9, slice_data_offset) - 4usize];
+    ["Offset of field: _VASliceParameterBufferVP9::slice_data_flag"]
+        [::std::mem::offset_of!(_VASliceParameterBufferVP9, slice_data_flag) - 8usize];
+    ["Offset of field: _VASliceParameterBufferVP9::seg_param"]
+        [::std::mem::offset_of!(_VASliceParameterBufferVP9, seg_param) - 12usize];
+    ["Offset of field: _VASliceParameterBufferVP9::va_reserved"]
+        [::std::mem::offset_of!(_VASliceParameterBufferVP9, va_reserved) - 300usize];
+};
+impl Default for _VASliceParameterBufferVP9 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VASliceParameterBufferVP9 = _VASliceParameterBufferVP9;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VASegmentationStructAV1 {
+    pub segment_info_fields: _VASegmentationStructAV1__bindgen_ty_1,
+    pub feature_data: [[i16; 8usize]; 8usize],
+    pub feature_mask: [u8; 8usize],
+    pub va_reserved: [u32; 4usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VASegmentationStructAV1__bindgen_ty_1 {
+    pub bits: _VASegmentationStructAV1__bindgen_ty_1__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VASegmentationStructAV1__bindgen_ty_1__bindgen_ty_1 {
+    pub _bitfield_align_1: [u32; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASegmentationStructAV1__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::size_of::<_VASegmentationStructAV1__bindgen_ty_1__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VASegmentationStructAV1__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::align_of::<_VASegmentationStructAV1__bindgen_ty_1__bindgen_ty_1>() - 4usize];
+};
+impl _VASegmentationStructAV1__bindgen_ty_1__bindgen_ty_1 {
+    #[inline]
+    pub fn enabled(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_enabled(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn enabled_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_enabled_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn update_map(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_update_map(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn update_map_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_update_map_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn temporal_update(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_temporal_update(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn temporal_update_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_temporal_update_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn update_data(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_update_data(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn update_data_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_update_data_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 28u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 28u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                28u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                28u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        enabled: u32,
+        update_map: u32,
+        temporal_update: u32,
+        update_data: u32,
+        reserved: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let enabled: u32 = unsafe { ::std::mem::transmute(enabled) };
+            enabled as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 1u8, {
+            let update_map: u32 = unsafe { ::std::mem::transmute(update_map) };
+            update_map as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let temporal_update: u32 = unsafe { ::std::mem::transmute(temporal_update) };
+            temporal_update as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let update_data: u32 = unsafe { ::std::mem::transmute(update_data) };
+            update_data as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 28u8, {
+            let reserved: u32 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASegmentationStructAV1__bindgen_ty_1"]
+        [::std::mem::size_of::<_VASegmentationStructAV1__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VASegmentationStructAV1__bindgen_ty_1"]
+        [::std::mem::align_of::<_VASegmentationStructAV1__bindgen_ty_1>() - 4usize];
+    ["Offset of field: _VASegmentationStructAV1__bindgen_ty_1::bits"]
+        [::std::mem::offset_of!(_VASegmentationStructAV1__bindgen_ty_1, bits) - 0usize];
+    ["Offset of field: _VASegmentationStructAV1__bindgen_ty_1::value"]
+        [::std::mem::offset_of!(_VASegmentationStructAV1__bindgen_ty_1, value) - 0usize];
+};
+impl Default for _VASegmentationStructAV1__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASegmentationStructAV1"]
+        [::std::mem::size_of::<_VASegmentationStructAV1>() - 156usize];
+    ["Alignment of _VASegmentationStructAV1"]
+        [::std::mem::align_of::<_VASegmentationStructAV1>() - 4usize];
+    ["Offset of field: _VASegmentationStructAV1::segment_info_fields"]
+        [::std::mem::offset_of!(_VASegmentationStructAV1, segment_info_fields) - 0usize];
+    ["Offset of field: _VASegmentationStructAV1::feature_data"]
+        [::std::mem::offset_of!(_VASegmentationStructAV1, feature_data) - 4usize];
+    ["Offset of field: _VASegmentationStructAV1::feature_mask"]
+        [::std::mem::offset_of!(_VASegmentationStructAV1, feature_mask) - 132usize];
+    ["Offset of field: _VASegmentationStructAV1::va_reserved"]
+        [::std::mem::offset_of!(_VASegmentationStructAV1, va_reserved) - 140usize];
+};
+impl Default for _VASegmentationStructAV1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VASegmentationStructAV1 = _VASegmentationStructAV1;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VAFilmGrainStructAV1 {
+    pub film_grain_info_fields: _VAFilmGrainStructAV1__bindgen_ty_1,
+    pub grain_seed: u16,
+    pub num_y_points: u8,
+    pub point_y_value: [u8; 14usize],
+    pub point_y_scaling: [u8; 14usize],
+    pub num_cb_points: u8,
+    pub point_cb_value: [u8; 10usize],
+    pub point_cb_scaling: [u8; 10usize],
+    pub num_cr_points: u8,
+    pub point_cr_value: [u8; 10usize],
+    pub point_cr_scaling: [u8; 10usize],
+    pub ar_coeffs_y: [i8; 24usize],
+    pub ar_coeffs_cb: [i8; 25usize],
+    pub ar_coeffs_cr: [i8; 25usize],
+    pub cb_mult: u8,
+    pub cb_luma_mult: u8,
+    pub cb_offset: u16,
+    pub cr_mult: u8,
+    pub cr_luma_mult: u8,
+    pub cr_offset: u16,
+    pub va_reserved: [u32; 4usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VAFilmGrainStructAV1__bindgen_ty_1 {
+    pub bits: _VAFilmGrainStructAV1__bindgen_ty_1__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VAFilmGrainStructAV1__bindgen_ty_1__bindgen_ty_1 {
+    pub _bitfield_align_1: [u32; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAFilmGrainStructAV1__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::size_of::<_VAFilmGrainStructAV1__bindgen_ty_1__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VAFilmGrainStructAV1__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAFilmGrainStructAV1__bindgen_ty_1__bindgen_ty_1>() - 4usize];
+};
+impl _VAFilmGrainStructAV1__bindgen_ty_1__bindgen_ty_1 {
+    #[inline]
+    pub fn apply_grain(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_apply_grain(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn apply_grain_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_apply_grain_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn chroma_scaling_from_luma(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_chroma_scaling_from_luma(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn chroma_scaling_from_luma_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_chroma_scaling_from_luma_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn grain_scaling_minus_8(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_grain_scaling_minus_8(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn grain_scaling_minus_8_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_grain_scaling_minus_8_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn ar_coeff_lag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_ar_coeff_lag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn ar_coeff_lag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_ar_coeff_lag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn ar_coeff_shift_minus_6(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_ar_coeff_shift_minus_6(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn ar_coeff_shift_minus_6_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_ar_coeff_shift_minus_6_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn grain_scale_shift(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_grain_scale_shift(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn grain_scale_shift_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_grain_scale_shift_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn overlap_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_overlap_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn overlap_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_overlap_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn clip_to_restricted_range(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(11usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_clip_to_restricted_range(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(11usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn clip_to_restricted_range_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                11usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_clip_to_restricted_range_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                11usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 20u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 20u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                20u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                20u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        apply_grain: u32,
+        chroma_scaling_from_luma: u32,
+        grain_scaling_minus_8: u32,
+        ar_coeff_lag: u32,
+        ar_coeff_shift_minus_6: u32,
+        grain_scale_shift: u32,
+        overlap_flag: u32,
+        clip_to_restricted_range: u32,
+        reserved: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let apply_grain: u32 = unsafe { ::std::mem::transmute(apply_grain) };
+            apply_grain as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 1u8, {
+            let chroma_scaling_from_luma: u32 =
+                unsafe { ::std::mem::transmute(chroma_scaling_from_luma) };
+            chroma_scaling_from_luma as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 2u8, {
+            let grain_scaling_minus_8: u32 =
+                unsafe { ::std::mem::transmute(grain_scaling_minus_8) };
+            grain_scaling_minus_8 as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 2u8, {
+            let ar_coeff_lag: u32 = unsafe { ::std::mem::transmute(ar_coeff_lag) };
+            ar_coeff_lag as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 2u8, {
+            let ar_coeff_shift_minus_6: u32 =
+                unsafe { ::std::mem::transmute(ar_coeff_shift_minus_6) };
+            ar_coeff_shift_minus_6 as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 2u8, {
+            let grain_scale_shift: u32 = unsafe { ::std::mem::transmute(grain_scale_shift) };
+            grain_scale_shift as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let overlap_flag: u32 = unsafe { ::std::mem::transmute(overlap_flag) };
+            overlap_flag as u64
+        });
+        __bindgen_bitfield_unit.set(11usize, 1u8, {
+            let clip_to_restricted_range: u32 =
+                unsafe { ::std::mem::transmute(clip_to_restricted_range) };
+            clip_to_restricted_range as u64
+        });
+        __bindgen_bitfield_unit.set(12usize, 20u8, {
+            let reserved: u32 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAFilmGrainStructAV1__bindgen_ty_1"]
+        [::std::mem::size_of::<_VAFilmGrainStructAV1__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VAFilmGrainStructAV1__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAFilmGrainStructAV1__bindgen_ty_1>() - 4usize];
+    ["Offset of field: _VAFilmGrainStructAV1__bindgen_ty_1::bits"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1__bindgen_ty_1, bits) - 0usize];
+    ["Offset of field: _VAFilmGrainStructAV1__bindgen_ty_1::value"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1__bindgen_ty_1, value) - 0usize];
+};
+impl Default for _VAFilmGrainStructAV1__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAFilmGrainStructAV1"][::std::mem::size_of::<_VAFilmGrainStructAV1>() - 176usize];
+    ["Alignment of _VAFilmGrainStructAV1"]
+        [::std::mem::align_of::<_VAFilmGrainStructAV1>() - 4usize];
+    ["Offset of field: _VAFilmGrainStructAV1::film_grain_info_fields"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, film_grain_info_fields) - 0usize];
+    ["Offset of field: _VAFilmGrainStructAV1::grain_seed"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, grain_seed) - 4usize];
+    ["Offset of field: _VAFilmGrainStructAV1::num_y_points"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, num_y_points) - 6usize];
+    ["Offset of field: _VAFilmGrainStructAV1::point_y_value"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, point_y_value) - 7usize];
+    ["Offset of field: _VAFilmGrainStructAV1::point_y_scaling"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, point_y_scaling) - 21usize];
+    ["Offset of field: _VAFilmGrainStructAV1::num_cb_points"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, num_cb_points) - 35usize];
+    ["Offset of field: _VAFilmGrainStructAV1::point_cb_value"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, point_cb_value) - 36usize];
+    ["Offset of field: _VAFilmGrainStructAV1::point_cb_scaling"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, point_cb_scaling) - 46usize];
+    ["Offset of field: _VAFilmGrainStructAV1::num_cr_points"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, num_cr_points) - 56usize];
+    ["Offset of field: _VAFilmGrainStructAV1::point_cr_value"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, point_cr_value) - 57usize];
+    ["Offset of field: _VAFilmGrainStructAV1::point_cr_scaling"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, point_cr_scaling) - 67usize];
+    ["Offset of field: _VAFilmGrainStructAV1::ar_coeffs_y"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, ar_coeffs_y) - 77usize];
+    ["Offset of field: _VAFilmGrainStructAV1::ar_coeffs_cb"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, ar_coeffs_cb) - 101usize];
+    ["Offset of field: _VAFilmGrainStructAV1::ar_coeffs_cr"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, ar_coeffs_cr) - 126usize];
+    ["Offset of field: _VAFilmGrainStructAV1::cb_mult"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, cb_mult) - 151usize];
+    ["Offset of field: _VAFilmGrainStructAV1::cb_luma_mult"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, cb_luma_mult) - 152usize];
+    ["Offset of field: _VAFilmGrainStructAV1::cb_offset"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, cb_offset) - 154usize];
+    ["Offset of field: _VAFilmGrainStructAV1::cr_mult"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, cr_mult) - 156usize];
+    ["Offset of field: _VAFilmGrainStructAV1::cr_luma_mult"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, cr_luma_mult) - 157usize];
+    ["Offset of field: _VAFilmGrainStructAV1::cr_offset"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, cr_offset) - 158usize];
+    ["Offset of field: _VAFilmGrainStructAV1::va_reserved"]
+        [::std::mem::offset_of!(_VAFilmGrainStructAV1, va_reserved) - 160usize];
+};
+impl Default for _VAFilmGrainStructAV1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAFilmGrainStructAV1 = _VAFilmGrainStructAV1;
+pub const VAAV1TransformationIdentity: VAAV1TransformationType = 0;
+pub const VAAV1TransformationTranslation: VAAV1TransformationType = 1;
+pub const VAAV1TransformationRotzoom: VAAV1TransformationType = 2;
+pub const VAAV1TransformationAffine: VAAV1TransformationType = 3;
+pub const VAAV1TransformationCount: VAAV1TransformationType = 4;
+pub type VAAV1TransformationType = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VAWarpedMotionParamsAV1 {
+    pub wmtype: VAAV1TransformationType,
+    pub wmmat: [i32; 8usize],
+    pub invalid: u8,
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAWarpedMotionParamsAV1"]
+        [::std::mem::size_of::<_VAWarpedMotionParamsAV1>() - 56usize];
+    ["Alignment of _VAWarpedMotionParamsAV1"]
+        [::std::mem::align_of::<_VAWarpedMotionParamsAV1>() - 4usize];
+    ["Offset of field: _VAWarpedMotionParamsAV1::wmtype"]
+        [::std::mem::offset_of!(_VAWarpedMotionParamsAV1, wmtype) - 0usize];
+    ["Offset of field: _VAWarpedMotionParamsAV1::wmmat"]
+        [::std::mem::offset_of!(_VAWarpedMotionParamsAV1, wmmat) - 4usize];
+    ["Offset of field: _VAWarpedMotionParamsAV1::invalid"]
+        [::std::mem::offset_of!(_VAWarpedMotionParamsAV1, invalid) - 36usize];
+    ["Offset of field: _VAWarpedMotionParamsAV1::va_reserved"]
+        [::std::mem::offset_of!(_VAWarpedMotionParamsAV1, va_reserved) - 40usize];
+};
+impl Default for _VAWarpedMotionParamsAV1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAWarpedMotionParamsAV1 = _VAWarpedMotionParamsAV1;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VADecPictureParameterBufferAV1 {
+    pub profile: u8,
+    pub order_hint_bits_minus_1: u8,
+    pub bit_depth_idx: u8,
+    pub matrix_coefficients: u8,
+    pub seq_info_fields: _VADecPictureParameterBufferAV1__bindgen_ty_1,
+    pub current_frame: VASurfaceID,
+    pub current_display_picture: VASurfaceID,
+    pub anchor_frames_num: u8,
+    pub anchor_frames_list: *mut VASurfaceID,
+    pub frame_width_minus1: u16,
+    pub frame_height_minus1: u16,
+    pub output_frame_width_in_tiles_minus_1: u16,
+    pub output_frame_height_in_tiles_minus_1: u16,
+    pub ref_frame_map: [VASurfaceID; 8usize],
+    pub ref_frame_idx: [u8; 7usize],
+    pub primary_ref_frame: u8,
+    pub order_hint: u8,
+    pub seg_info: VASegmentationStructAV1,
+    pub film_grain_info: VAFilmGrainStructAV1,
+    pub tile_cols: u8,
+    pub tile_rows: u8,
+    pub width_in_sbs_minus_1: [u16; 63usize],
+    pub height_in_sbs_minus_1: [u16; 63usize],
+    pub tile_count_minus_1: u16,
+    pub context_update_tile_id: u16,
+    pub pic_info_fields: _VADecPictureParameterBufferAV1__bindgen_ty_2,
+    pub superres_scale_denominator: u8,
+    pub interp_filter: u8,
+    pub filter_level: [u8; 2usize],
+    pub filter_level_u: u8,
+    pub filter_level_v: u8,
+    pub loop_filter_info_fields: _VADecPictureParameterBufferAV1__bindgen_ty_3,
+    pub ref_deltas: [i8; 8usize],
+    pub mode_deltas: [i8; 2usize],
+    pub base_qindex: u8,
+    pub y_dc_delta_q: i8,
+    pub u_dc_delta_q: i8,
+    pub u_ac_delta_q: i8,
+    pub v_dc_delta_q: i8,
+    pub v_ac_delta_q: i8,
+    pub qmatrix_fields: _VADecPictureParameterBufferAV1__bindgen_ty_4,
+    pub mode_control_fields: _VADecPictureParameterBufferAV1__bindgen_ty_5,
+    pub cdef_damping_minus_3: u8,
+    pub cdef_bits: u8,
+    pub cdef_y_strengths: [u8; 8usize],
+    pub cdef_uv_strengths: [u8; 8usize],
+    pub loop_restoration_fields: _VADecPictureParameterBufferAV1__bindgen_ty_6,
+    pub wm: [VAWarpedMotionParamsAV1; 7usize],
+    pub va_reserved: [u32; 8usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VADecPictureParameterBufferAV1__bindgen_ty_1 {
+    pub fields: _VADecPictureParameterBufferAV1__bindgen_ty_1__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Default, Copy, Clone)]
+pub struct _VADecPictureParameterBufferAV1__bindgen_ty_1__bindgen_ty_1 {
+    pub _bitfield_align_1: [u16; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_1__bindgen_ty_1"][::std::mem::size_of::<
+        _VADecPictureParameterBufferAV1__bindgen_ty_1__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_1__bindgen_ty_1>()
+            - 4usize];
+};
+impl _VADecPictureParameterBufferAV1__bindgen_ty_1__bindgen_ty_1 {
+    #[inline]
+    pub fn still_picture(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_still_picture(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn still_picture_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_still_picture_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn use_128x128_superblock(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_use_128x128_superblock(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn use_128x128_superblock_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_use_128x128_superblock_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn enable_filter_intra(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_enable_filter_intra(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn enable_filter_intra_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_enable_filter_intra_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn enable_intra_edge_filter(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_enable_intra_edge_filter(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn enable_intra_edge_filter_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_enable_intra_edge_filter_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn enable_interintra_compound(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_enable_interintra_compound(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn enable_interintra_compound_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_enable_interintra_compound_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn enable_masked_compound(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_enable_masked_compound(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn enable_masked_compound_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_enable_masked_compound_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn enable_dual_filter(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_enable_dual_filter(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn enable_dual_filter_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_enable_dual_filter_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn enable_order_hint(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_enable_order_hint(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn enable_order_hint_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_enable_order_hint_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn enable_jnt_comp(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_enable_jnt_comp(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn enable_jnt_comp_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_enable_jnt_comp_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn enable_cdef(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_enable_cdef(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn enable_cdef_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_enable_cdef_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mono_chrome(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_mono_chrome(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mono_chrome_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mono_chrome_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn color_range(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(11usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_color_range(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(11usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn color_range_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                11usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_color_range_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                11usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn subsampling_x(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_subsampling_x(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn subsampling_x_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_subsampling_x_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn subsampling_y(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(13usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_subsampling_y(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(13usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn subsampling_y_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                13usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_subsampling_y_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                13usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn chroma_sample_position(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_chroma_sample_position(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(14usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn chroma_sample_position_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                14usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_chroma_sample_position_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                14usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn film_grain_params_present(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(15usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_film_grain_params_present(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(15usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn film_grain_params_present_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                15usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_film_grain_params_present_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                15usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(16usize, 16u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(16usize, 16u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                16usize,
+                16u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                16usize,
+                16u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        still_picture: u32,
+        use_128x128_superblock: u32,
+        enable_filter_intra: u32,
+        enable_intra_edge_filter: u32,
+        enable_interintra_compound: u32,
+        enable_masked_compound: u32,
+        enable_dual_filter: u32,
+        enable_order_hint: u32,
+        enable_jnt_comp: u32,
+        enable_cdef: u32,
+        mono_chrome: u32,
+        color_range: u32,
+        subsampling_x: u32,
+        subsampling_y: u32,
+        chroma_sample_position: u32,
+        film_grain_params_present: u32,
+        reserved: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let still_picture: u32 = unsafe { ::std::mem::transmute(still_picture) };
+            still_picture as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 1u8, {
+            let use_128x128_superblock: u32 =
+                unsafe { ::std::mem::transmute(use_128x128_superblock) };
+            use_128x128_superblock as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let enable_filter_intra: u32 = unsafe { ::std::mem::transmute(enable_filter_intra) };
+            enable_filter_intra as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let enable_intra_edge_filter: u32 =
+                unsafe { ::std::mem::transmute(enable_intra_edge_filter) };
+            enable_intra_edge_filter as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let enable_interintra_compound: u32 =
+                unsafe { ::std::mem::transmute(enable_interintra_compound) };
+            enable_interintra_compound as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let enable_masked_compound: u32 =
+                unsafe { ::std::mem::transmute(enable_masked_compound) };
+            enable_masked_compound as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let enable_dual_filter: u32 = unsafe { ::std::mem::transmute(enable_dual_filter) };
+            enable_dual_filter as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let enable_order_hint: u32 = unsafe { ::std::mem::transmute(enable_order_hint) };
+            enable_order_hint as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let enable_jnt_comp: u32 = unsafe { ::std::mem::transmute(enable_jnt_comp) };
+            enable_jnt_comp as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let enable_cdef: u32 = unsafe { ::std::mem::transmute(enable_cdef) };
+            enable_cdef as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let mono_chrome: u32 = unsafe { ::std::mem::transmute(mono_chrome) };
+            mono_chrome as u64
+        });
+        __bindgen_bitfield_unit.set(11usize, 1u8, {
+            let color_range: u32 = unsafe { ::std::mem::transmute(color_range) };
+            color_range as u64
+        });
+        __bindgen_bitfield_unit.set(12usize, 1u8, {
+            let subsampling_x: u32 = unsafe { ::std::mem::transmute(subsampling_x) };
+            subsampling_x as u64
+        });
+        __bindgen_bitfield_unit.set(13usize, 1u8, {
+            let subsampling_y: u32 = unsafe { ::std::mem::transmute(subsampling_y) };
+            subsampling_y as u64
+        });
+        __bindgen_bitfield_unit.set(14usize, 1u8, {
+            let chroma_sample_position: u32 =
+                unsafe { ::std::mem::transmute(chroma_sample_position) };
+            chroma_sample_position as u64
+        });
+        __bindgen_bitfield_unit.set(15usize, 1u8, {
+            let film_grain_params_present: u32 =
+                unsafe { ::std::mem::transmute(film_grain_params_present) };
+            film_grain_params_present as u64
+        });
+        __bindgen_bitfield_unit.set(16usize, 16u8, {
+            let reserved: u32 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_1"]
+        [::std::mem::size_of::<_VADecPictureParameterBufferAV1__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_1"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_1>() - 4usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_1::fields"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_1, fields) - 0usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_1::value"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_1, value) - 0usize];
+};
+impl Default for _VADecPictureParameterBufferAV1__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VADecPictureParameterBufferAV1__bindgen_ty_2 {
+    pub bits: _VADecPictureParameterBufferAV1__bindgen_ty_2__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Default, Copy, Clone)]
+pub struct _VADecPictureParameterBufferAV1__bindgen_ty_2__bindgen_ty_1 {
+    pub _bitfield_align_1: [u16; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_2__bindgen_ty_1"][::std::mem::size_of::<
+        _VADecPictureParameterBufferAV1__bindgen_ty_2__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_2__bindgen_ty_1"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_2__bindgen_ty_1>()
+            - 4usize];
+};
+impl _VADecPictureParameterBufferAV1__bindgen_ty_2__bindgen_ty_1 {
+    #[inline]
+    pub fn frame_type(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_frame_type(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn frame_type_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_frame_type_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn show_frame(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_show_frame(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn show_frame_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_show_frame_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn showable_frame(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_showable_frame(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn showable_frame_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_showable_frame_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn error_resilient_mode(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_error_resilient_mode(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn error_resilient_mode_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_error_resilient_mode_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn disable_cdf_update(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_disable_cdf_update(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn disable_cdf_update_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_disable_cdf_update_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn allow_screen_content_tools(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_allow_screen_content_tools(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn allow_screen_content_tools_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_allow_screen_content_tools_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn force_integer_mv(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_force_integer_mv(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn force_integer_mv_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_force_integer_mv_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn allow_intrabc(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_allow_intrabc(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn allow_intrabc_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_allow_intrabc_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn use_superres(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_use_superres(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn use_superres_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_use_superres_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn allow_high_precision_mv(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_allow_high_precision_mv(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn allow_high_precision_mv_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_allow_high_precision_mv_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn is_motion_mode_switchable(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(11usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_is_motion_mode_switchable(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(11usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn is_motion_mode_switchable_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                11usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_is_motion_mode_switchable_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                11usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn use_ref_frame_mvs(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_use_ref_frame_mvs(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn use_ref_frame_mvs_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_use_ref_frame_mvs_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn disable_frame_end_update_cdf(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(13usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_disable_frame_end_update_cdf(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(13usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn disable_frame_end_update_cdf_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                13usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_disable_frame_end_update_cdf_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                13usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn uniform_tile_spacing_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_uniform_tile_spacing_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(14usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn uniform_tile_spacing_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                14usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_uniform_tile_spacing_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                14usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn allow_warped_motion(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(15usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_allow_warped_motion(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(15usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn allow_warped_motion_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                15usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_allow_warped_motion_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                15usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn large_scale_tile(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(16usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_large_scale_tile(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(16usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn large_scale_tile_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                16usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_large_scale_tile_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                16usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(17usize, 15u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(17usize, 15u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                17usize,
+                15u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                17usize,
+                15u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        frame_type: u32,
+        show_frame: u32,
+        showable_frame: u32,
+        error_resilient_mode: u32,
+        disable_cdf_update: u32,
+        allow_screen_content_tools: u32,
+        force_integer_mv: u32,
+        allow_intrabc: u32,
+        use_superres: u32,
+        allow_high_precision_mv: u32,
+        is_motion_mode_switchable: u32,
+        use_ref_frame_mvs: u32,
+        disable_frame_end_update_cdf: u32,
+        uniform_tile_spacing_flag: u32,
+        allow_warped_motion: u32,
+        large_scale_tile: u32,
+        reserved: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let frame_type: u32 = unsafe { ::std::mem::transmute(frame_type) };
+            frame_type as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let show_frame: u32 = unsafe { ::std::mem::transmute(show_frame) };
+            show_frame as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let showable_frame: u32 = unsafe { ::std::mem::transmute(showable_frame) };
+            showable_frame as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let error_resilient_mode: u32 = unsafe { ::std::mem::transmute(error_resilient_mode) };
+            error_resilient_mode as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let disable_cdf_update: u32 = unsafe { ::std::mem::transmute(disable_cdf_update) };
+            disable_cdf_update as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let allow_screen_content_tools: u32 =
+                unsafe { ::std::mem::transmute(allow_screen_content_tools) };
+            allow_screen_content_tools as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let force_integer_mv: u32 = unsafe { ::std::mem::transmute(force_integer_mv) };
+            force_integer_mv as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let allow_intrabc: u32 = unsafe { ::std::mem::transmute(allow_intrabc) };
+            allow_intrabc as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let use_superres: u32 = unsafe { ::std::mem::transmute(use_superres) };
+            use_superres as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let allow_high_precision_mv: u32 =
+                unsafe { ::std::mem::transmute(allow_high_precision_mv) };
+            allow_high_precision_mv as u64
+        });
+        __bindgen_bitfield_unit.set(11usize, 1u8, {
+            let is_motion_mode_switchable: u32 =
+                unsafe { ::std::mem::transmute(is_motion_mode_switchable) };
+            is_motion_mode_switchable as u64
+        });
+        __bindgen_bitfield_unit.set(12usize, 1u8, {
+            let use_ref_frame_mvs: u32 = unsafe { ::std::mem::transmute(use_ref_frame_mvs) };
+            use_ref_frame_mvs as u64
+        });
+        __bindgen_bitfield_unit.set(13usize, 1u8, {
+            let disable_frame_end_update_cdf: u32 =
+                unsafe { ::std::mem::transmute(disable_frame_end_update_cdf) };
+            disable_frame_end_update_cdf as u64
+        });
+        __bindgen_bitfield_unit.set(14usize, 1u8, {
+            let uniform_tile_spacing_flag: u32 =
+                unsafe { ::std::mem::transmute(uniform_tile_spacing_flag) };
+            uniform_tile_spacing_flag as u64
+        });
+        __bindgen_bitfield_unit.set(15usize, 1u8, {
+            let allow_warped_motion: u32 = unsafe { ::std::mem::transmute(allow_warped_motion) };
+            allow_warped_motion as u64
+        });
+        __bindgen_bitfield_unit.set(16usize, 1u8, {
+            let large_scale_tile: u32 = unsafe { ::std::mem::transmute(large_scale_tile) };
+            large_scale_tile as u64
+        });
+        __bindgen_bitfield_unit.set(17usize, 15u8, {
+            let reserved: u32 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_2"]
+        [::std::mem::size_of::<_VADecPictureParameterBufferAV1__bindgen_ty_2>() - 4usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_2"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_2>() - 4usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_2::bits"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_2, bits) - 0usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_2::value"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_2, value) - 0usize];
+};
+impl Default for _VADecPictureParameterBufferAV1__bindgen_ty_2 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VADecPictureParameterBufferAV1__bindgen_ty_3 {
+    pub bits: _VADecPictureParameterBufferAV1__bindgen_ty_3__bindgen_ty_1,
+    pub value: u8,
+}
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VADecPictureParameterBufferAV1__bindgen_ty_3__bindgen_ty_1 {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_3__bindgen_ty_1"][::std::mem::size_of::<
+        _VADecPictureParameterBufferAV1__bindgen_ty_3__bindgen_ty_1,
+    >() - 1usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_3__bindgen_ty_1"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_3__bindgen_ty_1>()
+            - 1usize];
+};
+impl _VADecPictureParameterBufferAV1__bindgen_ty_3__bindgen_ty_1 {
+    #[inline]
+    pub fn sharpness_level(&self) -> u8 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 3u8) as u8) }
+    }
+    #[inline]
+    pub fn set_sharpness_level(&mut self, val: u8) {
+        unsafe {
+            let val: u8 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 3u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn sharpness_level_raw(this: *const Self) -> u8 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                3u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_sharpness_level_raw(this: *mut Self, val: u8) {
+        unsafe {
+            let val: u8 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                3u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mode_ref_delta_enabled(&self) -> u8 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mode_ref_delta_enabled(&mut self, val: u8) {
+        unsafe {
+            let val: u8 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mode_ref_delta_enabled_raw(this: *const Self) -> u8 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mode_ref_delta_enabled_raw(this: *mut Self, val: u8) {
+        unsafe {
+            let val: u8 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mode_ref_delta_update(&self) -> u8 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mode_ref_delta_update(&mut self, val: u8) {
+        unsafe {
+            let val: u8 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mode_ref_delta_update_raw(this: *const Self) -> u8 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mode_ref_delta_update_raw(this: *mut Self, val: u8) {
+        unsafe {
+            let val: u8 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u8 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 3u8) as u8) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u8) {
+        unsafe {
+            let val: u8 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 3u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u8 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                3u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u8) {
+        unsafe {
+            let val: u8 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                3u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        sharpness_level: u8,
+        mode_ref_delta_enabled: u8,
+        mode_ref_delta_update: u8,
+        reserved: u8,
+    ) -> __BindgenBitfieldUnit<[u8; 1usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 3u8, {
+            let sharpness_level: u8 = unsafe { ::std::mem::transmute(sharpness_level) };
+            sharpness_level as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let mode_ref_delta_enabled: u8 =
+                unsafe { ::std::mem::transmute(mode_ref_delta_enabled) };
+            mode_ref_delta_enabled as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let mode_ref_delta_update: u8 = unsafe { ::std::mem::transmute(mode_ref_delta_update) };
+            mode_ref_delta_update as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 3u8, {
+            let reserved: u8 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_3"]
+        [::std::mem::size_of::<_VADecPictureParameterBufferAV1__bindgen_ty_3>() - 1usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_3"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_3>() - 1usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_3::bits"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_3, bits) - 0usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_3::value"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_3, value) - 0usize];
+};
+impl Default for _VADecPictureParameterBufferAV1__bindgen_ty_3 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VADecPictureParameterBufferAV1__bindgen_ty_4 {
+    pub bits: _VADecPictureParameterBufferAV1__bindgen_ty_4__bindgen_ty_1,
+    pub value: u16,
+}
+#[repr(C)]
+#[repr(align(2))]
+#[derive(Default, Copy, Clone)]
+pub struct _VADecPictureParameterBufferAV1__bindgen_ty_4__bindgen_ty_1 {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_4__bindgen_ty_1"][::std::mem::size_of::<
+        _VADecPictureParameterBufferAV1__bindgen_ty_4__bindgen_ty_1,
+    >() - 2usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_4__bindgen_ty_1"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_4__bindgen_ty_1>()
+            - 2usize];
+};
+impl _VADecPictureParameterBufferAV1__bindgen_ty_4__bindgen_ty_1 {
+    #[inline]
+    pub fn using_qmatrix(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u16) }
+    }
+    #[inline]
+    pub fn set_using_qmatrix(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn using_qmatrix_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_using_qmatrix_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn qm_y(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 4u8) as u16) }
+    }
+    #[inline]
+    pub fn set_qm_y(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 4u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn qm_y_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                4u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_qm_y_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                4u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn qm_u(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 4u8) as u16) }
+    }
+    #[inline]
+    pub fn set_qm_u(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 4u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn qm_u_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                4u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_qm_u_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                4u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn qm_v(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(9usize, 4u8) as u16) }
+    }
+    #[inline]
+    pub fn set_qm_v(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(9usize, 4u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn qm_v_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                4u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_qm_v_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                4u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(13usize, 3u8) as u16) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(13usize, 3u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                13usize,
+                3u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                13usize,
+                3u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        using_qmatrix: u16,
+        qm_y: u16,
+        qm_u: u16,
+        qm_v: u16,
+        reserved: u16,
+    ) -> __BindgenBitfieldUnit<[u8; 2usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 2usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let using_qmatrix: u16 = unsafe { ::std::mem::transmute(using_qmatrix) };
+            using_qmatrix as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 4u8, {
+            let qm_y: u16 = unsafe { ::std::mem::transmute(qm_y) };
+            qm_y as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 4u8, {
+            let qm_u: u16 = unsafe { ::std::mem::transmute(qm_u) };
+            qm_u as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 4u8, {
+            let qm_v: u16 = unsafe { ::std::mem::transmute(qm_v) };
+            qm_v as u64
+        });
+        __bindgen_bitfield_unit.set(13usize, 3u8, {
+            let reserved: u16 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_4"]
+        [::std::mem::size_of::<_VADecPictureParameterBufferAV1__bindgen_ty_4>() - 2usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_4"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_4>() - 2usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_4::bits"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_4, bits) - 0usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_4::value"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_4, value) - 0usize];
+};
+impl Default for _VADecPictureParameterBufferAV1__bindgen_ty_4 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VADecPictureParameterBufferAV1__bindgen_ty_5 {
+    pub bits: _VADecPictureParameterBufferAV1__bindgen_ty_5__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VADecPictureParameterBufferAV1__bindgen_ty_5__bindgen_ty_1 {
+    pub _bitfield_align_1: [u32; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_5__bindgen_ty_1"][::std::mem::size_of::<
+        _VADecPictureParameterBufferAV1__bindgen_ty_5__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_5__bindgen_ty_1"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_5__bindgen_ty_1>()
+            - 4usize];
+};
+impl _VADecPictureParameterBufferAV1__bindgen_ty_5__bindgen_ty_1 {
+    #[inline]
+    pub fn delta_q_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_delta_q_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn delta_q_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_delta_q_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn log2_delta_q_res(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_log2_delta_q_res(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn log2_delta_q_res_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_log2_delta_q_res_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn delta_lf_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_delta_lf_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn delta_lf_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_delta_lf_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn log2_delta_lf_res(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_log2_delta_lf_res(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn log2_delta_lf_res_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_log2_delta_lf_res_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn delta_lf_multi(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_delta_lf_multi(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn delta_lf_multi_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_delta_lf_multi_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn tx_mode(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(7usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_tx_mode(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(7usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn tx_mode_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_tx_mode_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reference_select(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reference_select(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reference_select_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reference_select_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reduced_tx_set_used(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reduced_tx_set_used(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reduced_tx_set_used_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reduced_tx_set_used_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn skip_mode_present(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(11usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_skip_mode_present(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(11usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn skip_mode_present_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                11usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_skip_mode_present_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                11usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 20u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 20u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                20u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                20u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        delta_q_present_flag: u32,
+        log2_delta_q_res: u32,
+        delta_lf_present_flag: u32,
+        log2_delta_lf_res: u32,
+        delta_lf_multi: u32,
+        tx_mode: u32,
+        reference_select: u32,
+        reduced_tx_set_used: u32,
+        skip_mode_present: u32,
+        reserved: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let delta_q_present_flag: u32 = unsafe { ::std::mem::transmute(delta_q_present_flag) };
+            delta_q_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 2u8, {
+            let log2_delta_q_res: u32 = unsafe { ::std::mem::transmute(log2_delta_q_res) };
+            log2_delta_q_res as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let delta_lf_present_flag: u32 =
+                unsafe { ::std::mem::transmute(delta_lf_present_flag) };
+            delta_lf_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 2u8, {
+            let log2_delta_lf_res: u32 = unsafe { ::std::mem::transmute(log2_delta_lf_res) };
+            log2_delta_lf_res as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let delta_lf_multi: u32 = unsafe { ::std::mem::transmute(delta_lf_multi) };
+            delta_lf_multi as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 2u8, {
+            let tx_mode: u32 = unsafe { ::std::mem::transmute(tx_mode) };
+            tx_mode as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let reference_select: u32 = unsafe { ::std::mem::transmute(reference_select) };
+            reference_select as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let reduced_tx_set_used: u32 = unsafe { ::std::mem::transmute(reduced_tx_set_used) };
+            reduced_tx_set_used as u64
+        });
+        __bindgen_bitfield_unit.set(11usize, 1u8, {
+            let skip_mode_present: u32 = unsafe { ::std::mem::transmute(skip_mode_present) };
+            skip_mode_present as u64
+        });
+        __bindgen_bitfield_unit.set(12usize, 20u8, {
+            let reserved: u32 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_5"]
+        [::std::mem::size_of::<_VADecPictureParameterBufferAV1__bindgen_ty_5>() - 4usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_5"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_5>() - 4usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_5::bits"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_5, bits) - 0usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_5::value"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_5, value) - 0usize];
+};
+impl Default for _VADecPictureParameterBufferAV1__bindgen_ty_5 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VADecPictureParameterBufferAV1__bindgen_ty_6 {
+    pub bits: _VADecPictureParameterBufferAV1__bindgen_ty_6__bindgen_ty_1,
+    pub value: u16,
+}
+#[repr(C)]
+#[repr(align(2))]
+#[derive(Default, Copy, Clone)]
+pub struct _VADecPictureParameterBufferAV1__bindgen_ty_6__bindgen_ty_1 {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_6__bindgen_ty_1"][::std::mem::size_of::<
+        _VADecPictureParameterBufferAV1__bindgen_ty_6__bindgen_ty_1,
+    >() - 2usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_6__bindgen_ty_1"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_6__bindgen_ty_1>()
+            - 2usize];
+};
+impl _VADecPictureParameterBufferAV1__bindgen_ty_6__bindgen_ty_1 {
+    #[inline]
+    pub fn yframe_restoration_type(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u16) }
+    }
+    #[inline]
+    pub fn set_yframe_restoration_type(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn yframe_restoration_type_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_yframe_restoration_type_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn cbframe_restoration_type(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 2u8) as u16) }
+    }
+    #[inline]
+    pub fn set_cbframe_restoration_type(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn cbframe_restoration_type_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                2u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_cbframe_restoration_type_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn crframe_restoration_type(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 2u8) as u16) }
+    }
+    #[inline]
+    pub fn set_crframe_restoration_type(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn crframe_restoration_type_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                2u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_crframe_restoration_type_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn lr_unit_shift(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 2u8) as u16) }
+    }
+    #[inline]
+    pub fn set_lr_unit_shift(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn lr_unit_shift_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                2u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_lr_unit_shift_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn lr_uv_shift(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u16) }
+    }
+    #[inline]
+    pub fn set_lr_uv_shift(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn lr_uv_shift_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_lr_uv_shift_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u16 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(9usize, 7u8) as u16) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            self._bitfield_1.set(9usize, 7u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u16 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                7u8,
+            ) as u16)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u16) {
+        unsafe {
+            let val: u16 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                7u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        yframe_restoration_type: u16,
+        cbframe_restoration_type: u16,
+        crframe_restoration_type: u16,
+        lr_unit_shift: u16,
+        lr_uv_shift: u16,
+        reserved: u16,
+    ) -> __BindgenBitfieldUnit<[u8; 2usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 2usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let yframe_restoration_type: u16 =
+                unsafe { ::std::mem::transmute(yframe_restoration_type) };
+            yframe_restoration_type as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 2u8, {
+            let cbframe_restoration_type: u16 =
+                unsafe { ::std::mem::transmute(cbframe_restoration_type) };
+            cbframe_restoration_type as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 2u8, {
+            let crframe_restoration_type: u16 =
+                unsafe { ::std::mem::transmute(crframe_restoration_type) };
+            crframe_restoration_type as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 2u8, {
+            let lr_unit_shift: u16 = unsafe { ::std::mem::transmute(lr_unit_shift) };
+            lr_unit_shift as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let lr_uv_shift: u16 = unsafe { ::std::mem::transmute(lr_uv_shift) };
+            lr_uv_shift as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 7u8, {
+            let reserved: u16 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1__bindgen_ty_6"]
+        [::std::mem::size_of::<_VADecPictureParameterBufferAV1__bindgen_ty_6>() - 2usize];
+    ["Alignment of _VADecPictureParameterBufferAV1__bindgen_ty_6"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1__bindgen_ty_6>() - 2usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_6::bits"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_6, bits) - 0usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1__bindgen_ty_6::value"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1__bindgen_ty_6, value) - 0usize];
+};
+impl Default for _VADecPictureParameterBufferAV1__bindgen_ty_6 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VADecPictureParameterBufferAV1"]
+        [::std::mem::size_of::<_VADecPictureParameterBufferAV1>() - 1160usize];
+    ["Alignment of _VADecPictureParameterBufferAV1"]
+        [::std::mem::align_of::<_VADecPictureParameterBufferAV1>() - 8usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::profile"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, profile) - 0usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::order_hint_bits_minus_1"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, order_hint_bits_minus_1) - 1usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::bit_depth_idx"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, bit_depth_idx) - 2usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::matrix_coefficients"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, matrix_coefficients) - 3usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::seq_info_fields"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, seq_info_fields) - 4usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::current_frame"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, current_frame) - 8usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::current_display_picture"][::std::mem::offset_of!(
+        _VADecPictureParameterBufferAV1,
+        current_display_picture
+    ) - 12usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::anchor_frames_num"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, anchor_frames_num) - 16usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::anchor_frames_list"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, anchor_frames_list) - 24usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::frame_width_minus1"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, frame_width_minus1) - 32usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::frame_height_minus1"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, frame_height_minus1) - 34usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::output_frame_width_in_tiles_minus_1"][::std::mem::offset_of!(
+        _VADecPictureParameterBufferAV1,
+        output_frame_width_in_tiles_minus_1
+    )
+        - 36usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::output_frame_height_in_tiles_minus_1"][::std::mem::offset_of!(
+        _VADecPictureParameterBufferAV1,
+        output_frame_height_in_tiles_minus_1
+    )
+        - 38usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::ref_frame_map"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, ref_frame_map) - 40usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::ref_frame_idx"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, ref_frame_idx) - 72usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::primary_ref_frame"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, primary_ref_frame) - 79usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::order_hint"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, order_hint) - 80usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::seg_info"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, seg_info) - 84usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::film_grain_info"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, film_grain_info) - 240usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::tile_cols"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, tile_cols) - 416usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::tile_rows"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, tile_rows) - 417usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::width_in_sbs_minus_1"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, width_in_sbs_minus_1) - 418usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::height_in_sbs_minus_1"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, height_in_sbs_minus_1) - 544usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::tile_count_minus_1"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, tile_count_minus_1) - 670usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::context_update_tile_id"][::std::mem::offset_of!(
+        _VADecPictureParameterBufferAV1,
+        context_update_tile_id
+    ) - 672usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::pic_info_fields"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, pic_info_fields) - 676usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::superres_scale_denominator"][::std::mem::offset_of!(
+        _VADecPictureParameterBufferAV1,
+        superres_scale_denominator
+    ) - 680usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::interp_filter"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, interp_filter) - 681usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::filter_level"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, filter_level) - 682usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::filter_level_u"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, filter_level_u) - 684usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::filter_level_v"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, filter_level_v) - 685usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::loop_filter_info_fields"][::std::mem::offset_of!(
+        _VADecPictureParameterBufferAV1,
+        loop_filter_info_fields
+    ) - 686usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::ref_deltas"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, ref_deltas) - 687usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::mode_deltas"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, mode_deltas) - 695usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::base_qindex"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, base_qindex) - 697usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::y_dc_delta_q"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, y_dc_delta_q) - 698usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::u_dc_delta_q"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, u_dc_delta_q) - 699usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::u_ac_delta_q"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, u_ac_delta_q) - 700usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::v_dc_delta_q"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, v_dc_delta_q) - 701usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::v_ac_delta_q"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, v_ac_delta_q) - 702usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::qmatrix_fields"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, qmatrix_fields) - 704usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::mode_control_fields"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, mode_control_fields) - 708usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::cdef_damping_minus_3"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, cdef_damping_minus_3) - 712usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::cdef_bits"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, cdef_bits) - 713usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::cdef_y_strengths"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, cdef_y_strengths) - 714usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::cdef_uv_strengths"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, cdef_uv_strengths) - 722usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::loop_restoration_fields"][::std::mem::offset_of!(
+        _VADecPictureParameterBufferAV1,
+        loop_restoration_fields
+    ) - 730usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::wm"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, wm) - 732usize];
+    ["Offset of field: _VADecPictureParameterBufferAV1::va_reserved"]
+        [::std::mem::offset_of!(_VADecPictureParameterBufferAV1, va_reserved) - 1124usize];
+};
+impl Default for _VADecPictureParameterBufferAV1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VADecPictureParameterBufferAV1 = _VADecPictureParameterBufferAV1;
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VASliceParameterBufferAV1 {
+    pub slice_data_size: u32,
+    pub slice_data_offset: u32,
+    pub slice_data_flag: u32,
+    pub tile_row: u16,
+    pub tile_column: u16,
+    pub tg_start: u16,
+    pub tg_end: u16,
+    pub anchor_frame_idx: u8,
+    pub tile_idx_in_tile_list: u16,
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VASliceParameterBufferAV1"]
+        [::std::mem::size_of::<_VASliceParameterBufferAV1>() - 40usize];
+    ["Alignment of _VASliceParameterBufferAV1"]
+        [::std::mem::align_of::<_VASliceParameterBufferAV1>() - 4usize];
+    ["Offset of field: _VASliceParameterBufferAV1::slice_data_size"]
+        [::std::mem::offset_of!(_VASliceParameterBufferAV1, slice_data_size) - 0usize];
+    ["Offset of field: _VASliceParameterBufferAV1::slice_data_offset"]
+        [::std::mem::offset_of!(_VASliceParameterBufferAV1, slice_data_offset) - 4usize];
+    ["Offset of field: _VASliceParameterBufferAV1::slice_data_flag"]
+        [::std::mem::offset_of!(_VASliceParameterBufferAV1, slice_data_flag) - 8usize];
+    ["Offset of field: _VASliceParameterBufferAV1::tile_row"]
+        [::std::mem::offset_of!(_VASliceParameterBufferAV1, tile_row) - 12usize];
+    ["Offset of field: _VASliceParameterBufferAV1::tile_column"]
+        [::std::mem::offset_of!(_VASliceParameterBufferAV1, tile_column) - 14usize];
+    ["Offset of field: _VASliceParameterBufferAV1::tg_start"]
+        [::std::mem::offset_of!(_VASliceParameterBufferAV1, tg_start) - 16usize];
+    ["Offset of field: _VASliceParameterBufferAV1::tg_end"]
+        [::std::mem::offset_of!(_VASliceParameterBufferAV1, tg_end) - 18usize];
+    ["Offset of field: _VASliceParameterBufferAV1::anchor_frame_idx"]
+        [::std::mem::offset_of!(_VASliceParameterBufferAV1, anchor_frame_idx) - 20usize];
+    ["Offset of field: _VASliceParameterBufferAV1::tile_idx_in_tile_list"]
+        [::std::mem::offset_of!(_VASliceParameterBufferAV1, tile_idx_in_tile_list) - 22usize];
+    ["Offset of field: _VASliceParameterBufferAV1::va_reserved"]
+        [::std::mem::offset_of!(_VASliceParameterBufferAV1, va_reserved) - 24usize];
+};
+pub type VASliceParameterBufferAV1 = _VASliceParameterBufferAV1;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union _VAConfigAttribValEncAV1 {
