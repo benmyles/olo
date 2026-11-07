@@ -147,6 +147,9 @@ impl Tree {
     pub fn vector(&self, index: u32) -> Option<&crate::svg::Viewport> {
         self.vectors.get(index as usize)
     }
+    pub fn vectors(&self) -> &[crate::svg::Viewport] {
+        &self.vectors
+    }
     pub(super) fn natural(&self, id: BoxId) -> Result<(f64, f64)> {
         match self.get(id).ok_or(Error::Invalid)?.kind {
             BoxKind::InlineImage { image } | BoxKind::BlockImage { image } => {

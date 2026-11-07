@@ -22,20 +22,33 @@ pub(crate) enum Geometry {
         source: Box<super::rect::Rectangle>,
         transform: Option<tiny_skia::Transform>,
     },
+    /// Shaped when the layout is prepared (`Viewport::texts[slot]`).
+    Text {
+        slot: u32,
+    },
 }
 impl Geometry {
     pub fn path<'a>(&'a self, used: Option<&'a super::used::Geometry>) -> Option<&'a tiny_skia::Path> {
         match self {
             Self::Path(path) => path.geometry(),
             Self::Rectangle { slot, .. } => used.and_then(|u| u.rectangles.get(*slot as usize)).and_then(Option::as_ref),
+            Self::Text { slot } => used.and_then(|u| u.texts.get(*slot as usize)).and_then(Option::as_ref),
         }
     }
     fn payload_bytes(&self) -> usize {
         match self {
             Self::Path(path) => path.payload_bytes(),
             Self::Rectangle { .. } => size_of::<super::rect::Rectangle>(),
+            Self::Text { .. } => 0,
         }
     }
+}
+/// No mask on a layer.
+pub const NO_MASK: u32 = u32::MAX;
+/// A `<mask>`'s content: shapes drawn on a transparent surface whose
+/// luminance masks the layer. Its rectangles have slots like the viewport's.
+pub struct MaskDef {
+    pub shapes: Vec<Shape>,
 }
 /// Preorder isolated effects over a contiguous range of retained shapes.
 /// Bounds are in SVG user space; raster surfaces cover only their tile intersection.
@@ -45,12 +58,16 @@ pub struct Layer {
     pub end_layer: u32,
     pub opacity: f32,
     pub clip: u32,
+    pub mask: u32,
     pub bounds: Option<tiny_skia::Rect>,
 }
 pub struct Viewport {
     pub node: NodeId,
     pub shapes: Vec<Shape>,
     pub(crate) rectangles: u32,
+    /// Texts to shape, by `Geometry::Text` slot.
+    pub(crate) texts: Vec<super::text::Source>,
+    pub(crate) masks: Vec<MaskDef>,
     clips: Option<triomphe::ThinArc<(), clip::Clip>>,
     layers: Option<triomphe::ThinArc<(), Layer>>,
     pub view_box: Option<[f64; 4]>,
@@ -91,7 +108,21 @@ impl Viewport {
             // Scrollable overflow on an SVG viewport clips like hidden.
             clip[axis] = !matches!(root_style.value(p), Value::Keyword(K::Visible));
         }
-        let mut result = Self { node: root, shapes: Vec::new(), rectangles: 0, clips: None, layers: None, view_box: None, aspect: Default::default(), clip, ink_bounds: None, visited: 0, work: 0 };
+        let mut result = Self {
+            node: root,
+            shapes: Vec::new(),
+            rectangles: 0,
+            texts: Vec::new(),
+            masks: Vec::new(),
+            clips: None,
+            layers: None,
+            view_box: None,
+            aspect: Default::default(),
+            clip,
+            ink_bounds: None,
+            visited: 0,
+            work: 0,
+        };
         if let Some(value) = doc.attribute(root, "viewBox")? {
             if value.len() > 1024 * 1024 {
                 return Err(Error::Limit);
@@ -127,6 +158,9 @@ impl Viewport {
         let mut open: Vec<(NodeId, usize)> = Vec::new();
         // Current transformation matrices of open transformed ancestors.
         let mut ctms: Vec<(NodeId, tiny_skia::Transform)> = Vec::new();
+        // `use` elements being instantiated: (the use, its target); the
+        // target's subtree is walked as if it were the use's child.
+        let mut uses: Vec<(NodeId, NodeId)> = Vec::new();
         let mut visited = 0;
         let mut bytes = 0usize;
         let mut work = 0usize;
@@ -148,11 +182,13 @@ impl Viewport {
                     let name = doc.name(node)?.ok_or(Error::Invalid)?;
                     // Definitions stay in the DOM/style tree for references, but
                     // never enter the directly painted subtree.
+                    let used_target = uses.last().is_some_and(|&(_, t)| t == node);
                     skip = matches!(s.value(P::Display), Value::Display(Display::None))
-                        || matches!(
-                            name,
-                            "defs" | "clipPath" | "title" | "desc" | "metadata" | "linearGradient" | "radialGradient" | "pattern" | "mask" | "filter" | "marker" | "symbol" | "style" | "script"
-                        );
+                        || (!used_target
+                            && matches!(
+                                name,
+                                "defs" | "clipPath" | "title" | "desc" | "metadata" | "linearGradient" | "radialGradient" | "pattern" | "mask" | "filter" | "marker" | "symbol" | "style" | "script"
+                            ));
                     if !skip {
                         let mut own_clip = clip::NO_CLIP;
                         match s.value(P::ClipPath) {
@@ -172,19 +208,49 @@ impl Viewport {
                             _ => fallbacks.note("SVG basic-shape clip-path ignored", Some(node)),
                         }
                         let opacity = s.value(P::Opacity).scalar().ok_or(Error::Invalid)? as f32;
-                        if (opacity != 1. || own_clip != clip::NO_CLIP) && node != root {
+                        // A mask="url(#id)" attribute: the mask's content, built here.
+                        let mut own_mask = NO_MASK;
+                        if let Some(value) = doc.attribute(node, "mask")?
+                            && node != root
+                        {
+                            let inner = value.trim().strip_prefix("url(").and_then(|r| r.split(')').next()).unwrap_or("").trim().trim_matches(['"', '\'']);
+                            let target = match inner.strip_prefix('#') {
+                                Some(id) => sources.lookup(doc, id, work_limit.saturating_sub(work), bytes_limit, cancel)?,
+                                None => None,
+                            };
+                            match target {
+                                Some(mask_node) if doc.name(mask_node)? == Some("mask") => {
+                                    let parent_ctm = ctms.last().map(|(_, t)| *t);
+                                    let shapes = mask_content(
+                                        doc,
+                                        styles,
+                                        sources,
+                                        mask_node,
+                                        parent_ctm,
+                                        &mut result.rectangles,
+                                        &mut result.texts,
+                                        work_limit.saturating_sub(work),
+                                        bytes_limit,
+                                        fallbacks,
+                                        cancel,
+                                    )?;
+                                    own_mask = u32::try_from(result.masks.len()).map_err(|_| Error::Limit)?;
+                                    result.masks.push(MaskDef { shapes });
+                                }
+                                _ => fallbacks.note("SVG mask not resolved", Some(node)),
+                            }
+                        }
+                        if (opacity != 1. || own_clip != clip::NO_CLIP || own_mask != NO_MASK) && node != root {
                             if open.len() >= 128 || (layers.len() + 1).saturating_mul(size_of::<Layer>()) > bytes_limit {
                                 return Err(Error::Limit);
                             }
                             open.push((node, layers.len()));
-                            layers.push(Layer { first: result.shapes.len() as u32, end: 0, end_layer: 0, opacity: (opacity * 255.).round() / 255., clip: own_clip, bounds: None });
+                            layers.push(Layer { first: result.shapes.len() as u32, end: 0, end_layer: 0, opacity: (opacity * 255.).round() / 255., clip: own_clip, mask: own_mask, bounds: None });
                         } else if opacity != 1. && node == root {
                             fallbacks.note("opacity on the SVG root painted opaque", Some(node));
                         }
-                        for (attr, diagnostic) in [("mask", "SVG mask ignored"), ("filter", "SVG filter ignored")] {
-                            if doc.attribute(node, attr)?.is_some() {
-                                fallbacks.note(diagnostic, Some(node));
-                            }
+                        if doc.attribute(node, "filter")?.is_some() {
+                            fallbacks.note("SVG filter ignored", Some(node));
                         }
                         if let Some(value) = doc.attribute(node, "transform")?
                             && node != root
@@ -202,7 +268,7 @@ impl Viewport {
                         match name {
                             "svg" if node == root => {}
                             "svg" => fallbacks.note("nested SVG viewport drawn in its parent's space", Some(node)),
-                            "g" | "a" | "switch" => {}
+                            "g" | "a" | "switch" | "symbol" => {}
                             "path" | "rect" | "circle" | "ellipse" | "line" | "polyline" | "polygon" => {
                                 let geometry = match name {
                                     "rect" => {
@@ -294,9 +360,59 @@ impl Viewport {
                                     }
                                 }
                             }
-                            "use" => fallbacks.note("SVG use not instantiated", Some(node)),
-                            "text" | "tspan" | "textPath" => {
-                                fallbacks.note("SVG text not drawn", Some(node));
+                            "use" => {
+                                // The referenced element is walked as the use's child, in
+                                // the use's space moved by x/y (a symbol's viewBox scaled
+                                // to the use's size).
+                                let href = doc.attribute(node, "href")?.or(doc.attribute(node, "xlink:href")?);
+                                let target = match href.and_then(|h| h.trim().strip_prefix('#')) {
+                                    Some(id) => sources.lookup(doc, id, work_limit.saturating_sub(work), bytes_limit, cancel)?,
+                                    None => None,
+                                };
+                                match target {
+                                    Some(target) if uses.len() < 16 && !uses.iter().any(|&(_, t)| t == target) && target != node && doc.node_type(target)? == NodeType::Element => {
+                                        let x = user_length(doc, node, "x")?.ok().flatten().unwrap_or(0.);
+                                        let y = user_length(doc, node, "y")?.ok().flatten().unwrap_or(0.);
+                                        let mut own = tiny_skia::Transform::from_translate(x, y);
+                                        if doc.name(target)? == Some("symbol")
+                                            && let Some(vb) = doc.attribute(target, "viewBox")?
+                                        {
+                                            let mut values = svgtypes::NumberListParser::from(vb).flatten();
+                                            let (vx, vy, vw, vh) = (values.next().unwrap_or(0.), values.next().unwrap_or(0.), values.next().unwrap_or(0.), values.next().unwrap_or(0.));
+                                            let w = user_length(doc, node, "width")?.ok().flatten().or(user_length(doc, target, "width")?.ok().flatten());
+                                            let h = user_length(doc, node, "height")?.ok().flatten().or(user_length(doc, target, "height")?.ok().flatten());
+                                            if let (Some(w), Some(h)) = (w, h)
+                                                && vw > 0.
+                                                && vh > 0.
+                                            {
+                                                let scale = (f64::from(w) / vw).min(f64::from(h) / vh) as f32;
+                                                let (ox, oy) = ((w - vw as f32 * scale) / 2., (h - vh as f32 * scale) / 2.);
+                                                own = tiny_skia::Transform::from_row(scale, 0., 0., scale, ox - vx as f32 * scale, oy - vy as f32 * scale).post_concat(own);
+                                            }
+                                        }
+                                        let parent = ctms.last().map_or(tiny_skia::Transform::identity(), |(_, t)| *t);
+                                        ctms.push((target, own.post_concat(parent)));
+                                        uses.push((node, target));
+                                        next = Some(target);
+                                        continue;
+                                    }
+                                    Some(_) => fallbacks.note("SVG use reference skipped", Some(node)),
+                                    None => fallbacks.note("SVG use not resolved", Some(node)),
+                                }
+                            }
+                            "text" => {
+                                if matches!(s.value(P::Visibility), Value::Keyword(K::Visible))
+                                    && let Some(color) = paint(doc, styles, sources, s, node, P::Fill, P::FillOpacity, "fill", work_limit.saturating_sub(work), bytes_limit, fallbacks, cancel)?
+                                    && let Some(source) = text_source(doc, node, ctm, bytes_limit, cancel)?
+                                {
+                                    let slot = u32::try_from(result.texts.len()).map_err(|_| Error::Limit)?;
+                                    result.texts.push(source);
+                                    result.shapes.push(Shape { node, geometry: Geometry::Text { slot }, color, evenodd: false });
+                                }
+                                skip = true;
+                            }
+                            "tspan" | "textPath" => {
+                                fallbacks.note("SVG text span outside text skipped", Some(node));
                                 skip = true;
                             }
                             "image" => fallbacks.note("SVG image not drawn", Some(node)),
@@ -321,11 +437,18 @@ impl Viewport {
                             layers[parent].bounds = layers[parent].bounds.map_or(Some(b), |old| old.join(&b)).or(layers[parent].bounds);
                         }
                     }
-                    if ctms.last().is_some_and(|&(n, _)| n == at) {
+                    while ctms.last().is_some_and(|&(n, _)| n == at) {
                         ctms.pop();
                     }
                     if at == root {
                         break;
+                    }
+                    // A use's target done: continue from the use itself (its
+                    // own transform and layer close as any element's).
+                    if uses.last().is_some_and(|&(_, t)| t == at) {
+                        let (use_node, _) = uses.pop().ok_or(Error::Invalid)?;
+                        at = use_node;
+                        continue;
                     }
                     if let Some(sibling) = doc.next_sibling(at)? {
                         next = Some(sibling);
@@ -561,6 +684,213 @@ fn stroke_outline(doc: &Document, node: NodeId, path: &Path, ctm: Option<tiny_sk
     let Some(source) = source else { return Ok(None) };
     let outline = source.stroke(&stroke, scale);
     Ok(outline.map(|o| Path::from_geometry(Some(o)).transformed(ctm)))
+}
+/// A `<text>` element's content and placement: the text of its descendant
+/// text nodes with whitespace collapsed, x/y/dx/dy (first values), its
+/// anchor and dominant baseline (attributes, as presentation attributes).
+fn text_source(doc: &Document, node: NodeId, ctm: Option<tiny_skia::Transform>, bytes_limit: usize, cancel: Option<&AtomicBool>) -> Result<Option<super::text::Source>> {
+    let mut text = String::new();
+    let mut next = doc.first_child(node)?;
+    let mut depth = 0usize;
+    let mut at = node;
+    while let Some(n) = next {
+        if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+            return Err(Error::Cancelled);
+        }
+        if doc.node_type(n)? == NodeType::Text
+            && let Some(value) = doc.value(n)?
+        {
+            text.push_str(value);
+            if text.len() > bytes_limit.min(1 << 16) {
+                return Err(Error::Limit);
+            }
+        }
+        let descend = doc.node_type(n)? == NodeType::Element && depth < 8;
+        next = if descend { doc.first_child(n)? } else { None };
+        if next.is_some() {
+            depth += 1;
+            at = n;
+            continue;
+        }
+        let mut here = n;
+        loop {
+            if let Some(sibling) = doc.next_sibling(here)? {
+                next = Some(sibling);
+                break;
+            }
+            if here == node {
+                next = None;
+                break;
+            }
+            here = doc.parent(here)?.ok_or(Error::Invalid)?;
+            depth = depth.saturating_sub(1);
+            if here == node {
+                next = None;
+                break;
+            }
+        }
+        let _ = at;
+    }
+    let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return Ok(None);
+    }
+    // x/y may be percentages of the viewport (resolved later); dx/dy add.
+    let coordinate = |name: &str| -> Result<(f32, bool)> {
+        let Some(value) = doc.attribute(node, name)? else { return Ok((0., false)) };
+        let value = value.trim();
+        if let Some(pct) = value.strip_suffix('%') {
+            return Ok((pct.trim().parse::<f32>().ok().filter(|v| v.is_finite()).unwrap_or(0.), true));
+        }
+        Ok((user_length(doc, node, name)?.ok().flatten().unwrap_or(0.), false))
+    };
+    let number = |name: &str| -> Result<f32> { Ok(user_length(doc, node, name)?.ok().flatten().unwrap_or(0.)) };
+    let (x, x_percent) = coordinate("x")?;
+    let (y, y_percent) = coordinate("y")?;
+    let (x, y) = if x_percent || y_percent { (x, y) } else { (x + number("dx")?, y + number("dy")?) };
+    if (x_percent || y_percent) && (doc.attribute(node, "dx")?.is_some() || doc.attribute(node, "dy")?.is_some()) {
+        // dx/dy with percentage positions: added in user units below.
+    }
+    let anchor = match doc.attribute(node, "text-anchor")?.map(str::trim) {
+        Some("middle") => super::text::Anchor::Middle,
+        Some("end") => super::text::Anchor::End,
+        _ => super::text::Anchor::Start,
+    };
+    let baseline = match doc.attribute(node, "dominant-baseline")?.map(str::trim) {
+        Some("central") => super::text::Baseline::Central,
+        Some("middle") => super::text::Baseline::Middle,
+        Some("hanging") => super::text::Baseline::Hanging,
+        Some("text-top" | "text-before-edge") => super::text::Baseline::TextTop,
+        Some("text-bottom" | "text-after-edge" | "ideographic") => super::text::Baseline::TextBottom,
+        _ => super::text::Baseline::Alphabetic,
+    };
+    let mut source = super::text::Source { node, text: std::sync::Arc::from(collapsed), x, y, x_percent, y_percent, anchor, baseline, transform: ctm };
+    if x_percent || y_percent {
+        // dx/dy in user units ride along in the transform.
+        let (dx, dy) = (number("dx")?, number("dy")?);
+        if dx != 0. || dy != 0. {
+            let shift = tiny_skia::Transform::from_translate(dx, dy);
+            source.transform = Some(ctm.map_or(shift, |c| shift.post_concat(c)));
+        }
+    }
+    Ok(Some(source))
+}
+/// A `<mask>`'s content as shapes (fills of rectangles, paths, basic shapes
+/// and text; groups' transforms applied), in the masked element's user space.
+#[allow(clippy::too_many_arguments)]
+fn mask_content<'a>(
+    doc: &'a Document,
+    styles: &StyleTree,
+    sources: &mut clip::Sources<'a>,
+    mask: NodeId,
+    base: Option<tiny_skia::Transform>,
+    rectangles: &mut u32,
+    texts: &mut Vec<super::text::Source>,
+    work_limit: usize,
+    bytes_limit: usize,
+    fallbacks: &mut Fallbacks,
+    cancel: Option<&AtomicBool>,
+) -> Result<Vec<Shape>> {
+    if doc.attribute(mask, "maskContentUnits")?.is_some_and(|v| v.trim() == "objectBoundingBox") {
+        fallbacks.note("SVG mask in bounding-box units drawn in user space", Some(mask));
+    }
+    let mut shapes = Vec::new();
+    let mut ctms: Vec<(NodeId, tiny_skia::Transform)> = Vec::new();
+    let mut next = doc.first_child(mask)?;
+    let mut visited = 0usize;
+    while let Some(node) = next {
+        if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+            return Err(Error::Cancelled);
+        }
+        visited += 1;
+        if visited > 4096 {
+            return Err(Error::Limit);
+        }
+        let mut skip = false;
+        if doc.node_type(node)? == NodeType::Element && doc.namespace(node)? == Some(Namespace::Svg) {
+            let s = styles.snapshot(node).ok_or(Error::Stale)?;
+            let name = doc.name(node)?.ok_or(Error::Invalid)?;
+            skip = matches!(s.value(P::Display), Value::Display(Display::None)) || matches!(name, "defs" | "clipPath" | "mask" | "title" | "desc" | "metadata" | "style" | "script");
+            if !skip {
+                if let Some(value) = doc.attribute(node, "transform")?
+                    && let Ok(t) = value.parse::<svgtypes::Transform>()
+                {
+                    let parent = ctms.last().map_or(base.unwrap_or_default(), |(_, t)| *t);
+                    let own = tiny_skia::Transform::from_row(t.a as f32, t.b as f32, t.c as f32, t.d as f32, t.e as f32, t.f as f32);
+                    ctms.push((node, own.post_concat(parent)));
+                }
+                let ctm = ctms.last().map(|(_, t)| *t).or(base).filter(|t| !t.is_identity());
+                let visible = matches!(s.value(P::Visibility), Value::Keyword(K::Visible));
+                let geometry = match name {
+                    "rect" => match super::rect::Rectangle::read(s) {
+                        Ok(source) => {
+                            let slot = *rectangles;
+                            *rectangles = rectangles.checked_add(1).ok_or(Error::Limit)?;
+                            Some(Geometry::Rectangle { slot, source: Box::new(source), transform: ctm })
+                        }
+                        Err(_) => None,
+                    },
+                    "path" => {
+                        let source = doc.attribute(node, "d")?.unwrap_or("");
+                        let mut job = PathJob::new(source, super::Limits { segments: 65536.min(work_limit), ..Default::default() }, cancel).map_err(path_error)?;
+                        while !job.step(128).map_err(path_error)?.finished {}
+                        Some(Geometry::Path(job.finish().map_err(path_error)?.transformed(ctm)))
+                    }
+                    "circle" | "ellipse" | "line" | "polyline" | "polygon" => match basic_shape(doc, node, name, ctm)? {
+                        Ok(path) => Some(Geometry::Path(path)),
+                        Err(what) => {
+                            fallbacks.note(what, Some(node));
+                            None
+                        }
+                    },
+                    "text" => {
+                        if visible
+                            && let Some(color) = paint(doc, styles, sources, s, node, P::Fill, P::FillOpacity, "fill", work_limit, bytes_limit, fallbacks, cancel)?
+                            && let Some(source) = text_source(doc, node, ctm, bytes_limit, cancel)?
+                        {
+                            let slot = u32::try_from(texts.len()).map_err(|_| Error::Limit)?;
+                            texts.push(source);
+                            shapes.push(Shape { node, geometry: Geometry::Text { slot }, color, evenodd: false });
+                        }
+                        skip = true;
+                        None
+                    }
+                    "g" | "a" | "svg" | "switch" => None,
+                    _ => {
+                        fallbacks.note("SVG element in mask skipped", Some(node));
+                        None
+                    }
+                };
+                if let Some(geometry) = geometry
+                    && visible
+                    && let Some(color) = paint(doc, styles, sources, s, node, P::Fill, P::FillOpacity, "fill", work_limit, bytes_limit, fallbacks, cancel)?
+                {
+                    let evenodd = matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd));
+                    shapes.push(Shape { node, geometry, color, evenodd });
+                }
+            }
+        } else {
+            skip = true;
+        }
+        next = if !skip { doc.first_child(node)? } else { None };
+        if next.is_none() {
+            let mut at = node;
+            loop {
+                while ctms.last().is_some_and(|&(n, _)| n == at) {
+                    ctms.pop();
+                }
+                if at == mask {
+                    break;
+                }
+                if let Some(sibling) = doc.next_sibling(at)? {
+                    next = Some(sibling);
+                    break;
+                }
+                at = doc.parent(at)?.ok_or(Error::Invalid)?;
+            }
+        }
+    }
+    Ok(shapes)
 }
 /// The solid colour a fill or stroke paints with: its colour times its
 /// opacity, or a gradient's first stop. None paints nothing.

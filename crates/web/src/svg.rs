@@ -2,12 +2,13 @@
 //! Stroke/paint-server/nested SVG and full intrinsic sizing remain incomplete.
 pub(crate) mod clip;
 pub(crate) mod rect;
+pub(crate) mod text;
 pub(crate) mod used;
 mod viewport;
 use std::sync::atomic::{AtomicBool, Ordering};
 use svgtypes::{PathParser, PathSegment as Segment};
 pub(crate) use viewport::Geometry;
-pub use viewport::{Shape, Viewport};
+pub use viewport::{MaskDef, NO_MASK, Shape, Viewport};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {

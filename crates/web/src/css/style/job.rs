@@ -658,6 +658,11 @@ impl<'a> Job<'a> {
                         | "stop-opacity"
                         | "flood-color"
                         | "flood-opacity"
+                        | "font-size"
+                        | "font-family"
+                        | "font-weight"
+                        | "font-style"
+                        | "letter-spacing"
                 )
                 || name == "fill" && animation
             {
@@ -667,7 +672,7 @@ impl<'a> Job<'a> {
                 return Err(Error::Limit);
             }
             let mut syntax = Syntax::parse(Arc::from(source), self.limits.css, self.cancelled).map_err(Error::css)?;
-            if geometry && matches!(name, "width" | "height") || position && matches!(name, "x" | "y") || rounded && matches!(name, "rx" | "ry") {
+            if geometry && matches!(name, "width" | "height") || position && matches!(name, "x" | "y") || rounded && matches!(name, "rx" | "ry") || matches!(name, "font-size" | "letter-spacing") {
                 let mut parts = syntax.components().filter(|c| c.kind() != crate::css::Kind::Whitespace);
                 if parts.next().is_some_and(|c| matches!(c.kind(), crate::css::Kind::Number | crate::css::Kind::Integer)) && parts.next().is_none() {
                     syntax = Syntax::parse(Arc::from(format!("{}px", source.trim())), self.limits.css, self.cancelled).map_err(Error::css)?;

@@ -188,6 +188,8 @@ pub struct Progress {
 pub struct Cache {
     tree: Arc<Tree>,
     texts: Arc<[Arc<inline::Text>]>,
+    /// SVG texts shaped into paths, by viewport index then text slot.
+    svg_texts: Arc<[Box<[Option<tiny_skia::Path>]>]>,
     /// The prepared texts by their identity (content, breaks, fonts and
     /// spacing), for the next preparation of a changed document to keep
     /// what is the same.
@@ -197,6 +199,10 @@ pub struct Cache {
     fallbacks: Fallbacks,
 }
 impl Cache {
+    /// The shaped texts of an SVG viewport, cloned for its resolved geometry.
+    pub(crate) fn svg_texts(&self, vector: u32) -> Vec<Option<tiny_skia::Path>> {
+        self.svg_texts.get(vector as usize).map(|t| t.to_vec()).unwrap_or_default()
+    }
     pub fn tree(&self) -> &Arc<Tree> {
         &self.tree
     }
@@ -434,13 +440,35 @@ impl<'a> PrepareJob<'a> {
         if !self.progress.finished {
             return Err(Error::Incomplete);
         }
+        // SVG texts: shaped here, where the fonts are.
+        let mut svg_texts: Vec<Box<[Option<tiny_skia::Path>]>> = Vec::new();
+        let mut fallbacks = self.fallbacks;
+        for vector in self.tree.vectors().iter() {
+            let mut paths = Vec::with_capacity(vector.texts.len());
+            for source in &vector.texts {
+                let path = match self.tree.styles.snapshot(source.node) {
+                    Some(style) => match crate::svg::text::shape(self.engine, self.scope, style, source, 1 << 20, self.cancel) {
+                        Ok(path) => path,
+                        Err(e @ (Error::Cancelled | Error::Stale)) => return Err(e),
+                        Err(_) => {
+                            fallbacks.note("SVG text not shaped", Some(source.node));
+                            None
+                        }
+                    },
+                    None => None,
+                };
+                paths.push(path);
+            }
+            svg_texts.push(paths.into_boxed_slice());
+        }
         Ok(Arc::new(Cache {
             tree: self.tree,
             texts: Arc::from(self.texts),
+            svg_texts: Arc::from(svg_texts),
             shared: Arc::new(self.shared),
             intrinsics: None,
             glyph_geometry_bytes: self.glyph_geometry_bytes,
-            fallbacks: self.fallbacks,
+            fallbacks,
         }))
     }
 }
@@ -480,6 +508,7 @@ impl Layout {
         let cache = Arc::new(Cache {
             tree,
             texts: self.cache.texts.clone(),
+            svg_texts: self.cache.svg_texts.clone(),
             shared: self.cache.shared.clone(),
             intrinsics: self.cache.intrinsics.clone(),
             glyph_geometry_bytes: self.cache.glyph_geometry_bytes,
@@ -1448,6 +1477,7 @@ impl<'a> Job<'a> {
             self.cache = Arc::new(Cache {
                 tree: self.cache.tree.clone(),
                 texts: self.cache.texts.clone(),
+                svg_texts: self.cache.svg_texts.clone(),
                 shared: self.cache.shared.clone(),
                 intrinsics: Some(Arc::new(self.intrinsics)),
                 glyph_geometry_bytes: self.cache.glyph_geometry_bytes,

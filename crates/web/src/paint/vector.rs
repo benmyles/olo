@@ -45,6 +45,27 @@ pub(super) fn raster(
         if stack.last().is_some_and(|s| layers[s.layer].end as usize == shape && next >= layers[s.layer].end_layer as usize) {
             let mut surface = stack.pop().ok_or(Error::Invalid)?;
             let layer = &layers[surface.layer];
+            if layer.mask != crate::svg::NO_MASK {
+                // The mask's content on a transparent surface over the same
+                // area; its luminance is the layer's coverage.
+                let pixels = surface.image.width() as usize * surface.image.height() as usize;
+                if bytes.checked_add(pixels * 4).ok_or(Error::Limit)? > limits.layer_bytes {
+                    return Err(Error::Limit);
+                }
+                *work = work.checked_add(pixels * 2).ok_or(Error::Limit)?;
+                if *work > limits.layer_pixel_work {
+                    return Err(Error::Limit);
+                }
+                let definition = vector.masks.get(layer.mask as usize).ok_or(Error::Invalid)?;
+                let mut coverage = Pixmap::new(surface.image.width(), surface.image.height()).ok_or(Error::Limit)?;
+                let t = transform.post_translate(-surface.x as f32, -surface.y as f32);
+                for shape in &definition.shapes {
+                    check(cancel)?;
+                    fill(&mut coverage, shape, used, t, None);
+                }
+                let luminance = Mask::from_pixmap(coverage.as_ref(), tiny_skia::MaskType::Luminance);
+                surface.image.apply_mask(&luminance);
+            }
             if layer.clip != clip::NO_CLIP {
                 let pixels = surface.image.width() as usize * surface.image.height() as usize;
                 if bytes.checked_add(pixels).ok_or(Error::Limit)? > limits.layer_bytes {

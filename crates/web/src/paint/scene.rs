@@ -519,9 +519,10 @@ impl<'a> BuildJob<'a> {
         let origin = Point { x: outer.x + g.border_width.left + g.padding.left, y: outer.y + g.border_width.top + g.padding.top };
         let content = g.content_box();
         let source = self.layout.cache().tree().vector(vector).ok_or(Error::Invalid)?;
-        if source.rectangles != 0 && !self.vector_geometry.contains_key(&vector) {
+        if (source.rectangles != 0 || !source.texts.is_empty()) && !self.vector_geometry.contains_key(&vector) {
             let viewport = source.view_box.map_or([content.width, content.height], |v| [v[2], v[3]]);
-            let used = crate::svg::used::Geometry::resolve(source, viewport, self.limits.path_segments, self.limits.path_bytes.saturating_sub(self.vector_clip_bytes), self.cancel)?;
+            let texts = self.layout.cache().svg_texts(vector);
+            let used = crate::svg::used::Geometry::resolve(source, viewport, texts, self.limits.path_segments, self.limits.path_bytes.saturating_sub(self.vector_clip_bytes), self.cancel)?;
             self.vector_clip_bytes = self.vector_clip_bytes.checked_add(used.payload_bytes()).ok_or(Error::Limit)?;
             if self.vector_clip_bytes > self.limits.path_bytes {
                 return Err(Error::Limit);

@@ -53,7 +53,7 @@ fn main() {
         let mut selected = 0;
         let mut snapshot_bytes = 0;
         let start = Instant::now();
-        let first = rules.match_element(&tree, elements[0], Default::default(), None, None, Default::default(), Default::default(), &mut scratch, None).unwrap();
+        let first = rules.match_element(&tree, elements[0], Default::default(), None, None, Default::default(), Default::default(), &mut scratch, None, None).unwrap();
         black_box(first.resolver().property(Property::Width, true).unwrap());
         let first_match_us = start.elapsed().as_secs_f64() * 1e6;
         drop(first);
@@ -63,7 +63,7 @@ fn main() {
             let class = parsed.document.attribute(node, "class").unwrap().unwrap();
             let index: usize = class.strip_prefix("item").unwrap().parse().unwrap();
             let expected = (index % 100 + 1) as f64;
-            let cascade = rules.match_element(&tree, node, Default::default(), None, None, Default::default(), Default::default(), &mut scratch, None).unwrap();
+            let cascade = rules.match_element(&tree, node, Default::default(), None, None, Default::default(), Default::default(), &mut scratch, None, None).unwrap();
             let Defaulted::Specified(Value::Numeric(value)) = cascade.resolver().property(Property::Width, true).unwrap() else { panic!() };
             assert_eq!(value.resolve(&css::math::NoContext, &mut Default::default(), Default::default(), None).unwrap(), expected);
         }
@@ -71,7 +71,7 @@ fn main() {
         let mut sum = 0.;
         for _ in 0..rounds {
             for &node in &elements {
-                let cascade = rules.match_element(&tree, node, Default::default(), None, None, Default::default(), Default::default(), &mut scratch, None).unwrap();
+                let cascade = rules.match_element(&tree, node, Default::default(), None, None, Default::default(), Default::default(), &mut scratch, None, None).unwrap();
                 selected += scratch.candidate_count();
                 snapshot_bytes = cascade.reserved_payload_bytes();
                 let Defaulted::Specified(Value::Numeric(value)) = cascade.resolver().property(Property::Width, true).unwrap() else { panic!() };

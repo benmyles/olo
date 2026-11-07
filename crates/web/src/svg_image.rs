@@ -65,7 +65,7 @@ pub fn rasterize(source: &[u8], host: &impl Host, scope: &Scope, scale: f64, can
         // against the viewport, as the page painter does for inline SVG.
         let limits = paint::Limits::default();
         let viewport = vector.view_box.map_or([w, h], |v| [v[2], v[3]]);
-        let used = if vector.rectangles != 0 { Some(svg::used::Geometry::resolve(&vector, viewport, limits.path_segments, limits.path_bytes, cancel)?) } else { None };
+        let used = if vector.rectangles != 0 { Some(svg::used::Geometry::resolve(&vector, viewport, Vec::new(), limits.path_segments, limits.path_bytes, cancel)?) } else { None };
         let clips = if vector.clip_nodes().is_empty() {
             Vec::new()
         } else {
