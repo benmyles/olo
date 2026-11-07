@@ -644,8 +644,13 @@ pub struct Layout {
     /// The blocks whose subtrees came from the previous layout (for
     /// checking the reuse, OLO_LAYOUT_CHECK).
     reuse_roots: Arc<[BoxId]>,
+    /// The geometry's identity: unique to each layout made, kept by a
+    /// restyle over the same geometry (`with_styles`), so scripts' observers
+    /// can tell whether anything moved without reading every box.
+    identity: u64,
     scale: f64,
 }
+static LAYOUT_IDENTITIES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 /// What a block in normal flow was laid out under: its containing
 /// block's size and direction and the container query basis (the rest
 /// follows from its style).
@@ -689,7 +694,11 @@ impl Layout {
             glyph_geometry_bytes: self.cache.glyph_geometry_bytes,
             fallbacks: self.cache.fallbacks.clone(),
         });
-        Self { cache, geometry: self.geometry.clone(), texts: self.texts.clone(), stored: self.stored.clone(), reuse_roots: self.reuse_roots.clone(), scale: self.scale }
+        Self { cache, geometry: self.geometry.clone(), texts: self.texts.clone(), stored: self.stored.clone(), reuse_roots: self.reuse_roots.clone(), identity: self.identity, scale: self.scale }
+    }
+    /// The geometry's identity (see the field).
+    pub fn geometry_identity(&self) -> u64 {
+        self.identity
     }
     /// The blocks whose subtrees came from the previous layout.
     pub fn reuse_roots(&self) -> &[BoxId] {
@@ -2006,6 +2015,7 @@ impl<'a> Job<'a> {
             texts: Arc::from(self.texts),
             stored: Arc::from(self.stored),
             reuse_roots: Arc::from(self.reuse_roots),
+            identity: LAYOUT_IDENTITIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             scale: self.scale,
         })
     }

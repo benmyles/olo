@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### stripe.com at 11.6% of a core, Chrome 18.1%
+
+*10:52* — Observers checked only when the geometry changed, a tick that spun 10,000 times an advance fixed, and translucent layers composited as straight alpha (the Google button over the hero canvas was grey).
+
+![stripe.com at 11.6% of a core, Chrome 18.1%](2026-11-07/105236-stripe-com-at-11-6-of-a-core-chrome-18-1.png)
+
 ### stripe.com live at 14% of a core, under Chrome's 15.6%
 
 *09:38* — The hero's WebGL canvas is a surface layer (one image upload a frame instead of twelve tiles rasterised), the marquee's transform patches the scene's matrices instead of rebuilding it, and live renders patch styles from the change log as measurements do.

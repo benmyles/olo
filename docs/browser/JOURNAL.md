@@ -5967,3 +5967,37 @@ redo only what changed.
   and the style job (1.2 ms: a text change needs no restyle unless a
   selector tests `:empty`).
 
+## 2026-11-08, evening: the scripts' cost, and translucent layers
+
+- **Where the scripts' time went.** `OLO_JS_PROFILE` times every native
+  by name and prints the top ten with the live summary. On stripe.com
+  67–75 of ~90 ms of scripts per 2 s were our natives:
+  getBoundingClientRect 8,400 calls (42 ms), getComputedStyle 18,000
+  (7 ms), isConnected 8,300 (5 ms), querySelector 19 calls (7 ms).
+  - The ResizeObserver and IntersectionObserver checks ran on every
+    document revision, measuring each target; they now run when the
+    layout's geometry changed (`Layout::geometry_identity`, kept by a
+    restyle that moves nothing), read once a revision.
+  - querySelector compiles a selector once and keeps it; a lone tag, id
+    or class is matched by a look at the element.
+- **A spinning tick.** The advance loop treated a next-due time within
+  0.5 ms as due now and ticked again at the same clock, but the page
+  runs only timers whose time has come: a timer 0.3 ms ahead spun the
+  loop to its cap, 10,000 ticks in one advance and 380,000 calls to
+  `revision` per 2 s. The loop stops once the next time is ahead. One
+  tick an advance now; scripts 112–180 → 53–63 ms per 2 s. Timers
+  nested more than five deep wait 4 ms, as HTML says.
+- **A crash.** The live render's coalescing read the elapsed time twice;
+  when the interval passed between the reads the subtraction
+  underflowed and the page thread died. Read once.
+- **Translucent layers were grey.** The kit's image shader composites
+  straight alpha (it multiplies by alpha itself); the engine's tiles
+  and images are premultiplied. The opaque base hid it; every layer
+  above it showed a translucent white as grey: stripe.com's Google
+  button over the hero canvas, since the canvas became a surface layer
+  and what paints after it its own stratum. Layer tiles and surfaces
+  are made straight as they are uploaded (opaque pixels only swap).
+- **Result.** stripe.com at steady state over 30 s: Olo 11.6% of a
+  core (page thread 9.6%, window 2.0%); Chrome 18.1% (five processes,
+  the same 30 s, /proc). Olo uses 36% less.
+

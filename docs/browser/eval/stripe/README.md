@@ -19,9 +19,9 @@ without a dedicated eval environment; no personal account is part of this run.
 scripts run (V8), its WebGL scenes drawn on the GPU, its workers,
 fonts, SVG (`<use>`, masks, text) and the live page's animations
 (the hero wave, the bento scenes, the marquee, the counter) at
-13.9–14.9% of a core against Chrome's 15.6% (`tools/dev/cost`, 10 s
-at steady state; JOURNAL 2026-11-08 midday): per 2 s, scripts 85–130
-ms, renders 60–100 ms, measurements ~50 ms, tiles ~28 ms. The pricing
+11.6% of a core against Chrome's 18.1% (`tools/dev/cost` and /proc
+over the same 30 s at steady state; JOURNAL 2026-11-08 evening): per
+2 s, scripts 53–63 ms, renders 54–84 ms, tiles ~28 ms. The pricing
 page renders as Chrome (JOURNAL 2026-11-07 night). Hover opens the
 navigation menus. Not yet compared: the animated
 states at the same moment of the page's clock, the pricing page and a

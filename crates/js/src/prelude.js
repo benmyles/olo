@@ -767,7 +767,10 @@
   const timers = new Map();
   const rafs = [];
   let lastFrame = 0;
-  const schedule = (fn, delay, args, interval) => { if (typeof fn !== 'function') { if (typeof fn === 'string') { const src = fn; fn = () => (0, eval)(src); } else return 0; } const id = nextTimer++; timers.set(id, { due: now + Math.max(0, Number(delay) || 0), fn, args, interval: interval ? Math.max(4, Number(delay) || 4) : 0, runs: 0 }); N.count('timer'); return id; };
+  // Timers nested more than five deep wait at least 4 ms (HTML's timer
+  // clamp, as Chrome), so a setTimeout(0) chain cannot spin.
+  let timerNesting = 0;
+  const schedule = (fn, delay, args, interval) => { if (typeof fn !== 'function') { if (typeof fn === 'string') { const src = fn; fn = () => (0, eval)(src); } else return 0; } const id = nextTimer++; timers.set(id, { due: now + Math.max(timerNesting >= 5 ? 4 : 0, Number(delay) || 0), fn, args, interval: interval ? Math.max(4, Number(delay) || 4) : 0, runs: 0, nesting: timerNesting }); N.count('timer'); return id; };
   global.setTimeout = (fn, delay, ...args) => schedule(fn, delay, args, false);
   global.setInterval = (fn, delay, ...args) => schedule(fn, delay, args, true);
   global.clearTimeout = global.clearInterval = (id) => { timers.delete(id); };
@@ -775,11 +778,15 @@
   // when one was added, the scroll moved or the document changed.
   const intersectionObservers = new Set();
   let intersectionsDue = false;
-  let intersectionScroll = -1, intersectionRevision = -1;
+  let intersectionScroll = -1, intersectionLayout = -1;
+  // The layout's geometry identity, read once per document revision (the
+  // read lays the document out when it changed).
+  let tickRevision = -1, tickLayout = 0;
+  const layoutNow = () => { const r = N.revision(); if (r !== tickRevision) { tickRevision = r; tickLayout = N.layoutGeneration(); } return tickLayout; };
   const checkIntersections = () => {
     intersectionsDue = false;
     intersectionScroll = scrollXY[1];
-    intersectionRevision = N.revision();
+    intersectionLayout = layoutNow();
     for (const o of [...intersectionObservers]) o._check();
   };
   global.requestAnimationFrame = (fn) => { const id = nextTimer++; rafs.push({ id, fn }); return id; };
@@ -805,24 +812,26 @@
     for (const [id, t] of due) {
       if (!timers.has(id)) continue;
       if (t.interval) { t.runs++; if (t.runs > 50) { timers.delete(id); continue; } t.due = now + t.interval; } else timers.delete(id);
+      timerNesting = t.nesting + 1;
       try { t.fn.apply(global, t.args); } catch (e) { reportError(e); }
+      timerNesting = 0;
     }
     // A frame: animation callbacks, then the intersections observed since
     // (HTML's "update the rendering" runs the callbacks and then updates
     // the observations, whose notifications follow), so a page that
     // schedules a frame and then observes sees the frame first.
-    const intersectionsWanted = intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || N.revision() !== intersectionRevision);
+    const intersectionsWanted = intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout);
     if ((rafs.length || intersectionsWanted) && now >= lastFrame + 16) {
       lastFrame = now;
       const batch = rafs.splice(0, rafs.length);
       for (const r of batch) { try { r.fn.call(global, performanceNow()); } catch (e) { reportError(e); } }
-      if (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || N.revision() !== intersectionRevision)) checkIntersections();
+      if (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) checkIntersections();
     }
     // Sizes can only have changed with the document: one check per change.
-    if (resizeObservers.size) { const r = N.revision(); if (r !== resizeRevision) { resizeRevision = r; for (const o of [...resizeObservers]) o._check(); } }
+    if (resizeObservers.size) { const r = layoutNow(); if (r !== resizeRevision) { resizeRevision = r; for (const o of [...resizeObservers]) o._check(); } }
     let next = -1;
     for (const t of timers.values()) if (next < 0 || t.due < next) next = t.due;
-    if (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || N.revision() !== intersectionRevision))) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
+    if (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout))) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
     if (next >= 0 && next <= now) next = now + 1;
     return next;
   };

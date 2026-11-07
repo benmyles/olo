@@ -148,6 +148,27 @@ struct Live {
     last_eval: Option<String>,
     /// Since the last summary: advances, script time, renders, render time.
     stats: (usize, f64, usize, f64, Instant),
+    /// Since the last summary: the page's ticks, and the most in one advance.
+    ticks: usize,
+    max_ticks: usize,
+}
+/// Premultiplied RGBA (the engine's tiles and images) into straight BGRA
+/// (what the kit's image shader composites: it multiplies by alpha
+/// itself, so a premultiplied translucent white showed grey). Opaque
+/// pixels only swap; `opaque` says every pixel is.
+fn to_straight_bgra(bytes: &mut [u8], opaque: bool) {
+    for p in bytes.as_chunks_mut::<4>().0 {
+        p.swap(0, 2);
+        if opaque {
+            continue;
+        }
+        let a = u16::from(p[3]);
+        if a != 0 && a != 255 {
+            for c in &mut p[..3] {
+                *c = ((u16::from(*c) * 255 + a / 2) / a).min(255) as u8;
+            }
+        }
+    }
 }
 /// Whether an error only says the work was cancelled (a newer request
 /// took over), as every phase reports it.
@@ -485,25 +506,42 @@ fn render(
         live.next_due_ms = advanced.next_due_ms;
         live.stats.0 += 1;
         live.stats.1 += advanced.spent_ms;
+        live.ticks += advanced.ticks;
+        live.max_ticks = live.max_ticks.max(advanced.ticks);
         if live.stats.4.elapsed() >= Duration::from_secs(2) && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
             let (advances, js, renders, render_ms, since) = live.stats;
             let report = live.realm.report();
             let (gl_calls, gl_seconds) = live.realm.take_gl_stats();
             eprintln!(
-                "  live: in {:.1} s, {advances} advances ({js:.0} ms of scripts, {gl_calls} WebGL calls in {:.0} ms), {renders} renders ({render_ms:.0} ms); {} layouts for measurements so far",
+                "  live: in {:.1} s, {advances} advances ({} ticks, at most {} in one; {js:.0} ms of scripts, {gl_calls} WebGL calls in {:.0} ms), {renders} renders ({render_ms:.0} ms); {} layouts for measurements so far",
                 since.elapsed().as_secs_f64(),
+                live.ticks,
+                live.max_ticks,
                 gl_seconds * 1000.,
                 report.layouts
             );
+            live.ticks = 0;
+            live.max_ticks = 0;
             live.stats = (0, 0., 0, 0., Instant::now());
+            // OLO_JS_PROFILE: where the natives' time went, the top ten.
+            if std::env::var_os("OLO_JS_PROFILE").is_some() {
+                let profile = olo_js::take_native_profile();
+                let total: f64 = profile.iter().map(|p| p.2).sum();
+                let calls: u64 = profile.iter().map(|p| p.1).sum();
+                let top: Vec<String> = profile.iter().take(10).map(|(name, n, t)| format!("{name} {n}×{:.1} ms", t * 1000.)).collect();
+                eprintln!("  natives: {calls} calls in {:.0} ms: {}", total * 1000., top.join(", "));
+            }
         }
         let revision = live.realm.revision();
         // The document changed, a readback is in flight, or a canvas was
         // drawn on (its drawing shows only through a render).
         if revision != live.rendered || live.render_again || live.realm.canvases_dirty() {
-            if live.last_render.elapsed() < LIVE_RENDER_INTERVAL {
+            // Read once: read twice, the interval can pass between the reads
+            // and the subtraction underflow (it did, and the page thread died).
+            let since = live.last_render.elapsed();
+            if since < LIVE_RENDER_INTERVAL {
                 // Coalesce: render at the interval, not at every change.
-                let soon = now_ms + (LIVE_RENDER_INTERVAL - live.last_render.elapsed()).as_secs_f64() * 1000.;
+                let soon = now_ms + (LIVE_RENDER_INTERVAL - since).as_secs_f64() * 1000.;
                 live.next_due_ms = Some(live.next_due_ms.map_or(soon, |d| d.min(soon)));
                 return Ok(());
             }
@@ -804,6 +842,8 @@ fn render(
                 last_render: Instant::now(),
                 last_eval: None,
                 stats: (0, 0., 0, 0., Instant::now()),
+                ticks: 0,
+                max_ticks: 0,
             });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
@@ -1147,9 +1187,7 @@ fn render(
                 shown.clone()
             } else {
                 let mut bytes = image.rgba().to_vec();
-                for p in bytes.as_chunks_mut::<4>().0 {
-                    p.swap(0, 2)
-                }
+                to_straight_bgra(&mut bytes, image.opaque());
                 let shown = olo_ui::widgets::image_view::from_bgra(image.width(), image.height(), bytes).ok_or("Surface upload failed")?;
                 cache.insert(key, (shown.clone(), *clock, signature));
                 repainted += 1;
@@ -1248,9 +1286,8 @@ fn render(
                 } else {
                     let tile = painter.raster_stratum(scene, si, region, si == 0, Some(&r.cancel))?;
                     let mut bytes = tile.into_rgba();
-                    for p in bytes.as_chunks_mut::<4>().0 {
-                        p.swap(0, 2)
-                    }
+                    // The base is opaque; a layer above it is not.
+                    to_straight_bgra(&mut bytes, si == 0);
                     let image = olo_ui::widgets::image_view::from_bgra(256, 256, bytes).ok_or("Tile upload failed")?;
                     if cache.len() >= 512 {
                         let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;

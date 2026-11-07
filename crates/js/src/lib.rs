@@ -145,6 +145,9 @@ pub struct Advanced {
     pub changed: bool,
     /// Wall time spent running scripts (and their measurements).
     pub spent_ms: f64,
+    /// How many times the page's tick ran (more than one: work due at the
+    /// same moment, scheduled by what ran).
+    pub ticks: usize,
 }
 /// What happened.
 #[derive(Debug, Default, Clone)]
@@ -187,6 +190,9 @@ struct State {
     gl: HashMap<NodeId, webgl::Context>,
     /// WebGL calls made and the time in them (for the live page's stats).
     gl_calls: u64,
+    /// Selectors compiled for querySelector and matches, by their text
+    /// (a page asks the same ones over and over).
+    selectors: HashMap<(String, bool), Arc<Selectors>>,
     gl_seconds: f64,
     image_lookup: Option<ImageLookup>,
     /// Images the scripts loaded, by `img` element.
@@ -248,6 +254,7 @@ impl Realm {
             gl: HashMap::new(),
             gl_calls: 0,
             gl_seconds: 0.,
+            selectors: HashMap::new(),
             image_lookup: None,
             images: HashMap::new(),
             requests: Vec::new(),
@@ -473,14 +480,19 @@ impl Realm {
             s.document.revision()
         };
         let mut next_due_ms = None;
+        let mut ticks = 0;
         for _ in 0..10_000 {
+            ticks += 1;
             self.pump_workers();
             match self.call_prelude_number("__olo_tick", now_ms) {
                 Ok(next) if next < 0. => {
                     next_due_ms = None;
                     break;
                 }
-                Ok(next) if next > now_ms + 0.5 => {
+                // Anything later than now waits for its moment: ticking again
+                // at this clock runs nothing (a timer 0.3 ms ahead spun this
+                // loop to its cap, 10,000 ticks an advance, on stripe.com).
+                Ok(next) if next > now_ms => {
                     next_due_ms = Some(next);
                     break;
                 }
@@ -495,7 +507,7 @@ impl Realm {
             }
         }
         let after = self.state.borrow().document.revision();
-        Advanced { next_due_ms, changed: after != before, spent_ms: started.elapsed().as_secs_f64() * 1000. }
+        Advanced { next_due_ms, changed: after != before, spent_ms: started.elapsed().as_secs_f64() * 1000., ticks }
     }
     /// The last layout made for the scripts' measurements, if any: a render
     /// of the same document keeps its styles and texts.
@@ -755,6 +767,7 @@ impl State {
             gl: HashMap::new(),
             gl_calls: 0,
             gl_seconds: 0.,
+            selectors: HashMap::new(),
             image_lookup: None,
             images: HashMap::new(),
             requests: Vec::new(),
@@ -1271,6 +1284,7 @@ const NATIVES: &[&str] = &[
     "clone",
     "query",
     "matches",
+    "layoutGeneration",
     "innerHTML",
     "setInnerHTML",
     "outerHTML",
@@ -1467,7 +1481,36 @@ fn nodes_array<'s>(scope: &mut v8::PinScope<'s, '_>, state: &Shared, nodes: &[No
     v8::Array::new_with_elements(scope, &items).into()
 }
 /// Every `__olo.*` function: `args.data()` names it.
-fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+thread_local! {
+    /// OLO_JS_PROFILE: time spent in each native, by name (calls, seconds).
+    static NATIVE_PROFILE: std::cell::RefCell<std::collections::HashMap<String, (u64, f64)>> = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+fn native_profiling() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("OLO_JS_PROFILE").is_some())
+}
+/// The natives' profile so far, taken: by time spent, descending.
+pub fn take_native_profile() -> Vec<(String, u64, f64)> {
+    let mut v: Vec<_> = NATIVE_PROFILE.with(|p| std::mem::take(&mut *p.borrow_mut())).into_iter().map(|(k, (n, t))| (k, n, t)).collect();
+    v.sort_by(|a, b| b.2.total_cmp(&a.2));
+    v
+}
+fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, rv: v8::ReturnValue) {
+    if !native_profiling() {
+        return native_inner(scope, args, rv);
+    }
+    let name = args.data().to_rust_string_lossy(scope);
+    let started = Instant::now();
+    native_inner(scope, args, rv);
+    let spent = started.elapsed().as_secs_f64();
+    NATIVE_PROFILE.with(|p| {
+        let mut p = p.borrow_mut();
+        let e = p.entry(name).or_insert((0, 0.));
+        e.0 += 1;
+        e.1 += spent;
+    });
+}
+fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let Some(state) = scope.get_slot::<Shared>().cloned() else { return };
     let name = args.data().to_rust_string_lossy(scope);
     let node = |scope: &mut v8::PinScope, i: i32| node_of(scope, args.get(i));
@@ -1761,10 +1804,22 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
             let selector = arg_string(scope, &args, 1);
             let all = name == "query" && args.get(2).boolean_value(scope);
             let matching = name == "matches";
+            let started = native_profiling().then(Instant::now);
             let result = {
-                let s = state.borrow();
-                select(&s.document, root, &selector, s.quirks == QuirksMode::Quirks, all, matching)
+                let mut s = state.borrow_mut();
+                let s = &mut *s;
+                let quirks = s.quirks == QuirksMode::Quirks;
+                select(&s.document, root, &selector, quirks, all, matching, &mut s.selectors)
             };
+            if let Some(t) = started {
+                let spent = t.elapsed().as_secs_f64();
+                NATIVE_PROFILE.with(|p| {
+                    let mut p = p.borrow_mut();
+                    let e = p.entry(format!("{name} {selector}")).or_insert((0, 0.));
+                    e.0 += 1;
+                    e.1 += spent;
+                });
+            }
             match result {
                 Err(e) => throw(scope, &format!("SyntaxError: '{selector}' is not a valid selector ({e})")),
                 Ok(nodes) if matching => rv.set_bool(!nodes.is_empty()),
@@ -2012,6 +2067,13 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
             let r = state.borrow().document.revision();
             rv.set(v8::Number::new(scope, r as f64).into());
         }
+        // The layout's geometry identity: the same while nothing moved or
+        // resized (a restyle, a transform), so observers need not look.
+        "layoutGeneration" => {
+            let mut s = state.borrow_mut();
+            let g = s.measured().map_or(0, |m| m.layout().geometry_identity());
+            rv.set(v8::Number::new(scope, g as f64).into());
+        }
         // A canvas's raster, made or resized (which clears it).
         "canvasSize" => {
             if let Some(n) = node(scope, 0) {
@@ -2206,9 +2268,72 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
 }
 /// Elements under `root` (or `root` itself for `matching`) matching the
 /// selector list, in document order; `all` keeps every one.
-fn select(doc: &Document, root: NodeId, selector: &str, quirks: bool, all: bool, matching: bool) -> Result<Vec<NodeId>, String> {
-    let syntax = css::Syntax::parse(Arc::from(selector), Default::default(), None).map_err(|e| format!("{e:?}"))?;
-    let selectors = Selectors::compile(syntax.components(), CompileOptions { namespaces: &[], default_namespace: None }, Default::default(), None).map_err(|e| format!("{e:?}"))?;
+/// A selector that is one tag, id or class alone: matched by a look at
+/// the element, not through the selector engine (most querySelector
+/// calls are one of these).
+enum Simple<'a> {
+    Tag(String),
+    Id(&'a str),
+    Class(&'a str),
+}
+fn simple_selector(selector: &str) -> Option<Simple<'_>> {
+    let selector = selector.trim();
+    let ident = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') && !s.starts_with(|c: char| c.is_ascii_digit() || c == '-');
+    if let Some(id) = selector.strip_prefix('#') {
+        return ident(id).then_some(Simple::Id(id));
+    }
+    if let Some(class) = selector.strip_prefix('.') {
+        return ident(class).then_some(Simple::Class(class));
+    }
+    ident(selector).then(|| Simple::Tag(selector.to_ascii_lowercase()))
+}
+fn select(doc: &Document, root: NodeId, selector: &str, quirks: bool, all: bool, matching: bool, compiled: &mut HashMap<(String, bool), Arc<Selectors>>) -> Result<Vec<NodeId>, String> {
+    if let Some(simple) = simple_selector(selector) {
+        let is_html = |n: NodeId| doc.namespace(n).ok().flatten() == Some(olo_web::dom::Namespace::Html);
+        let hit = |n: NodeId| -> bool {
+            match &simple {
+                Simple::Tag(tag) => doc.name(n).ok().flatten().is_some_and(|name| if is_html(n) { name.eq_ignore_ascii_case(tag) } else { name == tag }),
+                Simple::Id(id) => doc.attribute(n, "id").ok().flatten() == Some(id),
+                Simple::Class(class) => doc.attribute(n, "class").ok().flatten().is_some_and(|c| c.split_ascii_whitespace().any(|t| if quirks { t.eq_ignore_ascii_case(class) } else { t == *class })),
+            }
+        };
+        if matching {
+            return Ok(if doc.node_type(root).map_err(|e| format!("{e:?}"))? == NodeType::Element && hit(root) { vec![root] } else { vec![] });
+        }
+        let mut out = Vec::new();
+        let mut next = doc.first_child(root).ok().flatten();
+        let mut stack: Vec<NodeId> = Vec::new();
+        // Tree order under the root, by first child then next sibling.
+        while let Some(n) = next {
+            if doc.node_type(n).ok() == Some(NodeType::Element) && hit(n) {
+                out.push(n);
+                if !all {
+                    break;
+                }
+            }
+            if let Some(c) = doc.first_child(n).ok().flatten() {
+                if let Some(s) = doc.next_sibling(n).ok().flatten() {
+                    stack.push(s);
+                }
+                next = Some(c);
+            } else {
+                next = doc.next_sibling(n).ok().flatten().or_else(|| stack.pop());
+            }
+        }
+        return Ok(out);
+    }
+    let selectors = match compiled.get(&(selector.to_owned(), quirks)) {
+        Some(s) => s.clone(),
+        None => {
+            let syntax = css::Syntax::parse(Arc::from(selector), Default::default(), None).map_err(|e| format!("{e:?}"))?;
+            let s = Arc::new(Selectors::compile(syntax.components(), CompileOptions { namespaces: &[], default_namespace: None }, Default::default(), None).map_err(|e| format!("{e:?}"))?);
+            if compiled.len() >= 4096 {
+                compiled.clear();
+            }
+            compiled.insert((selector.to_owned(), quirks), s.clone());
+            s
+        }
+    };
     let tree = DomTree::new(doc);
     let options = MatchOptions { html_document: true, quirks, scope: Some(root), ..Default::default() };
     let hit = |node: NodeId| selectors.matches(&tree, node, options.clone(), MatchLimits::default(), None).ok().flatten().is_some();

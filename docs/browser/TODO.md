@@ -101,7 +101,9 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   layout (`layout::Job::with_previous`; checked against a full layout
   by `OLO_LAYOUT_CHECK`; JOURNAL 2026-11-08 afternoon), so the counter's
   text change relays out 180 of 1983 boxes (layout 7.6 → 1.2 ms) and
-  stripe.com runs at 12.7% of a core. Next, in order: the rest of that
+  stripe.com runs at 11.6% of a core against Chrome's 18.1% over 30 s
+  (JOURNAL 2026-11-08 evening: the natives profiled, observers gated on
+  geometry, a spinning tick fixed). Next, in order: the rest of that
   full job (the box tree rebuilt from the whole document, 3.4 ms: copy
   the clean subtrees' boxes; the scene rebuilt, 3.2 ms; the style job,
   1.2 ms, where a text change needs no restyle unless a selector tests

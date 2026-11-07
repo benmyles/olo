@@ -3820,5 +3820,11 @@
   "title": "stripe.com live at 14% of a core, under Chrome's 15.6%",
   "caption": "The hero's WebGL canvas is a surface layer (one image upload a frame instead of twelve tiles rasterised), the marquee's transform patches the scene's matrices instead of rebuilding it, and live renders patch styles from the change log as measurements do.",
   "image": "2026-11-07/093828-stripe-com-live-at-14-of-a-core-under-chrome-s-1.png"
+ },
+ {
+  "time": "2026-11-07T10:52:36",
+  "title": "stripe.com at 11.6% of a core, Chrome 18.1%",
+  "caption": "Observers checked only when the geometry changed, a tick that spun 10,000 times an advance fixed, and translucent layers composited as straight alpha (the Google button over the hero canvas was grey).",
+  "image": "2026-11-07/105236-stripe-com-at-11-6-of-a-core-chrome-18-1.png"
  }
 ]
