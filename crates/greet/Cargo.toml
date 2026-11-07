@@ -1,0 +1,12 @@
+[package]
+name = "olo-greet"
+description = "Olo's login screen's own: what its daemon (olo-login), its workers and its greeter (olo-greeter) say to each other, who can log in and to which sessions, and PAM's conversation, credentials and sessions (libpam opened at run time)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = "0.2"
+libloading = "0.8"
+serde.workspace = true
+serde_json.workspace = true

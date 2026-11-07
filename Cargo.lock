@@ -7374,6 +7374,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-greet"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "libloading",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "olo-hvif"
 version = "0.1.0"
 dependencies = [
