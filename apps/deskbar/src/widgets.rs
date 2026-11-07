@@ -25,7 +25,10 @@ use std::{
 };
 
 use olo_protocol::deskbar::{Look, MAX_SPAN_S, Measure, Size, Widget};
-use olo_system::meters::{self, Reader, Reading, Unit};
+use olo_system::{
+    meters::{self, Reader, Reading, Unit},
+    procs::{Rank, Sampler},
+};
 use olo_ui::{
     agent,
     gpui::{App, Bounds, Context, Entity, FontWeight, Hsla, IntoElement, Pixels, Render, Styled, Window, canvas, point, px},
@@ -157,8 +160,29 @@ impl Shown {
     }
 
     /// Its tip and what agents read: what it measures in full, then each
-    /// series' value ("Network: every interface\nDown: 1.2 MB/s").
-    pub fn tip(&self, sources: &meters::Sources) -> String {
+    /// series' value ("Network: every interface\nDown: 1.2 MB/s"), then
+    /// the processes using most of it, once they're known (`top`, while
+    /// the pointer is on it).
+    pub fn tip(&self, sources: &meters::Sources, top: Option<&[(String, f64)]>) -> String {
+        let mut out = self.reading_tip(sources);
+        if let Some(top) = top.filter(|t| !t.is_empty()) {
+            let cores = sources.cores.max(1) as f64;
+            out.push_str("\n\nUsing the most:");
+            for (name, v) in top {
+                let v = match self.widget.measure {
+                    // (Of the whole processor, as the widget's.)
+                    Measure::Cpu { .. } => percent(v / cores),
+                    Measure::Gpu { .. } => percent(*v),
+                    Measure::Memory { .. } => bytes_text(*v),
+                    _ => meters::rate_text(*v),
+                };
+                out.push_str(&format!("\n{name}: {v}"));
+            }
+        }
+        out
+    }
+
+    fn reading_tip(&self, sources: &meters::Sources) -> String {
         let w = &self.widget;
         let mut out = meters::describe(&w.measure, sources);
         let Some(r) = &self.latest else { return out };
@@ -183,13 +207,17 @@ pub struct Live {
     /// measure or rate starts again).
     readings: HashMap<u32, (VecDeque<(f64, Reading)>, (Measure, u32))>,
     shown: HashMap<u32, Rc<Shown>>,
-    worker: Option<mpsc::Sender<Vec<Widget>>>,
+    worker: Option<mpsc::Sender<Tell>>,
     paused: bool,
+    /// The widget the pointer is on, and the processes using most of
+    /// what it measures (None until known).
+    hovered: Option<u32>,
+    top: Option<Vec<(String, f64)>>,
 }
 
 impl Live {
     pub fn new() -> Live {
-        Live { widgets: Vec::new(), readings: HashMap::new(), shown: HashMap::new(), worker: None, paused: false }
+        Live { widgets: Vec::new(), readings: HashMap::new(), shown: HashMap::new(), worker: None, paused: false, hovered: None, top: None }
     }
 
     /// What widget `w` shows (nothing read yet: nothing).
@@ -240,7 +268,38 @@ impl Live {
             }
             tx
         });
-        let _ = worker.send(wanted);
+        let _ = worker.send(Tell::Widgets(wanted));
+    }
+
+    /// The pointer is on widget `id` (None: on none): while it is, the
+    /// worker looks at which processes use most of what it measures.
+    pub fn hover(&mut self, id: Option<u32>) {
+        if self.hovered == id {
+            return;
+        }
+        self.hovered = id;
+        self.top = None;
+        let rank = id.and_then(|id| self.widgets.iter().find(|w| w.id == id)).and_then(rank);
+        if let Some(worker) = &self.worker {
+            let _ = worker.send(Tell::Hover(rank.map(|r| (id.unwrap_or(0), r))));
+        }
+    }
+
+    /// The processes using most of what widget `id` measures, as looked.
+    pub fn set_top(&mut self, id: u32, top: Option<Vec<(String, f64)>>) {
+        if self.hovered == Some(id) && top.is_some() {
+            self.top = top;
+        }
+    }
+
+    /// Widget `w`'s tip now.
+    pub fn tip(&self, w: &Widget, sources: &meters::Sources) -> String {
+        let top = self.top.as_deref().filter(|_| self.hovered == Some(w.id));
+        self.shown(w).tip(sources, top)
+    }
+
+    pub fn hovered(&self) -> Option<u32> {
+        self.hovered
     }
 
     /// Readings come in, each with when it was made: each widget's
@@ -260,6 +319,51 @@ impl Live {
     }
 }
 
+/// "0.4%", "12%".
+fn percent(v: f64) -> String {
+    if v < 9.95 { format!("{v:.1}%") } else { format!("{v:.0}%") }
+}
+
+/// "840 MB", "1.2 GB".
+fn bytes_text(v: f64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let (mut v, mut i) = (v.max(0.0), 0);
+    while v >= 1000.0 && i < UNITS.len() - 1 {
+        v /= 1000.0;
+        i += 1;
+    }
+    if i == 0 || v >= 100.0 { format!("{v:.0} {}", UNITS[i]) } else { format!("{v:.1} {}", UNITS[i]) }
+}
+
+/// What a widget's tip ranks processes by: the processor's, memory's,
+/// a GPU's, the network's and the disks' (not a volume's fullness, a
+/// temperature or the battery's power, which no process has a share of).
+pub fn rank(w: &Widget) -> Option<Rank> {
+    match &w.measure {
+        Measure::Cpu { .. } => Some(Rank::Cpu),
+        Measure::Memory { .. } => Some(Rank::Memory),
+        Measure::Gpu { pci } => Some(Rank::Gpu(pci.clone())),
+        Measure::Network { .. } => Some(Rank::Network),
+        Measure::Disk { .. } => Some(Rank::Disk),
+        _ => None,
+    }
+}
+
+/// What the worker is told: the widgets to read, or the one the pointer
+/// is on, whose tip lists the processes using most.
+pub enum Tell {
+    Widgets(Vec<Widget>),
+    Hover(Option<(u32, Rank)>),
+}
+
+/// How many processes a tip lists.
+const TOP: usize = 5;
+/// A tip's processes: looked at again this often while it shows, the
+/// first two this far apart (a rate needs a look before it), so they're
+/// there as the tip shows (`tip`'s pause is 500 ms).
+const TOP_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+const TOP_FIRST: std::time::Duration = std::time::Duration::from_millis(350);
+
 /// How many readings a widget keeps: its graph's span, and the one
 /// before it and the next (its right edge an interval behind).
 fn kept(w: &Widget) -> usize {
@@ -269,19 +373,27 @@ fn kept(w: &Widget) -> usize {
 /// The worker: each widget read when it's due, the readings sent
 /// together; waits for the next due (or a new list) and does nothing
 /// else.
-fn read_widgets(rx: mpsc::Receiver<Vec<Widget>>, proxy: olo_ui::Proxy) {
+fn read_widgets(rx: mpsc::Receiver<Tell>, proxy: olo_ui::Proxy) {
     let mut widgets: Vec<Widget> = Vec::new();
     let mut readers: HashMap<u32, (Measure, Reader)> = HashMap::new();
     // When each is next read, and what it was set to read then.
     let mut due: HashMap<u32, ((Measure, u32), Instant)> = HashMap::new();
+    // The widget whose tip lists processes, what by, its sampler (none
+    // while no tip does: its memory of every process goes) and when it
+    // next looks.
+    let mut hover: Option<(u32, Rank, Sampler, Instant)> = None;
     loop {
-        let next = due.values().map(|(_, at)| *at).min();
+        let next = due.values().map(|(_, at)| *at).chain(hover.as_ref().map(|h| h.3)).min();
         let got = match next {
             None => rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected),
             Some(at) => rx.recv_timeout(at.saturating_duration_since(Instant::now())),
         };
         match got {
-            Ok(list) => {
+            Ok(Tell::Hover(on)) => {
+                hover = on.map(|(id, rank)| (id, rank, Sampler::new(), Instant::now()));
+                continue;
+            }
+            Ok(Tell::Widgets(list)) => {
                 widgets = list;
                 readers.retain(|id, (m, _)| widgets.iter().any(|w| w.id == *id && w.measure == *m));
                 // (One measuring something else, or as often, starts
@@ -315,6 +427,14 @@ fn read_widgets(rx: mpsc::Receiver<Vec<Widget>>, proxy: olo_ui::Proxy) {
         }
         if !batch.is_empty() {
             proxy.send(crate::Msg::Meters(batch));
+        }
+        if let Some((id, rank, sampler, at)) = hover.as_mut()
+            && *at <= Instant::now()
+        {
+            let top = sampler.top(rank, TOP);
+            // (The first look of a rate: the next soon, to have one.)
+            *at = Instant::now() + if top.is_none() { TOP_FIRST } else { TOP_EVERY };
+            proxy.send(crate::Msg::Top(*id, top));
         }
     }
 }

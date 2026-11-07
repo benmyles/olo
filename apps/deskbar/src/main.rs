@@ -148,6 +148,8 @@ enum Msg {
     Tray(sni::Tray),
     /// The live widgets' readings, by widget (`widgets`).
     Meters(Vec<(u32, f64, olo_system::meters::Reading)>),
+    /// The processes using most of what a widget measures (its tip's).
+    Top(u32, Option<Vec<(String, f64)>>),
     /// What there is to measure (the widgets' GPUs, disks and sensors by
     /// name).
     Sources(olo_system::meters::Sources),
@@ -1332,14 +1334,17 @@ impl Deskbar {
             }
             Msg::Meters(batch) => {
                 self.live.add(batch);
-                // Only the widgets drawn again (and a bar whose widget's
-                // tip is showing, for its words): not the bar.
+                // Only the widgets drawn again (and the tip of one the
+                // pointer is on): not the bar.
                 for bar in &self.bars {
                     bar.layer.update(cx, |_, cx| cx.notify());
-                    if bar.view.read(cx).hot.as_ref().is_some_and(|k| k.contains("widget:")) {
-                        bar.view.update(cx, |_, cx| cx.notify());
-                    }
                 }
+                self.retip(cx);
+                return;
+            }
+            Msg::Top(id, top) => {
+                self.live.set_top(id, top);
+                self.retip(cx);
                 return;
             }
             Msg::Sources(sources) => self.sources = sources,
@@ -1754,10 +1759,20 @@ impl BarView {
             return;
         };
         if hot != self.hot {
+            // The widget the pointer is on, whose tip lists processes.
+            let (was, now) = (self.hot.as_ref().and_then(|k| widget_of(k)), hot.as_ref().and_then(|k| widget_of(k)));
+            if was != now {
+                self.model.update(cx, |d, _| d.live.hover(now));
+            }
             self.hot = hot;
             cx.notify();
         }
     }
+}
+
+/// The live widget a bar's element is ("widget:3", "tray:widget:3").
+fn widget_of(key: &str) -> Option<u32> {
+    key.strip_prefix("tray:").unwrap_or(key).strip_prefix("widget:")?.parse().ok()
 }
 
 /// What a bar's drawing needs to know of the pointer.
@@ -2113,7 +2128,7 @@ impl Deskbar {
         // tray's left.
         for w in tray_widgets {
             let key = format!("widget:{}", w.id);
-            let tip_text = self.live.shown(&w).tip(&self.sources);
+            let tip_text = self.live.tip(&w, &self.sources);
             // (Drawn on the layer over the bar.)
             let (r, h) = tray_item(&mut d, &key, tip_text, Box::new(|_, _, _| {}));
             d.placed.push(widgets::Placed { widget: w, spot: widgets::Spot::Tray(r) });
@@ -2888,6 +2903,21 @@ impl Deskbar {
 }
 
 impl Deskbar {
+    /// The tip of the widget the pointer is on, if it's showing, says what
+    /// it does now: its reading and the processes using most (each bar
+    /// drawn again too, so its next tip starts from it).
+    fn retip(&self, cx: &mut Context<Self>) {
+        let Some(id) = self.live.hovered() else { return };
+        let Some(w) = self.live.widgets.iter().find(|w| w.id == id) else { return };
+        let text = self.live.tip(w, &self.sources);
+        for bar in &self.bars {
+            let Some(key) = bar.view.read(cx).hot.clone().filter(|k| widget_of(k) == Some(id)) else { continue };
+            bar.view.update(cx, |_, cx| cx.notify());
+            let text = text.clone();
+            let _ = bar.win.update(cx, move |_, window, cx| tip::retext(window, cx, key, text));
+        }
+    }
+
     /// The live widgets placed at `place`, in rows from `y` down (each on
     /// its own, or beside the one before; the tray's ground under the
     /// tray, the panel's at the foot, an etched line above them): where
@@ -2919,11 +2949,12 @@ impl Deskbar {
             let spots: Vec<widgets::Spot> = if row.len() == 1 { vec![widgets::Spot::Row(r)] } else { widgets::cells(r, row.len(), TRAY_TEXT).into_iter().map(widgets::Spot::Cell).collect() };
             for (w, spot) in row.into_iter().zip(spots) {
                 let key = format!("widget:{}", w.id);
-                let tip_text = self.live.shown(&w).tip(&self.sources);
+                let tip_text = self.live.tip(&w, &self.sources);
                 let at = match spot {
                     widgets::Spot::Row(r) | widgets::Spot::Tray(r) => r,
-                    // (A cell's hit takes in half the gap at each side.)
-                    widgets::Spot::Cell(c) => expand(c, olo_ui::metrics::TIGHT / 2.0),
+                    // (A cell's hit takes in half the gap at each side;
+                    // not above or below, where the rows beside it are.)
+                    widgets::Spot::Cell(c) => Bounds { origin: point(c.left() - px(olo_ui::metrics::TIGHT / 2.0), c.top()), size: size(c.size.width + px(olo_ui::metrics::TIGHT), c.size.height) },
                 };
                 let h = hit(view, &key, at, Some(tip_text));
                 d.hits.push(self.widget_hit(h, &key, at, view, model));

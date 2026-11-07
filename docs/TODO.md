@@ -15,12 +15,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Deskbar widgets' tips: the top five processes** (Ben, 2026-11-07:
-  "for relevant widgets like cpu, gpu, memory, network make it so that
-  hovering over the widget also shows the top 5 highest consuming
-  processes"). Read only while a tip is up (Activity Monitor's sampling,
-  on the widgets' worker), never otherwise.
-
 - **A resting display still looks every 100 ms** (found 2026-11-07,
   looking into the Intel GPU): `render::IDLE_POLL`, the safety net for
   changes that don't wake a display (`Backend::wake`). An idle
@@ -116,6 +110,19 @@ something nobody here has is in "Blocked", with what it waits for.
   and Tracker and Passwords where they fit.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Deskbar widgets' tips list the top five processes** (Ben,
+  2026-11-07: "for relevant widgets like cpu, gpu, memory, network make
+  it so that hovering over the widget also shows the top 5 highest
+  consuming processes"). CPU, memory, GPU, network and disk widgets: the
+  tip's reading, then "Using the most:" and five processes, kept up to
+  date while it shows (and its reading). Read only while a tip shows
+  (Activity Monitor's sampling, moved to `olo_system::procs`): the
+  worker's share of a core then 0.8% (CPU) to 1.2% (network), nothing
+  after. Also fixed on the way: a shared row's cell took the pointer 3
+  points into the row above, so moving from one widget's tip to the
+  cell under it showed none. Try: rest the pointer on a widget after
+  the upgrade.
 
 - **Intel's render GT on an idle desktop: not stuck** (Ben: "do intel
   gpu"). The 4 ms of rest a second first seen was a passing load. With

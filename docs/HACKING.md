@@ -955,9 +955,15 @@ shows it in a popup of its own instead (`WindowKind::Tip`: an xdg_popup
 with no grab and an empty input region, so it takes no clicks), below
 the thing or else above it, slid to stay on the screen; it comes after
 a rest, at once if another showed a moment ago, and not after a click
-(`tip::pressed`). Use it where the tip can be wider or taller than the
-window: Deskbar's tray, Terminal's sudo window's command. Elsewhere
-`widgets::tooltip` is fine.
+(`tip::pressed`). `tip::retext(window, cx, key, text)` changes what a
+tip showing says (a live value: Deskbar's widgets' tips), resized and
+placed again for it: GPUI places a popup that changes size again
+(`xdg_popup.reposition`, version 3; one resized before its first
+configure, as a tip opened at once and given its words straight after,
+once that comes), so a tip that grows at the screen's edge stays on it.
+Use it where the tip can be wider or taller than the window: Deskbar's
+tray, Terminal's sudo window's command. Elsewhere `widgets::tooltip` is
+fine.
 
 ### Text cut short (`olo_ui::cut`)
 
@@ -8250,7 +8256,9 @@ volumes every 5 s, which skips network and FUSE file systems because
 `statvfs` there can hang). Processes are read every sample (their
 name, command and owner kept by pid and start time); connections and
 GPU clients only while their sections show (`Control`). The network
-comes from netlink (`netdiag.rs`, as `ss` and `ip -s link` read it): a
+comes from netlink (`olo_system::netdiag`, as `ss` and `ip -s link`
+read it; the processes themselves from `olo_system::procs`, both moved
+there for Deskbar's widgets' tips too): a
 `sock_diag` dump of every TCP and UDP socket, v4 and v6, with TCP's
 `tcp_info` (bytes acknowledged and received, at 120 and 128), and
 `RTM_GETLINK`'s `IFLA_STATS64` for each interface's counters (with
@@ -11997,6 +12005,21 @@ ProcessController put their bars in its tray.
   second at 614 µs (a frame of the layer alone: ~200 µs of GPUI's own,
   ~27 µs a widget, ~200 submitting). Before they moved: 0.3%, 2.1
   frames a second at 773 µs, the whole bar each.
+* **Tips' top five** (Ben: "for relevant widgets like cpu, gpu,
+  memory, network make it so that hovering over the widget also shows
+  the top 5 highest consuming processes"): with the pointer on a CPU,
+  memory, GPU, network or disk widget, the worker looks at every
+  process (`olo_system::procs::Sampler`, Activity Monitor's reading,
+  ranked by `Rank`), twice 350 ms apart for a first rate, then every
+  second, and the tip says them under its reading ("Using the most:",
+  CPU as a share of the whole processor as the widget's, GPU as its
+  share of that GPU, memory resident, network and disk a second), kept
+  up to date as it shows (`tip::retext`, its reading too). No tip, no
+  look, and the sampler (its memory of every process) goes as the
+  pointer leaves. A look, 827 processes: 10 ms (disk counters only for
+  a disk widget's, a second file each), 5 ms more for the sockets, and
+  20 ms for who has each, at most every 3 s; the worker's share of a
+  core while a tip shows: CPU 0.8%, network 1.2%, none after.
 * **Backups** carry them with app_server's settings; from another
   computer, a widget measuring a GPU, disk, interface, sensor or volume
   this one hasn't measures its default instead, said
