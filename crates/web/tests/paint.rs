@@ -573,3 +573,19 @@ fn transforms_move_rotate_and_scale_a_box_with_its_content() {
     let s = scene("<div></div>", "div{width:20px;height:20px;background:blue;transform:none}", &mut p);
     assert_eq!(pixel(&render(&mut p, &s), 5, 5), [0, 0, 255, 255]);
 }
+
+#[test]
+fn text_wrap_balance_evens_the_lines_without_adding_one() {
+    let mut p = paint::Engine::default();
+    // Five glyph-wide words in a 100px box: greedy wrapping fills the first
+    // line; balancing shares the words between the same number of lines.
+    let s = scene("<div>AAA BBB CCC DD</div>", "div{width:100px;color:black}", &mut p);
+    let greedy = s.layout().text_layout(s.layout().cache().tree().iter().find(|(_, b)| matches!(b.kind, layout::BoxKind::InlineContent { .. })).unwrap().0).unwrap().lines().len();
+    let s = scene("<div>AAA BBB CCC DD</div>", "div{width:100px;color:black;text-wrap:balance}", &mut p);
+    let text = s.layout().text_layout(s.layout().cache().tree().iter().find(|(_, b)| matches!(b.kind, layout::BoxKind::InlineContent { .. })).unwrap().0).unwrap();
+    assert_eq!(text.lines().len(), greedy, "balancing keeps the line count");
+    let widths: Vec<f64> = text.lines().iter().map(|l| l.advance).collect();
+    let (min, max) = (widths.iter().cloned().fold(f64::INFINITY, f64::min), widths.iter().cloned().fold(0., f64::max));
+    assert!(max - min < 40., "balanced lines are about as long as each other: {widths:?}");
+    assert!(widths.iter().all(|w| *w <= 100.));
+}

@@ -724,16 +724,45 @@ impl<'a> Job<'a> {
         } else {
             (Vec::new(), Vec::new())
         };
-        let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text.clone(), style, self.scope, available, self.scale, self.limits.text, self.cancel, spacing)?;
-        if !objects.is_empty() {
-            j = j.with_objects(objects)?;
-        }
-        while !j.step(64)?.finished {}
-        let work = j.progress().work;
-        let l = j.finish()?;
-        self.progress.work = self.progress.work.checked_add(work).ok_or(Error::Limit)?;
-        if self.progress.work > self.limits.work {
-            return Err(Error::Limit);
+        let lay_out = |job: &mut Self, break_width: Option<f64>| -> Result<inline::Layout> {
+            let mut j = inline::Job::for_style_with_spacing_at_scale(job.engine, text.clone(), style, job.scope, available, job.scale, job.limits.text, job.cancel, spacing.clone())?;
+            if let Some(w) = break_width {
+                j = j.with_break_width(w)?;
+            }
+            if !objects.is_empty() {
+                j = j.with_objects(objects.clone())?;
+            }
+            while !j.step(64)?.finished {}
+            let work = j.progress().work;
+            let l = j.finish()?;
+            job.progress.work = job.progress.work.checked_add(work).ok_or(Error::Limit)?;
+            if job.progress.work > job.limits.work {
+                return Err(Error::Limit);
+            }
+            Ok(l)
+        };
+        let mut l = lay_out(self, None)?;
+        // text-wrap: balance (CSS Text 4 §5.1.1): the narrowest break width
+        // that keeps the line count, so the lines come out about as long as
+        // each other. A bisection between the longest a line can be (the
+        // text's width over the count) and the available width.
+        if l.lines().len() > 1 && matches!(style.value(P::TextWrapStyle), Value::Keyword(K::Balance)) {
+            let count = l.lines().len();
+            let total: f64 = l.lines().iter().map(|line| line.advance).sum();
+            let (mut low, mut high) = ((total / count as f64).max(0.), available);
+            for _ in 0..12 {
+                if high - low < 0.5 {
+                    break;
+                }
+                let mid = (low + high) / 2.;
+                let candidate = lay_out(self, Some(mid))?;
+                if candidate.lines().len() <= count {
+                    high = mid;
+                    l = candidate;
+                } else {
+                    low = mid;
+                }
+            }
         }
         self.progress.lines += l.lines().len();
         self.progress.texts += 1;

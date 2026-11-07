@@ -260,23 +260,31 @@ fn ratio(parts: &[Component<'_>]) -> Result<Value> {
         _ => Err(Error::Invalid),
     }
 }
-/// `text-wrap: wrap | nowrap | balance | stable | pretty`: the mode longhand;
-/// the style keywords keep wrapping on (CSS Text 4 §5.1), their line
-/// balancing is not implemented.
+/// `text-wrap: <'text-wrap-mode'> || <'text-wrap-style'>` (CSS Text 4 §5.1).
 fn text_wrap(parts: &[Component<'_>]) -> Result<Assignments> {
-    let [c] = parts else { return Err(Error::Invalid) };
-    if c.kind() != Kind::Ident {
+    if parts.is_empty() || parts.len() > 2 {
         return Err(Error::Invalid);
     }
-    let name = c.text().unwrap();
-    let mode = if name.eq_ignore_ascii_case("nowrap") {
-        Keyword::Nowrap
-    } else if ["wrap", "balance", "stable", "pretty"].iter().any(|k| name.eq_ignore_ascii_case(k)) {
-        Keyword::Wrap
-    } else {
-        return Err(Error::Invalid);
-    };
-    Ok(smallvec::smallvec![Assignment { property: Property::TextWrapMode, value: Value::Keyword(mode) }])
+    let (mut mode, mut style) = (None, None);
+    for c in parts {
+        if c.kind() != Kind::Ident {
+            return Err(Error::Invalid);
+        }
+        let name = c.text().unwrap();
+        let k = [("wrap", Keyword::Wrap), ("nowrap", Keyword::Nowrap), ("auto", Keyword::Auto), ("balance", Keyword::Balance), ("stable", Keyword::Stable), ("pretty", Keyword::Pretty)]
+            .into_iter()
+            .find(|(s, _)| name.eq_ignore_ascii_case(s))
+            .map(|(_, k)| k)
+            .ok_or(Error::Invalid)?;
+        let slot = if matches!(k, Keyword::Wrap | Keyword::Nowrap) { &mut mode } else { &mut style };
+        if slot.replace(k).is_some() {
+            return Err(Error::Invalid);
+        }
+    }
+    Ok(smallvec::smallvec![
+        Assignment { property: Property::TextWrapMode, value: Value::Keyword(mode.unwrap_or(Keyword::Wrap)) },
+        Assignment { property: Property::TextWrapStyle, value: Value::Keyword(style.unwrap_or(Keyword::Auto)) },
+    ])
 }
 // CSS Text 4's interoperable two-longhand shorthand. white-space-trim and
 // discard are not implemented; their syntax must fail, never silently reset.

@@ -104,6 +104,9 @@ pub struct Options {
     pub last_align: Option<Align>,
     /// CSS device-grid measurement; None keeps exact design-unit geometry.
     pub pixel_scale: Option<f64>,
+    /// Lines break at this width when narrower than `width` (balancing);
+    /// they still align within `width`.
+    pub break_width: Option<f64>,
     /// Typography these options could not express and left at their defaults
     /// (text-align: justify as start, letter-spacing as 0): what layout records.
     pub ignored: Ignored,
@@ -125,7 +128,7 @@ impl Ignored {
 }
 impl Default for Options {
     fn default() -> Self {
-        Self { width: 800., line_height: 20., baseline: 16., align: Align::Start, rtl: false, last_align: None, pixel_scale: None, ignored: Ignored::default() }
+        Self { width: 800., line_height: 20., baseline: 16., align: Align::Start, rtl: false, last_align: None, pixel_scale: None, break_width: None, ignored: Ignored::default() }
     }
 }
 impl Options {
@@ -183,6 +186,7 @@ impl Options {
         }
         let text_align = align(style.value(P::TextAlign))?;
         Ok(Self {
+            break_width: None,
             width,
             line_height: style.line_height(),
             baseline: ((metrics.ascent * scale).round() + ((style.line_height() * scale - (metrics.ascent * scale).round() - (-metrics.descent * scale).round()) / 2.).floor()) / scale,
@@ -721,6 +725,15 @@ impl<'a> Job<'a> {
     }
     /// Metrics for every semantic object in this context. Configure before
     /// stepping; an omitted item is an error rather than disappearing text.
+    /// Break lines at `width` (narrower than the available width) while
+    /// aligning them in the available width: `text-wrap: balance`.
+    pub fn with_break_width(mut self, width: f64) -> Result<Self> {
+        if !width.is_finite() || width < 0. {
+            return Err(Error::Invalid);
+        }
+        self.options.break_width = Some(width);
+        Ok(self)
+    }
     pub fn with_objects(mut self, input: Vec<Object>) -> Result<Self> {
         check(self.cancel)?;
         if self.failed || self.progress.work != 0 || self.scan != 0 || !self.lines.is_empty() || self.objects.is_some() {
@@ -815,7 +828,7 @@ impl<'a> Job<'a> {
     fn point_width(&mut self, p: Point) -> Result<(f64, End)> {
         let space = self.spacing.width(self.spacing_start, self.from, p.end.byte, p.offset, p.offset as usize == self.text.prepared.text().len());
         let full = self.width(p.end)? + space;
-        if p.hang != NONE && (p.kind == Kind::Allowed || full > self.options.width) {
+        if p.hang != NONE && (p.kind == Kind::Allowed || full > self.break_width()) {
             let end = self.text.hanging[p.hang as usize];
             return Ok((self.width(end)? + space, end));
         }
@@ -825,7 +838,10 @@ impl<'a> Job<'a> {
         // Atomic items use the layout grid's epsilon when fitting against an
         // item boundary already rounded up from a linear text advance.
         let epsilon = self.options.pixel_scale.filter(|_| self.objects.as_ref().is_some_and(|o| p.end.byte >= 3 && o.at(p.end.byte - 3).is_some())).map_or(0., |scale| 1. / (64. * scale));
-        self.options.width + epsilon
+        self.break_width() + epsilon
+    }
+    fn break_width(&self) -> f64 {
+        self.options.break_width.map_or(self.options.width, |w| w.min(self.options.width))
     }
     pub fn step(&mut self, budget: usize) -> Result<Progress> {
         if self.failed {
