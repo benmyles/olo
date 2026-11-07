@@ -247,7 +247,7 @@ impl<'a> Job<'a> {
                 // change with its descendants: every ancestor of a change
                 // is restyled too (a chain, not a subtree).
                 let subtree_sensitive = rules.depends_on_descendants();
-                let mut dirty_ancestors = |n: NodeId, nodes: &mut std::collections::HashSet<NodeId>| {
+                let dirty_ancestors = |n: NodeId, nodes: &mut std::collections::HashSet<NodeId>| {
                     let mut at = document.parent(n).ok().flatten();
                     while let Some(a) = at {
                         if !nodes.insert(a) {

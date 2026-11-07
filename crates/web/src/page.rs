@@ -318,7 +318,7 @@ impl Measurer {
             return Err(style::Error::Stale.into());
         }
         let started = std::time::Instant::now();
-        let mut phases = [0f64; 4];
+        let mut phases = [0f64; 6];
         // The previous measurement's defaults, while the host is the same:
         // styles compare equal only against the same defaults.
         let defaults = match previous.filter(|m| m.defaults.is_current(host)) {
@@ -357,13 +357,15 @@ impl Measurer {
         while !job.step(256)?.finished {}
         let layout = Arc::new(job.finish()?);
         phases[3] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1] - phases[2];
-        let mut index = std::collections::HashMap::new();
+        let mut index = std::collections::HashMap::with_capacity(layout.cache().tree().boxes().len());
         for (id, b) in layout.cache().tree().iter() {
             if b.marker || b.style_node.pseudo.is_some() {
                 continue;
             }
             index.entry(b.node).or_insert(id);
         }
+        phases[4] = started.elapsed().as_secs_f64() * 1000. - phases[..4].iter().sum::<f64>();
+        phases[5] = started.elapsed().as_secs_f64() * 1000.;
         Ok(Measured { layout, index, revision: doc.revision(), viewport, phases, defaults })
     }
 }
@@ -373,13 +375,13 @@ pub struct Measured {
     index: std::collections::HashMap<crate::dom::NodeId, layout::BoxId>,
     revision: u64,
     viewport: layout::Viewport,
-    phases: [f64; 4],
+    phases: [f64; 6],
     defaults: Arc<Defaults>,
 }
 impl Measured {
-    /// Milliseconds spent styling, building boxes, preparing text and
-    /// laying out.
-    pub fn phases_ms(&self) -> [f64; 4] {
+    /// Milliseconds spent styling, building boxes, preparing text, laying
+    /// out, indexing, and in all.
+    pub fn phases_ms(&self) -> [f64; 6] {
         self.phases
     }
     /// The document revision this was laid out from.

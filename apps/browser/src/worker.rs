@@ -83,9 +83,23 @@ pub enum Reply {
     Batch(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
     Error(u64, String),
 }
+/// Which pass of a page: the static page first, shown at once, then the
+/// page as its scripts leave it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pass {
+    Static,
+    Scripted,
+}
 struct Cached {
     key: Key,
     page: page::Page,
+    /// The fetched document and its HTML, for the scripted pass.
+    document: Option<crate::network::Resource>,
+    source: Arc<str>,
+    /// Decoded images by URL, shared by the passes.
+    images: HashMap<url::Url, Option<Arc<olo_web::image::Image>>>,
+    scripted: bool,
+    loaded_at: Instant,
     viewport_dependent: bool,
     origin: url::Url,
     base: url::Url,
@@ -133,6 +147,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                 let mut cached: Option<Cached> = None;
                 let mut tiles = HashMap::new();
                 let mut clock = 0u64;
+                let mut pending: Vec<Message> = Vec::new();
                 while let Ok(message) = rx.recv() {
                     let mut r = match message {
                         Message::Render(r) => r,
@@ -145,7 +160,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             continue;
                         }
                     };
-                    while let Ok(message) = rx.try_recv() {
+                    for message in pending.drain(..).chain(std::iter::from_fn(|| rx.try_recv().ok())) {
                         match message {
                             Message::Render(new) => r = new,
                             Message::Recycle(images) => drop(images),
@@ -156,12 +171,28 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     if r.cancel.load(Ordering::Relaxed) {
                         continue;
                     }
-                    let result = render(&r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock);
+                    let result = render(&r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Static);
                     if let Err(error) = result
                         && !r.cancel.load(Ordering::Relaxed)
                     {
                         eprintln!("Browser: {error}");
                         proxy.send(Reply::Error(r.id, error.to_string()));
+                        continue;
+                    }
+                    // The static page is on screen; now the page as its scripts
+                    // leave it, unless something else was asked for meanwhile.
+                    if JAVASCRIPT && cached.as_ref().is_some_and(|c| c.page.scripts > 0 && !c.scripted) && !r.cancel.load(Ordering::Relaxed) {
+                        match rx.try_recv() {
+                            Ok(message) => pending.push(message),
+                            Err(_) => {
+                                let result = render(&r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Scripted);
+                                if let Err(error) = result
+                                    && !r.cancel.load(Ordering::Relaxed)
+                                {
+                                    eprintln!("Browser scripts: {error}");
+                                }
+                            }
+                        }
                     }
                 }
                 Ok(())
@@ -184,32 +215,42 @@ fn render(
     proxy: &Proxy,
     cache: &mut HashMap<(i32, i32), (Arc<RenderImage>, u64)>,
     clock: &mut u64,
+    pass: Pass,
 ) -> page::Result<()> {
     if r.key.width > MAX_VIEWPORT || r.key.height > MAX_VIEWPORT || !r.key.scale.is_finite() || r.key.scale <= 0. {
         return Err("Viewport exceeds the development renderer limits".into());
     }
     let newly_loaded = cached.as_ref().is_none_or(|c| c.key.source != r.key.source || c.key.cwd != r.key.cwd || c.key.revision != r.key.revision);
+    let newly_loaded = newly_loaded || pass == Pass::Scripted && cached.as_ref().is_some_and(|c| !c.scripted);
     if newly_loaded {
+        // The scripted pass starts from what the static pass fetched.
+        let previous = if pass == Pass::Scripted { cached.take() } else { None };
+        let loaded_at = previous.as_ref().map_or_else(Instant::now, |c| c.loaded_at);
         *cached = None;
         painter.clear_image_cache();
         cache.clear();
-        proxy.send(Reply::Status(r.id, "Loading…".into()));
-        let mut document = if r.key.source == "about:engine" {
-            None
-        } else {
-            Some(loader.document(&r.key.source, r.key.cwd.as_deref(), &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "document"))?)
-        };
-        if let Some(document) = &document {
-            proxy.send(Reply::Location(r.id, document.url.to_string()));
-        }
-        let source = match &mut document {
-            Some(document) => document.take_html(&r.cancel)?,
-            None => Arc::from(ABOUT),
+        proxy.send(Reply::Status(r.id, if pass == Pass::Scripted { "Running scripts…" } else { "Loading…" }.into()));
+        let (document, source, mut images) = match previous {
+            Some(c) => (c.document, c.source, c.images),
+            None => {
+                let mut document = if r.key.source == "about:engine" {
+                    None
+                } else {
+                    Some(loader.document(&r.key.source, r.key.cwd.as_deref(), &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "document"))?)
+                };
+                if let Some(document) = &document {
+                    proxy.send(Reply::Location(r.id, document.url.to_string()));
+                }
+                let source = match &mut document {
+                    Some(document) => document.take_html(&r.cancel)?,
+                    None => Arc::from(ABOUT),
+                };
+                (document, source, HashMap::new())
+            }
         };
         let mut last = Instant::now();
         let mut phase = None;
         let mut resources = 0usize;
-        let mut images: HashMap<url::Url, Option<Arc<olo_web::image::Image>>> = HashMap::new();
         let mut image_bytes = 0usize;
         let viewport = layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale };
         let media = olo_web::css::media::Media::screen(viewport.width, viewport.height, viewport.scale, r.key.palette.is_dark());
@@ -283,17 +324,23 @@ fn render(
                 let mut shaper = shaping::Engine::default();
                 let cancel = r.cancel.clone();
                 let timing = std::env::var_os("OLO_BROWSER_TIMING").is_some();
-                Box::new(move |doc: &olo_web::dom::Document, previous: Option<&page::Measured>| match measurer.measure(doc, &host, &mut shaper, viewport, previous, Some(&cancel)) {
-                    Ok(m) => {
-                        if timing {
-                            let [a, b, c, d] = m.phases_ms();
-                            eprintln!("  layout for scripts: style {a:.0} ms, boxes {b:.0} ms, text {c:.0} ms, layout {d:.0} ms");
+                Box::new(move |doc: &olo_web::dom::Document, previous: Option<&page::Measured>| {
+                    let call = Instant::now();
+                    match measurer.measure(doc, &host, &mut shaper, viewport, previous, Some(&cancel)) {
+                        Ok(m) => {
+                            if timing {
+                                let [a, b, c, d, e, f] = m.phases_ms();
+                                eprintln!(
+                                    "  layout for scripts: style {a:.0} ms, boxes {b:.0} ms, text {c:.0} ms, layout {d:.0} ms, index {e:.0} ms, all {f:.0} ms (call {:.0} ms)",
+                                    call.elapsed().as_secs_f64() * 1000.
+                                );
+                            }
+                            Some(m)
                         }
-                        Some(m)
-                    }
-                    Err(e) => {
-                        eprintln!("Browser scripts: measuring failed: {e}");
-                        None
+                        Err(e) => {
+                            eprintln!("Browser scripts: measuring failed: {e}");
+                            None
+                        }
                     }
                 })
             };
@@ -339,8 +386,9 @@ fn render(
             }
             Ok(doc)
         };
+        let mut no_scripts = |doc: olo_web::dom::Document, _: bool, _: page::Measurer| -> page::Result<olo_web::dom::Document> { Ok(doc) };
         let prepared = page::prepare_scripted(
-            source,
+            source.clone(),
             scope,
             media,
             true,
@@ -416,14 +464,35 @@ fn render(
                     }
                 }
             },
-            if JAVASCRIPT { Some(&mut run_scripts) } else { None },
+            match pass {
+                Pass::Scripted if JAVASCRIPT => Some(&mut run_scripts),
+                // Parsed as with scripting on (noscript content hidden), nothing run.
+                Pass::Static if JAVASCRIPT => Some(&mut no_scripts),
+                _ => None,
+            },
         )?;
         // The host is made for the page's own fonts (its web faces included).
         let host = PageHost::new(prepared.scope(), &r.key);
         let page = page::finish(prepared, &host, shaper, painter, viewport, Some(&r.cancel), &mut report)?;
         let origin = document.as_ref().map(|d| d.url.clone()).unwrap_or(url::Url::parse("about:engine")?);
         let base = page.base_href.as_deref().and_then(|href| origin.join(href).ok()).unwrap_or_else(|| origin.clone());
-        *cached = Some(Cached { key: r.key.clone(), page, viewport_dependent: host.viewport_used.get(), origin, base, links: HashMap::new(), navigation: 0, focus_targets: None, anchor_scroll: None });
+        eprintln!("Browser: {} page ready {:.0} ms after the request", if pass == Pass::Scripted { "scripted" } else { "static" }, loaded_at.elapsed().as_secs_f64() * 1000.);
+        *cached = Some(Cached {
+            key: r.key.clone(),
+            page,
+            document,
+            source,
+            images,
+            scripted: pass == Pass::Scripted,
+            loaded_at,
+            viewport_dependent: host.viewport_used.get(),
+            origin,
+            base,
+            links: HashMap::new(),
+            navigation: 0,
+            focus_targets: None,
+            anchor_scroll: None,
+        });
         cache.clear();
     }
     let c = cached.as_mut().unwrap();

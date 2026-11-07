@@ -95,12 +95,12 @@ fn main() {
     let host = DumpHost(native_host::NativeHost(prepared.scope().clone()), viewport);
     let measurer = prepared.measurer();
     let mut shaper = shaping::Engine::default();
-    let mut best = [f64::INFINITY; 4];
+    let mut best = [f64::INFINITY; 6];
     let mut last = None;
     for _ in 0..rounds {
         let m = measurer.measure(prepared.document(), &host, &mut shaper, viewport, None, None).unwrap();
         let p = m.phases_ms();
-        for i in 0..4 {
+        for i in 0..6 {
             best[i] = best[i].min(p[i]);
         }
         println!("style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms", p[0], p[1], p[2], p[3]);

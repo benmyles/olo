@@ -46,7 +46,24 @@ impl Deref for Cancel {
 pub struct Loader {
     client: Client,
     runtime: tokio::runtime::Runtime,
+    /// Fetched subresources by URL, for the page's second pass (its
+    /// scripts), the next page sharing them, and a visit back: bytes as
+    /// received, with the media type, status and the URL they came from.
+    cache: std::sync::Mutex<SessionCache>,
 }
+#[derive(Default)]
+struct SessionCache {
+    entries: std::collections::HashMap<String, Arc<CachedResponse>>,
+    bytes: usize,
+}
+struct CachedResponse {
+    url: Url,
+    bytes: Vec<u8>,
+    mime: Option<mime::Mime>,
+    status: u16,
+}
+/// What the session cache holds before starting over.
+const SESSION_CACHE_BYTES: usize = 256 << 20;
 pub struct Resource {
     pub url: Url,
     pub bytes: Vec<u8>,
@@ -59,6 +76,7 @@ impl Loader {
         Ok(Self {
             client: Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(Duration::from_secs(20)).timeout(Duration::from_secs(60)).user_agent("OloBrowser/0.1").build()?,
             runtime: tokio::runtime::Builder::new_current_thread().enable_all().build()?,
+            cache: Default::default(),
         })
     }
     fn navigation(source: &str, cwd: Option<&std::path::Path>) -> page::Result<Url> {
@@ -191,8 +209,30 @@ impl Loader {
         }
         Ok(Arc::from(resource.bytes))
     }
-    fn fetch(&self, mut url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, mut progress: impl FnMut(usize), kind: Kind) -> page::Result<Resource> {
+    fn fetch(&self, url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, mut progress: impl FnMut(usize), kind: Kind) -> page::Result<Resource> {
         let allow_file = url.scheme() == "file";
+        let cacheable = !matches!(kind, Kind::Document | Kind::Fetch) && url.scheme() != "file";
+        if cacheable && let Some(c) = self.cache.lock().unwrap().entries.get(url.as_str()).cloned() {
+            check_url(&url, initiator)?;
+            return Ok(Resource { url: c.url.clone(), bytes: c.bytes.clone(), mime: c.mime.clone(), status: Some(c.status), document_encoding: None });
+        }
+        let requested = url.clone();
+        let fetched = self.fetch_uncached(url, initiator, limit, cancel, &mut progress, kind, allow_file)?;
+        if cacheable && fetched.status.is_some_and(|s| (200..300).contains(&s)) {
+            let mut cache = self.cache.lock().unwrap();
+            if cache.bytes + fetched.bytes.len() > SESSION_CACHE_BYTES {
+                cache.entries.clear();
+                cache.bytes = 0;
+            }
+            cache.bytes += fetched.bytes.len();
+            cache
+                .entries
+                .insert(requested.to_string(), Arc::new(CachedResponse { url: fetched.url.clone(), bytes: fetched.bytes.clone(), mime: fetched.mime.clone(), status: fetched.status.unwrap_or(200) }));
+        }
+        Ok(fetched)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn fetch_uncached(&self, mut url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, progress: &mut impl FnMut(usize), kind: Kind, allow_file: bool) -> page::Result<Resource> {
         self.runtime.block_on(async {
             let work = async {
                 for _ in 0..=20 {
