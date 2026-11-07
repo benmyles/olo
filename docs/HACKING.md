@@ -7273,6 +7273,54 @@ pause of a fraction of a second), libpipewire stays out of the
 compositor, and an upgrade waits while it shares or asks
 (`olo_ui::upgrade_waits_while`).
 
+No interface falls to another desktop's backends. `olo-portals.conf`
+names every one the portal has: Olo's for what olo-portal serves, the
+keyring for Secret, and `none` for the rest (Lockdown, Clipboard,
+InputCapture, Usb, DynamicLauncher: the portal says they aren't there),
+with `default=none`. xdg-desktop-portal reads the configuration of every
+desktop `XDG_CURRENT_DESKTOP` names, though, and the session's is
+`Olo:GNOME` (for Qt, "Other toolkits' programs" below): what Olo's left out went to
+GNOME's (`gnome-portals.conf`: `default=gnome;gtk`), and Settings was
+gathered from GNOME's and GTK's backends as well as Olo's, which kept
+xdg-desktop-portal-gnome, xdg-desktop-portal-gtk and
+gnome-control-center (GNOME's shortcuts dialog, under GNOME's portal)
+running. So while an Olo session runs the portal service alone is told
+the desktop is Olo: a drop-in in the runtime unit folder,
+`$XDG_RUNTIME_DIR/systemd/user/xdg-desktop-portal.service.d/olo.conf`
+(`Environment=XDG_CURRENT_DESKTOP=Olo`, `graphical::PORTAL_DROP_IN`),
+which `stop` removes and the end of the login takes with the runtime
+folder; an agent screen's frontend is started with the same
+(`own_bus::PORTAL_FRONTEND_ENV`). Its log (`xdg-desktop-portal -v`)
+then shows only Olo's, `none` and the keyring's.
+
+- **Settings** (`settings.rs`, `org.freedesktop.impl.portal.Settings`,
+  version 2): what sandboxed programs, and GTK 4, libadwaita, Chrome and
+  Firefox where they ask the portal, read for the desktop's look:
+  `org.freedesktop.appearance` (`color-scheme` 0 light or 1 dark,
+  `accent-color` GNOME's blue as (r, g, b), `contrast` 0) and, under
+  GNOME's names, the same list app_server writes to GSettings for
+  unsandboxed programs (`olo_theme::toolkit::desktop_settings`: the
+  colour scheme, GTK theme, accent, fonts and their hinting, icon and
+  pointer themes, `button-layout`), so the two can't disagree.
+  `ReadAll` takes the portal's patterns (a trailing `*`); `Read` says
+  `org.freedesktop.portal.Error.NotFound` for what it hasn't. It follows
+  app_server's settings (`settings::follow`, events, asked again when
+  app_server comes back) and signals `SettingChanged` only for what
+  changed (light to dark: the two colour schemes and the GTK theme).
+- **Notification** (`notification.rs`, version 1): a program's
+  notification handed to Olo's centre as a `Notify` (its title, body,
+  `priority` as urgency, a themed icon by name or a picture's bytes as
+  `image-path`, kept in `$XDG_RUNTIME_DIR/olo-portal-pictures` by its
+  contents; `desktop-entry` its app id; `default-action` as the
+  `default` action and each button as `button-N`), the centre's number
+  kept with the program's own id (the same id again replaces it; removed
+  by `CloseNotification`). The centre's `ActionInvoked` comes back as
+  the portal's, with the action and target the program gave
+  (`notification::follow`); `NotificationClosed` forgets it. Tried on a
+  test bus: a notification sent to the frontend shows in the centre with
+  its button, and invoking the button gives the program `app.open` and
+  its target.
+
 Its dialogs are on the GPUI kit, each over the window of the app that
 asked (`WindowOptions::foreign_parent`, xdg-foreign: the handle the app
 exported), each its own view answering its request once (`ui::Answer`):
@@ -9950,10 +9998,10 @@ or fitted whole), kept, and the windows drawn again as each comes.
   `org.freedesktop.Application.ActivateAction` (or `Activate`) on the
   app itself, on a thread, with the click's activation token in the
   platform data; D-Bus starts the app if it has quit. There is no closed
-  signal. Flatpak apps reach us through the portal: `olo-portals.conf`
-  leaves Notification to xdg-desktop-portal-gtk, which sends a plain
-  `Notify` (no app name: we take the `desktop-entry` hint's) and runs the
-  app's action itself when we signal `ActionInvoked`.
+  signal. Flatpak apps reach us through the portal: olo-portal's
+  Notification sends a `Notify` (the app's name, and its id as the
+  `desktop-entry` hint) and hands the action back to the portal when we
+  signal `ActionInvoked` ("Screen sharing", the portal's interfaces).
 - For agents: `com.olodesktop.Notifications1` at `/com/olodesktop/Notifications`
   (`List` → JSON: `unread`, `quiet` and each note with its `look`, `via`,
   `pinned`, `snoozed_until` and `strength`; `Invoke`, `Dismiss`,
@@ -10271,8 +10319,9 @@ one lever that reaches programs run in a toolbox or container too
 (`toolbox run` passes `XDG_CURRENT_DESKTOP` but not
 `QT_QPA_PLATFORMTHEME`); there the font is Olo's if the container has
 it, else fontconfig's stand-in (Liberation Sans for Nimbus Sans). What
-else reads the name: xdg-desktop-portal still takes `olo-portals.conf`
-(the first name with a file wins); `open.rs` reads
+else reads the name: xdg-desktop-portal would read GNOME's portal
+configuration too, so it alone is told the desktop is Olo (a runtime
+drop-in, "Screen sharing"); `open.rs` reads
 `gnome-mimeapps.list` after Olo's apps and before `mimeapps.list`, as
 GNOME would; Chrome keeps its keys where it did (it treats GNOME and an
 unknown desktop alike, libsecret, and asks the secret portal first

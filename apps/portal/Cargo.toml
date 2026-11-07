@@ -24,6 +24,7 @@ olo-ui.workspace = true
 olo-images.workspace = true
 olo-print = { workspace = true, features = ["gpui"] }
 olo-protocol.workspace = true
+olo-theme.workspace = true
 olo-xdg.workspace = true
 olo-capture.workspace = true
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }

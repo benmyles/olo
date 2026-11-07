@@ -34,16 +34,19 @@ Wants=graphical-session-pre.target
 After=graphical-session-pre.target
 ";
 
-/// GTK's backend for what it has (its Settings read the GSettings
-/// app_server writes: colour scheme, accent, fonts); the keyring for
-/// secrets, as on GNOME; ours for screen sharing and remote control, screenshots, keeping
-/// awake, Open and Save panels, Open With, and the permission dialogs
-/// other portals ask through.
+/// Every portal interface named, so none falls to another desktop's
+/// backends: Olo's portal for what it serves (screen sharing and remote
+/// control, screenshots, keeping awake, Open and Save panels, Open With,
+/// the permission dialogs other portals ask through, the desktop's look
+/// as Settings, notifications), the keyring for secrets, and none for
+/// the rest (no backend: the portal says the interface isn't there).
 const PORTALS: &str = "\
 # Written by olo-session: the desktop portals for Olo.
 [preferred]
-default=gtk
+default=none
 org.freedesktop.impl.portal.Secret=gnome-keyring
+org.freedesktop.impl.portal.Settings=olo
+org.freedesktop.impl.portal.Notification=olo
 org.freedesktop.impl.portal.ScreenCast=olo
 org.freedesktop.impl.portal.RemoteDesktop=olo
 org.freedesktop.impl.portal.Inhibit=olo
@@ -57,7 +60,32 @@ org.freedesktop.impl.portal.Email=olo
 org.freedesktop.impl.portal.Wallpaper=olo
 org.freedesktop.impl.portal.GlobalShortcuts=olo
 org.freedesktop.impl.portal.Print=olo
+org.freedesktop.impl.portal.Lockdown=none
+org.freedesktop.impl.portal.Clipboard=none
+org.freedesktop.impl.portal.InputCapture=none
+org.freedesktop.impl.portal.Usb=none
+org.freedesktop.impl.portal.DynamicLauncher=none
 ";
+
+/// xdg-desktop-portal reads the configuration of every desktop
+/// `XDG_CURRENT_DESKTOP` names, and Olo's says `Olo:GNOME` (for Qt,
+/// `olo_xdg::CURRENT_DESKTOP`): it gathered Settings from GNOME's and
+/// GTK's backends as well as Olo's, starting GNOME's portal (and
+/// gnome-control-center under it). So while an Olo session runs, the
+/// portal service alone is told the desktop is Olo: a drop-in in the
+/// user's runtime unit folder (`$XDG_RUNTIME_DIR/systemd/user`), gone
+/// with the session (`stop`) or the login.
+const PORTAL_DROP_IN: &str = "\
+# Written by olo-session while an Olo session runs: the portals read
+# Olo's configuration alone (olo-portals.conf), not GNOME's too.
+[Service]
+Environment=XDG_CURRENT_DESKTOP=Olo
+";
+
+/// Where [`PORTAL_DROP_IN`] goes, in the runtime directory `runtime`.
+fn portal_drop_in(runtime: &Path) -> PathBuf {
+    runtime.join("systemd/user/xdg-desktop-portal.service.d/olo.conf")
+}
 
 /// Olo's backend (olo-portal, which olo-session runs), for
 /// xdg-desktop-portal to find.
@@ -65,7 +93,7 @@ const OLO_PORTAL: &str = "\
 # Written by olo-session: Olo's portal backend (olo-portal).
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.olo
-Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.RemoteDesktop;org.freedesktop.impl.portal.Inhibit;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.Access;org.freedesktop.impl.portal.Account;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.AppChooser;org.freedesktop.impl.portal.Background;org.freedesktop.impl.portal.Email;org.freedesktop.impl.portal.Wallpaper;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.Print;
+Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.RemoteDesktop;org.freedesktop.impl.portal.Inhibit;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.Access;org.freedesktop.impl.portal.Account;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.AppChooser;org.freedesktop.impl.portal.Background;org.freedesktop.impl.portal.Email;org.freedesktop.impl.portal.Wallpaper;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.Print;org.freedesktop.impl.portal.Settings;org.freedesktop.impl.portal.Notification;
 ";
 
 fn config_home() -> Option<PathBuf> {
@@ -99,18 +127,19 @@ struct Written {
     portals: bool,
 }
 
-fn write_files(config: &Path, data: &Path) -> std::io::Result<Written> {
+fn write_files(config: &Path, data: &Path, runtime: &Path) -> std::io::Result<Written> {
     // The ones from before the rename (a new session is never Tabula).
     let _ = std::fs::remove_file(config.join("xdg-desktop-portal").join("tabula-portals.conf"));
     let _ = std::fs::remove_file(config.join("systemd").join("user").join(OLD_TARGET));
     let conf = put(&config.join("xdg-desktop-portal").join("olo-portals.conf"), PORTALS)?;
     let backend = put(&data.join("xdg-desktop-portal").join("portals").join("olo.portal"), OLO_PORTAL)?;
-    let unit = put(&config.join("systemd").join("user").join(TARGET), TARGET_UNIT)?;
+    let drop_in = put(&portal_drop_in(runtime), PORTAL_DROP_IN)?;
+    let unit = put(&config.join("systemd").join("user").join(TARGET), TARGET_UNIT)? || drop_in;
     if let Some(bin_dir) = crate::exe().parent() {
         open_for_others(bin_dir, config, &data.join("applications"))?;
         command_names(bin_dir);
     }
-    Ok(Written { unit, portals: conf || backend })
+    Ok(Written { unit, portals: conf || backend || drop_in })
 }
 
 /// `pbcopy` and `pbpaste` on PATH, as macOS has them: links to Olo's
@@ -164,7 +193,7 @@ fn open_for_others(bin_dir: &Path, config: &Path, apps: &Path) -> std::io::Resul
 /// start find our display.
 pub fn start() {
     let (Some(config), Some(data)) = (config_home(), data_home()) else { return };
-    let written = match write_files(&config, &data) {
+    let written = match write_files(&config, &data, &crate::runtime_dir()) {
         Ok(w) => w,
         Err(e) => return log(format!("could not set up the graphical session: {e}")),
     };
@@ -189,6 +218,7 @@ pub fn start() {
 /// toolkits.rs).
 pub fn stop() {
     let _ = std::fs::remove_file(crate::runtime_dir().join("olo").join("gtk-4.0.css"));
+    let _ = std::fs::remove_file(portal_drop_in(&crate::runtime_dir()));
     let _ = std::fs::remove_file(crate::runtime_dir().join(olo_xdg::legacy::OLD).join("gtk-4.0.css"));
     if let Err(e) = olo_system::env::start_unit(TARGET, false) {
         log(format!("could not stop {TARGET}: {e}"));
@@ -205,17 +235,50 @@ mod tests {
     fn files_are_written_once() {
         let dir = std::env::temp_dir().join(format!("olo-graphical-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let (config, data) = (dir.join("config"), dir.join("data"));
-        let first = write_files(&config, &data).unwrap();
+        let (config, data, runtime) = (dir.join("config"), dir.join("data"), dir.join("run"));
+        let first = write_files(&config, &data, &runtime).unwrap();
         assert!(first.unit && first.portals);
-        let again = write_files(&config, &data).unwrap();
+        let again = write_files(&config, &data, &runtime).unwrap();
         assert!(!again.unit && !again.portals);
         let unit = std::fs::read_to_string(config.join("systemd/user/olo-session.target")).unwrap();
         assert!(unit.contains("BindsTo=graphical-session.target"));
         let conf = std::fs::read_to_string(config.join("xdg-desktop-portal/olo-portals.conf")).unwrap();
-        assert!(conf.starts_with("# Written") && conf.contains("default=gtk") && conf.contains("ScreenCast=olo"));
+        assert!(conf.starts_with("# Written") && conf.contains("default=none") && conf.contains("ScreenCast=olo") && conf.contains("Settings=olo"));
+        // Every interface the portal has is named (none falls to GNOME's).
+        for iface in [
+            "Access",
+            "Account",
+            "AppChooser",
+            "Background",
+            "Clipboard",
+            "DynamicLauncher",
+            "Email",
+            "FileChooser",
+            "GlobalShortcuts",
+            "Inhibit",
+            "InputCapture",
+            "Lockdown",
+            "Notification",
+            "Print",
+            "RemoteDesktop",
+            "ScreenCast",
+            "Screenshot",
+            "Secret",
+            "Settings",
+            "Usb",
+            "Wallpaper",
+        ] {
+            assert!(conf.contains(&format!("\norg.freedesktop.impl.portal.{iface}=")), "{iface}");
+        }
         let backend = std::fs::read_to_string(data.join("xdg-desktop-portal/portals/olo.portal")).unwrap();
         assert!(backend.contains("DBusName=org.freedesktop.impl.portal.desktop.olo"));
+        // What the config sends to Olo's backend, it says it has.
+        for line in conf.lines().filter(|l| l.ends_with("=olo")) {
+            let iface = line.trim_end_matches("=olo");
+            assert!(backend.contains(&format!("{iface};")), "{iface}");
+        }
+        let drop_in = std::fs::read_to_string(portal_drop_in(&runtime)).unwrap();
+        assert!(drop_in.contains("[Service]\nEnvironment=XDG_CURRENT_DESKTOP=Olo\n"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
