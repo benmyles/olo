@@ -385,6 +385,12 @@ impl Session {
             greeter,
         };
         s.own_files();
+        // Olo's dconf named for the bus before app_server can write the
+        // toolkits' look (it did, and the bus started GNOME's, which
+        // started gvfs: a fresh Fedora 45, 2026-11-07).
+        if real_start && !greeter {
+            graphical::name_dconf();
+        }
         s.start_server();
         // Only a real session owns the user's environment: a headless or
         // nested one (tests, development) must not point the user's portals

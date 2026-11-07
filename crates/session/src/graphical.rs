@@ -84,6 +84,24 @@ const PORTAL_DROP_IN: &str = "\
 Environment=XDG_CURRENT_DESKTOP=Olo
 ";
 
+/// Every user service started while an Olo session runs uses GIO's own
+/// files, as what olo-session starts does (`olo_xdg::GIO_LOCAL`): at
+/// login systemd starts uresourced (a GLib program) with the session's
+/// target, and GLib started gvfs for it (a fresh Fedora 45, 2026-11-07).
+/// A drop-in for all services (`service.d`) in the runtime unit folder,
+/// gone with the session (`stop`) or the login.
+fn gio_drop_in() -> String {
+    let mut s = String::from("# Written by olo-session while an Olo session runs: GIO uses its own\n# files, not GNOME's gvfs.\n[Service]\n");
+    for (k, v) in olo_xdg::GIO_LOCAL {
+        s.push_str(&format!("Environment={k}={v}\n"));
+    }
+    s
+}
+
+fn gio_drop_in_path(runtime: &Path) -> PathBuf {
+    runtime.join("systemd/user/service.d/olo-gio.conf")
+}
+
 /// Where [`PORTAL_DROP_IN`] goes, in the runtime directory `runtime`.
 fn portal_drop_in(runtime: &Path) -> PathBuf {
     runtime.join("systemd/user/xdg-desktop-portal.service.d/olo.conf")
@@ -146,7 +164,7 @@ fn write_files(config: &Path, data: &Path, runtime: &Path) -> std::io::Result<Wr
     let conf = put(&config.join("xdg-desktop-portal").join("olo-portals.conf"), PORTALS)?;
     let backend = put(&data.join("xdg-desktop-portal").join("portals").join("olo.portal"), OLO_PORTAL)?;
     let backend = put(&data.join("xdg-desktop-portal").join("portals").join("olo-secrets.portal"), OLO_SECRETS_PORTAL)? || backend;
-    let drop_in = put(&portal_drop_in(runtime), PORTAL_DROP_IN)?;
+    let drop_in = put(&portal_drop_in(runtime), PORTAL_DROP_IN)? | put(&gio_drop_in_path(runtime), &gio_drop_in())?;
     let unit = put(&config.join("systemd").join("user").join(TARGET), TARGET_UNIT)? || drop_in;
     if let Some(bin_dir) = crate::exe().parent() {
         open_for_others(bin_dir, config, &data.join("applications"))?;
@@ -227,6 +245,22 @@ pub fn start() {
     if let Some(bin) = crate::exe().parent() {
         take_dconf(bin, &crate::runtime_dir());
     }
+    stop_gvfs();
+}
+
+/// gvfs's daemons, started before the session (at login systemd starts
+/// uresourced, a GLib program, and GLib starts gvfs for it: a fresh
+/// Fedora 45, 2026-11-07), stopped: nothing Olo runs uses them (what it
+/// starts uses GIO's own files, `olo_xdg::GIO_LOCAL`).
+fn stop_gvfs() {
+    for unit in ["gvfs-daemon.service", "gvfs-metadata.service"] {
+        if olo_system::env::user_unit_active(unit) {
+            log(format!("{unit} was started before the session: stopped (Olo uses GIO's own files)"));
+            if let Err(e) = olo_system::env::start_unit(unit, false) {
+                log(format!("could not stop {unit}: {e}"));
+            }
+        }
+    }
 }
 
 /// Olo's dconf service (olo-dconf) for `ca.desrt.dconf`, in GNOME's
@@ -250,22 +284,42 @@ fn reload_bus() {
     }
 }
 
-/// Settings kept in dconf go through Olo's service from now on: it's
-/// named for `ca.desrt.dconf` (the bus told to read its services again),
-/// and GNOME's, if it answered before (an app wrote a setting before the
-/// session got this far), is stopped, so the next change starts Olo's.
-fn take_dconf(bin: &Path, runtime: &Path) {
+/// Name Olo's dconf service for `ca.desrt.dconf` (the bus told to read
+/// its services again), before anything of the session can write a
+/// setting: called as the session starts, before app_server.
+pub fn name_dconf() {
+    if let Some(bin) = crate::exe().parent() {
+        name_dconf_in(bin, &crate::runtime_dir());
+    }
+}
+
+fn name_dconf_in(bin: &Path, runtime: &Path) -> bool {
     if !bin.join("olo-dconf").is_file() {
-        return;
+        return false;
     }
     match put(&dconf_service_path(runtime), &dconf_service(bin)) {
         Ok(true) => reload_bus(),
         Ok(false) => {}
-        Err(e) => return log(format!("could not name Olo's dconf service: {e}")),
+        Err(e) => {
+            log(format!("could not name Olo's dconf service: {e}"));
+            return false;
+        }
     }
-    let gnome = olo_system::env::bus_name_pid("ca.desrt.dconf").filter(|pid| std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|exe| exe.file_name().is_some_and(|n| n == "dconf-service")));
-    if let Some(pid) = gnome {
-        log(format!("GNOME's dconf-service (pid {pid}) was answering for dconf: stopped, Olo's answers from the next change"));
+    true
+}
+
+/// Settings kept in dconf go through Olo's service from now on (named,
+/// if it isn't yet), and GNOME's, if it was started (an app wrote a
+/// setting before Olo's was named, or a session from before), is
+/// stopped, so the next change starts Olo's. By its unit's state, not
+/// the bus name: just started, GNOME's hadn't taken the name yet and
+/// was left running.
+fn take_dconf(bin: &Path, runtime: &Path) {
+    if !name_dconf_in(bin, runtime) {
+        return;
+    }
+    if olo_system::env::user_unit_active("dconf.service") {
+        log("GNOME's dconf-service was started: stopped, Olo's answers from the next change");
         if let Err(e) = olo_system::env::start_unit("dconf.service", false) {
             log(format!("could not stop dconf.service: {e}"));
         }
@@ -278,6 +332,7 @@ fn take_dconf(bin: &Path, runtime: &Path) {
 pub fn stop() {
     let _ = std::fs::remove_file(crate::runtime_dir().join("olo").join("gtk-4.0.css"));
     let _ = std::fs::remove_file(portal_drop_in(&crate::runtime_dir()));
+    let _ = std::fs::remove_file(gio_drop_in_path(&crate::runtime_dir()));
     if std::fs::remove_file(dconf_service_path(&crate::runtime_dir())).is_ok() {
         reload_bus();
     }
@@ -341,6 +396,7 @@ mod tests {
             let iface = line.trim_end_matches("=olo");
             assert!(backend.contains(&format!("{iface};")), "{iface}");
         }
+        assert_eq!(std::fs::read_to_string(gio_drop_in_path(&runtime)).unwrap().lines().filter(|l| l.starts_with("Environment=GIO_USE_")).count(), 2);
         let drop_in = std::fs::read_to_string(portal_drop_in(&runtime)).unwrap();
         assert!(drop_in.contains("[Service]\nEnvironment=XDG_CURRENT_DESKTOP=Olo\n"));
         let _ = std::fs::remove_dir_all(&dir);
