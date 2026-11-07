@@ -2500,13 +2500,24 @@ the displays come up, Tracker's desktop layer shows and Deskbar's does
 Notifications plays **Olo's start-up sound**, once a session (a mark by
 the session's pid; not when re-executed or started again) unless
 Preferences ▸ Sound's "Play a sound when Olo starts" is off
-(`Settings::startup_sound`): a swell made in process
-(`notifications/src/startup.rs`), a D♭ major ninth chord coming in
-low to high, each note a sine with a little of its octave and twelfth,
-a soft attack and long decay, spread in stereo, with a light Schroeder
-room, 3.2 s at −6 dBFS, written to the cache as a WAV and played as
-Notifications' sounds are (`OLO_STARTUP_WAV=FILE cargo test -p
-olo-notifications startup_wav` writes it out to listen to). Before the
+(`Settings::startup_sound`), one of two made in process
+(`notifications/src/startup.rs`, `Settings::startup_chime`): "Olo
+saying its name", the default (Ben, 2026-11-06: "like \"ooollllooooo\"
+reminiscent of the mac startup sound but saying olo"), a start-up
+chime's bright F major chord over three octaves (each note two
+band-limited saws a few cents apart) voiced by three formant resonators
+gliding "ooo", "lll", "ooo" (the chord dipping for the "l" and blooming
+again, its pitch easing down a little through it, as a voice's), 3.8 s;
+or a swell, a D♭ major ninth chord coming in low to high, each note a
+sine with a little of its octave and twelfth, 3.2 s. Either spread in
+stereo with a light Schroeder room, at −6 dBFS, written to the cache as
+a WAV and played as Notifications' sounds are. Preferences ▸ Sound's
+Play beside the choice runs `olo-notifications --startup-sound
+olo|swell` (beside Preferences), which plays one and exits;
+`olo_says_o_l_o` checks the "l" moves the chord's energy from the
+"o"'s second formant (700–950 Hz) to its own (1050–1300 Hz) and back
+(`OLO_STARTUP_WAV=FILE cargo test -p olo-notifications startup_wav`
+writes both out to listen to). Before the
 session, the boot shows the same picture (Plymouth's theme) and Olo's
 own login screen asks who: "The login screen and boot splash" below.
 Their connections do end when app_server restarts in place, and each

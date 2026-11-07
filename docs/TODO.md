@@ -45,19 +45,20 @@ something nobody here has is in "Blocked", with what it waits for.
   toplevel above its app's (or its parent's) floating windows, for
   every app, not only Preferences.
 
-- **The start-up screen's sound says "olo"** (Ben, 2026-11-06: "for
-  the olo startup screen add a startup sound that is like
-  \"ooollllooooo\" reminiscent of the mac startup sound but saying olo
-  in the same style as that mac sound"). As the session starts (the
-  start-up screen, `Why::Starting`): a sound in the spirit of the Mac's
-  start-up chime (a big, warm, bright chord swelling and ringing out),
-  but voiced as "ooo-lll-ooo": the chord's notes shaped through an "o"
-  vowel's formants, a gliding "l", and "o" again, made in process (no
-  recording, no sampled voice: synthesis, as `notifications/src/
-  startup.rs` makes today's swell), replacing or offered beside today's
-  sound (Preferences ▸ Sound's "Play a sound when Olo starts").
-
 ## Done, waiting for Ben to try or confirm
+
+- **The start-up screen's sound says "olo"** (Ben, 2026-11-06: "a
+  startup sound that is like \"ooollllooooo\" reminiscent of the mac
+  startup sound but saying olo in the same style as that mac sound";
+  "make sure that in the sound prefs i can also preview the olo chime
+  sound"). Done (3e6d7b43; HACKING, the session's start-up screen): a
+  start-up chime's bright chord voiced "ooo-lll-ooo" through gliding
+  formants, the default start-up sound; Preferences ▸ Sound ▸ Starting
+  Up chooses it or the old swell, and Play plays the one chosen. Made by
+  synthesis and checked by its spectrum, not by ear: to try,
+  Preferences ▸ Sound ▸ Play, and say how it should sound (more "o", a
+  clearer "l", brighter, longer): its formants, timing and chord are
+  easy to change.
 
 - **Display: a touch screen's touch turned off and on** (Ben,
   2026-11-06: "in display prefs for touchscreen displays have an option
