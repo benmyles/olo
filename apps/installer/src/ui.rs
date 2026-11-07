@@ -73,11 +73,13 @@ const LICENCE: &str = include_str!("licence.txt");
 
 impl Setup {
     pub fn new(proxy: Proxy, given: Option<String>, auto: bool, choices: Choices) -> Setup {
+        let computer = plan::look();
         Setup {
             page: Page::Welcome,
-            computer: plan::look(),
+            // (What it has already chosen again: run again, Setup updates it.)
+            choices: choices.and(computer.had),
+            computer,
             accepted: false,
-            choices,
             stage: None,
             share: None,
             doing: String::new(),
@@ -338,6 +340,9 @@ impl Setup {
                     div().flex().flex_col().gap(px(2.0)).child(check).child(div().pl(px(m::MARK_SIZE + m::MARK_GAP + 4.0)).child(StringView::new(t.to_owned()).wrap(true).dim(true)))
                 };
                 let nvidia = if self.computer.nvidia { " This computer has an NVIDIA graphics card." } else { "" };
+                // (Installed before: kept chosen, and said so.)
+                let had = self.computer.had;
+                let updated = |on: bool, words: &str| if on { format!("{words} Installed already: Setup brings it up to date.") } else { words.to_owned() };
                 let c = col()
                     .child(heading("Choose What to Install"))
                     .child(choice(
@@ -346,15 +351,19 @@ impl Setup {
                     ))
                     .child(choice(
                         CheckBox::new("Olo's login screen", ch.login_screen).id("login-screen").on_toggle(toggle(|c, on| c.login_screen = on)),
-                        "Olo's own login screen in place of GNOME's (GDM, which stays installed). Your password there also opens Olo's keyring.",
+                        &updated(had.login_screen, "Olo's own login screen in place of GNOME's (GDM, which stays installed). Your password there also opens Olo's keyring."),
                     ))
                     .child(choice(
                         CheckBox::new("Olo's boot splash", ch.boot_splash).id("boot-splash").on_toggle(toggle(|c, on| c.boot_splash = on)),
-                        "Olo's picture while the computer starts, in place of Fedora's.",
+                        &updated(had.boot_splash, "Olo's picture while the computer starts, in place of Fedora's."),
                     ))
                     .child(choice(
                         CheckBox::new("RPM Fusion", ch.rpm_fusion).id("rpm-fusion").on_toggle(toggle(|c, on| c.rpm_fusion = on)),
-                        &format!("Fedora's companion repositories: NVIDIA's own driver and more video formats.{nvidia}"),
+                        &if had.rpm_fusion {
+                            "Fedora's companion repositories: NVIDIA's own driver and more video formats. Added already.".to_owned()
+                        } else {
+                            format!("Fedora's companion repositories: NVIDIA's own driver and more video formats.{nvidia}")
+                        },
                     ));
                 ("Choose What to Install", "preferences", c.into_any_element())
             }

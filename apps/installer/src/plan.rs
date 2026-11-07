@@ -67,6 +67,30 @@ impl Default for Choices {
     }
 }
 
+impl Choices {
+    /// These, and whatever `had` has: what Setup installed before is
+    /// chosen again, so running it again updates it (the login screen
+    /// runs copies of its own outside the home folder, which an update
+    /// leaving it out kept old).
+    pub fn and(self, had: Choices) -> Choices {
+        Choices { login_screen: self.login_screen || had.login_screen, boot_splash: self.boot_splash || had.boot_splash, rpm_fusion: self.rpm_fusion || had.rpm_fusion }
+    }
+
+    /// Which of them this computer has, under `root` ("/"): Olo's login
+    /// screen as its display manager, Olo's boot splash as Plymouth's
+    /// theme, RPM Fusion's repositories.
+    pub fn installed_under(root: &Path) -> Choices {
+        let at = |p: &str| root.join(p.trim_start_matches('/'));
+        let dm = std::fs::read_link(at("/etc/systemd/system/display-manager.service")).ok();
+        let theme = std::fs::read_to_string(at("/etc/plymouth/plymouthd.conf")).unwrap_or_default();
+        Choices {
+            login_screen: dm.as_deref().and_then(Path::file_name).is_some_and(|n| n == "olo-login.service"),
+            boot_splash: theme.lines().any(|l| l.trim() == "Theme=olo"),
+            rpm_fusion: at("/etc/yum.repos.d/rpmfusion-free.repo").exists(),
+        }
+    }
+}
+
 /// What the window is told.
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -114,6 +138,8 @@ pub struct Computer {
     pub free: u64,
     /// The version of Olo installed already, if any.
     pub installed: Option<String>,
+    /// What of the Choose page's this computer has already.
+    pub had: Choices,
 }
 
 /// What this computer is.
@@ -135,6 +161,7 @@ pub fn look() -> Computer {
         atomic: Path::new("/run/ostree-booted").exists(),
         user: std::env::var("USER").unwrap_or_default(),
         installed: bundle::installed(&home),
+        had: Choices::installed_under(Path::new("/")),
         home,
         nvidia,
         free,
@@ -521,6 +548,30 @@ fn default_session(session: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Run again, Setup chooses what it installed before (and updates it).
+    #[test]
+    fn what_was_installed_is_chosen_again() {
+        let root = std::env::temp_dir().join(format!("olo-setup-had-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(Choices::installed_under(&root), Choices::default());
+        std::fs::create_dir_all(root.join("etc/systemd/system")).unwrap();
+        std::fs::create_dir_all(root.join("etc/plymouth")).unwrap();
+        std::fs::create_dir_all(root.join("etc/yum.repos.d")).unwrap();
+        // GDM's: not Olo's login screen.
+        std::os::unix::fs::symlink("/usr/lib/systemd/system/gdm.service", root.join("etc/systemd/system/display-manager.service")).unwrap();
+        std::fs::write(root.join("etc/plymouth/plymouthd.conf"), "[Daemon]\nTheme=bgrt\n").unwrap();
+        assert_eq!(Choices::installed_under(&root), Choices::default());
+        std::fs::remove_file(root.join("etc/systemd/system/display-manager.service")).unwrap();
+        std::os::unix::fs::symlink("/etc/systemd/system/olo-login.service", root.join("etc/systemd/system/display-manager.service")).unwrap();
+        std::fs::write(root.join("etc/plymouth/plymouthd.conf"), "# Olo's boot splash (Olo Setup).\n[Daemon]\nTheme=olo\nDeviceScale=1\n").unwrap();
+        std::fs::write(root.join("etc/yum.repos.d/rpmfusion-free.repo"), "").unwrap();
+        let had = Choices::installed_under(&root);
+        assert_eq!(had, Choices { login_screen: true, boot_splash: true, rpm_fusion: true });
+        assert_eq!(Choices::default().and(had), had);
+        assert_eq!(Choices { login_screen: true, ..Choices::default() }.and(Choices::default()).login_screen, true);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn a_tmpfiles_file_s_folders() {

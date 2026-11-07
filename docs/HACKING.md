@@ -8546,7 +8546,13 @@ Fedora 44 or newer, an atomic Fedora, root, under 6 GB free), Licence
 Agreement (`licence.txt`: Olo's MIT terms, as Cargo.toml says, and the
 others' work it carries, in a scroll box; Next only once "I accept"),
 Choose What to Install (Olo Desktop always; Olo's login screen, its
-boot splash and RPM Fusion, each with its words under it), Installing
+boot splash and RPM Fusion, each with its words under it; what the
+computer has already, chosen again and said so, "Installed already:
+Setup brings it up to date": `Choices::installed_under`, Olo's login
+screen as `display-manager.service`, Plymouth's theme `olo`, RPM
+Fusion's repository file; the login screen runs copies of its own in
+`/usr/local/libexec/olo`, which an update leaving it out kept old),
+Installing
 (a BeOS status bar, the stage over it and "n of m" at its right, what
 it's doing under it, the stages and notes so far; a failure says what
 and why in red, what to do, and Try Again), and Olo Is Installed (Log
