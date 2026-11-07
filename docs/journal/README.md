@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: Stripe's hero as Chrome lays it out
+
+*23:11* — The engine's offline render of stripe.com at 1000 × 700 with its web fonts: transforms, the border side shorthands, Chrome's line-height rounding and min-height grid alignment put every line of the hero where Chrome puts it.
+
+![Browser: Stripe's hero as Chrome lays it out](2026-11-06/231144-browser-stripe-s-hero-as-chrome-lays-it-out.png)
+
 ### Browser: Hacker News as a table
 
 *22:13* — Tables lay out (columns from the cells' content, rows placing cells, border-spacing), the user-agent stylesheet covers HTML's rendering section, and presentational attributes (bgcolor, align, valign, cellpadding, width) apply; <center>'s legacy centring stops at table cells as in other browsers.

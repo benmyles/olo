@@ -11,8 +11,9 @@ Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it
 substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is
 chosen by what is visibly wrong against Chrome and by the fallback counts,
-not by the first refusal. Stripe's homepage currently renders with 593
-fallbacks; no configuration is accepted yet.
+not by the first refusal. Stripe's homepage at 1000 × 700 lays out as
+Chrome does in every static section (JOURNAL 2026-11-07); what differs is
+script-driven. No configuration is accepted yet.
 
 Next, in impact order (each removes a fallback kind or a visible gap):
 
@@ -26,18 +27,25 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   `unicode-range`, per-page font scopes; Stripe renders in Sohne.
   Remaining: `local()` sources, `font-display` timing (fonts load before
   first paint), system font discovery (the catalog holds Noto Sans only).
-- [ ] Styled inline runs: a paragraph shaped from several fonts/sizes
-  (46 inlines flattened into their paragraph's typography).
+- [x] Styled inline runs: a paragraph shaped from several fonts/sizes;
+  `font-feature-settings` per run; synthetic oblique.
 - [x] Tables (auto layout, spans, border-spacing), the HTML UA stylesheet,
   presentational hints, legacy centring; letter-spacing; opacity groups.
-- [ ] Flex wrapping (8), vertical-align (23 images), list markers, floats
-  (Wikipedia: 21), table captions/column groups/rowspan, collapsed borders.
+- [x] Flex wrapping (lines, align-content), aspect-ratio, min-height
+  containers aligning their tracks, Chrome's line-height rounding.
+- [ ] vertical-align (23 images), list markers, floats (Wikipedia: 21),
+  table captions/column groups/rowspan, collapsed borders.
 - [x] Paint: gradients, border-radius, box-shadow, rounded overflow clips.
-- [ ] Paint: `url()` background images, `background-clip: text`, inset
-  shadows, transforms, opacity groups, dashed/dotted borders, inline
-  backgrounds, rounded borders with differing sides.
-- [ ] Text: letter-spacing/word-spacing (95), word-break/overflow-wrap (525),
-  text-decoration, text-transform.
+- [x] Paint: `url()` background images (size, position, repeat), CSS
+  transforms, opacity groups.
+- [ ] Paint: `background-clip: text`, inset shadows, dashed/dotted
+  borders, inline backgrounds, rounded borders with differing sides,
+  `filter`, `mask-image`, `mix-blend-mode`, SVG `<text>`, `<use>`,
+  `<mask>` (Stripe's Sign in button).
+- [x] Text: letter-spacing/word-spacing, `text-wrap: balance`,
+  `::before`/`::after` generated content (strings, attr()).
+- [ ] Text: word-break/overflow-wrap (583), text-decoration (28),
+  text-transform, counters and quotes in `content`.
 - [ ] Form controls drawn with the kit's look; canvas/iframe placeholders.
 - [ ] JavaScript: V8 with DOM bindings, so the parts of Stripe scripts draw
   appear (the GDP counter, menus).

@@ -5425,3 +5425,103 @@ Stripe: 593 fallbacks, led by word-break/overflow-wrap (485) and
 flattened inline typography (46). Below the fold, a horizontal carousel
 overlaps (transforms, overflow), the stats numbers stay faded (opacity
 animations driven by scripts), and icon boxes are empty.
+
+## 2026-11-06 (late): transforms, Chrome's line heights, the hero within a pixel
+
+Stripe's hero at 1000 × 700 now lays out as Chrome does: every heading
+line breaks at the same word, the eyebrow and the title start within half
+a pixel of Chrome's y (118.25 vs 118.75, 180.25 vs 179.75), the footnote
+¹ shapes through the font's `sups` feature, and the header line, the
+side rails and the logo wall's rules draw. What it took, in order of what
+was visibly wrong:
+
+- **CSS transforms.** `transform` and `transform-origin`, 2D functions
+  composed into one matrix, a stacking context, the subtree painted
+  through the cumulative matrix (commands, clips, the spatial index, the
+  page extent); transformed images draw as a bilinear pattern of the
+  nearest mip level. Stripe's wave, centred with `translate(-50%,-50%)`,
+  sat at the bottom right before.
+- **Measuring instead of eyeballing.** `page_dump --style CLASS` prints
+  the computed font, spacing, max-width and bounds of our boxes;
+  `/var/tmp/claude-browser/cdp.py` asks the Chrome on my agent screen for
+  `getComputedStyle` and rects of the same elements, and captures it at
+  the same viewport. The heading's "Financial" measured 129 px in Chrome
+  and 128 px here before any fix: the font rendering was already right;
+  the wrap differed because the saved page had no web fonts (`36ch` of
+  Noto), and the screenshots had different viewport heights (`6lvh`).
+  `page_dump` now loads `@font-face` files from a `fonts/` directory next
+  to the page, resolves the viewport units, and renders the page to PNG
+  (`--png`), so the offline render is the browser's.
+- **A histogram of what the stylesheets need.** Issues now carry the
+  property name or selector text; `page_dump --issues` lists them by
+  count. Stripe's top entries were `transition` (112), `outline` (74),
+  `content` (46), `cursor` (45), `aspect-ratio` (44), `text-wrap` (33),
+  `border-bottom` (28), `border-top` (24) …: the border side shorthands
+  and the logical `border-block-*`/`border-inline-*` ones were missing
+  altogether (hence no header line), `text-wrap: pretty` dropped the
+  whole declaration, and most of the rest changes nothing in a static
+  rendering (transitions, cursor, user-select, will-change, scroll-*):
+  those are accepted and dropped now, so the count (1020 → 540) is what
+  the page actually misses.
+- **Chrome's line heights.** Chrome rounds a face's ascent, descent and
+  line gap to whole device pixels (Blink's SimpleFontData), and
+  `line-height: normal` is that sum: Sohne at 16 px is 21 px there, 20.38
+  here before. The host's metrics now round at the device scale.
+- **`min-height` containers.** A grid (or column flex) taller than its
+  content only through `min-height` now aligns its tracks in that height:
+  Stripe's hero grid (`min-height: 68svh; align-items: center`) started
+  6.75 px too high.
+- Also: synthetic oblique and colour-glyph skipping in the glyph painter,
+  Olo's italic, mono, symbol and maths faces in the browser's catalogue
+  (Wikipedia renders now), `font-feature-settings` per style run.
+
+Chrome's wave, for the record, is a canvas drawn by script with the
+static image faded out (`.single-wave--drawn .single-wave__static
+{opacity: 0}`); ours is the static image, which is the no-script
+rendering, at the same place Chrome puts it.
+
+Open above the fold: the Sign in button (an SVG `<mask>` with `<text>`),
+the GDP counter (script), `::before/::after` content (46 uses),
+`aspect-ratio` (44), `text-decoration`, `outline`, `font-variation-settings`,
+SVG filters and masks, `@container`, `@keyframes` resting state.
+
+## 2026-11-07 (small hours): below the fold
+
+Comparing Stripe section by section against Chrome at 1000 × 700
+(`cdp.py --clip Y --shot` for Chrome, `page_dump --png OUT 700 Y` for
+ours) found, and fixed, in order:
+
+- **Flex wrapping.** The solutions bento is `display: flex; flex-wrap:
+  wrap` with 66%/33% bases; every card sat on one line in a sliver each.
+  Lines are partitioned by hypothetical main sizes, solved one by one,
+  placed by `align-content`; a single line is clamped by the container's
+  min/max height (a Chrome fixture caught that).
+- **aspect-ratio.** The cards are `aspect-ratio: 816/676` and so on, from
+  the resolved width (per `box-sizing`), for blocks and flex items.
+- **text-wrap: balance.** Chrome's card titles are two even lines; ours
+  were greedy. A paragraph balances by bisecting for the narrowest break
+  width that keeps the line count, with lines still aligned in the full
+  width (the line layout gained a break width apart from its width).
+- **::before and ::after.** `.hds-heading--inline:has(+ .hds-heading--inline)::after
+  {content: "\0020"}` is the space between Stripe's two inline headings;
+  `content` was an unknown property (46 uses). Pseudo-element styles live
+  in the style tree keyed by element and pseudo, boxes and spans take a
+  StyleKey, and generated text joins the paragraph (or forms an atomic
+  inline or a block). `content: attr(x)` is parsed as content's own
+  syntax, since as an arbitrary substitution function it was deferred and
+  dropped.
+- **background-image: url().** Fetched from the sheets (relative to each
+  sheet) and inline styles at prepare, painted as patterns with size,
+  position, repeat, the rounded clip and the box's transform. A keyword's
+  constant percentage (`center`) now resolves against its basis, which
+  `transform-origin: center` needed too.
+
+The rest of Stripe's differences below the fold are script: the customer
+story accordion (the SSR markup has `style="width:50px"` on the story
+button and JS widens it; the first story is opened by JS), the sessions
+banner, the stat counters that fade in on scroll. At 1000 × 700 every
+static section now lays out as Chrome does. Stylesheet issues 427 (from
+1020 this evening), the top ones `outline` (74, inert for a static
+render), `text-decoration` (28), `@container` (13),
+`font-variation-settings` (11), `filter` (10), `mask-image` (16),
+`object-position` (8), `@keyframes` (9).
