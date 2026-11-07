@@ -497,7 +497,7 @@ fn op_float(f: &mut Fuzz, wins: &Wins, _: &[u64]) -> Step {
     };
     let always = wins[&w].floats_always;
     f.log(&format!("{} {w} ({}{})", if on { "float" } else { "tile" }, wins[&w].app_id, if always { ", which floats always" } else { "" }));
-    f.req(Request::SetFloating { id: w, floating: Some(on) })?;
+    f.req(Request::SetFloating { id: w, floating: Some(on), alone: false })?;
     let what = format!("{} {w}", if on { "floating" } else { "tiling" });
     let now = after(f, &what, 3.0)?;
     // A dialog or an alert stays floating, over the window it's for.

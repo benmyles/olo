@@ -432,14 +432,20 @@ pub enum Request {
         #[serde(default)]
         output: Option<String>,
     },
-    /// Float a window over auto-tiled ones (`floating: true`), tile it
-    /// (`false`), or (left out) leave it to app_server, which floats
+    /// Float a window over auto-tiled ones, or over the one Focus shows
+    /// (`floating: true`), tile it (`false`: back into the tiles, or
+    /// Focus's), or (left out) leave it to app_server, which floats
     /// dialogs, alerts, fixed-size windows and windows tagged `floating`
-    /// ([`WindowInfo::floating`]).
+    /// ([`WindowInfo::floating`]). A window in a group floats or tiles
+    /// with its group (a group is one tile), unless `alone`: then it is
+    /// taken out of its group first, in the same turn (the window menu's
+    /// Float Window; Float Window Group is without).
     SetFloating {
         id: WindowId,
         #[serde(default)]
         floating: Option<bool>,
+        #[serde(default)]
+        alone: bool,
     },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic {

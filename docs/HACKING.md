@@ -3433,8 +3433,8 @@ rounds failed every drag of it, by up to 632 px. An edge is grabbed
 below both windows' tabs (beside a tab is whatever is behind it, the
 desktop: a press there took the keyboard from every window). Each
 step's line has the time, to find it in the session's log.
-It floats too: a tile floated or a float tiled (the window menu's
-Float Over the Tiles), and windows brought forward, a float then being
+It floats too: a tile floated or a float tiled (`set_floating`, as the
+window menu's Float Window and Unfloat), and windows brought forward, a float then being
 the front one of the floats; after every step no floating window may be
 under a tile (`check_floats_over`). Run it after changing anything in
 `autotile.rs`, `tiling.rs`, `rounds.rs` or the resize grabs.
@@ -5434,9 +5434,17 @@ first, so their order among themselves stays (raising only those
 under a tile put one over the float brought forward last, again and
 again: Ben's "one of them keeps itself on top and i can't go to the
 other floating one"). Anyone can float or tile a window by hand: the
-window menu's Float Over the Tiles (only where auto-tiling is on),
-⌃⌥⌘F (`float-window`), or `{"type":"set_floating","id":ID,"floating":true}`
-(`null` leaves it to app_server again); `WindowInfo` says `tiled`,
+window menu (its tab right-clicked) where auto-tiling or Focus is the
+mode, Float Window, Float Window Group for one in a group, and Unfloat
+for one floating, dimmed for one that floats whatever is asked (Ben,
+2026-11-07: "if it's part of a group and i just choose to float window
+then it should also pull it out of that group"); ⌃⌥⌘F (`float-window`,
+the window with its group); or
+`{"type":"set_floating","id":ID,"floating":true}` (`null` leaves it to
+app_server again; a group floats and tiles as one, unless `"alone":
+true`, which takes the window out of its group first in the same turn,
+the groups brought up to date then, and in Focus without stepping it
+out of the group's zoom, so it floats at its own size); `WindowInfo` says `tiled`,
 `floating` and `float` (the hand's choice). Some windows float whatever
 is asked (`floats_always`, in `WindowInfo` too): a dialog that names its
 window, an app's alert (over all its windows), picture in picture. Each

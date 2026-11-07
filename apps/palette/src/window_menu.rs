@@ -58,12 +58,13 @@ pub struct Facts {
     pub rolled: bool,
     /// In a group with other windows (their tabs side by side).
     pub grouped: bool,
-    /// Auto-tiling is on for its display, and whether it floats over the
-    /// tiles there.
+    /// Auto-tiling, or Focus, is its display's mode, and whether it
+    /// floats over the tiles (or Focus's window) there.
     pub auto: bool,
+    pub focus: bool,
     pub floating: bool,
-    /// It floats whatever is asked (a dialog, an alert): Float Over the
-    /// Tiles shows it, dimmed.
+    /// It floats whatever is asked (a dialog, an alert): Unfloat shows it,
+    /// dimmed.
     pub floats_always: bool,
     /// Shortcut keys changed from the defaults, to show the ones in use.
     pub keys: KeyboardProfile,
@@ -115,10 +116,11 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             Ok(Reply::Settings { settings }) => settings.keyboard.profile,
             _ => Default::default(),
         };
-        let auto = match c.request(&Request::AutoTiling { workspace: Some(w.workspace) }) {
-            Ok(Reply::AutoTiling { displays, .. }) => displays.iter().any(|d| d.on && Some(&d.output) == w.output.as_ref()),
-            _ => false,
+        let mode = match c.request(&Request::WindowingMode { workspace: Some(w.workspace) }) {
+            Ok(Reply::WindowingMode { displays, .. }) => displays.into_iter().find(|d| Some(&d.output) == w.output.as_ref()).map(|d| d.mode),
+            _ => None,
         };
+        let (auto, focus) = (mode == Some(olo_protocol::WindowingMode::AutoTiling), mode == Some(olo_protocol::WindowingMode::Focus));
         let path = match (w.pid, w.surface) {
             (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_ui::commands::path(pid as u32, surface),
             _ => None,
@@ -131,7 +133,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         let (name, _) = olo_xdg::apps::app_name(&w.app_id, entry.as_ref());
         let app = Owner { pid, surface: w.surface, app_id: w.app_id.clone(), name, close: find("close"), quit: find("quit") };
         let screens = (w.kept && olo_ui::moving::menus_offer()).then(olo_ui::moving::screens);
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, floating, floats_always, keys, path, app, screens });
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, focus, floating, floats_always, keys, path, app, screens });
     });
 }
 
@@ -222,9 +224,27 @@ pub fn build(f: &Facts) -> Menu {
     m = shortcut(m, "zoom-horizontal", "Zoom Horizontally");
     m = shortcut(m, "restore", "Back to Its Own Size");
     m = shortcut(m, "center", "Center");
-    if f.auto {
-        // Auto-tiled: out of the tiles (or back in).
-        m = shortcut(m, "float-window", "Float Over the Tiles").checked(f.floating).enabled(!f.floats_always);
+    if f.auto || f.focus {
+        // Out of the tiles (or Focus's zoom), or back in (Ben, 2026-11-07:
+        // "if we are in auto-tiling or focus mode i should be able to
+        // choose "Float Window" and if it's part of a group then also an
+        // option for "Float Window Group" … if it's part of a group and i
+        // just choose to float window then it should also pull it out of
+        // that group"; "an option to "Unfloat" a floating window"). The
+        // keys float or tile it with its group, as Float Window Group.
+        let with_keys = |m: Menu| match keys(f, "float-window") {
+            Some(k) => m.keys(k),
+            None => m,
+        };
+        if f.floating {
+            // (A dialog or an alert floats whatever is asked: dimmed.)
+            m = with_keys(m.item("Unfloat", "unfloat")).enabled(!f.floats_always);
+        } else if f.grouped {
+            m = m.item("Float Window", "float");
+            m = with_keys(m.item("Float Window Group", "float-group"));
+        } else {
+            m = with_keys(m.item("Float Window", "float"));
+        }
     }
     m = m.separator().submenu(tile).submenu(spaces);
     if f.displays > 1 {
@@ -302,6 +322,9 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
     } else {
         match command {
             "send-to-back" => Request::SendToBack { id: window },
+            "float" => Request::SetFloating { id: window, floating: Some(true), alone: true },
+            "float-group" => Request::SetFloating { id: window, floating: Some(true), alone: false },
+            "unfloat" => Request::SetFloating { id: window, floating: Some(false), alone: false },
             "ungroup" => Request::UngroupWindow { id: window },
             "close" => Request::Close { id: window },
             _ => return,
@@ -416,6 +439,7 @@ mod tests {
             rolled: false,
             grouped: true,
             auto: false,
+            focus: false,
             floating: false,
             floats_always: false,
             keys: changed,
@@ -450,7 +474,7 @@ mod tests {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
                 || olo_ui::moving::screen_command(c).is_some()
-                || ["send-to-back", "close", "quit-all", "ungroup", tracker::COMMAND].contains(&c.as_str());
+                || ["send-to-back", "close", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }
         // Each agent screen running, and a new one; none where the
@@ -469,20 +493,28 @@ mod tests {
         let mut doc = Vec::new();
         commands(&build(&Facts { path: Some("/home/me/notes.txt".into()), ..facts.clone() }), &mut doc);
         assert!(doc.contains(&tracker::COMMAND.to_owned()));
-        // Float Over the Tiles only where auto-tiling is on.
-        assert!(!all.contains(&"shortcut:float-window".to_owned()));
-        let mut auto = Vec::new();
-        commands(&build(&Facts { auto: true, ..facts.clone() }), &mut auto);
-        assert!(auto.contains(&"shortcut:float-window".to_owned()));
-        // A dialog or an alert floats whatever is asked: shown, dimmed.
-        let float_item = |f: &Facts| {
-            build(f).items.iter().find_map(|i| match i {
-                menu::MenuItem::Action(a) if a.command == "shortcut:float-window" => Some((a.checked, a.enabled)),
-                _ => None,
-            })
+        // Floating only where auto-tiling or Focus is the mode.
+        let floats = |f: &Facts| {
+            build(f)
+                .items
+                .iter()
+                .filter_map(|i| match i {
+                    menu::MenuItem::Action(a) if ["float", "float-group", "unfloat"].contains(&a.command.as_str()) => Some((a.label.clone(), a.enabled, a.keys.is_some())),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
         };
-        assert_eq!(float_item(&Facts { auto: true, floating: true, floats_always: true, ..facts.clone() }), Some((true, false)));
-        assert_eq!(float_item(&Facts { auto: true, floating: false, ..facts.clone() }), Some((false, true)));
+        assert!(floats(&facts).is_empty());
+        // In a group: the window alone, or its group (the keys', ⌃⌥⌘F).
+        let grouped = floats(&Facts { auto: true, ..facts.clone() });
+        assert_eq!(grouped, [("Float Window".to_owned(), true, false), ("Float Window Group".to_owned(), true, true)]);
+        assert_eq!(floats(&Facts { focus: true, ..facts.clone() }), grouped);
+        // On its own: the window, with the keys.
+        assert_eq!(floats(&Facts { auto: true, grouped: false, ..facts.clone() }), [("Float Window".to_owned(), true, true)]);
+        // Floating: Unfloat; a dialog or an alert floats whatever is
+        // asked: shown, dimmed.
+        assert_eq!(floats(&Facts { focus: true, floating: true, ..facts.clone() }), [("Unfloat".to_owned(), true, true)]);
+        assert_eq!(floats(&Facts { auto: true, floating: true, floats_always: true, ..facts.clone() }), [("Unfloat".to_owned(), false, true)]);
         assert!(all.contains(&"shortcut:next-display".to_owned()) && all.contains(&"workspace:2".to_owned()));
         // Each shows the keys it has now: changed, default, or none.
         let menu = build(&facts);

@@ -58,17 +58,6 @@ something nobody here has is in "Blocked", with what it waits for.
   should be able to provide a new answer/snippets. make sure it all
   works very intuitively and fast"). Streams, cancellable, never blocks.
 
-- **Float a window, or its group, from its tab** (Ben, 2026-11-07:
-  "right click on a tab title bar thing and if we are in auto-tiling or
-  focus mode i should be able to choose "Float Window" and if it's part
-  of a group then also an option for "Float Window Group" and they do as
-  they sound. if it's part of a group and i just choose to float window
-  then it should also pull it out of that group"). The tab's menu, in
-  the tiling and focus modes: Float Window (out of its group first, if
-  it's in one), and Float Window Group with one; a floating window's
-  tab offers Unfloat (Ben: "there also needs to be an option to
-  "Unfloat" a floating window too"), back into the tiling or focus.
-
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for
   continuous, minimal impact (in terms of cpu/mem/network usage -- it
@@ -110,6 +99,18 @@ something nobody here has is in "Blocked", with what it waits for.
   and Tracker and Passwords where they fit.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Float a window, or its group, from its tab; Unfloat** (Ben,
+  2026-11-07: "right click on a tab title bar thing and if we are in
+  auto-tiling or focus mode i should be able to choose "Float Window"
+  and if it's part of a group then also an option for "Float Window
+  Group" … if it's part of a group and i just choose to float window
+  then it should also pull it out of that group"; "an option to
+  "Unfloat" a floating window too"). The tab's menu in auto-tiling and
+  Focus: Float Window (out of its group first, in the same turn),
+  Float Window Group, Unfloat (dimmed for a dialog or alert, which
+  floats whatever is asked); ⌃⌥⌘F's keys on the one that does as they
+  do. Try: right-click a tab in auto-tiling or Focus after the upgrade.
 
 - **Deskbar widgets' tips list the top five processes** (Ben,
   2026-11-07: "for relevant widgets like cpu, gpu, memory, network make

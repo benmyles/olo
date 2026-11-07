@@ -525,8 +525,19 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.set_auto_tiling(on, workspace, o);
                 Reply::AutoTiling { workspace: ws, displays: self.auto_tiling_infos(workspace) }
             }
-            Request::SetFloating { id, floating } => match self.window_by_id(id) {
+            Request::SetFloating { id, floating, alone } => match self.window_by_id(id) {
                 Some(w) => {
+                    // (Out of its group first, in this turn: it never
+                    // shows as a tile of its own on its way out. The
+                    // groups brought up to date then, as each turn does:
+                    // else its old group's windows float with it.)
+                    // In Focus, out without being moved (stepped out from
+                    // the group's zoom it floated nearly as big): Focus
+                    // unzooms it to its own size as it floats.
+                    let out = |s: &mut Self| if s.in_focus_mode(&w) { s.take_out_of_group(&w) } else { s.ungroup_window(&w) };
+                    if alone && floating == Some(true) && !self.groups.mates(&w).is_empty() && out(self) {
+                        self.sync_groups();
+                    }
                     self.set_floating(&w, floating);
                     Reply::Ok
                 }
