@@ -258,3 +258,17 @@ fn independent_pinned_cascade_ports() {
     assert_eq!(report["counts"]["passed"], 128);
     assert_eq!(report["counts"]["unsupported"], 8);
 }
+#[test]
+fn a_rejected_selector_leaves_the_next_rules_matching() {
+    // GitHub's reset: an attribute test with an unknown pseudo-element is
+    // rejected; the classes interned after it must still match.
+    let parsed = olo_web::html::parse(Arc::from("<!doctype html><div id=target class=sr-only></div>"), Default::default(), None).unwrap();
+    let node = target(&parsed.document, "#target");
+    let tree = olo_web::css::selectors::DomTree::new(&parsed.document);
+    let rules = sheet("[type=number]::-webkit-inner-spin-button{height:auto} .sr-only{width:1px} div .sr-only, .sr-only{height:2px}");
+    let mut scratch = cascade::MatchScratch::default();
+    let c = rules.match_element(&tree, node, Default::default(), None, None, Default::default(), Default::default(), &mut scratch, None, None).unwrap();
+    let mut r = c.resolver();
+    assert_eq!(spelling(r.property(P::Width, true).unwrap()), "1");
+    assert_eq!(spelling(r.property(P::Height, true).unwrap()), "2");
+}

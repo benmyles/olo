@@ -2,7 +2,10 @@
 //! it) and print what the engine made of it: the error, or the fallbacks and
 //! the box tree with geometry. For debugging pages saved to /var/tmp.
 //!
-//!   cargo run --release -p olo-web --example page_dump -- FILE.html [WIDTH] [--boxes] [--style CLASS] [--png OUT.png [HEIGHT [Y]]] [--issues]
+//!   cargo run --release -p olo-web --example page_dump -- FILE.html [WIDTH] [--boxes] [--style CLASS] [--png OUT.png [HEIGHT [Y]]] [--issues] [--at X,Y]
+//!
+//! `--at X,Y` prints the paint commands whose bounds cover that page point,
+//! in paint order, with the element each paints and whether a clip hides it.
 //!
 //! `--style CLASS` prints the computed font, spacing and bounds of every box
 //! whose element has that class, for comparing with Chrome's getComputedStyle.
@@ -83,6 +86,10 @@ fn main() {
     let boxes = args.iter().any(|a| a == "--boxes");
     let style_class = args.iter().position(|a| a == "--style").and_then(|i| args.get(i + 1)).cloned();
     let issues = args.iter().any(|a| a == "--issues");
+    let at: Option<(f64, f64)> = args.iter().position(|a| a == "--at").and_then(|i| args.get(i + 1)).and_then(|v| {
+        let (x, y) = v.split_once(',')?;
+        Some((x.parse().ok()?, y.parse().ok()?))
+    });
     let png = args.iter().position(|a| a == "--png").map(|i| {
         (args.get(i + 1).cloned().unwrap_or_else(|| "page.png".into()), args.get(i + 2).and_then(|h| h.parse().ok()).unwrap_or(700u32), args.get(i + 3).and_then(|y| y.parse().ok()).unwrap_or(0i32))
     });
@@ -205,6 +212,21 @@ fn main() {
                         number(s.value(P::MaxWidth)),
                         s.used_color(P::Color).map(|c| c.srgb8_clipped()),
                     );
+                }
+            }
+            if let Some((x, y)) = at {
+                for (i, c) in page.scene.commands().iter().enumerate() {
+                    let b = c.bounds;
+                    if x < b.x || y < b.y || x >= b.x + b.width || y >= b.y + b.height {
+                        continue;
+                    }
+                    let node = page.scene.node(i as u32);
+                    let name = node.and_then(|n| page.document.name(n).ok().flatten()).unwrap_or("#text");
+                    let class = node.and_then(|n| page.document.attribute(n, "class").ok().flatten()).unwrap_or("");
+                    let kind = format!("{:?}", c.primitive);
+                    let kind = kind.split(|c: char| !c.is_alphanumeric()).next().unwrap_or("");
+                    let text = page.scene.text_content(i as u32).map(|t| t.chars().take(40).collect::<String>()).unwrap_or_default();
+                    println!("{i} {kind} <{name} class=\"{}\"> {b:?} visible {:?} {text:?}", class.chars().take(80).collect::<String>(), page.scene.visible_bounds(i as u32));
                 }
             }
             if let Some((file, height, top)) = png {

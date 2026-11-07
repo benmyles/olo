@@ -737,7 +737,17 @@ fn trim(v: f64) -> String {
 }
 /// The sheets of these `style` and `link` elements, in order, loaded
 /// through `resource` (an external one by its href against `base`).
+///
+/// A sheet linked again later (React apps insert the same one several
+/// times) is kept only at its last place, where it wins anyway, unless it
+/// names cascade layers, whose order its first place sets. The sheets are
+/// held to `CSS_BYTES` in all: one past it is left out, counted as an
+/// issue, and the page renders with the rest, as a browser renders a page
+/// whose sheet failed to load.
 pub type Sheet = (css::Syntax, Origin, Option<Arc<str>>);
+// Within the cascade's work budget (16 M, a unit a source byte), with room
+// for the rules and declarations it ticks too.
+const CSS_BYTES: usize = 8 * 1024 * 1024;
 fn load_sheets(
     doc: &Document,
     style_nodes: &[crate::dom::NodeId],
@@ -745,13 +755,13 @@ fn load_sheets(
     resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
     cancel: Option<&AtomicBool>,
 ) -> Result<(Vec<Sheet>, usize)> {
-    let mut sheets = Vec::new();
-    let mut css_bytes = 0usize;
+    enum Item<'a> {
+        Inline(crate::dom::NodeId),
+        Link(&'a str),
+    }
+    let mut items = Vec::with_capacity(style_nodes.len());
     let mut resource_issues = 0usize;
     for &node in style_nodes {
-        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
-            return Err(paint::Error::Cancelled.into());
-        }
         match doc.name(node)? {
             Some("style") => {
                 if doc.attribute(node, "type")?.is_some_and(|t| !t.trim().is_empty() && !t.trim().eq_ignore_ascii_case("text/css")) {
@@ -761,17 +771,7 @@ fn load_sheets(
                     resource_issues += 1;
                     continue;
                 }
-                let mut text = String::new();
-                for child in doc.children(node)? {
-                    if let Some(value) = doc.value(child)? {
-                        css_bytes = css_bytes.checked_add(value.len()).ok_or(paint::Error::Limit)?;
-                        if css_bytes > 4 * 1024 * 1024 {
-                            return Err(paint::Error::Limit.into());
-                        }
-                        text.push_str(value)
-                    }
-                }
-                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None));
+                items.push(Item::Inline(node));
             }
             Some("link") if doc.attribute(node, "rel")?.is_some_and(|r| r.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("stylesheet"))) => {
                 let rel = doc.attribute(node, "rel")?.unwrap_or("");
@@ -784,19 +784,84 @@ fn load_sheets(
                 } else if !media.is_empty() && !media.eq_ignore_ascii_case("all") || !kind.is_empty() && !kind.eq_ignore_ascii_case("text/css") {
                     resource_issues += 1;
                 } else if let Some(href) = doc.attribute(node, "href")? {
-                    if let Some(resource) = resource(ResourceKind::Stylesheet, base, href)? {
-                        let Resource::Stylesheet(syntax, url) = resource else { return Err(paint::Error::Invalid.into()) };
-                        css_bytes = css_bytes.checked_add(syntax.source().len()).ok_or(paint::Error::Limit)?;
-                        if css_bytes > 4 * 1024 * 1024 {
-                            return Err(paint::Error::Limit.into());
-                        }
-                        sheets.push((syntax, Origin::Author, url));
-                    } else {
-                        resource_issues += 1;
-                    }
+                    items.push(Item::Link(href));
                 }
             }
             _ => {}
+        }
+    }
+    // Where each href is linked last.
+    let mut last = std::collections::HashMap::new();
+    for (i, item) in items.iter().enumerate() {
+        if let Item::Link(href) = item {
+            last.insert(href.trim(), i);
+        }
+    }
+    // The sheet at an href's last place, loaded first so an earlier copy
+    // can be checked for layers without loading it again.
+    let mut loaded: Vec<Option<Option<Resource>>> = (0..items.len()).map(|_| None).collect();
+    let mut layered = std::collections::HashSet::new();
+    for (i, item) in items.iter().enumerate() {
+        if let Item::Link(href) = item
+            && last.get(href.trim()) == Some(&i)
+            && items[..i].iter().any(|e| matches!(e, Item::Link(h) if h.trim() == href.trim()))
+        {
+            let r = resource(ResourceKind::Stylesheet, base, href)?;
+            if let Some(Resource::Stylesheet(syntax, _)) = &r
+                && syntax.source().contains("@layer")
+            {
+                layered.insert(href.trim());
+            }
+            loaded[i] = Some(r);
+        }
+    }
+    let mut sheets = Vec::new();
+    let mut css_bytes = 0usize;
+    for (i, item) in items.iter().enumerate() {
+        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+            return Err(paint::Error::Cancelled.into());
+        }
+        match item {
+            Item::Inline(node) => {
+                let mut bytes = 0usize;
+                for child in doc.children(*node)? {
+                    bytes = bytes.saturating_add(doc.value(child)?.map_or(0, str::len));
+                }
+                if css_bytes.saturating_add(bytes) > CSS_BYTES {
+                    resource_issues += 1;
+                    continue;
+                }
+                css_bytes += bytes;
+                let mut text = String::with_capacity(bytes);
+                for child in doc.children(*node)? {
+                    if let Some(value) = doc.value(child)? {
+                        text.push_str(value)
+                    }
+                }
+                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None));
+            }
+            Item::Link(href) => {
+                if last.get(href.trim()) != Some(&i) && !layered.contains(href.trim()) {
+                    continue; // linked again later, where it wins
+                }
+                let r = match loaded[i].take() {
+                    Some(r) => r,
+                    None => resource(ResourceKind::Stylesheet, base, href)?,
+                };
+                match r {
+                    Some(Resource::Stylesheet(syntax, url)) => {
+                        let bytes = syntax.source().len();
+                        if css_bytes.saturating_add(bytes) > CSS_BYTES {
+                            resource_issues += 1;
+                            continue;
+                        }
+                        css_bytes += bytes;
+                        sheets.push((syntax, Origin::Author, url));
+                    }
+                    Some(_) => return Err(paint::Error::Invalid.into()),
+                    None => resource_issues += 1,
+                }
+            }
         }
     }
     Ok((sheets, resource_issues))
@@ -911,7 +976,6 @@ fn gather(
     let mut next = Some(doc.root());
     let mut title = String::new();
     let mut scripts = 0;
-    let mut css_bytes = 0usize;
     let mut resource_issues = 0;
     let mut base = None;
     let mut style_nodes = Vec::new();

@@ -387,6 +387,50 @@ fn linked_sheets_use_first_base_and_document_cascade_order() {
 }
 
 #[test]
+fn a_sheet_linked_again_counts_once_and_too_much_css_drops_sheets_not_the_page() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    // GitHub links one 0.8 MB sheet four times; React apps repeat links.
+    // The repeated sheet loads once and wins at its last place; a sheet
+    // past the byte budget is left out and the page still renders.
+    let padding = format!("/*{}*/", "x".repeat(3 << 20)); // 3 MB a sheet, of an 8 MB budget
+    let source = Arc::from(
+        "<!doctype html><style>body{margin:0}div{height:20px}</style><link rel=stylesheet href=big.css><link rel=stylesheet href=blue.css><link rel=stylesheet href=green.css><link rel=stylesheet href=big.css><link rel=stylesheet href=big2.css><link rel=stylesheet href=big3.css><div></div>",
+    );
+    let mut requests = Vec::new();
+    let page = olo_web::page::load_resources(
+        source,
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+        |_, href| {
+            requests.push(href.to_owned());
+            let css = match href {
+                "big.css" | "big2.css" => format!("{padding}div{{background-color:red}}"),
+                "blue.css" => "div{background-color:blue}".into(),
+                "green.css" => "div{background-color:green}".into(),
+                "big3.css" => format!("{padding}div{{background-color:yellow}}"),
+                _ => unreachable!(),
+            };
+            Ok(Some(olo_web::css::Syntax::parse(Arc::from(css), Default::default(), None)?))
+        },
+    )
+    .unwrap();
+    assert_eq!(requests, ["big.css", "blue.css", "green.css", "big2.css", "big3.css"]);
+    // big.css (its last place) and big2.css fit; big3.css is past the budget.
+    assert_eq!(page.stylesheet_issues, 1);
+    assert_eq!(pixel(&render(&mut painter, &page.scene), 50, 10), [255, 0, 0, 255]);
+}
+
+#[test]
 fn document_input_restyles_link_states_and_keeps_equal_color_owners_separate() {
     let mut b = Builder::new(Default::default());
     b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();

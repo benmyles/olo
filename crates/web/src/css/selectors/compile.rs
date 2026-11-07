@@ -31,6 +31,7 @@ struct Mark {
     failures: usize,
     languages: usize,
     symbols: usize,
+    ancestor_hashes: usize,
 }
 pub(super) fn compile(values: Components<'_>, options: CompileOptions<'_>, limits: CompileLimits, cancelled: Option<&AtomicBool>) -> Result<Selectors> {
     let mut c = Compiler {
@@ -125,6 +126,7 @@ impl Compiler<'_> {
             failures: self.out.failures.len(),
             languages: self.out.languages.len(),
             symbols: self.out.symbols.len(),
+            ancestor_hashes: self.out.ancestor_hashes.len(),
         }
     }
     fn rewind(&mut self, m: Mark) {
@@ -136,6 +138,10 @@ impl Compiler<'_> {
         self.out.nth.truncate(m.nth);
         self.out.failures.truncate(m.failures);
         self.out.languages.truncate(m.languages);
+        // Hashes run beside the symbols: a rejected selector's must go with them,
+        // or the next symbol takes its place and the stale hash.
+        self.out.symbol_hashes.truncate(m.symbols);
+        self.out.ancestor_hashes.truncate(m.ancestor_hashes);
         for symbol in self.out.symbols.drain(m.symbols..) {
             self.out.symbol_bytes -= symbol.len();
             self.symbol_index.remove(&symbol);
