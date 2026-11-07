@@ -414,6 +414,16 @@ impl Document {
     }
     /// The changes made after `revision`, oldest first, or None when the log
     /// no longer reaches back that far (then everything may have changed).
+    /// Drop the changes up to `revision` (every reader has caught up with
+    /// it): `changes_since` answers only for revisions from it on.
+    pub fn forget_changes_before(&mut self, revision: u64) {
+        if revision <= self.changes_from {
+            return;
+        }
+        let start = self.changes.partition_point(|(r, _)| *r <= revision);
+        self.changes.drain(..start);
+        self.changes_from = revision;
+    }
     pub fn changes_since(&self, revision: u64) -> Option<&[(u64, Change)]> {
         if revision < self.changes_from {
             return None;

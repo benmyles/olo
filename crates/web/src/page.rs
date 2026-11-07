@@ -1259,9 +1259,7 @@ impl Page {
         let before_render = std::time::Instant::now();
         let (scene, stylesheet_issues, fallbacks) =
             render(&doc, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, &self.scope, shaper, painter, viewport, cancel, Some(&previous), &mut progress)?;
-        if let Some(t) = timing {
-            eprintln!("rerender: rebind {rebind_ms:.1} ms, render {:.1} ms, before render {:.1} ms", before_render.elapsed().as_secs_f64() * 1000., (before_render - t).as_secs_f64() * 1000.);
-        }
+        let after_render = std::time::Instant::now();
         let mut title = String::new();
         let mut next = Some(doc.root());
         while let Some(node) = next {
@@ -1275,11 +1273,22 @@ impl Page {
             }
             next = next_node(&doc, node)?;
         }
+        let after_title = std::time::Instant::now();
         self.document = doc;
         self.scene = scene;
         self.stylesheet_issues = stylesheet_issues;
         self.fallbacks = fallbacks;
         self.title = title;
+        if let Some(t) = timing {
+            let ms = |d: std::time::Duration| d.as_secs_f64() * 1000.;
+            eprintln!(
+                "rerender: rebind {rebind_ms:.1} ms, before render {:.1} ms, render {:.1} ms, title {:.1} ms, replaced {:.1} ms",
+                ms(before_render - t),
+                ms(after_render - before_render),
+                ms(after_title - after_render),
+                ms(after_title.elapsed())
+            );
+        }
         Ok(())
     }
     /// Recompute viewport-dependent styles without network I/O or HTML parsing.
@@ -1332,16 +1341,19 @@ fn render(
     // The previous layout's styles stand in only while they were computed
     // against this host (its scope, with the fonts); otherwise they hold
     // fonts from another scope.
+    let timing = std::env::var_os("OLO_WEB_TIMING").map(|_| std::time::Instant::now());
     let previous = previous.filter(|p| p.cache().tree().styles().defaults().is_some_and(|d| d.is_current(host)));
     let previous_styles = previous.map(|p| p.cache().tree().styles().as_ref());
     let mut fallbacks = layout::Fallbacks::default();
-    let timing = std::env::var_os("OLO_WEB_TIMING").map(|_| std::time::Instant::now());
-    let mut stamps = [0f64; 5];
+    let mut stamps = [0f64; 6];
     let defaults = match previous_styles.and_then(|p| p.defaults()) {
         Some(d) => d,
         None => Defaults::new(host, Default::default(), cancel)?,
     };
     let snapshot = interaction::Snapshot::new(doc, input, cancel);
+    if let Some(t) = timing {
+        stamps[5] = t.elapsed().as_secs_f64() * 1000.;
+    }
     let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), previous: previous_styles, generation: rules.generation() }, Default::default(), cancel)?;
     while !job.step(128, |_| host)?.finished {
         progress(Phase::Styles, job.progress().styled)
@@ -1428,8 +1440,9 @@ fn render(
     if let Some(t) = timing {
         stamps[4] = t.elapsed().as_secs_f64() * 1000.;
         eprintln!(
-            "render: style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms, paint {:.1} ms ({} boxes)",
-            stamps[0],
+            "render: before style {:.1} ms, style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms, paint {:.1} ms ({} boxes)",
+            stamps[5],
+            stamps[0] - stamps[5],
             stamps[1] - stamps[0],
             stamps[2] - stamps[1],
             stamps[3] - stamps[2],

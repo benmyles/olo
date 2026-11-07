@@ -539,6 +539,9 @@ fn render(
                 }
             }
             live.rendered = revision;
+            // The log of changes before this render (and the last
+            // measurement) has served: dropped, so snapshots stay cheap.
+            live.realm.forget_changes_before(revision);
             live.last_render = Instant::now();
             live.stats.2 += 1;
             live.stats.3 += started.elapsed().as_secs_f64() * 1000.;

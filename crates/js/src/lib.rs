@@ -554,6 +554,14 @@ impl Realm {
     pub fn snapshot(&self) -> Document {
         self.state.borrow().document.clone()
     }
+    /// The page rendered revision `rendered`: changes before it, and
+    /// before the last measurement, are of no use to anyone (the change
+    /// log stays short, and so does every snapshot of the document).
+    pub fn forget_changes_before(&self, rendered: u64) {
+        let mut s = self.state.borrow_mut();
+        let revision = s.measured.as_ref().map_or(rendered, |m| m.revision().min(rendered));
+        s.document.forget_changes_before(revision);
+    }
     pub fn revision(&self) -> u64 {
         self.state.borrow().document.revision()
     }
