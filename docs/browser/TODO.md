@@ -503,3 +503,10 @@ this is a harness correction, not a browser speedup.
 - [x] Prevent long status/error text from resizing the document viewport and
   repeatedly reloading failed pages. Delayed HTTP repro stays at one request;
   real Stripe failure returns to idle. Absolute layout itself remains open.
+
+- [x] Initial absolute non-replaced axis equations, independently compared in
+  225 Chrome observations at five native DPRs (numeric stage only).
+- [ ] Connect absolute boxes to containing-block selection, deferred out-of-flow
+  layout, static-position discovery and painting; then retry Stripe. Handle
+  padding-box percentage bases and containing blocks whose height finishes
+  after the positioned node. Preserve explicit failures for unimplemented modes.

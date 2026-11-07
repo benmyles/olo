@@ -2457,3 +2457,23 @@ node, element name, first rejected property and its computed value in a boxed
 attributes or text are retained. This distinguishes an absolute/fixed/sticky
 positioning requirement from float/clear work without guessing from a generic
 message; it does not implement those layout modes.
+
+
+## Absolute axis constraint solver (not yet page-integrated)
+
+`layout::positioned::solve` resolves horizontal/vertical non-replaced axis
+constraints from already-resolved content-box lengths, padding+border extent,
+intrinsic sizes and static position. Containing-block direction and static-side
+direction are separate. Auto insets/margins, shrink-to-fit, negative margin
+space, overconstraints and max-then-min re-solving are handled in bounded layout
+quanta. Inputs/outputs reject nonfinite/oversized arithmetic; no heap allocation
+or content traversal occurs, and at most three equations are solved. The caller
+still needs to choose the containing block, resolve percentages/box sizing,
+measure intrinsic/auto heights and place out-of-flow descendants. The normal
+page pipeline still rejects absolute placement. Modern alignment, anchors,
+replaced ratios and nonhorizontal writing modes remain open.
+
+Independent225 Chrome observations match border position/content size/margins
+at five native DPRs. No pixels or website acceptance are implied. See
+`tests/positioned-fixtures`. `positioned_bench` times scalar arithmetic only,
+not page/event/idle performance. No existing hot path calls this solver yet.

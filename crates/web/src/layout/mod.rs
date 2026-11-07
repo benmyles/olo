@@ -4,6 +4,7 @@ mod containers;
 pub mod flex;
 mod flow;
 mod images;
+pub mod positioned;
 mod tree;
 mod used;
 pub use crate::text::prepare::ControlKind;

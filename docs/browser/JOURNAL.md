@@ -4784,3 +4784,38 @@ contributes no live Stripe evidence. Browser quit/awaited; owned screens stopped
 origin/main82f7089a fetched via gh and already merged. Next implement absolute
 layout for the rejected section, preserving all SVG and older gaps. Stripe0/30,
 corpus0/100.
+
+
+### 2026-11-06 — Absolute axis equations, independently verified
+
+Previous turn fixed/pushed58e2b94b: Stripe failure now stays idle and identifies
+section Position Absolute. Added allocation-free horizontal/vertical non-replaced
+axis solver based on CSS2.2 10.3.7/10.6.4 and min/max re-solving. Caller supplies
+resolved lengths, content-box constraints, intrinsic sizes and static position;
+containing-block direction is distinct from static-side direction. Arithmetic
+is bounded in layout quanta and nonfinite input/output is rejected. At most
+three equations, no content loops or heap allocation. It is not connected to
+box construction/flow yet: real Stripe remains blocked on absolute positioning.
+
+45 original authored cases captured independently in owned Olo Chrome, five
+native scales,225 observations: all border starts, content sizes and used
+margins match within0.0001CSSpx. All eight auto inset/size combinations, LTR/RTL,
+vertical sizing, negative/auto margins, min/max precedence and fractions are
+covered. Static-position discovery and containing-block selection are not tested
+by these fixtures; the static position is zero. Authored tests separately check
+a nonzero static end distinct from containing-block direction and invalid/large
+numeric inputs. Browser restored settings, closed/awaited and screen stopped.
+No native graphical change, pixel pass or website acceptance claimed.
+
+Final two release integration tests pass (225 reference observations plus numeric
+boundaries), strict scoped web clippy19.29s and full workspace release25.30s pass.
+Seven CPU0 scalar benchmark processes,8million axes each, median36.808ns/axis;
+absolute component timing only, host not isolated, no before/after speedup.
+No existing page/event/idle code calls the solver, so these measurements are not
+page performance evidence. Details: measurements/2026-11-06-absolute-axis.json.
+No personal-session changes. origin/main82f7089a fetched via gh and already merged.
+
+Next connect positioned nodes to deferred out-of-flow layout with correct padding
+containing blocks, static positions, intrinsic widths/heights and paint order,
+then retry the actual Stripe section. Preserve all prior performance/SVG gaps.
+Stripe0/30; corpus0/100. No other website selected.

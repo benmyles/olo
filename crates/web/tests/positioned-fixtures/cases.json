@@ -1,0 +1,947 @@
+[
+  {
+    "id": "horizontal-False-0",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      null,
+      null
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-1",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10,
+      null
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-2",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      null,
+      null
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-3",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10,
+      null
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-4",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      null,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-5",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-6",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      null,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-7",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-0",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      null,
+      null
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-1",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10,
+      null
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-2",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      null,
+      null
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-3",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10,
+      null
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-4",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      null,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-5",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-6",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      null,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-7",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "vertical-False-0",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      null,
+      null
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-1",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10,
+      null
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-2",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      null,
+      null
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-3",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10,
+      null
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-4",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      null,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-5",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-6",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      null,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-7",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "horizontal-False-negative",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 250,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-one-auto",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      7
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-negative-margin",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      -12,
+      8
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-max",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": 40,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-min",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 190,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-min-wins",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 190,
+    "maximum": 40,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-False-fraction",
+    "axis": "horizontal",
+    "rtl": false,
+    "inset": [
+      10.25,
+      20.75
+    ],
+    "size": 50.5,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-negative",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 250,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-one-auto",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      7
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-negative-margin",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      -12,
+      8
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-max",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": 40,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-min",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 190,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-min-wins",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 190,
+    "maximum": 40,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "horizontal-True-fraction",
+    "axis": "horizontal",
+    "rtl": true,
+    "inset": [
+      10.25,
+      20.75
+    ],
+    "size": 50.5,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      40,
+      60
+    ]
+  },
+  {
+    "id": "vertical-False-negative",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 250,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-one-auto",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      null,
+      7
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-negative-margin",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": 50,
+    "margin": [
+      -12,
+      8
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-max",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": 40,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-min",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 190,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-min-wins",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10,
+      20
+    ],
+    "size": null,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 190,
+    "maximum": 40,
+    "intrinsic": [
+      30,
+      30
+    ]
+  },
+  {
+    "id": "vertical-False-fraction",
+    "axis": "vertical",
+    "rtl": false,
+    "inset": [
+      10.25,
+      20.75
+    ],
+    "size": 50.5,
+    "margin": [
+      null,
+      null
+    ],
+    "decoration": 10,
+    "minimum": 0,
+    "maximum": null,
+    "intrinsic": [
+      30,
+      30
+    ]
+  }
+]

@@ -1,0 +1,65 @@
+{
+  "scope": "Absolute axis arithmetic only, not integrated or a before/after speedup",
+  "cpu": 0,
+  "median_ns": 36.8082725,
+  "binary_sha256": "304c28975f89663492dc194657556a35386c6af75f977d5a41c6ea9b511ea2d0",
+  "observations": [
+    {
+      "calls": 8000000,
+      "checksum": 330000000.0,
+      "input_bytes": 152,
+      "ns_per_axis": 62.638444875000005,
+      "output_bytes": 40,
+      "scope": "Absolute axis scalar arithmetic only; no page integration or speedup claim"
+    },
+    {
+      "calls": 8000000,
+      "checksum": 330000000.0,
+      "input_bytes": 152,
+      "ns_per_axis": 37.671545625,
+      "output_bytes": 40,
+      "scope": "Absolute axis scalar arithmetic only; no page integration or speedup claim"
+    },
+    {
+      "calls": 8000000,
+      "checksum": 330000000.0,
+      "input_bytes": 152,
+      "ns_per_axis": 38.42700225,
+      "output_bytes": 40,
+      "scope": "Absolute axis scalar arithmetic only; no page integration or speedup claim"
+    },
+    {
+      "calls": 8000000,
+      "checksum": 330000000.0,
+      "input_bytes": 152,
+      "ns_per_axis": 36.8082725,
+      "output_bytes": 40,
+      "scope": "Absolute axis scalar arithmetic only; no page integration or speedup claim"
+    },
+    {
+      "calls": 8000000,
+      "checksum": 330000000.0,
+      "input_bytes": 152,
+      "ns_per_axis": 35.943639125,
+      "output_bytes": 40,
+      "scope": "Absolute axis scalar arithmetic only; no page integration or speedup claim"
+    },
+    {
+      "calls": 8000000,
+      "checksum": 330000000.0,
+      "input_bytes": 152,
+      "ns_per_axis": 33.229594375,
+      "output_bytes": 40,
+      "scope": "Absolute axis scalar arithmetic only; no page integration or speedup claim"
+    },
+    {
+      "calls": 8000000,
+      "checksum": 330000000.0,
+      "input_bytes": 152,
+      "ns_per_axis": 34.09955225,
+      "output_bytes": 40,
+      "scope": "Absolute axis scalar arithmetic only; no page integration or speedup claim"
+    }
+  ],
+  "limitation": "Host not isolated; scalar component timing only. No existing page hot path calls this solver."
+}
