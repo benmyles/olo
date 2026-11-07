@@ -17,6 +17,31 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Olo's history rewritten without personal details** (Ben, 2026-11-07:
+  "do the history rewrite but backup the repo first"). Backed up first,
+  in ~/backups/olo-before-history-rewrite-2026-11-07 (mirrors of this
+  repository and of GitHub, a bundle of every ref, the LFS objects, the
+  map from old commit ids to new; its README says how to put it back).
+  Rewritten with git-filter-repo in a fresh mirror: the Wi-Fi networks'
+  names, work repositories' and a card's, a full name, a shell prompt
+  and a session id, five real Bluetooth addresses (colon and BlueZ
+  forms) replaced in every file and message; every earlier version of
+  the four screenshots pixelated in the audit, of the six AirPods
+  pictures re-shot without a name, and of journal.html, set to today's;
+  the author address on all 1,275 commits mapped to GitHub's no-reply
+  one (and this repository's user.email set to it, so new commits keep
+  it). Checked before pushing: main's files the same tree as before
+  (c29c304d), every commit kept, no replaced string left in any file or
+  message, no old picture referenced. Every branch and both release tags
+  force-pushed; main here and the browser worktree's branch moved to
+  their rewritten twins (its uncommitted work untouched; its agent told
+  and paused meanwhile); the commit ids in this file mapped. *Left*
+  (Ben): GitHub still serves the old commits by their old ids until it
+  collects them, and keeps old LFS objects: GitHub Support can remove
+  them (a sensitive-data removal for benmyles/olo, all commits not
+  reachable from a branch or tag); any other clone (the Mac's) is to be
+  cloned again, not pulled.
+
 - **The Olo installer: stock Fedora 45 to Olo in one GUI** (Ben,
   2026-11-06: "build a polished, robust olo installer so that someone
   can download/install a stock fedora 45 then download the olo installer
@@ -47,7 +72,7 @@ something nobody here has is in "Blocked", with what it waits for.
   Workstation install, the installer downloaded and run, a reboot into
   Olo, Olo used: its apps opened, a file opened, Preferences changed),
   screenshots of every step kept, at the VM's screen's scale and 2×.
-  Done (HACKING, "Olo Setup"; e72b112a, 2169a524): `olo-installer`,
+  Done (HACKING, "Olo Setup"; 73c3343c, 7dca7303): `olo-installer`,
   full screen, Windows 95's Setup in BeOS's look (the blue backdrop and
   big serif title; each page a BeOS window: Welcome, Licence Agreement,
   Choose What to Install, Installing, Olo Is Installed; About), and the
@@ -66,7 +91,7 @@ something nobody here has is in "Blocked", with what it waits for.
   Home opened in Tracker, a file opened in StyledEdit, Preferences
   switched to dark (docs/journal, 2026-11-07). The first runs found what
   kept anyone from logging in through Olo's login screen on a stock
-  Fedora, and what stopped Setup; fixed (2169a524): kmscon on tty1,
+  Fedora, and what stopped Setup; fixed (7dca7303): kmscon on tty1,
   sessions' output to a terminal taken away, SELinux (olo-login a
   display manager, `xdm_t`, the person's session started through a
   system program), a second greeter after a restart, Fedora's
@@ -81,9 +106,9 @@ something nobody here has is in "Blocked", with what it waits for.
   that VM then found what of GNOME's still ran in an Olo session and
   what still reached for it; fixed: GNOME's dconf (started before Olo's
   was named) and gvfs (started for uresourced), uresourced crashing at
-  every login on the start-up sound's stream (6a1a9223), and programs'
+  every login on the start-up sound's stream (6aae76fb), and programs'
   "Show in folder" starting GNOME's Files while no Tracker answered
-  (the session names Tracker for it; f9d45081, tried in the VM with
+  (the session names Tracker for it; 7cbb01e9, tried in the VM with
   D-Bus's Tracker started first). Published (Ben, 2026-11-07: "mit is
   fine", "release is fine too"): LICENSE (MIT), the release
   v2026.11.07 (https://github.com/benmyles/olo/releases/tag/v2026.11.07,
@@ -91,8 +116,8 @@ something nobody here has is in "Blocked", with what it waits for.
   tried from GitHub in the VM (Setup downloaded with curl from
   `releases/latest`, installed over the earlier one, restarted, logged
   in). Run again over an install, Setup now chooses what it installed
-  before (2757548d), and its password dialog shows over it (8c9bf3cd).
-  Updated as v2026.11.07.2 (9338942c: the day's later fixes), tried from
+  before (39f1fe84), and its password dialog shows over it (0c5fa8a9).
+  Updated as v2026.11.07.2 (a1e08944: the day's later fixes), tried from
   GitHub in the VM over the first: Setup found it, updated it and the
   login screen's own copies, restarted, logged in, nothing of GNOME's
   running.
@@ -109,18 +134,18 @@ something nobody here has is in "Blocked", with what it waits for.
   in Ben's session were GNOME's portal (and gnome-control-center under
   it), GTK's portal, dconf-service and gvfs; GNOME Keyring started at
   each login. Each now has Olo's own:
-  - **Portals** (2efac51d; HACKING, "Screen sharing"): olo-portal serves
+  - **Portals** (ec3928a6; HACKING, "Screen sharing"): olo-portal serves
     Settings (the look, from the same list app_server writes to dconf)
     and Notification (into Olo's centre, actions back to the program);
     `olo-portals.conf` names every interface (`default=none`); the
     portal service is told the desktop is Olo alone (it read GNOME's
     configuration too, as the session says `Olo:GNOME`).
-  - **dconf** (da712c2f; HACKING, "Other toolkits' programs"):
+  - **dconf** (dcb59351; HACKING, "Other toolkits' programs"):
     `olo-dconf` answers `ca.desrt.dconf` with dconf's own interface and
     file (GNOME's `dconf dump` of a rewritten copy of Ben's database is
     byte for byte the same), named for D-Bus in the runtime folder while
     Olo runs; GNOME's stopped if it was answering.
-  - **Keyring** (d8565a6a; HACKING, "Programs' secrets"): the login
+  - **Keyring** (81b74430; HACKING, "Programs' secrets"): the login
     password opens Olo's keyring (`pam_olo_keyring` in olo-login's PAM,
     in `pam_gnome_keyring`'s place; olo-secrets keeps its key sealed by
     it, asking once after a face or fingerprint login or a password
@@ -159,7 +184,7 @@ something nobody here has is in "Blocked", with what it waits for.
   startup sound that is like \"ooollllooooo\" reminiscent of the mac
   startup sound but saying olo in the same style as that mac sound";
   "make sure that in the sound prefs i can also preview the olo chime
-  sound"). Done (3e6d7b43; HACKING, the session's start-up screen): a
+  sound"). Done (9a3041d5; HACKING, the session's start-up screen): a
   start-up chime's bright chord voiced "ooo-lll-ooo" through gliding
   formants, the default start-up sound; Preferences ▸ Sound ▸ Starting
   Up chooses it or the old swell, and Play plays the one chosen. Made by
@@ -240,7 +265,7 @@ something nobody here has is in "Blocked", with what it waits for.
   45's own PAM, logind and SELinux, in a VM (the Olo installer's test,
   2026-11-07: installed by Setup, restarted into, logged in through,
   locked and unlocked; the login keyring opened by `pam_olo_keyring`;
-  what that found is fixed, 2169a524). Not tried on Ben's ThinkPad
+  what that found is fixed, 7dca7303). Not tried on Ben's ThinkPad
   (fingerprint and face, its NVIDIA and Intel GPUs at the login screen;
   its boot splash). To try:
   `tools/install-login.sh` installs it beside GDM (asks for sudo once);
@@ -822,8 +847,8 @@ something nobody here has is in "Blocked", with what it waits for.
   render absolutely beautifully, good enough that if steve jobs saw it
   he'd want to fire his team at apple because we put them to shame".
   *Done so far*: Olo's GPUI draws text as the kit does (hinted Noto,
-  variable weights, the fallback chain; 13e20c7) plus a touch of stem
-  darkening for small text (747a25d; now an emboldened outline, a third
+  variable weights, the fallback chain; 47d8138) plus a touch of stem
+  darkening for small text (f5aafd5; now an emboldened outline, a third
   of the time a glyph took). Icons in the GPUI kit: the
   pre-scaled icon for the device size, on whole device pixels, never
   resampled; checked by the layout review at every scale.
@@ -1196,7 +1221,7 @@ something nobody here has is in "Blocked", with what it waits for.
   the file panel the portal shows (apps/portal, `olo_ui::file_panel`),
   Quick Look open on a file must follow ↑ and ↓ (and ← →) to the
   file selected next, as it does in Tracker's own windows.
-  *Quick Look: done* (9bf9eb3b: the look follows the panel's list both
+  *Quick Look: done* (c8d11f24: the look follows the panel's list both
   ways, `--follow`, HACKING's file panel). *Show in folder, looked at*:
   Tracker owns `org.freedesktop.FileManager1` in the session and its
   ShowItems opens the folder with the file selected (tested on a test
@@ -2079,11 +2104,11 @@ people.
   crates/ui/src/menu.rs:1186. The viewer's key handler (viewer.rs
   `key`, inside the Viewer's own update) asks `menu::shortcut_command`
   whether the key is a menu's shortcut; the menu bar, built on demand
-  since `MenuBar::of` (d1d0438b), reads the Viewer to build its menus,
+  since `MenuBar::of` (61704c66), reads the Viewer to build its menus,
   which GPUI refuses mid-update. A regression of that change: the bar
   must answer from what it built last when its view is busy (or be
   built without reading it then), for every app whose key handlers ask.
-  Fixed (3a1cd2e4): GPUI's `Entity::try_read`; the bar answers from what it
+  Fixed (53679965): GPUI's `Entity::try_read`; the bar answers from what it
   built last while its app is being updated; its test asks from inside.
 
 - ~~**Deskbar's tray icons: either click shows their menu**~~ (Ben,
@@ -2661,7 +2686,7 @@ people.
   Chrome running on that screen), and every launcher there passes the
   screen's `WAYLAND_DISPLAY`/`OLO_SOCKET`. Check the other single-instance
   apps (ours via D-Bus activation, Slack, GTK's GApplication) the same way.
-  *Status* (2026-11-02): Chrome done (bb4dbc4b, 2026-10-31: a profile
+  *Status* (2026-11-02): Chrome done (d402a5b5, 2026-10-31: a profile
   of the screen's own, `CHROME_CONFIG_HOME`); Olo's apps are fine (their
   single-instance socket is the display's, `instance::socket_path`).
   *Left*, all through the session bus a screen shares with the person
@@ -4418,7 +4443,7 @@ people.
   or the model says so: the size is a floor the model can't take away),
   so the Touch tab says so: the model first, with which one is in use,
   then "Always a palm when as large as", with a note on how they mix.
-  *Done* (2026-11-02, a2669801): the Touch tab's slider says "Always a
+  *Done* (2026-11-02, 19df6c41): the Touch tab's slider says "Always a
   palm when as large as", under the model, with "Whatever the model
   says: it adds palms, never takes these away" (or "Without a palm
   model, size alone tells a palm").
@@ -5198,7 +5223,7 @@ people.
   change and remains consistent across connect/disconnect, restart etc.
   … and it has to work with auto tiling properly so that they come back
   with the same positions and any custom resizes etc". Upgrades: done
-  (7a7c5fd: displays known by their monitors before use, windows back on
+  (162d8ab: displays known by their monitors before use, windows back on
   their own displays; `tools/dev/layout-check`). Numbers: done (each
   monitor's number, D0, D1, …, given once and kept in the settings by its
   key, `DisplaySettings::numbers`). Unplug and plug: done (2026-11-02:
@@ -5381,7 +5406,7 @@ people.
   tiling, free), with the asking app on another display or workspace.
 
 - ~~**Voice processing for every microphone**~~ (done 2026-11-02:
-  a88b0abb, 9aae5937, cdd46746, 9368dfef, 1aaa7314, 8ba9f10b) (Ben,
+  6cc03c2a, cd2700f0, e619df12, 873a9cb7, da68f7a0, 32128ea9) (Ben,
   2026-11-02): "research what the SOTA approach to background noise
   filtering / echo cancellation etc. are for linux and support them too
   (for all mic sources)", vendored and owned, SIMD, real time, volume
@@ -5395,8 +5420,8 @@ people.
   recorded from; Preferences ▸ Sound and the speaker's menu; supervised,
   upgraded in place, in the audio tier; Olo Doctor's realtime check and
   `--fix`; `tools/dev/pw-sandbox` to test sound apart from the person's.
-- ~~**AirPods, natively**~~ (done 2026-11-02: a98ac95d, 858dd256,
-  10e1070e, 6184b742, f0d67027, d9c70db6, ea5c0221) (Ben, 2026-11-01):
+- ~~**AirPods, natively**~~ (done 2026-11-02: 7833512e, d6578e1c,
+  8b464ea9, 3c5a83f9, a4558d43, 5e2d876b, 316e964d) (Ben, 2026-11-01):
   "comprehensive with all features at the highest quality", Olo's own
   implementation (no LibrePods), on the MacBook and the ThinkPad.
   `apps/airpods` and `olo_system::airpods`: Apple's accessory protocol
@@ -5478,11 +5503,11 @@ people.
   `PREFERENCE_PANELS`, and agents can ask for the same.
 
 - ~~**"gpui: window not found" from the palette and Deskbar**~~
-  (29ce0b15: the platform window's callbacks finding the window gone
+  (edf0da7f: the platform window's callbacks finding the window gone
   say nothing): none logged since the 09:58 upgrade on 2026-11-02,
   where the palette, Deskbar and Terminal had logged 11 that morning.
 
-- ~~**A tab clicked in a group flashes**~~ (fixed 2026-11-02, 83760a5d) (Ben, 2026-11-02): "sometimes
+- ~~**A tab clicked in a group flashes**~~ (fixed 2026-11-02, dfaaf7f1) (Ben, 2026-11-02): "sometimes
   when i'm in an app, e.g. terminal, and it has multiple grouped
   windows, if i click on the tab of another window in the group i get
   like a flash or something before seeing the other tab/window that is
@@ -5492,7 +5517,7 @@ people.
   what it drew up to a second before; now it's told to draw at once and
   the group's old front stays until it has (`Decoration::fronting`).
 
-- ~~**Menus over Deskbar**~~ (fixed 2026-11-02, c2f4a04e) (Ben, 2026-11-02): "if i am in an app and
+- ~~**Menus over Deskbar**~~ (fixed 2026-11-02, 176c7c64) (Ben, 2026-11-02): "if i am in an app and
   right click close to the deskbar and a menu opens it is under the
   deskbar -- it should always be on top". ~~Fixed~~: a window's menus
   (its popups) are drawn over the Top layer, Deskbar included, and take
@@ -5536,7 +5561,7 @@ people.
   `cargo ui-lint` for every fixed-size window and dialog, the kit's own
   widgets clean and its sizes on the 2-point grid.
 
-- ~~**Painting a glyph costs ~0.45 µs**~~ (done 2026-11-02, 7ccac1fb:
+- ~~**Painting a glyph costs ~0.45 µs**~~ (done 2026-11-02, 72be8d8b:
   a line keeps its glyphs' sprites as last painted, for its phase,
   scale and rendering, and paints them as a copy; gpui/README.md)
   (measured scrolling the
@@ -5577,7 +5602,7 @@ people.
   and heal what isn't (a stuck supplicant, a wedged driver, a stale
   connection profile), saying what it did.
 
-- ~~**Supervisor priority tiers**~~ (done 2026-11-01, f4e2bd7f: tiers through rtkit, re-asserted by the supervisor) (Ben, 2026-11-01: "it should always
+- ~~**Supervisor priority tiers**~~ (done 2026-11-01, 6668894a: tiers through rtkit, re-asserted by the supervisor) (Ben, 2026-11-01: "it should always
   give the highest priority to the core olo processes and any
   system+input processes important for responsiveness/smoothness,
   and only then should it raise the relative priority of the focused
@@ -5607,7 +5632,7 @@ people.
      idle (62 wakeups/s); Olo's draws only when something changed (idle:
      0%, 2 wakeups/s; an animation at the display's rate, 3.6%). The
      `blocking` crate's threads waking twice a second for good (under
-     zbus and smol): *done*, patched (5d30fbc9).
+     zbus and smol): *done*, patched (e1f4891c).
      *Memory and threads done*: hello_world 153 → 59 MB RSS (egui
      DeskCalc: 80 MB), threads 20 → 8 when idle.
   3. The kit on GPUI: the platform (layer shell for Deskbar, popups for
@@ -5817,7 +5842,7 @@ people.
   screen killed without a word) held the status lock while re-reading,
   which takes it again: a deadlock the first time it ran with a screen
   up, after which nothing in the tray changed (agent screens, the bell's
-  count, Upgrade, battery, Wi-Fi, sharing); since fc8fd47 (2026-10-30).
+  count, Upgrade, battery, Wi-Fi, sharing); since 619cd86 (2026-10-30).
   Seen in the running Deskbar:
   both status threads waiting on the lock. The lock is let go first now.
 
@@ -6540,7 +6565,7 @@ people.
 - ~~**wm-fuzz seeds 3 and 5**~~ (found 2026-10-30; seed 5's also on the
   app_server before the fixes above). Seeds reproduce only from a fresh,
   empty `--home` (a used one restores windows and changes the path).
-  Fixed (3a8568a): a display back from mirroring kept its closed Deskbar
+  Fixed (cfc8e47): a display back from mirroring kept its closed Deskbar
   bars, empty, in its layer map, which moved its tiling area over (seed
   5 step 213's window came back off the display); and a window its app
   keeps bigger than its tile jumped and came back each time it was put
@@ -7306,7 +7331,7 @@ people.
 
 - ~~Upgrades keep apps open~~ (only a new app_server reloads; Olo
   programs re-execute in place), ~~interactive resize keeps up~~,
-  ~~focus not stolen by xdg_activation without input~~ (15c2b27).
+  ~~focus not stolen by xdg_activation without input~~ (8c24b52).
 
 - ~~Keyring prompts are Olo's~~: the polkit agent owns
   org.gnome.keyring.SystemPrompter (gcr's protocol and secret exchange,
@@ -7521,7 +7546,7 @@ people.
   kit's wheel read only `discrete`, so every mouse notch was 15 px, now
   48 from `value120`); `menus`/`invoke` use the only window when none has
   the focus, and errors list the windows; rows were already clipped
-  (a62e672) and now say `row N/M` and `selected`; `wait`, find by
+  (9cf318b) and now say `row N/M` and `selected`; `wait`, find by
   name/role/match/text for `click`, `set`, `select`, `scroll-to`; tree
   filters and one line per row; `focus`/`close`/`minimize`/`zoom`/
   `resize`/`place`; JSON from actions with the focused element after;
@@ -7551,7 +7576,7 @@ people.
   6. *Rows take the header's names:* a table row partly under a sticky
      header gets the header's titles in its name, and hidden rows are
      reported under the header. Clip rows to what shows and mark them
-     clipped or offscreen. (a62e672 clipped rows and cells; check against
+     clipped or offscreen. (9cf318b clipped rows and cells; check against
      this report.)
   Improvements:
   7. *Waiting for the app:* `olo-screen wait agent --idle` (until the
@@ -7652,7 +7677,7 @@ people.
 - ~~Hide Window everywhere~~: ⌘M (Preferences ▸ Keyboard) and the
   palette's "Hide window", for any app's window.
 
-- ~~Log Viewer~~ (70aea93).
+- ~~Log Viewer~~ (8560bde).
 
 - ~~**Log viewer app**~~ (done: `apps/logs`, Log Viewer; the journal read
   natively, live; Find, program, level and time filters; syntax
@@ -7892,6 +7917,6 @@ people.
   its ⌘ tap chord and Super+Tab are understood).
 
 - ~~Viewer: pop-out from Quick Look, PDF forms, text, ink, signatures,
-  Save / Save As / Export Flattened~~ (903ba8b, f01bff9).
+  Save / Save As / Export Flattened~~ (960f28b, a47b5c2).
 
-- ~~Kit FilePanel~~ (903ba8b).
+- ~~Kit FilePanel~~ (960f28b).
