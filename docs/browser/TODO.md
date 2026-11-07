@@ -41,6 +41,13 @@ Next, in impact order (each removes a fallback kind or a visible gap):
 - [ ] Form controls drawn with the kit's look; canvas/iframe placeholders.
 - [ ] JavaScript: V8 with DOM bindings, so the parts of Stripe scripts draw
   appear (the GDP counter, menus).
+- [ ] Dark pages: pages render on a white canvas with the standard light
+  system colours (as Chrome does; Olo's palette no longer colours the
+  page). Next: honour a page's `color-scheme` and `prefers-color-scheme`,
+  then an automatic dark rendering for pages that have none.
+- [ ] CSS animations and transitions: at least the resting end state
+  (`animation-fill-mode: forwards`, keyframes' last frame), which pages
+  rely on for fade-ins that scripts would otherwise finish.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.

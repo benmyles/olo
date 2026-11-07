@@ -324,7 +324,7 @@ fn render(
             )?;
             while !job.step(64)?.finished {}
             let layout = Arc::new(job.finish()?);
-            let mut job = paint::BuildJob::new(&page.document, layout, painter, paint::Options { canvas: r.key.palette.document_background }, Default::default(), Some(&r.cancel))?;
+            let mut job = paint::BuildJob::new(&page.document, layout, painter, paint::Options { canvas: [255, 255, 255, 255] }, Default::default(), Some(&r.cancel))?;
             while !job.step(32)?.finished {}
             page.scene = job.finish()?;
         }
@@ -484,19 +484,25 @@ impl Host for PageHost {
         if self.palette.is_dark() { Scheme::Dark } else { Scheme::Light }
     }
     fn system_color(&self, c: SystemColor, _: Scheme) -> color::Result<Color> {
+        // Pages render as other browsers render them: a white canvas with
+        // the standard light system colours, whatever Olo's own palette is.
+        // Olo's dark modes for pages (a page's own color-scheme, then an
+        // automatic dark rendering) are separate work; the selection colours
+        // are Olo's.
         let p = &self.palette;
-        let v = match c {
-            SystemColor::Canvas => p.document_background,
-            SystemColor::CanvasText => p.document_text,
-            SystemColor::Field | SystemColor::ButtonFace => p.control_background,
-            SystemColor::FieldText | SystemColor::ButtonText => p.control_text,
-            SystemColor::ButtonBorder => p.control_border,
-            SystemColor::GrayText => olo_theme::mix(p.document_text, p.document_background, 0.55),
-            SystemColor::LinkText | SystemColor::ActiveText | SystemColor::AccentColor => p.navigation_base,
-            SystemColor::VisitedText => p.navigation_pulse,
+        let v: [u8; 4] = match c {
+            SystemColor::Canvas | SystemColor::Field => [255, 255, 255, 255],
+            SystemColor::CanvasText | SystemColor::FieldText | SystemColor::ButtonText => [0, 0, 0, 255],
+            SystemColor::ButtonFace => [239, 239, 239, 255],
+            SystemColor::ButtonBorder => [118, 118, 118, 255],
+            SystemColor::GrayText => [128, 128, 128, 255],
+            SystemColor::LinkText => [0, 0, 238, 255],
+            SystemColor::ActiveText => [255, 0, 0, 255],
+            SystemColor::VisitedText => [85, 26, 139, 255],
+            SystemColor::AccentColor => p.navigation_base,
             SystemColor::Highlight | SystemColor::SelectedItem => p.list_selected_background,
             SystemColor::HighlightText | SystemColor::SelectedItemText | SystemColor::AccentColorText => p.list_selected_item_text,
-            _ => p.document_text,
+            _ => [0, 0, 0, 255],
         };
         Ok(Color::new(Space::Srgb, [f64::from(v[0]) / 255., f64::from(v[1]) / 255., f64::from(v[2]) / 255.], f64::from(v[3]) / 255., 0))
     }
