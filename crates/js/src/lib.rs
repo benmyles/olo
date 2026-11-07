@@ -65,6 +65,13 @@ pub struct Fetched {
 }
 /// Fetches a URL (method, body) for scripts; the browser supplies one.
 pub type Fetcher = Box<dyn FnMut(&str, &str, &str) -> Result<Fetched, String>>;
+/// Lays out the document as it is now, for what scripts measure; the
+/// browser supplies one (olo_web::page::Measurer behind a host).
+pub type Measure = Box<dyn FnMut(&Document) -> Option<olo_web::page::Measured>>;
+/// How often scripts may have the page laid out, and for how long in all:
+/// past these, measurements come from the last layout.
+const LAYOUTS: usize = 400;
+const LAYOUT_SECONDS: f64 = 4.;
 /// A script to run: its source and a name for errors.
 pub struct Script {
     pub source: Arc<str>,
@@ -78,6 +85,9 @@ pub struct Report {
     pub console: Vec<String>,
     pub timers: usize,
     pub listeners: usize,
+    /// Layouts run for measurements, and their time.
+    pub layouts: usize,
+    pub layout_ms: f64,
     pub revision_before: u64,
     pub revision_after: u64,
     pub wall_ms: f64,
@@ -102,6 +112,10 @@ struct State {
     ids: Vec<*mut NodeId>,
     templates: Option<Templates>,
     fetcher: Option<Fetcher>,
+    measure: Option<Measure>,
+    /// The last layout, good while the document's revision is its own.
+    measured: Option<olo_web::page::Measured>,
+    layout_seconds: f64,
     report: Report,
     started: Instant,
 }
@@ -121,7 +135,7 @@ pub struct Realm {
     state: Shared,
 }
 impl Realm {
-    pub fn new(document: Document, config: Config, fetcher: Option<Fetcher>) -> Result<Self, String> {
+    pub fn new(document: Document, config: Config, fetcher: Option<Fetcher>, measure: Option<Measure>) -> Result<Self, String> {
         runtime();
         let quirks = if config.quirks { QuirksMode::Quirks } else { QuirksMode::NoQuirks };
         let revision = document.revision();
@@ -133,6 +147,9 @@ impl Realm {
             ids: Vec::new(),
             templates: None,
             fetcher,
+            measure,
+            measured: None,
+            layout_seconds: 0.,
             report: Report { revision_before: revision, ..Default::default() },
             started: Instant::now(),
         }));
@@ -268,6 +285,8 @@ impl Realm {
             let mut s = self.state.borrow_mut();
             s.wrappers.clear();
             s.templates = None;
+            s.measure = None;
+            s.measured = None;
         }
         let state = std::mem::replace(&mut self.state, Rc::new(RefCell::new(State::empty())));
         drop(self);
@@ -290,9 +309,30 @@ impl State {
             ids: Vec::new(),
             templates: None,
             fetcher: None,
+            measure: None,
+            measured: None,
+            layout_seconds: 0.,
             report: Report::default(),
             started: Instant::now(),
         }
+    }
+    /// The layout to measure against: the last one while the document is
+    /// unchanged, else a new one within the layout budget.
+    fn measured(&mut self) -> Option<&olo_web::page::Measured> {
+        let revision = self.document.revision();
+        let stale = self.measured.as_ref().is_none_or(|m| m.revision() != revision);
+        if stale && self.measure.is_some() && self.report.layouts < LAYOUTS && self.layout_seconds < LAYOUT_SECONDS {
+            let started = Instant::now();
+            let measure = self.measure.as_mut()?;
+            if let Some(m) = measure(&self.document) {
+                self.measured = Some(m);
+            }
+            let took = started.elapsed().as_secs_f64();
+            self.layout_seconds += took;
+            self.report.layouts += 1;
+            self.report.layout_ms += took * 1000.;
+        }
+        self.measured.as_ref()
     }
 }
 fn exception_text(tc: &mut v8::PinnedRef<'_, v8::TryCatch<'_, '_, v8::HandleScope<'_>>>, name: &str) -> String {
@@ -620,6 +660,12 @@ const NATIVES: &[&str] = &[
     "log",
     "fetchSync",
     "runScript",
+    "rect",
+    "paddingRect",
+    "scrollSize",
+    "computed",
+    "docSize",
+    "revision",
     "url",
     "viewport",
     "userAgent",
@@ -1147,6 +1193,53 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
                 state.borrow_mut().report.errors.push(error);
             }
             rv.set_bool(ran);
+        }
+        // Geometry, from a layout of the document as it is now.
+        "rect" | "paddingRect" | "scrollSize" => {
+            if let Some(n) = node(scope, 0) {
+                let mut s = state.borrow_mut();
+                let kind = name.as_str();
+                let values = s.measured().and_then(|m| match kind {
+                    "rect" => m.border_box(n).map(|r| [r.x, r.y, r.width, r.height]),
+                    "paddingRect" => m.padding_box(n).map(|r| [r.x, r.y, r.width, r.height]),
+                    _ => m.scroll_size(n).map(|(w, h)| [0., 0., w, h]),
+                });
+                drop(s);
+                match values {
+                    Some(v) => {
+                        let items: Vec<v8::Local<v8::Value>> = v.iter().map(|x| v8::Number::new(scope, *x).into()).collect();
+                        rv.set(v8::Array::new_with_elements(scope, &items).into());
+                    }
+                    None => rv.set_null(),
+                }
+            }
+        }
+        "computed" => {
+            if let Some(n) = node(scope, 0) {
+                let property = arg_string(scope, &args, 1);
+                let mut s = state.borrow_mut();
+                let text = s.measured().and_then(|m| m.computed(n, &property));
+                drop(s);
+                match text {
+                    Some(t) => rv.set(string(scope, &t)),
+                    None => rv.set_null(),
+                }
+            }
+        }
+        "docSize" => {
+            let mut s = state.borrow_mut();
+            let size = s.measured().map(|m| m.document_size());
+            drop(s);
+            let (w, h) = size.unwrap_or_else(|| {
+                let s = state.borrow();
+                (s.config.viewport.0, s.config.viewport.1)
+            });
+            let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(scope, w).into(), v8::Number::new(scope, h).into()];
+            rv.set(v8::Array::new_with_elements(scope, &items).into());
+        }
+        "revision" => {
+            let r = state.borrow().document.revision();
+            rv.set(v8::Number::new(scope, r as f64).into());
         }
         "url" => {
             let url = state.borrow().config.url.clone();

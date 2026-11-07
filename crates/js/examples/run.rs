@@ -66,7 +66,7 @@ fn main() {
         .collect();
     eprintln!("{} scripts", scripts.len());
     let config = Config { url: url.clone(), quirks: parsed.quirks == html::QuirksMode::Quirks, ..Default::default() };
-    let mut realm = Realm::new(doc, config, None).unwrap();
+    let mut realm = Realm::new(doc, config, None, None).unwrap();
     let report = realm.run_page(&scripts);
     if let Some(js) = eval {
         match realm.run(&js, "--eval") {
@@ -76,7 +76,17 @@ fn main() {
     }
     let (doc, _) = realm.finish();
     let after = doc.memory();
-    println!("scripts {} errors {} console {} timers {} listeners {} wall {:.1}ms", report.scripts, report.errors.len(), report.console.len(), report.timers, report.listeners, report.wall_ms);
+    println!(
+        "scripts {} errors {} console {} timers {} listeners {} layouts {} ({:.1}ms) wall {:.1}ms",
+        report.scripts,
+        report.errors.len(),
+        report.console.len(),
+        report.timers,
+        report.listeners,
+        report.layouts,
+        report.layout_ms,
+        report.wall_ms
+    );
     println!("document revision {} -> {} nodes {:?} -> {:?}", report.revision_before, report.revision_after, before, after);
     for line in &report.console {
         println!("console: {line}");

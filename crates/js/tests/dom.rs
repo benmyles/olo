@@ -12,7 +12,7 @@ fn run(page: &str) -> (olo_js::Report, olo_web::dom::Document) {
             Source::External(u) => panic!("external script {u}"),
         })
         .collect();
-    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/dir/page.html".into(), ..Default::default() }, None).unwrap();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/dir/page.html".into(), ..Default::default() }, None, None).unwrap();
     let report = realm.run_page(&scripts);
     let (doc, _) = realm.finish();
     (report, doc)

@@ -236,7 +236,7 @@ fn render(
         };
         // Scripts run against the parsed document before its resources load;
         // what they add is then fetched and styled like the rest.
-        let mut run_scripts = |doc: olo_web::dom::Document, quirks: bool| -> page::Result<olo_web::dom::Document> {
+        let mut run_scripts = |doc: olo_web::dom::Document, quirks: bool, measurer: page::Measurer| -> page::Result<olo_web::dom::Document> {
             let Some(document) = &document else {
                 return Ok(doc);
             };
@@ -276,17 +276,33 @@ fn render(
                     Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url })
                 })
             };
+            // Measurements lay the document out with the styles and fonts
+            // gathered so far, through a host for them.
+            let measure: olo_js::Measure = {
+                let host = PageHost::new(measurer.scope(), &r.key);
+                let mut shaper = shaping::Engine::default();
+                let cancel = r.cancel.clone();
+                Box::new(move |doc: &olo_web::dom::Document| match measurer.measure(doc, &host, &mut shaper, viewport, Some(&cancel)) {
+                    Ok(m) => Some(m),
+                    Err(e) => {
+                        eprintln!("Browser scripts: measuring failed: {e}");
+                        None
+                    }
+                })
+            };
             let started = Instant::now();
-            let mut realm = olo_js::Realm::new(doc, config, Some(fetcher)).map_err(|e| page::Error::from(e.as_str()))?;
+            let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), Some(measure)).map_err(|e| page::Error::from(e.as_str()))?;
             let report = realm.run_page(&scripts);
             let (doc, _) = realm.finish();
             eprintln!(
-                "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, revision {} -> {}, {:.0} ms",
+                "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
                 report.scripts,
                 report.errors.len(),
                 report.console.len(),
                 report.timers,
                 report.listeners,
+                report.layouts,
+                report.layout_ms,
                 report.revision_before,
                 report.revision_after,
                 started.elapsed().as_secs_f64() * 1000.

@@ -27,7 +27,7 @@ pub enum Phase {
     Layout,
     Paint,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ResourceKind {
     Stylesheet,
     Image,
@@ -219,15 +219,297 @@ pub fn prepare_scripted(
     cancel: Option<&AtomicBool>,
     mut progress: impl FnMut(Phase, usize),
     mut resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
-    scripts: Option<&mut dyn FnMut(Document, bool) -> Result<Document>>,
+    scripts: Option<&mut dyn FnMut(Document, bool, Measurer) -> Result<Document>>,
 ) -> Result<Prepared> {
     progress(Phase::Html, 0);
     let parsed = html::parse(source, html::ParseOptions { scripting: scripts.is_some(), ..Default::default() }, cancel)?;
+    let quirks = parsed.quirks == html::QuirksMode::Quirks;
     let mut doc = parsed.document;
+    // With scripts, resources are gathered twice (before the scripts, so
+    // they can measure a styled page; after, for what they added): the
+    // memo hands the second pass what the first fetched.
+    let mut memo = Memo { entries: Default::default(), active: scripts.is_some() };
+    let mut load = |kind: ResourceKind, base: Option<&str>, href: &str| memo.load(kind, base, href, cancel, &mut resource);
     if let Some(run) = scripts {
+        let first = gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load)?;
+        let measurer = Measurer { rules: Arc::new(first.rules), media, images: first.images, scope: first.scope, quirks };
         progress(Phase::Scripts, 0);
-        doc = run(doc, parsed.quirks == html::QuirksMode::Quirks)?;
+        doc = run(first.document, quirks, measurer)?;
     }
+    gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load)
+}
+/// What a resource request returned, for a second gathering pass.
+enum Memoed {
+    Missing,
+    Stylesheet(Arc<str>, Option<Arc<str>>),
+    Image(Arc<crate::image::Image>),
+    Font(Arc<[u8]>),
+}
+struct Memo {
+    entries: std::collections::HashMap<(ResourceKind, Option<String>, String), Memoed>,
+    active: bool,
+}
+impl Memo {
+    fn load(
+        &mut self,
+        kind: ResourceKind,
+        base: Option<&str>,
+        href: &str,
+        cancel: Option<&AtomicBool>,
+        resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+    ) -> Result<Option<Resource>> {
+        if !self.active {
+            return resource(kind, base, href);
+        }
+        let key = (kind, base.map(str::to_owned), href.to_owned());
+        if let Some(m) = self.entries.get(&key) {
+            return Ok(match m {
+                Memoed::Missing => None,
+                Memoed::Stylesheet(source, url) => Some(Resource::Stylesheet(css::Syntax::parse(source.clone(), Default::default(), cancel)?, url.clone())),
+                Memoed::Image(image) => Some(Resource::Image(image.clone())),
+                Memoed::Font(bytes) => Some(Resource::Font(bytes.clone())),
+            });
+        }
+        let r = resource(kind, base, href)?;
+        let m = match &r {
+            None => Memoed::Missing,
+            Some(Resource::Stylesheet(syntax, url)) => Memoed::Stylesheet(Arc::from(syntax.source()), url.clone()),
+            Some(Resource::Image(image)) => Memoed::Image(image.clone()),
+            Some(Resource::Font(bytes)) => Memoed::Font(bytes.clone()),
+        };
+        self.entries.insert(key, m);
+        Ok(r)
+    }
+}
+/// Lays out the document as scripts see it, for what they measure
+/// (getBoundingClientRect, offsetWidth, getComputedStyle): the styles and
+/// fonts gathered before the scripts ran.
+#[derive(Clone)]
+pub struct Measurer {
+    rules: Arc<css::cascade::RuleSet>,
+    media: css::media::Media,
+    images: Option<Arc<crate::image::Set>>,
+    scope: Scope,
+    quirks: bool,
+}
+impl Measurer {
+    /// The fonts the page is styled with; a host for measuring is made for it.
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
+    pub fn media(&self) -> css::media::Media {
+        self.media
+    }
+    /// Style and lay out `doc` as it is now.
+    pub fn measure(&self, doc: &Document, host: &impl Host, shaper: &mut shaping::Engine, viewport: layout::Viewport, cancel: Option<&AtomicBool>) -> Result<Measured> {
+        if host.font_context() != self.scope.context() {
+            return Err(style::Error::Stale.into());
+        }
+        let defaults = Defaults::new(host, Default::default(), cancel)?;
+        let snapshot = interaction::Snapshot::new(doc, Interaction::default(), cancel);
+        let mut job = style::Job::new(doc, &self.rules, defaults, style::JobOptions { quirks: self.quirks, states: Some(&snapshot), ..Default::default() }, Default::default(), cancel)?;
+        while !job.step(256, |_| host)?.finished {}
+        let styles = Arc::new(job.finish()?);
+        let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
+        // The images were bound to the document before the scripts changed
+        // it; while they still fit, boxes take their sizes.
+        if let Some(images) = &self.images
+            && images.validate(doc).is_ok()
+        {
+            job = job.with_images(images.clone())?;
+        }
+        while !job.step(256)?.finished {}
+        let tree = job.finish()?;
+        let mut job = layout::PrepareJob::new(shaper, &self.scope, tree, Default::default(), cancel)?;
+        while !job.step(4)?.finished {}
+        let cache = job.finish()?;
+        let mut job = layout::Job::new(shaper, &self.scope, cache, viewport, Default::default(), cancel)?;
+        while !job.step(256)?.finished {}
+        let layout = Arc::new(job.finish()?);
+        let mut index = std::collections::HashMap::new();
+        for (id, b) in layout.cache().tree().iter() {
+            if b.marker || b.style_node.pseudo.is_some() {
+                continue;
+            }
+            index.entry(b.node).or_insert(id);
+        }
+        Ok(Measured { layout, index, revision: doc.revision(), viewport })
+    }
+}
+/// One layout of the document, queried by node.
+pub struct Measured {
+    layout: Arc<layout::Layout>,
+    index: std::collections::HashMap<crate::dom::NodeId, layout::BoxId>,
+    revision: u64,
+    viewport: layout::Viewport,
+}
+impl Measured {
+    /// The document revision this was laid out from.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+    pub fn viewport(&self) -> layout::Viewport {
+        self.viewport
+    }
+    fn geometry(&self, node: crate::dom::NodeId) -> Option<(layout::BoxId, layout::Rect, &layout::Geometry)> {
+        let id = *self.index.get(&node)?;
+        let bounds = self.layout.bounds(id)?;
+        Some((id, bounds, self.layout.geometry(id)?))
+    }
+    /// The border box in page coordinates (getBoundingClientRect at scroll 0).
+    pub fn border_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
+        self.geometry(node).map(|(_, r, _)| r)
+    }
+    /// The padding box (clientWidth/clientHeight, clientTop/clientLeft).
+    pub fn padding_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
+        let (_, r, g) = self.geometry(node)?;
+        Some(layout::Rect { x: r.x + g.border_width.left, y: r.y + g.border_width.top, width: (r.width - g.border_width.horizontal()).max(0.), height: (r.height - g.border_width.vertical()).max(0.) })
+    }
+    /// How far the box's content reaches (scrollWidth/scrollHeight): the
+    /// padding box, extended by descendants that overflow it.
+    pub fn scroll_size(&self, node: crate::dom::NodeId) -> Option<(f64, f64)> {
+        let (id, r, g) = self.geometry(node)?;
+        let padding = self.padding_box(node)?;
+        let mut right = padding.x + padding.width;
+        let mut bottom = padding.y + padding.height;
+        let tree = self.layout.cache().tree();
+        let mut stack = vec![id];
+        let mut seen = 0usize;
+        while let Some(at) = stack.pop() {
+            seen += 1;
+            if seen > 1 << 16 {
+                break;
+            }
+            let Some(b) = tree.get(at) else { continue };
+            if at != id
+                && let Some(bounds) = self.layout.bounds(at)
+            {
+                right = right.max(bounds.x + bounds.width);
+                bottom = bottom.max(bounds.y + bounds.height);
+            }
+            let mut child = b.first_child;
+            while let Some(c) = child {
+                stack.push(c);
+                child = tree.get(c).and_then(|n| n.next_sibling);
+            }
+        }
+        let _ = (r, g);
+        Some(((right - padding.x).max(0.), (bottom - padding.y).max(0.)))
+    }
+    /// The page's height: the root box's.
+    pub fn document_size(&self) -> (f64, f64) {
+        let root = self.layout.cache().tree().root();
+        let r = self.layout.bounds(root).unwrap_or_default();
+        (r.width.max(self.viewport.width), r.height.max(self.viewport.height))
+    }
+    /// A computed (resolved) value as getComputedStyle gives it, for the
+    /// properties scripts read: keywords, lengths in px, colours, display,
+    /// and the box's used sizes and edges.
+    pub fn computed(&self, node: crate::dom::NodeId, name: &str) -> Option<String> {
+        use css::properties::{Display, Inner, Keyword as K, Name, Outer, Property as P};
+        use css::style::Value;
+        let tree = self.layout.cache().tree();
+        let style = tree.styles().snapshot(node)?;
+        let Name::Longhand(p) = Name::parse(name)? else { return None };
+        let g = self.geometry(node);
+        let px = |v: f64| format!("{}px", trim(v));
+        let used = match p {
+            P::Width | P::Height => g.map(|(_, r, g)| {
+                let border_box = matches!(style.value(P::BoxSizing), Value::Keyword(K::BorderBox));
+                let c = g.content_box();
+                if p == P::Width {
+                    if border_box { r.width } else { c.width }
+                } else if border_box {
+                    r.height
+                } else {
+                    c.height
+                }
+            }),
+            P::MarginTop => g.map(|(_, _, g)| g.margin.top),
+            P::MarginRight => g.map(|(_, _, g)| g.margin.right),
+            P::MarginBottom => g.map(|(_, _, g)| g.margin.bottom),
+            P::MarginLeft => g.map(|(_, _, g)| g.margin.left),
+            P::PaddingTop => g.map(|(_, _, g)| g.padding.top),
+            P::PaddingRight => g.map(|(_, _, g)| g.padding.right),
+            P::PaddingBottom => g.map(|(_, _, g)| g.padding.bottom),
+            P::PaddingLeft => g.map(|(_, _, g)| g.padding.left),
+            P::BorderTopWidth => g.map(|(_, _, g)| g.border_width.top),
+            P::BorderRightWidth => g.map(|(_, _, g)| g.border_width.right),
+            P::BorderBottomWidth => g.map(|(_, _, g)| g.border_width.bottom),
+            P::BorderLeftWidth => g.map(|(_, _, g)| g.border_width.left),
+            _ => None,
+        };
+        if let Some(v) = used {
+            return Some(px(v));
+        }
+        Some(match style.value(p) {
+            Value::Keyword(k) => k.as_str().to_owned(),
+            value @ Value::Numeric(_) => {
+                let v = value.scalar()?;
+                match p {
+                    P::Opacity | P::ZIndex | P::FlexGrow | P::FlexShrink | P::Order | P::FontWeight | P::FillOpacity | P::StrokeOpacity | P::StopOpacity | P::FloodOpacity => trim(v),
+                    P::LineHeight => px(v),
+                    _ => px(v),
+                }
+            }
+            Value::Color(_) => {
+                let c = style.used_color(p).ok()?.srgb8_clipped();
+                if c[3] == 255 { format!("rgb({}, {}, {})", c[0], c[1], c[2]) } else { format!("rgba({}, {}, {}, {})", c[0], c[1], c[2], trim(f64::from(c[3]) / 255.)) }
+            }
+            Value::Display(d) => match d {
+                Display::None => "none".into(),
+                Display::Contents => "contents".into(),
+                Display::Internal(i) => format!("{i:?}").chars().fold(String::new(), |mut out, ch| {
+                    if ch.is_ascii_uppercase() {
+                        if !out.is_empty() {
+                            out.push('-');
+                        }
+                        out.push(ch.to_ascii_lowercase());
+                    } else {
+                        out.push(ch);
+                    }
+                    out
+                }),
+                Display::Box { list_item: true, .. } => "list-item".into(),
+                Display::Box { outer, inner, .. } => match (outer, inner) {
+                    (Outer::Block, Inner::Flow) => "block",
+                    (Outer::Block, Inner::FlowRoot) => "flow-root",
+                    (Outer::Block, Inner::Flex) => "flex",
+                    (Outer::Block, Inner::Grid) => "grid",
+                    (Outer::Block, Inner::Table) => "table",
+                    (Outer::Block, Inner::Ruby) => "block ruby",
+                    (Outer::Inline, Inner::Flow) => "inline",
+                    (Outer::Inline, Inner::FlowRoot) => "inline-block",
+                    (Outer::Inline, Inner::Flex) => "inline-flex",
+                    (Outer::Inline, Inner::Grid) => "inline-grid",
+                    (Outer::Inline, Inner::Table) => "inline-table",
+                    (Outer::Inline, Inner::Ruby) => "ruby",
+                    (Outer::RunIn, _) => "run-in",
+                }
+                .into(),
+            },
+            _ => return None,
+        })
+    }
+}
+/// A number as CSS serialises it: no trailing zeros, at most 3 decimals.
+fn trim(v: f64) -> String {
+    let r = (v * 1000.).round() / 1000.;
+    if r == r.trunc() { format!("{}", r as i64) } else { format!("{r}") }
+}
+/// Everything after parsing: the document's stylesheets, images and fonts
+/// loaded and the sheets compiled.
+#[allow(clippy::too_many_arguments)] // The page's inputs, each distinct.
+fn gather(
+    doc: Document,
+    quirks: bool,
+    scope: &Scope,
+    media: css::media::Media,
+    fonts: bool,
+    cancel: Option<&AtomicBool>,
+    mut progress: impl FnMut(Phase, usize),
+    mut resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+) -> Result<Prepared> {
     progress(Phase::Styles, 0);
     let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None)];
     let mut next = Some(doc.root());
@@ -449,7 +731,6 @@ pub fn prepare_scripted(
         resource_issues += faces.len().saturating_sub(FONT_FACES);
     }
     let scope = if loaded.is_empty() { scope.clone() } else { scope.with_faces(loaded, cancel)? };
-    let quirks = parsed.quirks == html::QuirksMode::Quirks;
     Ok(Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope })
 }
 /// Style, lay out and paint a prepared document for a host made for its scope.
