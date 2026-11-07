@@ -258,6 +258,12 @@ pub struct Context {
     pub touched: bool,
     /// The last read-back, good while nothing was drawn since.
     last: Option<Arc<olo_web::image::Image>>,
+    /// Pixel buffers for reading back without waiting: this frame's
+    /// readback goes to one while the other, the previous frame's, is
+    /// mapped (one frame of latency, no stall).
+    pbos: [Option<glow::Buffer>; 2],
+    /// Which buffer holds a readback not yet taken, and its size.
+    pending: Option<(usize, u32, u32)>,
     unpack_flip_y: bool,
     unpack_premultiply: bool,
 }
@@ -299,6 +305,8 @@ impl Context {
                 dirty: false,
                 touched: false,
                 last: None,
+                pbos: [None, None],
+                pending: None,
                 unpack_flip_y: false,
                 unpack_premultiply: false,
             };
@@ -336,6 +344,7 @@ impl Context {
         if (width, height) == (self.width, self.height) {
             return;
         }
+        self.pending = None;
         self.width = width;
         self.height = height;
         self.gl.current();
@@ -349,6 +358,9 @@ impl Context {
             self.rebind_framebuffer();
         }
         self.dirty = true;
+    }
+    pub fn readback_pending(&self) -> bool {
+        self.pending.is_some()
     }
     pub fn width(&self) -> u32 {
         self.width
@@ -383,20 +395,82 @@ impl Context {
         }
         rgba
     }
+    /// Start reading the drawing buffer back into a pixel buffer (the GPU
+    /// copies when its drawing is done; nothing waits here), and take the
+    /// previous readback, flipped to rows from the top. None until the
+    /// first readback lands.
+    fn read_back_async(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+        // The first frame is read synchronously, so a canvas never shows
+        // blank; later frames come back one render late, without a stall.
+        if !self.gl.es3 || self.last.is_none() {
+            let (w, h) = (self.width, self.height);
+            return Some((w, h, self.read_back()));
+        }
+        self.gl.current();
+        let (w, h) = (self.width, self.height);
+        let size = (w as usize) * (h as usize) * 4;
+        let taken = self.pending.take();
+        let next = taken.map_or(0, |(i, _, _)| 1 - i);
+        // SAFETY: GL calls on the current context; the mapped range is
+        // read within its mapping.
+        unsafe {
+            let g = &self.gl.gl;
+            if self.dirty {
+                let pbo = match self.pbos[next] {
+                    Some(b) => b,
+                    None => {
+                        let b = g.create_buffer().ok()?;
+                        self.pbos[next] = Some(b);
+                        b
+                    }
+                };
+                g.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(pbo));
+                g.buffer_data_size(glow::PIXEL_PACK_BUFFER, size as i32, glow::STREAM_READ);
+                g.bind_framebuffer(glow::FRAMEBUFFER, Some(self.framebuffer));
+                g.read_pixels(0, 0, w as i32, h as i32, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelPackData::BufferOffset(0));
+                self.rebind_framebuffer();
+                g.bind_buffer(glow::PIXEL_PACK_BUFFER, None);
+                self.pending = Some((next, w, h));
+            }
+            let (index, pw, ph) = taken?;
+            let pbo = self.pbos[index]?;
+            let bytes = (pw as usize) * (ph as usize) * 4;
+            g.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(pbo));
+            let mapped = g.map_buffer_range(glow::PIXEL_PACK_BUFFER, 0, bytes as i32, glow::MAP_READ_BIT);
+            if mapped.is_null() {
+                g.bind_buffer(glow::PIXEL_PACK_BUFFER, None);
+                return None;
+            }
+            let source = std::slice::from_raw_parts(mapped as *const u8, bytes);
+            let row = pw as usize * 4;
+            let mut rgba = Vec::with_capacity(bytes);
+            for y in (0..ph as usize).rev() {
+                rgba.extend_from_slice(&source[y * row..y * row + row]);
+            }
+            g.unmap_buffer(glow::PIXEL_PACK_BUFFER);
+            g.bind_buffer(glow::PIXEL_PACK_BUFFER, None);
+            Some((pw, ph, rgba))
+        }
+    }
     /// The drawing buffer as the page's image: read back when drawn since
     /// the last time, premultiplied unless already so.
     pub fn image(&mut self) -> Option<Arc<olo_web::image::Image>> {
-        if !self.dirty && self.last.is_some() {
+        if !self.dirty && self.pending.is_none() && self.last.is_some() {
             return self.last.clone();
         }
-        let mut rgba = self.read_back();
+        let was_dirty = self.dirty;
+        self.dirty = false;
+        let Some((w, h, mut rgba)) = self.read_back_async() else {
+            // The first frame's readback is in flight: nothing to show yet
+            // (the next render takes it); keep whatever was shown.
+            let _ = was_dirty;
+            return self.last.clone();
+        };
         if !self.alpha {
             for px in rgba.chunks_exact_mut(4) {
                 px[3] = 255;
             }
         }
-        let (w, h) = (self.width, self.height);
-        self.dirty = false;
         // OLO_GL_DUMP=DIR: each canvas's latest drawing buffer as a PNG
         // (named by its size and context), for looking at.
         if let Some(dir) = std::env::var_os("OLO_GL_DUMP") {
@@ -986,6 +1060,9 @@ impl Drop for Context {
         // SAFETY: deleting this context's own objects on the current context.
         unsafe {
             let g = &self.gl.gl;
+            for pbo in self.pbos.iter().flatten() {
+                g.delete_buffer(*pbo);
+            }
             g.delete_framebuffer(self.framebuffer);
             g.delete_texture(self.color);
             g.delete_renderbuffer(self.depth);

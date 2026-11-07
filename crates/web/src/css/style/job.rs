@@ -415,9 +415,6 @@ impl<'a> Job<'a> {
                         }
                         crate::dom::Change::Attribute { node: n, name, old, new } => {
                             nodes.insert(*n);
-                            if uses_has && has_keys.touches(document, *n) {
-                                dirty_ancestors(*n, &mut nodes);
-                            }
                             // The keys that changed: the attribute's name, and
                             // for id/class the values that came or went.
                             let mut keys = vec![format!("[{name}")];
@@ -432,14 +429,21 @@ impl<'a> Job<'a> {
                                     keys.push(format!("#{new}"));
                                 }
                             }
+                            // An ancestor's :has() can flip only when an
+                            // argument tests one of the keys that changed.
+                            if uses_has && keys.iter().any(|k| has_keys.has_key(k)) {
+                                dirty_ancestors(*n, &mut nodes);
+                            }
                             invalidate(*n, keys, &mut nodes);
                         }
                         // Inline style: declared values only; :has()
                         // ancestors are touched only when an argument tests
                         // the attribute, descendants when a selector does.
+                        // (A keyless :has() argument tests states or structure,
+                        // which an inline style cannot change.)
                         crate::dom::Change::Style(n) => {
                             style_only.insert(*n);
-                            if uses_has && (has_keys.universal || has_keys.attributes.contains("style")) {
+                            if uses_has && has_keys.attributes.contains("style") {
                                 nodes.insert(*n);
                                 dirty_ancestors(*n, &mut nodes);
                             }

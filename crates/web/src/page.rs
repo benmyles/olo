@@ -1107,6 +1107,7 @@ impl Page {
         if host.font_context() != self.scope.context() {
             return Err(style::Error::Stale.into());
         }
+        let timing = std::env::var_os("OLO_WEB_TIMING").map(|_| std::time::Instant::now());
         if let Some(images) = &self.images
             && let Some(rebound) = images.rebind(&doc)
         {
@@ -1118,6 +1119,7 @@ impl Page {
                 None => crate::image::Set::from_bindings(&doc, canvases, SCRIPTED_IMAGE_LIMITS, cancel)?,
             });
         }
+        let rebind_ms = timing.map_or(0., |t| t.elapsed().as_secs_f64() * 1000.);
         let media = media_for(host, viewport);
         if self.media_dependent && media != self.media {
             let (rules, dependent, _, _) = compile(&self.sheets, media, cancel)?;
@@ -1127,8 +1129,12 @@ impl Page {
             self.media = media;
         }
         let previous = self.scene.layout().clone();
+        let before_render = std::time::Instant::now();
         let (scene, stylesheet_issues, fallbacks) =
             render(&doc, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, &self.scope, shaper, painter, viewport, cancel, Some(&previous), &mut progress)?;
+        if let Some(t) = timing {
+            eprintln!("rerender: rebind {rebind_ms:.1} ms, render {:.1} ms, before render {:.1} ms", before_render.elapsed().as_secs_f64() * 1000., (before_render - t).as_secs_f64() * 1000.);
+        }
         let mut title = String::new();
         let mut next = Some(doc.root());
         while let Some(node) = next {

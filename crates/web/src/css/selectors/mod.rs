@@ -610,6 +610,14 @@ impl Invalidation {
     }
 }
 impl HasKeys {
+    /// Whether a key that changed ("[attr", ".class", "#id") is one an
+    /// argument tests: only then can an ancestor's :has() flip.
+    pub fn has_key(&self, key: &str) -> bool {
+        self.universal
+            || key.strip_prefix('.').is_some_and(|c| self.classes.contains(c))
+            || key.strip_prefix('#').is_some_and(|i| self.ids.contains(i))
+            || key.strip_prefix('[').is_some_and(|a| self.attributes.contains(a))
+    }
     pub fn is_empty(&self) -> bool {
         !self.universal && self.tags.is_empty() && self.ids.is_empty() && self.classes.is_empty() && self.attributes.is_empty()
     }

@@ -536,6 +536,11 @@ impl Realm {
     }
     /// The canvases the scripts drew on, as images, by element: bound into
     /// the page's images, a canvas renders like an image of its pixels.
+    /// Whether a WebGL canvas has a readback in flight (the next render
+    /// shows it): the browser renders once more soon.
+    pub fn canvases_pending(&self) -> bool {
+        self.state.borrow().gl.values().any(webgl::Context::readback_pending)
+    }
     pub fn canvases(&self) -> Vec<(NodeId, Arc<olo_web::image::Image>)> {
         let mut s = self.state.borrow_mut();
         let mut out: Vec<_> = s.canvases.iter_mut().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))).collect();

@@ -107,6 +107,9 @@ enum Pass {
 /// due, and what has been rendered.
 struct Live {
     realm: olo_js::Realm,
+    /// A render is wanted although the document is unchanged (a canvas's
+    /// readback was in flight at the last one).
+    render_again: bool,
     /// Cancelled when the page goes (its fetches and measurements stop).
     cancel: crate::network::Cancel,
     /// Fetches what its scripts ask for, off this thread.
@@ -464,16 +467,17 @@ fn render(
             live.stats = (0, 0., 0, 0., Instant::now());
         }
         let revision = live.realm.revision();
-        if revision != live.rendered {
+        if revision != live.rendered || live.render_again {
             if live.last_render.elapsed() < LIVE_RENDER_INTERVAL {
                 // Coalesce: render at the interval, not at every change.
                 let soon = now_ms + (LIVE_RENDER_INTERVAL - live.last_render.elapsed()).as_secs_f64() * 1000.;
                 live.next_due_ms = Some(live.next_due_ms.map_or(soon, |d| d.min(soon)));
                 return Ok(());
             }
-            let doc = live.realm.snapshot();
-            let viewport = layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale };
             let started = Instant::now();
+            let doc = live.realm.snapshot();
+            let snapshot_ms = started.elapsed().as_secs_f64() * 1000.;
+            let viewport = layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale };
             // The live page's own cancellation, not the request's: a newer
             // request from the window supersedes what this render shows,
             // but the page goes on under it.
@@ -498,10 +502,25 @@ fn render(
                 }
             }
             let host = PageHost::new(c.page.scope(), &r.key);
+            let before_canvases = Instant::now();
             let canvases = live.realm.canvases();
+            let canvases_ms = before_canvases.elapsed().as_secs_f64() * 1000.;
+            let before_rerender = Instant::now();
+            // A readback still in flight shows at the next render: soon.
+            live.render_again = live.realm.canvases_pending();
+            if live.render_again {
+                let soon = now_ms + LIVE_RENDER_INTERVAL.as_secs_f64() * 1000.;
+                live.next_due_ms = Some(live.next_due_ms.map_or(soon, |d| d.min(soon)));
+            }
             c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&cancel), |_, _| {})?;
             if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
-                eprintln!("  live render: revision {} -> {} in {:.0} ms", live.rendered, revision, started.elapsed().as_secs_f64() * 1000.);
+                eprintln!(
+                    "  live render: revision {} -> {} in {:.0} ms (snapshot {snapshot_ms:.1}, canvases {canvases_ms:.1}, rerender {:.1})",
+                    live.rendered,
+                    revision,
+                    started.elapsed().as_secs_f64() * 1000.,
+                    before_rerender.elapsed().as_secs_f64() * 1000.
+                );
             }
             // OLO_BROWSER_EVAL_LIVE=FILE: its expression evaluated after each
             // live render, logged when its value changes (inspecting a state
@@ -732,8 +751,10 @@ fn render(
             let doc = realm.snapshot();
             layout_slot = realm.last_measured();
             canvas_slot = realm.canvases();
+            let render_again = realm.canvases_pending();
             live_slot = Some(Live {
                 realm,
+                render_again,
                 loads,
                 cancel: live_cancel.clone(),
                 started: scripted_at,
