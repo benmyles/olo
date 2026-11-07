@@ -42,7 +42,10 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
     }
     // Decoration values (image lists, shadows, radii) take any number of components.
     if let Name::Longhand(property) = name
-        && matches!(property.grammar(), Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features)
+        && matches!(
+            property.grammar(),
+            Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features | Grammar::Ratio
+        )
     {
         let parts: Vec<Component<'_>> = values.clone().filter(|c| c.kind() != Kind::Whitespace).collect();
         if let [c] = parts.as_slice()
@@ -62,6 +65,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             Grammar::Shadows => decoration::parse_shadows(&parts, limits, cancelled)?,
             Grammar::Transforms => transform::parse_transforms(&parts, limits, cancelled)?,
             Grammar::Features => font::parse_features(&parts)?,
+            Grammar::Ratio => ratio(&parts)?,
             _ => decoration::parse_radius(&parts, limits, cancelled)?,
         };
         return Ok(smallvec::smallvec![Assignment { property, value }]);
@@ -216,6 +220,46 @@ fn border(parts: &[Component<'_>], properties: &[Property], limits: Limits, canc
     let sides = properties.len() / 3;
     Ok(properties.iter().enumerate().map(|(index, &property)| Assignment { property, value: values[index / sides].clone() }).collect())
 }
+/// `aspect-ratio: auto || <ratio>` (CSS Sizing 4 §5): the ratio as one
+/// number, width over height; `auto` alone is the keyword. A replaced
+/// element's natural ratio wins over the number either way here.
+fn ratio(parts: &[Component<'_>]) -> Result<Value> {
+    let mut auto = false;
+    let mut numbers = Vec::new();
+    let mut slash = false;
+    for c in parts {
+        if c.kind() == Kind::Ident && c.text().unwrap().eq_ignore_ascii_case("auto") {
+            if auto {
+                return Err(Error::Invalid);
+            }
+            auto = true;
+        } else if c.kind() == Kind::Delim && c.character() == Some('/') {
+            if numbers.len() != 1 || slash {
+                return Err(Error::Invalid);
+            }
+            slash = true;
+        } else if matches!(c.kind(), Kind::Number | Kind::Integer) {
+            let v = c.number().map(|n| n.value).ok_or(Error::Invalid)?;
+            if !(v.is_finite() && v >= 0.) || numbers.len() >= 2 || (numbers.len() == 1 && !slash) {
+                return Err(Error::Invalid);
+            }
+            numbers.push(v);
+        } else {
+            return Err(Error::Invalid);
+        }
+    }
+    if slash && numbers.len() != 2 {
+        return Err(Error::Invalid);
+    }
+    match numbers.as_slice() {
+        [] if auto => Ok(Value::Keyword(Keyword::Auto)),
+        [w] if *w > 0. => Ok(Value::Numeric(Numeric::scalar(*w, math::Dimension::Number, Range::Nonnegative))),
+        [w, h] if *w > 0. && *h > 0. => Ok(Value::Numeric(Numeric::scalar(w / h, math::Dimension::Number, Range::Nonnegative))),
+        // A degenerate ratio behaves as auto.
+        [_] | [_, _] => Ok(Value::Keyword(Keyword::Auto)),
+        _ => Err(Error::Invalid),
+    }
+}
 /// `text-wrap: wrap | nowrap | balance | stable | pretty`: the mode longhand;
 /// the style keywords keep wrapping on (CSS Text 4 §5.1), their line
 /// balancing is not implemented.
@@ -318,7 +362,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
                 _ => Keyword::Row,
             }))
         }
-        Grammar::Tracks | Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features => {
+        Grammar::Tracks | Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features | Grammar::Ratio => {
             unreachable!("parsed before part collection")
         }
         Grammar::Color(keywords) => {
@@ -387,7 +431,7 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
             Numeric::compile(c, NumericKind::LengthPercentage, Range::Nonnegative, limits, cancelled).map(Value::Numeric)
         }
         Grammar::Display | Grammar::FontFamily | Grammar::FontStyle | Grammar::Tracks | Grammar::GridLine | Grammar::GridAutoFlow => Err(Error::Invalid),
-        Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features => Err(Error::Invalid),
+        Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features | Grammar::Ratio => Err(Error::Invalid),
     }
 }
 fn wide(s: &str) -> Option<variables::Wide> {

@@ -2,7 +2,7 @@
 //! it) and print what the engine made of it: the error, or the fallbacks and
 //! the box tree with geometry. For debugging pages saved to /var/tmp.
 //!
-//!   cargo run --release -p olo-web --example page_dump -- FILE.html [WIDTH] [--boxes] [--style CLASS] [--png OUT.png [HEIGHT]] [--issues]
+//!   cargo run --release -p olo-web --example page_dump -- FILE.html [WIDTH] [--boxes] [--style CLASS] [--png OUT.png [HEIGHT [Y]]] [--issues]
 //!
 //! `--style CLASS` prints the computed font, spacing and bounds of every box
 //! whose element has that class, for comparing with Chrome's getComputedStyle.
@@ -83,7 +83,9 @@ fn main() {
     let boxes = args.iter().any(|a| a == "--boxes");
     let style_class = args.iter().position(|a| a == "--style").and_then(|i| args.get(i + 1)).cloned();
     let issues = args.iter().any(|a| a == "--issues");
-    let png = args.iter().position(|a| a == "--png").map(|i| (args.get(i + 1).cloned().unwrap_or_else(|| "page.png".into()), args.get(i + 2).and_then(|h| h.parse().ok()).unwrap_or(700u32)));
+    let png = args.iter().position(|a| a == "--png").map(|i| {
+        (args.get(i + 1).cloned().unwrap_or_else(|| "page.png".into()), args.get(i + 2).and_then(|h| h.parse().ok()).unwrap_or(700u32), args.get(i + 3).and_then(|y| y.parse().ok()).unwrap_or(0i32))
+    });
     let mut fonts = Builder::new(Default::default());
     let font = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/fonts/NotoSans[wght].ttf");
     fonts.load_file(&font, |_| {}, None).unwrap();
@@ -176,13 +178,13 @@ fn main() {
                     );
                 }
             }
-            if let Some((file, height)) = png {
+            if let Some((file, height, top)) = png {
                 // 512 × 512 tiles, as the browser paints, composed into one image.
                 let (w, h) = (width as u32, height);
                 let mut whole = tiny_skia::Pixmap::new(w, h).expect("pixmap");
                 for y in (0..h).step_by(512) {
                     for x in (0..w).step_by(512) {
-                        let region = paint::DeviceRect { x: x as i32, y: y as i32, width: 512.min(w - x), height: 512.min(h - y) };
+                        let region = paint::DeviceRect { x: x as i32, y: y as i32 + top, width: 512.min(w - x), height: 512.min(h - y) };
                         let tile = painter.raster(&page.scene, region, None).expect("raster");
                         let pixmap = tiny_skia::Pixmap::from_vec(tile.into_rgba(), tiny_skia::IntSize::from_wh(region.width, region.height).unwrap()).unwrap();
                         whole.draw_pixmap(x as i32, y as i32, pixmap.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);

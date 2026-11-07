@@ -1,7 +1,8 @@
 //! Row flex formatting integrated with retained normal-flow children. Item
 //! intrinsic sizes come from measured text geometry (intrinsic_flow), never
-//! estimates. Wrapping, column direction and baseline alignment are recorded
-//! fallbacks until implemented.
+//! estimates. Lines wrap (`flex-wrap`), each solved on its own and placed by
+//! `align-content`; column direction is a container of its own and baseline
+//! alignment is a recorded fallback until implemented.
 use super::*;
 use crate::css::{
     properties::Keyword as K,
@@ -28,23 +29,36 @@ struct Item {
     align: K,
     stretch: bool,
 }
+/// One flex line: the items it holds, their solved main sizes, and its
+/// cross size and offset (CSS Flexbox 9.3, 9.4).
+struct Line {
+    range: std::ops::Range<usize>,
+    solved: Option<flex::Line>,
+    remaining: f64,
+    cross: f64,
+    y: f64,
+    /// Items with auto main-axis margins, and how many have taken their share.
+    autos: usize,
+    assigned: usize,
+}
 pub(super) struct Frame<'a> {
     pub id: BoxId,
     next: Option<BoxId>,
     items: Vec<Item>,
     inputs: Vec<flex::Item>,
     solver: Option<flex::Job<'a>>,
-    line: Option<flex::Line>,
+    lines: Vec<Line>,
+    /// The line being solved, then the line the item at `index` is in.
+    line: usize,
     stage: Stage,
     index: usize,
     gap: f64,
+    row_gap: f64,
+    wrap: bool,
     reverse: bool,
     justify: K,
     align: K,
-    cross: f64,
-    remaining: f64,
-    main_autos: usize,
-    assigned_autos: usize,
+    align_content: K,
     cursor: f64,
     distributed_gap: f64,
 }
@@ -71,39 +85,124 @@ impl<'a> Frame<'a> {
         if style.axes().direction != Direction::Ltr {
             fallbacks.note("right-to-left flex as left-to-right", node);
         }
-        if keyword(style, P::FlexWrap)? != K::Nowrap {
-            fallbacks.note("flex-wrap as nowrap", node);
-        }
+        let wrap = match keyword(style, P::FlexWrap)? {
+            K::Nowrap => false,
+            K::WrapReverse => {
+                fallbacks.note("flex-wrap: wrap-reverse as wrap", node);
+                true
+            }
+            _ => true,
+        };
         let mut align = keyword(style, P::AlignItems)?;
         if align == K::Baseline {
             fallbacks.note("flex baseline alignment as flex-start", node);
             align = K::FlexStart;
         }
-        let gap = if keyword(style, P::ColumnGap).ok() == Some(K::Normal) {
-            0.
-        } else {
-            used::length(style, P::ColumnGap, Some(used.width), Some(0.), queries, scratch, cancel, scale)?.ok_or(Error::Invalid)?
+        let gap_of = |p: P, scratch: &mut math::Scratch| -> Result<f64> {
+            if keyword(style, p).ok() == Some(K::Normal) { Ok(0.) } else { used::length(style, p, Some(used.width), Some(0.), queries, scratch, cancel, scale)?.ok_or(Error::Invalid) }
         };
+        let gap = gap_of(P::ColumnGap, scratch)?;
+        let row_gap = gap_of(P::RowGap, scratch)?;
         Ok(Self {
             id,
             next,
             items: Vec::new(),
             inputs: Vec::new(),
             solver: None,
-            line: None,
+            lines: Vec::new(),
+            line: 0,
             stage: Stage::Collect,
             index: 0,
             gap,
+            row_gap,
+            wrap,
             reverse: keyword(style, P::FlexDirection)? == K::RowReverse,
             justify: keyword(style, P::JustifyContent)?,
             align,
-            cross: 0.,
-            remaining: 0.,
-            main_autos: 0,
-            assigned_autos: 0,
+            align_content: keyword(style, P::AlignContent)?,
             cursor: 0.,
             distributed_gap: 0.,
         })
+    }
+    /// Split the collected items into lines: as many as fit each line by
+    /// their hypothetical main sizes (CSS Flexbox 9.3 step 5), or all in one.
+    fn partition(&mut self, width: f64) {
+        let n = self.inputs.len();
+        let mut lines = Vec::new();
+        let mut start = 0;
+        let mut sum = 0.;
+        for (i, input) in self.inputs.iter().enumerate() {
+            let size = input.base.max(input.minimum).min(input.maximum.max(input.minimum)) + input.outer;
+            let with_gap = if i > start { sum + self.gap + size } else { size };
+            if self.wrap && i > start && with_gap > width + 1e-6 {
+                lines.push(start..i);
+                start = i;
+                sum = size;
+            } else {
+                sum = with_gap;
+            }
+        }
+        lines.push(start..n);
+        self.lines = lines
+            .into_iter()
+            .map(|range| {
+                let autos = self.items[range.clone()].iter().map(|i| (i.autos & 3).count_ones() as usize).sum();
+                Line { range, solved: None, remaining: 0., cross: 0., y: 0., autos, assigned: 0 }
+            })
+            .collect();
+        self.line = 0;
+    }
+    /// The line holding the item at `index`, advancing `line` as items go by.
+    fn line_of(&mut self, index: usize) -> usize {
+        while self.line + 1 < self.lines.len() && !self.lines[self.line].range.contains(&index) {
+            self.line += 1;
+        }
+        self.line
+    }
+    /// Place the lines along the cross axis: a single line is the container
+    /// when that is definite, else its content clamped by the container's
+    /// min and max (CSS Flexbox 9.4 step 8); several lines share the
+    /// container's free space by `align-content` (step 15), stretching by
+    /// default.
+    fn place_lines(&mut self, used: Used, scale: f64) {
+        let n = self.lines.len();
+        let gaps = self.row_gap * n.saturating_sub(1) as f64;
+        let total: f64 = self.lines.iter().map(|l| l.cross).sum::<f64>() + gaps;
+        let container = used.height.map(|h| used.height(h));
+        let (mut y, mut between) = (0., 0.);
+        if n == 1 {
+            self.lines[0].cross = used.height(self.lines[0].cross);
+        } else if let Some(h) = container {
+            let free = h - total;
+            match self.align_content {
+                K::Normal | K::Stretch if free > 0. => {
+                    let share = free / n as f64;
+                    for l in &mut self.lines {
+                        l.cross += share;
+                    }
+                }
+                K::Center => y = free / 2.,
+                K::FlexEnd | K::End => y = free,
+                K::SpaceBetween if free > 0. => between = free / (n - 1) as f64,
+                K::SpaceAround if free > 0. => {
+                    y = free / (2. * n as f64);
+                    between = free / n as f64;
+                }
+                K::SpaceEvenly if free > 0. => {
+                    y = free / (n + 1) as f64;
+                    between = y;
+                }
+                _ => {}
+            }
+        }
+        for l in &mut self.lines {
+            l.y = used::grid(y, scale);
+            y += l.cross + self.row_gap + between;
+        }
+    }
+    /// The lines' total cross size, with the gaps between them.
+    fn cross_extent(&self) -> f64 {
+        self.lines.last().map_or(0., |l| l.y + l.cross)
     }
 }
 
@@ -243,7 +342,16 @@ impl<'a> Job<'a> {
         let item = f.items.get(f.index).filter(|i| i.id == id).ok_or(Error::Invalid)?;
         let mut used = item.used;
         let parent = self.stack.last().ok_or(Error::Invalid)?.used;
-        let cross = if f.stage == Stage::Stretch { Some(parent.height(f.cross)) } else { parent.height.map(|h| parent.height(h)) };
+        let line = &f.lines[f.line];
+        // The cross size the item stretches to: its line's once the lines
+        // are sized, else the container's for a single definite line.
+        let cross = if f.stage == Stage::Stretch {
+            Some(line.cross)
+        } else if f.lines.len() == 1 {
+            parent.height.map(|h| parent.height(h))
+        } else {
+            None
+        };
         if let Some(cross) = cross
             && stretches(item)
         {
@@ -257,7 +365,8 @@ impl<'a> Job<'a> {
         let g = &mut self.geometry[id.index()];
         g.border_box.y = item.used.margin.top + relative_y;
         if f.stage == Stage::Layout {
-            f.cross = f.cross.max(g.border_box.height + item.used.margin.vertical());
+            let line = f.line;
+            f.lines[line].cross = f.lines[line].cross.max(g.border_box.height + item.used.margin.vertical());
         }
         f.index += 1;
         Ok(true)
@@ -271,7 +380,7 @@ impl<'a> Job<'a> {
             Stage::Collect => {
                 let Some(id) = self.flex[fi].next else {
                     let f = &mut self.flex[fi];
-                    f.solver = Some(flex::Job::new(std::mem::take(&mut f.inputs), used.width, f.gap, self.scale, self.limits, self.cancel)?);
+                    f.partition(used.width);
                     f.stage = Stage::Solve;
                     return Ok(Tick::Pending);
                 };
@@ -298,13 +407,16 @@ impl<'a> Job<'a> {
                 if f.items.len() >= self.limits.boxes {
                     return Err(Error::Limit);
                 }
-                f.main_autos += (item.autos & 3).count_ones() as usize;
                 f.items.push(item);
                 f.inputs.push(input);
                 f.next = b.next_sibling;
             }
             Stage::Solve => {
                 let f = &mut self.flex[fi];
+                if f.solver.is_none() {
+                    let range = f.lines[f.line].range.clone();
+                    f.solver = Some(flex::Job::new(f.inputs[range].to_vec(), used.width, f.gap, self.scale, self.limits, self.cancel)?);
+                }
                 let solver = f.solver.as_mut().ok_or(Error::Invalid)?;
                 let before = solver.progress().work;
                 let progress = solver.step(128)?;
@@ -315,28 +427,64 @@ impl<'a> Job<'a> {
                 if progress.finished {
                     let line = f.solver.take().ok_or(Error::Invalid)?.finish()?;
                     // Publishing each resolved item is budgeted independently.
-                    f.remaining = line.remaining();
-                    f.line = Some(line);
-                    f.stage = Stage::Layout;
+                    let l = &mut f.lines[f.line];
+                    l.remaining = line.remaining();
+                    l.solved = Some(line);
+                    f.line += 1;
+                    if f.line == f.lines.len() {
+                        f.line = 0;
+                        f.index = 0;
+                        f.stage = Stage::Layout;
+                    }
                 }
             }
             Stage::Layout | Stage::Stretch => {
                 let f = &mut self.flex[fi];
-                if let Some(item) = f.items.get_mut(f.index) {
-                    item.used.width = *f.line.as_ref().ok_or(Error::Invalid)?.sizes().get(f.index).ok_or(Error::Invalid)?;
+                if f.index < f.items.len() {
+                    let line = f.line_of(f.index);
+                    let start = f.lines[line].range.start;
+                    let item = &mut f.items[f.index];
+                    item.used.width = *f.lines[line].solved.as_ref().ok_or(Error::Invalid)?.sizes().get(f.index - start).ok_or(Error::Invalid)?;
+                    if f.stage == Stage::Layout
+                        && let Some(s) = self.cache.tree.style(item.id)
+                    {
+                        item.used.apply_aspect(s);
+                    }
                     if f.stage == Stage::Stretch && !stretches(item) {
                         f.index += 1;
                     } else {
                         return Ok(Tick::Child(item.id));
                     }
-                } else if f.stage == Stage::Layout && used.height.is_none() {
+                } else if f.stage == Stage::Layout && (used.height.is_none() || f.lines.len() > 1) {
+                    // Lines sized by their content: place them, then stretch
+                    // the items that fill their line.
+                    f.place_lines(used, self.scale);
                     f.stage = Stage::Stretch;
                     f.index = 0;
+                    f.line = 0;
                 } else {
+                    if f.lines.len() == 1 && used.height.is_some() {
+                        f.place_lines(used, self.scale);
+                    }
                     f.stage = Stage::Align;
                     f.index = 0;
-                    let remaining = if f.main_autos != 0 && f.remaining > 0. { 0. } else { f.remaining };
-                    let count = f.items.len() as f64;
+                    f.line = 0;
+                }
+            }
+            Stage::Align => {
+                let f = &mut self.flex[fi];
+                if f.index >= f.items.len() {
+                    let extent = f.cross_extent();
+                    self.stack.last_mut().ok_or(Error::Invalid)?.cursor = extent;
+                    self.flex.pop();
+                    return Ok(Tick::Done);
+                }
+                let li = f.line_of(f.index);
+                if f.index == f.lines[li].range.start {
+                    // The line's main-axis distribution (CSS Flexbox 9.5).
+                    let line = &f.lines[li];
+                    let remaining = if line.autos != 0 && line.remaining > 0. { 0. } else { line.remaining };
+                    let count = line.range.len() as f64;
                     let justify = match f.justify {
                         K::Start | K::Left => {
                             if f.reverse {
@@ -367,21 +515,15 @@ impl<'a> Job<'a> {
                     f.cursor = if justify == K::Center && f.reverse { remaining - used::grid(offset, self.scale) } else { used::grid(offset, self.scale) };
                     f.distributed_gap = gap;
                 }
-            }
-            Stage::Align => {
-                let f = &mut self.flex[fi];
-                let Some(item) = f.items.get(f.index) else {
-                    self.stack.last_mut().ok_or(Error::Invalid)?.cursor = f.cross;
-                    self.flex.pop();
-                    return Ok(Tick::Done);
-                };
+                let item = &f.items[f.index];
+                let line = &mut f.lines[li];
                 let g = &mut self.geometry[item.id.index()];
                 let mut margin = item.used.margin;
-                if f.main_autos != 0 && f.remaining > 0. {
+                if line.autos != 0 && line.remaining > 0. {
                     let mut share = || {
-                        let before = rounded(f.remaining * f.assigned_autos as f64 / f.main_autos as f64, self.scale);
-                        f.assigned_autos += 1;
-                        rounded(f.remaining * f.assigned_autos as f64 / f.main_autos as f64, self.scale) - before
+                        let before = rounded(line.remaining * line.assigned as f64 / line.autos as f64, self.scale);
+                        line.assigned += 1;
+                        rounded(line.remaining * line.assigned as f64 / line.autos as f64, self.scale) - before
                     };
                     if f.reverse {
                         if item.autos & 2 != 0 {
@@ -401,7 +543,7 @@ impl<'a> Job<'a> {
                 }
                 let start_margin = if f.reverse { margin.right } else { margin.left };
                 g.border_box.x = if f.reverse { used.width - f.cursor - start_margin - g.border_box.width } else { f.cursor + start_margin } + item.used.relative.x;
-                let cross_space = used.height(f.cross) - g.border_box.height - margin.vertical();
+                let cross_space = line.cross - g.border_box.height - margin.vertical();
                 let mut offset = 0.;
                 if item.autos & 12 != 0 {
                     if cross_space > 0. {
@@ -423,12 +565,13 @@ impl<'a> Job<'a> {
                         _ => 0.,
                     };
                 }
-                g.border_box.y = margin.top + offset + item.used.relative.y;
+                g.border_box.y = line.y + margin.top + offset + item.used.relative.y;
                 g.margin = margin;
                 f.cursor += margin.horizontal() + g.border_box.width + f.gap;
                 // Keep the cumulative fractional remainder, snap positions only.
-                f.cursor += rounded(f.distributed_gap * (f.index + 1) as f64, self.scale) - rounded(f.distributed_gap * f.index as f64, self.scale);
-                if ![g.border_box.x, g.border_box.y, f.cursor, f.cross].into_iter().all(f64::is_finite) {
+                let k = (f.index - line.range.start) as f64;
+                f.cursor += rounded(f.distributed_gap * (k + 1.), self.scale) - rounded(f.distributed_gap * k, self.scale);
+                if ![g.border_box.x, g.border_box.y, f.cursor, line.cross].into_iter().all(f64::is_finite) {
                     return Err(Error::Invalid);
                 }
                 f.index += 1;

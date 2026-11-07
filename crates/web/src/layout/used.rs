@@ -146,6 +146,9 @@ impl Used {
         let extra_y = padding.vertical() + border.vertical();
         let content_y = |v: f64| nonnegative(v - if border_box { extra_y } else { 0. });
         let mut h = length(s, P::Height, height, None, queries, scratch, cancel, scale)?.map(content_y);
+        if h.is_none() && flex.is_none() {
+            h = aspect_height(s, used, padding, border);
+        }
         let min_height = length(s, P::MinHeight, height, Some(0.), queries, scratch, cancel, scale)?.map(content_y).unwrap();
         let max_height = length(s, P::MaxHeight, height, None, queries, scratch, cancel, scale)?.map(content_y).unwrap_or(f64::MAX);
         let contained = match s.value(P::ContainerType) {
@@ -189,4 +192,20 @@ impl Used {
     pub fn height(self, auto: f64) -> f64 {
         self.height.unwrap_or(auto).min(self.max_height).max(self.min_height)
     }
+    /// A flex or grid item's height from `aspect-ratio` once its width is
+    /// known (the sizes come after the main axis is solved).
+    pub fn apply_aspect(&mut self, s: &Style) {
+        if self.height.is_none() {
+            self.height = aspect_height(s, self.width, self.padding, self.border);
+        }
+    }
+}
+/// The content height `aspect-ratio` gives a box of this content width
+/// (CSS Sizing 4 §5.1): the ratio is of the box per its `box-sizing`.
+pub(super) fn aspect_height(s: &Style, content_width: f64, padding: Edges, border: Edges) -> Option<f64> {
+    let ratio = s.value(P::AspectRatio).scalar().filter(|r| r.is_finite() && *r > 0.)?;
+    let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
+    let (extra_x, extra_y) = (padding.horizontal() + border.horizontal(), padding.vertical() + border.vertical());
+    let h = if border_box { (content_width + extra_x) / ratio - extra_y } else { content_width / ratio };
+    h.is_finite().then_some(h.max(0.))
 }

@@ -200,7 +200,7 @@ fn flex_reflow_keeps_intrinsics_and_rejects_unimplemented_contexts() {
     // Flex contexts the engine does not lay out yet render with a recorded
     // substitute; nested items and negative border-box bases need none.
     for (input, css, fallback) in [
-        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;flex-wrap:wrap}", Some("flex-wrap as nowrap")),
+        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;flex-wrap:wrap}", None),
         ("<div id=probe><div>AB</div></div>", "#probe{display:flex;direction:rtl}", Some("right-to-left flex as left-to-right")),
         ("<div id=probe><div>AB</div></div>", "#probe{display:flex;align-items:baseline}", Some("flex baseline alignment as flex-start")),
         ("<div id=probe><div style='order:1'>AB</div></div>", "#probe{display:flex}", Some("flex order ignored")),
