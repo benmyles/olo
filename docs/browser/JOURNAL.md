@@ -6001,3 +6001,43 @@ redo only what changed.
   core (page thread 9.6%, window 2.0%); Chrome 18.1% (five processes,
   the same 30 s, /proc). Olo uses 36% less.
 
+## 2026-11-08, night: 60 frames a second, a GPU leak, moved layers
+
+- **Stutter.** A live page rendered at most every 100 ms: the hero
+  wave and the marquee showed at 10 frames a second while the page's
+  scripts animated at 60. Renders are coalesced to a 60 Hz frame now.
+- **A GPU memory leak, found the hard way.** The window never removed
+  an image from its GPU atlas (gpui keeps every image it is given until
+  `drop_image`). At 10 frames a second that was ~35 MB/s of canvas
+  frames and tiles; at 60 it filled the GPU in seconds and spilled into
+  pinned system memory (35 GB, the session restarted); the process took
+  minutes in the driver to exit. Images the window stops showing are
+  now retired: taken out of the atlas at the next paint, then sent to
+  the worker to be dropped (a layer's tiles that come back unchanged
+  are kept). Over 60 s and 3,000 renders on stripe.com GPU memory rose
+  0.2 GB and stayed; the browser's memory stayed at 577 MB.
+- **Cheaper frames.** At 60 frames the page thread spent ~5 ms a frame:
+  - the document's snapshot copied every owned string, name and atom
+    (0.64 ms, and 0.48 ms to drop the last one): owned and growing
+    strings, names and atoms are shared now, copied on write (snapshot
+    0.17 ms, drop 0.14);
+  - the marquee's transform repainted 4 tiles a frame (1.9 ms): an
+    element whose transform animates and is a plain translation, on
+    the page itself, becomes a moved layer (`LayerKind::Moved`): its
+    subtree painted in its own space with the ancestors' clip left to
+    the window, placed by its translation in whole device pixels. A
+    frame that only moves it repaints nothing (0–1 tiles a frame, 0.3
+    ms). The page builds the scene once more when an element starts
+    animating to give it the layer; after that only the translation
+    changes. Hit-testing and agent labels follow the layer.
+- **overflow-wrap and word-break.** A first word wider than its line
+  breaks between graphemes (`overflow-wrap: anywhere | break-word`,
+  `word-break: break-word`), and `word-break: break-all` cuts words to
+  fill lines; the split is found when a line overflows (no break
+  points added). stripe.com's 583 fallbacks of that kind are gone; the
+  test page matches Chrome but for URLs (Olo breaks after "/", Chrome
+  keeps them whole) and `anywhere` in min-content sizing.
+- **Result.** stripe.com at 54 renders a second: 20.4% of a core
+  (page thread 15.3%, window 5.1%; was 41.5% at the same rate before
+  these changes); Chrome 18.1% at 60.
+

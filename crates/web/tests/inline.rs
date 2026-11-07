@@ -436,7 +436,8 @@ fn computed_styles_bind_scope_direction_whitespace_and_line_metrics() {
         ("text-align:center;text-align-last:right", false),
         ("direction:rtl", false),
         ("letter-spacing:1px", false),
-        ("word-break:break-all", true),
+        ("word-break:break-all", false),
+        ("word-break:keep-all", true),
         ("writing-mode:vertical-rl", true),
         ("text-align:justify", true),
     ] {

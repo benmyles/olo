@@ -310,11 +310,17 @@ pub struct Document {
     live_nodes: usize,
     attributes: Pool<Attribute>,
     doctypes: Pool<DoctypeData>,
-    owned: Pool<Box<str>>,
-    growing: Pool<String>,
+    /// Strings the document owns, shared with its snapshots (a snapshot is
+    /// taken every frame of a live page: a copy of each string was most of
+    /// its cost); replaced, never changed in place.
+    owned: Pool<Arc<Box<str>>>,
+    /// Text being appended to, shared likewise, copied on its first write
+    /// after a snapshot.
+    growing: Pool<Arc<String>>,
     owned_bytes: usize,
-    names: Vec<Arc<str>>,
-    atoms: HashMap<Arc<str>, Atom>,
+    /// Names and their atoms, shared with snapshots, copied on a new name.
+    names: Arc<Vec<Arc<str>>>,
+    atoms: Arc<HashMap<Arc<str>, Atom>>,
     name_bytes: usize,
     limits: Limits,
 }
@@ -353,8 +359,8 @@ impl Document {
             owned: Pool::default(),
             growing: Pool::default(),
             owned_bytes: 0,
-            names: Vec::new(),
-            atoms: HashMap::new(),
+            names: Arc::new(Vec::new()),
+            atoms: Arc::new(HashMap::new()),
             name_bytes: 0,
             limits,
         })
@@ -470,8 +476,8 @@ impl Document {
         let id = link(self.names.len());
         let name: Arc<str> = name.into();
         self.name_bytes += name.len();
-        self.names.push(name.clone());
-        self.atoms.insert(name, id);
+        Arc::make_mut(&mut self.names).push(name.clone());
+        Arc::make_mut(&mut self.atoms).insert(name, id);
         Ok(id)
     }
     fn text(&self, value: TextValue) -> &str {
@@ -506,11 +512,13 @@ impl Document {
             return Err(Error::TextLimit);
         }
         let len = text.len();
+        // Decoded text moves in without a second copy of its bytes (the
+        // Arc only holds the box).
         #[cfg(feature = "baseline-storage")]
         let retained: Box<str> = text.as_ref().into();
         #[cfg(not(feature = "baseline-storage"))]
         let retained = text.into_owned().into_boxed_str();
-        let id = self.owned.insert(retained);
+        let id = self.owned.insert(Arc::new(retained));
         self.owned_bytes += len;
         Ok(TextValue { start: id.get(), len: u32::MAX })
     }
@@ -748,7 +756,7 @@ impl Document {
             return Err(Error::TextLimit);
         }
         if old.len == u32::MAX - 1 {
-            let value = self.growing.get_mut(NonZeroU32::new(old.start).unwrap());
+            let value = Arc::make_mut(self.growing.get_mut(NonZeroU32::new(old.start).unwrap()));
             if value.capacity() >= required {
                 value.push_str(&text);
                 let id = self.handle(at);
@@ -759,10 +767,10 @@ impl Document {
         let desired = required.max(self.text(old).len().saturating_mul(2)).min(available);
         let mut value = if old.len == u32::MAX {
             self.owned_bytes -= cost;
-            self.owned.remove(NonZeroU32::new(old.start).unwrap()).into_string()
+            self.owned.remove(NonZeroU32::new(old.start).unwrap()).to_string()
         } else if old.len == u32::MAX - 1 {
             self.owned_bytes -= cost;
-            self.growing.remove(NonZeroU32::new(old.start).unwrap())
+            Arc::unwrap_or_clone(self.growing.remove(NonZeroU32::new(old.start).unwrap()))
         } else {
             let mut value = String::with_capacity(desired);
             value.push_str(self.text(old));
@@ -773,7 +781,7 @@ impl Document {
         }
         value.push_str(&text);
         self.owned_bytes += value.capacity();
-        let slot = self.growing.insert(value);
+        let slot = self.growing.insert(Arc::new(value));
         self.replace_character_value(at, TextValue { start: slot.get(), len: u32::MAX - 1 });
         let id = self.handle(at);
         self.bump_with(Change::Text(id))?;

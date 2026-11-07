@@ -107,6 +107,13 @@ pub struct Options {
     /// Lines break at this width when narrower than `width` (balancing);
     /// they still align within `width`.
     pub break_width: Option<f64>,
+    /// A word too wide for its line breaks between graphemes rather than
+    /// overflowing (`overflow-wrap: anywhere | break-word`, `word-break:
+    /// break-word`; CSS Text 3 §5.5).
+    pub wrap_anywhere: bool,
+    /// Lines may break between any graphemes of a word (`word-break:
+    /// break-all`, CSS Text 3 §5.2): filled to the width, words cut.
+    pub break_all: bool,
     /// Typography these options could not express and left at their defaults
     /// (text-align: justify as start, letter-spacing as 0): what layout records.
     pub ignored: Ignored,
@@ -128,7 +135,19 @@ impl Ignored {
 }
 impl Default for Options {
     fn default() -> Self {
-        Self { width: 800., line_height: 20., baseline: 16., align: Align::Start, rtl: false, last_align: None, pixel_scale: None, break_width: None, ignored: Ignored::default() }
+        Self {
+            width: 800.,
+            line_height: 20.,
+            baseline: 16.,
+            align: Align::Start,
+            rtl: false,
+            last_align: None,
+            pixel_scale: None,
+            break_width: None,
+            wrap_anywhere: false,
+            break_all: false,
+            ignored: Ignored::default(),
+        }
     }
 }
 impl Options {
@@ -148,10 +167,18 @@ impl Options {
         if style.axes().writing_mode != WritingMode::HorizontalTb {
             ignored.set(0);
         }
-        for property in [P::WordBreak, P::OverflowWrap] {
-            if !matches!(style.value(property), V::Keyword(K::Normal)) {
-                ignored.set(1);
-            }
+        let (mut wrap_anywhere, mut break_all) = (false, false);
+        match style.value(P::OverflowWrap) {
+            V::Keyword(K::Anywhere | K::BreakWord) => wrap_anywhere = true,
+            V::Keyword(K::Normal) => {}
+            _ => ignored.set(1),
+        }
+        match style.value(P::WordBreak) {
+            V::Keyword(K::BreakWord) => wrap_anywhere = true,
+            V::Keyword(K::BreakAll) => break_all = true,
+            V::Keyword(K::Normal) => {}
+            // keep-all and auto-phrase keep CJK words whole: not yet.
+            _ => ignored.set(1),
         }
         for property in [P::LetterSpacing, P::WordSpacing] {
             // Applied to glyph advances when the paragraph is shaped.
@@ -194,6 +221,8 @@ impl Options {
             rtl: style.axes().direction == crate::css::style::Direction::Rtl,
             last_align,
             pixel_scale: Some(scale),
+            wrap_anywhere,
+            break_all,
             ignored,
         })
     }
@@ -944,6 +973,70 @@ impl<'a> Job<'a> {
         let epsilon = self.options.pixel_scale.filter(|_| self.objects.as_ref().is_some_and(|o| p.end.byte >= 3 && o.at(p.end.byte - 3).is_some())).map_or(0., |scale| 1. / (64. * scale));
         self.break_width() + epsilon
     }
+    /// The end of the text at `byte` (a grapheme boundary, maybe inside a
+    /// shaping window): as the text job measures its break points.
+    fn end_at(&mut self, byte: u32) -> Result<End> {
+        let (mut end, window) = self.text.index.boundary(&self.text.paragraph, byte)?;
+        if let Some(w) = window {
+            let rtl = self.text.paragraph.runs[w.run as usize].direction == Direction::RightToLeft;
+            let run = self.shape(w.run, w.start..byte, rtl)?;
+            end.units = w.start_units + all_units(&run);
+        }
+        Ok(end)
+    }
+    /// A break inside the word in `from..to` (bytes): after its last
+    /// grapheme that still fits the line, or after its first when none
+    /// does and `force` (a word must make progress). None when no split
+    /// is in it.
+    fn split_word(&mut self, from: u32, to: u32, force: bool) -> Result<Option<Point>> {
+        let source = self.text.prepared.text().clone();
+        if from >= to || to as usize > source.len() {
+            return Ok(None);
+        }
+        let word = &source[from as usize..to as usize];
+        let mut best = None;
+        let mut first = None;
+        for g in super::unicode::graphemes(word) {
+            check(self.cancel)?;
+            self.progress.work += 1;
+            if self.progress.work > self.limits.work {
+                return Err(Error::Limit);
+            }
+            let at = from + g.end as u32;
+            if at >= to {
+                break;
+            }
+            // Only where the paragraph can be cut: outside a shaping cluster
+            // spanning the boundary, and not at an object's carrier.
+            if self.objects.as_ref().is_some_and(|o| o.at(at.saturating_sub(3)).is_some() || o.at(at).is_some()) {
+                continue;
+            }
+            let end = self.end_at(at)?;
+            let point = Point { end, offset: at, hang: NONE, kind: Kind::Allowed };
+            let (width, _) = self.point_width(point)?;
+            first.get_or_insert(point);
+            if width <= self.fit_limit(point) {
+                best = Some(point);
+            } else {
+                break;
+            }
+        }
+        Ok(best.or(if force { first } else { None }))
+    }
+    /// A line ended at a point inside a word: the next starts there, its
+    /// scan at the first break point after it.
+    fn emit_split(&mut self, point: Point) -> Result<bool> {
+        self.emit_point(point)?;
+        self.from = point.offset;
+        self.spacing_start = point.end.byte;
+        self.scan = self.text.points.partition_point(|p| p.offset <= point.offset);
+        if self.from as usize == self.text.prepared.text().len() {
+            self.progress.finished = true;
+            return Ok(true);
+        }
+        self.begin()?;
+        Ok(self.progress.finished)
+    }
     fn break_width(&self) -> f64 {
         let band = self.band.1 - self.band.0;
         self.options.break_width.map_or(band, |w| w.min(band))
@@ -985,6 +1078,21 @@ impl<'a> Job<'a> {
                 self.best = Some(current);
             }
             let monotonic = self.text.monotonic && self.objects.as_ref().is_none_or(|o| o.monotonic) && self.start_window.is_none_or(|w| effective.byte >= w.end);
+            // A word that does not fit: cut inside it (break-all: the word
+            // after the last break that fits; overflow-wrap: a first word
+            // wider than the line).
+            if width > fit_limit && monotonic && (self.options.break_all || (self.options.wrap_anywhere && self.best.is_none())) {
+                let from = match self.best {
+                    Some(b) => self.text.points[b].offset.max(self.paint_start),
+                    None => self.paint_start,
+                };
+                if let Some(split) = self.split_word(from, p.end.byte, self.best.is_none())? {
+                    if self.emit_split(split)? {
+                        break;
+                    }
+                    continue;
+                }
+            }
             if p.kind == Kind::Required || (width > fit_limit && monotonic) {
                 let chosen = self.best.unwrap_or(self.first.min(current));
                 let chosen = self.emit_line(chosen)?;
@@ -1099,7 +1207,14 @@ impl<'a> Job<'a> {
                 chosen += 1;
             }
         }
-        let point = self.text.points[chosen];
+        self.emit_point(self.text.points[chosen])?;
+        Ok(chosen)
+    }
+    /// A line from `self.from` to `point`.
+    fn emit_point(&mut self, point: Point) -> Result<()> {
+        if self.lines.len() >= self.limits.lines {
+            return Err(Error::Limit);
+        }
         let (fit, fit_end) = self.point_width(point)?;
         let visible = self.paint_start..point.end.byte.max(self.paint_start);
         let visual = self.text.paragraph.analysis.visual_runs(self.from as usize..point.offset as usize)?;
@@ -1187,7 +1302,7 @@ impl<'a> Job<'a> {
             descent,
         });
         self.begin_line();
-        Ok(chosen)
+        Ok(())
     }
     fn aligned_offset(&self, advance: f64, end: Kind) -> f64 {
         let align = if end == Kind::Required { self.options.last_align.unwrap_or(self.options.align) } else { self.options.align };

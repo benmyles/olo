@@ -55,6 +55,11 @@ struct Browser {
     tiles: Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>,
     /// The page's layers above its base tiles, in paint order.
     layers: Vec<worker::LayerTiles>,
+    /// Images no longer shown: taken out of the window's GPU atlas at the
+    /// next paint (it keeps every image it was given until told; never
+    /// told, a live page's 60 frames a second filled the GPU's memory),
+    /// then sent to the worker to be dropped there.
+    retired: Vec<Arc<RenderImage>>,
     labels: Vec<worker::Label>,
     status: String,
     blocked_action: Option<&'static str>,
@@ -126,6 +131,7 @@ impl Browser {
             key: None,
             tiles: Vec::new(),
             layers: Vec::new(),
+            retired: Vec::new(),
             labels: Vec::new(),
             status: "Loading…".into(),
             blocked_action: None,
@@ -149,10 +155,11 @@ impl Browser {
             self.scroll = (f64::from(self.scroll) * scale / old.scale).round() as i32;
         }
         self.status = "Loading…".into();
-        let recycle = std::mem::take(&mut self.tiles).into_iter().map(|(_, image)| image).collect();
+        let shown = std::mem::take(&mut self.tiles).into_iter().map(|(_, image)| image).collect();
+        self.recycle(shown);
         self.labels.clear();
         self.key = Some(key);
-        self.send_render(recycle, cx);
+        self.send_render(Vec::new(), cx);
     }
     fn update_input(&mut self, cx: &mut Context<Self>) {
         self.send_render(Vec::new(), cx);
@@ -386,10 +393,9 @@ impl Browser {
                 .enabled(self.interaction.focus.and_then(|node| self.focus_targets.position(node)).is_some()),
         ]
     }
-    fn recycle(&self, images: Vec<Arc<RenderImage>>) {
-        if !images.is_empty() {
-            let _ = self.tx.send(worker::Message::Recycle(images));
-        }
+    /// Images the window stops showing (see `retired`).
+    fn recycle(&mut self, images: Vec<Arc<RenderImage>>) {
+        self.retired.extend(images);
     }
     fn merge_tiles(&mut self, tiles: Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>) {
         let mut recycle = Vec::new();
@@ -444,8 +450,11 @@ impl Browser {
                 self.merge_tiles(tiles);
             }
             worker::Reply::Layers(id, layers) if id == self.id => {
+                // Most of a layer's tiles come back unchanged: only those no
+                // longer in any layer are retired.
+                let kept: std::collections::HashSet<*const RenderImage> = layers.iter().flat_map(|l| l.tiles.iter().map(|(_, i)| Arc::as_ptr(i))).collect();
                 let old = std::mem::replace(&mut self.layers, layers);
-                self.recycle(old.into_iter().flat_map(|l| l.tiles.into_iter().map(|(_, image)| image)).collect());
+                self.recycle(old.into_iter().flat_map(|l| l.tiles.into_iter().map(|(_, image)| image)).filter(|i| !kept.contains(&Arc::as_ptr(i))).collect());
             }
             worker::Reply::Layers(_, layers) => {
                 self.recycle(layers.into_iter().flat_map(|l| l.tiles.into_iter().map(|(_, image)| image)).collect());
@@ -501,6 +510,8 @@ impl Render for Browser {
         let viewport = self.viewport.clone();
         let scroll = self.scroll;
         let extent = self.extent;
+        let retired = std::mem::take(&mut self.retired);
+        let recycle = self.tx.clone();
         let surface = canvas(
             move |bounds, window, cx| {
                 let bounds = style::snap(window, bounds);
@@ -517,6 +528,14 @@ impl Render for Browser {
                 }
             },
             move |bounds, _, window, cx| {
+                // What is no longer shown leaves the GPU atlas, then goes to
+                // the worker to be dropped off this thread.
+                if !retired.is_empty() {
+                    for image in &retired {
+                        let _ = window.drop_image(image.clone());
+                    }
+                    let _ = recycle.send(worker::Message::Recycle(retired));
+                }
                 let bounds = style::snap(window, bounds);
                 let scale = f64::from(window.scale_factor());
                 window.note_scroll([0., (f64::from(scroll) / scale) as f32, 0., (extent - f64::from(f32::from(bounds.size.height))).max(0.) as f32]);
@@ -537,20 +556,34 @@ impl Render for Browser {
                     let height_css = f64::from(f32::from(bounds.size.height));
                     for (placement, scaled, layer_tiles) in &layers {
                         let (dy, scrolled) = match placement {
-                            worker::Placement::Page => (0., true),
+                            worker::Placement::Page | worker::Placement::Moved { .. } => (0., true),
                             worker::Placement::Fixed => (0., false),
                             worker::Placement::Sticky(st) => (st.offset(scroll_css, height_css), true),
                         };
-                        for (r, image) in layer_tiles {
-                            let y = f64::from(if scrolled { r.y - scroll } else { r.y }) / scale + dy;
-                            let b = Bounds::new(
-                                point(bounds.left() + px((f64::from(r.x) / scale) as f32), bounds.top() + px(y as f32)),
-                                size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
-                            );
-                            // Tiles texel for pixel; a surface at another
-                            // density sampled linearly (as Chrome scales a canvas).
-                            let _ = if *scaled { window.paint_image(b, Default::default(), image.clone(), 0, false) } else { window.paint_image_nearest(b, image.clone()) };
-                        }
+                        // A moved layer: its tiles shifted by its translation
+                        // (whole device pixels), within its ancestors' clip.
+                        let (mx, my, clip) = match placement {
+                            worker::Placement::Moved { dx, dy, clip } => (*dx, *dy, *clip),
+                            _ => (0, 0, None),
+                        };
+                        let mask = clip.map(|c| gpui::ContentMask {
+                            bounds: Bounds::new(
+                                point(bounds.left() + px((f64::from(c.x) / scale) as f32), bounds.top() + px((f64::from(c.y - scroll) / scale) as f32)),
+                                size(px((f64::from(c.width) / scale) as f32), px((f64::from(c.height) / scale) as f32)),
+                            ),
+                        });
+                        window.with_content_mask(mask, |window| {
+                            for (r, image) in layer_tiles {
+                                let y = f64::from(if scrolled { r.y + my - scroll } else { r.y }) / scale + dy;
+                                let b = Bounds::new(
+                                    point(bounds.left() + px((f64::from(r.x + mx) / scale) as f32), bounds.top() + px(y as f32)),
+                                    size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
+                                );
+                                // Tiles texel for pixel; a surface at another
+                                // density sampled linearly (as Chrome scales a canvas).
+                                let _ = if *scaled { window.paint_image(b, Default::default(), image.clone(), 0, false) } else { window.paint_image_nearest(b, image.clone()) };
+                            }
+                        });
                     }
                     let shift = |st: &olo_web::layout::Sticky| st.offset(scroll_css, height_css);
                     for (text, r, link, image, fixed, sticky) in &labels {

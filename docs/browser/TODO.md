@@ -103,7 +103,14 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   text change relays out 180 of 1983 boxes (layout 7.6 → 1.2 ms) and
   stripe.com runs at 11.6% of a core against Chrome's 18.1% over 30 s
   (JOURNAL 2026-11-08 evening: the natives profiled, observers gated on
-  geometry, a spinning tick fixed). Next, in order: the rest of that
+  geometry, a spinning tick fixed). Live pages render at 60 frames a
+  second (20.4% of a core on stripe.com at 54 renders a second; JOURNAL
+  2026-11-08 night: moved layers, shared document strings, the GPU
+  atlas leak). Next, in order: frames paced by the window's vsync (the
+  worker renders on a timer now, 54 of 60 a second); the hero canvas
+  shared with the window's GPU without a readback (one 2.5 MB copy and
+  upload a frame); renders that keep the previous scene's tiles for
+  more than transforms (opacity, colours); the rest of that
   full job (the box tree rebuilt from the whole document, 3.4 ms: copy
   the clean subtrees' boxes; the scene rebuilt, 3.2 ms; the style job,
   1.2 ms, where a text change needs no restyle unless a selector tests

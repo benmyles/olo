@@ -45,6 +45,8 @@ pub struct Page {
     images: Option<Arc<crate::image::Set>>,
     /// The interaction the scene was rendered with.
     rendered_interaction: Interaction,
+    /// Elements whose `transform` has animated: painted as moved layers.
+    animated: std::collections::HashSet<crate::dom::NodeId>,
     pub document: Document,
     pub scene: Arc<paint::Scene>,
     pub title: String,
@@ -1139,11 +1141,28 @@ pub fn finish_with(
     }
     let interaction_mask = rules.state_mask();
     let previous = if rules_reused { previous } else { None };
-    let (scene, stylesheet_issues, fallbacks) =
-        render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, &scope, shaper, painter, viewport, cancel, previous, None, &mut progress)?;
+    let (scene, stylesheet_issues, fallbacks) = render(
+        &doc,
+        images.as_ref(),
+        &rules,
+        quirks,
+        resource_issues,
+        Interaction::default(),
+        host,
+        &scope,
+        shaper,
+        painter,
+        viewport,
+        cancel,
+        previous,
+        None,
+        &mut Default::default(),
+        &mut progress,
+    )?;
     Ok(Page {
         images,
         rendered_interaction: Interaction::default(),
+        animated: Default::default(),
         document: doc,
         scene,
         title,
@@ -1255,6 +1274,7 @@ impl Page {
             cancel,
             Some(&previous),
             patchable_scene,
+            &mut self.animated,
             &mut progress,
         )?;
         self.rendered_interaction = self.interaction;
@@ -1312,8 +1332,24 @@ impl Page {
             self.media = media;
         }
         let scope = &self.scope;
-        let (scene, issues, fallbacks) =
-            render(&self.document, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, None, None, &mut progress)?;
+        let (scene, issues, fallbacks) = render(
+            &self.document,
+            self.images.as_ref(),
+            &self.rules,
+            self.quirks,
+            self.resource_issues,
+            self.interaction,
+            host,
+            scope,
+            shaper,
+            painter,
+            viewport,
+            cancel,
+            None,
+            None,
+            &mut self.animated,
+            &mut progress,
+        )?;
         self.rendered_interaction = self.interaction;
         self.scene = scene;
         self.stylesheet_issues = issues;
@@ -1573,6 +1609,7 @@ fn render(
     cancel: Option<&AtomicBool>,
     previous: Option<&layout::Layout>,
     previous_scene: Option<&Arc<paint::Scene>>,
+    animated: &mut std::collections::HashSet<crate::dom::NodeId>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
     // The previous layout's styles stand in only while they were computed
@@ -1740,9 +1777,16 @@ fn render(
             }
             _ => false,
         });
+        // A box whose transform starts animating gets a layer of its own
+        // (moved by its translation, nothing repainted): the scene is built
+        // once more to give it one; later frames only move it.
+        let newly = patched.nodes.iter().filter(|n| !animated.contains(n)).count();
         if only_transforms {
-            scene = previous_scene.with_transforms(layout.clone(), &boxes, cancel)?;
-            transforms_patched = scene.is_some();
+            animated.extend(patched.nodes.iter().copied());
+            if newly == 0 {
+                scene = previous_scene.with_transforms(layout.clone(), &boxes, cancel)?;
+                transforms_patched = scene.is_some();
+            }
         }
     }
     let mut built_ms = timing.map_or(0., |t| t.elapsed().as_secs_f64() * 1000.);
@@ -1750,7 +1794,7 @@ fn render(
         Some(scene) => scene,
         None => {
             let canvas = host.system_color(css::color::SystemColor::Canvas, host.scheme())?.srgb8_clipped();
-            let mut job = paint::BuildJob::new(doc, layout, painter, paint::Options { canvas }, Default::default(), cancel)?;
+            let mut job = paint::BuildJob::new(doc, layout, painter, paint::Options { canvas }, Default::default(), cancel)?.with_animated(animated.clone());
             while !job.step(32)?.finished {
                 progress(Phase::Paint, job.progress().boxes)
             }

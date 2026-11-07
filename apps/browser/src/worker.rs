@@ -81,6 +81,14 @@ pub enum Placement {
     Page,
     Fixed,
     Sticky(layout::Sticky),
+    /// A moved layer: its tiles in the layer's own space, shown moved by
+    /// (dx, dy) device pixels with the page and within its ancestors' clip
+    /// (document device pixels).
+    Moved {
+        dx: i32,
+        dy: i32,
+        clip: Option<paint::DeviceRect>,
+    },
 }
 /// One of the page's layers above its base: tiles (device coordinates in
 /// the layer's own space) and how they are placed.
@@ -170,6 +178,12 @@ fn to_straight_bgra(bytes: &mut [u8], opaque: bool) {
         }
     }
 }
+/// The overlap of two rectangles, if any.
+fn intersect(a: layout::Rect, b: layout::Rect) -> Option<layout::Rect> {
+    let (x0, y0) = (a.x.max(b.x), a.y.max(b.y));
+    let (x1, y1) = ((a.x + a.width).min(b.x + b.width), (a.y + a.height).min(b.y + b.height));
+    (x1 > x0 && y1 > y0).then_some(layout::Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 })
+}
 /// Whether an error only says the work was cancelled (a newer request
 /// took over), as every phase reports it.
 fn is_cancellation(error: &page::Error) -> bool {
@@ -251,9 +265,11 @@ impl Drop for Live {
         self.cancel.cancel();
     }
 }
-/// Renders of a live page are coalesced to this interval while its scripts
-/// keep changing it.
-const LIVE_RENDER_INTERVAL: Duration = Duration::from_millis(100);
+/// Renders of a live page are coalesced to a frame while its scripts keep
+/// changing it: one render a display frame (60 Hz), so animations are as
+/// smooth as the page draws them (at 100 ms they showed at 10 frames a
+/// second and stuttered).
+const LIVE_RENDER_INTERVAL: Duration = Duration::from_micros(16_667);
 struct Cached {
     key: Key,
     page: page::Page,
@@ -1104,9 +1120,29 @@ fn render(
             sticky_hits.extend(ids.into_iter().map(|id| (id, *st)));
         }
     }
+    // Moved layers' content where it shows now, with the layer's translation.
+    let mut moved_hits: Vec<(u32, [f64; 2])> = Vec::new();
+    for i in 0..scene.strata().len() {
+        if let Some(m) = scene.moved(i) {
+            let shown = match m.clip {
+                Some(c) => intersect(visible, c),
+                None => Some(visible),
+            };
+            if let Some(shown) = shown {
+                let region = layout::Rect { x: shown.x - m.translate[0], y: shown.y - m.translate[1], width: shown.width, height: shown.height };
+                let mut ids = Vec::new();
+                scene.query_stratum(i, region, &mut ids, Some(&r.cancel))?;
+                moved_hits.extend(ids.into_iter().map(|id| (id, m.translate)));
+            }
+        }
+    }
     let mut labels = Vec::new();
-    for (id, fixed, sticky) in
-        hits.into_iter().map(|id| (id, false, None)).chain(fixed_hits.into_iter().map(|id| (id, true, None))).chain(sticky_hits.into_iter().map(|(id, st)| (id, false, Some(st))))
+    for (id, fixed, sticky, offset) in hits
+        .into_iter()
+        .map(|id| (id, false, None, [0., 0.]))
+        .chain(fixed_hits.into_iter().map(|id| (id, true, None, [0., 0.])))
+        .chain(sticky_hits.into_iter().map(|(id, st)| (id, false, Some(st), [0., 0.])))
+        .chain(moved_hits.into_iter().map(|(id, t)| (id, false, None, t)))
     {
         let vector = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Vector { .. });
         let image = vector || matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
@@ -1121,9 +1157,11 @@ fn render(
             let Some(text) = scene.text_content(id).filter(|s| !s.is_empty()) else { continue };
             text
         };
-        let Some(rect) = scene.visible_bounds(id) else {
+        let Some(mut rect) = scene.visible_bounds(id) else {
             continue;
         };
+        rect.x += offset[0];
+        rect.y += offset[1];
         let link = match node {
             Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
             None => None,
@@ -1200,6 +1238,25 @@ fn render(
         }
         let (x0, y0, x1, y1) = match stratum.kind {
             paint::LayerKind::Page | paint::LayerKind::Surface(_) => (0, top, r.key.width as i32, scroll + r.key.height as i32),
+            // A moved layer: the tiles of its own space that show now (the
+            // visible rows within its clip, less its translation); a frame
+            // that only moves it finds them all kept.
+            paint::LayerKind::Moved(_) => {
+                let Some(m) = scene.moved(si) else { continue };
+                let (dx, dy) = ((m.translate[0] * scale).round() as i32, (m.translate[1] * scale).round() as i32);
+                let (mut sx0, mut sy0, mut sx1, mut sy1) = (0, scroll, r.key.width as i32, scroll + r.key.height as i32);
+                if let Some(c) = m.clip {
+                    sx0 = sx0.max((c.x * scale).floor() as i32);
+                    sy0 = sy0.max((c.y * scale).floor() as i32);
+                    sx1 = sx1.min(((c.x + c.width) * scale).ceil() as i32);
+                    sy1 = sy1.min(((c.y + c.height) * scale).ceil() as i32);
+                }
+                if sx1 <= sx0 || sy1 <= sy0 {
+                    layers.push(LayerTiles { placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                    continue;
+                }
+                ((sx0 - dx).div_euclid(256) * 256, (sy0 - dy).div_euclid(256) * 256, sx1 - dx, sy1 - dy)
+            }
             paint::LayerKind::Fixed | paint::LayerKind::Sticky(_) => {
                 let Some(extent) = scene.stratum_extent(si) else {
                     layers.push(LayerTiles { placement: Placement::Fixed, tiles: Vec::new(), scaled: false });
@@ -1214,6 +1271,18 @@ fn render(
             }
         };
         let placement = match stratum.kind {
+            paint::LayerKind::Moved(_) => match scene.moved(si) {
+                Some(m) => Placement::Moved {
+                    dx: (m.translate[0] * scale).round() as i32,
+                    dy: (m.translate[1] * scale).round() as i32,
+                    clip: m.clip.map(|c| {
+                        let (x0, y0) = ((c.x * scale).floor() as i32, (c.y * scale).floor() as i32);
+                        let (x1, y1) = (((c.x + c.width) * scale).ceil() as i32, ((c.y + c.height) * scale).ceil() as i32);
+                        paint::DeviceRect { x: x0, y: y0, width: (x1 - x0).max(0) as u32, height: (y1 - y0).max(0) as u32 }
+                    }),
+                },
+                None => Placement::Page,
+            },
             paint::LayerKind::Page | paint::LayerKind::Surface(_) => Placement::Page,
             paint::LayerKind::Fixed => Placement::Fixed,
             paint::LayerKind::Sticky(root) => match stickies.iter().find(|s| s.root == root) {
@@ -1277,7 +1346,8 @@ fn render(
                     h.finish()
                 };
                 // Each stratum's tiles apart in the cache (x stays below 2^16).
-                let key = (x | ((si as i32) << 16), y);
+                // Each stratum's tiles apart (a moved layer's x may be negative).
+                let key = if matches!(stratum.kind, paint::LayerKind::Moved(_)) { (x ^ ((si as i32 + 1) << 24), y) } else { (x | ((si as i32) << 16), y) };
                 let image = if let Some((image, stamp, kept)) = cache.get_mut(&key)
                     && *kept == signature
                 {

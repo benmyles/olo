@@ -69,6 +69,9 @@ pub struct Command {
     /// A live surface's image (see `image::Image::live`): shown through a
     /// layer of its own when nothing bends, fades or cuts it.
     pub(super) surface: bool,
+    /// Under an animated, translated box (that box): painted apart in the
+    /// box's own space, placed by its translation (see `Moved`).
+    pub(super) moved: Option<BoxId>,
 }
 /// The axis-aligned bounds of `r` mapped through `m`.
 pub(super) fn aabb(m: [f64; 6], r: Rect) -> Rect {
@@ -124,6 +127,21 @@ pub enum LayerKind {
     /// A live surface (a canvas scripts keep drawing on), shown with the
     /// page from its image as it is, not through tiles: the box's.
     Surface(BoxId),
+    /// An animated box translated by its `transform` (a marquee, a
+    /// carousel): its subtree painted in its own space and placed by the
+    /// translation, so a frame that only moves it repaints nothing.
+    Moved(BoxId),
+}
+/// A moved layer (see `LayerKind::Moved`): its box, its translation now
+/// (CSS px), the clip of its ancestors it is shown within (document
+/// coordinates), and its border box (what `transform-origin` resolves
+/// against).
+#[derive(Clone, Copy, Debug)]
+pub struct Moved {
+    pub root: BoxId,
+    pub translate: [f64; 2],
+    pub clip: Option<Rect>,
+    outer: Rect,
 }
 /// How a transformed box's matrix was made: its box, the matrix of the
 /// transformed box above it (or NONE), its border box and its own matrix
@@ -148,6 +166,10 @@ fn about_of(s: &Style, outer: Rect) -> Option<[f64; 6]> {
     let (ox, oy) = (outer.x + ox, outer.y + oy);
     Some(crate::css::properties::multiply_transforms([1., 0., 0., 1., ox, oy], crate::css::properties::multiply_transforms(local, [1., 0., 0., 1., -ox, -oy])))
 }
+/// A matrix that only moves (no scale, rotation or skew).
+fn is_translation(m: [f64; 6]) -> bool {
+    (m[0] - 1.).abs() < 1e-9 && m[1].abs() < 1e-9 && m[2].abs() < 1e-9 && (m[3] - 1.).abs() < 1e-9 && m[4].is_finite() && m[5].is_finite()
+}
 /// A run of commands in paint order that are shown the same way.
 pub struct Stratum {
     pub kind: LayerKind,
@@ -162,6 +184,7 @@ pub struct Scene {
     /// document space (CSS Transforms 1 §6).
     pub(super) transforms: Box<[[f64; 6]]>,
     pub(super) transform_entries: Box<[TransformEntry]>,
+    pub(super) moved: Box<[Moved]>,
     pub(super) vector_geometry: Arc<std::collections::HashMap<u32, crate::svg::used::Geometry>>,
     pub(super) vector_clips: Arc<std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>>,
     /// The commands in paint order cut into strata: runs of the page's own
@@ -476,6 +499,15 @@ impl Scene {
         self.query_stratum(i, region, &mut hits, cancel)?;
         Ok((self.signature_parts(&hits, cancel)?.0, !hits.is_empty()))
     }
+    /// The moved layer a stratum holds, if it is one.
+    pub fn moved(&self, i: usize) -> Option<&Moved> {
+        let LayerKind::Moved(root) = self.strata.get(i)?.kind else { return None };
+        self.moved.iter().find(|m| m.root == root)
+    }
+    /// Every moved layer.
+    pub fn moved_layers(&self) -> &[Moved] {
+        &self.moved
+    }
     /// A surface stratum's image and where it shows (document coordinates):
     /// the live image of the one command it holds.
     pub fn surface(&self, i: usize) -> Option<(Rect, &Arc<crate::image::Image>)> {
@@ -496,9 +528,16 @@ impl Scene {
         let tree = layout.cache().tree();
         let mut entries = self.transform_entries.to_vec();
         let mut touched = vec![false; entries.len()];
+        let mut moved = self.moved.to_vec();
         for &id in changed {
             check(cancel)?;
             let s = tree.style(id).ok_or(Error::Invalid)?;
+            // A moved layer's root: its translation, nothing to repaint.
+            if let Some(m) = moved.iter_mut().find(|m| m.root == id) {
+                let Some(about) = about_of(s, m.outer).filter(|a| is_translation(*a)) else { return Ok(None) };
+                m.translate = [about[4], about[5]];
+                continue;
+            }
             let Some(i) = entries.iter().position(|e| e.owner == id) else {
                 // Never transformed; one that is now needs the scene built.
                 if matches!(s.value(P::Transform), Value::Transforms(_)) {
@@ -523,6 +562,7 @@ impl Scene {
                 groups: self.groups.clone(),
                 transforms: self.transforms.clone(),
                 transform_entries: self.transform_entries.clone(),
+                moved: moved.clone().into_boxed_slice(),
                 vector_geometry: self.vector_geometry.clone(),
                 vector_clips: self.vector_clips.clone(),
                 strata: self.strata.iter().map(|s| Stratum { kind: s.kind, index: s.index.clone() }).collect(),
@@ -562,6 +602,7 @@ impl Scene {
             groups: self.groups.clone(),
             transforms: transforms.into_boxed_slice(),
             transform_entries: entries.into_boxed_slice(),
+            moved: moved.into_boxed_slice(),
             vector_geometry: self.vector_geometry.clone(),
             vector_clips: self.vector_clips.clone(),
             strata: strata.into_boxed_slice(),
@@ -582,10 +623,17 @@ impl Scene {
         let tree = self.layout.cache().tree();
         let mut hits = Vec::new();
         for (i, stratum) in self.strata.iter().enumerate().rev() {
-            let py = match stratum.kind {
-                LayerKind::Page | LayerKind::Surface(_) => y,
-                LayerKind::Fixed => y - scroll,
-                LayerKind::Sticky(root) => y - stickies.iter().find(|s| s.root == root).map_or(0., |s| s.offset(scroll, height)),
+            let (x, py) = match stratum.kind {
+                LayerKind::Page | LayerKind::Surface(_) => (x, y),
+                LayerKind::Fixed => (x, y - scroll),
+                LayerKind::Sticky(root) => (x, y - stickies.iter().find(|s| s.root == root).map_or(0., |s| s.offset(scroll, height))),
+                LayerKind::Moved(_) => {
+                    let Some(m) = self.moved(i) else { continue };
+                    if m.clip.is_some_and(|c| x < c.x || x >= c.x + c.width || y < c.y || y >= c.y + c.height) {
+                        continue;
+                    }
+                    (x - m.translate[0], y - m.translate[1])
+                }
             };
             let region = Rect { x: x - 0.5, y: py - 0.5, width: 1., height: 1. };
             if self.query_stratum(i, region, &mut hits, None).is_err() {
@@ -657,6 +705,8 @@ struct State {
     fixed: bool,
     /// Under a `position: sticky` box (see `Command::sticky`).
     sticky: Option<BoxId>,
+    /// Under a moved layer (see `Command::moved`).
+    moved: Option<BoxId>,
 }
 /// One CSS stacking context (CSS 2.2 Appendix E): the root, positioned boxes
 /// (z-index: auto ones painted as if they were contexts), opacity groups and
@@ -700,6 +750,12 @@ pub struct BuildJob<'a> {
     current_sticky: Option<BoxId>,
     /// The command being emitted is a live surface's image.
     current_surface: bool,
+    /// The moved layer the box being painted is under.
+    current_moved: Option<BoxId>,
+    /// Nodes whose `transform` animates: each translated one becomes a
+    /// moved layer.
+    animated: std::collections::HashSet<crate::dom::NodeId>,
+    moved: Vec<Moved>,
     vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
@@ -767,6 +823,9 @@ impl<'a> BuildJob<'a> {
             current_fixed: false,
             current_sticky: None,
             current_surface: false,
+            current_moved: None,
+            animated: Default::default(),
+            moved: Vec::new(),
             vector_geometry: Default::default(),
             vector_clips: Default::default(),
             transform_entries: Vec::new(),
@@ -801,8 +860,17 @@ impl<'a> BuildJob<'a> {
         if self.draft.len() >= self.limits.commands {
             return Err(Error::Limit);
         }
-        let command =
-            Command { bounds, primitive, clip, group: self.current_group, transform: self.current_transform, fixed: self.current_fixed, sticky: self.current_sticky, surface: self.current_surface };
+        let command = Command {
+            bounds,
+            primitive,
+            clip,
+            group: self.current_group,
+            transform: self.current_transform,
+            fixed: self.current_fixed,
+            sticky: self.current_sticky,
+            surface: self.current_surface,
+            moved: self.current_moved,
+        };
         let reach = extent(&command, &self.transforms);
         self.extent = union(self.extent, if clip == NONE { reach } else { intersection(reach, self.clip_extent(clip)) });
         self.draft.push(Draft { context, slot, text, command });
@@ -1177,6 +1245,11 @@ impl<'a> BuildJob<'a> {
         }
         m
     }
+    /// Nodes whose `transform` animates (see `LayerKind::Moved`).
+    pub fn with_animated(mut self, nodes: std::collections::HashSet<crate::dom::NodeId>) -> Self {
+        self.animated = nodes;
+        self
+    }
     pub fn step(&mut self, budget: usize) -> Result<Progress> {
         if self.failed {
             return Err(Error::Failed);
@@ -1198,14 +1271,24 @@ impl<'a> BuildJob<'a> {
                 break;
             };
             self.next += 1;
-            let (parent, mut context, mut clip, parent_group, parent_transform, parent_hidden, parent_fixed, parent_sticky) = if let Some(parent) = b.parent {
+            let (parent, mut context, mut clip, parent_group, parent_transform, parent_hidden, parent_fixed, parent_sticky, parent_moved) = if let Some(parent) = b.parent {
                 let p = &self.states[parent.index()];
-                (p.origin, p.context, p.clip, p.group, p.transform, p.hidden, p.fixed, p.sticky)
+                (p.origin, p.context, p.clip, p.group, p.transform, p.hidden, p.fixed, p.sticky, p.moved)
             } else {
-                (Point::default(), 0, NONE, NONE, NONE, false, false, None)
+                (Point::default(), 0, NONE, NONE, NONE, false, false, None, None)
             };
             if parent_hidden {
-                self.states.push(State { origin: parent, context, clip, group: parent_group, transform: parent_transform, hidden: true, fixed: parent_fixed, sticky: parent_sticky });
+                self.states.push(State {
+                    origin: parent,
+                    context,
+                    clip,
+                    group: parent_group,
+                    transform: parent_transform,
+                    hidden: true,
+                    fixed: parent_fixed,
+                    sticky: parent_sticky,
+                    moved: parent_moved,
+                });
                 self.progress.boxes += 1;
                 continue;
             }
@@ -1217,6 +1300,8 @@ impl<'a> BuildJob<'a> {
             let mut children_group = parent_group;
             self.current_transform = parent_transform;
             let mut children_transform = parent_transform;
+            self.current_moved = parent_moved;
+            let mut children_moved = parent_moved;
             // In-flow content paints in slot 2 of its context; a box that
             // starts a context paints its own decoration in slot 0 of the new one.
             let mut group = (context, 2);
@@ -1224,7 +1309,7 @@ impl<'a> BuildJob<'a> {
                 let mut cb = b.parent.ok_or(Error::Invalid)?;
                 loop {
                     check(self.cancel)?;
-                    if cb == tree.root() || !matches!(tree.style(cb).ok_or(Error::Invalid)?.value(P::Position), Value::Keyword(K::Static)) {
+                    if cb == tree.root() || !matches!(tree.style(cb).ok_or(Error::Invalid)?.value(P::Position), Value::Keyword(K::Static)) || parent_moved == Some(cb) {
                         break;
                     }
                     cb = tree.get(cb).ok_or(Error::Invalid)?.parent.ok_or(Error::Invalid)?;
@@ -1260,7 +1345,30 @@ impl<'a> BuildJob<'a> {
                     }
                     // A transformed box paints its subtree through its matrix
                     // and is a stacking context (CSS Transforms 1 §3).
-                    let transformed = self.transform_of(id, s, outer, parent_transform)?;
+                    // An animated box that only moves, on the page itself (no
+                    // fixed or sticky box, matrix, group or other layer above
+                    // it, its ancestors' clip a plain rectangle): a moved
+                    // layer, painted in its own space.
+                    let mut layered = false;
+                    if parent_moved.is_none()
+                        && !parent_fixed
+                        && parent_sticky.is_none()
+                        && parent_transform == NONE
+                        && parent_group == NONE
+                        && self.animated.contains(&b.node)
+                        && let Some(about) = about_of(s, outer).filter(|a| is_translation(*a))
+                        && (clip == NONE || self.clips[clip as usize].radii.is_none() && self.clips[clip as usize].transform == NONE)
+                    {
+                        self.moved.push(Moved { root: id, translate: [about[4], about[5]], clip: (clip != NONE).then(|| self.clips[clip as usize].rect), outer });
+                        self.current_moved = Some(id);
+                        children_moved = Some(id);
+                        // Its content is clipped only within it; the window
+                        // shows the layer within its ancestors' clip.
+                        clip = NONE;
+                        children_clip = NONE;
+                        layered = true;
+                    }
+                    let transformed = if layered { parent_transform } else { self.transform_of(id, s, outer, parent_transform)? };
                     if transformed != parent_transform {
                         // OLO_TRANSFORM_DEBUG: which boxes paint through a matrix.
                         if std::env::var_os("OLO_TRANSFORM_DEBUG").is_some() {
@@ -1287,6 +1395,7 @@ impl<'a> BuildJob<'a> {
                             hidden: true,
                             fixed: children_fixed,
                             sticky: children_sticky,
+                            moved: children_moved,
                         });
                         self.progress.boxes += 1;
                         continue;
@@ -1334,7 +1443,7 @@ impl<'a> BuildJob<'a> {
                         matches!(p.value(P::Display), Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flex | crate::css::properties::Inner::Grid, .. }))
                     });
                     let z = if positioned || item { z } else { None };
-                    if positioned || z.is_some() || opacity < 1. || isolated || transformed != parent_transform || mask.is_some() {
+                    if positioned || z.is_some() || opacity < 1. || isolated || transformed != parent_transform || layered || mask.is_some() {
                         if self.contexts.len() >= self.limits.commands {
                             return Err(Error::Limit);
                         }
@@ -1427,7 +1536,17 @@ impl<'a> BuildJob<'a> {
                     }
                 }
             }
-            self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform, hidden: false, fixed: children_fixed, sticky: children_sticky });
+            self.states.push(State {
+                origin,
+                context,
+                clip: children_clip,
+                group: children_group,
+                transform: children_transform,
+                hidden: false,
+                fixed: children_fixed,
+                sticky: children_sticky,
+                moved: children_moved,
+            });
             self.progress.boxes += 1;
             self.progress.commands = self.draft.len();
         }
@@ -1471,6 +1590,7 @@ impl<'a> BuildJob<'a> {
             // or sticky box, nor a rounded or transformed clip (a straight
             // clip only cuts the layer).
             let surface = c.surface
+                && c.moved.is_none()
                 && !c.fixed
                 && c.sticky.is_none()
                 && c.transform == NONE
@@ -1479,7 +1599,9 @@ impl<'a> BuildJob<'a> {
                     let clip = &self.clips[c.clip as usize];
                     clip.radii.is_none() && clip.transform == NONE
                 });
-            let kind = if let (true, Primitive::Image { owner, .. }) = (surface, &c.primitive) {
+            let kind = if let Some(root) = c.moved {
+                LayerKind::Moved(root)
+            } else if let (true, Primitive::Image { owner, .. }) = (surface, &c.primitive) {
                 LayerKind::Surface(*owner)
             } else if c.fixed {
                 LayerKind::Fixed
@@ -1518,6 +1640,7 @@ impl<'a> BuildJob<'a> {
             groups: self.groups.into_boxed_slice(),
             transforms: self.transforms.into_boxed_slice(),
             transform_entries: self.transform_entries.into_boxed_slice(),
+            moved: self.moved.into_boxed_slice(),
             vector_geometry: Arc::new(self.vector_geometry),
             vector_clips: Arc::new(self.vector_clips),
             strata: strata.into_boxed_slice(),

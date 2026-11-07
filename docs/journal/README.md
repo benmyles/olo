@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### stripe.com live at 60 frames a second
+
+*11:24* — Renders once a display frame; the marquee is a moved layer (nothing repainted when it slides); the window frees the GPU images it stops showing (it kept them all, and filled the GPU).
+
+![stripe.com live at 60 frames a second](2026-11-07/112409-stripe-com-live-at-60-frames-a-second.png)
+
 ### stripe.com at 11.6% of a core, Chrome 18.1%
 
 *10:52* — Observers checked only when the geometry changed, a tick that spun 10,000 times an advance fixed, and translucent layers composited as straight alpha (the Google button over the hero canvas was grey).
