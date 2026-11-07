@@ -202,8 +202,15 @@ pub struct Scene {
     pub(super) base: [u8; 4],
     pub(super) canvas: [u8; 4],
     extent: Rect,
+    /// What painting substituted (a dashed border drawn solid): kept by
+    /// the scenes patched from this one, which paint the same.
+    fallbacks: Arc<layout::Fallbacks>,
 }
 impl Scene {
+    /// What painting this scene substituted.
+    pub fn fallbacks(&self) -> &layout::Fallbacks {
+        &self.fallbacks
+    }
     pub fn layout(&self) -> &Arc<layout::Layout> {
         &self.layout
     }
@@ -586,6 +593,7 @@ impl Scene {
             // Nothing transformed changed: the same scene over the new layout.
             return Ok(Some(Arc::new(Scene {
                 extent: self.extent,
+                fallbacks: self.fallbacks.clone(),
                 layout,
                 commands: self.commands.clone(),
                 commands_serial: self.commands_serial,
@@ -627,6 +635,7 @@ impl Scene {
         }
         Ok(Some(Arc::new(Scene {
             extent,
+            fallbacks: self.fallbacks.clone(),
             layout,
             commands: self.commands.clone(),
             commands_serial: self.commands_serial,
@@ -1666,6 +1675,7 @@ impl<'a> BuildJob<'a> {
         }
         Ok(Arc::new(Scene {
             extent: self.extent,
+            fallbacks: Arc::new(self.fallbacks),
             layout: self.layout,
             commands,
             commands_serial: COMMAND_SERIALS.fetch_add(1, std::sync::atomic::Ordering::Relaxed),

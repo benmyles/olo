@@ -841,3 +841,38 @@ fn text_edits_restyle_empty_only_when_text_comes_or_goes() {
         assert_eq!(pixel(&tile, 50, 50), below, "body after {text:?}");
     }
 }
+#[test]
+fn a_patched_rerender_reports_the_whole_pages_fallbacks() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // A dashed border (painted solid) and a fixed box (laid out as
+    // absolute, a layout fallback) on the page; then an inline style
+    // changes on another box, patched over, its layout kept.
+    let mut page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}#a{border:2px dashed red;height:10px}</style><div id=a></div><div style=display:flex><span style=order:1>o</span></div><div id=b style='height:5px'>x</div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let before = page.fallbacks.to_string();
+    assert!(before.contains("flex order ignored") && before.contains("solid"), "{before}");
+    for colour in ["red", "blue", "green"] {
+        let mut doc = page.document.clone();
+        let body = doc.children(doc.root()).unwrap().last().unwrap();
+        let body = doc.children(body).unwrap().last().unwrap();
+        let b = doc.children(body).unwrap().last().unwrap();
+        doc.set_attribute(b, "style", &format!("height:5px;color:{colour}")).unwrap();
+        page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+        assert_eq!(page.fallbacks.to_string(), before, "after {colour}");
+    }
+}

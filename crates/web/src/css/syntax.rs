@@ -122,6 +122,16 @@ enum Source {
     Shared(Arc<str>),
     Owned(Arc<String>),
 }
+/// A sheet's source text, held without copying it (what a cache of
+/// compiled rules compares a later sheet against).
+#[derive(Clone)]
+pub struct SourceHandle(Source);
+impl std::ops::Deref for SourceHandle {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
 impl std::ops::Deref for Source {
     type Target = str;
     fn deref(&self) -> &str {
@@ -291,6 +301,10 @@ impl Syntax {
     }
     pub fn source(&self) -> &str {
         &self.source
+    }
+    /// The source text, shared.
+    pub fn source_handle(&self) -> SourceHandle {
+        SourceHandle(self.source.clone())
     }
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics

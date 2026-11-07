@@ -9,7 +9,9 @@ revalidate the merged workspace and push the integration with browser work.
 **Active websites: [Stripe](eval/stripe/README.md) (homepage and
 pricing page as Chrome, live) and Wikipedia (the main page up to the
 search box and `overflow-wrap`; the Stripe, Inc. article with its
-scripts, as Chrome line for line, JOURNAL 2026-11-08).**
+scripts, as Chrome line for line, JOURNAL 2026-11-08); GitHub's
+homepage (its hero as Chrome since JOURNAL 2026-11-07, late; open items
+below).**
 Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it
 substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is
@@ -17,6 +19,18 @@ chosen by what is visibly wrong against Chrome and by the fallback counts,
 not by the first refusal. Stripe's homepage at 1000 × 700 lays out as
 Chrome does in every static section (JOURNAL 2026-11-07); what differs is
 script-driven. No configuration is accepted yet.
+
+GitHub's homepage, open (seen against Chrome at 1000 × 700):
+
+- [ ] Container queries (`@container`, `container:`): its sign-up form
+  stays stacked (83 rules dropped).
+- [ ] Flex `order` (6 boxes; its header's menu button sits left).
+- [ ] CSS animations and transitions: `animation`, `@keyframes` (207
+  rules), `transition` are not parsed; also `outline`, `text-transform`,
+  `text-overflow`, `appearance`, `filter`, `backdrop-filter`.
+- [ ] Load cost: its first 12 s cost Olo about 2.4 CPU s and Chrome about
+  1.3-1.9 (scripts 1.2 s, the scripts' first full style 45 ms each time
+  the sheets change, WebGL's EGL start 135 ms on the page thread).
 
 Next, in impact order (each removes a fallback kind or a visible gap):
 

@@ -649,6 +649,9 @@ pub struct Layout {
     /// can tell whether anything moved without reading every box.
     identity: u64,
     scale: f64,
+    /// What the rendering that made it substituted, by stage (see
+    /// `Recorded`): set by the page after each render or measurement.
+    recorded: std::sync::Mutex<Arc<super::Recorded>>,
 }
 static LAYOUT_IDENTITIES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 /// What a block in normal flow was laid out under: its containing
@@ -694,7 +697,25 @@ impl Layout {
             glyph_geometry_bytes: self.cache.glyph_geometry_bytes,
             fallbacks: self.cache.fallbacks.clone(),
         });
-        Self { cache, geometry: self.geometry.clone(), texts: self.texts.clone(), stored: self.stored.clone(), reuse_roots: self.reuse_roots.clone(), identity: self.identity, scale: self.scale }
+        Self {
+            cache,
+            geometry: self.geometry.clone(),
+            texts: self.texts.clone(),
+            stored: self.stored.clone(),
+            reuse_roots: self.reuse_roots.clone(),
+            identity: self.identity,
+            scale: self.scale,
+            recorded: std::sync::Mutex::new(self.recorded()),
+        }
+    }
+    /// What the rendering that made this layout substituted, by stage.
+    pub fn recorded(&self) -> Arc<super::Recorded> {
+        self.recorded.lock().map(|r| r.clone()).unwrap_or_default()
+    }
+    pub fn set_recorded(&self, recorded: super::Recorded) {
+        if let Ok(mut r) = self.recorded.lock() {
+            *r = Arc::new(recorded);
+        }
     }
     /// The geometry's identity (see the field).
     pub fn geometry_identity(&self) -> u64 {
@@ -2017,6 +2038,7 @@ impl<'a> Job<'a> {
             reuse_roots: Arc::from(self.reuse_roots),
             identity: LAYOUT_IDENTITIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             scale: self.scale,
+            recorded: Default::default(),
         })
     }
 }

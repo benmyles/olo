@@ -15,7 +15,7 @@ mod syntax;
 pub mod variables;
 pub use parser::{ParseError, Statement, StatementKind, SyntaxError};
 mod tokenizer;
-pub use syntax::{Component, Components, Kind, Memory, Syntax};
+pub use syntax::{Component, Components, Kind, Memory, SourceHandle, Syntax};
 pub use tokenizer::{Diagnostic, DiagnosticKind, Numeric, Token, TokenKind, Tokenizer};
 
 use std::fmt;

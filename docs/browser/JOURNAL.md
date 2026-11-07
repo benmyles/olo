@@ -6099,3 +6099,34 @@ redo only what changed.
   at 117 frames a second (page thread 12.2%, window 5.8%); Chrome 22.4% at
   120.
 
+
+## 2026-11-07, late: GitHub's homepage
+
+The next site after Stripe, compared with Chrome on the agent screen at
+1000 × 700 (Hacker News, compared first, already matched).
+
+- **Blank, then unstyled.** GitHub links one 821 KB sheet four times
+  (7.7 MB with the repeats), past the 4 MB cap, which failed the whole
+  page. A sheet linked again now compiles at its last place only (its
+  first keeps the layer order it sets, one `@layer` statement), and a
+  sheet past the cap (now 8 MB) is left out rather than failing the page.
+  Then the page drew unstyled: a selector rejected after it interned new
+  symbols (`[type=number]::-webkit-inner-spin-button`) rewound the
+  symbols but not their hashes, so every class interned after it took a
+  stale hash and its rules never matched.
+- **The hero.** Server-rendered at `opacity:0`, faded in by React and
+  GSAP. That needed import maps (bare `react` specifiers), Web IDL's
+  global `this` for a bare `addEventListener` call, `'opacity' in
+  style`, and frames for a page whose frame changed nothing (GSAP's
+  timeline in its delay waited for a window frame that never came and
+  ran at 3 frames a second; such a page now runs on its own clock at the
+  display's measured rate).
+- **Cost.** Animation frames refused the style patch (an inline style
+  change under any keyless compound; a text change under any
+  `:has(:empty)`), each a full style job and render, 17 ms; now 1.7 ms.
+  Compiled rules and web-font scopes are kept by what they came from, so
+  the scripted render starts from the scripts' last measurement (its
+  style 45 ms to 0.9). The first 12 s: Olo 3.1 to about 2.4 CPU s;
+  Chrome 1.3 to 1.9 the same minutes.
+- **Left** (TODO): container queries, flex `order`, CSS animations,
+  the load cost.

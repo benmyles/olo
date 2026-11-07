@@ -98,6 +98,78 @@ impl Fallbacks {
         self.counts.len() * size_of::<(&'static str, u32)>() + self.sample.len() * size_of::<Fallback>()
     }
 }
+impl Fallbacks {
+    /// Each kind at the larger of the two counts (samples kept, then
+    /// `other`'s, to the bound): what a stage that redid part of its work
+    /// reports over what it found before.
+    pub fn max_merge(&mut self, other: &Fallbacks) {
+        for &(what, n) in &other.counts {
+            match self.counts.iter_mut().find(|(w, _)| *w == what) {
+                Some((_, m)) => *m = (*m).max(n),
+                None => self.counts.push((what, n)),
+            }
+        }
+        for f in &other.sample {
+            if self.sample.len() >= Self::SAMPLE {
+                break;
+            }
+            if !self.sample.contains(f) {
+                self.sample.push(*f);
+            }
+        }
+    }
+}
+/// How much of its work a rendering stage did again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Redone {
+    /// Everything: what it found is the page's.
+    All,
+    /// Part of it, the rest taken from before: what it found, over what
+    /// was found before (each kind at the larger count).
+    Part,
+    /// None: what was found before stands.
+    Not,
+}
+/// What a page's rendering substituted, by stage (styles, boxes, texts,
+/// layout), and its stylesheet issues: kept with the layout, so a render
+/// that reuses earlier work (a patched style, subtrees laid out before)
+/// still reports the whole page, not only what it did again.
+#[derive(Clone, Debug, Default)]
+pub struct Recorded {
+    pub stages: [Fallbacks; 4],
+    pub issues: usize,
+}
+impl Recorded {
+    /// This render's findings over the previous record.
+    pub fn update(previous: Option<&Recorded>, stages: [(Fallbacks, Redone); 4], issues: (usize, Redone)) -> Recorded {
+        let mut out = Recorded::default();
+        for (i, (found, redone)) in stages.into_iter().enumerate() {
+            out.stages[i] = match (redone, previous) {
+                (Redone::All, _) | (_, None) => found,
+                (Redone::Part, Some(p)) => {
+                    let mut f = p.stages[i].clone();
+                    f.max_merge(&found);
+                    f
+                }
+                (Redone::Not, Some(p)) => p.stages[i].clone(),
+            };
+        }
+        out.issues = match (issues.1, previous) {
+            (Redone::All, _) | (_, None) => issues.0,
+            (Redone::Part, Some(p)) => p.issues.max(issues.0),
+            (Redone::Not, Some(p)) => p.issues,
+        };
+        out
+    }
+    /// Every stage's together.
+    pub fn total(&self) -> Fallbacks {
+        let mut all = Fallbacks::default();
+        for s in &self.stages {
+            all.merge(s);
+        }
+        all
+    }
+}
 impl std::fmt::Display for Fallbacks {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (i, (what, n)) in self.counts().into_iter().enumerate() {

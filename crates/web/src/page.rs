@@ -145,8 +145,62 @@ fn media_for(host: &impl Host, viewport: layout::Viewport) -> css::media::Media 
     css::media::Media::screen(viewport.width, viewport.height, viewport.scale, host.scheme() == css::color::Scheme::Dark)
 }
 /// Compile every sheet for one medium, with the `@font-face` rules met.
-type Compiled = (css::cascade::RuleSet, bool, Vec<css::fonts::FontFace>, Vec<(Arc<str>, Option<Arc<str>>)>);
+type Compiled = (Arc<css::cascade::RuleSet>, bool, Vec<css::fonts::FontFace>, Vec<(Arc<str>, Option<Arc<str>>)>);
+/// Rules compiled lately, by the sheets (origin, URL, text) and medium
+/// they came from: a page's scripts measure with the rules its scripted
+/// render then needs, and a reload brings the same sheets again (GitHub
+/// compiled its 2.5 MB of CSS three times on one load, 50 ms each).
+struct CompiledEntry {
+    media: css::media::Media,
+    sheets: Vec<(Origin, Option<Arc<str>>, css::SourceHandle)>,
+    compiled: Compiled,
+}
+thread_local! {
+    static COMPILED: std::cell::RefCell<Vec<CompiledEntry>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+/// Scopes made lately from a base scope and a page's web fonts: the same
+/// faces again (the scripts' measurements, then the scripted render) give
+/// the same scope, so styles and texts made with one serve the other.
+struct FacesEntry {
+    base: u64,
+    faces: Vec<(Arc<[u8]>, String)>,
+    scope: Scope,
+}
+thread_local! {
+    static SCOPES: std::cell::RefCell<Vec<FacesEntry>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+fn scope_with_faces(base: &Scope, faces: Vec<(Arc<[u8]>, crate::font::Descriptor)>, cancel: Option<&AtomicBool>) -> Result<Scope> {
+    let key: Vec<(Arc<[u8]>, String)> = faces.iter().map(|(d, f)| (d.clone(), format!("{f:?}"))).collect();
+    let same = |e: &FacesEntry| e.base == base.context() && e.faces.len() == key.len() && e.faces.iter().zip(&key).all(|((a, x), (b, y))| x == y && (Arc::ptr_eq(a, b) || a[..] == b[..]));
+    if let Some(scope) = SCOPES.with(|c| c.borrow().iter().find(|e| same(e)).map(|e| e.scope.clone())) {
+        return Ok(scope);
+    }
+    let scope = base.with_faces(faces, cancel)?;
+    SCOPES.with(|c| {
+        let mut c = c.borrow_mut();
+        c.insert(0, FacesEntry { base: base.context(), faces: key, scope: scope.clone() });
+        c.truncate(COMPILED_KEPT);
+    });
+    Ok(scope)
+}
+/// How many compiled rule sets are kept (the last ones compiled or used).
+const COMPILED_KEPT: usize = 2;
 fn compile(sheets: &[(css::Syntax, Origin, Option<Arc<str>>)], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<Compiled> {
+    let same = |e: &CompiledEntry| {
+        e.media == media
+            && e.sheets.len() == sheets.len()
+            && e.sheets.iter().zip(sheets).all(|((o, u, s), (syntax, origin, url))| o == origin && u == url && s.len() == syntax.source().len() && **s == *syntax.source())
+    };
+    if let Some(hit) = COMPILED.with(|c| {
+        let mut c = c.borrow_mut();
+        let i = c.iter().position(same)?;
+        let entry = c.remove(i);
+        let compiled = entry.compiled.clone();
+        c.insert(0, entry);
+        Some(compiled)
+    }) {
+        return Ok(hit);
+    }
     let mut builder = SheetBuilder::new(Default::default()).with_media(media);
     for (syntax, origin, base) in sheets {
         builder.add_sheet_from(syntax, *origin, base.clone(), cancel)?;
@@ -154,7 +208,13 @@ fn compile(sheets: &[(css::Syntax, Origin, Option<Arc<str>>)], media: css::media
     let dependent = builder.media_dependent();
     let faces = builder.font_faces().to_vec();
     let backgrounds = builder.background_urls().to_vec();
-    Ok((builder.finish(cancel)?, dependent, faces, backgrounds))
+    let compiled: Compiled = (Arc::new(builder.finish(cancel)?), dependent, faces, backgrounds);
+    COMPILED.with(|c| {
+        let mut c = c.borrow_mut();
+        c.insert(0, CompiledEntry { media, sheets: sheets.iter().map(|(s, o, u)| (*o, u.clone(), s.source_handle())).collect(), compiled: compiled.clone() });
+        c.truncate(COMPILED_KEPT);
+    });
+    Ok(compiled)
 }
 /// At most this many `background-image` files per page.
 const BACKGROUND_IMAGES: usize = 256;
@@ -418,8 +478,8 @@ impl Measurer {
                 (started.elapsed() - compiled_at).as_secs_f64() * 1000.
             );
         }
-        self.rules = Arc::new(rules);
-        self.scope = if fonts.is_empty() { self.base_scope.clone() } else { self.base_scope.with_faces(fonts, cancel)? };
+        self.rules = rules;
+        self.scope = if fonts.is_empty() { self.base_scope.clone() } else { scope_with_faces(&self.base_scope, fonts, cancel)? };
         self.sheet_ids = ids;
         self.base = base;
         Ok(true)
@@ -458,6 +518,10 @@ impl Measurer {
         // The document the previous layout was of, read before its styles
         // are patched to this one (the patch advances their revision).
         let previous_revision = previous.as_ref().map(|m| m.layout.cache().tree().styles().document_revision());
+        // What the previous measurement found (read before a patch in place).
+        let previous_record = previous.as_ref().map(|m| m.layout.recorded());
+        let mut found: [layout::Fallbacks; 4] = Default::default();
+        let mut redone = [layout::Redone::All; 4];
         let defaults = match &previous {
             Some(m) => m.defaults.clone(),
             None => Defaults::new(host, Default::default(), cancel)?,
@@ -506,8 +570,19 @@ impl Measurer {
             }
         };
         phases[0] = started.elapsed().as_secs_f64() * 1000.;
+        for _ in 0..styles.report().value_fallbacks.min(u32::MAX as usize) {
+            found[0].note("declaration dropped at computed-value time", None);
+        }
+        if previous.is_some() {
+            redone[0] = layout::Redone::Part;
+        }
+        let issues =
+            styles.report().stylesheet_issues + styles.report().inline_unsupported + styles.report().inline_invalid + styles.report().presentation_invalid + styles.report().presentation_unsupported;
         let kept = previous.as_ref().filter(|p| styles.geometry_kept() && !relayout && p.viewport == viewport);
         let layout = if let Some(p) = kept {
+            redone[1] = layout::Redone::Not;
+            redone[2] = layout::Redone::Not;
+            redone[3] = layout::Redone::Not;
             match &patched {
                 // Patched in place: the layout holds the patched styles.
                 Some((_, None)) => p.layout.clone(),
@@ -533,27 +608,34 @@ impl Measurer {
                 job = job.with_images(images.clone())?;
             }
             while !job.step(256)?.finished {}
+            found[1].merge(job.fallbacks());
             let tree = job.finish()?;
             phases[1] = started.elapsed().as_secs_f64() * 1000. - phases[0];
             let mut job = layout::PrepareJob::new(shaper, &self.scope, tree, Default::default(), cancel)?;
             if let Some(p) = previous {
                 job = job.with_previous(p.layout.cache());
+                redone[2] = layout::Redone::Part;
             }
             while !job.step(4)?.finished {}
+            found[2].merge(job.fallbacks());
             let cache = job.finish()?;
             phases[2] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1];
             let checked = cache.clone();
             let mut job = layout::Job::new(shaper, &self.scope, cache, viewport, Default::default(), cancel)?;
             if let (Some(p), Some(dirty)) = (previous, &dirty) {
                 job = job.with_previous(&p.layout, dirty);
+                redone[3] = layout::Redone::Part;
             }
             while !job.step(256)?.finished {}
+            found[3].merge(job.fallbacks());
             let reused = job.progress().reused;
             let layout = job.finish()?;
             check_reuse(shaper, &self.scope, checked, viewport, &layout, doc, reused, cancel)?;
             Arc::new(layout)
         };
         phases[3] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1] - phases[2];
+        let stages = std::array::from_fn(|i| (std::mem::take(&mut found[i]), redone[i]));
+        layout.set_recorded(layout::Recorded::update(previous_record.as_deref(), stages, (issues, redone[0])));
         // The index stands with the layout.
         let index = match previous.as_mut().filter(|p| Arc::ptr_eq(&p.layout, &layout)) {
             Some(p) => std::mem::take(&mut p.index),
@@ -1122,10 +1204,7 @@ fn gather(
     let reused = reuse.filter(|p| same_sheets(&p.sheets, &sheets));
     let (rules, media_dependent, faces, background_urls) = match reused {
         Some(p) => (p.rules.clone(), p.media_dependent, Vec::new(), p.backgrounds.clone()),
-        None => {
-            let (rules, media_dependent, faces, background_urls) = compile(&sheets, media, cancel)?;
-            (Arc::new(rules), media_dependent, faces, background_urls)
-        }
+        None => compile(&sheets, media, cancel)?,
     };
     let rules_reused = reused.is_some();
     {
@@ -1182,7 +1261,7 @@ fn gather(
     let scope = match reused {
         Some(p) => p.scope.clone(),
         None if loaded.is_empty() => base_scope.clone(),
-        None => base_scope.with_faces(loaded, cancel)?,
+        None => scope_with_faces(base_scope, loaded, cancel)?,
     };
     let (sheet_ids, _, _) = sheet_identities(&doc)?;
     Ok(Prepared {
@@ -1234,7 +1313,20 @@ pub fn finish_with(
         return Err(style::Error::Stale.into());
     }
     let interaction_mask = rules.state_mask();
-    let previous = if rules_reused { previous } else { None };
+    // The scripts' last measurement serves when it was styled with these
+    // very rules (an earlier preparation's, or the same compilation again,
+    // from the compiled-rules cache).
+    if std::env::var_os("OLO_WEB_TIMING").is_some()
+        && let Some(p) = previous
+    {
+        eprintln!(
+            "  finish: previous layout {}, its rules {}, its fonts {}",
+            p.cache().tree().styles().document_revision(),
+            if rules_reused || p.cache().tree().styles().generation() == rules.generation() { "the same" } else { "others" },
+            if p.cache().tree().styles().defaults().is_some_and(|d| d.is_current(host)) { "the same" } else { "others" }
+        );
+    }
+    let previous = previous.filter(|p| rules_reused || p.cache().tree().styles().generation() == rules.generation());
     let (scene, stylesheet_issues, fallbacks) = render(
         &doc,
         images.as_ref(),
@@ -1290,10 +1382,10 @@ impl Page {
         sheets.extend(loaded);
         let (rules, dependent, faces, _) = compile(&sheets, self.media, cancel)?;
         let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel)?;
-        self.rules = Arc::new(rules);
+        self.rules = rules;
         self.media_dependent = dependent;
         self.interaction_mask = self.rules.state_mask();
-        self.scope = if fonts.is_empty() { self.base_scope.clone() } else { self.base_scope.with_faces(fonts, cancel)? };
+        self.scope = if fonts.is_empty() { self.base_scope.clone() } else { scope_with_faces(&self.base_scope, fonts, cancel)? };
         self.sheets = sheets;
         self.sheet_ids = ids;
         self.base_href = base;
@@ -1342,7 +1434,7 @@ impl Page {
         let media = media_for(host, viewport);
         if self.media_dependent && media != self.media {
             let (rules, dependent, _, _) = compile(&self.sheets, media, cancel)?;
-            self.rules = Arc::new(rules);
+            self.rules = rules;
             self.media_dependent = dependent;
             self.interaction_mask = self.rules.state_mask();
             self.media = media;
@@ -1420,7 +1512,7 @@ impl Page {
         let media = media_for(host, viewport);
         if self.media_dependent && media != self.media {
             let (rules, dependent, _, _) = compile(&self.sheets, media, cancel)?;
-            self.rules = Arc::new(rules);
+            self.rules = rules;
             self.media_dependent = dependent;
             self.interaction_mask = self.rules.state_mask();
             self.media = media;
@@ -1720,7 +1812,10 @@ fn render(
     let previous = previous.filter(|p| p.cache().tree().styles().defaults().is_some_and(|d| d.is_current(host)));
     let previous_styles = previous.map(|p| p.cache().tree().styles().as_ref());
     let previous_revision = previous_styles.map(|p| p.document_revision());
-    let mut fallbacks = layout::Fallbacks::default();
+    // What each stage substituted (styles, boxes, texts, layout), and
+    // whether it did all its work again (see `layout::Recorded`).
+    let mut found: [layout::Fallbacks; 4] = Default::default();
+    let mut redone = [layout::Redone::All; 4];
     let mut stamps = [0f64; 6];
     let defaults = match previous_styles.and_then(|p| p.defaults()) {
         Some(d) => d,
@@ -1767,7 +1862,10 @@ fn render(
         stamps[0] = t.elapsed().as_secs_f64() * 1000.;
     }
     for _ in 0..styles.report().value_fallbacks.min(u32::MAX as usize) {
-        fallbacks.note("declaration dropped at computed-value time", None);
+        found[0].note("declaration dropped at computed-value time", None);
+    }
+    if previous_styles.is_some() {
+        redone[0] = layout::Redone::Part;
     }
     let stylesheet_issues = resource_issues
         + styles.report().stylesheet_issues
@@ -1814,7 +1912,9 @@ fn render(
         }
     };
     let layout = if let Some(p) = kept {
-        fallbacks.merge(&p.cache().fallbacks());
+        redone[1] = layout::Redone::Not;
+        redone[2] = layout::Redone::Not;
+        redone[3] = layout::Redone::Not;
         if let Some(t) = timing {
             stamps[1] = t.elapsed().as_secs_f64() * 1000.;
             stamps[2] = stamps[1];
@@ -1829,7 +1929,7 @@ fn render(
         while !job.step(128)?.finished {
             progress(Phase::Boxes, job.progress().boxes)
         }
-        fallbacks.merge(job.fallbacks());
+        found[1].merge(job.fallbacks());
         let tree = job.finish()?;
         if let Some(t) = timing {
             stamps[1] = t.elapsed().as_secs_f64() * 1000.;
@@ -1838,11 +1938,12 @@ fn render(
         let mut job = layout::PrepareJob::new(shaper, scope, tree, Default::default(), cancel)?;
         if let Some(p) = previous {
             job = job.with_previous(p.cache());
+            redone[2] = layout::Redone::Part;
         }
         while !job.step(1)?.finished {
             progress(Phase::Text, job.progress().texts)
         }
-        fallbacks.merge(job.fallbacks());
+        found[2].merge(job.fallbacks());
         let texts = (job.progress().reused_texts, job.progress().texts);
         let cache = job.finish()?;
         if let Some(t) = timing {
@@ -1854,11 +1955,12 @@ fn render(
         let mut job = layout::Job::new(shaper, scope, cache, viewport, Default::default(), cancel)?;
         if let (Some(p), Some(dirty)) = (previous, &dirty) {
             job = job.with_previous(p, dirty);
+            redone[3] = layout::Redone::Part;
         }
         while !job.step(64)?.finished {
             progress(Phase::Layout, job.progress().boxes)
         }
-        fallbacks.merge(job.fallbacks());
+        found[3].merge(job.fallbacks());
         let reused = job.progress().reused;
         let layout = job.finish()?;
         check_reuse(shaper, scope, checked, viewport, &layout, doc, reused, cancel)?;
@@ -1867,6 +1969,10 @@ fn render(
     if let Some(t) = timing {
         stamps[3] = t.elapsed().as_secs_f64() * 1000.;
     }
+    // The page's record: this render's findings over the previous one's.
+    let stages = std::array::from_fn(|i| (std::mem::take(&mut found[i]), redone[i]));
+    let recorded = layout::Recorded::update(previous.map(|p| p.recorded()).as_deref(), stages, (stylesheet_issues, redone[0]));
+    layout.set_recorded(recorded.clone());
     let box_count = layout.cache().tree().boxes().len();
     progress(Phase::Paint, 0);
     // Only transforms changed, over the same boxes: the previous scene
@@ -1914,7 +2020,6 @@ fn render(
             while !job.step(32)?.finished {
                 progress(Phase::Paint, job.progress().boxes)
             }
-            fallbacks.merge(job.fallbacks());
             built_ms = timing.map_or(0., |t| t.elapsed().as_secs_f64() * 1000.);
             job.finish()?
         }
@@ -1945,7 +2050,9 @@ fn render(
             box_count
         );
     }
-    Ok((scene, stylesheet_issues, fallbacks))
+    let mut fallbacks = recorded.total();
+    fallbacks.merge(scene.fallbacks());
+    Ok((scene, recorded.issues, fallbacks))
 }
 
 pub(crate) fn next_node(doc: &Document, node: crate::dom::NodeId) -> Result<Option<crate::dom::NodeId>> {
