@@ -63,6 +63,8 @@ struct Browser {
     /// Canvases asking for shared textures (made at the next paint, which
     /// has the renderer), the page's shared textures, and those to free.
     shared_requests: Vec<(olo_web::dom::NodeId, u32, u32, [u8; 16])>,
+    /// The page wants frames: each frame the window draws asks for its next.
+    animating: bool,
     shared_keys: Vec<u64>,
     shared_retired: Vec<u64>,
     labels: Vec<worker::Label>,
@@ -138,6 +140,7 @@ impl Browser {
             layers: Vec::new(),
             retired: Vec::new(),
             shared_requests: Vec::new(),
+            animating: false,
             shared_keys: Vec::new(),
             shared_retired: Vec::new(),
             labels: Vec::new(),
@@ -434,7 +437,8 @@ impl Browser {
             }
             worker::Reply::Status(id, s) if id == self.id => self.status = s,
             worker::Reply::Error(id, s) if id == 0 || id == self.id => self.status = s,
-            worker::Reply::Ready { id, title, fallbacks, tiles } if id == self.id => {
+            worker::Reply::Ready { id, title, fallbacks, tiles, animating } if id == self.id => {
+                self.animating = animating;
                 self.document_ready = true;
                 self.merge_tiles(tiles);
                 self.status = self.blocked_action.map_or(title, str::to_owned);
@@ -541,6 +545,7 @@ impl Render for Browser {
         let scroll = self.scroll;
         let extent = self.extent;
         let retired = std::mem::take(&mut self.retired);
+        let animating = self.animating;
         let recycle = self.tx.clone();
         let surface = canvas(
             move |bounds, window, cx| {
@@ -568,6 +573,14 @@ impl Render for Browser {
                 }
                 for key in &shared_retired {
                     window.drop_shared_texture(olo_ui::gpui::ImageId(*key as usize));
+                }
+                // An animating page's frames come with the window's own: at
+                // the next one, its next is asked for.
+                if animating {
+                    let tx = recycle.clone();
+                    window.on_next_frame(move |_, _| {
+                        let _ = tx.send(worker::Message::Frame);
+                    });
                 }
                 // WebGL draws on the window's GPU (frames shared with no copy;
                 // a page's canvas wakes no other GPU). Said before any canvas.

@@ -56,6 +56,9 @@ pub enum Message {
     Loaded(u64, Result<olo_js::Loaded, String>),
     /// A worker of the live page posted a message: advance it now.
     Wake,
+    /// The window drew a frame and will draw another: the page's next frame
+    /// is due now (frames paced by the display, see `Live::paced_at`).
+    Frame,
     /// Input from the person, for the live page's scripts (document
     /// coordinates in CSS px).
     Input(olo_js::Input),
@@ -120,6 +123,9 @@ pub enum Reply {
         title: String,
         fallbacks: String,
         tiles: Vec<(paint::DeviceRect, Arc<RenderImage>)>,
+        /// The page wants more frames (animations, a canvas drawing): the
+        /// window asks for them as it draws its own.
+        animating: bool,
     },
     Content {
         id: u64,
@@ -185,6 +191,9 @@ struct Live {
     /// Display frames seen, and what the page's frames cost.
     frame_count: u64,
     usage: Usage,
+    /// When the window last asked for a frame, and whether it asks now.
+    paced_at: Option<Instant>,
+    frame_requested: bool,
 }
 /// What a live page's frames cost (its scripts and renders on the CPU, its
 /// WebGL on the GPU), reviewed each second: over budget, it draws every
@@ -436,7 +445,8 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     // Until its next timer, or its next frame when it waits for
                     // one (animation frames, a change or a canvas to show).
                     let wait = cached.as_ref().and_then(|c| c.live.as_ref()).and_then(|l| {
-                        let frame = (l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty()).then_some(l.next_frame_ms);
+                        let paced = l.paced_at.is_some_and(|t| t.elapsed() < Duration::from_millis(250));
+                        let frame = (!paced && (l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty())).then_some(l.next_frame_ms);
                         let due = match (l.next_due_ms, frame) {
                             (Some(a), Some(b)) => Some(a.min(b)),
                             (a, b) => a.or(b),
@@ -493,6 +503,16 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             if let Some(c) = cached.as_mut()
                                 && let Some(live) = c.live.as_mut()
                             {
+                                live.next_due_ms = Some(0.);
+                            }
+                            continue;
+                        }
+                        Message::Frame => {
+                            if let Some(c) = cached.as_mut()
+                                && let Some(live) = c.live.as_mut()
+                            {
+                                live.paced_at = Some(Instant::now());
+                                live.frame_requested = true;
                                 live.next_due_ms = Some(0.);
                             }
                             continue;
@@ -563,6 +583,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             Message::Input(input) => kept.push_back(Message::Input(input)),
                             Message::Loaded(id, result) => kept.push_back(Message::Loaded(id, result)),
                             Message::Wake => kept.push_back(Message::Wake),
+                            Message::Frame => kept.push_back(Message::Frame),
                             Message::Recycle(images) => drop(images),
                             Message::SharedTextures(list) => kept.push_back(Message::SharedTextures(list)),
                             Message::RecycleTargets(targets) => drop(targets),
@@ -620,8 +641,12 @@ fn render(
         // on its ticks and the page renders right after them, so what a frame
         // draws is what shows (two clocks, the page's 16 ms and the render's
         // 16.7, beat against each other and dropped frames).
-        let mut frame = now_ms + 0.5 >= live.next_frame_ms;
-        if frame {
+        // Paced by the window's frames while it sends them (each of its frames
+        // asks for the page's next: locked to the display, none dropped by a
+        // timer drifting against it); by the page's own 60 Hz clock before.
+        let paced = live.paced_at.is_some_and(|t| t.elapsed() < Duration::from_millis(250));
+        let mut frame = if paced { std::mem::take(&mut live.frame_requested) } else { now_ms + 0.5 >= live.next_frame_ms };
+        if frame && !paced {
             let period = FRAME.as_secs_f64() * 1000.;
             live.next_frame_ms += period;
             if live.next_frame_ms <= now_ms {
@@ -1014,6 +1039,8 @@ fn render(
                 shared_frames: Vec::new(),
                 frame_count: 0,
                 usage: Usage::new(),
+                paced_at: None,
+                frame_requested: false,
             });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
@@ -1584,6 +1611,10 @@ fn render(
     if let Some(live) = cached.live.as_mut() {
         for (node, key) in std::mem::take(&mut live.shared_frames) {
             if !shown_shared.contains(&key) {
+                if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                    let surfaces: Vec<String> = (0..scene.strata().len()).filter_map(|i| scene.surface(i).map(|(_, im)| format!("{:?}", im.shared_texture()))).collect();
+                    eprintln!("  shared: refusing key {key}: the scene's surfaces show {surfaces:?}, frames {:?}", shown_shared);
+                }
                 live.realm.refuse_shared(node);
                 live.render_due = true;
             }
@@ -1614,6 +1645,7 @@ fn render(
         },
         fallbacks: page.fallbacks.to_string(),
         tiles,
+        animating: cached.live.as_ref().is_some_and(|l| l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty()),
     });
     Ok(())
 }

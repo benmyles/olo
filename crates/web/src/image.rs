@@ -277,6 +277,11 @@ impl Set {
     pub fn bound_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.bindings.iter().map(|(n, _)| *n)
     }
+    /// The elements whose images are live surfaces (animating canvases),
+    /// in binding order.
+    pub fn live_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.bindings.iter().filter(|(_, i)| i.live()).map(|(n, _)| *n)
+    }
     pub fn validate(&self, document: &Document) -> Result<(), Error> {
         if document.id() == self.document && document.revision() == self.revision { Ok(()) } else { Err(Error::Stale) }
     }

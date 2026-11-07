@@ -778,8 +778,28 @@ impl Realm {
     }
     pub fn canvases(&self) -> Vec<(NodeId, Arc<olo_web::image::Image>)> {
         let mut s = self.state.borrow_mut();
-        let mut out: Vec<_> = s.canvases.iter_mut().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))).collect();
-        out.extend(s.gl.iter_mut().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))));
+        let timing = std::env::var_os("OLO_CANVAS_TIMING").is_some();
+        let mut out: Vec<_> = s
+            .canvases
+            .iter_mut()
+            .filter(|(_, c)| c.touched)
+            .filter_map(|(n, c)| {
+                let t = Instant::now();
+                let i = c.image();
+                if timing {
+                    eprintln!("  canvas 2d {}x{}: {:.3} ms (dirty {})", c.width(), c.height(), t.elapsed().as_secs_f64() * 1000., i.is_some());
+                }
+                i.map(|i| (*n, i))
+            })
+            .collect();
+        out.extend(s.gl.iter_mut().filter(|(_, c)| c.touched).filter_map(|(n, c)| {
+            let t = Instant::now();
+            let i = c.image();
+            if timing {
+                eprintln!("  canvas gl {}x{}: {:.3} ms (shared {})", c.width(), c.height(), t.elapsed().as_secs_f64() * 1000., i.as_ref().is_some_and(|i| i.shared_texture().is_some()));
+            }
+            i.map(|i| (*n, i))
+        }));
         // Images the scripts loaded into `img` elements render too.
         out.extend(s.images.iter().map(|(n, i)| (*n, i.clone())));
         out

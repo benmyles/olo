@@ -511,6 +511,10 @@ impl Scene {
         let LayerKind::Moved(root) = self.strata.get(i)?.kind else { return None };
         self.moved.iter().find(|m| m.root == root)
     }
+    /// How many surface layers (live canvases shown apart) it has.
+    pub fn surface_count(&self) -> usize {
+        self.strata.iter().filter(|s| matches!(s.kind, LayerKind::Surface(_))).count()
+    }
     /// Every moved layer.
     pub fn moved_layers(&self) -> &[Moved] {
         &self.moved

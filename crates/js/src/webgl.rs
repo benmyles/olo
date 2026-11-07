@@ -449,6 +449,8 @@ pub struct Context {
     /// next to draw into; empty until given (`provide_shared`).
     shared: Vec<SharedTarget>,
     shared_next: usize,
+    /// The frame blitted last and its fence: shown at the next frame.
+    shared_pending: Option<(u64, glow::Fence)>,
     /// The size the ring was asked for, so it is asked once.
     shared_asked: Option<(u32, u32)>,
     /// Shared textures this canvas let go of (resized), for the window to
@@ -516,6 +518,7 @@ impl Context {
                 unpack_premultiply: false,
                 shared: Vec::new(),
                 shared_next: 0,
+                shared_pending: None,
                 shared_asked: None,
                 shared_released: Vec::new(),
                 shared_refused: false,
@@ -566,6 +569,9 @@ impl Context {
         // A canvas the page's budget can't hold keeps its size (as a context
         // that couldn't be resized).
         let (old_w, old_h) = (self.width, self.height);
+        if std::env::var_os("OLO_CANVAS_TIMING").is_some() {
+            eprintln!("    canvas resized {old_w}x{old_h} -> {width}x{height}");
+        }
         self.width = width;
         self.height = height;
         if !self.hold_canvas() {
@@ -656,7 +662,14 @@ impl Context {
                 made.push(SharedTarget { key, memory, texture, framebuffer });
             }
         }
-        if made.len() >= 2 {
+        if !self.shared.is_empty() {
+            // A ring already (asked twice): this one's let go of. (Put over
+            // the first, it left that one's GL objects and the window's
+            // textures behind, and the canvas read back.)
+            let mine = std::mem::replace(&mut self.shared, made);
+            self.release_shared();
+            self.shared = mine;
+        } else if made.len() >= 2 {
             self.shared = made;
             self.shared_next = 0;
             self.dirty = true;
@@ -667,18 +680,24 @@ impl Context {
             }
         } else {
             // Too few to draw one while another shows: let go of them.
-            let keys: Vec<u64> = made.iter().map(|t| t.key).collect();
             self.shared = made;
             self.release_shared();
-            let _ = keys;
         }
     }
     /// Lets go of the shared textures (resized, refused, dropped).
+    #[track_caller]
     fn release_shared(&mut self) {
         if self.shared.is_empty() {
             return;
         }
+        if std::env::var_os("OLO_CANVAS_TIMING").is_some() {
+            eprintln!("    ring released ({}x{}, {} textures) at {}", self.width, self.height, self.shared.len(), std::panic::Location::caller());
+        }
         self.gl.current();
+        if let Some((_, f)) = self.shared_pending.take() {
+            // SAFETY: this context's own fence.
+            unsafe { self.gl.gl.delete_sync(f) };
+        }
         let targets = std::mem::take(&mut self.shared);
         for t in targets {
             // SAFETY: this context's own objects.
@@ -700,6 +719,9 @@ impl Context {
     /// The window can't show this canvas from a shared texture: frames are
     /// read back from now on.
     pub fn refuse_shared(&mut self) {
+        if std::env::var_os("OLO_CANVAS_TIMING").is_some() {
+            eprintln!("    shared refused ({}x{})", self.width, self.height);
+        }
         self.shared_refused = true;
         self.release_shared();
         self.dirty = true;
@@ -712,6 +734,7 @@ impl Context {
         }
         let t = &self.shared[self.shared_next];
         let (key, target) = (t.key, t.framebuffer);
+        let blit_started = std::time::Instant::now();
         self.gl.current();
         // SAFETY: blitting between this context's framebuffers.
         unsafe {
@@ -728,8 +751,51 @@ impl Context {
                 g.enable(glow::SCISSOR_TEST);
             }
             self.rebind_framebuffer();
-            // Done before the window samples it (another API, no semaphore).
-            g.finish();
+            // Shown once the GPU is done with it: a fence, checked at the next
+            // frame (never waited for then: a frame later it is done), so the
+            // page's thread never waits for the GPU (glFinish did, 0.3 ms a
+            // frame, longer under a heavy shader).
+            let blitted = std::time::Instant::now();
+            let fence = g.fence_sync(glow::SYNC_GPU_COMMANDS_COMPLETE, 0).ok();
+            g.flush();
+            if std::env::var_os("OLO_CANVAS_TIMING").is_some() {
+                eprintln!(
+                    "    blit {:.3} ms, fence and flush {:.3} ms",
+                    blit_started.elapsed().as_secs_f64() * 1000. - blitted.elapsed().as_secs_f64() * 1000.,
+                    blitted.elapsed().as_secs_f64() * 1000.
+                );
+            }
+            let shown = match self.shared_pending.take() {
+                Some((previous, f)) => {
+                    let waited = std::time::Instant::now();
+                    let status = g.client_wait_sync(f, 0, 0);
+                    if std::env::var_os("OLO_CANVAS_TIMING").is_some() {
+                        eprintln!("    fence check {:.3} ms ({})", waited.elapsed().as_secs_f64() * 1000., status == glow::ALREADY_SIGNALED || status == glow::CONDITION_SATISFIED);
+                    }
+                    if status != glow::ALREADY_SIGNALED && status != glow::CONDITION_SATISFIED {
+                        // Not yet (a heavy frame): waited for, the GPU's pace.
+                        g.client_wait_sync(f, glow::SYNC_FLUSH_COMMANDS_BIT, 100_000_000);
+                    }
+                    g.delete_sync(f);
+                    Some(previous)
+                }
+                None => None,
+            };
+            match (fence, shown) {
+                (Some(f), Some(previous)) => {
+                    self.shared_pending = Some((key, f));
+                    self.shared_next = (self.shared_next + 1) % self.shared.len();
+                    return Some(previous);
+                }
+                (Some(f), None) => {
+                    // The first frame: shown at the next, as every other; this
+                    // one is read back (once) so something shows now.
+                    self.shared_pending = Some((key, f));
+                    self.shared_next = (self.shared_next + 1) % self.shared.len();
+                    return None;
+                }
+                (None, _) => g.finish(),
+            }
         }
         self.shared_next = (self.shared_next + 1) % self.shared.len();
         Some(key)
@@ -827,13 +893,20 @@ impl Context {
     /// The drawing buffer as the page's image: read back when drawn since
     /// the last time, premultiplied unless already so.
     pub fn image(&mut self) -> Option<Arc<olo_web::image::Image>> {
+        let t = std::time::Instant::now();
         self.end_frame_timing();
+        if std::env::var_os("OLO_CANVAS_TIMING").is_some() {
+            eprintln!("    timing queries: {:.3} ms", t.elapsed().as_secs_f64() * 1000.);
+        }
         if !self.dirty && self.pending.is_none() && self.last.is_some() {
             return self.last.clone();
         }
         let was_dirty = self.dirty;
         // An animating canvas with a ring: the frame stays on the GPU, the
         // image only names the texture it is in.
+        if std::env::var_os("OLO_CANVAS_TIMING").is_some() && self.width >= 1000 {
+            eprintln!("    hero image: dirty {was_dirty}, ring {}, pending {}", self.shared.len(), self.shared_pending.is_some());
+        }
         if was_dirty && !self.shared.is_empty() {
             self.dirty = false;
             if let Some(key) = self.draw_shared() {

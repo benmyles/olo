@@ -1786,9 +1786,15 @@ fn render(
         // (moved by its translation, nothing repainted): the scene is built
         // once more to give it one; later frames only move it.
         let newly = patched.nodes.iter().filter(|n| !animated.contains(n)).count();
+        // The previous scene's layers stand only while it shows every live
+        // canvas as a surface (a canvas that became one needs the scene
+        // built: a shared frame had no layer to show in, and was refused).
+        let live_now = images.map(|i| i.live_nodes().collect::<Vec<_>>()).unwrap_or_default();
+        let live_before = previous_scene.layout().cache().tree().images().map(|i| i.live_nodes().collect::<Vec<_>>()).unwrap_or_default();
+        let surfaces_stand = live_now == live_before;
         if only_transforms {
             animated.extend(patched.nodes.iter().copied());
-            if newly == 0 {
+            if newly == 0 && surfaces_stand {
                 scene = previous_scene.with_transforms(layout.clone(), &boxes, cancel)?;
                 transforms_patched = scene.is_some();
             }
