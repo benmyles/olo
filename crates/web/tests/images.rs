@@ -126,14 +126,15 @@ fn asset_premultiplication_and_shared_binding_budgets() {
     assert!(set.validate(&other).is_err());
 }
 #[test]
-fn page_image_binding_limit_rejects_before_resource_callbacks() {
+fn images_past_the_page_binding_limit_are_left_out_not_the_page() {
     let scope = scope();
     let host = paint_host::Scaled::new(scope.clone(), 1.);
     let mut shaper = Engine::default();
     let mut painter = paint::Engine::default();
-    let source = format!("<!doctype html><link rel=stylesheet href=style>{}", "<img src=large>".repeat(Limits::default().bindings + 1));
+    let limit = page::PAGE_IMAGE_LIMITS.bindings;
+    let source = format!("<!doctype html>{}", "<img src=large>".repeat(limit + 3));
     let mut calls = 0;
-    let error = page::load_assets(
+    let page = page::load_assets(
         source.into(),
         &host,
         &scope,
@@ -147,10 +148,10 @@ fn page_image_binding_limit_rejects_before_resource_callbacks() {
             Ok(None)
         },
     )
-    .err()
     .unwrap();
-    assert_eq!(calls, 0);
-    assert!(error.to_string().contains("Limit"), "{error}");
+    // The images past the limit are not even fetched; each is an issue.
+    assert_eq!(calls, limit);
+    assert_eq!(page.stylesheet_issues, limit + 3);
 }
 #[test]
 fn full_pipeline_image_boxes_match_independent_chrome_objects() {
