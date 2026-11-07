@@ -161,6 +161,18 @@ impl EntityMap {
         }
     }
 
+    /// Olo: [`Self::read`], but None while the entity is being updated
+    /// (leased) rather than a panic: for what may be asked from inside
+    /// that update (a menu bar built from the view whose key handler asks
+    /// it for a shortcut).
+    pub fn try_read<T: 'static>(&self, entity: &Entity<T>) -> Option<&T> {
+        self.assert_valid_context(entity);
+        self.accessed_entities.borrow_mut().insert(entity.entity_id);
+        self.entities
+            .get(entity.entity_id)
+            .and_then(|entity| entity.downcast_ref())
+    }
+
     fn assert_valid_context(&self, entity: &AnyEntity) {
         debug_assert!(
             Weak::ptr_eq(&entity.entity_map, &Arc::downgrade(&self.ref_counts)),
@@ -454,6 +466,12 @@ impl<T: 'static> Entity<T> {
     #[track_caller]
     pub fn read<'a>(&self, cx: &'a App) -> &'a T {
         cx.entities.read(self)
+    }
+
+    /// Olo: a reference to this entity, or None while it's being updated
+    /// (where [`Self::read`] would panic).
+    pub fn try_read<'a>(&self, cx: &'a App) -> Option<&'a T> {
+        cx.entities.try_read(self)
     }
 
     /// Read the entity referenced by this handle with the given function.

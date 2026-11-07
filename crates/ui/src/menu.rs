@@ -1183,7 +1183,10 @@ impl MenuBar {
         let watched = app.clone();
         let source = Source::Of {
             app: app.entity_id(),
-            build: Rc::new(move |cx: &App| weak.upgrade().map(|a| build(a.read(cx), cx))),
+            // (Its app being updated, as when its own key handler asks for
+            // a shortcut: None, and the bar answers from what it built
+            // last, rather than a read GPUI refuses mid-update.)
+            build: Rc::new(move |cx: &App| weak.upgrade().and_then(|a| a.try_read(cx).map(|t| build(t, cx)))),
             watch: Box::new(move |cx: &mut App, changed: Rc<std::cell::Cell<bool>>| cx.observe(&watched, move |_, _| changed.set(true))),
         };
         MenuBar { source, on_command: Rc::new(on_command), raw: false }
@@ -1521,6 +1524,14 @@ mod tests {
         // Its keys are found from them too.
         let copy = cx.update(|cx| handle.update(cx, |_, window, cx| bar_shortcut(window, cx, &gpui::Keystroke::parse("ctrl-c").unwrap()).map(|(c, _)| c)).unwrap());
         assert_eq!(copy.as_deref(), Some("copy"));
+        // Asked from inside the app's own update (its key handler asking
+        // whether a key is a menu's, as Olo Screen's viewer does: GPUI
+        // refuses a read then): answered from what it built last, no
+        // panic (Escape crashed olo-screen, 2026-11-06).
+        let asked = cx.update(|cx| handle.update(cx, |_, window, cx| doc.update(cx, |_, cx| shortcut_command(window, cx, &gpui::Keystroke::parse("ctrl-c").unwrap()))).unwrap());
+        assert_eq!(asked.as_deref(), Some("copy"));
+        let escape = cx.update(|cx| handle.update(cx, |_, window, cx| doc.update(cx, |_, cx| shortcut_command(window, cx, &gpui::Keystroke::parse("escape").unwrap()))).unwrap());
+        assert_eq!(escape, None);
     }
 
     #[test]
