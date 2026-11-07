@@ -1,0 +1,20 @@
+[Unit]
+Description=Olo's login screen
+Documentation=https://github.com/benmyles/olo/blob/main/docs/HACKING.md
+
+# In the console's place on the first terminal, after the boot's splash.
+Conflicts=getty@tty1.service
+After=getty@tty1.service systemd-user-sessions.service plymouth-quit-wait.service rc-local.service
+# (Plymouth gone either way if it fails.)
+OnFailure=plymouth-quit.service
+
+[Service]
+ExecStart=/usr/local/libexec/olo/olo-login --daemon --programs /usr/local/libexec/olo --vt 1
+KillMode=mixed
+Restart=always
+IgnoreSIGPIPE=no
+EnvironmentFile=-/etc/locale.conf
+KeyringMode=shared
+
+[Install]
+Alias=display-manager.service

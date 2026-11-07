@@ -1,0 +1,11 @@
+#%PAM-1.0
+# Olo's login screen's own session (olo-greeter, as the olo-greeter
+# user): in without a question, as GDM's gdm-launch-environment.
+auth       required    pam_env.so
+auth       required    pam_permit.so
+auth       include     postlogin
+account    required    pam_permit.so
+password   required    pam_deny.so
+session    optional    pam_keyinit.so force revoke
+session    include     system-auth
+session    include     postlogin
