@@ -89,11 +89,11 @@ pub fn latest_for<'a>(found: &'a [String], typed: &str) -> Option<&'a str> {
 mod tests {
     use super::*;
 
-    /// Ben's tab (2026-11-05), restored after a restart: Claude Code
-    /// printed how to resume, he ran it with more flags, the machine
-    /// restarted, he went back to the folder and typed `cl`.
+    /// A tab restored after a restart (as Ben's was, 2026-11-05; names
+    /// made up): Claude Code printed how to resume, it was run with more
+    /// flags, the machine restarted, then back in the folder `cl` typed.
     const BENS_TAB: &str = "\
-Generated rules for gemini at /home/ben/src/notes/GEMINI.md
+Generated rules for gemini at /home/sam/src/notes/GEMINI.md
 ✅ marshal rules generated
 sam@laptop:~/src/notes$ claude
 sam@laptop:~/src/notes$ claude --help|grep danger

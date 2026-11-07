@@ -440,15 +440,15 @@ something nobody here has is in "Blocked", with what it waits for.
   as it is in 1Password, both ways.
   *Found* (2026-11-06, a probe Ben allowed that shows fields' types and
   values' shapes only, `examples/card_shapes.rs`): 1Password's SDK gives
-  most cards' expiry as `MonthYear` "NN/NNNN", but three cards' (his
-  "card of his" among them) as `Unsupported`, with no value and no
+  most cards' expiry as `MonthYear` "NN/NNNN", but three cards' (one of
+  his among them) as `Unsupported`, with no value and no
   section; asked for by its secret reference, the expiry comes, "NN/NNNN".
   *Fixed*: sync asks for every such field by reference
   (`resolve_unread`), a card's expiry and valid-from becoming month and
   years, and fetches again, once, any item synced before with one empty
   (`a_card_expiry_1password_wont_give_is_asked_for`; the stand-in now
   leaves an unsupported field's value out as 1Password does). *Left*
-  (Ben): Sync Now after upgrading; the work card's expiry shows.
+  (Ben): Sync Now after upgrading; that card's expiry shows.
 
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native
@@ -541,7 +541,7 @@ something nobody here has is in "Blocked", with what it waits for.
   *Re-checked* (2026-11-06, read-only, on the ThinkPad P1 Gen 9 this
   session runs on): a backup was imported here on 2026-11-04 at 14:24
   (the automatic "Before import" backup is in `state/olo/backups`); the
-  Mac's Wi-Fi networks are in NetworkManager (Home used 2026-11-05),
+  Mac's Wi-Fi networks are in NetworkManager (one used 2026-11-05),
   Passwords' vault is there, and the Token Pool's store is written to
   (its arrival marker gone: it has run since). *Left* (Ben): what only
   he can see: each pane and app as he left it, Passwords opening, and
@@ -2128,7 +2128,7 @@ people.
   headless: a second Terminal process each way, a plain click unchanged.
 
 - ~~**Passwords in an agent screen opens black**~~ (Ben, 2026-11-06, with a
-  screenshot of the screen "work-qa"): "trying to open
+  screenshot of one of his agent screens): "trying to open
   passwords in agent screens doesn't seem to work anymore". Its window
   shows (Deskbar lists it) but stays a black rectangle over Chrome.
   *Found*: the screen drew Passwords (its own screenshot showed it); the
@@ -2980,7 +2980,7 @@ people.
   "Resume this session with: claude --dangerously-skip-permissions
   --resume 00000000-…", then `claude --allow-dangerously-skip-permissions
   --dangerously-skip-permissions --resume 00000000-…` run, then
-  "Restored from Nov 5, 2026, 9:15 AM", `cd ~/src/notes`,
+  "Restored from Nov 5, 2026, 9:15 AM", `cd` into the worktree,
   and `cl` typed: it suggested `claude --help|grep allow`; "here i would
   expect the model's prediction to be that claude command to resume
   with the session id etc". So the candidates can't come only from the
@@ -3397,15 +3397,15 @@ people.
 - ~~**Terminal: a tab in a worktree isn't seen as the repository's**~~
   (Ben, 2026-11-04, with a screenshot): "for some reason terminal isn't
   picking up my worktree and github pr associated with them like it
-  recognized the main work-repo repo but then didn't recognize the
-  notes worktree". The first tab (in ~/src/work-repo) is
-  in the work-repo group with its PR badge; the second, `cd`'d into
-  ~/src/notes, sits outside it with no branch or PR. That
+  recognized the main [work] repo but then didn't recognize the
+  [its] worktree" (names left out here). The first tab (in the main
+  repository) is in its group with its PR badge; the second, `cd`'d
+  into the worktree beside it, sits outside it with no branch or PR. That
   folder is a linked worktree (its `.git` file: `gitdir:
-  /home/ben/src/work-repo/.git/worktrees/notes`, branch
-  `knowledge`), made at 11:37 that day, outside Terminal (git or
+  ~/src/REPO/.git/worktrees/REPO.WORKTREE`, on its own
+  branch), made at 11:37 that day, outside Terminal (git or
   worktrunk). apps/terminal/src/git.rs's watcher should take it as
-  work-repo's, on its branch, with that branch's PR. *Done*: the
+  the main repository's, on its branch, with that branch's PR. *Done*: the
   worktree was fine (git and Terminal's `git::look` read it); the tab's
   folder wasn't. Terminal reads it from the shell's `/proc/PID/cwd`, and
   brush (the login shell) never moved its process on `cd`. olo-brush
@@ -5557,8 +5557,8 @@ people.
   the firmware in that state; the healer's reports carry the times to
   match against the journal.) (Ben, 2026-10-31;
   after the move to GPUI is done): "something is wrong with the wifi- if
-  i try to connect to the normal Home-WPA3 it just says network cannot
-  be joined and if i try to connect to another like Home it says it
+  i try to connect to the normal [WPA3 network] it just says network cannot
+  be joined and if i try to connect to another like [the WPA2 one] it says it
   is connecting but then fails to connect. idk if the driver is flaky or
   if it's something else but whatever it is please root cause it and make
   it so it will reliably work -- olo should supervise this stuff and

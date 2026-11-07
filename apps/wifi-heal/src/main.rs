@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn heals_read_back() {
-        let r = Report { heals: vec![Heal { at: 1, interface: "wld0".into(), driver: "brcmfmac".into(), why: "x".into(), rejoined: Some("Home".into()), error: None }] };
+        let r = Report { heals: vec![Heal { at: 1, interface: "wld0".into(), driver: "brcmfmac".into(), why: "x".into(), rejoined: Some("Home Wi-Fi".into()), error: None }] };
         let back: Report = serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
         assert_eq!(back.heals, r.heals);
     }
