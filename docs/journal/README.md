@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: sticky and fixed positioning as layers over the page
+
+*08:48* — A sticky navigation bar stuck at the top, a section heading stuck under it, a sticky bar at the bottom, at the section the stuck bar's link scrolled to. The scene's commands are cut into strata in paint order: the page's runs, the fixed layer and each sticky box's layer, painted in order, the fixed one unscrolled and each sticky one shifted as the scroll has it; hit-testing follows the same order.
+
+![Browser: sticky and fixed positioning as layers over the page](2026-11-07/084821-browser-sticky-and-fixed-positioning-as-layers-o.png)
+
 ### Browser: stripe.com/pricing with ES modules, the font shorthand and auto-fit grids
 
 *07:51* — The pricing page's scripts are ES modules (65 in 18 graphs, loaded level by level in 216 ms); its headings are font shorthands over custom properties, its hero card a repeat(auto-fit, minmax(0, 1fr)) grid. All three were missing; it now lays out as Chrome does at 1000 × 700.

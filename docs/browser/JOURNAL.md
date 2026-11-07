@@ -5809,3 +5809,32 @@ redo only what changed.
   (0.6–0.75 ms): a gradient raster cache like the shadows', and a SIMD
   or GPU transformed blit, are next. `getComputedStyle().lineHeight`
   prints a unitless number with px.
+
+## 2026-11-08, small hours: fixed and sticky, and the page in strata
+
+- **`position: fixed` and `position: sticky`** were painted as absolute
+  and relative, scrolling away with the page. Both are now layers: the
+  scene marks the commands under a fixed box (unless a transformed
+  ancestor contains it) and under a sticky box (the outermost), the
+  worker rasterises each layer in 256 px tiles kept by signature, and
+  the window paints the fixed layer unscrolled and each sticky layer
+  shifted as the scroll has it (`layout::Sticky::offset`: stuck to its
+  top or bottom inset once the scroll passes it, never beyond its
+  containing block). Hit-testing and the agent labels follow the same
+  placements, so a link in a stuck bar is clicked where it shows.
+- **Strata, in paint order.** A first version painted the fixed layer
+  over everything, and stripe.com went blank when scrolled: its
+  homepage has a viewport-sized fixed div *behind* the content (a
+  Safari bars hack, pointer-events none). The scene now cuts its
+  commands, in paint order, into strata: runs of the page's own
+  commands and the layers between them (a positioned box is a stacking
+  context, so a layer is one contiguous run). The base stratum carries
+  the page's background; every stratum above it is transparent tiles,
+  skipped where it has nothing, placed by its kind; the window paints
+  them in order. Hit-testing goes from the top stratum down and skips
+  `pointer-events: none` and hidden boxes. stripe.com scrolled has
+  three layers (the fixed div's tiles, the page run above it, a sticky
+  one) and repaints the same 16 tiles a render as before.
+- **Test pages** (a fixed header with links, a fixed banner, a fixed box
+  under a transform; a sticky navigation bar, sticky section headings
+  under it, a sticky bottom bar) match Chrome's placements when scrolled.
