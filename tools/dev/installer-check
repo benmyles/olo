@@ -1,0 +1,249 @@
+#!/usr/bin/python3
+"""Olo Setup tried on a stock Fedora, in a virtual machine of its own
+(KVM, a virtio GPU, no window): a fresh Fedora Workstation installed from
+Fedora's own network installer, then booted, the installer downloaded
+and run in it as a person would, and Olo used. The machine is driven
+through QEMU's monitor (QMP): pictures of its screen, keys, the pointer.
+
+  tools/dev/installer-check install [--fedora 45]
+      a fresh Fedora Workstation (the network installer's ISO, a
+      kickstart choosing Workstation's own package set) on DIR/disk.qcow2
+  tools/dev/installer-check boot [--serve DIR] [--size WxH]
+      boot it, in the background; DIR (tools/release.sh's output) served
+      to the machine at http://10.0.2.2:8642/
+  tools/dev/installer-check shot FILE.png
+  tools/dev/installer-check type TEXT       (typed on the machine's keyboard)
+  tools/dev/installer-check key COMBO       (e.g. ret, meta_l, ctrl-alt-t)
+  tools/dev/installer-check click X Y [right]   (screen pixels)
+  tools/dev/installer-check stop
+
+Everything is kept in /var/tmp/olo-installer-check (the ISO, the disk,
+the kickstart, the monitor's socket). What isn't stock, for the test:
+the tester ("olo", password "olo") is logged in by GDM itself and GNOME's
+first-run tour is skipped. Never root.
+"""
+import argparse
+import http.server
+import json
+import os
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+DIR = "/var/tmp/olo-installer-check"
+PORT = 8642
+SOCK = os.path.join(DIR, "qmp.sock")
+PID = os.path.join(DIR, "qemu.pid")
+
+KICKSTART = """# Olo Setup's test machine: Fedora Workstation as it comes.
+text
+lang en_US.UTF-8
+keyboard us
+timezone America/Los_Angeles --utc
+network --bootproto=dhcp --activate --hostname=olo-test
+url --mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?repo=fedora-{v}&arch=x86_64"
+repo --name=updates --mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?repo=updates-released-f{v}&arch=x86_64"
+zerombr
+clearpart --all --initlabel
+autopart
+bootloader --timeout=1
+rootpw --lock
+user --name=olo --password=olo --plaintext --groups=wheel --gecos="Olo Tester"
+firstboot --disable
+xconfig --startxonboot
+poweroff
+
+%packages
+@^workstation-product-environment
+%end
+
+%post
+# (For the test, not stock: the tester logged in by itself, no tour.)
+cat > /etc/gdm/custom.conf <<EOF
+[daemon]
+AutomaticLoginEnable=True
+AutomaticLogin=olo
+EOF
+mkdir -p /home/olo/.config
+echo yes > /home/olo/.config/gnome-initial-setup-done
+chown -R olo:olo /home/olo/.config
+%end
+"""
+
+
+def serve(directory):
+    """`directory` over HTTP on the loopback (the machine's 10.0.2.2), in
+    a thread."""
+    handler = lambda *a, **k: http.server.SimpleHTTPRequestHandler(*a, directory=directory, **k)
+
+    class Quiet(http.server.ThreadingHTTPServer):
+        def handle_error(self, request, client_address):
+            pass
+
+    server = Quiet(("127.0.0.1", PORT), handler)
+    server.RequestHandlerClass.log_message = lambda *a: None
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+class Monitor:
+    def __init__(self):
+        self.s = socket.socket(socket.AF_UNIX)
+        self.s.connect(SOCK)
+        self.f = self.s.makefile("rw")
+        self.f.readline()
+        self.cmd("qmp_capabilities")
+
+    def cmd(self, name, **arguments):
+        self.f.write(json.dumps({"execute": name, "arguments": arguments}) + "\n")
+        self.f.flush()
+        while True:
+            r = json.loads(self.f.readline())
+            if "return" in r or "error" in r:
+                return r
+
+
+# What each character is on a US keyboard: (qcode, with shift).
+KEYS = {c: (c, False) for c in "abcdefghijklmnopqrstuvwxyz0123456789"}
+KEYS.update({c.upper(): (c, True) for c in "abcdefghijklmnopqrstuvwxyz"})
+KEYS.update({" ": ("spc", False), "\n": ("ret", False), "-": ("minus", False), "_": ("minus", True), "=": ("equal", False), "+": ("equal", True),
+             "/": ("slash", False), "?": ("slash", True), ".": ("dot", False), ">": ("dot", True), ",": ("comma", False), "<": ("comma", True),
+             ";": ("semicolon", False), ":": ("semicolon", True), "'": ("apostrophe", False), '"': ("apostrophe", True), "&": ("7", True),
+             "|": ("backslash", True), "\\": ("backslash", False), "~": ("grave_accent", True), "!": ("1", True), "@": ("2", True), "#": ("3", True),
+             "$": ("4", True), "%": ("5", True), "*": ("8", True), "(": ("9", True), ")": ("0", True), "[": ("bracket_left", False), "]": ("bracket_right", False)})
+
+
+def type_text(m, text):
+    for ch in text:
+        code, shift = KEYS[ch]
+        keys = ([{"type": "qcode", "data": "shift"}] if shift else []) + [{"type": "qcode", "data": code}]
+        m.cmd("send-key", keys=keys)
+        time.sleep(0.04)
+
+
+def screen_size(m):
+    path = os.path.join(DIR, ".size.ppm")
+    m.cmd("screendump", filename=path)
+    with open(path, "rb") as f:
+        head = f.read(64).split()
+    return int(head[1]), int(head[2])
+
+
+def click(m, x, y, button="left"):
+    w, h = screen_size(m)
+    ax, ay = int(x * 32767 / (w - 1)), int(y * 32767 / (h - 1))
+    m.cmd("input-send-event", events=[{"type": "abs", "data": {"axis": "x", "value": ax}}, {"type": "abs", "data": {"axis": "y", "value": ay}}])
+    time.sleep(0.1)
+    for down in (True, False):
+        m.cmd("input-send-event", events=[{"type": "btn", "data": {"down": down, "button": button}}])
+        time.sleep(0.08)
+
+
+def install(fedora):
+    os.makedirs(DIR, exist_ok=True)
+    iso = next((os.path.join(DIR, f) for f in sorted(os.listdir(DIR)) if f.startswith(f"Fedora-Everything-netinst-x86_64-{fedora}") and f.endswith(".iso")), None)
+    if not iso:
+        sys.exit(f"installer-check: no Fedora {fedora} network installer ISO in {DIR}")
+    label = next(l.split(":", 1)[1].strip() for l in subprocess.run(["isoinfo", "-d", "-i", iso], capture_output=True, text=True).stdout.splitlines() if l.startswith("Volume id:"))
+    for name in ("vmlinuz", "initrd.img"):
+        if not os.path.exists(os.path.join(DIR, name)):
+            with open(os.path.join(DIR, name), "wb") as f:
+                subprocess.run(["isoinfo", "-R", "-i", iso, "-x", f"/images/pxeboot/{name}"], stdout=f, check=True)
+    with open(os.path.join(DIR, "ks.cfg"), "w") as f:
+        f.write(KICKSTART.replace("{v}", str(fedora)))
+    disk = os.path.join(DIR, "disk.qcow2")
+    if os.path.exists(disk):
+        os.remove(disk)
+    subprocess.run(["qemu-img", "create", "-f", "qcow2", disk, "40G"], check=True, stdout=subprocess.DEVNULL)
+    server = serve(DIR)
+    started = time.time()
+    log = open(os.path.join(DIR, "install.log"), "w")
+    vm = subprocess.run(["qemu-kvm", "-m", "6144", "-smp", "4", "-cpu", "host", "-no-reboot",
+                         "-kernel", os.path.join(DIR, "vmlinuz"), "-initrd", os.path.join(DIR, "initrd.img"),
+                         "-append", f"inst.stage2=hd:LABEL={label} inst.ks=http://10.0.2.2:{PORT}/ks.cfg inst.text console=ttyS0",
+                         "-cdrom", iso, "-drive", f"file={disk},if=virtio,format=qcow2",
+                         "-netdev", "user,id=n", "-device", "virtio-net-pci,netdev=n",
+                         "-display", "none", "-serial", "stdio", "-qmp", f"unix:{SOCK},server=on,wait=off"],
+                        stdout=log, stderr=subprocess.STDOUT)
+    server.shutdown()
+    print(json.dumps({"installed": vm.returncode == 0, "minutes": round((time.time() - started) / 60, 1), "disk": disk, "log": log.name}))
+
+
+def boot(serve_dir, size):
+    w, h = size.split("x")
+    if serve_dir:
+        # The served folder in a process of its own, which outlives this one.
+        pid = os.fork()
+        if pid == 0:
+            os.setsid()
+            serve(serve_dir)
+            while True:
+                time.sleep(3600)
+        with open(os.path.join(DIR, "http.pid"), "w") as f:
+            f.write(str(pid))
+    subprocess.run(["qemu-kvm", "-m", "8192", "-smp", "4", "-cpu", "host", "-daemonize", "-pidfile", PID,
+                    "-drive", f"file={os.path.join(DIR, 'disk.qcow2')},if=virtio,format=qcow2",
+                    "-netdev", "user,id=n", "-device", "virtio-net-pci,netdev=n",
+                    "-device", f"virtio-vga,xres={w},yres={h}", "-device", "qemu-xhci", "-device", "usb-tablet",
+                    "-display", "none", "-serial", "null", "-qmp", f"unix:{SOCK},server=on,wait=off"], check=True)
+    print(json.dumps({"booted": True, "served": serve_dir}))
+
+
+def stop():
+    for pidfile in (PID, os.path.join(DIR, "http.pid")):
+        try:
+            pid = int(open(pidfile).read())
+            # (Only ours: a qemu or this script on our folder.)
+            cmdline = open(f"/proc/{pid}/cmdline", "rb").read()
+            if DIR.encode() in cmdline or b"installer-check" in cmdline:
+                os.kill(pid, 15)
+        except (OSError, ValueError):
+            pass
+        try:
+            os.remove(pidfile)
+        except OSError:
+            pass
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    sub = p.add_subparsers(dest="what", required=True)
+    i = sub.add_parser("install")
+    i.add_argument("--fedora", type=int, default=45)
+    b = sub.add_parser("boot")
+    b.add_argument("--serve")
+    b.add_argument("--size", default="1920x1200")
+    s = sub.add_parser("shot")
+    s.add_argument("file")
+    t = sub.add_parser("type")
+    t.add_argument("text")
+    k = sub.add_parser("key")
+    k.add_argument("combo")
+    c = sub.add_parser("click")
+    c.add_argument("x", type=int)
+    c.add_argument("y", type=int)
+    c.add_argument("button", nargs="?", default="left")
+    sub.add_parser("stop")
+    a = p.parse_args()
+    if a.what == "install":
+        install(a.fedora)
+    elif a.what == "boot":
+        boot(a.serve, a.size)
+    elif a.what == "stop":
+        stop()
+    else:
+        m = Monitor()
+        if a.what == "shot":
+            print(m.cmd("screendump", filename=os.path.abspath(a.file), format="png"))
+        elif a.what == "type":
+            type_text(m, a.text.replace("\\n", "\n"))
+        elif a.what == "key":
+            m.cmd("send-key", keys=[{"type": "qcode", "data": k} for k in a.combo.split("-")])
+        elif a.what == "click":
+            click(m, a.x, a.y, a.button)
+
+
+if __name__ == "__main__":
+    main()

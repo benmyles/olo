@@ -19,6 +19,8 @@ const TRANSACTION: &str = "org.freedesktop.PackageKit.Transaction";
 
 /// Filters (a bit for each of PackageKit's `PkFilterEnum`).
 const FILTER_NONE: u64 = 1 << 1;
+const FILTER_INSTALLED: u64 = 1 << 2;
+const FILTER_NOT_INSTALLED: u64 = 1 << 3;
 const FILTER_NEWEST: u64 = 1 << 16;
 /// Only packages from trusted (signed) sources.
 const ONLY_TRUSTED: u64 = 1 << 1;
@@ -128,11 +130,30 @@ where
     }
 }
 
-/// The newest of each package called one of `names` (installed or not):
-/// those there are.
+/// Whether a package is for this computer (its architecture, or none).
+fn native(p: &Package) -> bool {
+    let arch = p.id.split(';').nth(2).unwrap_or("");
+    arch == std::env::consts::ARCH || arch == "noarch"
+}
+
+/// Each package called one of `names`, for this computer's
+/// architecture: the one installed if there is one, else the newest the
+/// repositories have. (Asked for the newest alone, PackageKit gave an
+/// update waiting as not installed, and other architectures' builds:
+/// installing what was missing became updating, which asked for a
+/// password, Olo Setup 2026-11-07.)
 pub fn resolve(names: &[&str]) -> Result<Vec<Package>> {
     let names: Vec<String> = names.iter().map(|n| n.to_string()).collect();
-    transaction("Resolve", &(FILTER_NEWEST, names), &mut |_| {})
+    let mut out: Vec<Package> = transaction("Resolve", &(FILTER_INSTALLED, names.clone()), &mut |_| {})?.into_iter().filter(native).collect();
+    let rest: Vec<String> = names.into_iter().filter(|n| !out.iter().any(|p| p.name() == n)).collect();
+    if !rest.is_empty() {
+        for p in transaction("Resolve", &(FILTER_NEWEST | FILTER_NOT_INSTALLED, rest), &mut |_| {})?.into_iter().filter(native) {
+            if !out.iter().any(|q| q.name() == p.name()) {
+                out.push(p);
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// Read the package lists again (a repository just added).

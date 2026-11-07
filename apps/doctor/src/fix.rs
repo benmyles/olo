@@ -103,6 +103,20 @@ pub enum Step {
         name: String,
         urls: Vec<String>,
     },
+    /// Copy a folder's files into another (made if need be), each over
+    /// its old self (through a sibling renamed into place), `mode` each
+    /// (Olo Setup: Olo's data where its login screen reads it).
+    CopyTree {
+        from: PathBuf,
+        to: PathBuf,
+        mode: u32,
+    },
+    /// Make the start-up images (initramfs) again, for every kernel
+    /// installed: what's in them (Plymouth's theme and settings) changed.
+    /// The one step that runs another program (dracut, as root): the
+    /// images are the boot system's own, and there is no other way to
+    /// have it make them.
+    RebuildInitramfs,
     /// Install `name` from its maker's latest GitHub release, its
     /// published SHA-256 checked, to `to` (`crate::releases`): a program
     /// the system's repositories don't carry (mise, worktrunk).
@@ -144,6 +158,8 @@ impl Step {
             Step::UpdatePackages { names } => format!("Updating {}", short_list(names)),
             Step::InstallRelease { name, release, .. } => format!("Installing {name} from github.com/{}", release.repo),
             Step::InstallRepository { name, .. } => format!("Adding the {name} repository"),
+            Step::CopyTree { to, .. } => format!("Installing {}", to.display()),
+            Step::RebuildInitramfs => "Making the start-up images again".into(),
         }
     }
 
@@ -225,8 +241,37 @@ impl Step {
             Step::TryShell { path } => try_shell(path),
             Step::SetLoginShell { user, shell } => set_login_shell(user, shell).map_err(|e| format!("{}: {e}", self.describe())),
             Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRelease { .. } | Step::InstallRepository { .. } => self.run_with(&mut |_| {}),
+            Step::CopyTree { from, to, mode } => copy_tree(from, to, *mode).map_err(failed),
+            Step::RebuildInitramfs => {
+                let status = std::process::Command::new("dracut")
+                    .args(["--force", "--regenerate-all"])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::piped())
+                    .output();
+                match status {
+                    Ok(o) if o.status.success() => Ok(()),
+                    Ok(o) => Err(format!("{}: dracut: {}", self.describe(), String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("failed"))),
+                    Err(e) => Err(failed(e)),
+                }
+            }
         }
     }
+}
+
+/// Every file of `from` copied into `to`, each over its old self.
+fn copy_tree(from: &Path, to: &Path, mode: u32) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for e in std::fs::read_dir(from)? {
+        let e = e?;
+        let target = to.join(e.file_name());
+        if e.file_type()?.is_dir() {
+            copy_tree(&e.path(), &target, mode)?;
+        } else {
+            write_bytes(&target, &std::fs::read(e.path())?, mode)?;
+        }
+    }
+    Ok(())
 }
 
 /// A few names, and how many more ("kernel, linux-firmware and 4 more").

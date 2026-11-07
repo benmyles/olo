@@ -383,6 +383,7 @@ socket.
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
+| `apps/installer` | `olo-installer`: Olo Setup, a stock Fedora Workstation made Olo in one full-screen program (see "Olo Setup"). |
 | `apps/dconf` | `olo-dconf`: Olo's dconf service (`ca.desrt.dconf`), GSettings programs' settings written into dconf's own database in place of GNOME's dconf-service (see "Other toolkits' programs"). |
 | `apps/secrets` | `olo-secrets`: Olo's own Secret Service and Secret portal, programs' secrets kept in place of GNOME Keyring unless Preferences ▸ Security says otherwise, its store opened by the login password (see "Programs' secrets"). |
 | `crates/pam-keyring`, `crates/login-key` | `pam_olo_keyring.so`: the login password opens Olo's keyring, the key it gives handed to olo-secrets in the login's kernel keyring; `olo-login-key`: that key's derivation, shared (see "Programs' secrets"). |
@@ -8445,6 +8446,96 @@ ones it knows.
     fine-tune 5 to 11 ms, a quick one about 2 ms; idle 0% of a core, 0
     wakeups a second; while Activity Monitor's AI shows, one a second
     in the daemon and 3 in Activity Monitor's poller (0.1% of a core).
+
+## Olo Setup (apps/installer, tools/release.sh)
+
+One program a person downloads from Olo's releases and runs on a stock
+Fedora Workstation (Ben, 2026-11-06: "a full screen gui app that
+\"olo-fies\" their fedora … windows 95 setup.exe vibes but windows 95
+crossed with beos"). `olo-installer`, full screen, is Windows 95's
+Setup in BeOS's look (`ui.rs`): the deep blue backdrop fading to black
+with "Olo Setup" in big white bold italic serif and its shadow at the
+top left (Liberation Serif, Times New Roman's metric twin, as Windows
+95's), and on it one window at a time drawn as BeOS draws them (the
+yellow tab with its title, the grey panel and its frame, from the
+palette), each a page: a picture panel down the left (a sunken well,
+the backdrop's gradient, the page's icon), the words on the right, `<
+Back`, `Next >` and `Cancel` along the bottom. Welcome (what it does,
+the password asked once, Windows 95's "it is strongly recommended";
+why this computer can't, in red, if it can't: `plan::unsuitable`, not
+Fedora 44 or newer, an atomic Fedora, root, under 6 GB free), Licence
+Agreement (`licence.txt`: Olo's MIT terms, as Cargo.toml says, and the
+others' work it carries, in a scroll box; Next only once "I accept"),
+Choose What to Install (Olo Desktop always; Olo's login screen, its
+boot splash and RPM Fusion, each with its words under it), Installing
+(a BeOS status bar, the stage over it and "n of m" at its right, what
+it's doing under it, the stages and notes so far; a failure says what
+and why in red, what to do, and Try Again), and Olo Is Installed (Log
+Out, or Restart when the login screen or splash changed; and "Olo is a
+work of love, dedicated to the late Samwise, an English Labrador.").
+About, from Welcome, says what Olo is and the dedication. None of Olo
+is installed when it starts, so it carries what the kit draws with
+(build.rs: Olo's fonts, its pages' icons at every size, the wordmark),
+unpacks it into the runtime folder and points the kit there
+(`OLO_DATA`).
+
+The work (`plan.rs`) runs on a worker, each stage told to the window
+(`Event`), each doing only what isn't done, so it can be stopped
+(Cancel) and run again: checking the computer; what Olo needs from
+Fedora (`PACKAGES`: what its programs link, `ldd` on every program,
+22 packages, and the services and fonts a session uses) through
+PackageKit; RPM Fusion's two repositories if chosen (Olo Doctor's
+`InstallRepository`); Olo itself (`bundle.rs`: the newest GitHub
+release's `olo-VERSION-ARCH.tar.zst` of `benmyles/olo`, or `--bundle
+URL|FILE`, downloaded into `~/.cache/olo-installer` and kept, its
+published SHA-256 checked, unpacked (zstd, tar; nothing outside `olo/`)
+and put in place as tools/install-session.sh does: each program beside
+its old self then renamed over it, the data copied over, `op`, `pbcopy`
+and `pbpaste` linked, the version in `~/.local/share/olo/version`);
+Olo on the login screen's menu (its session entry naming
+`~/.local/bin/olo-session`, Olo's udev rules, the devices they're for
+told to look again by their `uevent`); and if chosen, Olo's login
+screen (tools/install-login.sh `--switch`'s work: its programs in
+/usr/local/libexec/olo, Olo's data in /usr/local/share/olo, the PAM
+services and `pam_olo_keyring.so`, its user and folders made by
+systemd's own `systemd-sysusers` and `systemd-tmpfiles-setup` started
+again, its unit, GDM disabled and olo-login enabled) and boot splash
+(the theme drawn by `olo-app-server --plymouth-theme` as the person,
+then put in /usr/share/plymouth/themes/olo with plymouthd.conf kept
+beside as `.before-olo`, and the start-up images made again:
+`Step::RebuildInitramfs`, dracut, the one program a step runs). What
+needs root is Olo Doctor's privileged helper (`helper.rs`, the same
+`Step`s, two added for Setup: `CopyTree` and `RebuildInitramfs`), this
+program run again through pkexec (`--helper`), asked for once: the
+password goes to the desktop's own polkit agent, GNOME's on a stock
+Fedora; `OLO_SETUP_HELPER=direct` runs it as the person (tests: what
+needs root then fails, safely). PackageKit's lookups now find what is
+installed first and only look for the rest in this architecture
+(`olo_system::packages::resolve`: asked for the newest alone, an update
+waiting showed as not installed, and installing what was missing
+became an update, which asked for a password). `--yes` goes through the
+pages by itself, a page every four seconds (`--login-screen`,
+`--boot-splash`, `--rpm-fusion` choose), for tests and agents; `--check`
+says as JSON whether this computer can have Olo and opens nothing.
+
+The release (`tools/release.sh [OUT]`, from a release build): every
+`olo-*` program stripped (300 MB with line tables to 30 MB; a third of
+that compressed), `pam_olo_keyring.so`, Olo's data as
+install-session.sh copies it and what goes outside the home folder
+(`system/`: the session entry, udev rules, PAM services, the login
+screen's unit, user and folders), and `VERSION` (the date and the
+commit) in `olo-VERSION-ARCH.tar.zst` (zstd -19), and the installer
+stripped beside it, each with its `.sha256`. Publishing them (a GitHub
+release) is a separate step.
+
+`tools/dev/installer-check` tries it all in a virtual machine (KVM, a
+virtio GPU, no window, driven through QEMU's monitor): `install` puts a
+fresh Fedora Workstation on a disk from Fedora's own network installer
+(a kickstart choosing Workstation's package set; for the test alone,
+GDM logs the tester in and GNOME's first-run tour is skipped), `boot
+--serve DIR` starts it with the release served to it at
+`http://10.0.2.2:8642/`, and `shot`, `type`, `key` and `click` look and
+act. Everything is kept in /var/tmp/olo-installer-check.
 
 ## The Wi-Fi healer (apps/wifi-heal)
 
