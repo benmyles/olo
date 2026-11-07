@@ -15,6 +15,8 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+## Done, waiting for Ben to try or confirm
+
 - **The Olo installer: stock Fedora 45 to Olo in one GUI** (Ben,
   2026-11-06: "build a polished, robust olo installer so that someone
   can download/install a stock fedora 45 then download the olo installer
@@ -45,8 +47,43 @@ something nobody here has is in "Blocked", with what it waits for.
   Workstation install, the installer downloaded and run, a reboot into
   Olo, Olo used: its apps opened, a file opened, Preferences changed),
   screenshots of every step kept, at the VM's screen's scale and 2×.
-
-## Done, waiting for Ben to try or confirm
+  Done (HACKING, "Olo Setup"; e72b112a, 2169a524): `olo-installer`,
+  full screen, Windows 95's Setup in BeOS's look (the blue backdrop and
+  big serif title; each page a BeOS window: Welcome, Licence Agreement,
+  Choose What to Install, Installing, Olo Is Installed; About), and the
+  dedication on the last page and in About. It installs what Olo needs
+  through PackageKit, Olo's release (downloaded, its SHA-256 checked,
+  unpacked into the home folder), Olo on the login screen's menu, and if
+  chosen Olo's login screen, boot splash and RPM Fusion; it asks for the
+  password once (GNOME's own dialog), can be stopped and run again, says
+  what failed and what to do, and makes Olo the next session.
+  `tools/release.sh` makes the release (`olo-VERSION-ARCH.tar.zst`, 894
+  MB, and the 38 MB installer, each with its `.sha256`).
+  Tested whole (`tools/dev/installer-check`): a fresh Fedora 45
+  Workstation installed in a VM from Fedora's network installer, the
+  installer downloaded and run from GNOME's terminal, Olo's login screen
+  and boot splash chosen, a restart into Olo's login screen, logged in,
+  Home opened in Tracker, a file opened in StyledEdit, Preferences
+  switched to dark (docs/journal, 2026-11-07). The first runs found what
+  kept anyone from logging in through Olo's login screen on a stock
+  Fedora, and what stopped Setup; fixed (2169a524): kmscon on tty1,
+  sessions' output to a terminal taken away, SELinux (olo-login a
+  display manager, `xdm_t`, the person's session started through a
+  system program), a second greeter after a restart, Fedora's
+  fingerprint placeholder shown, a login screen that never shows now
+  handing the seat to GDM; and in Setup, the login screen's user and
+  folders (systemd won't run its own services again by hand), a unit's
+  restart waited for, and package lookups that saw an update waiting
+  as not installed. The last run, from scratch with the final release,
+  went through with nothing done by hand. Not seen: the boot splash
+  itself (installed, and the start-up images made again; the VM's
+  screen comes back only once the GPU's driver has it).
+  Left for Ben: publishing a release (a GitHub release of
+  benmyles/olo with tools/release.sh's four files: Setup takes the
+  newest one's archive; until then it needs `--bundle URL`), then a
+  line in README.md on downloading and running it; and the repository
+  has no LICENSE file: Setup's Licence page shows the MIT terms
+  Cargo.toml names, "the authors of Olo" the holder.
 
 - **Nothing of GNOME's needed: Olo's own in its place** (Ben, 2026-11-06:
   "if we are still reliant on any gnome services or settings, create olo

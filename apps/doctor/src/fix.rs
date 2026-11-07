@@ -181,7 +181,7 @@ impl Step {
             Step::AddKernelArgument { arg } => format!("Starting the kernel with {arg}"),
             Step::TryShell { path } => format!("Trying {}", path.display()),
             Step::SetLoginShell { user, shell } => format!("Making {} {user}'s login shell", shell.display()),
-            Step::InstallPackages { names } => format!("Installing {}", names.join(", ")),
+            Step::InstallPackages { names } => format!("Installing {}", short_list(names)),
             Step::UpdatePackages { names } => format!("Updating {}", short_list(names)),
             Step::InstallRelease { name, release, .. } => format!("Installing {name} from github.com/{}", release.repo),
             Step::InstallRepository { name, .. } => format!("Adding the {name} repository"),

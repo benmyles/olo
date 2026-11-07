@@ -372,7 +372,7 @@ impl Setup {
                     // (What has a size of its own keeps it: the notes give way.)
                     .child(div().flex_shrink_0().child(heading("Installing Olo")))
                     .child(div().flex().flex_shrink_0().child(div().flex_1().min_w_0().child(StatusBar::new(self.overall()).label(title).trailing(through))))
-                    .child(div().flex_shrink_0().child(StringView::new(doing).dim(true)));
+                    .child(div().flex_shrink_0().child(StringView::new(doing).wrap(true).dim(true)));
                 if let Some(Outcome::Failed { what, why, advice }) = &self.outcome {
                     // ("Adding Olo to…" as part of a sentence: its first letter small.)
                     let what = what.chars().next().map(|f| f.to_lowercase().chain(what.chars().skip(1)).collect::<String>()).unwrap_or_default();

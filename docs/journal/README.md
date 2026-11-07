@@ -3,6 +3,44 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-07
+
+### Olo on a fresh Fedora 45, installed by Setup
+
+*00:39* — Logged in through Olo's login screen; Home open in Tracker and Preferences switched to dark.
+
+![Olo on a fresh Fedora 45, installed by Setup](2026-11-07/003932-olo-on-a-fresh-fedora-45-installed-by-setup.png)
+
+### Olo's login screen after Setup, on a fresh Fedora 45
+
+*00:39* — Restarted from Setup's last page: Olo's own login screen in GDM's place, Olo Desktop chosen.
+
+![Olo's login screen after Setup, on a fresh Fedora 45](2026-11-07/003931-olo-s-login-screen-after-setup-on-a-fresh-fedora.png)
+
+### Olo Setup: Olo Is Installed
+
+*00:39* — The last page, with its dedication: Olo is a work of love, dedicated to Sir Samwise, the bestest English Labrador that ever walked the earth.
+
+![Olo Setup: Olo Is Installed](2026-11-07/003931-olo-setup-olo-is-installed.png)
+
+### Olo Setup: Installing
+
+*00:39* — A BeOS status bar, the stage over it and how far through at its right; the stages and notes below.
+
+![Olo Setup: Installing](2026-11-07/003930-olo-setup-installing.png)
+
+### Olo Setup: Choose What to Install
+
+*00:39* — Olo Desktop always; Olo's login screen, its boot splash and RPM Fusion offered, each with what it does.
+
+![Olo Setup: Choose What to Install](2026-11-07/003930-olo-setup-choose-what-to-install.png)
+
+### Olo Setup: Welcome, full screen on a stock Fedora 45
+
+*00:39* — Windows 95's Setup in BeOS's look: the blue backdrop and big serif title, a BeOS window for each page. Downloaded and run in a fresh Fedora 45 Workstation VM, 1x.
+
+![Olo Setup: Welcome, full screen on a stock Fedora 45](2026-11-07/003929-olo-setup-welcome-full-screen-on-a-stock-fedora-.png)
+
 ## 2026-11-06
 
 ### Touchpad & Mouse: the wheel's scrolling speed
