@@ -199,6 +199,16 @@ fn main() {
                     let name = page.document.name(b.node).ok().flatten().unwrap_or("#text");
                     let class = page.document.attribute(b.node, "class").ok().flatten().unwrap_or("");
                     println!("{:?} <{name} class=\"{class}\"> {:?}", b.kind, layout.bounds(id));
+                    for pseudo in [olo_web::css::selectors::PseudoElement::Before, olo_web::css::selectors::PseudoElement::After] {
+                        if let Some(s) = layout.cache().tree().styles().pseudo(b.node, pseudo) {
+                            println!("    {pseudo:?} content {:?} display {:?}", s.value(olo_web::css::style::Property::Content), s.value(olo_web::css::style::Property::Display));
+                        }
+                    }
+                    if let olo_web::layout::BoxKind::InlineContent { source } = b.kind
+                        && let Some(text) = layout.cache().tree().text_source(source)
+                    {
+                        println!("    text {:?}", &text.source[..text.source.len().min(120)]);
+                    }
                 }
             }
         }

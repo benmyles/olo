@@ -308,7 +308,7 @@ fn inline_sources_survive_wrap_block_splits_and_resize() {
     assert_eq!(text_layout.lines().iter().map(|l| l.advance).collect::<Vec<_>>(), vec![50., 20.]);
     let source = c.tree().text_source(0).unwrap();
     assert_eq!(source.spans.len(), 3);
-    assert_eq!(d.attribute(source.span_at(2).unwrap().style_node, "id").unwrap(), Some("s"));
+    assert_eq!(d.attribute(source.span_at(2).unwrap().style_node.node, "id").unwrap(), Some("s"));
     assert!(Arc::ptr_eq(text_layout.text(), c.text(0).unwrap()));
     let wide = fit(&mut e, &s, c, 100., 64);
     assert_eq!(rect(&d, &wide, "p").height, 20.);
@@ -728,7 +728,7 @@ fn identical_paragraphs_share_glyphs_with_distinct_dom_source_mappings() {
     let shared = j.finish().unwrap();
     assert!(Arc::ptr_eq(shared.text(0).unwrap(), shared.text(1).unwrap()));
     let raw = shared.tree().text_source(1).unwrap();
-    assert_eq!(d.attribute(raw.span_at(0).unwrap().style_node, "id").unwrap(), Some("s"));
+    assert_eq!(d.attribute(raw.span_at(0).unwrap().style_node.node, "id").unwrap(), Some("s"));
     let mut j = layout::PrepareJob::new(&mut e, &s, t, layout::Limits { cached_texts: 0, ..Default::default() }, None).unwrap();
     while !j.step(1).unwrap().finished {}
     assert_eq!(j.progress().reused_texts, 0);

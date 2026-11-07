@@ -1,4 +1,5 @@
 use super::*;
+use crate::css::selectors::PseudoElement;
 use crate::{
     css::selectors,
     dom::{Document, NodeId, NodeType},
@@ -83,9 +84,36 @@ pub struct StyleTree {
     generation: u64,
     slots: Vec<Option<NonZeroU32>>,
     styles: Vec<Styled>,
+    /// `::before` and `::after` styles that generate content, by their
+    /// element: entries in `styles` without a slot of their own.
+    pseudos: std::collections::HashMap<(NodeId, PseudoElement), u32>,
     report: Report,
 }
+/// What a box or text span takes its style from: an element, or one of its
+/// pseudo-elements.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct StyleKey {
+    pub node: NodeId,
+    pub pseudo: Option<PseudoElement>,
+}
+impl StyleKey {
+    pub fn pseudo(node: NodeId, pseudo: PseudoElement) -> Self {
+        Self { node, pseudo: Some(pseudo) }
+    }
+}
+impl From<NodeId> for StyleKey {
+    fn from(node: NodeId) -> Self {
+        Self { node, pseudo: None }
+    }
+}
 impl StyleTree {
+    /// The style of a pseudo-element that generates content, if it does.
+    pub fn pseudo(&self, node: NodeId, pseudo: PseudoElement) -> Option<&Style> {
+        self.pseudos.get(&(node, pseudo)).map(|&i| &self.styles[i as usize].style)
+    }
+    pub fn pseudo_count(&self) -> usize {
+        self.pseudos.len()
+    }
     pub fn get(&self, document: &Document, node: NodeId, generation: u64) -> Result<Option<&Style>> {
         if self.generation != generation || self.document != document.id() || self.revision != document.revision() {
             return Err(Error::Stale);
@@ -100,8 +128,12 @@ impl StyleTree {
         (self.styles[i].node == node).then_some(i)
     }
     /// Internal access to a frozen snapshot, after its owner validates the document.
-    pub(crate) fn snapshot(&self, node: NodeId) -> Option<&Style> {
-        self.index(node).map(|i| &self.styles[i].style)
+    pub(crate) fn snapshot(&self, key: impl Into<StyleKey>) -> Option<&Style> {
+        let key = key.into();
+        match key.pseudo {
+            None => self.index(key.node).map(|i| &self.styles[i].style),
+            Some(p) => self.pseudo(key.node, p),
+        }
     }
     pub fn generation(&self) -> u64 {
         self.generation
@@ -165,6 +197,7 @@ impl<'a> Job<'a> {
                 generation: options.generation,
                 slots: Vec::new(),
                 styles: Vec::new(),
+                pseudos: Default::default(),
                 report: Report { stylesheet_issues: rules.issues().len(), ..Default::default() },
             },
         })
@@ -533,6 +566,60 @@ impl<'a> Job<'a> {
         }
         self.tree.slots[node.slot() as usize] = NonZeroU32::new(index as u32 + 1);
         self.account.add(&self.tree.styles[index].style);
+        // ::before and ::after that generate content (CSS Generated Content
+        // 3 §2): styled with the element as parent, kept beside its style.
+        if self.rules.has_pseudo_elements() {
+            for pseudo in [PseudoElement::Before, PseudoElement::After] {
+                self.tick()?;
+                let element = &self.tree.styles[index].style;
+                let cascade = self
+                    .rules
+                    .match_element_with_hints(
+                        &dom,
+                        node,
+                        selectors::MatchOptions { quirks: self.options.quirks, pseudo: Some(pseudo), ..Default::default() },
+                        None,
+                        None,
+                        Some(element as &dyn cascade::Inherited),
+                        self.limits.cascade,
+                        self.limits.matching,
+                        &mut self.scratch,
+                        self.cancelled,
+                    )
+                    .map_err(Error::cascade)?;
+                if !cascade.declared_properties().any(|p| p == Property::Content) {
+                    continue;
+                }
+                let layout_parent = match element.value(Property::Display) {
+                    Value::Display(display) => Some(BoxParent { display: *display, axes: element.axes }),
+                    _ => None,
+                };
+                let root = self.root.map(|i| &self.tree.styles[i].style);
+                let style = Style::compute_reusing(
+                    self.defaults.clone(),
+                    &cascade,
+                    Some(element),
+                    root,
+                    None,
+                    Some(&mut self.fonts),
+                    host,
+                    Options { root: false, layout_parent, ..Default::default() },
+                    self.limits.style,
+                    self.cancelled,
+                )?;
+                if !matches!(style.value(Property::Content), Value::Content(_)) || matches!(style.value(Property::Display), Value::Display(Display::None)) {
+                    continue;
+                }
+                if self.tree.styles.len() >= self.limits.elements || self.tree.styles.len() >= u32::MAX as usize {
+                    return Err(Error::Limit);
+                }
+                self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
+                self.account.add(&style);
+                let at = self.tree.styles.len() as u32;
+                self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1) });
+                self.tree.pseudos.insert((node, pseudo), at);
+            }
+        }
         let retained = self
             .account
             .memory

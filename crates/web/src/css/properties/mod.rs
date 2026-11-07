@@ -1,5 +1,6 @@
 //! Typed property declarations, before cascade and layout. Worker-only APIs.
 mod clip;
+mod content;
 mod decoration;
 mod display;
 mod flex;
@@ -11,6 +12,7 @@ mod registry;
 mod transform;
 use super::{Component, Components, Kind, Statement, StatementKind, color, math, variables};
 pub use clip::{GeometryBox, Inset, LocalUrl};
+pub use content::{Content, ContentPart};
 pub use decoration::{Direction, Image, Images, Positions, RadialSize, Radius, RepeatAxis, Repeats, Shadow, Shadows, Size, Sizes, Stop};
 pub use display::{Display, Inner, Internal, Outer};
 pub use font::{Families, Family, Feature, Features, GenericFamily};
@@ -105,6 +107,7 @@ pub enum Value {
     Repeats(Repeats),
     Transforms(Transforms),
     Features(Features),
+    Content(Content),
     Pending(Arc<Pending>),
 }
 
@@ -136,6 +139,7 @@ impl Value {
             Self::Repeats(r) => r.reserved_bytes(),
             Self::Transforms(t) => t.reserved_bytes(),
             Self::Features(f) => f.reserved_bytes(),
+            Self::Content(c) => c.reserved_bytes(),
             Self::Color(v) => v.expression_reserved_bytes(),
             Self::Pending(v) => size_of::<Pending>() + 2 * size_of::<usize>() + v.tokens.arena_reserved_bytes(),
             _ => 0,
@@ -203,7 +207,12 @@ impl Declaration {
         }
         let name = Name::parse(name).ok_or(Error::UnknownProperty)?;
         parse::preflight(values.clone(), limits, cancelled)?;
-        let pending = variables::inspect(values.clone(), limits.variables(), cancelled).map_err(variable_error)?;
+        // `content: attr(x)` is the legacy attr(): parsed as content's own
+        // syntax, not deferred as an arbitrary substitution (CSS Values 5).
+        let legacy_attr = name == Name::Longhand(Property::Content)
+            && values.clone().all(|c| c.kind() != Kind::Function || c.text().is_some_and(|t| t.eq_ignore_ascii_case("attr")))
+            && values.clone().filter(|c| c.kind() == Kind::Function).any(|_| true);
+        let pending = !legacy_attr && variables::inspect(values.clone(), limits.variables(), cancelled).map_err(variable_error)?;
         let values = if pending {
             let tokens = variables::Value::compile(values, limits.variables(), cancelled).map_err(variable_error)?;
             let value = Value::Pending(Arc::new(Pending { name, tokens }));

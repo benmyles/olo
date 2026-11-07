@@ -9,7 +9,7 @@ mod memory;
 use super::{Syntax, cascade, color, math, properties as p, variables};
 pub use cascade::{Axes, Direction, TextOrientation, WritingMode};
 pub use font_pool::FontCacheStats;
-pub use job::{Job, JobLimits, JobOptions, Progress, Report, StyleTree};
+pub use job::{Job, JobLimits, JobOptions, Progress, Report, StyleKey, StyleTree};
 pub use memory::Memory;
 pub use p::{Display, Families, Family, GenericFamily, Inner, Internal, Keyword, Outer, Property};
 use std::sync::{
@@ -243,6 +243,7 @@ pub enum Value {
     Repeats(p::Repeats),
     Transforms(p::Transforms),
     Features(p::Features),
+    Content(p::Content),
     /// Explicit nonzero oblique angle in degrees; bare oblique is a keyword.
     Oblique(f64),
 }
@@ -266,6 +267,7 @@ impl Value {
             (Self::Repeats(a), Self::Repeats(b)) => Arc::ptr_eq(&a.0, &b.0),
             (Self::Transforms(a), Self::Transforms(b)) => a.same(b),
             (Self::Features(a), Self::Features(b)) => Arc::ptr_eq(&a.0, &b.0) || a == b,
+            (Self::Content(a), Self::Content(b)) => Arc::ptr_eq(&a.0, &b.0) || a == b,
             (Self::Oblique(a), Self::Oblique(b)) => a.to_bits() == b.to_bits(),
             _ => false,
         }
@@ -289,6 +291,7 @@ impl Value {
             Self::Repeats(r) => r.reserved_bytes(),
             Self::Transforms(t) => t.reserved_bytes(),
             Self::Features(f) => f.reserved_bytes(),
+            Self::Content(c) => c.reserved_bytes(),
             _ => 0,
         }
     }

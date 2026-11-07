@@ -589,3 +589,27 @@ fn text_wrap_balance_evens_the_lines_without_adding_one() {
     assert!(max - min < 40., "balanced lines are about as long as each other: {widths:?}");
     assert!(widths.iter().all(|w| *w <= 100.));
 }
+
+#[test]
+fn generated_content_paints_before_and_after_text_and_blocks() {
+    let mut p = paint::Engine::default();
+    // ::before text in the pseudo-element's own colour precedes the element's
+    // text; ::after with attr() follows it; a block ::after sits below.
+    let s = scene("<div><p data-x=\"B\">A</p></div>", "p{color:black}p::before{content:\"A \";color:green}p::after{content:attr(data-x);color:blue}", &mut p);
+    let t = render(&mut p, &s);
+    let first = |color: [u8; 4]| (0..100).find(|&x| pixel(&t, x, 3) == color);
+    assert_eq!(first([0, 128, 0, 255]), Some(0), "::before glyph in green first");
+    let own = first([0, 0, 0, 255]).expect("the element's own A");
+    let after = first([0, 0, 255, 255]).expect("::after attr() glyph in blue");
+    assert!(own > 0 && after > own, "before {:?} own {own} after {after}", first([0, 128, 0, 255]));
+    let s = scene("<div><p>A</p></div>", "p::after{content:\"\";display:block;width:30px;height:10px;background:red}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 5, 25), [255, 0, 0, 255], "block ::after below the line");
+    assert_eq!(pixel(&t, 35, 25), [255; 4]);
+    // content: none and display: none generate nothing; a pseudo without
+    // content is not a box.
+    let s = scene("<div><p>A</p></div>", "p::before{content:none;color:green}p::after{color:green}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 1, 3), [0, 0, 0, 255]);
+    assert_eq!(pixel(&t, 11, 3), [255; 4]);
+}

@@ -2,7 +2,8 @@ use super::*;
 use crate::{
     css::{
         properties::{Display, Inner, Outer},
-        style::{Keyword, Property, Style, StyleTree, Value, WritingMode},
+        selectors::PseudoElement,
+        style::{Keyword, Property, Style, StyleKey, StyleTree, Value, WritingMode},
     },
     dom::{Document, NodeId, NodeType},
     text::prepare::{Collapse, ControlKind, WhiteSpace},
@@ -67,7 +68,7 @@ impl BoxKind {
 #[derive(Clone, Debug)]
 pub struct BoxNode {
     pub node: NodeId,
-    pub style_node: NodeId,
+    pub style_node: StyleKey,
     pub kind: BoxKind,
     /// Absolutely positioned: laid out after its containing block, out of flow.
     pub absolute: bool,
@@ -82,7 +83,7 @@ pub struct BoxNode {
 pub struct SourceSpan {
     pub range: Range<u32>,
     pub node: NodeId,
-    pub style_node: NodeId,
+    pub style_node: StyleKey,
 }
 /// A non-replaced inline's source coverage in one anonymous text box. A block
 /// descendant can split it into several parts; only its actual ends carry edges.
@@ -241,9 +242,11 @@ pub struct BuildProgress {
 struct Cursor {
     next: Option<NodeId>,
     container: BoxId,
-    style: NodeId,
+    style: StyleKey,
     close: bool,
     inline: bool,
+    /// The element whose `::after` content comes once its children are built.
+    after: Option<NodeId>,
     /// The paragraph an atomic inline interrupted, resumed when its content is built.
     restore: Option<Box<Pending>>,
 }
@@ -305,7 +308,7 @@ impl<'a> BuildJob<'a> {
             cancel,
             boxes: vec![BoxNode {
                 node: document.root(),
-                style_node: document.root(),
+                style_node: document.root().into(),
                 kind: BoxKind::Viewport,
                 absolute: false,
                 span: [1, 1],
@@ -318,7 +321,7 @@ impl<'a> BuildJob<'a> {
             inlines: Vec::new(),
             controls: Vec::new(),
             open: Vec::new(),
-            stack: vec![Cursor { next: document.first_child(document.root())?, container: root, style: document.root(), close: false, inline: false, restore: None }],
+            stack: vec![Cursor { next: document.first_child(document.root())?, container: root, style: document.root().into(), close: false, inline: false, after: None, restore: None }],
             pending: None,
             progress: BuildProgress { boxes: 1, ..Default::default() },
             failed: false,
@@ -343,7 +346,8 @@ impl<'a> BuildJob<'a> {
     fn note(&mut self, what: &'static str, node: NodeId) {
         self.fallbacks.note(what, Some(node));
     }
-    fn add(&mut self, node: NodeId, style_node: NodeId, kind: BoxKind, parent: BoxId) -> Result<BoxId> {
+    fn add(&mut self, node: NodeId, style_node: impl Into<StyleKey>, kind: BoxKind, parent: BoxId) -> Result<BoxId> {
+        let style_node = style_node.into();
         if self.boxes.len() >= self.limits.boxes {
             return Err(Error::Limit);
         }
@@ -466,11 +470,11 @@ impl<'a> BuildJob<'a> {
         p.inlines[open.index].last = true;
         Ok(())
     }
-    fn push(&mut self, node: NodeId, container: BoxId, style: NodeId, close: bool) -> Result<()> {
+    fn push(&mut self, node: NodeId, container: BoxId, style: impl Into<StyleKey>, close: bool) -> Result<()> {
         if self.stack.len() >= self.limits.depth {
             return Err(Error::Limit);
         }
-        self.stack.push(Cursor { next: self.document.first_child(node)?, container, style, close, inline: false, restore: None });
+        self.stack.push(Cursor { next: self.document.first_child(node)?, container, style: style.into(), close, inline: false, after: Some(node), restore: None });
         Ok(())
     }
     /// An atomic inline (inline-block, inline-flex, inline-grid, inline-table):
@@ -485,22 +489,72 @@ impl<'a> BuildJob<'a> {
         }
         let _ = flex_or_grid;
         let restore = self.pending.take().map(Box::new);
-        self.stack.push(Cursor { next: self.document.first_child(node)?, container: block, style: node, close: true, inline: false, restore });
+        self.stack.push(Cursor { next: self.document.first_child(node)?, container: block, style: node.into(), close: true, inline: false, after: Some(node), restore });
+        self.generated(node, block, PseudoElement::Before)?;
+        Ok(())
+    }
+    /// The element's `::before` or `::after` content, if it has any: text in
+    /// the pseudo-element's style, as an inline run of the paragraph, an
+    /// atomic inline, or a block of its own (CSS Generated Content 3 §2).
+    fn generated(&mut self, node: NodeId, container: BoxId, pseudo: PseudoElement) -> Result<()> {
+        let styles = self.styles.clone();
+        let Some(s) = styles.pseudo(node, pseudo) else { return Ok(()) };
+        let key = StyleKey::pseudo(node, pseudo);
+        let mut text = String::new();
+        if let Value::Content(content) = s.value(Property::Content) {
+            for part in content.0.iter() {
+                match part {
+                    crate::css::properties::ContentPart::Text(t) => text.push_str(t),
+                    crate::css::properties::ContentPart::Attr(name) => text.push_str(self.document.attribute(node, name)?.unwrap_or("")),
+                }
+            }
+        }
+        let Value::Display(display) = s.value(Property::Display) else { return Err(Error::Invalid) };
+        let absolute = matches!(s.value(Property::Position), Value::Keyword(Keyword::Absolute | Keyword::Fixed));
+        match *display {
+            Display::None => {}
+            Display::Box { outer: Outer::Inline, inner: Inner::Flow, .. } if !absolute => self.append(node, container, key, &text, None)?,
+            Display::Box { outer: Outer::Inline, inner: Inner::FlowRoot | Inner::Flex | Inner::Grid | Inner::Table, .. } if !absolute => {
+                // An atomic inline: its text is its own paragraph, built now.
+                self.append_object(node, container, key, BoxKind::Block { flow_root: true, root: false, absolute: false })?;
+                let p = self.pending.as_ref().ok_or(Error::Invalid)?;
+                let block = self.boxes[p.text_box.index()].last_child.ok_or(Error::Invalid)?;
+                let restore = self.pending.take();
+                if !text.is_empty() {
+                    self.pending(block)?;
+                    self.append(node, block, key, &text, None)?;
+                }
+                self.flush()?;
+                self.pending = restore;
+            }
+            _ => {
+                self.flush()?;
+                let id = self.add(node, key, BoxKind::Block { flow_root: true, root: false, absolute }, container)?;
+                self.boxes[id.index()].absolute = absolute;
+                if !text.is_empty() {
+                    self.pending(id)?;
+                    self.append(node, id, key, &text, None)?;
+                    self.flush()?;
+                }
+            }
+        }
         Ok(())
     }
     /// A replaced element or atomic inline in its paragraph: the object
     /// control in the text and the box as the text box's next child.
-    fn append_object(&mut self, node: NodeId, container: BoxId, style: NodeId, kind: BoxKind) -> Result<()> {
+    fn append_object(&mut self, node: NodeId, container: BoxId, style: impl Into<StyleKey>, kind: BoxKind) -> Result<()> {
+        let style = style.into();
         self.append(node, container, style, ControlKind::Object.carrier(), Some(ControlKind::Object))?;
         let text_box = self.pending.as_ref().ok_or(Error::Invalid)?.text_box;
         self.add(node, style, kind, text_box)?;
         Ok(())
     }
-    fn text(&mut self, node: NodeId, container: BoxId, style: NodeId) -> Result<()> {
+    fn text(&mut self, node: NodeId, container: BoxId, style: impl Into<StyleKey>) -> Result<()> {
         let value = self.document.value(node)?.ok_or(Error::Invalid)?;
         self.append(node, container, style, value, None)
     }
-    fn append(&mut self, node: NodeId, container: BoxId, style: NodeId, value: &str, control: Option<ControlKind>) -> Result<()> {
+    fn append(&mut self, node: NodeId, container: BoxId, style: impl Into<StyleKey>, value: &str, control: Option<ControlKind>) -> Result<()> {
+        let style = style.into();
         if value.is_empty() {
             return Ok(());
         }
@@ -548,6 +602,11 @@ impl<'a> BuildJob<'a> {
                 break;
             };
             let Some(node) = frame.next else {
+                if let Some(after) = frame.after.take() {
+                    let container = frame.container;
+                    self.generated(after, container, PseudoElement::After)?;
+                    continue;
+                }
                 let close = frame.close;
                 let inline = frame.inline;
                 let restore = frame.restore.take();
@@ -748,7 +807,10 @@ impl<'a> BuildJob<'a> {
                         continue;
                     }
                     match display {
-                        Display::Contents => self.push(node, container, node, false)?,
+                        Display::Contents => {
+                            self.push(node, container, node, false)?;
+                            self.generated(node, container, PseudoElement::Before)?;
+                        }
                         Display::Box { outer: Outer::Inline, inner: inner @ (Inner::FlowRoot | Inner::Flex | Inner::Grid | Inner::Table), .. } => {
                             if inner == Inner::Table {
                                 self.note("inline-table as inline-block", node);
@@ -785,6 +847,7 @@ impl<'a> BuildJob<'a> {
                             self.open_inline(node, container)?;
                             self.push(node, container, node, false)?;
                             self.stack.last_mut().unwrap().inline = true;
+                            self.generated(node, container, PseudoElement::Before)?;
                         }
                         Display::Box { outer: Outer::Block | Outer::RunIn, inner, list_item } => {
                             if matches!(display, Display::Box { outer: Outer::RunIn, .. }) {
@@ -801,6 +864,7 @@ impl<'a> BuildJob<'a> {
                             let root = self.boxes[container.index()].kind == BoxKind::Viewport;
                             let id = self.add(node, node, BoxKind::Block { flow_root: inner != Inner::Flow, root, absolute }, container)?;
                             self.push(node, id, node, true)?;
+                            self.generated(node, id, PseudoElement::Before)?;
                         }
                         Display::Internal(internal) => {
                             use crate::css::properties::Internal as I;
@@ -822,6 +886,7 @@ impl<'a> BuildJob<'a> {
                                         self.boxes[id.index()].span = [span("colspan")?, span("rowspan")?];
                                     }
                                     self.push(node, id, node, true)?;
+                                    self.generated(node, id, PseudoElement::Before)?;
                                 }
                             }
                         }

@@ -44,7 +44,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
     if let Name::Longhand(property) = name
         && matches!(
             property.grammar(),
-            Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features | Grammar::Ratio
+            Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features | Grammar::Ratio | Grammar::Content
         )
     {
         let parts: Vec<Component<'_>> = values.clone().filter(|c| c.kind() != Kind::Whitespace).collect();
@@ -66,6 +66,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             Grammar::Transforms => transform::parse_transforms(&parts, limits, cancelled)?,
             Grammar::Features => font::parse_features(&parts)?,
             Grammar::Ratio => ratio(&parts)?,
+            Grammar::Content => content::parse_content(&parts)?,
             _ => decoration::parse_radius(&parts, limits, cancelled)?,
         };
         return Ok(smallvec::smallvec![Assignment { property, value }]);
@@ -370,7 +371,17 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
                 _ => Keyword::Row,
             }))
         }
-        Grammar::Tracks | Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features | Grammar::Ratio => {
+        Grammar::Tracks
+        | Grammar::Images
+        | Grammar::Sizes
+        | Grammar::Positions
+        | Grammar::Repeats
+        | Grammar::Shadows
+        | Grammar::Radius
+        | Grammar::Transforms
+        | Grammar::Features
+        | Grammar::Ratio
+        | Grammar::Content => {
             unreachable!("parsed before part collection")
         }
         Grammar::Color(keywords) => {
@@ -439,7 +450,9 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
             Numeric::compile(c, NumericKind::LengthPercentage, Range::Nonnegative, limits, cancelled).map(Value::Numeric)
         }
         Grammar::Display | Grammar::FontFamily | Grammar::FontStyle | Grammar::Tracks | Grammar::GridLine | Grammar::GridAutoFlow => Err(Error::Invalid),
-        Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features | Grammar::Ratio => Err(Error::Invalid),
+        Grammar::Images | Grammar::Sizes | Grammar::Positions | Grammar::Repeats | Grammar::Shadows | Grammar::Radius | Grammar::Transforms | Grammar::Features | Grammar::Ratio | Grammar::Content => {
+            Err(Error::Invalid)
+        }
     }
 }
 fn wide(s: &str) -> Option<variables::Wide> {

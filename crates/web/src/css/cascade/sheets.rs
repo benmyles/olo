@@ -408,6 +408,9 @@ impl RuleSet {
     pub fn state_mask(&self) -> u64 {
         self.selectors.state_mask()
     }
+    pub fn has_pseudo_elements(&self) -> bool {
+        self.selectors.has_pseudo_elements()
+    }
     pub fn issues(&self) -> &[Issue] {
         &self.issues
     }

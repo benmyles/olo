@@ -124,7 +124,7 @@ pub enum State {
     Muted,
     VolumeLocked,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PseudoElement {
     Before,
     After,
@@ -258,6 +258,10 @@ impl std::fmt::Debug for Selectors {
 impl Selectors {
     pub fn compile(values: Components<'_>, options: CompileOptions<'_>, limits: CompileLimits, cancelled: Option<&AtomicBool>) -> Result<Self> {
         compile::compile(values, options, limits, cancelled)
+    }
+    /// Whether any selector addresses a pseudo-element (`::before`, …).
+    pub fn has_pseudo_elements(&self) -> bool {
+        self.complexes.iter().any(|c| c.pseudo.is_some())
     }
     /// Conservative state dependencies, including nested logical selectors.
     pub fn state_mask(&self) -> u64 {
