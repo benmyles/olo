@@ -6386,7 +6386,15 @@ configurable with reasonable defaults"), in three tabs:
   processors Fastest, Intel Graphics Fastest, NVIDIA RTX PRO 2000 Cooler
   and Quieter").
 - Graphics: a box for each GPU (`olo_system::gpus`: what it drives,
-  whether it's awake, the preset it's on now, and its Custom settings:
+  whether it's awake, the preset it's on now and what that has it on in
+  numbers (`gpus::in_force`: xe's clocks as its driver says now,
+  NVIDIA's as they were set, which its driver doesn't say back; Ben,
+  2026-11-07: "changing the power mode in prefs -> power doesn't change
+  the clock setting of the nvidia gpu?", its box showing only Custom's
+  slider), and its Custom settings, each knob not set showing what
+  Custom would set, the driver's own, so they never move with the mode
+  (xe's had shown what was in force, and moving its lowest clock with
+  no highest set pinned the highest to it):
   Intel's xe the render GT's lowest and highest clock, `freq0/min_freq`
   and `max_freq` within `rpn_freq`..`rp0_freq`, and every GT's power
   profile; NVIDIA's, through NVML in process, its highest GPU clock,
