@@ -97,10 +97,19 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
         .name("browser-page".into())
         .spawn(move || {
             let run = || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-                let path = olo_xdg::data_dirs().iter().map(|p| p.join("fonts/NotoSans[wght].ttf")).find(|p| p.is_file()).ok_or("Browser font is unavailable")?;
+                // Olo's own fonts: the sans family with its italic, the mono
+                // family for monospace, and the symbol and maths faces.
+                let fonts = olo_xdg::data_dirs().iter().map(|p| p.join("fonts")).find(|p| p.join("NotoSans[wght].ttf").is_file()).ok_or("Browser font is unavailable")?;
                 let mut builder = Builder::new(Default::default());
-                builder.load_file(&path, |_| {}, None)?;
-                let scope = FontSet::new(builder.finish(None)?, GenericPolicy::new(&["Noto Sans"])?, Default::default())?.scope("en")?;
+                for file in ["NotoSans[wght].ttf", "NotoSans-Italic[wght].ttf", "NotoSansMono[wght].ttf", "NotoSansSymbols[wght].ttf", "NotoSansSymbols2-Regular.ttf", "NotoSansMath-Regular.ttf"] {
+                    let path = fonts.join(file);
+                    if path.is_file() {
+                        builder.load_file(&path, |_| {}, None)?;
+                    }
+                }
+                let mut policy = GenericPolicy::new(&["Noto Sans"])?;
+                policy.set(olo_web::css::properties::GenericFamily::Monospace, "", None, &["Noto Sans Mono"])?;
+                let scope = FontSet::new(builder.finish(None)?, policy, Default::default())?.scope("en")?;
                 let loader = crate::network::Loader::new()?;
                 let mut shaper = shaping::Engine::default();
                 let mut painter = paint::Engine::default();

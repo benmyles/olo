@@ -70,13 +70,12 @@ impl Engine {
         }
         self.stats.misses += 1;
         let selection = font.selection();
-        if selection.synthesis.bold || selection.synthesis.shear_degrees.is_some() {
-            return Err(Error::Unsupported("synthetic outline styles"));
-        }
         let face = selection.parsed()?;
         let gid = ttf_parser::GlyphId(id);
         if face.is_color_glyph(gid) || face.glyph_svg_image(gid).is_some() || face.glyph_raster_image(gid, u16::MAX).is_some() {
-            return Err(Error::Unsupported("color/SVG/bitmap font painting"));
+            // Colour, SVG and bitmap glyphs are not drawn yet: no ink, rather
+            // than a page that fails on its first emoji.
+            return Ok(Ink { path: None, bounds: None });
         }
         let mut builder = Outline { path: PathBuilder::new(), segments: 0, limit: self.limits.path_segments, cancel, failed: false };
         face.outline_glyph(gid, &mut builder);
@@ -84,7 +83,15 @@ impl Engine {
         if builder.failed {
             return Err(Error::Limit);
         }
-        let path = builder.path.finish();
+        let mut path = builder.path.finish();
+        // Synthetic oblique: shear the outline by the slope's angle. (Synthetic
+        // bold is drawn at the face's own weight.)
+        if let (Some(degrees), Some(p)) = (selection.synthesis.shear_degrees, path.as_ref()) {
+            let shear = -(degrees.to_radians().tan()) as f32;
+            if shear.is_finite() && shear != 0. {
+                path = p.clone().transform(tiny_skia::Transform::from_row(1., 0., shear, 1., 0., 0.));
+            }
+        }
         let bytes = path.as_ref().map_or(0, |p| p.verbs().len() + std::mem::size_of_val(p.points()));
         let bounds = path.as_ref().map(|p| {
             let b = p.bounds();
