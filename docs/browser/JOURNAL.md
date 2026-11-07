@@ -4819,3 +4819,57 @@ Next connect positioned nodes to deferred out-of-flow layout with correct paddin
 containing blocks, static positions, intrinsic widths/heights and paint order,
 then retry the actual Stripe section. Preserve all prior performance/SVG gaps.
 Stripe0/30; corpus0/100. No other website selected.
+
+
+### 2026-11-06 — Deferred absolute blocks enter page layout
+
+Previous goal turn committed/pushed9cee0710 with225 independent axis comparisons.
+Initial page integration now retains an absolute flag on block boxes, defers
+positioned subtrees until normal-flow geometry finishes, finds the nearest
+positioned padding containing block and translates back to the actual parent's
+content coordinates. Flex collection excludes absolute children. Nested deferred
+work is deduplicated during flex reflow, and final auto content height supplies
+the vertical equation. Painting treats absolute blocks as positioned groups and
+uses the containing block's clip rather than intervening static overflow clips.
+
+Four authored tests cover padding percentages after auto-height completion,
+nested descendants, flex exclusion and raster clip escape. Independent Chrome
+references now match all 545 rectangles across 25 cases × five native DPRs.
+They exposed and fixed a real flex intrinsic bug: items containing only absolute
+children must contribute zero, not reject as nested flow. Two earlier reference
+captures were disqualified because integer viewport values lost fractional
+CSSpx, then raw visualViewport f32 lost one layout quantum at 1.75. Final input
+reconstructs native device-pixel viewport dimensions; raw values are retained,
+no rectangle tolerance was widened and only 125 pages count. No independent
+absolute page pixels are claimed. Four initial authored test issues (document
+node attributes, rounded borders, float equality, unsupported background
+shorthand) were corrected, with 1e-9 authored coordinate tolerance.
+
+A fresh owned HTTPS Stripe load now reaches `Unsupported("unclipped SVG
+viewport")` during box construction. Stripe's own positioned geometry has NOT
+executed. Static positions, shrink-to-fit, replaced positioning and pending
+inline interruption remain explicit unsupported cases. All older SVG pixel
+and performance nonpasses remain open. Stripe0/30; corpus0/100.
+
+Validation: 313 release web/browser tests pass, two ignored; strict scoped
+clippy17.71s; release workspace9.43s. Native authored absolute demo: 15 reviews
+(light/dark/night × 1/1.25/1.5/1.75/2), zero findings, all five contact crops
+visually inspected without resampling. Screenshot journal added.
+
+Seven alternating CPU0 process pairs, frozen default release binaries versus
+9cee0710, no compiler processes recorded: ordinary100/1000-element pipeline
+839.289/9540.413 →832.838/9127.142µs, retained scene192.535/3589.983
+→185.054/3497.869µs. Source/geometry/pixel hashes match. Pipeline peak RSS
+8980–9340→8988–9288KiB; scene8016–8240→8048–8236KiB. These observations do
+not establish a broad speedup; host load/clocks are not controlled.
+
+Owned native 1000-paragraph scroll sample (three bursts per type/build): median
+report-to-first-moving-client drag9.243→9.094ms, flick8.599→9.028ms,
+wheel0.514→0.308ms. Flick increase remains in raw results; these are client
+submission marks, not optical/presentation latency. RSS111992→107796KiB;
+three-second idle0CPU/0wakeups both builds. No compiler processes recorded.
+Raw costs/checks: measurements/2026-11-06-stripe-absolute-layout-*.json.
+
+Fetched main via gh: new e4367953 will be merged after this tested component
+commit, then combined workspace revalidated. Next fix the observed SVG viewport
+blocker and retry Stripe. No other website selected; goal stays active.

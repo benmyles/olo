@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser positioned blocks
+
+*18:13* — Initial deferred absolute blocks: padding containing blocks, auto heights and flex exclusion. Authored component, not Stripe acceptance. Reviewed light, dark and night at five live scales; 15 reviews without findings. Independent 125 Chrome pages match 545 rectangles; static positions and shrink-to-fit remain unsupported.
+
+![Browser positioned blocks](2026-11-06/181315-browser-positioned-blocks.png)
+
 ### Browser errors settle to idle
 
 *17:49* — Long errors now use a fixed-height status row with shaped ellipsis and a full-text tooltip. A delayed local failure made 76 extra requests in 3 seconds before; after, it stayed at one request with zero CPU and wakeups. Stripe still fails on absolute positioning; this is shell stability, not website acceptance.

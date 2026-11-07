@@ -3664,5 +3664,11 @@
     "title": "Browser errors settle to idle",
     "caption": "Long errors now use a fixed-height status row with shaped ellipsis and a full-text tooltip. A delayed local failure made 76 extra requests in 3 seconds before; after, it stayed at one request with zero CPU and wakeups. Stripe still fails on absolute positioning; this is shell stability, not website acceptance.",
     "image": "2026-11-06/174927-browser-errors-settle-to-idle.png"
+  },
+  {
+    "time": "2026-11-06T18:13:15",
+    "title": "Browser positioned blocks",
+    "caption": "Initial deferred absolute blocks: padding containing blocks, auto heights and flex exclusion. Authored component, not Stripe acceptance. Reviewed light, dark and night at five live scales; 15 reviews without findings. Independent 125 Chrome pages match 545 rectangles; static positions and shrink-to-fit remain unsupported.",
+    "image": "2026-11-06/181315-browser-positioned-blocks.png"
   }
 ]

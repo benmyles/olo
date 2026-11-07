@@ -14,6 +14,8 @@ use std::{
     hash::{Hash, Hasher},
     sync::{Arc, atomic::AtomicBool},
 };
+#[path = "absolute_flow.rs"]
+mod absolute_flow;
 #[path = "flex_flow.rs"]
 mod flex_flow;
 pub(super) fn is_flex(style: &crate::css::style::Style) -> bool {
@@ -344,6 +346,10 @@ pub struct Job<'a> {
     texts: Vec<Option<inline::Layout>>,
     stack: Vec<Frame>,
     flex: Vec<flex_flow::Frame<'a>>,
+    absolute: Vec<absolute_flow::Deferred>,
+    absolute_at: usize,
+    absolute_indices: HashMap<BoxId, usize>,
+    active_absolute: Option<absolute_flow::Active>,
     intrinsics: HashMap<usize, inline::IntrinsicWidths>,
     scratch: math::Scratch,
     progress: Progress,
@@ -406,6 +412,10 @@ impl<'a> Job<'a> {
                 queries: QueryBasis::viewport(viewport),
             }],
             flex: Vec::new(),
+            absolute: Default::default(),
+            absolute_at: 0,
+            absolute_indices: HashMap::new(),
+            active_absolute: None,
             intrinsics: HashMap::new(),
             scratch: math::Scratch::default(),
             progress: Progress::default(),
@@ -424,12 +434,14 @@ impl<'a> Job<'a> {
         let parent = frame.used;
         let queries = frame.queries;
         let b = self.cache.tree.get(id).ok_or(Error::Invalid)?;
-        let BoxKind::Block { flow_root, root } = b.kind else { return Err(Error::Invalid) };
+        let BoxKind::Block { flow_root, root, .. } = b.kind else { return Err(Error::Invalid) };
         let style = self.cache.tree.style(id).ok_or(Error::Invalid)?;
         if style.font().context() != self.scope.context() {
             return Err(Error::Stale);
         }
-        let mut used = if let Some(used) = self.flex_child_used(id)? {
+        let mut used = if let Some(a) = self.active_absolute.as_ref().filter(|a| a.id == id) {
+            a.used
+        } else if let Some(used) = self.flex_child_used(id)? {
             used
         } else {
             Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?
@@ -628,6 +640,14 @@ impl<'a> Job<'a> {
             if self.progress.work > self.limits.work {
                 return Err(Error::Limit);
             }
+            if self.stack.is_empty() {
+                if self.absolute_at == self.absolute.len() {
+                    self.progress.finished = true;
+                    break;
+                }
+                self.begin_absolute()?;
+                continue;
+            }
             let child = if self.flex.last().is_some_and(|f| self.stack.last().is_some_and(|parent| f.id == parent.id)) {
                 match self.flex_tick()? {
                     flex_flow::Tick::Pending => continue,
@@ -643,6 +663,10 @@ impl<'a> Job<'a> {
                 child
             };
             if let Some(child) = child {
+                if self.positioned(child)? {
+                    self.defer_absolute(child)?;
+                    continue;
+                }
                 let b = &self.cache.tree.boxes[child.index()];
                 match b.kind {
                     BoxKind::Block { .. } => self.enter(child)?,
@@ -678,7 +702,13 @@ impl<'a> Job<'a> {
                 let after = Strut::new(f.used.margin.bottom).union(if f.collapse_bottom && !through { f.pending } else { Strut::default() });
                 let result = Completed { before: f.top, after, through, relative_y: f.used.relative.y };
                 self.progress.boxes += 1;
-                if self.stack.is_empty() { self.progress.finished = true } else { self.place(f.id, result)? }
+                if self.finish_absolute(f.id)? {
+                    self.progress.finished = self.absolute_at == self.absolute.len();
+                } else if self.stack.is_empty() {
+                    self.progress.finished = self.absolute_at == self.absolute.len()
+                } else {
+                    self.place(f.id, result)?
+                }
             }
         }
         Ok(self.progress)

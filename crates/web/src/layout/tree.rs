@@ -25,7 +25,7 @@ impl BoxId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BoxKind {
     Viewport,
-    Block { flow_root: bool, root: bool },
+    Block { flow_root: bool, root: bool, absolute: bool },
     InlineContent { source: u32 },
     InlineImage { image: u32 },
     BlockImage { image: u32 },
@@ -444,11 +444,11 @@ impl<'a> BuildJob<'a> {
                     if s.axes().writing_mode != WritingMode::HorizontalTb {
                         return Err(Error::Unsupported("vertical box layout"));
                     }
-                    if !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static | Keyword::Relative))
+                    if !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static | Keyword::Relative | Keyword::Absolute))
                         || !matches!(s.value(Property::Float), Value::Keyword(Keyword::None))
                         || !matches!(s.value(Property::Clear), Value::Keyword(Keyword::None))
                     {
-                        let property = if !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static | Keyword::Relative)) {
+                        let property = if !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static | Keyword::Relative | Keyword::Absolute)) {
                             Property::Position
                         } else if !matches!(s.value(Property::Float), Value::Keyword(Keyword::None)) {
                             Property::Float
@@ -461,6 +461,9 @@ impl<'a> BuildJob<'a> {
                             property,
                             value: s.value(property).clone(),
                         })));
+                    }
+                    if matches!(s.value(Property::Position), Value::Keyword(Keyword::Absolute)) && (self.pending.as_ref().is_some_and(|p| !p.source.is_empty()) || !self.open.is_empty()) {
+                        return Err(Error::Unsupported("positioned inline interruption"));
                     }
                     if self.document.namespace(node)? == Some(crate::dom::Namespace::Svg) && self.document.name(node)? == Some("svg") {
                         if *display == Display::Contents {
@@ -567,9 +570,10 @@ impl<'a> BuildJob<'a> {
                             self.stack.last_mut().unwrap().inline = true;
                         }
                         Display::Box { outer: Outer::Block, inner: inner @ (Inner::Flow | Inner::FlowRoot | Inner::Flex), list_item: false } => {
+                            let absolute = matches!(s.value(Property::Position), Value::Keyword(Keyword::Absolute));
                             self.flush()?;
                             let root = self.boxes[container.index()].kind == BoxKind::Viewport;
-                            let id = self.add(node, node, BoxKind::Block { flow_root: inner != Inner::Flow, root }, container)?;
+                            let id = self.add(node, node, BoxKind::Block { flow_root: inner != Inner::Flow, root, absolute }, container)?;
                             self.push(node, id, node, true)?;
                         }
                         _ => {

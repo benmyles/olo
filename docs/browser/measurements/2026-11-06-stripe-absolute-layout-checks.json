@@ -1,0 +1,449 @@
+{
+  "scope": "Initial deferred absolute non-replaced page layout; component checks only. Stripe 0/30, corpus 0/100.",
+  "release_tests": {
+    "passed": 313,
+    "ignored": 2,
+    "command": "cargo test --release -p olo-web -p olo-browser"
+  },
+  "clippy": {
+    "command": "cargo clippy -p olo-web -p olo-browser --all-targets --no-deps -- -D warnings",
+    "passed": true,
+    "seconds": 17.71
+  },
+  "workspace_build": {
+    "command": "cargo build --release --workspace",
+    "passed": true,
+    "seconds": 9.43
+  },
+  "reference": {
+    "pages": 125,
+    "rectangles": 545,
+    "scales": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "tolerance_css_px": 0.0001,
+    "pixels": false,
+    "viewport_corrections": "Integer innerWidth/innerHeight capture and raw visualViewport f32 capture rejected. Final viewport reconstructed from native device pixels; raw values retained. No tolerance widening."
+  },
+  "visual": {
+    "source_sha256": "e3b06e5e22b3b38396cccbc003e568f5c0b4f35beca0864c678c0486b8eef8cd",
+    "rows": [
+      {
+        "theme": "light",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "034af61719549dc454825b3de9eea4902f8364b5d9250d7f6dd18e8069331158"
+      },
+      {
+        "theme": "light",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "a897ee97ddb132770e95410a14ebb6acf170bdf0feca022a53e32fbd2c1164d0"
+      },
+      {
+        "theme": "light",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "28bf1edc1e854e554fc58615de8ca2ad30789fba68d010c83d5c8a80b8415d85"
+      },
+      {
+        "theme": "light",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "d1426189236b88dfe719fe349441ad7e9b3a2c56275d07012487a5c484180820"
+      },
+      {
+        "theme": "light",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "d99a2ab0e1c0f9dd12c9887d58b7eab9f574e669f70a6c46364a872b44515cee"
+      },
+      {
+        "theme": "dark",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "4f0a7335a588490bed65bfba22d46960f4c0ae23529178a11166341c996d836f"
+      },
+      {
+        "theme": "dark",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "61809795e4efa8d795b9697b205c6d0e4a2f57f562c843f5746905f64c899e37"
+      },
+      {
+        "theme": "dark",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "c2000d0d9aa5578278beaa7dfdaf73225f9a8e711f0c9eac89aa9a039bbfa218"
+      },
+      {
+        "theme": "dark",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "575fea6f1e42c593c799dd680a30599ee84238184a27c2ebcab6439691fe093f"
+      },
+      {
+        "theme": "dark",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "8fbb4a22edf94e61e52fd2d5f69fbe1713b9eeaa4788cc61239f8885e62bd6e5"
+      },
+      {
+        "theme": "night",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "4f0a7335a588490bed65bfba22d46960f4c0ae23529178a11166341c996d836f"
+      },
+      {
+        "theme": "night",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "61809795e4efa8d795b9697b205c6d0e4a2f57f562c843f5746905f64c899e37"
+      },
+      {
+        "theme": "night",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "c2000d0d9aa5578278beaa7dfdaf73225f9a8e711f0c9eac89aa9a039bbfa218"
+      },
+      {
+        "theme": "night",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "575fea6f1e42c593c799dd680a30599ee84238184a27c2ebcab6439691fe093f"
+      },
+      {
+        "theme": "night",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "screenshot_sha256": "8fbb4a22edf94e61e52fd2d5f69fbe1713b9eeaa4788cc61239f8885e62bd6e5"
+      }
+    ],
+    "inspection": "All five contact crops visually inspected, plus full light 1x. No resampling. Authored component only."
+  },
+  "stripe": {
+    "pid": 713752,
+    "exe": "/var/tmp/olo-browser-stripe/absolute-flow/browser-after",
+    "sha256": "d9758ad61e2149e8138d87eef9fbe318f873c505428c8553a6f4394e39587135",
+    "tree": [
+      {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "https://stripe.com/",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "flow layout Unsupported(\"unclipped SVG viewport\")",
+            "x": 69.0,
+            "y": 733.672,
+            "width": 289.968,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ],
+    "windows": [
+      {
+        "id": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "pid": 713752,
+        "workspace": 0,
+        "minimized": false,
+        "focused": true,
+        "kept": false,
+        "groupable": true,
+        "output": "HEADLESS-1",
+        "frame": {
+          "x": 48,
+          "y": 40,
+          "width": 1010,
+          "height": 731
+        },
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "least": [
+          650,
+          511
+        ],
+        "tab_frame": {
+          "x": 48,
+          "y": 40,
+          "width": 100,
+          "height": 21
+        },
+        "stack": 0,
+        "surface": 37
+      }
+    ],
+    "scope": "Fresh HTTPS fails at unclipped SVG viewport during box construction; no Stripe absolute geometry or site pass"
+  },
+  "limitations": [
+    "Static-position discovery",
+    "Shrink-to-fit width",
+    "Replaced positioned boxes",
+    "Pending inline interruption",
+    "Full stacking semantics",
+    "Stripe fails unclipped SVG viewport during box construction; its absolute geometry has not run",
+    "Earlier SVG 28 pixel nonpasses and prior performance regressions remain open"
+  ]
+}

@@ -8,16 +8,18 @@ revalidate the merged workspace and push the integration with browser work.
 
 **Active website: [Stripe](eval/stripe/README.md), selected by the user.**
 Finish its real pages/journeys and all30 configurations before choosing another
-site. Component work follows observed Stripe blockers. The latest fresh HTTPS retry gets past the initial SVG root and stops at
-a `section` with computed `Position: Absolute` (latest fresh slot279). There is still
-no useful native Stripe homepage and no accepted configuration. Initial LTR row
-flex and path-only SVG roots now reach layout/paint. SVG's110 independent page
-rectangles match at five native DPRs;82 image crops match exactly and28 pixel
-nonpasses remain. Native component reviews pass all15 theme/scale combinations.
-SVG intrinsic sizing, strokes/paint servers/transforms, replaced flex items,
-arc scale accuracy and fractional raster fidelity remain incomplete. All older
-performance and conformance nonpasses remain open. Next investigate actual
-Stripe positioned elements and close SVG pixel gaps; do not choose another site.
+site. Component work follows observed Stripe blockers. The latest fresh HTTPS
+retry passes the absolute-position box-tree rejection and stops at
+`flow layout Unsupported("unclipped SVG viewport")` during box construction.
+Stripe's own absolute geometry has not run yet. There is still no useful native
+Stripe homepage and no accepted configuration. Initial absolute blocks match
+545 independent Chrome rectangles across 125 pages/five native DPRs. SVG's
+110 earlier rectangles match; 82 image crops match exactly and 28 pixel
+nonpasses remain. Native component reviews pass all 15 theme/scale combinations.
+SVG overflow/intrinsic sizing, strokes/paint servers/transforms, replaced flex
+items, static positions, shrink-to-fit and fractional raster fidelity remain
+incomplete. All older performance/conformance nonpasses remain open. Next fix
+the observed SVG viewport blocker and retry Stripe; do not choose another site.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
@@ -502,11 +504,14 @@ this is a harness correction, not a browser speedup.
 
 - [x] Prevent long status/error text from resizing the document viewport and
   repeatedly reloading failed pages. Delayed HTTP repro stays at one request;
-  real Stripe failure returns to idle. Absolute layout itself remains open.
+  real Stripe failure returns to idle. Full absolute layout remains open.
 
 - [x] Initial absolute non-replaced axis equations, independently compared in
   225 Chrome observations at five native DPRs (numeric stage only).
-- [ ] Connect absolute boxes to containing-block selection, deferred out-of-flow
-  layout, static-position discovery and painting; then retry Stripe. Handle
-  padding-box percentage bases and containing blocks whose height finishes
-  after the positioned node. Preserve explicit failures for unimplemented modes.
+- [x] Initial deferred absolute non-replaced blocks, containing-block selection,
+  padding-box percentages, auto-height/nested placement, flex exclusion and
+  painting. 125 independent pages/545 Chrome rectangles match at five DPRs.
+- [ ] Complete absolute static-position discovery, shrink-to-fit, replaced
+  positioning, inline interruption and modern alignment/stacking semantics.
+- [ ] Fix the next fresh Stripe box-construction blocker: unclipped SVG viewport.
+  Retry actual HTTPS after each supported component; keep failures explicit.

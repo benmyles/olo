@@ -745,9 +745,7 @@ fn rejected_placement_reports_actual_node_property_and_computed_value() {
     use olo_web::css::style::{Keyword as K, Property as P, Value};
     let scope = scope();
     let host = native_host::NativeHost(scope);
-    for (declaration, property, value) in
-        [("position:absolute", P::Position, K::Absolute), ("position:fixed", P::Position, K::Fixed), ("float:left", P::Float, K::Left), ("clear:both", P::Clear, K::Both)]
-    {
+    for (declaration, property, value) in [("position:fixed", P::Position, K::Fixed), ("float:left", P::Float, K::Left), ("clear:both", P::Clear, K::Both)] {
         let doc = html::parse(Arc::from(format!("<!doctype html><div style='{declaration}'>content</div>")), Default::default(), None).unwrap().document;
         let mut sheets = SheetBuilder::new(Default::default());
         sheets.add_sheet(&Syntax::parse(Arc::from(olo_web::page::UA), Default::default(), None).unwrap(), Origin::UserAgent, None).unwrap();

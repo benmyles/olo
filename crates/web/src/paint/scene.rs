@@ -492,12 +492,23 @@ impl<'a> BuildJob<'a> {
                 break;
             };
             self.next += 1;
-            let (parent, mut group, clip) = if let Some(parent) = b.parent {
+            let (parent, mut group, mut clip) = if let Some(parent) = b.parent {
                 let p = &self.states[parent.index()];
                 (p.origin, p.group, p.clip)
             } else {
                 (Point::default(), 0, NONE)
             };
+            if matches!(b.kind, BoxKind::Block { absolute: true, .. }) {
+                let mut cb = b.parent.ok_or(Error::Invalid)?;
+                loop {
+                    check(self.cancel)?;
+                    if cb == tree.root() || !matches!(tree.style(cb).ok_or(Error::Invalid)?.value(P::Position), Value::Keyword(K::Static)) {
+                        break;
+                    }
+                    cb = tree.get(cb).ok_or(Error::Invalid)?.parent.ok_or(Error::Invalid)?;
+                }
+                clip = self.states[cb.index()].clip;
+            }
             let g = *layout.geometry(id).ok_or(Error::Invalid)?;
             let mut outer = g.border_box;
             outer.x += parent.x;
@@ -520,7 +531,7 @@ impl<'a> BuildJob<'a> {
                     {
                         return Err(Error::Unsupported("opacity/z-index/isolation stacking"));
                     }
-                    if matches!(s.value(P::Position), Value::Keyword(K::Relative)) {
+                    if matches!(s.value(P::Position), Value::Keyword(K::Relative | K::Absolute)) {
                         self.groups = self.groups.checked_add(1).ok_or(Error::Limit)?;
                         group = self.groups;
                     }

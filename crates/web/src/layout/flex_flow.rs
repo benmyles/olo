@@ -103,11 +103,21 @@ fn intrinsic_source(tree: &Tree, id: BoxId, cancel: Option<&AtomicBool>) -> Resu
     if let BoxKind::InlineContent { source } = b.kind {
         return Ok(Some(source));
     }
-    let Some(child) = b.first_child else { return Ok(None) };
-    let child = tree.get(child).ok_or(Error::Invalid)?;
-    if child.next_sibling.is_none()
-        && let BoxKind::InlineContent { source } = child.kind
-    {
+    let mut next = b.first_child;
+    let mut content = None;
+    while let Some(id) = next {
+        check(cancel)?;
+        let child = tree.get(id).ok_or(Error::Invalid)?;
+        next = child.next_sibling;
+        if matches!(child.kind, BoxKind::Block { absolute: true, .. }) {
+            continue;
+        }
+        if content.replace(child).is_some() {
+            return Err(Error::Unsupported("nested flex item intrinsic contributions"));
+        }
+    }
+    let Some(child) = content else { return Ok(None) };
+    if let BoxKind::InlineContent { source } = child.kind {
         // Inline edges require independent intrinsic contribution rules.
         for edge in tree.inline_boxes(source).ok_or(Error::Invalid)? {
             check(cancel)?;
@@ -263,6 +273,11 @@ impl<'a> Job<'a> {
                     f.stage = Stage::Solve;
                     return Ok(Tick::Pending);
                 };
+                if self.positioned(id)? {
+                    self.flex[fi].next = self.cache.tree.get(id).ok_or(Error::Invalid)?.next_sibling;
+                    self.defer_absolute(id)?;
+                    return Ok(Tick::Pending);
+                }
                 let tree = &self.cache.tree;
                 let b = tree.get(id).ok_or(Error::Invalid)?;
                 let mut widths = inline::IntrinsicWidths::default();

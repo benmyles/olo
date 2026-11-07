@@ -2459,7 +2459,7 @@ positioning requirement from float/clear work without guessing from a generic
 message; it does not implement those layout modes.
 
 
-## Absolute axis constraint solver (not yet page-integrated)
+## Absolute axis constraint solver
 
 `layout::positioned::solve` resolves horizontal/vertical non-replaced axis
 constraints from already-resolved content-box lengths, padding+border extent,
@@ -2468,12 +2468,36 @@ direction are separate. Auto insets/margins, shrink-to-fit, negative margin
 space, overconstraints and max-then-min re-solving are handled in bounded layout
 quanta. Inputs/outputs reject nonfinite/oversized arithmetic; no heap allocation
 or content traversal occurs, and at most three equations are solved. The caller
-still needs to choose the containing block, resolve percentages/box sizing,
-measure intrinsic/auto heights and place out-of-flow descendants. The normal
-page pipeline still rejects absolute placement. Modern alignment, anchors,
+chooses the containing block, resolves percentages/box sizing and measures
+heights through the initial deferred block integration below. Modern alignment, anchors,
 replaced ratios and nonhorizontal writing modes remain open.
 
 Independent225 Chrome observations match border position/content size/margins
 at five native DPRs. No pixels or website acceptance are implied. See
 `tests/positioned-fixtures`. `positioned_bench` times scalar arithmetic only,
-not page/event/idle performance. No existing hot path calls this solver yet.
+not page/event/idle performance.
+
+## Initial deferred absolute blocks
+
+Normal and initial flex layout collect absolute block children without letting
+those children contribute to flow size or flex intrinsic/distribution work.
+After normal-flow geometry finishes, queued subtrees resolve against the nearest
+positioned ancestor's padding box (or initial viewport), then translate their
+coordinates back to their actual parent. Nested positioned work is queued after
+its containing subtree. Queries are updated/deduplicated during flex reflow.
+Auto content height feeds the vertical equation after child layout. The retained
+box flag avoids a style lookup on each ordinary child. Painting uses positioned
+ordering and skips intervening static overflow clips up to the containing block.
+
+Current integration requires an explicit inset on each axis and either explicit
+width or both horizontal insets. Static-position discovery, shrink-to-fit,
+replaced positioned boxes and pending-inline interruptions fail explicitly.
+Full stacking contexts/modern alignment remain open. The existing worker budget,
+limits and cancellation apply; no UI-thread layout or idle work was added.
+
+Independent 125 Chrome pages at five native DPRs match 545 border rectangles;
+see tests/absolute-page-fixtures. Four authored tests additionally exercise
+nested/auto-height geometry, flex exclusion and static overflow clip escape.
+No independent page pixels or website acceptance are implied. A fresh Stripe
+retry now fails at an unclipped SVG viewport during box construction, before
+Stripe's own positioned geometry has executed.

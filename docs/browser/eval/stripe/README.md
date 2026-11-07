@@ -14,15 +14,16 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest startup checkpoint
 
-The fresh owned native HTTPS retry now gets past the initial SVG root and stops
-at **section Position Absolute** (latest fresh document20/slot279). A long-error status resize/reload loop is fixed and the failed page now rests idle. There
-is still no useful native Stripe homepage and no accepted configuration.
-The retained first Stripe logo path renders in an isolated native component.
-Path-only SVG roots now participate in CSS sizing, inline/block layout and
-retained vector painting. Independent authored cases give110 matching rectangles,
-82 exact full pixel crops and28 explicit pixel nonpasses at five native DPRs.
-All15 component theme/scale UI reviews have zero findings. These are not site
-passes. Continue positioned layout and SVG fidelity work on Stripe only.
+The fresh owned native HTTPS retry now passes absolute-position box construction
+and stops at **flow layout Unsupported("unclipped SVG viewport")**. This still
+happens while building boxes: Stripe's actual absolute geometry has not run.
+There is no useful native Stripe homepage and no accepted configuration.
+Initial deferred absolute blocks match 545 independent Chrome rectangles across
+125 authored pages/five native DPRs. Their 15 theme/scale reviews have no findings.
+The earlier path-only SVG work has 110 matching rectangles, 82 exact full pixel
+crops and 28 explicit pixel nonpasses. These are component results, not site
+passes. Continue with the actual SVG viewport blocker, remaining positioned
+modes and SVG fidelity on Stripe only.
 
 The retained-source [foreign inventory](foreign-inventory.json) contains154 SVG
 roots,307 paths,135 rectangles,61 clip paths,13 linear gradients and4 filters.

@@ -1,0 +1,286 @@
+[
+  {
+    "id": "padding-auto",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "bottom",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{top:auto;bottom:10px}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "vertical-fill",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{top:10px;bottom:10px;height:auto}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "auto-height",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{height:auto;top:auto;bottom:10px}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "percent-size",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{width:50%;height:25%}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "border-box",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{box-sizing:border-box;width:100px;padding:3px;border:2px solid red}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "auto-margins",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{width:60px;bottom:0;top:0;margin:auto}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "negative-space",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{width:300px;margin:auto}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "rtl",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#cb{direction:rtl}#a{width:60px;margin:auto}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "rtl-negative",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#cb{direction:rtl}#a{width:300px;margin:auto}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "min-width",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{min-width:240px}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "max-width",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{max-width:100px}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "height-clamp",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{height:auto;top:0;bottom:0;max-height:30px;margin:auto}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "relative-parent",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#cb{left:13px;top:17px}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "margins",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#cb{margin:7px}#a{margin:3px 8px 11px 4px}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "fraction",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#a{left:5.25px;right:15.75px;top:12.5px;height:20.25px}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "overflow-cb",
+    "css": "#cb{position:relative;width:200px;padding:10px;border:2px solid blue}#a{position:absolute;left:5px;right:15px;top:50%;height:20px}#flow{height:100px}#inside{height:5px}#after{height:10px}#cb{overflow:hidden}#a{left:190px;width:60px}",
+    "html": "<div id=cb><div id=a><div id=inside></div></div><div id=flow></div></div><div id=after></div>",
+    "measure": [
+      "cb",
+      "a",
+      "inside",
+      "flow",
+      "after"
+    ]
+  },
+  {
+    "id": "viewport",
+    "css": "#a{position:absolute;right:10px;bottom:15px;width:60px;height:30px}",
+    "html": "<div id=a></div>",
+    "measure": [
+      "a"
+    ]
+  },
+  {
+    "id": "nested",
+    "css": "#a{position:absolute;left:20px;top:30px;width:100px;padding:5px}#b{position:absolute;right:3px;bottom:4px;width:10px;height:7px}#flow{height:40px}",
+    "html": "<div id=a><div id=b></div><div id=flow></div></div>",
+    "measure": [
+      "a",
+      "b",
+      "flow"
+    ]
+  },
+  {
+    "id": "static-intermediate",
+    "css": "#cb{position:relative;width:200px;padding:10px}#mid{margin:15px;padding:5px}#a{position:absolute;left:0;top:0;width:50px;height:10px}#flow{height:40px}",
+    "html": "<div id=cb><div id=mid><div id=a></div><div id=flow></div></div></div>",
+    "measure": [
+      "cb",
+      "mid",
+      "a",
+      "flow"
+    ]
+  },
+  {
+    "id": "static-clip",
+    "css": "#cb{position:relative;width:100px;height:100px}#clip{overflow:hidden;width:10px;height:10px}#a{position:absolute;left:50px;top:50px;width:20px;height:20px;background-color:red}",
+    "html": "<div id=cb><div id=clip><div id=a></div></div></div>",
+    "measure": [
+      "cb",
+      "clip",
+      "a"
+    ]
+  },
+  {
+    "id": "flex",
+    "css": "#cb{display:flex;position:relative;width:200px;height:100px}#a{position:absolute;left:0;top:0;width:150px;height:20px}#flow{width:60px;height:30px;flex-shrink:0}",
+    "html": "<div id=cb><div id=a></div><div id=flow></div></div>",
+    "measure": [
+      "cb",
+      "a",
+      "flow"
+    ]
+  },
+  {
+    "id": "flex-auto",
+    "css": "#cb{display:flex;position:relative;width:200px;}#a{position:absolute;left:0;top:0;width:150px;height:20px}#flow{width:60px;height:30px;flex-shrink:0}",
+    "html": "<div id=cb><div id=a></div><div id=flow></div></div>",
+    "measure": [
+      "cb",
+      "a",
+      "flow"
+    ]
+  },
+  {
+    "id": "flex-reverse",
+    "css": "#cb{display:flex;position:relative;width:200px;flex-direction:row-reverse;height:100px}#a{position:absolute;left:0;top:0;width:150px;height:20px}#flow{width:60px;height:30px;flex-shrink:0}",
+    "html": "<div id=cb><div id=a></div><div id=flow></div></div>",
+    "measure": [
+      "cb",
+      "a",
+      "flow"
+    ]
+  },
+  {
+    "id": "flex-stretch-nested",
+    "css": "#outer{display:flex;width:200px}#cb{position:relative;width:100px}#other{width:100px;height:80px}#a{position:absolute;left:0;right:0;top:50%;height:20px}",
+    "html": "<div id=outer><div id=cb><div id=a></div></div><div id=other></div></div>",
+    "measure": [
+      "outer",
+      "cb",
+      "a",
+      "other"
+    ]
+  }
+]
