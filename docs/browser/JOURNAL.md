@@ -4929,3 +4929,46 @@ three-second idle0CPU/0wakeups both. After sample ends with compiler processes;
 these are client submission marks, not optical/compositor latency. Raw evidence:
 measurements/2026-11-06-stripe-svg-overflow-*.json. Owned screens stopped;
 no personal-session changes. All previous conformance/performance gaps stay open.
+
+### 2026-11-06 — SVG definitions and the next actual Stripe dependency
+
+Overflow milestone75ca0e99 committed/pushed. Replaced generic unsupported
+SVG shape failure with existing failure-only boxed element identity: a fresh
+native HTTPS load identifies `defs`, document1/slot285. SVG2 section5.3 says
+its subtree is retained for reference but not painted directly. Compilation
+now excludes defs while retaining DOM/computed styles. Unsupported references
+still fail; no clip/paint-server content was silently substituted.
+
+An authored regression at all five DPRs retains a rectangle and malformed path
+inside defs, asserts only root/defs/outside path are visited and only the outside
+blue path paints. The first fixture accidentally used unquoted fill=blue/> (slash
+belongs to the attribute value); quoting it fixed the test, not production color
+parsing. Seven SVG tests pass, including all earlier independent geometry and
+unchanged38 pixel nonpasses. No independent defs pixel capture claimed.
+
+Next fresh load reaches the existing combined effect rejection. Split its
+static failure messages without retaining attribute values; another verified
+native retry identifies `Unsupported("SVG clip-path")`. That is the next real
+Stripe dependency. Stripe layout still has not executed; no useful homepage.
+No other website selected. Stripe0/30; corpus0/100.
+
+Release workspace8.42s. Full final release tests/clippy are in the paired checks
+JSON. Seven alternating CPU0 pairs (30 rounds) with identical supported SVGs,
+exact75ca0e99 viewport source for baseline, restored in finally for after:
+100/1000-root pipeline1208.581/11977.490→1194.472/12139.931µs;
+scene15.340/578.106→15.555/578.280µs;256×256 raster324.274/318.884
+→323.674/320.139µs. Larger pipeline+1.4% remains an observed regression;
+clocks/load uncontrolled, no causal or broad speed claim. Source/geometry/pixels,
+vector and command payloads are identical. The benchmark now times page loading
+as well as retained scene/raster. No pre-existing supported defs baseline.
+Raw evidence: measurements/2026-11-06-stripe-svg-defs-*.json. Owned Browser
+instances closed/awaited and screen stopped. No personal-session changes.
+
+Final checks:316 release web/browser tests pass (two ignored); strict scoped
+clippy2.56s. Refetched origin/main via gh, still e4367953 and already merged.
+Retained-source clip inventory (not fresh replay/computed geometry) has61 local
+clip-path references on g elements and61 definitions, each with an identical
+12×9 rect at0,0. No transforms/radii/units attributes in these definitions.
+This guides the next initial rectangular clip component; it is not a reason to
+ignore CSS cascade, arbitrary IDs, ancestor intersection or unsupported modes.
+Inventory: eval/stripe/clip-inventory.json. All previous gaps remain open.

@@ -37,6 +37,11 @@ fn main() {
         let pixels = format!("{:x}", Sha256::digest(tile.rgba()));
         let at = Instant::now();
         for _ in 0..rounds {
+            black_box(page::load(source.clone(), &host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 800., height: 600., scale: 1. }, None, |_, _| {}).unwrap());
+        }
+        let pipeline_us = at.elapsed().as_secs_f64() * 1e6 / rounds as f64;
+        let at = Instant::now();
+        for _ in 0..rounds {
             let mut j = paint::BuildJob::new(&page.document, page.scene.layout().clone(), &mut painter, Default::default(), Default::default(), None).unwrap();
             while !j.step(32).unwrap().finished {}
             black_box(j.finish().unwrap());
@@ -59,10 +64,10 @@ fn main() {
             })
             .map(|v| std::mem::size_of_val(v) + v.payload_bytes())
             .sum();
-        rows.push(json!({"raster_us":raster_us,"vector_bytes":vector_bytes,"command_bytes":page.scene.command_payload_bytes(),"elements":count,"scene_us":scene_us,"commands":page.scene.commands().len(),"source_sha256":format!("{:x}",Sha256::digest(source.as_bytes())),"geometry_sha256":format!("{:x}",geometry.finalize()),"pixels_sha256":pixels}));
+        rows.push(json!({"pipeline_us":pipeline_us,"raster_us":raster_us,"vector_bytes":vector_bytes,"command_bytes":page.scene.command_payload_bytes(),"elements":count,"scene_us":scene_us,"commands":page.scene.commands().len(),"source_sha256":format!("{:x}",Sha256::digest(source.as_bytes())),"geometry_sha256":format!("{:x}",geometry.finalize()),"pixels_sha256":pixels}));
     }
     println!(
         "{}",
-        json!({"features":build_features::enabled(),"rounds":rounds,"visible":visible,"rows":rows,"scope":"Retained SVG scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance."})
+        json!({"features":build_features::enabled(),"rounds":rounds,"visible":visible,"rows":rows,"scope":"SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance."})
     );
 }

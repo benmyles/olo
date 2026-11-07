@@ -2519,3 +2519,20 @@ older 28 SVG pixel nonpasses remain unchanged. OLO_SVG_REQUIRE_COMPLETE=1 stays
 failing. Scrollable SVG viewport semantics remain unsupported. Exact geometry
 is separate from conservative ink query bounds; no website acceptance follows.
 Fresh Stripe now stops at SVG shape/container type during box construction.
+
+## SVG definition subtrees and failure diagnostics
+
+SVG defs subtrees remain in the DOM and computed style tree, but are excluded
+from directly painted path compilation. Referenced clip paths, paint servers
+and use instances still fail explicitly until their semantics are implemented.
+An authored five-DPR regression retains an unsupported rectangle and malformed
+path inside defs, proves neither is compiled/painted, and checks the outside
+blue path and stored DOM identity. No independent defs pixel capture is claimed.
+See SVG2 section 5.3: https://www.w3.org/TR/SVG2/struct.html#DefsElement.
+
+Unsupported SVG element diagnostics now retain only node identity, namespace
+and element name, in the existing failure-only boxed diagnostic. Transform,
+clip-path, mask and filter attribute failures have distinct static messages.
+Fresh Stripe identified defs at slot285; with defs excluded it reaches
+`Unsupported("SVG clip-path")`. Actual Stripe layout and useful rendering remain
+unreached. Previous reference pixel and performance nonpasses remain open.

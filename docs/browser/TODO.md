@@ -10,7 +10,7 @@ revalidate the merged workspace and push the integration with browser work.
 Finish its real pages/journeys and all30 configurations before choosing another
 site. Component work follows observed Stripe blockers. The latest fresh HTTPS
 retry passes the absolute-position box-tree rejection and stops at
-`flow layout Unsupported("SVG shape/container type")` during box construction.
+`flow layout Unsupported("SVG clip-path")` during box construction.
 Stripe's own absolute geometry has not run yet. There is still no useful native
 Stripe homepage and no accepted configuration. Initial absolute blocks match
 545 independent Chrome rectangles across 125 pages/five native DPRs. SVG's
@@ -19,7 +19,7 @@ nonpasses remain. Native component reviews pass all 15 theme/scale combinations.
 SVG intrinsic sizing, strokes/paint servers/transforms, replaced flex
 items, static positions, shrink-to-fit and fractional raster fidelity remain
 incomplete. All older performance/conformance nonpasses remain open. Next fix
-the observed SVG shape/container blocker and retry Stripe; do not choose another site.
+the observed SVG clip-path blocker and retry Stripe; do not choose another site.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
@@ -517,5 +517,6 @@ this is a harness correction, not a browser speedup.
   bounds. 90 independent border rectangles match, 80/90 image crops exact.
 - [ ] Close the 10 SVG overflow fractional/curve pixel nonpasses plus the older
   28 SVG page pixel nonpasses; strict pixel gate still fails.
-- [ ] Identify and implement the next fresh Stripe SVG shape/container blocker.
+- [x] Exclude non-rendered SVG defs subtrees from direct painting; preserve DOM.
+- [ ] Implement the next fresh Stripe blocker: SVG clip-path references.
   Retry actual HTTPS after each supported component; keep failures explicit.

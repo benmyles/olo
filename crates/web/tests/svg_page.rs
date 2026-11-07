@@ -178,3 +178,29 @@ fn independent_svg_overflow_geometry_and_pixels() {
         assert!(failures.is_empty(), "{report:#}");
     }
 }
+
+#[test]
+fn svg_definitions_remain_in_dom_without_direct_paint_or_path_compilation() {
+    for scale in [1., 1.25, 1.5, 1.75, 2.] {
+        let (page, mut painter) = load(
+            "<svg width=40 height=20><defs><g opacity='.5'><rect id='stored-rect' width=40 height=20 fill='red'/><path d='M0 0 garbage'/></g></defs><path d='M0 0H40V20H0Z' fill='blue'/></svg>",
+            scale,
+        );
+        let tree = page.scene.layout().cache().tree();
+        let vector = tree
+            .iter()
+            .find_map(|(_, b)| match b.kind {
+                layout::BoxKind::BlockVector { vector } => tree.vector(vector),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(vector.shapes.len(), 1);
+        let defs = page.document.first_child(vector.node).unwrap().unwrap();
+        let group = page.document.first_child(defs).unwrap().unwrap();
+        let stored = page.document.first_child(group).unwrap().unwrap();
+        assert_eq!(page.document.attribute(stored, "id").unwrap(), Some("stored-rect"));
+        let tile = painter.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: (40. * scale) as u32, height: (20. * scale) as u32 }, None).unwrap();
+        assert!(tile.rgba().as_chunks::<4>().0.iter().all(|p| *p == [0, 0, 255, 255]));
+        assert_eq!(vector.visited, 3); // root, definitions container, painted path
+    }
+}

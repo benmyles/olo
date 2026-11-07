@@ -1,0 +1,588 @@
+{
+  "scope": "Seven alternating CPU0 pairs on identical supported SVGs, before/after defs exclusion and failure diagnostics. Frozen default release. No previously supported defs baseline, website, GPU or presentation acceptance.",
+  "before": "75ca0e99",
+  "summary": {
+    "100": {
+      "pipeline_us": {
+        "before": 1208.5812333333336,
+        "after": 1194.4722
+      },
+      "scene_us": {
+        "before": 15.3395,
+        "after": 15.554666666666666
+      },
+      "raster_us": {
+        "before": 324.27383333333336,
+        "after": 323.6736
+      }
+    },
+    "1000": {
+      "pipeline_us": {
+        "before": 11977.489833333333,
+        "after": 12139.930533333334
+      },
+      "scene_us": {
+        "before": 578.1064666666666,
+        "after": 578.2796666666668
+      },
+      "raster_us": {
+        "before": 318.88386666666673,
+        "after": 320.139
+      }
+    }
+  },
+  "observations": [
+    {
+      "variant": "before",
+      "repeat": 0,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1208.5812333333336,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 325.23449999999997,
+          "scene_us": 15.3395,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12260.063933333333,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 318.88386666666673,
+          "scene_us": 579.5290666666666,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "after",
+      "repeat": 0,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1211.7532333333334,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 323.6736,
+          "scene_us": 15.554666666666666,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12139.930533333334,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 335.22166666666664,
+          "scene_us": 623.1046000000001,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "after",
+      "repeat": 1,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1354.8852666666667,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 367.5996333333333,
+          "scene_us": 15.577233333333334,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12476.908333333333,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 705.7625333333333,
+          "scene_us": 587.4722666666665,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "before",
+      "repeat": 1,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1228.7857,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 327.56173333333334,
+          "scene_us": 15.686133333333334,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11977.489833333333,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 323.2662,
+          "scene_us": 578.1064666666666,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "before",
+      "repeat": 2,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1202.1771999999999,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 324.19503333333336,
+          "scene_us": 15.270733333333334,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11661.922166666665,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 316.80136666666664,
+          "scene_us": 574.5689333333335,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "after",
+      "repeat": 2,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1576.7441333333334,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 322.137,
+          "scene_us": 15.101533333333334,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11733.679600000001,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 317.9119,
+          "scene_us": 578.2796666666668,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "after",
+      "repeat": 3,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1189.9459666666667,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 332.81516666666664,
+          "scene_us": 14.986833333333333,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11717.091766666668,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 359.1408333333333,
+          "scene_us": 576.9854666666666,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "before",
+      "repeat": 3,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1247.9558333333332,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 358.81763333333333,
+          "scene_us": 15.616266666666666,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12708.053466666666,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 321.34953333333334,
+          "scene_us": 580.8431,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "before",
+      "repeat": 4,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1215.6637,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 324.27383333333336,
+          "scene_us": 15.750833333333334,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11802.2318,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 319.5964,
+          "scene_us": 586.3345666666667,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "after",
+      "repeat": 4,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1190.8483666666666,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 323.71780000000007,
+          "scene_us": 15.567866666666667,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12400.2379,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 320.139,
+          "scene_us": 572.1953333333333,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "after",
+      "repeat": 5,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1194.4722,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 322.6171333333333,
+          "scene_us": 15.8725,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11449.862366666666,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 318.095,
+          "scene_us": 590.6731333333335,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "before",
+      "repeat": 5,
+      "compiler_context": [
+        " 772803 cargo",
+        " 772850 rustc",
+        " 772901 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1186.53,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 320.88460000000003,
+          "scene_us": 15.112200000000001,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12317.702133333334,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 308.10116666666664,
+          "scene_us": 557.1841333333333,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "before",
+      "repeat": 6,
+      "compiler_context": [
+        " 772803 cargo"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1145.7403333333334,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 317.45016666666663,
+          "scene_us": 14.782833333333333,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 11323.515699999998,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 316.3754333333333,
+          "scene_us": 561.3863666666667,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    },
+    {
+      "variant": "after",
+      "repeat": 6,
+      "compiler_context": [
+        " 772803 cargo",
+        " 773040 rustc"
+      ],
+      "features": [],
+      "rounds": 30,
+      "rows": [
+        {
+          "command_bytes": 12240,
+          "commands": 100,
+          "elements": 100,
+          "geometry_sha256": "a725e6a961e37771b38b441698736893c921479e4337629d0d51ff35fb2ed43e",
+          "pipeline_us": 1151.1165666666668,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 312.0747666666666,
+          "scene_us": 14.9741,
+          "source_sha256": "83b8365d0ca5d8f6dde3d9a407d0611e94e615664aea53ebd63e9417e9e9c6c2",
+          "vector_bytes": 39200
+        },
+        {
+          "command_bytes": 121760,
+          "commands": 1000,
+          "elements": 1000,
+          "geometry_sha256": "1abe692228009675e04f9715ddc59a2730eae5f838c508f0e90d94a6f7e963b8",
+          "pipeline_us": 12225.594766666667,
+          "pixels_sha256": "6ca9eb9110c230f96b4789e804db9e63510e8b30b1888195bac34af1ca019985",
+          "raster_us": 313.27396666666664,
+          "scene_us": 564.4986333333333,
+          "source_sha256": "a91ed9e34f2a49ce5db5ac6aa2e2889c0a4e6ffd496d10f2340b0f75d785c3f4",
+          "vector_bytes": 392000
+        }
+      ],
+      "scope": "SVG page pipeline, retained scene construction/destruction and 256x256 CPU tile raster. No network, GPU/presentation or website acceptance.",
+      "visible": false
+    }
+  ],
+  "loadavg": [
+    4.27880859375,
+    5.9296875,
+    8.1484375
+  ],
+  "binaries": {
+    "before": "4a2d0dd4ac979e080c7890a47571467c63f3c8b850af5a99173eff78ce814f0e",
+    "after": "a11c98ee9339b9f59fc7798b0b24758a5657a517690a092dda432441f8c38289"
+  }
+}

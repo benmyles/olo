@@ -1,0 +1,1289 @@
+{
+  "scope": "Retained public Stripe source inventory, not fresh replay or computed geometry. Used only to plan the next SVG clip-path component.",
+  "source_sha256": "614dc424ca90ddbdc2f3df8364c9d4f8d513fbade44326fed0b46a393e317c6d",
+  "references": [
+    {
+      "tag": "g",
+      "value": "url(#:R1pbdir6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rttdir6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3lmhmr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rejlmr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R1qaf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R4qqcf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rescf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R4qqkf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Reskf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R4qqsf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Ressf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R4qr4f7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Ret4f7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3hmf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3imf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3jmf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3kmv7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Re8fav7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Re8nav7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Re8vav7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Re97av7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Re9fav7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Re9nav7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Re9vav7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rea7av7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R1pkuv7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R1plev7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R1qbf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3hlf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3ilf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3jlf7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R71ff7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R72ff7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R73ff7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R74ff7mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R1pj8mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rsdf8mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rslf8mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rstf8mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Regpj9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Reh9j9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rehpj9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rei9j9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Reipj9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rej9j9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rejpj9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rek9j9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3m7r9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3mbr9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3mfr9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3mjr9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3mnr9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3mrr9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3mvr9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:R3n3r9mr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rspqmr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Re6qmr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Reaqmr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rv1qr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rrlaqr6l6:)"
+    },
+    {
+      "tag": "g",
+      "value": "url(#:Rslaqr6l6:)"
+    }
+  ],
+  "clips": [
+    {
+      "attributes": {
+        "id": ":R1pbdir6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rttdir6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3lmhmr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rejlmr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R1qaf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R4qqcf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rescf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R4qqkf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Reskf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R4qqsf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Ressf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R4qr4f7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Ret4f7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3hmf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3imf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3jmf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3kmv7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Re8fav7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Re8nav7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Re8vav7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Re97av7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Re9fav7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Re9nav7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Re9vav7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rea7av7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R1pkuv7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R1plev7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R1qbf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3hlf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3ilf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3jlf7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R71ff7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R72ff7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R73ff7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R74ff7mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R1pj8mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rsdf8mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rslf8mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rstf8mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Regpj9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Reh9j9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rehpj9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rei9j9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Reipj9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rej9j9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rejpj9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rek9j9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3m7r9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3mbr9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3mfr9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3mjr9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3mnr9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3mrr9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3mvr9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":R3n3r9mr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rspqmr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Re6qmr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Reaqmr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rv1qr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rrlaqr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "id": ":Rslaqr6l6:"
+      },
+      "children": [
+        {
+          "tag": "rect",
+          "attributes": {
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "9"
+          },
+          "path_sha256": null
+        }
+      ]
+    }
+  ]
+}

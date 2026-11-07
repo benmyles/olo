@@ -15,7 +15,7 @@ without a dedicated eval environment; no personal account is part of this run.
 ## Latest startup checkpoint
 
 The fresh owned native HTTPS retry now passes absolute-position box construction
-and stops at **flow layout Unsupported("SVG shape/container type")**. This still
+and stops at **flow layout Unsupported("SVG clip-path")**. This still
 happens while building boxes: Stripe's actual absolute geometry has not run.
 There is no useful native Stripe homepage and no accepted configuration.
 Initial deferred absolute blocks match 545 independent Chrome rectangles across
@@ -24,7 +24,7 @@ The earlier path-only SVG work has 110 matching rectangles, 82 exact full pixel
 crops and 28 explicit pixel nonpasses. These are component results, not site
 passes. Visible/per-axis SVG overflow now matches 90 more independent border
 rectangles and 80/90 full crops; 10 fractional/curve pixel nonpasses remain.
-Continue with the actual SVG shape/container blocker, remaining positioned
+Continue with the actual SVG clip-path blocker, remaining positioned
 modes and SVG fidelity on Stripe only.
 
 The retained-source [foreign inventory](foreign-inventory.json) contains154 SVG
@@ -32,6 +32,12 @@ roots,307 paths,135 rectangles,61 clip paths,13 linear gradients and4 filters.
 The first root is the60×25 Stripe logo; navigation chevrons follow. These are
 source counts, not proof that all shapes are visible or supported. Strokes,
 other shapes, transforms, paint servers, masks and filters remain open.
+
+The retained-source [clip inventory](clip-inventory.json) has61 local references
+on g elements and61 clipPath definitions. Their children are identical12×9
+rectangles at0,0, with no other geometry/transform/units attributes. This is
+source evidence for the next component, not computed cascade, a frozen replay
+or proof that all references are visible.
 
 ## Current evidence
 

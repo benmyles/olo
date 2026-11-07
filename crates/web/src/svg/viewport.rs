@@ -85,11 +85,14 @@ impl Viewport {
                 }
                 let s = styles.snapshot(node).ok_or(Error::Stale)?;
                 let name = doc.name(node)?.ok_or(Error::Invalid)?;
-                skip = matches!(s.value(P::Display), Value::Display(Display::None)) || matches!(name, "title" | "desc" | "metadata");
+                // Definitions stay in the DOM/style tree for future references,
+                // but never enter the directly painted subtree. Unsupported
+                // uses (paint servers, clip-path, use) still reject explicitly.
+                skip = matches!(s.value(P::Display), Value::Display(Display::None)) || matches!(name, "defs" | "title" | "desc" | "metadata");
                 if !skip {
-                    for attr in ["transform", "clip-path", "mask", "filter"] {
+                    for (attr, diagnostic) in [("transform", "SVG transform"), ("clip-path", "SVG clip-path"), ("mask", "SVG mask"), ("filter", "SVG filter")] {
                         if doc.attribute(node, attr)?.is_some() {
-                            return Err(Error::Unsupported("SVG transform/clip/mask/filter"));
+                            return Err(Error::Unsupported(diagnostic));
                         }
                     }
                     if s.value(P::Opacity).scalar() != Some(1.) {
@@ -132,7 +135,7 @@ impl Viewport {
                                 result.shapes.push(Shape { node, path, color, evenodd: matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd)) });
                             }
                         }
-                        _ => return Err(Error::Unsupported("SVG shape/container type")),
+                        _ => return Err(Error::UnsupportedForeign(Box::new(crate::layout::ForeignElement { node, namespace: Namespace::Svg, name: name.into() }))),
                     }
                 }
             } else if doc.node_type(node)? == NodeType::Text && doc.value(node)?.is_some_and(|t| !t.trim().is_empty()) {
