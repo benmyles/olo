@@ -65,18 +65,17 @@ something nobody here has is in "Blocked", with what it waits for.
   rests (RC6). Find what keeps it awake (app_server drawing every frame?
   a forcewake held?), measure with `timings` and the GT's residency.
 
-- **Syntax colouring for justfiles in the Viewer** (Ben, 2026-11-07:
-  "add syntax highlighting for justfiles to viewer"). `justfile`,
-  `Justfile`, `.justfile` and `*.just` are shown as plain text now:
-  syntect's bundled grammars have none, and Olo's own
-  (`crates/preview/src/syntaxes`) are TOML and INI. A just grammar
-  there (recipes and their parameters and dependencies, variables and
-  `:=`, settings, attributes, `{{ }}` interpolation, strings, comments,
-  and the recipe bodies as shell), its scopes mapped onto the theme's
-  token classes as the others are (`text::classify`), the names above
-  matched to it; Quick Look gets it too.
-
 ## Done, waiting for Ben to try or confirm
+
+- **Syntax colouring for justfiles in the Viewer** (Ben, 2026-11-07:
+  "add syntax highlighting for justfiles to viewer"). A just grammar of
+  Olo's own (`crates/preview/src/syntaxes/just.sublime-syntax`):
+  settings, variables and `:=`, export, aliases, imports and modules,
+  attributes, recipes (names, `@`, parameters, dependencies), each of
+  just's strings and backticks, `if`/`else` and calls; recipe bodies as
+  bash, `{{ }}` found in them, in the shell's strings and comments too.
+  `justfile`, `Justfile`, `.justfile` and `*.just` (and ```just fences).
+  Try: a justfile in the Viewer or Quick Look after the upgrade.
 
 - **Deskbar's widgets move smoothly, share rows, and come along in
   backups** (Ben, 2026-11-07: "make the graphs etc in the deskbar

@@ -31,7 +31,7 @@ pub struct Text {
 }
 
 /// Grammars of our own, for what the bundled ones lack.
-const OWN: &[&str] = &[include_str!("syntaxes/toml.sublime-syntax"), include_str!("syntaxes/ini.sublime-syntax")];
+const OWN: &[&str] = &[include_str!("syntaxes/toml.sublime-syntax"), include_str!("syntaxes/ini.sublime-syntax"), include_str!("syntaxes/just.sublime-syntax")];
 
 fn syntaxes() -> &'static SyntaxSet {
     static SET: OnceLock<SyntaxSet> = OnceLock::new();
@@ -86,6 +86,7 @@ pub fn highlight(lang: &str, lines: &[String]) -> Vec<Vec<(u32, u32, Tok)>> {
     let lang = lang.trim().to_lowercase();
     let alias = match lang.as_str() {
         "toml" | "ini" | "conf" => "ini",
+        "justfile" => "just",
         "ts" | "tsx" | "typescript" | "jsx" | "mjs" => "js",
         "zsh" | "fish" | "shell" | "console" | "bash" => "sh",
         "kotlin" | "kt" => "java",
@@ -158,6 +159,7 @@ fn find_syntax<'a>(ss: &'a SyntaxSet, path: &Path, first: &str) -> Option<&'a Sy
         "CMakeLists.txt" => ss.find_syntax_by_extension("cmake"),
         "Cargo.lock" | "poetry.lock" | "uv.lock" | "Pipfile" => ss.find_syntax_by_extension("toml"),
         ".gitconfig" | ".gitmodules" | ".editorconfig" => ss.find_syntax_by_extension("ini"),
+        "justfile" | "Justfile" | ".justfile" | "JUSTFILE" => ss.find_syntax_by_extension("just"),
         _ => None,
     };
     by_name.or_else(|| ss.find_syntax_by_extension(&ext)).or_else(|| alias.and_then(|a| ss.find_syntax_by_extension(a))).or_else(|| ss.find_syntax_by_first_line(first))
@@ -296,8 +298,86 @@ a.b."c d" = nan
     #[test]
     fn toml_and_units_are_found_by_name() {
         let ss = syntaxes();
-        for (name, want) in [("Cargo.toml", "TOML"), ("Cargo.lock", "TOML"), ("uv.lock", "TOML"), ("olo.service", "INI"), ("app.desktop", "INI"), (".gitconfig", "INI")] {
+        for (name, want) in [
+            ("Cargo.toml", "TOML"),
+            ("Cargo.lock", "TOML"),
+            ("uv.lock", "TOML"),
+            ("olo.service", "INI"),
+            ("app.desktop", "INI"),
+            (".gitconfig", "INI"),
+            ("justfile", "Just"),
+            ("Justfile", "Just"),
+            (".justfile", "Just"),
+            ("build.just", "Just"),
+        ] {
             assert_eq!(find_syntax(ss, Path::new(name), "").map(|s| s.name.as_str()), Some(want), "{name}");
         }
+    }
+
+    /// A justfile: its settings, variables, attributes, recipes (names,
+    /// parameters, dependencies) and their bodies as shell, `{{ }}`
+    /// found in them, in the shell's strings too; the next recipe after a
+    /// body, whatever the shell had open.
+    #[test]
+    fn colours_justfiles() {
+        let src = r#"# Build Olo.
+set shell := ["bash", "-c"]
+set dotenv-load
+version := `git describe` + "-dev"
+export RUST_LOG := "info"
+alias b := build
+
+[private]
+[group('dev')]
+@build profile="release" *args: check (lint "all") && done
+    cargo build --{{profile}} {{args}}
+    -echo "built {{version}}" # {{ "note" }}
+    @echo '{{{{literal}}'
+
+check:
+    if [ -n "$CI" ]; then echo "ci
+mod docs
+done:
+    echo {{ if os() == "linux" { "tux" } else { "?" } }}"#;
+        let c = classes("just", src);
+        use Tok::*;
+        let one = |t: Tok, s: &str| (t, s.to_owned());
+        let has = |line: usize, t: Tok, s: &str| assert!(c[line].contains(&one(t, s)), "{line}: {:?}", c[line]);
+        assert_eq!(c[0], [one(Comment, "# Build Olo.")]);
+        has(1, Keyword, "set");
+        has(1, Attribute, "shell");
+        has(1, String, "\"bash\"");
+        has(2, Attribute, "dotenv-load");
+        has(3, String, "`git describe`");
+        has(3, String, "\"-dev\"");
+        has(4, Keyword, "export");
+        has(5, Keyword, "alias");
+        has(5, Function, "b");
+        has(5, Function, "build");
+        has(7, Attribute, "private");
+        has(8, Attribute, "group");
+        has(8, String, "'dev'");
+        has(9, Keyword, "@");
+        has(9, Function, "build");
+        has(9, String, "\"release\"");
+        has(9, Function, "check");
+        has(9, Function, "lint");
+        has(9, String, "\"all\"");
+        has(9, Function, "done");
+        // The body: the shell's, and just's {{ }} in it, in strings and
+        // comments too.
+        assert!(!c[10].is_empty(), "{:?}", c[10]);
+        has(11, Keyword, "-");
+        assert!(c[11].iter().any(|(t, s)| *t == String && s.contains("built")), "{:?}", c[11]);
+        assert!(!c[11].iter().any(|(t, s)| *t == String && s.contains("version")), "{{version}} isn't the string's: {:?}", c[11]);
+        has(11, String, "\"note\"");
+        has(12, Keyword, "@");
+        // A string the shell leaves open ends with the body.
+        has(15, Keyword, "if");
+        has(16, Keyword, "mod");
+        has(17, Function, "done");
+        has(18, Keyword, "if");
+        has(18, String, "\"tux\"");
+        has(18, Function, "os");
     }
 }
