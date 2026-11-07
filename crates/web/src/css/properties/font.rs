@@ -88,7 +88,10 @@ impl Families {
                         while let Some(c) = next {
                             check(cancelled)?;
                             let s = c.text().unwrap();
-                            if reserved(s) || GenericFamily::keyword(s).is_some() {
+                            // A generic keyword names a generic only alone
+                            // (the first ident, above); within a name it is
+                            // a word of it ("BBC Reith Serif"), as in Chrome.
+                            if reserved(s) {
                                 return Err(Error::Invalid);
                             }
                             if !name.is_empty() {
@@ -374,4 +377,22 @@ fn style_of(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBo
         return style(&parts[..1], limits, cancelled).map(|v| (v, 1));
     }
     Err(Error::Invalid)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::css::Syntax;
+    fn families(text: &str) -> Result<Vec<String>> {
+        let syntax = Syntax::parse(Arc::from(text), Default::default(), None).unwrap();
+        Families::parse(syntax.components(), None).map(|f| f.as_slice().iter().map(|f| format!("{f:?}")).collect())
+    }
+    #[test]
+    fn a_generic_word_inside_an_unquoted_name_is_part_of_it() {
+        // The BBC's families: a generic keyword as a later word of a name.
+        assert_eq!(families("BBC Reith Serif, BBCReithSerif-fallback, serif").unwrap(), ["Named(\"BBC Reith Serif\")", "Named(\"BBCReithSerif-fallback\")", "Generic(Serif)"]);
+        assert_eq!(families("Noto Sans Mono, monospace").unwrap(), ["Named(\"Noto Sans Mono\")", "Generic(Monospace)"]);
+        // Alone, or first, it is the generic: a word after it is invalid.
+        assert!(families("serif Pro").is_err());
+        assert!(families("Foo inherit").is_err());
+    }
 }

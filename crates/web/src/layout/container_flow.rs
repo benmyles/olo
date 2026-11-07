@@ -495,6 +495,9 @@ impl Job<'_> {
                         - u.padding.horizontal()
                         - u.border.horizontal()
                 };
+                if !text {
+                    u.width = self.clamp_width(s, &u, area, queries)?;
+                }
                 u.width = used::grid(u.width.max(0.), self.scale);
                 item.used = u;
             }
@@ -521,6 +524,9 @@ impl Job<'_> {
                         - u.padding.horizontal()
                         - u.border.horizontal()
                 };
+                if !text {
+                    u.width = self.clamp_width(s, &u, width, queries)?;
+                }
                 u.width = used::grid(u.width.max(0.), self.scale);
                 item.used = u;
             }
@@ -528,6 +534,18 @@ impl Job<'_> {
         };
         self.containers.push(Container { id, kind, items, row_gap, column_gap, width, height, min_height: used.min_height, max_height: used.max_height });
         Ok(())
+    }
+    /// An item's content-box width within its `min-width` and `max-width`
+    /// (against `area`, by its box-sizing): a stretched or percentage-wide
+    /// item is held to them as any block is (the BBC's page grid, 100%
+    /// wide with a max-width, filled its whole area).
+    fn clamp_width(&mut self, s: &crate::css::style::Style, u: &Used, area: f64, queries: QueryBasis) -> Result<f64> {
+        let decoration = u.padding.horizontal() + u.border.horizontal();
+        let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
+        let content = |v: f64| (v - if border_box { decoration } else { 0. }).max(0.);
+        let maximum = used::length(s, P::MaxWidth, Some(area), None, queries, &mut self.scratch, self.cancel, self.scale)?.map(content);
+        let minimum = used::length(s, P::MinWidth, Some(area), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.map(content).unwrap_or(0.);
+        Ok(u.width.min(maximum.unwrap_or(f64::INFINITY)).max(minimum))
     }
     fn auto_tracks(&mut self, value: &Value, available: Option<f64>, queries: QueryBasis) -> Result<Vec<Track>> {
         let (tracks, _) = self.tracks(value, available, 0., queries, 1)?;
@@ -834,7 +852,12 @@ fn size_tracks(tracks: &[Track], items: &[(usize, usize, f64, f64)], available: 
             if a >= n {
                 continue;
             }
-            let spanned: Vec<usize> = (a..z).filter(|&i| intrinsic(&tracks[i])).collect();
+            // An item spanning a flexible track sizes only the flexible
+            // tracks (CSS Grid §11.5, step 4): the auto ones beside them
+            // (implicit columns past the explicit grid) stay as their own
+            // items make them, 0 px for none.
+            let spans_flex = (a..z).any(|i| flex[i].is_some());
+            let spanned: Vec<usize> = (a..z).filter(|&i| intrinsic(&tracks[i]) && (!spans_flex || flex[i].is_some())).collect();
             if spanned.is_empty() {
                 continue;
             }
@@ -854,6 +877,9 @@ fn size_tracks(tracks: &[Track], items: &[(usize, usize, f64, f64)], available: 
                 Bound::Fixed(v) => v,
                 _ => max,
             };
+            if spans_flex {
+                continue;
+            }
             let excess = (want - used_max - gaps).max(0.) / spanned.len() as f64;
             for &i in &spanned {
                 let current = if limit[i].is_finite() { limit[i] } else { base[i] };

@@ -40,8 +40,8 @@ fn main() {
     let page_url = url::Url::parse(&url).unwrap();
     let scripts: Vec<Script> = olo_js::page_scripts(&doc, &url)
         .into_iter()
-        .filter_map(|(source, name, module)| match source {
-            Source::Inline(text) => Some(Script { source: text, name, module }),
+        .filter_map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Some(Script { source: text, name, module, node: Some(node) }),
             Source::External(u) => {
                 // A URL under the page's directory maps to a file next to it.
                 let parsed = url::Url::parse(&u).ok()?;
@@ -55,7 +55,7 @@ fn main() {
                     p
                 };
                 match std::fs::read_to_string(&path) {
-                    Ok(text) => Some(Script { source: Arc::from(text), name: u, module }),
+                    Ok(text) => Some(Script { source: Arc::from(text), name: u, module, node: Some(node) }),
                     Err(e) => {
                         eprintln!("skip {u}: {e} ({})", path.display());
                         None

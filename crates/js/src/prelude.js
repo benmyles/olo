@@ -462,7 +462,7 @@
     files: { get() { return null; } },
     contentWindow: { get() { return null; } },
     contentDocument: { get() { return null; } },
-    sheet: { get() { return null; } },
+    sheet: { get() { return sheetOf(this); } },
     text: { get() { return N.textContent(this); }, set(v) { N.setTextContent(this, String(v)); } },
     currentSrc: { get() { return this.src; } },
     content: { get() { return N.nodeName(this) === 'TEMPLATE' ? N.templateContents(this) : (N.attr(this, 'content') || ''); }, set(v) { N.setAttr(this, 'content', String(v)); } },
@@ -527,7 +527,9 @@
   // made loads when first asked about. Natural sizes come from the engine.
   const imageLoads = new WeakMap();
   const firstCandidate = (srcset) => { const m = /^\s*([^\s,]+)/.exec(String(srcset || '')); return m ? m[1] : null; };
-  const imageURL = (el) => { const src = N.attr(el, 'src'); const raw = src != null && src !== '' ? src : firstCandidate(N.attr(el, 'srcset')); return raw ? resolveURL(raw) : null; };
+  // The engine's choice (<picture> sources, srcset, sizes), else src or the
+  // first candidate: the image the page shows is the one scripts see.
+  const imageURL = (el) => { const chosen = N.imageSource(el); const src = N.attr(el, 'src'); const raw = chosen || (src != null && src !== '' ? src : firstCandidate(N.attr(el, 'srcset'))); return raw ? resolveURL(raw) : null; };
   const loadImageElement = (el) => {
     const url = imageURL(el);
     if (!url) { imageLoads.delete(el); return; }
@@ -599,7 +601,7 @@
     doctype: { get() { for (const c of N.childNodes(documentNode)) if (N.nodeType(c) === 10) return c; return null; } },
     cookie: { get() { return [...cookies.entries()].map(([k, v]) => k + '=' + v).join('; '); }, set(v) { const s = String(v); const m = s.match(/^\s*([^=;]+)=([^;]*)/); if (m) { if (/max-age=0|expires=Thu, 01 Jan 1970/i.test(s)) cookies.delete(m[1].trim()); else cookies.set(m[1].trim(), m[2]); } } },
     forms: { get() { return collectionOf(N.query(documentNode, 'form', true)); } }, images: { get() { return collectionOf(N.query(documentNode, 'img', true)); } }, links: { get() { return collectionOf(N.query(documentNode, 'a[href],area[href]', true)); } }, scripts: { get() { return collectionOf(N.query(documentNode, 'script', true)); } }, anchors: { get() { return collectionOf(N.query(documentNode, 'a[name]', true)); } }, embeds: { get() { return collectionOf([]); } }, plugins: { get() { return collectionOf([]); } }, all: { get() { return collectionOf(N.query(documentNode, '*', true)); } },
-    styleSheets: { get() { return listOf([]); } }, adoptedStyleSheets: { get() { return []; }, set() {} },
+    styleSheets: { get() { return listOf(N.query(documentNode, 'style,link[rel~=stylesheet]', true).map(sheetOf).filter(Boolean)); } }, adoptedStyleSheets: { get() { return []; }, set() {} },
     fonts: { get() { return { ready: Promise.resolve(), status: 'loaded', load: () => Promise.resolve([]), check: () => true, addEventListener() {}, removeEventListener() {}, forEach() {}, size: 0, add() {}, delete() {}, clear() {} }; } },
     implementation: { get() { return { hasFeature: () => true, createHTMLDocument: (title) => createHTMLDocument(title), createDocument: () => N.createFragment(), createDocumentType: () => null }; } },
     timeline: { get() { return { currentTime: performanceNow() }; } },
@@ -940,6 +942,20 @@
   };
   global.__olo_lifecycle = (name) => {
     if (name === 'DOMContentLoaded') { readyState = 'interactive'; dispatch(documentNode, new Event('readystatechange')); dispatch(documentNode, new Event('DOMContentLoaded', { bubbles: true })); }
+    // The page's images, loaded by the engine before the scripts ran, fire
+    // their load (or error) now, before the window's, as a browser's images
+    // finish loading before its load event (React's onLoad hides the BBC's
+    // grey placeholders by them). Lazy ones load when scrolled to, in a
+    // browser: not now (one of GitHub's below the fold started a timer loop).
+    if (name === 'load') {
+      for (const img of N.query(N.docRoot(), 'img', true)) {
+        if (imageLoads.has(img) || (!N.attr(img, 'src') && !N.attr(img, 'srcset')) || (N.attr(img, 'loading') || '').toLowerCase() === 'lazy') continue;
+        const size = imageSizeOf(img);
+        const e = imageLoads.get(img);
+        if (e && e.state === 'loading') continue;
+        dispatch(img, new Event(size ? 'load' : 'error'));
+      }
+    }
     if (name === 'load') { readyState = 'complete'; dispatch(documentNode, new Event('readystatechange')); dispatch(global, new Event('load')); dispatch(global, new PageTransitionEvent('pageshow', { persisted: false })); }
   };
   // Storage
@@ -1114,7 +1130,63 @@
   }
   global.Animation = Animation; global.KeyframeEffect = KeyframeEffect; global.AnimationEffect = KeyframeEffect; global.DocumentTimeline = class DocumentTimeline { constructor() { this.currentTime = performanceNow(); } }; global.AnimationTimeline = global.DocumentTimeline;
   global.CSS = { supports: (p, v) => { const text = v === undefined ? String(p) : String(p) + ':' + String(v); return !/\b(anchor|@container|scroll-timeline)\b/.test(text); }, escape: (s) => String(s).replace(/([^\w-])/g, '\\$1'), px: (v) => v + 'px', registerProperty() {}, paintWorklet: { addModule: () => Promise.resolve() }, highlights: new Map() };
-  global.CSSStyleSheet = class CSSStyleSheet { constructor() { this.cssRules = listOf([]); this.rules = this.cssRules; } insertRule() { return 0; } deleteRule() {} replace() { return Promise.resolve(this); } replaceSync() {} };
+  // CSSOM sheets (CSSOM §6): a <style>'s sheet holds its rules as text;
+  // insertRule and deleteRule (styled-components and emotion add every
+  // rule so, nothing in the text) write the rules back into the element's
+  // text once per microtask, which the engine styles the page from.
+  const splitRules = (text) => {
+    const out = [];
+    let depth = 0, start = 0, quote = null;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+      if (c === '"' || c === "'") quote = c;
+      else if (c === '/' && text[i + 1] === '*') { const end = text.indexOf('*/', i + 2); i = end < 0 ? text.length : end + 1; }
+      else if (c === '{') depth++;
+      else if (c === '}') { depth--; if (depth <= 0) { depth = 0; const r = text.slice(start, i + 1).trim(); if (r) out.push(r); start = i + 1; } }
+      else if (c === ';' && depth === 0) { const r = text.slice(start, i + 1).trim(); if (r) out.push(r); start = i + 1; }
+    }
+    return out;
+  };
+  class CSSRule {
+    constructor(text, sheet) { this.cssText = text; this.parentStyleSheet = sheet; this.parentRule = null; }
+    get type() { return this.cssText.startsWith('@media') ? 4 : this.cssText.startsWith('@font-face') ? 5 : this.cssText.startsWith('@keyframes') ? 7 : this.cssText.startsWith('@') ? 0 : 1; }
+    get selectorText() { const i = this.cssText.indexOf('{'); return i < 0 ? '' : this.cssText.slice(0, i).trim(); }
+  }
+  class CSSRuleList extends Array { item(i) { return this[i] === undefined ? null : this[i]; } }
+  Object.defineProperty(CSSRuleList, Symbol.species, { get() { return Array; } });
+  const dirtySheets = new Set();
+  let sheetFlush = false;
+  const flushSheets = () => {
+    sheetFlush = false;
+    for (const sheet of dirtySheets) { if (sheet.ownerNode && N.nodeName(sheet.ownerNode) === 'STYLE') { const text = sheet._rules.join('\n'); sheet._text = text; N.setTextContent(sheet.ownerNode, text); } }
+    dirtySheets.clear();
+  };
+  global.CSSStyleSheet = class CSSStyleSheet {
+    constructor(options, owner) { this.ownerNode = owner || null; this._text = owner ? N.textContent(owner) : ''; this._rules = splitRules(this._text); this.disabled = false; this.media = { mediaText: (options && options.media) || '' }; this.ownerRule = null; this.parentStyleSheet = null; this.title = null; }
+    get href() { return this.ownerNode && N.nodeName(this.ownerNode) === 'LINK' ? resolveURL(N.attr(this.ownerNode, 'href') || '') : null; }
+    get type() { return 'text/css'; }
+    _current() { if (this.ownerNode && !dirtySheets.has(this)) { const t = N.textContent(this.ownerNode); if (t !== this._text) { this._text = t; this._rules = splitRules(t); } } return this._rules; }
+    get cssRules() { return Object.setPrototypeOf(this._current().map((r) => new CSSRule(r, this)), CSSRuleList.prototype); }
+    get rules() { return this.cssRules; }
+    _changed() { dirtySheets.add(this); if (!sheetFlush) { sheetFlush = true; queueMicrotask(flushSheets); } }
+    insertRule(rule, index) { const rules = this._current(); const i = index === undefined ? 0 : Number(index); if (!(i >= 0 && i <= rules.length)) throw new DOMException('The index provided is out of range.', 'IndexSizeError'); const text = String(rule).trim(); if (!text || !/[{;]/.test(text) && !text.startsWith('@')) throw new DOMException('Failed to parse the rule \'' + text + '\'.', 'SyntaxError'); rules.splice(i, 0, text); this._changed(); return i; }
+    deleteRule(index) { const rules = this._current(); const i = Number(index); if (!(i >= 0 && i < rules.length)) throw new DOMException('The index provided is out of range.', 'IndexSizeError'); rules.splice(i, 1); this._changed(); }
+    addRule(selector, style, index) { this.insertRule(selector + '{' + (style || '') + '}', index === undefined ? this._current().length : index); return -1; }
+    removeRule(index) { this.deleteRule(index === undefined ? 0 : index); }
+    replaceSync(text) { this._rules = splitRules(String(text)); this._changed(); }
+    replace(text) { this.replaceSync(text); return Promise.resolve(this); }
+  };
+  const sheets = new WeakMap();
+  // A <style>'s sheet (a <link>'s, its rules not readable here, empty).
+  const sheetOf = (el) => {
+    const tag = N.nodeName(el);
+    if (tag !== 'STYLE' && !(tag === 'LINK' && /(^|\s)stylesheet(\s|$)/i.test(N.attr(el, 'rel') || ''))) return null;
+    if (!N.isConnected(el)) return null;
+    let sheet = sheets.get(el);
+    if (!sheet) { sheet = new CSSStyleSheet(undefined, tag === 'STYLE' ? el : null); if (tag === 'LINK') sheet.ownerNode = el; sheets.set(el, sheet); }
+    return sheet;
+  };
   global.StyleSheet = class StyleSheet {}; global.MediaList = class MediaList {}; global.CSSRuleList = class CSSRuleList extends Array {}; global.StyleSheetList = class StyleSheetList extends Array {}; global.DOMRectList = class DOMRectList extends Array {}; global.FileList = class FileList extends Array {}; global.DOMStringList = class DOMStringList extends Array {}; global.TouchList = class TouchList extends Array {}; global.PluginArray = class PluginArray extends Array {}; global.MimeTypeArray = class MimeTypeArray extends Array {}; global.HTMLAllCollection = HTMLCollection;
   global.DOMParser = class DOMParser { parseFromString(markup, type) { const holder = N.createElement('template', ''); const root = N.createElement('div', ''); N.setInnerHTML(root, String(markup)); const doc = { documentElement: root, body: root, head: root, childNodes: N.childNodes(root), firstChild: N.firstChild(root), querySelector: (s) => N.query(root, String(s), false), querySelectorAll: (s) => listOf(N.query(root, String(s), true)), getElementById: (id) => N.query(root, '#' + CSS.escape(id), false), getElementsByTagName: (t) => listOf(N.query(root, t === '*' ? '*' : String(t), true)), createElement: (t) => N.createElement(String(t), ''), createTextNode: (t) => N.createText(String(t)), nodeType: 9, title: '', textContent: N.textContent(root) }; holder; return doc; } };
   global.XMLSerializer = class XMLSerializer { serializeToString(n) { return N.outerHTML(n); } };

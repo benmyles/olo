@@ -32,6 +32,16 @@ GitHub's homepage, open (seen against Chrome at 1000 × 700):
   1.3-1.9 (scripts 1.2 s, the scripts' first full style 45 ms each time
   the sheets change, WebGL's EGL start 135 ms on the page thread).
 
+apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
+
+- [ ] CSS animations (`@keyframes`, `animation`): apple.com's ribbon stays
+  at its first colour (blue; Chrome animates it to light grey after
+  2.4 s); GitHub's 207 keyframes rules.
+- [ ] `background-clip: text` (apple.com's gradient subhead).
+- [ ] Lazy images: `loading=lazy` ones never fire load (a browser loads
+  them when scrolled to); one of GitHub's below the fold, given a load
+  event, started a timer loop under Olo (78,000 listeners): find why.
+
 Next, in impact order (each removes a fallback kind or a visible gap):
 
 - [x] Stacking order: stacking contexts and z-index in CSS paint order.

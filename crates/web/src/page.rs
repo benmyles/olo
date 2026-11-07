@@ -227,6 +227,9 @@ pub const UA: &str = concat!(
     "svg{overflow:hidden}",
     "html,body,address,article,aside,blockquote,center,dialog,div,figure,figcaption,footer,form,header,hgroup,hr,legend,listing,main,nav,p,plaintext,pre,search,section,xmp,details,summary,fieldset,dl,dd,dt,ul,ol,menu,dir,li,optgroup,option,h1,h2,h3,h4,h5,h6{display:block}",
     "head,link,meta,script,style,title,template,area,base,basefont,datalist,noembed,noframes,param,rp,[hidden]{display:none}",
+    // With scripting, <noscript> holds its markup as raw text (HTML §13.2):
+    // never shown.
+    "@media (scripting:enabled){noscript{display:none!important}}",
     "li{display:list-item}ul,menu,dir{list-style-type:disc;padding-inline-start:40px;margin-block:1em}ol{list-style-type:decimal;padding-inline-start:40px;margin-block:1em}",
     ":is(ul,ol,menu,dir) :is(ul,ol,menu,dir){margin-block:0}:is(ol,ul,menu,dir) ul{list-style-type:circle}:is(ol,ul,menu,dir) :is(ol,ul,menu,dir) ul{list-style-type:square}",
     "table{display:table;border-spacing:2px;box-sizing:border-box}caption{display:table-caption;text-align:center}colgroup{display:table-column-group}col{display:table-column}",
@@ -338,6 +341,9 @@ pub fn prepare_scripted(
     scripts: Option<&mut dyn FnMut(Document, bool, Measurer) -> Result<Document>>,
 ) -> Result<Prepared> {
     progress(Phase::Html, 0);
+    // A page whose scripts run matches `@media (scripting: enabled)` (and
+    // the user-agent sheet hides its <noscript>).
+    let media = css::media::Media { scripting: scripts.is_some(), ..media };
     let parsed = html::parse(source, html::ParseOptions { scripting: scripts.is_some(), ..Default::default() }, cancel)?;
     let quirks = parsed.quirks == html::QuirksMode::Quirks;
     let mut doc = parsed.document;
@@ -1446,7 +1452,7 @@ impl Page {
             });
         }
         let rebind_ms = timing.map_or(0., |t| t.elapsed().as_secs_f64() * 1000.);
-        let media = media_for(host, viewport);
+        let media = css::media::Media { scripting: self.media.scripting, ..media_for(host, viewport) };
         if self.media_dependent && media != self.media {
             let (rules, dependent, _, _) = compile(&self.sheets, media, cancel)?;
             self.rules = rules;
@@ -1524,7 +1530,7 @@ impl Page {
         for node in [self.interaction.hover, self.interaction.active, self.interaction.focus, self.interaction.target].into_iter().flatten() {
             self.document.node_type(node)?;
         }
-        let media = media_for(host, viewport);
+        let media = css::media::Media { scripting: self.media.scripting, ..media_for(host, viewport) };
         if self.media_dependent && media != self.media {
             let (rules, dependent, _, _) = compile(&self.sheets, media, cancel)?;
             self.rules = rules;

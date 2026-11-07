@@ -7,8 +7,8 @@ fn run(page: &str) -> (olo_js::Report, olo_web::dom::Document) {
     let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
     let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/dir/page.html")
         .into_iter()
-        .map(|(source, name, module)| match source {
-            Source::Inline(text) => Script { source: text, name, module },
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
             Source::External(u) => panic!("external script {u}"),
         })
         .collect();
@@ -30,7 +30,7 @@ fn dom_page() {
 fn scripts_in_order_then_async() {
     let page = "<script async src=a.js></script><script>1</script><script type=module>2</script><script defer src=b.js></script><script type=text/template>no</script><script nomodule>3</script>";
     let parsed = html::parse(Arc::from(page), Default::default(), None).unwrap();
-    let names: Vec<String> = olo_js::page_scripts(&parsed.document, "https://x.test/p/").into_iter().map(|(_, n, _)| n).collect();
+    let names: Vec<String> = olo_js::page_scripts(&parsed.document, "https://x.test/p/").into_iter().map(|(_, n, _, _)| n).collect();
     // Modules run in order with the classic scripts; `nomodule` ones not at all.
     assert_eq!(names, ["inline script 2", "https://x.test/p/#inline-module-3", "https://x.test/p/b.js", "https://x.test/p/a.js"]);
 }
@@ -51,8 +51,8 @@ fn modules_import_bare_names_through_the_import_map() {
     let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
     let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
         .into_iter()
-        .map(|(source, name, module)| match source {
-            Source::Inline(text) => Script { source: text, name, module },
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
             Source::External(u) => panic!("external script {u}"),
         })
         .collect();
@@ -95,4 +95,39 @@ console.log("opacity" in s, "backgroundColor" in s, "background-color" in s, "cs
 </script>"#);
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] true true true true true false true"]);
+}
+#[test]
+fn current_script_is_the_running_classic_scripts_element() {
+    let (report, _) = run(
+        r#"<script id=first>console.log(document.currentScript && document.currentScript.id);</script><script type=module>console.log(String(document.currentScript));</script><script id=third>console.log(document.currentScript.id); setTimeout(() => console.log(String(document.currentScript)), 0);</script>"#,
+    );
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] first", "[log] null", "[log] third", "[log] null"]);
+}
+#[test]
+fn page_images_fire_their_load_or_error_before_the_windows_load() {
+    let (report, _) = run(r#"<img id=i src=missing.png><img id=none><script>
+document.getElementById('i').addEventListener('error', () => console.log('img error'));
+document.getElementById('none').addEventListener('error', () => console.log('wrong: no source'));
+addEventListener('load', () => console.log('window load'));
+</script>"#);
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] img error", "[log] window load"]);
+}
+#[test]
+fn style_sheets_take_inserted_rules_and_write_them_back() {
+    let (report, doc) = run(r#"<style id=s>.a{color:red}</style><script>
+const sheet = document.getElementById('s').sheet;
+console.log(sheet.cssRules.length, sheet.cssRules[0].selectorText);
+sheet.insertRule('.b{color:blue}', 1);
+sheet.insertRule('@media (min-width:1px){.c{color:green}}', 0);
+console.log(sheet.cssRules.length, sheet.cssRules[0].type, sheet.cssRules[2].cssText);
+sheet.deleteRule(0);
+try { sheet.insertRule('.d{}', 9); } catch (e) { console.log(e.name); }
+console.log(document.styleSheets.length, document.styleSheets[0] === sheet);
+Promise.resolve().then(() => console.log(JSON.stringify(document.getElementById('s').textContent)));
+</script>"#);
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] 1 .a", "[log] 3 4 .b{color:blue}", "[log] IndexSizeError", "[log] 1 true", "[log] \".a{color:red}\\n.b{color:blue}\""]);
+    let _ = doc;
 }

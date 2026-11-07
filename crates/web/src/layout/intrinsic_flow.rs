@@ -66,7 +66,12 @@ impl Job<'_> {
         let text = &text;
         for (i, available) in [0., 1e7].into_iter().enumerate() {
             check(self.cancel)?;
-            let objects = if text.object_count() != 0 { self.inline_objects(id, source, text, width, None, queries, true)?.0 } else { Vec::new() };
+            // At min-content, inline objects' percentages resolve against
+            // zero: an image `width: 100%` is compressible and contributes
+            // nothing (CSS Sizing 3 §5.2.2), as in Chrome (the BBC's story
+            // grids took their images' natural widths).
+            let basis = if i == 0 { 0. } else { width };
+            let objects = if text.object_count() != 0 { self.inline_objects(id, source, text, basis, None, queries, true)?.0 } else { Vec::new() };
             let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text.clone(), style, self.scope, available, self.scale, self.limits.text, self.cancel, spacing.clone())?;
             if !objects.is_empty() {
                 j = j.with_objects(objects)?;
@@ -142,7 +147,14 @@ impl Job<'_> {
                 Some(height) if h > 0. && w > 0. => height * w / h,
                 _ => w,
             };
-            inline::IntrinsicWidths { min_content: w, max_content: w }
+            // A replaced box sized by a percentage (`width: 100%`, or a
+            // percentage `max-width`) is compressible: its min-content
+            // contribution is zero (CSS Sizing 3 §5.2.2), so a grid or flex
+            // track holding a full-width image is not widened by its natural
+            // size (the BBC's 1fr columns took the images' 1000 px).
+            let percentage = |p: P, scratch: &mut math::Scratch| -> Result<bool> { Ok(matches!(s.value(p), Value::Numeric(_)) && len(p, None, scratch)?.is_none()) };
+            let compressible = percentage(P::Width, &mut self.scratch)? || percentage(P::MaxWidth, &mut self.scratch)?;
+            inline::IntrinsicWidths { min_content: if compressible { 0. } else { w }, max_content: w }
         } else {
             let row = super::flow::is_row_flex(s) || super::container_flow::is_table_row(s);
             let wrap = row && !matches!(s.value(P::FlexWrap), Value::Keyword(K::Nowrap)) && !super::container_flow::is_table_row(s);

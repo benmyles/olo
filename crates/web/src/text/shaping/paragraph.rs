@@ -648,9 +648,11 @@ impl<'a> ParagraphJob<'a> {
             let choice = if covered { Choice { font: primary.clone(), missing: false, relaxed: false } } else { self.choice(text, style)? };
             self.report.missing_clusters += usize::from(choice.missing);
             self.report.variation_fallbacks += usize::from(choice.relaxed);
+            let cap = self.engine.limits.run_bytes;
             let same = self.shaping_breaks.binary_search(&(range.start as u32)).is_err()
                 && self.pending.as_ref().is_some_and(|p| {
-                    p.level == level
+                    p.range.len() + range.len() <= cap
+                        && p.level == level
                         && p.script == script
                         && p.paragraph == paragraph
                         && p.style == style
@@ -662,9 +664,16 @@ impl<'a> ParagraphJob<'a> {
             } else {
                 self.pending.as_mut().unwrap().range.end = range.end;
             }
-            // Never split blindly at an input cap: that could break a ligature across
-            // graphemes. A future line breaker chooses and reshapes safe boundaries.
-            if self.pending.as_ref().unwrap().range.len() > self.engine.limits.run_bytes {
+            // A long run (a paragraph of thousands of words, a page's raw
+            // JSON shown as text) is cut into runs the shaper takes: at a
+            // space past half the cap (shaping across a space changes
+            // nothing), else at the cap at a cluster boundary; each run is
+            // shaped with its neighbours as context, so joining and
+            // kerning see across the cut. Only one cluster over the cap
+            // fails.
+            if self.pending.as_ref().unwrap().range.len() >= cap / 2 && text.chars().all(char::is_whitespace) {
+                self.flush()?;
+            } else if self.pending.as_ref().unwrap().range.len() > cap {
                 return Err(Error::Limit);
             }
             self.next += 1;

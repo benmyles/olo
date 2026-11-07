@@ -106,6 +106,9 @@ pub struct Script {
     pub name: String,
     /// A module script (`type="module"`): its imports loaded, run as one.
     pub module: bool,
+    /// Its `<script>` element: `document.currentScript` while a classic
+    /// script runs (Turbopack's chunks find their URL by it).
+    pub node: Option<NodeId>,
 }
 /// Input from the person, for the page's scripts: where (document
 /// coordinates, CSS px) and what.
@@ -866,7 +869,9 @@ impl Realm {
             if script.module {
                 let _ = self.run_module(&script.source, &script.name);
             } else {
+                self.set_current_script(script.node);
                 let _ = self.run(&script.source, &script.name);
+                self.set_current_script(None);
             }
         }
         let _ = self.call_prelude("__olo_lifecycle", &["DOMContentLoaded"]);
@@ -898,7 +903,29 @@ impl Realm {
             }
         }
     }
+    /// `document.currentScript`: this element, or null.
+    fn set_current_script(&mut self, node: Option<NodeId>) {
+        let state = self.state.clone();
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        let global = context.global(scope);
+        let Some(name) = v8::String::new(scope, "__olo_setCurrentScript") else { return };
+        let Some(f) = global.get(scope, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
+        let value: v8::Local<v8::Value> = match node.and_then(|n| wrap(scope, &state, n)) {
+            Some(o) => o.into(),
+            None => v8::null(scope).into(),
+        };
+        f.call(scope, global.into(), &[value]);
+    }
     fn call_prelude(&mut self, function: &str, args: &[&str]) -> Result<(), String> {
+        // Under the watchdog, as every task is: a page's load handler that
+        // never returns is stopped like any other script.
+        let guard = self.guard.clone();
+        if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            return Err("stopped".into());
+        }
+        let _busy = Busy::new(&guard);
         let state = self.state.clone();
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
@@ -1526,6 +1553,7 @@ const NATIVES: &[&str] = &[
     "workerPost",
     "workerTerminate",
     "imageSize",
+    "imageSource",
     "imagePixels",
     "glCreate",
     "glOp",
@@ -2372,6 +2400,20 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         }
         // [naturalWidth, naturalHeight, pixelWidth, pixelHeight] of a loaded
         // image element, or null.
+        // The source the engine shows an <img> from: its <picture>'s
+        // sources, srcset and sizes chosen for this display (as written).
+        "imageSource" => {
+            if let Some(n) = node(scope, 0) {
+                let chosen = {
+                    let s = state.borrow();
+                    let media = olo_web::css::media::Media::screen(s.config.viewport.0, s.config.viewport.1, s.config.scale, false);
+                    olo_web::srcset::choose(&s.document, n, &media, None)
+                };
+                if let Some(choice) = chosen {
+                    rv.set(string(scope, &choice.url).into());
+                }
+            }
+        }
         "imageSize" => {
             if let Some(n) = node(scope, 0) {
                 let size = state.borrow().images.get(&n).map(|i| (i.natural(), i.width(), i.height()));
@@ -2630,7 +2672,7 @@ pub enum Source {
 /// document order, then async ones; `nomodule` scripts not at all, as in
 /// any browser with modules. Each entry says whether it is a module. An
 /// external URL is resolved against `base` with `url::Url`.
-pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String, bool)> {
+pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String, bool, NodeId)> {
     let page = base.to_owned();
     let base = url::Url::parse(base).ok();
     let mut classic = Vec::new();
@@ -2676,7 +2718,7 @@ pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String, bool)> {
             }
         };
         let is_async = doc.attribute(n, "async").ok().flatten().is_some() && matches!(entry.0, Source::External(_));
-        let entry = (entry.0, entry.1, module);
+        let entry = (entry.0, entry.1, module, n);
         if is_async { asynchronous.push(entry) } else { classic.push(entry) }
     }
     classic.extend(asynchronous);
