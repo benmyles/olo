@@ -1,17 +1,20 @@
-//! olo-gpu-tune: each GPU's tuning (Preferences ▸ GPUs;
-//! `olo_system::gpu_tuning`).
+//! olo-gpu-tune: the processors' and each GPU's power (Preferences ▸
+//! Power; `olo_system::gpu_tuning`, `olo_system::cpu_tuning`).
 //!
 //!   olo-gpu-tune show [--wake]   every GPU, what it allows and its
 //!                                tuning, as JSON (NVIDIA's read only
 //!                                while it's awake, or with --wake)
 //!   olo-gpu-tune set             (root) the tuning on stdin, as JSON
-//!                                (`Tuning`): kept in /etc/olo/gpus.json,
-//!                                applied, and set again at every start
+//!                                (`Tuning`: its plan, each GPU's Custom
+//!                                knobs): kept in /etc/olo/gpus.json,
+//!                                what's in force now applied, and set
+//!                                again at every start
 //!   olo-gpu-tune apply [CARD]    (root) the tuning kept, applied (udev
 //!                                runs it as each GPU appears: "card1")
-//!   olo-gpu-tune follow          (root, olo-gpu-follow.service) every
-//!                                GPU on the power mode's preset as the
-//!                                mode changes
+//!   olo-gpu-tune follow          (root, olo-gpu-follow.service) the
+//!                                processors and every GPU on the plan's
+//!                                presets as the power mode or the power
+//!                                supply changes
 //!
 //! `set` installs a copy of this program where only root can change it
 //! (/usr/local/libexec/olo-gpu-tune), the udev rule that runs it at
@@ -22,6 +25,7 @@
 use std::io::{Read, Write};
 
 use olo_system::{
+    battery, cpu_tuning,
     gpu_tuning::{self, Tuning},
     gpus, power_profile, systemd,
 };
@@ -29,12 +33,12 @@ use olo_system::{
 const INSTALLED: &str = "/usr/local/libexec/olo-gpu-tune";
 const RULE_FILE: &str = "/etc/udev/rules.d/73-olo-gpu-tune.rules";
 const RULE: &str =
-    "# Olo: each GPU's tuning (Preferences ▸ GPUs), set again as it appears.\nACTION==\"add\", SUBSYSTEM==\"drm\", KERNEL==\"card[0-9]*\", RUN+=\"/usr/local/libexec/olo-gpu-tune apply %k\"\n";
+    "# Olo: each GPU's tuning (Preferences ▸ Power), set again as it appears.\nACTION==\"add\", SUBSYSTEM==\"drm\", KERNEL==\"card[0-9]*\", RUN+=\"/usr/local/libexec/olo-gpu-tune apply %k\"\n";
 const SERVICE_NAME: &str = "olo-gpu-follow.service";
 const SERVICE_FILE: &str = "/etc/systemd/system/olo-gpu-follow.service";
-const SERVICE: &str = "# Olo: each GPU on the power mode's preset as the mode changes (Preferences ▸ GPUs).
+const SERVICE: &str = "# Olo: the processors and each GPU on their presets as the power mode or the power supply changes (Preferences ▸ Power).
 [Unit]
-Description=Olo: the GPUs follow the power mode
+Description=Olo: the processors and GPUs follow the power mode and the power supply
 After=dbus.service power-profiles-daemon.service tuned-ppd.service
 
 [Service]
@@ -116,7 +120,12 @@ fn set() -> i32 {
     };
     // (Only GPUs this computer has.)
     let here: Vec<String> = gpus::list().into_iter().map(|g| g.pci).collect();
-    let tuning = Tuning { gpus: tuning.gpus.into_iter().filter(|g| here.contains(&g.pci)).collect(), driver: Vec::new() };
+    let tuning = Tuning {
+        gpus: tuning.gpus.into_iter().filter(|g| here.contains(&g.pci)).collect(),
+        driver: Vec::new(),
+        custom: tuning.custom.into_iter().filter(|g| here.contains(&g.pci)).collect(),
+        plan: tuning.plan,
+    };
     // (The driver's own limits noted before anything is written over
     // them: what Balanced puts back.)
     let tuning = gpu_tuning::with_driver_limits(tuning, &Tuning::load());
@@ -132,7 +141,29 @@ fn set() -> i32 {
         }
         Err(e) => println!("error: setting it at every start: {e}"),
     }
-    report(gpu_tuning::apply_kept(None, true))
+    // What's in force now (the mode and the power supply as they are).
+    match power_profile::modes() {
+        Ok(Some(modes)) => report(follow_now(modes.active, !battery::on_ac())),
+        _ => report(gpu_tuning::apply_kept(None, true)),
+    }
+}
+
+/// The plan's presets for `mode` and the power supply: every GPU's (kept
+/// and applied as `set` does; NVIDIA's asked what it allows, waking it a
+/// moment, as applying its preset does anyway) and the processors'.
+fn follow_now(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_tuning::Applied)> {
+    let kept = Tuning::load();
+    let gpus: Vec<gpu_tuning::PlanGpu> = gpus::list().iter().filter_map(|g| Some(gpu_tuning::PlanGpu { pci: g.pci.clone(), caps: gpu_tuning::caps(g, true)?, nvidia: g.vendor == 0x10de })).collect();
+    if let Some(new) = gpu_tuning::scenario(&kept, &gpus, mode, on_battery) {
+        let new = gpu_tuning::with_driver_limits(new, &kept);
+        if let Err(e) = keep(&new) {
+            return vec![("gpus".into(), vec![Err(format!("{}: {e}", gpu_tuning::FILE))])];
+        }
+    }
+    let mut out = gpu_tuning::apply_kept(None, true);
+    let cpu = kept.plan.cpu_now(mode, on_battery);
+    out.push((format!("processors ({})", cpu.name()), cpu_tuning::apply(cpu)));
+    out
 }
 
 /// `tuning` kept (written whole, then put in place).
@@ -181,38 +212,46 @@ fn start_following(new: bool) -> olo_system::Result<()> {
 }
 
 /// `follow` (root, olo-gpu-follow.service): once there's a power profiles
-/// daemon, every GPU (integrated and discrete) on the mode's preset now
-/// and as the mode changes, wherever it's changed (Preferences ▸ Power,
-/// Deskbar's battery menu, a ThinkPad's Fn keys, `powerprofilesctl`),
-/// kept and applied as `set` does; the daemon sets the processors and
-/// the firmware. Woken only by the daemon's signals.
+/// daemon, the processors and every GPU (integrated and discrete) on the
+/// plan's presets for the mode and the power supply (Preferences ▸ Power:
+/// each mode's, and on battery's), now and as either changes: the mode
+/// wherever it's changed (Preferences ▸ Power, Deskbar's battery menu, a
+/// ThinkPad's Fn keys, `powerprofilesctl`), the supply as UPower says.
+/// The daemon sets the processors and the firmware for its mode first;
+/// what the plan says is set after it. Woken only by the daemon's and
+/// UPower's signals.
 fn follow() -> i32 {
     if let Err(e) = power_profile::wait_for_daemon() {
         eprintln!("olo-gpu-tune: no power profiles daemon: {e}");
         return 1;
     }
+    enum Change {
+        Mode(Option<power_profile::Mode>),
+        Supply,
+    }
     let (tx, rx) = std::sync::mpsc::channel();
-    power_profile::watch(move |modes| {
-        let _ = tx.send(modes.map(|m| m.active));
+    let modes = tx.clone();
+    power_profile::watch(move |m| {
+        let _ = modes.send(Change::Mode(m.map(|m| m.active)));
     });
+    battery::watch(move |_| {
+        let _ = tx.send(Change::Supply);
+    });
+    let (mut mode, mut on_battery) = (None, !battery::on_ac());
     let mut last = None;
-    for mode in rx.iter().flatten() {
-        if last == Some(mode) {
+    for change in rx.iter() {
+        match change {
+            Change::Mode(Some(m)) => mode = Some(m),
+            Change::Mode(None) => continue,
+            Change::Supply => on_battery = !battery::on_ac(),
+        }
+        let Some(m) = mode else { continue };
+        if last == Some((m, on_battery)) && matches!(change, Change::Supply) {
             continue;
         }
-        last = Some(mode);
-        let kept = Tuning::load();
-        // (What each allows: NVIDIA's asked, waking it a moment, as
-        // applying its preset does anyway.)
-        let gpus: Vec<(String, gpu_tuning::Caps)> = gpus::list().iter().filter_map(|g| Some((g.pci.clone(), gpu_tuning::caps(g, true)?))).collect();
-        let Some(new) = gpu_tuning::following(&kept, &gpus, gpu_tuning::for_mode(mode)) else { continue };
-        let new = gpu_tuning::with_driver_limits(new, &kept);
-        if let Err(e) = keep(&new) {
-            eprintln!("olo-gpu-tune: {}: {e}", gpu_tuning::FILE);
-            continue;
-        }
-        println!("the power mode is {}: the GPUs on {}", mode.label(), gpu_tuning::for_mode(mode).name());
-        report(gpu_tuning::apply_kept(None, true));
+        last = Some((m, on_battery));
+        println!("the power mode is {}{}", m.label(), if on_battery { ", on battery" } else { "" });
+        report(follow_now(m, on_battery));
     }
     // (The daemon's watch ended: systemd starts this again.)
     1

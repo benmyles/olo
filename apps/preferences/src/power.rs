@@ -1,10 +1,20 @@
-//! Power: the power mode (Power Saver, Balanced, Performance, through the
-//! power profiles daemon: `olo_system::power_profile`; also in Deskbar's
-//! battery menu, and found from Performance), the battery, when an idle
-//! machine turns its display off and sleeps, and caffeinated mode (stay
-//! awake until turned off; also the cup in the Deskbar). The battery is
-//! read on a thread every few seconds; the modes follow the daemon's
-//! signals.
+//! Power, in three tabs (Ben, 2026-11-06: "centralize the gpu power
+//! settings and cpu power settings to all be under the prefs -> power
+//! section"):
+//!
+//! - Power Modes: the power mode (Power Saver, Balanced, Performance,
+//!   through the power profiles daemon: `olo_system::power_profile`; also
+//!   in Deskbar's battery menu, and found from Performance) and what each
+//!   mode, and running on battery, puts the processors and each GPU on
+//!   (`gpus::modes`).
+//! - Graphics: each GPU, its Custom settings, and what records and plays
+//!   video (`gpus::graphics`).
+//! - Battery & Idle: the battery, when an idle machine turns its display
+//!   off and sleeps, caffeinated mode (stay awake until turned off; also
+//!   the cup in the Deskbar) and presence.
+//!
+//! The battery is read on a thread every few seconds; the modes follow
+//! the daemon's signals.
 
 use std::{sync::Arc, time::Duration};
 
@@ -17,7 +27,7 @@ use olo_system::{
 use olo_ui::{
     gpui::{Context, ParentElement as _, SharedString, Styled as _, div, px},
     metrics as m,
-    widgets::{CheckBox, RadioButton, StringView},
+    widgets::{CheckBox, RadioButton, StringView, TabView},
 };
 
 use crate::{
@@ -41,9 +51,23 @@ pub struct State {
     /// A presence sensor: whether the session can read it (Olo's rule
     /// in); None without one.
     presence: Option<bool>,
-    /// The GPUs follow the power mode (its follower installed by
-    /// Preferences ▸ GPUs' Apply): read with the modes, off the UI thread.
+    /// The GPUs follow the power mode (its follower installed by Power
+    /// Modes' Apply): read with the modes, off the UI thread.
     gpus_follow: Arc<std::sync::atomic::AtomicBool>,
+    /// The tab showing (`TABS`).
+    pub tab: usize,
+    /// The plan and the GPUs (Power Modes and Graphics).
+    pub gpus: crate::gpus::State,
+}
+
+/// Power's tabs.
+pub const TABS: [&str; 3] = ["Power Modes", "Graphics", "Battery & Idle"];
+
+/// Power shown on tab `name` (`--tab`; the old GPUs panel's names: Graphics).
+pub fn show_tab(st: &mut State, name: &str) {
+    if let Some(i) = TABS.iter().position(|t| t.eq_ignore_ascii_case(name)) {
+        st.tab = i;
+    }
 }
 
 type Modes_ = Arc<Mutex<Option<Option<Modes>>>>;
@@ -69,7 +93,7 @@ impl State {
         read_limit(&limit, olo_ui::proxy(cx));
         // (Tests: a ThinkPad's, readable.)
         let presence = if cfg!(test) { Some(true) } else { olo_system::presence::sensor().map(|s| olo_system::presence::readable(&s)) };
-        State { battery: poll(olo_ui::proxy(cx)), modes, limit, presence, gpus_follow }
+        State { battery: poll(olo_ui::proxy(cx)), modes, limit, presence, gpus_follow, tab: 0, gpus: crate::gpus::State::new() }
     }
 }
 
@@ -229,19 +253,41 @@ fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_, gpus_f
             ui.note(why);
         }
         let what = if modes.drivers.is_empty() { "the system's power profiles daemon".to_string() } else { format!("the power profiles daemon, through {}", modes.drivers.join(" and ")) };
-        ui.note(format!("Set for the whole computer by {what}{}.", if gpus_follow { ", and on every GPU (Preferences ▸ GPUs)" } else { "" }));
+        ui.note(format!("Set for the whole computer by {what}{}.", if gpus_follow { ", and on every GPU as below" } else { "" }));
     });
 }
 
 pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
-    let battery = st.battery.lock().unwrap().clone();
-    let modes = st.modes.lock().unwrap().clone();
-    // Two columns, so it fits a laptop's screen: the power mode and the
-    // battery, and when idle and caffeinated beside them.
-    let left = ui.collect(|ui| {
-        power_mode(ui, modes, &st.modes, st.gpus_follow.load(std::sync::atomic::Ordering::Relaxed));
-        battery_box(ui, battery, st);
+    let items = ui.collect(|ui| match st.tab {
+        0 => {
+            let modes = st.modes.lock().unwrap().clone();
+            power_mode(ui, modes, &st.modes, st.gpus_follow.load(std::sync::atomic::Ordering::Relaxed));
+            crate::gpus::modes(ui, &mut st.gpus);
+        }
+        1 => crate::gpus::graphics(ui, &mut st.gpus),
+        _ => battery_and_idle(ui, power, server, st),
     });
+    let pick = ui.on_view(|v, i: usize, _, cx| {
+        if let crate::panel::State::Power(st) = &mut v.state {
+            st.tab = i;
+        }
+        cx.notify();
+    });
+    let tabs: Vec<SharedString> = TABS.into_iter().map(SharedString::from).collect();
+    ui.add(
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .child(TabView::new("power-tabs", tabs, st.tab).grows().on_select(pick).child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+    );
+}
+
+/// Battery & Idle: two columns, so it fits a laptop's screen: the battery,
+/// and when idle, caffeinated and presence beside it.
+fn battery_and_idle(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
+    let battery = st.battery.lock().unwrap().clone();
+    let left = ui.collect(|ui| battery_box(ui, battery, st));
     let presence = st.presence;
     let right = ui.collect(|ui| {
         idle_boxes(ui, power, server);

@@ -13,28 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Preferences ▸ Power: every power setting in one place, each
-  scenario a setting** (Ben, 2026-11-06: "automatic should also wake the
-  nvidia card on battery if it is the best choice"; "just have it
-  default to waking the nvidia card in power saving mode on battery";
-  "also while you're at it let's centralize the gpu power settings and
-  cpu power settings to all be under the prefs -> power section, and
-  have all these scenarios configurable with reasonable defaults").
-  Video's Automatic wakes NVIDIA's GPU on battery too (where the
-  built-in GPU doesn't decode the video), the GPU then in its
-  power-saving preset. Preferences ▸ Power holds what Preferences ▸ GPUs
-  and the power mode hold now, and the processor's settings: for each
-  power mode and for running on battery, the processor's preset (its
-  energy preference, turbo) and each GPU's (Cooler and Quieter,
-  Balanced, Fastest, or its own knobs), on battery defaulting to the
-  mode's except NVIDIA's GPU on Cooler and Quieter; applied by the root
-  service that follows the power mode (`olo-gpu-follow`), which follows
-  mains and battery too; video playback's and recording's GPU choices
-  there as well. Laid out for 1280 × 800 (tabs if it needs them).
-  Also: NVDEC's held pictures copied into pinned memory (CUDA's DMA
-  rather than its pageable copy through the processor, its video thread
-  15.8% of a core at 4K60).
-
 - **Viewer: 4K60 video plays smoothly, decoded in hardware** (below, in
   Not started), with the decoding device chosen in the Viewer and its
   default in Preferences.
@@ -93,11 +71,16 @@ something nobody here has is in "Blocked", with what it waits for.
   2026-11-06: "we don't care about fedora's silly no-proprietary
   stance, just have it install whatever gets the job done and olo
   doctor manage it").
-  Still to do: pictures kept on the GPU rather than copied back
-  (NVDEC's through CUDA–Vulkan interop, VA-API's as dmabufs; the copy
-  and upload are most of the 1.1 ms a frame left); VP9 at 4K and
-  10-bit video checked on samples (none here yet, and nothing here
-  encodes VP9). The
+  A GPU decoder's pictures are held where they're copied and the
+  window's GPU copies them from there (73ef7eec: 4K60 on Intel's GPU
+  21.9% of a core → 7.1%, NVIDIA's 30.3% → 21.9%); 10-bit and tiled
+  streams are bit-exact on every device against the reference
+  decoders (cb69d7a5: VP9 profile 2, AV1 10-bit, HEVC Main 10); VP9 at
+  4K60 (a minute made with libvpx built in scratch): Intel's GPU 7.2% of
+  a core, nothing dropped; the processor 251%, 7 dropped. Still to do:
+  NVDEC's held pictures copied into pinned memory (its video thread
+  15.8% of a core at 4K60: CUDA copies into pageable memory through the
+  processor). The
   processor's own: rav1d's and OpenH264's assembly is built in now
   (4K AV1 32 → 85 pictures a second, H.264 45 → 53–98), and 8-bit
   pictures are kept as bytes rather than 16-bit samples (1523b172: 4K60
@@ -106,6 +89,28 @@ something nobody here has is in "Blocked", with what it waits for.
   0.1%).
 
 ## Done, waiting for Ben to try or confirm
+
+- **Preferences ▸ Power: every power setting in one place, each
+  scenario a setting** (Ben, 2026-11-06: "automatic should also wake the
+  nvidia card on battery if it is the best choice"; "just have it
+  default to waking the nvidia card in power saving mode on battery";
+  "centralize the gpu power settings and cpu power settings to all be
+  under the prefs -> power section, and have all these scenarios
+  configurable with reasonable defaults"). Done (HACKING, "Power: the
+  processors' and each GPU's"): Power has three tabs. Power Modes: the
+  mode, and a grid of what each mode and running on battery put the
+  processors (Saving Power, Balanced, Fastest: governor, energy
+  preference, turbo, the firmware's platform profile) and each GPU
+  (Cooler and Quieter, Balanced, Fastest, Custom) on; on battery the
+  mode's by default, but NVIDIA's GPU on Cooler and Quieter. Graphics:
+  each GPU's state and Custom settings, Screen Recordings, Video
+  Playback (Automatic wakes NVIDIA's GPU on battery too, on by default,
+  a checkbox). Battery & Idle: what Power had. The GPUs panel is gone
+  (its names open Graphics). `olo-gpu-follow` follows the power supply
+  as well as the mode and sets the processors too. To try: Power ▸ Power
+  Modes ▸ Apply (your password once: it installs the new follower), then
+  unplug: NVIDIA's GPU goes to Cooler and Quieter (Graphics says what
+  it's on); a 4K video plays on it on battery.
 
 - **Olo's own login screen and boot splash** (Ben, 2026-11-01; "neither
   of those are blocked on me", 2026-11-06). Done (HACKING, "The login

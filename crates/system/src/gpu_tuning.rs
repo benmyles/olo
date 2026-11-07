@@ -2,12 +2,16 @@
 //! allows ([`Caps`]: read without root), the tuning kept for each
 //! (`/etc/olo/gpus.json`, [`Tuning`]: the computer's, as the hardware
 //! is) and applying it ([`apply`]: root, by `olo-gpu-tune`, which
-//! Preferences ▸ GPUs runs through polkit and udev runs as each GPU
+//! Preferences ▸ Power runs through polkit and udev runs as each GPU
 //! appears, at every start).
 //!
 //! - Intel's xe: each GT's lowest and highest clock (`freq0/min_freq`,
 //!   `max_freq`, within `rpn_freq`..`rp0_freq`) and its power profile
 //!   (`power_profile`: base or power_saving).
+//! What each power mode, and running on battery, puts each GPU (and the
+//! processors, `cpu_tuning`) on is the [`Plan`] (Preferences ▸ Power),
+//! which `olo-gpu-tune follow` applies as the mode or the supply changes.
+//!
 //! - NVIDIA's, through NVML (its library, in process): the power limit
 //!   (within its constraints), the highest GPU clock it may run at
 //!   (locked clocks: lowest to that), and persistence (the driver kept
@@ -38,6 +42,7 @@ pub enum Preset {
 
 impl Preset {
     pub const CHOSEN: [Preset; 3] = [Preset::Cooler, Preset::Balanced, Preset::Fastest];
+    pub const ALL: [Preset; 4] = [Preset::Cooler, Preset::Balanced, Preset::Fastest, Preset::Custom];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -46,6 +51,19 @@ impl Preset {
             Preset::Fastest => "Fastest",
             Preset::Custom => "Custom",
         }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Preset::Cooler => "cooler",
+            Preset::Balanced => "balanced",
+            Preset::Fastest => "fastest",
+            Preset::Custom => "custom",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Preset> {
+        Preset::ALL.into_iter().find(|p| p.id() == s)
     }
 }
 
@@ -86,6 +104,141 @@ pub struct Tuning {
     /// keeps what's written to it, and its own lowest clock isn't one it
     /// says: not its efficient clock, which moves.)
     pub driver: Vec<DriverLimits>,
+    /// What each power mode, and running on battery, put the processors
+    /// and each GPU on (Preferences ▸ Power).
+    pub plan: Plan,
+    /// Each GPU's knobs set by hand: what its Custom preset is.
+    pub custom: Vec<GpuTune>,
+}
+
+/// When a preset is chosen for: a power mode, or running on battery
+/// (whatever the mode).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum When {
+    Mode(crate::power_profile::Mode),
+    Battery,
+}
+
+impl When {
+    pub const ALL: [When; 4] =
+        [When::Mode(crate::power_profile::Mode::PowerSaver), When::Mode(crate::power_profile::Mode::Balanced), When::Mode(crate::power_profile::Mode::Performance), When::Battery];
+
+    fn key(self) -> &'static str {
+        match self {
+            When::Mode(m) => m.id(),
+            When::Battery => "battery",
+        }
+    }
+}
+
+/// What the power mode and the power supply put the processors and each
+/// GPU on (Preferences ▸ Power ▸ Power Modes; `olo-gpu-tune follow`
+/// applies it as either changes). Only choices that differ from the
+/// defaults are kept (`chosen`: "MODE/cpu" or "MODE/PCI" to a preset's
+/// id, MODE a mode's id or "battery"), so a GPU added later, or a
+/// default changed, takes its default. The defaults: each mode's own
+/// (Power Saver saving power, Balanced balanced, Performance fastest),
+/// and on battery the mode's, but NVIDIA's GPU on Cooler and Quieter
+/// (Ben, 2026-11-06: video wakes it on battery too, then saving power).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Plan {
+    pub chosen: std::collections::BTreeMap<String, String>,
+}
+
+/// The processors' preset a power mode is, as the daemon has it.
+pub fn cpu_for_mode(mode: crate::power_profile::Mode) -> crate::cpu_tuning::CpuPreset {
+    use crate::{cpu_tuning::CpuPreset, power_profile::Mode};
+    match mode {
+        Mode::PowerSaver => CpuPreset::Saving,
+        Mode::Balanced => CpuPreset::Balanced,
+        Mode::Performance => CpuPreset::Fastest,
+    }
+}
+
+impl Plan {
+    /// The processors' preset `when` (on battery, None: the mode's).
+    pub fn cpu(&self, when: When) -> Option<crate::cpu_tuning::CpuPreset> {
+        match self.chosen.get(&format!("{}/cpu", when.key())) {
+            Some(id) => crate::cpu_tuning::CpuPreset::parse(id),
+            None => match when {
+                When::Mode(m) => Some(cpu_for_mode(m)),
+                When::Battery => None,
+            },
+        }
+    }
+
+    /// GPU `pci`'s preset `when` (on battery, None: the mode's).
+    pub fn gpu(&self, when: When, pci: &str, nvidia: bool) -> Option<Preset> {
+        match self.chosen.get(&format!("{}/{pci}", when.key())) {
+            Some(id) => Preset::parse(id),
+            None => Self::gpu_default(when, nvidia),
+        }
+    }
+
+    fn gpu_default(when: When, nvidia: bool) -> Option<Preset> {
+        match when {
+            When::Mode(m) => Some(for_mode(m)),
+            When::Battery => nvidia.then_some(Preset::Cooler),
+        }
+    }
+
+    /// The processors' preset chosen `when` (None on battery: the mode's).
+    pub fn set_cpu(&mut self, when: When, preset: Option<crate::cpu_tuning::CpuPreset>) {
+        let key = format!("{}/cpu", when.key());
+        let default = match when {
+            When::Mode(m) => Some(cpu_for_mode(m)),
+            When::Battery => None,
+        };
+        self.choose(key, preset == default, preset.map_or("mode", |p| p.id()));
+    }
+
+    /// GPU `pci`'s preset chosen `when` (None on battery: the mode's).
+    pub fn set_gpu(&mut self, when: When, pci: &str, nvidia: bool, preset: Option<Preset>) {
+        let key = format!("{}/{pci}", when.key());
+        self.choose(key, preset == Self::gpu_default(when, nvidia), preset.map_or("mode", |p| p.id()));
+    }
+
+    fn choose(&mut self, key: String, default: bool, id: &str) {
+        if default {
+            self.chosen.remove(&key);
+        } else {
+            self.chosen.insert(key, id.to_owned());
+        }
+    }
+
+    /// The processors' preset in force in `mode`, on battery or not.
+    pub fn cpu_now(&self, mode: crate::power_profile::Mode, on_battery: bool) -> crate::cpu_tuning::CpuPreset {
+        on_battery.then(|| self.cpu(When::Battery)).flatten().or_else(|| self.cpu(When::Mode(mode))).unwrap_or_else(|| cpu_for_mode(mode))
+    }
+
+    /// GPU `pci`'s preset in force in `mode`, on battery or not.
+    pub fn gpu_now(&self, mode: crate::power_profile::Mode, on_battery: bool, pci: &str, nvidia: bool) -> Preset {
+        on_battery.then(|| self.gpu(When::Battery, pci, nvidia)).flatten().or_else(|| self.gpu(When::Mode(mode), pci, nvidia)).unwrap_or_else(|| for_mode(mode))
+    }
+}
+
+/// A GPU as the plan takes it: its PCI address, what it allows, and
+/// whether it's NVIDIA's (its battery default).
+pub struct PlanGpu {
+    pub pci: String,
+    pub caps: Caps,
+    pub nvidia: bool,
+}
+
+/// `kept` with every GPU on the preset the plan has for `mode` and the
+/// power supply (Custom: its knobs as set by hand); None if that changes
+/// nothing.
+pub fn scenario(kept: &Tuning, gpus: &[PlanGpu], mode: crate::power_profile::Mode, on_battery: bool) -> Option<Tuning> {
+    let mut new = kept.clone();
+    for g in gpus {
+        let tune = match kept.plan.gpu_now(mode, on_battery, &g.pci, g.nvidia) {
+            Preset::Custom => GpuTune { preset: Preset::Custom, ..kept.custom_of(&g.pci) },
+            p => self::preset(&g.pci, p, &g.caps),
+        };
+        new.set(tune);
+    }
+    (new != *kept).then_some(new)
 }
 
 /// The preset a power mode puts every GPU on (the power mode is the
@@ -100,17 +253,6 @@ pub fn for_mode(mode: crate::power_profile::Mode) -> Preset {
         Mode::Balanced => Preset::Balanced,
         Mode::Performance => Preset::Fastest,
     }
-}
-
-/// `kept` with every GPU (its PCI address and what it allows) on
-/// `preset`, one set by hand too (it stays so only till the mode next
-/// changes); None if that changes nothing.
-pub fn following(kept: &Tuning, gpus: &[(String, Caps)], preset: Preset) -> Option<Tuning> {
-    let mut new = kept.clone();
-    for (pci, caps) in gpus {
-        new.set(self::preset(pci, preset, caps));
-    }
-    (new != *kept).then_some(new)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -133,6 +275,18 @@ impl Tuning {
 
     pub fn of(&self, pci: &str) -> GpuTune {
         self.gpus.iter().find(|g| g.pci == pci).cloned().unwrap_or_else(|| GpuTune { pci: pci.to_owned(), ..Default::default() })
+    }
+
+    /// GPU `pci`'s knobs as set by hand (its Custom preset).
+    pub fn custom_of(&self, pci: &str) -> GpuTune {
+        self.custom.iter().find(|g| g.pci == pci).cloned().unwrap_or_else(|| GpuTune { pci: pci.to_owned(), preset: Preset::Custom, ..Default::default() })
+    }
+
+    /// GPU `pci`'s Custom knobs set.
+    pub fn set_custom(&mut self, tune: GpuTune) {
+        self.custom.retain(|g| g.pci != tune.pci);
+        self.custom.push(GpuTune { preset: Preset::Custom, ..tune });
+        self.custom.sort_by(|a, b| a.pci.cmp(&b.pci));
     }
 
     pub fn set(&mut self, tune: GpuTune) {
@@ -445,27 +599,62 @@ mod tests {
         Caps::Xe(XeCaps { lowest: 100, efficient: 700, highest: 2450, min_now: 700, max_now: 2450, profiles: true, power_saving_now: false })
     }
 
-    /// The power mode's preset on every GPU, integrated and discrete, one
-    /// set by hand too; nothing when they're on it already.
+    /// The plan's defaults: each mode's own preset for the processors and
+    /// every GPU; on battery the mode's, but NVIDIA's GPU on Cooler and
+    /// Quieter. A choice back on its default leaves nothing kept.
     #[test]
-    fn the_power_mode_sets_the_gpus() {
+    fn the_plan_s_defaults_and_choices() {
+        use crate::{cpu_tuning::CpuPreset, power_profile::Mode};
+        let mut plan = Plan::default();
+        let (intel, nvidia) = ("0000:00:02.0", "0000:01:00.0");
+        assert_eq!(plan.cpu(When::Mode(Mode::PowerSaver)), Some(CpuPreset::Saving));
+        assert_eq!(plan.cpu(When::Battery), None);
+        assert_eq!(plan.gpu(When::Mode(Mode::Performance), intel, false), Some(Preset::Fastest));
+        assert_eq!(plan.gpu(When::Battery, intel, false), None);
+        assert_eq!(plan.gpu(When::Battery, nvidia, true), Some(Preset::Cooler));
+        // In force: Performance on battery leaves the processors and
+        // Intel's GPU fastest, NVIDIA's saving power.
+        assert_eq!(plan.cpu_now(Mode::Performance, true), CpuPreset::Fastest);
+        assert_eq!(plan.gpu_now(Mode::Performance, true, intel, false), Preset::Fastest);
+        assert_eq!(plan.gpu_now(Mode::Performance, true, nvidia, true), Preset::Cooler);
+        assert_eq!(plan.gpu_now(Mode::Performance, false, nvidia, true), Preset::Fastest);
+        // Chosen otherwise: kept; back on the default: gone.
+        plan.set_cpu(When::Battery, Some(CpuPreset::Saving));
+        plan.set_gpu(When::Battery, nvidia, true, None);
+        plan.set_gpu(When::Mode(Mode::Balanced), intel, false, Some(Preset::Cooler));
+        assert_eq!(plan.chosen.len(), 3, "{plan:?}");
+        assert_eq!(plan.cpu_now(Mode::Performance, true), CpuPreset::Saving);
+        assert_eq!(plan.gpu_now(Mode::Performance, true, nvidia, true), Preset::Fastest, "NVIDIA's as the mode on battery");
+        assert_eq!(plan.gpu_now(Mode::Balanced, false, intel, false), Preset::Cooler);
+        plan.set_cpu(When::Battery, None);
+        plan.set_gpu(When::Battery, nvidia, true, Some(Preset::Cooler));
+        plan.set_gpu(When::Mode(Mode::Balanced), intel, false, Some(Preset::Balanced));
+        assert!(plan.chosen.is_empty(), "{plan:?}");
+        // Kept as JSON and read back.
+        plan.set_cpu(When::Mode(Mode::PowerSaver), Some(CpuPreset::Balanced));
+        let back: Plan = serde_json::from_str(&serde_json::to_string(&plan).unwrap()).unwrap();
+        assert_eq!(back, plan);
+    }
+
+    /// The plan applied: each GPU on what it says for the mode and the
+    /// power supply, Custom its knobs as set by hand.
+    #[test]
+    fn the_plan_sets_the_gpus() {
         use crate::power_profile::Mode;
         let nv = Caps::Nvidia(NvidiaCaps { power: Some((5, 75, 60, 60)), min_gpu_mhz: 180, max_gpu_mhz: 3090, persistent_now: Some(false) });
-        let gpus = vec![("0000:00:02.0".to_owned(), xe()), ("0000:01:00.0".to_owned(), nv)];
-        let none = Tuning::default();
-        let saving = following(&none, &gpus, for_mode(Mode::PowerSaver)).unwrap();
-        assert!(saving.gpus.iter().all(|g| g.preset == Preset::Cooler) && saving.gpus.len() == 2, "{saving:?}");
-        assert_eq!(saving.of("0000:01:00.0").power_limit_w, Some(40));
-        assert_eq!(following(&saving, &gpus, Preset::Cooler), None, "on it already");
-        // Back to Balanced: as the drivers have it (nothing kept).
-        let balanced = following(&saving, &gpus, for_mode(Mode::Balanced)).unwrap();
-        assert!(balanced.gpus.is_empty(), "{balanced:?}");
-        // One set by hand goes with the mode too.
-        let mut by_hand = none.clone();
-        by_hand.set(GpuTune { pci: "0000:01:00.0".into(), preset: Preset::Custom, power_limit_w: Some(30), ..Default::default() });
-        let fast = following(&by_hand, &gpus, for_mode(Mode::Performance)).unwrap();
-        assert!(fast.gpus.iter().all(|g| g.preset == Preset::Fastest) && fast.gpus.len() == 2, "{fast:?}");
-        assert_eq!(fast.of("0000:01:00.0").power_limit_w, Some(75));
+        let gpus = vec![PlanGpu { pci: "0000:00:02.0".into(), caps: xe(), nvidia: false }, PlanGpu { pci: "0000:01:00.0".into(), caps: nv, nvidia: true }];
+        let kept = Tuning::default();
+        let mains = scenario(&kept, &gpus, Mode::Performance, false).unwrap();
+        assert!(mains.gpus.iter().all(|g| g.preset == Preset::Fastest), "{mains:?}");
+        let battery = scenario(&mains, &gpus, Mode::Performance, true).unwrap();
+        assert_eq!((battery.of("0000:00:02.0").preset, battery.of("0000:01:00.0").preset), (Preset::Fastest, Preset::Cooler));
+        assert_eq!(scenario(&battery, &gpus, Mode::Performance, true), None, "on it already");
+        // Custom: the knobs set by hand.
+        let mut custom = battery.clone();
+        custom.set_custom(GpuTune { pci: "0000:01:00.0".into(), max_gpu_mhz: Some(1200), ..Default::default() });
+        custom.plan.set_gpu(When::Battery, "0000:01:00.0", true, Some(Preset::Custom));
+        let set = scenario(&custom, &gpus, Mode::Performance, true).unwrap();
+        assert_eq!((set.of("0000:01:00.0").preset, set.of("0000:01:00.0").max_gpu_mhz), (Preset::Custom, Some(1200)));
     }
 
     #[test]

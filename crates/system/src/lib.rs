@@ -12,6 +12,7 @@ pub mod auth;
 pub mod backlight;
 pub mod battery;
 pub mod bluetooth;
+pub mod cpu_tuning;
 pub mod dconf;
 pub mod disks;
 pub mod edid;

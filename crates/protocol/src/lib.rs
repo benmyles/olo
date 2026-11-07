@@ -1456,9 +1456,9 @@ pub struct Settings {
     pub shortcuts: Option<ShortcutSettings>,
     pub tiling: TilingSettings,
     pub tracker: TrackerSettings,
-    /// Screen recordings (Preferences ▸ GPUs ▸ Screen Recordings).
+    /// Screen recordings (Preferences ▸ Power ▸ Graphics ▸ Screen Recordings).
     pub screen_recording: ScreenRecordingSettings,
-    /// Video played (Preferences ▸ GPUs ▸ Video Playback).
+    /// Video played (Preferences ▸ Power ▸ Graphics ▸ Video Playback).
     pub video: VideoSettings,
     /// Olo's start-up sound as a session starts (Preferences ▸ Sound).
     pub startup_sound: bool,
@@ -1608,15 +1608,19 @@ pub struct TrackerSettings {
 #[serde(default)]
 pub struct VideoSettings {
     /// What decodes it, unless the Viewer is told otherwise (View ▸
-    /// Decode With): "auto" (NVIDIA's GPU on mains power, else the
-    /// processor), "nvidia" (NVDEC), "intel" (the built-in GPU, VA-API)
-    /// or "cpu".
+    /// Decode With): "auto" (the built-in GPU where it decodes the video,
+    /// else NVIDIA's, else the processor), "nvidia" (NVDEC), "intel" (the
+    /// built-in GPU, VA-API) or "cpu".
     pub decoder: String,
+    /// "auto" wakes NVIDIA's GPU on battery too (it's then on its
+    /// battery preset, Preferences ▸ Power): its decoder costs less than
+    /// the processor's cores. Off, the processor decodes on battery.
+    pub nvidia_on_battery: bool,
 }
 
 impl Default for VideoSettings {
     fn default() -> Self {
-        VideoSettings { decoder: "auto".into() }
+        VideoSettings { decoder: "auto".into(), nvidia_on_battery: true }
     }
 }
 

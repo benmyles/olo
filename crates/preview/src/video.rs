@@ -670,7 +670,7 @@ pub struct Options {
 /// Preferences ▸ Video's default).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Device {
-    /// The person's choice (Preferences ▸ GPUs ▸ Video Playback), read
+    /// The person's choice (Preferences ▸ Power ▸ Graphics ▸ Video Playback), read
     /// by the player's worker.
     #[default]
     Default,
@@ -984,8 +984,9 @@ impl Decoder {
         #[cfg(feature = "gpui")]
         {
             // (The person's choice, read here: off the window's thread.)
+            let video = olo_ui::settings::current().map(|s| s.video.clone()).unwrap_or_default();
             let device = match device {
-                Device::Default => olo_ui::settings::current().and_then(|s| Device::parse(&s.video.decoder)).filter(|d| *d != Device::Default).unwrap_or(Device::Automatic),
+                Device::Default => Device::parse(&video.decoder).filter(|d| *d != Device::Default).unwrap_or(Device::Automatic),
                 d => d,
             };
             // Intel's (or AMD's) GPU, for what its driver decodes: AV1
@@ -997,7 +998,7 @@ impl Decoder {
             let (intel, nvidia) = match device {
                 Device::Nvidia => (false, true),
                 Device::Intel => (true, false),
-                Device::Automatic => (va.is_some(), va.is_none() && olo_video::nvdec::available()),
+                Device::Automatic => (va.is_some(), va.is_none() && olo_video::nvdec::available() && (video.nvidia_on_battery || !olo_video::on_battery())),
                 Device::Processor | Device::Default => (false, false),
             };
             if intel && let Some(c) = va {

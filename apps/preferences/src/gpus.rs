@@ -1,9 +1,12 @@
-//! Preferences ▸ GPUs: each GPU, what it drives, and its tuning: a
-//! preset (Cooler and Quieter, Balanced, Fastest) or its knobs by hand
-//! (`olo_system::gpu_tuning`). Applied as root by `olo-gpu-tune set`
-//! through polkit, kept for the computer and set again at every start.
-//! A sleeping NVIDIA GPU isn't asked what it allows (asking wakes it)
-//! unless the person asks: what it said last time is shown.
+//! Preferences ▸ Power's Power Modes and Graphics tabs: what each power
+//! mode, and running on battery, puts the processors and each GPU on
+//! (the plan: `olo_system::gpu_tuning::Plan`, `olo_system::cpu_tuning`),
+//! each GPU, what it drives and its Custom knobs, and what records and
+//! plays video. Applied as root by `olo-gpu-tune set` through polkit,
+//! kept for the computer, set again at every start and followed as the
+//! mode or the power supply changes (`olo-gpu-tune follow`). A sleeping
+//! NVIDIA GPU isn't asked what it allows (asking wakes it) unless the
+//! person asks: what it said last time is shown.
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -13,13 +16,14 @@ use std::{
 
 use olo_sync::Mutex;
 use olo_system::{
-    gpu_tuning::{self, Caps, GpuTune, Preset, Tuning},
+    cpu_tuning::CpuPreset,
+    gpu_tuning::{self, Caps, GpuTune, Preset, Tuning, When},
     gpus::{self, Gpu},
 };
 use olo_ui::{
-    gpui::{Context, ParentElement as _, Styled as _, Window, div, px},
+    gpui::{Context, ParentElement as _, SharedString, Styled as _, Window, div, px},
     metrics as m, style, theme,
-    widgets::{Button, CheckBox, EmptyState, RadioButton, Slider, StringView},
+    widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView},
 };
 
 use crate::{Msg, PanelView, form::Ui};
@@ -85,8 +89,9 @@ struct Shared {
     said: Option<Result<String, String>>,
     /// The power mode's follower, as installed.
     follower: Follower,
-    /// The power mode now (None: no daemon).
+    /// The power mode now (None: no daemon), and whether on battery.
     mode: Option<olo_system::power_profile::Mode>,
+    on_battery: bool,
     /// The GPUs whose VA-API driver encodes AV1 (Intel's, AMD's), by
     /// name: screen recordings can be made on them.
     av1: Vec<String>,
@@ -112,7 +117,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
     if cfg!(test) {
         let gpu = |pci: &str, name: &str, driver: &str, boot: bool, connectors: &[&str]| Gpu {
             pci: pci.into(),
-            vendor: 0,
+            vendor: if driver == "nvidia" { 0x10de } else { 0x8086 },
             device: 0,
             driver: driver.into(),
             name: name.into(),
@@ -148,6 +153,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
             let kept = Tuning::load();
             let follower = follower();
             let mode = olo_system::power_profile::modes().ok().flatten().map(|m| m.active);
+            let on_battery = !olo_system::battery::on_ac();
             // (Each driver asked, NVIDIA's left asleep: about 15 ms.)
             let av1: Vec<String> = olo_vaapi::abilities()
                 .into_iter()
@@ -162,6 +168,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
                 let mut s = shared.lock().unwrap();
                 s.follower = follower;
                 s.mode = mode;
+                s.on_battery = on_battery;
                 s.av1 = av1;
                 s.decodes = decodes;
                 // (What's being edited stays; a first read starts it.)
@@ -294,16 +301,26 @@ fn playback(ui: &mut Ui, gpus: &[Entry], decodes: Option<(&str, bool)>) {
     }
     choices.push(("cpu".into(), "The processor"));
     let menu = "The Viewer's View ▸ Decode With chooses for the video it shows.";
-    let rest = if nvidia.is_some() { ", NVIDIA's GPU for the rest (on battery too), else the processor" } else { ", else the processor" };
+    let rest = if nvidia.is_some() { ", NVIDIA's GPU for the rest, else the processor" } else { ", else the processor" };
     let note = match decodes {
         Some((i, true)) => format!("Automatic: {i} for every video (H.264, HEVC, VP9, AV1), 4K at 60 frames a second with a quarter of a core. {menu}"),
         Some((i, false)) => format!("Automatic: {i} for AV1 and VP9 (Fedora's driver has no H.264 or HEVC: Olo Doctor installs the full one){rest}. {menu}"),
-        None if nvidia.is_some() => format!("NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor (Automatic wakes it on battery too). {menu}"),
+        None if nvidia.is_some() => format!("NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {menu}"),
         None => format!("Video is decoded on the processor. {menu}"),
     };
+    let battery = ui.s.video.nvidia_on_battery;
     ui.bbox("Video Playback", |ui| {
         ui.choose("video-decoder", &choices, &current, |f| f.label("Decode on:").divider(100.0), |s, v| s.video.decoder = v);
         ui.note(note);
+        // (On battery, Automatic wakes NVIDIA's GPU too, unless not.)
+        if nvidia.is_some() {
+            ui.enabled_if(current == "auto", |ui| ui.check("Automatic wakes NVIDIA's GPU on battery too", battery, |s, v| s.video.nvidia_on_battery = v));
+            ui.add(
+                div()
+                    .pl(px(m::MARK_SIZE + m::MARK_GAP))
+                    .child(StringView::new("Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.").dim(true).wrap(true)),
+            );
+        }
     });
 }
 
@@ -315,20 +332,143 @@ fn drives(g: &Gpu) -> String {
     format!("its ports: {}", g.connectors.join(", "))
 }
 
-pub fn ui(ui: &mut Ui, st: &mut State) {
+/// Read the GPUs and the tuning once the panel shows, and again as the
+/// follower changes it (a power mode chosen, the power supply changing).
+fn ensure_read(ui: &mut Ui, st: &mut State) {
     if !st.asked {
         st.asked = true;
         let hold = olo_ui::hold_first_show(ui.window);
         read(st.shared.clone(), olo_ui::proxy(ui.cx), None, hold);
-        // Read again as the follower changes it (a power mode chosen).
         let (shared, proxy) = (st.shared.clone(), olo_ui::proxy(ui.cx));
         if !cfg!(test) {
             st.watch = olo_ui::watch::watch([std::path::PathBuf::from(gpu_tuning::FILE), std::path::PathBuf::from(FOLLOWER)], move |_| read(shared.clone(), proxy.clone(), None, None));
         }
     }
-    let (gpus, kept, edited, applying, said, follower, mode) = {
+}
+
+/// A short name for a GPU in the plan's rows ("NVIDIA RTX PRO 2000",
+/// not its whole marketing name).
+fn short_name(g: &Gpu) -> String {
+    let n = g.name.trim();
+    for cut in [" Blackwell", " Ada ", " Generation", " Laptop GPU", " Laptop", " (TM)"] {
+        if let Some(i) = n.find(cut) {
+            return n[..i].trim().to_owned();
+        }
+    }
+    n.to_owned()
+}
+
+/// The column of the plan a situation is, and its name.
+fn when_name(w: When) -> &'static str {
+    match w {
+        When::Mode(m) => m.label(),
+        When::Battery => "On Battery",
+    }
+}
+
+/// Preferences ▸ Power ▸ Power Modes, below the mode: what each mode, and
+/// running on battery, puts the processors and each GPU on.
+pub fn modes(ui: &mut Ui, st: &mut State) {
+    ensure_read(ui, st);
+    let (gpus, kept, edited, follower, mode, on_battery) = {
         let s = st.shared.lock().unwrap();
-        (s.gpus.clone(), s.kept.clone(), s.edited.clone(), s.applying, s.said.clone(), s.follower, s.mode)
+        (s.gpus.clone(), s.kept.clone(), s.edited.clone(), s.follower, s.mode, s.on_battery)
+    };
+    let Some(gpus) = gpus else {
+        ui.note("Reading…");
+        return;
+    };
+    // (A row's name and four menus within the pane's box, each menu wide
+    // enough for "Cooler and Quieter".)
+    const LABEL_W: f32 = 150.0;
+    const CELL_W: f32 = 146.0;
+    let plain = theme::palette(ui.cx).panel_text;
+    ui.bbox("What Each Mode Sets", |ui| {
+        // The columns: each mode, and running on battery (bold: in force).
+        let mut head = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(LABEL_W)).flex_shrink_0());
+        for w in When::ALL {
+            let now = match w {
+                When::Mode(m) => mode == Some(m),
+                When::Battery => on_battery,
+            };
+            head = head.child(div().w(px(CELL_W)).flex_shrink_0().child(StringView::new(when_name(w)).bold(now)));
+        }
+        ui.add(head);
+        // A row: its name, and a menu per column.
+        let row = |ui: &mut Ui, id: &str, name: String, cells: Vec<(Vec<SharedString>, usize, Box<dyn Fn(&mut Tuning, usize)>)>| {
+            let mut r = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(LABEL_W)).flex_shrink_0().child(StringView::new(name.clone()).color(style::c(plain))));
+            for (k, (options, chosen, set)) in cells.into_iter().enumerate() {
+                let shared = st.shared.clone();
+                let on = ui.on_view(move |_, i: usize, _, cx: &mut Context<PanelView>| {
+                    let mut s = shared.lock().unwrap();
+                    set(&mut s.edited, i);
+                    s.said = None;
+                    cx.notify();
+                });
+                let named = format!("{name} {}", match When::ALL[k] {
+                    When::Battery => "on battery".to_owned(),
+                    w => format!("in {}", when_name(w)),
+                });
+                r = r.child(div().w(px(CELL_W)).flex_shrink_0().child(MenuField::new(format!("plan-{id}-{k}"), options, chosen).width(CELL_W).name(named).on_change(on)));
+            }
+            ui.add(r);
+        };
+        // The processors.
+        let cpu_names = |battery: bool| -> Vec<SharedString> { battery.then(|| SharedString::from("As the Mode")).into_iter().chain(CpuPreset::ALL.iter().map(|p| SharedString::from(p.name()))).collect() };
+        let cells = When::ALL
+            .into_iter()
+            .map(|w| {
+                let battery = w == When::Battery;
+                let chosen = edited.plan.cpu(w).and_then(|p| CpuPreset::ALL.iter().position(|q| *q == p)).map_or(0, |i| i + usize::from(battery));
+                let set: Box<dyn Fn(&mut Tuning, usize)> = Box::new(move |t: &mut Tuning, i: usize| {
+                    let preset = if battery { i.checked_sub(1).map(|i| CpuPreset::ALL[i]) } else { Some(CpuPreset::ALL[i]) };
+                    t.plan.set_cpu(w, preset);
+                });
+                (cpu_names(battery), chosen, set)
+            })
+            .collect();
+        row(ui, "cpu", "Processors".into(), cells);
+        // Each GPU that can be tuned.
+        for e in gpus.iter().filter(|e| !matches!(e.caps, Some(Caps::None))) {
+            let (pci, nvidia) = (e.gpu.pci.clone(), e.gpu.vendor == 0x10de);
+            let names = |battery: bool| -> Vec<SharedString> { battery.then(|| SharedString::from("As the Mode")).into_iter().chain(Preset::ALL.iter().map(|p| SharedString::from(p.name()))).collect() };
+            let cells = When::ALL
+                .into_iter()
+                .map(|w| {
+                    let battery = w == When::Battery;
+                    let chosen = edited.plan.gpu(w, &pci, nvidia).and_then(|p| Preset::ALL.iter().position(|q| *q == p)).map_or(0, |i| i + usize::from(battery));
+                    let pci = pci.clone();
+                    let set: Box<dyn Fn(&mut Tuning, usize)> = Box::new(move |t: &mut Tuning, i: usize| {
+                        let preset = if battery { i.checked_sub(1).map(|i| Preset::ALL[i]) } else { Some(Preset::ALL[i]) };
+                        t.plan.set_gpu(w, &pci, nvidia, preset);
+                    });
+                    (names(battery), chosen, set)
+                })
+                .collect();
+            row(ui, &e.gpu.pci, short_name(&e.gpu), cells);
+        }
+        ui.note("Processors: Saving Power slows them and turns turbo off, Fastest keeps them quick; a GPU's Cooler and Quieter caps its clocks, Fastest lifts them, Custom is its own settings (Graphics). On battery, whatever the mode, a row set to something other than As the Mode is on that: NVIDIA's GPU saves power then, as video wakes it on battery too.");
+        match (mode, follower) {
+            (_, Follower::Missing) => ui.note("Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once."),
+            (_, Follower::Old) => ui.note("What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked)."),
+            (Some(m), Follower::Current) => {
+                let gpus_now: Vec<String> = gpus.iter().filter(|e| !matches!(e.caps, Some(Caps::None))).map(|e| format!("{} {}", short_name(&e.gpu), kept.plan.gpu_now(m, on_battery, &e.gpu.pci, e.gpu.vendor == 0x10de).name())).collect();
+                let cpu = kept.plan.cpu_now(m, on_battery).name();
+                ui.note(format!("Now {}{}: the processors {cpu}, {}.", m.label(), if on_battery { ", on battery" } else { "" }, gpus_now.join(", ")));
+            }
+            (None, Follower::Current) => ui.note("No power profiles daemon is running, so there's no power mode to follow."),
+        }
+    });
+    apply_row(ui, st, follower);
+}
+
+/// Preferences ▸ Power ▸ Graphics: each GPU (what it drives, whether it's
+/// awake, its Custom settings), and what records and plays video.
+pub fn graphics(ui: &mut Ui, st: &mut State) {
+    ensure_read(ui, st);
+    let (gpus, edited, follower) = {
+        let s = st.shared.lock().unwrap();
+        (s.gpus.clone(), s.edited.clone(), s.follower)
     };
     let Some(gpus) = gpus else {
         ui.note("Reading…");
@@ -336,26 +476,36 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     };
     if gpus.is_empty() {
         ui.add(EmptyState::new("No GPUs found.").icon("gpu"));
-        return;
-    }
-    // Side by side, two to a row.
-    let mut boxes: Vec<Vec<olo_ui::gpui::AnyElement>> = gpus.iter().map(|e| ui.collect(|ui| gpu_box(ui, e, &edited.of(&e.gpu.pci), &st.shared))).collect();
-    let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
-    while !boxes.is_empty() {
-        let left = boxes.remove(0);
-        let right = if boxes.is_empty() { Vec::new() } else { boxes.remove(0) };
-        ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
-    }
-    // The power mode sets them all, as it does the processors.
-    ui.bbox("Power Mode", |ui| {
-        ui.note("The power mode sets every GPU, as it does the processors: Power Saver puts them on Cooler and Quieter, Balanced on Balanced and Performance on Fastest, wherever it's chosen (Power, Deskbar's battery, the keyboard). A GPU set here stays so until the mode next changes.");
-        match (mode, follower) {
-            (_, Follower::Missing) => ui.note("Apply once to let it: an administrator's password is asked, this once."),
-            (_, Follower::Old) => ui.note("What does it is from an older Olo: Apply to bring it up to date (an administrator's password is asked)."),
-            (Some(m), Follower::Current) => ui.note(format!("It's {} now: every GPU on {}.", m.label(), gpu_tuning::for_mode(m).name())),
-            (None, Follower::Current) => ui.note("No power profiles daemon is running, so there's no power mode to follow."),
+    } else {
+        // Side by side, two to a row.
+        let mut boxes: Vec<Vec<olo_ui::gpui::AnyElement>> = gpus.iter().map(|e| ui.collect(|ui| gpu_box(ui, e, &edited, &st.shared))).collect();
+        let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
+        while !boxes.is_empty() {
+            let left = boxes.remove(0);
+            let right = if boxes.is_empty() { Vec::new() } else { boxes.remove(0) };
+            ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
         }
-    });
+        apply_row(ui, st, follower);
+        // (Below Apply, a section of its own: it's taken at once, not
+        // applied with the tuning.)
+        ui.space(m::SECTION - 2.0 * m::STACK);
+    }
+    let (av1, decodes) = {
+        let s = st.shared.lock().unwrap();
+        (s.av1.clone(), s.decodes.clone())
+    };
+    // (Side by side: under each other, the pane is taller than the
+    // smallest screen.)
+    ui.columns(|ui| recordings(ui, &gpus, &av1), |ui| playback(ui, &gpus, decodes.as_ref().map(|(n, all)| (n.as_str(), *all))));
+}
+
+/// Apply and Revert, for the plan and the GPUs' Custom settings (root's:
+/// kept for the computer), and what the last Apply said.
+fn apply_row(ui: &mut Ui, st: &mut State, follower: Follower) {
+    let (kept, edited, applying, said) = {
+        let s = st.shared.lock().unwrap();
+        (s.kept.clone(), s.edited.clone(), s.applying, s.said.clone())
+    };
     // (Nothing installed to follow it yet, or an older one: Apply
     // installs it.)
     let changed = edited != kept || follower != Follower::Current;
@@ -386,35 +536,25 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 (false, None) => StringView::new("Kept for this computer and set again at every start.").dim(true).wrap(true),
             })),
     );
-    // (Below Apply, a section of its own: it's taken at once, not applied
-    // with the tuning. The commit row ends its group: `SECTION` under it.)
-    ui.space(m::SECTION - 2.0 * m::STACK);
-    let (av1, decodes) = {
-        let s = st.shared.lock().unwrap();
-        (s.av1.clone(), s.decodes.clone())
-    };
-    // (Side by side: under each other, the pane is taller than the
-    // smallest screen.)
-    ui.columns(|ui| recordings(ui, &gpus, &av1), |ui| playback(ui, &gpus, decodes.as_ref().map(|(n, all)| (n.as_str(), *all))));
 }
 
-/// Change GPU `pci`'s tuning by hand (its preset becomes Custom).
+/// Change GPU `pci`'s Custom settings.
 fn edit(ui: &Ui, shared: &Arc<Mutex<Shared>>, pci: &str, f: impl Fn(&mut GpuTune, f32) + 'static) -> impl Fn(f32, &mut Window, &mut olo_ui::gpui::App) + 'static {
     let (shared, pci) = (shared.clone(), pci.to_owned());
     ui.on_view(move |_, v: f32, _, cx: &mut Context<PanelView>| {
         let mut s = shared.lock().unwrap();
-        let mut t = s.edited.of(&pci);
+        let mut t = s.edited.custom_of(&pci);
         f(&mut t, v);
-        t.preset = Preset::Custom;
-        s.edited.set(t);
+        s.edited.set_custom(t);
         s.said = None;
         cx.notify();
     })
 }
 
-fn gpu_box(ui: &mut Ui, e: &Entry, tune: &GpuTune, shared: &Arc<Mutex<Shared>>) {
+fn gpu_box(ui: &mut Ui, e: &Entry, edited: &Tuning, shared: &Arc<Mutex<Shared>>) {
     let g = &e.gpu;
     let pci = g.pci.clone();
+    let now = shared.lock().unwrap().kept.of(&pci).preset;
     ui.bbox(&g.name, |ui| {
         let state = if e.asleep { "asleep: nothing uses it" } else { "awake" };
         ui.note(format!("{} driver, {state}; {}.", g.driver, drives(g)));
@@ -432,28 +572,10 @@ fn gpu_box(ui: &mut Ui, e: &Entry, tune: &GpuTune, shared: &Arc<Mutex<Shared>>) 
             ui.note(format!("Nothing to tune for its driver ({}) yet.", g.driver));
             return;
         }
-        // The presets.
-        for preset in Preset::CHOSEN {
-            let (shared, pci, caps) = (shared.clone(), pci.clone(), caps.clone());
-            let pick = ui.on_view(move |_, _: (), _, cx| {
-                let mut s = shared.lock().unwrap();
-                s.edited.set(gpu_tuning::preset(&pci, preset, &caps));
-                s.said = None;
-                cx.notify();
-            });
-            ui.add(RadioButton::new(preset.name(), tune.preset == preset).id(format!("gpu-{}-{preset:?}", g.pci)).on_select(move |window, cx| pick((), window, cx)));
-            let about = match preset {
-                Preset::Cooler => "Slower, cooler and quieter; the battery lasts longer.",
-                Preset::Balanced => "As its driver has it.",
-                Preset::Fastest => "As fast as it goes: hotter and louder.",
-                Preset::Custom => "",
-            };
-            ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(about).dim(true).wrap(true)));
-        }
-        if tune.preset == Preset::Custom {
-            ui.note("Set by hand, below.");
-        }
-        knobs(ui, &caps, tune, shared, &pci);
+        ui.note(format!("On {} now: Power Modes says what each mode puts it on.", now.name()));
+        // (Its own heading: what a mode set to Custom puts it on.)
+        ui.label("Custom settings");
+        knobs(ui, &caps, &edited.custom_of(&pci), shared, &pci);
     });
 }
 
