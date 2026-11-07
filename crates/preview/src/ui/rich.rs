@@ -24,8 +24,8 @@ use olo_ui::{
     agent,
     gpui::{
         self, AppContext as _, Bounds, Context, CursorStyle, Font, FontStyle, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
-        MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollHandle, SharedString, StrikethroughStyle, Styled as _, Task, TextAlign, TextRun, Window, WrappedLine, canvas,
-        div, point, px, size,
+        MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollHandle, SharedString, StatefulInteractiveElement as _, StrikethroughStyle, Styled as _, Task, TextAlign, TextRun,
+        Window, WrappedLine, canvas, div, point, px, size,
     },
     style, theme,
     widgets::{ScrollView, image_view},
@@ -1102,6 +1102,14 @@ impl Render for RichView {
                 let now = v.link_at(at).map(|(b, n)| (b, v.laid[b].links[n].group));
                 if now != v.hover {
                     v.hover = now;
+                    cx.notify();
+                }
+            }))
+            // (Its moves come only while the pointer is over the page:
+            // gone, from the view or the window, its link is no longer
+            // underlined.)
+            .on_hover(cx.listener(|v, inside: &bool, _, cx| {
+                if !*inside && v.hover.take().is_some() {
                     cx.notify();
                 }
             }))
