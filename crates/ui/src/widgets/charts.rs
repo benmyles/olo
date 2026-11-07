@@ -886,3 +886,77 @@ mod tests {
         assert_eq!(fit(12.0, 2.0, 3, 200.0, 12.0), (12.0, 14, 1));
     }
 }
+
+/// A small graph of `levels` (0 to 1, oldest first), its newest at
+/// `bounds`' right edge and `slots` readings across it, filled under its
+/// line if `fill`: Deskbar's widgets, drawn in a canvas's paint. A NaN
+/// level is a gap.
+pub fn paint_sparkline(window: &mut Window, bounds: Bounds<Pixels>, levels: &[f32], slots: usize, color: Hsla, fill: bool) {
+    if levels.len() < 2 {
+        return;
+    }
+    let slots = slots.max(levels.len()).max(2);
+    let step = f32::from(bounds.size.width) / (slots - 1) as f32;
+    let h = f32::from(bounds.size.height);
+    let x0 = f32::from(bounds.right()) - step * (levels.len() - 1) as f32;
+    let at = |i: usize, v: f32| point(px(x0 + step * i as f32), bounds.bottom() - px(0.75 + v.clamp(0.0, 1.0) * (h - 1.5)));
+    window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
+        window.paint_layer(bounds, |window| {
+            for (i, w) in levels.windows(2).enumerate() {
+                if !w[0].is_finite() || !w[1].is_finite() {
+                    continue;
+                }
+                let (a, b) = (at(i, w[0]), at(i + 1, w[1]));
+                if fill {
+                    window.paint_area(a, b, bounds.bottom(), color.opacity(0.3));
+                }
+                window.paint_segment(a, b, px(1.25), true, color);
+            }
+        });
+    });
+}
+
+/// Bars side by side across `bounds`, one a level (0 to 1) each, rising
+/// from its foot, a device pixel apart: Pulse's processors.
+pub fn paint_bars(window: &mut Window, bounds: Bounds<Pixels>, levels: &[f32], color: Hsla) {
+    if levels.is_empty() {
+        return;
+    }
+    let s = window.scale_factor();
+    let gap = (1.0 / s).max(f32::from(bounds.size.width) / levels.len() as f32 * 0.15).min(2.0);
+    let w = (f32::from(bounds.size.width) - gap * (levels.len() - 1) as f32) / levels.len() as f32;
+    let h = f32::from(bounds.size.height);
+    for (i, v) in levels.iter().enumerate() {
+        let v = if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
+        let x = f32::from(bounds.left()) + i as f32 * (w + gap);
+        let top = f32::from(bounds.bottom()) - h * v;
+        let r = style::snap(window, Bounds::from_corners(point(px(x), px(top)), point(px(x + w), bounds.bottom())));
+        style::fill_rect(window, r, color);
+    }
+}
+
+/// Levels (0 to 1) across `bounds`, each a band of its own over the one
+/// before (the first fullest): a meter, as a volume's fullness.
+pub fn paint_meter(window: &mut Window, bounds: Bounds<Pixels>, levels: &[f32], color: Hsla) {
+    if levels.is_empty() {
+        return;
+    }
+    let h = f32::from(bounds.size.height) / levels.len() as f32;
+    for (i, v) in levels.iter().enumerate() {
+        let v = if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
+        let top = f32::from(bounds.top()) + h * i as f32;
+        let c = if i == 0 { color } else { color.opacity(0.6) };
+        let r = style::snap(window, Bounds::from_corners(point(bounds.left(), px(top)), point(bounds.left() + px(f32::from(bounds.size.width) * v), px(top + h))));
+        style::fill_rect(window, r, c);
+    }
+}
+
+/// The sunken well a small graph sits in (the document's ground, its
+/// edge sunken), and the inside it leaves.
+pub fn paint_well(window: &mut Window, bounds: Bounds<Pixels>, p: &olo_theme::Palette) -> Bounds<Pixels> {
+    let rect = style::snap(window, bounds);
+    let inner = style::inset(window, rect, 2.0);
+    style::fill_rect(window, inner, style::c(p.document_background));
+    style::sunken(window, rect, p, false);
+    inner
+}

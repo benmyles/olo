@@ -1915,6 +1915,8 @@ event reaches it.
   each series' latest value), `widgets::CellGrid` (Pulse's LED wells,
   `GridCell`s lit in colours, `on_click` with the cell; a click either
   takes is its own, not the clickable card's it's on), and
+  `charts::paint_sparkline`/`paint_bars`/`paint_meter`/`paint_well`
+  (small graphs painted in a canvas: Deskbar's widgets),
   `widgets::legend`/`legend_height` (swatches, names and values in
   wrapping rows, each name and value on one baseline; laid out by their
   lengths, the review keeps them on a grid of their own, as it does a
@@ -11894,6 +11896,60 @@ calls, 3.5 ms here) and asks for the signals of what's connected again
 only if that changed. Measured beside the old Wi-Fi-only watch over
 60 s, idle on Ben's machine (Ethernet and Wi-Fi both up): under one
 wakeup a second, against about two.
+
+### Live widgets (widgets.rs, Preferences ▸ Deskbar)
+
+Ben, 2026-11-07: "add a preferences app for the deskbar and in it
+support configuring/adding live performance widgets into it e.g. cpu,
+gpu, disk, network monitors etc. -- it should all be very customizable
+in terms of where they appear on the deskbar, how they look, how often
+they update, exactly what to show and so on". As BeOS's Pulse and
+ProcessController put their bars in its tray.
+
+* **Settings**: `Settings::deskbar` (`olo_protocol::deskbar`), kept by
+  app_server, so Deskbar follows a change at once (`SettingsChanged`)
+  and agents read and set them (`GetSettings`/`SetSettings`; a widget
+  with only `id`, `measure` and `place` takes the rest as it comes).
+  Each `Widget`: an `id`, what it measures (`Measure`: CPU, all or each
+  core; memory, and swap; a GPU by PCI address; a disk's reads and
+  writes; a volume's fullness; an interface's down and up; a hwmon
+  temperature, "chip/label"; battery power), where (`Place`: an icon's
+  place in the tray, a row under the tray, a row at the foot under the
+  applications), its look (`Look`: graph, bars, meter, number), its
+  row's size, its name and value shown, how often it's read
+  (`every_ms`, 250 ms to a minute), how far back its graph looks
+  (`span_s`) and its colour (a `Hue`, or the accent).
+* **Readings**: `olo_system::meters` (Preferences' list of what there
+  is too, `sources`: cores, GPUs, disks, volumes, interfaces, sensors,
+  a battery): `/proc/stat`, `meminfo`, `diskstats`, `net/dev`, statvfs,
+  hwmon, the battery's `power_now`, and the GPUs through
+  `olo_system::gpu_load` (Activity Monitor's, moved there for both: a
+  GPU asleep is never asked, an idle NVIDIA one only every 20 s, each
+  question being use that keeps it awake; xe's busy is its render GT's
+  idle residency). A worker (`deskbar-widgets`) reads each widget when
+  it's due and sends them together (`Msg::Meters`); with no widgets
+  there is no thread, and with the displays asleep or the screen locked
+  nothing is read (`Live::pause`). What a widget draws is made once a
+  reading (`Shown`: each series' levels over its history, rates against
+  the highest in it, its value in words), not each frame.
+* **Drawing**: tray widgets take the tray's first slots (a graph, bars
+  or meter in a sunken well, or the value in small figures); rows have
+  the name at the left and the value at the right (shortened, "↓27K
+  ↑102K", or without the name, when both don't fit), the drawing
+  between them in a small row and under them in a medium or large one.
+  A tip says what it measures in full and each series' value; a click
+  opens Activity Monitor; the other button, Activity Monitor and
+  Deskbar Preferences…. Agents read each as a `Meter` with its value.
+* **Cost**, over 20 s on release builds (`tools/dev/cost`): no widgets,
+  0.1% of a core, 2 wakeups a second, 0.2 frames a second; eight (most
+  read every second), 0.2%, 5 wakeups (2 the worker's), 1.1 frames a
+  second at 613 µs (430 without).
+
+Preferences ▸ Deskbar (`deskbar.rs`) lists the widgets in order (Add
+one of a kind after the chosen one, Remove, Move Up, Move Down) beside
+the chosen one's settings (what it shows and which of it, where, look,
+size, name and value, how often, how far back, colour), each changing
+the Deskbar at once; Defaults has none.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

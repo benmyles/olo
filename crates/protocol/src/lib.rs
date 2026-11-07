@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 pub mod airpods;
 pub mod app_keys;
 pub mod color;
+pub mod deskbar;
 pub mod doctor;
 pub mod keyboards;
 pub mod mice;
@@ -1475,6 +1476,8 @@ pub struct Settings {
     pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub ai: AiSettings,
+    /// Deskbar's live widgets (Preferences ▸ Deskbar).
+    pub deskbar: deskbar::DeskbarSettings,
 }
 
 /// Preferences ▸ AI: how Olo reaches models, and its AI features.
@@ -2318,6 +2321,7 @@ impl Default for Settings {
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             ai: AiSettings::default(),
+            deskbar: deskbar::DeskbarSettings::default(),
         }
     }
 }

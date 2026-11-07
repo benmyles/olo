@@ -25,6 +25,7 @@
 mod approve;
 mod sni;
 mod status;
+mod widgets;
 
 use std::{
     collections::HashMap,
@@ -145,6 +146,11 @@ enum Msg {
     Installed(Installed),
     /// Other programs' tray icons and launcher badges (`sni`).
     Tray(sni::Tray),
+    /// The live widgets' readings, by widget (`widgets`).
+    Meters(Vec<(u32, olo_system::meters::Reading)>),
+    /// What there is to measure (the widgets' GPUs, disks and sensors by
+    /// name).
+    Sources(olo_system::meters::Sources),
 }
 
 /// What is installed, found on a worker (`scan_installed`): reading every
@@ -176,6 +182,8 @@ struct Settings {
     tiling: olo_protocol::TilingSettings,
     /// The person's shortcut keys.
     keys: KeyboardProfile,
+    /// The live widgets (Preferences ▸ Deskbar).
+    widgets: Vec<olo_protocol::deskbar::Widget>,
 }
 
 /// A Deskbar on a display.
@@ -267,6 +275,11 @@ struct Deskbar {
     tray_pictures: HashMap<(String, u64, u32), Option<Arc<RenderImage>>>,
     /// Draws the bars again as the clock's next minute (or second) comes.
     ticking: Option<Task<()>>,
+    /// The live widgets, what they've read, and their worker.
+    live: widgets::Live,
+    /// What there is to measure, for the widgets' tips (read once, off
+    /// the UI thread).
+    sources: olo_system::meters::Sources,
 }
 
 /// An application's dot: how far its shake has gone if one just came
@@ -1283,6 +1296,8 @@ impl Deskbar {
                 self.status = s;
             }
             Msg::Power(p) => {
+                // (Nothing read for widgets nobody can see.)
+                self.live.pause(p.display_asleep || p.locked, &self.proxy);
                 self.caffeinated = p.caffeinated;
                 self.caffeinated_until = p.caffeinated_until;
                 self.caffeinated_lid = p.caffeinated_lid;
@@ -1294,6 +1309,7 @@ impl Deskbar {
                 self.menu_icons = s.menu_icons;
                 self.tiling = s.tiling;
                 self.keys = s.keys;
+                self.live.set(s.widgets, &self.proxy);
                 if seconds {
                     self.tick(cx);
                 }
@@ -1313,6 +1329,8 @@ impl Deskbar {
                 self.scanning = false;
                 self.entries.clear();
             }
+            Msg::Meters(batch) => self.live.add(batch),
+            Msg::Sources(sources) => self.sources = sources,
             Msg::Tray(tray) => {
                 // Pictures no item has any more go.
                 self.tray_pictures.retain(|(key, serial, _), _| tray.items.iter().any(|i| i.key == *key && i.serial == *serial));
@@ -1361,7 +1379,7 @@ fn add_keys(menu: &mut Menu, profile: &KeyboardProfile) {
 }
 
 fn settings_msg(settings: olo_protocol::Settings) -> Msg {
-    Msg::Settings(Settings { clock: settings.clock, menu_icons: settings.appearance.menu_icons, tiling: settings.tiling, keys: settings.keyboard.profile })
+    Msg::Settings(Settings { clock: settings.clock, menu_icons: settings.appearance.menu_icons, tiling: settings.tiling, keys: settings.keyboard.profile, widgets: settings.deskbar.widgets })
 }
 
 /// `menu` and its submenus with no icons (Appearance ▸ Show icons in the
@@ -1951,7 +1969,9 @@ impl Deskbar {
             apps.iter().map(|it| self.tray_pictures.entry((it.key.clone(), it.serial, px_size)).or_insert_with(|| sni::picture(it, px_size)).clone()).collect();
         // This Deskbar's display, with several: its number, to go to another.
         let display_number = display.as_deref().and_then(|dn| olo_protocol::display_number(&self.outputs, dn));
+        let tray_widgets: Vec<olo_protocol::deskbar::Widget> = self.live.widgets.iter().filter(|w| w.place == olo_protocol::deskbar::Place::Tray).cloned().collect();
         let items = apps.len()
+            + tray_widgets.len()
             + [
                 display_number.is_some(),
                 !st.upgrade.is_empty() || st.upgrade_waiting,
@@ -2052,6 +2072,29 @@ impl Deskbar {
                 });
                 (r, hit(view, &key, expand(r, PLATE), Some(tip_text)))
             };
+        // The live widgets first, as BeOS's ProcessController sat at the
+        // tray's left.
+        for w in tray_widgets {
+            let key = format!("widget:{}", w.id);
+            let shown = self.live.shown(&w);
+            let tip_text = shown.tip(&self.sources);
+            let (r, h) = tray_item(
+                &mut d,
+                &key,
+                tip_text,
+                Box::new(move |window, cx, r| {
+                    let p = theme::palette(cx);
+                    widgets::paint_tray(window, cx, r, &shown, &p);
+                    let name = widgets::label(&shown.widget);
+                    agent::record(
+                        window,
+                        cx,
+                        agent::Node { role: "Meter", name: Some(name.into()), value: Some(shown.value.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
+                    );
+                }),
+            );
+            d.hits.push(self.widget_hit(h, &format!("tray:{key}"), r, view, &model));
+        }
         for (it, picture) in apps.iter().zip(pictures) {
             let tip_text = match (it.title.as_str(), it.tooltip.as_str()) {
                 (t, "") => t.to_owned(),
@@ -2459,7 +2502,7 @@ impl Deskbar {
         // others left to right), by workspace, in order, each under its
         // heading (each display's workspaces with windows, and the one it
         // shows)
-        let mut y = TILE_H + tray_height(rows);
+        let mut y = self.widget_rows(&mut d, olo_protocol::deskbar::Place::Top, TILE_H + tray_height(rows), view, &model);
         for on in self.displays_from(display.as_deref()) {
             let on = on.as_deref();
             let current = self.showing(on);
@@ -2488,6 +2531,9 @@ impl Deskbar {
                 }
             }
         }
+
+        // The widgets at its foot, under the applications.
+        y = self.widget_rows(&mut d, olo_protocol::deskbar::Place::Foot, y, view, &model);
 
         // Outer frame: a dark line on the left and bottom, where the
         // Deskbar meets the desktop.
@@ -2817,6 +2863,69 @@ impl Deskbar {
     }
 }
 
+impl Deskbar {
+    /// The live widgets placed at `place`, a row each from `y` down (the
+    /// tray's ground under the tray, the panel's at the foot, an etched
+    /// line above them): where the next thing starts.
+    fn widget_rows(&self, d: &mut Drawing, place: olo_protocol::deskbar::Place, y: f32, view: &Entity<BarView>, model: &Entity<Deskbar>) -> f32 {
+        let rows: Vec<olo_protocol::deskbar::Widget> = self.live.widgets.iter().filter(|w| w.place == place).cloned().collect();
+        if rows.is_empty() {
+            return y;
+        }
+        let top = y;
+        let height: f32 = rows.iter().map(widgets::row_height).sum();
+        let under_tray = place == olo_protocol::deskbar::Place::Top;
+        let section = rect(0.0, top, WIDTH, height + TRAY_FOOT);
+        d.paint(move |window, cx| {
+            let p = theme::palette(cx);
+            let ground = if under_tray { shade(&p, p.panel_background, 1.03) } else { c(p.panel_background) };
+            style::fill_rect(window, section, ground);
+            // (An etched line between it and what's above.)
+            style::hline(window, px(0.0), px(WIDTH), section.top(), shade(&p, p.panel_background, 1.25));
+            style::hline(window, px(0.0), px(WIDTH), section.top() + style::hairline(window), c(p.shine));
+        });
+        let mut y = top + TRAY_FOOT / 2.0;
+        for w in rows {
+            let h = widgets::row_height(&w);
+            let r = rect(0.0, y, WIDTH, h);
+            y += h;
+            let key = format!("widget:{}", w.id);
+            let shown = self.live.shown(&w);
+            let tip_text = shown.tip(&self.sources);
+            d.paint(move |window, cx| {
+                let p = theme::palette(cx);
+                widgets::paint_row(window, cx, r, &shown, &p, TRAY_TEXT);
+                let name = widgets::label(&shown.widget);
+                agent::record(
+                    window,
+                    cx,
+                    agent::Node { role: "Meter", name: Some(name.into()), value: Some(shown.value.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
+                );
+            });
+            let h = hit(view, &key, r, Some(tip_text));
+            d.hits.push(self.widget_hit(h, &key, r, view, model));
+        }
+        top + height + TRAY_FOOT
+    }
+
+    /// What a widget does under the pointer: a click opens Activity
+    /// Monitor; the other button, a menu with it and Deskbar's
+    /// preferences.
+    fn widget_hit(&self, h: olo_ui::gpui::Stateful<olo_ui::gpui::Div>, key: &str, r: Bounds<Pixels>, view: &Entity<BarView>, model: &Entity<Deskbar>) -> AnyElement {
+        let (m, v, key) = (model.clone(), view.clone(), key.to_owned());
+        h.on_any_button(move |e, window, cx| match button(e) {
+            MouseButton::Left => m.update(cx, |d, cx| d.run_command("run:olo-activity", cx)),
+            MouseButton::Right => {
+                let menu = Menu::new("Widget").item("Activity Monitor", "run:olo-activity").separator().item("Deskbar Preferences…", "pref:deskbar");
+                let mm = m.clone();
+                open_menu(window, cx, &v, &key, r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+            }
+            _ => {}
+        })
+        .into_any_element()
+    }
+}
+
 /// A section's bevel: light along the top and left, dark along the
 /// bottom.
 fn section_bevel(window: &mut Window, r: Bounds<Pixels>, p: &Palette) {
@@ -2887,6 +2996,10 @@ fn main() {
         let proxy = olo_ui::proxy(cx);
         watch_server(proxy.clone());
         scan_installed(proxy.clone());
+        {
+            let proxy = proxy.clone();
+            std::thread::spawn(move || proxy.send(Msg::Sources(olo_system::meters::sources())));
+        }
         // Applications installed or removed: listed again at once.
         let rescan = proxy.clone();
         if let Some(w) = olo_ui::watch::watch(desktop_entry::app_dirs(), move |_| scan_installed(rescan.clone())) {
@@ -2938,6 +3051,8 @@ fn main() {
                 badges: Vec::new(),
                 tray_pictures: HashMap::new(),
                 ticking: None,
+                live: widgets::Live::new(),
+                sources: Default::default(),
             };
             d.tick(cx);
             d

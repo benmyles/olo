@@ -376,7 +376,7 @@ fn xe_caps(device: &Path) -> Option<XeCaps> {
 /// NVIDIA's library, started once it starts. A start that failed isn't
 /// kept: the driver may answer later (loaded, or back from an error),
 /// and Preferences, open for days, asked it once and never again.
-fn nvml() -> Result<&'static nvml_wrapper::Nvml, String> {
+pub(crate) fn nvml() -> Result<&'static nvml_wrapper::Nvml, String> {
     static NVML: std::sync::OnceLock<nvml_wrapper::Nvml> = std::sync::OnceLock::new();
     if let Some(n) = NVML.get() {
         return Ok(n);

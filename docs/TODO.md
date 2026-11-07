@@ -15,6 +15,17 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The README: one wordmark, and screenshots that show Olo off** (Ben,
+  2026-11-07: "update the olo readme so that there's just the one
+  wordmark logo at the top not two and a full collection of screenshots
+  in light/dark and different themes and make sure they cover all the
+  different apps, features, agent functionality etc -- it needs to do a
+  much better job of showing off olo"). After Deskbar's widgets.
+- **Intel's render GT busy on an idle desktop**: on 2026-11-07 its idle
+  residency rose 4 ms in a second (the media GT's 928), so the GPU never
+  rests (RC6). Find what keeps it awake (app_server drawing every frame?
+  a forcewake held?), measure with `timings` and the GT's residency.
+
 - **Syntax colouring for justfiles in the Viewer** (Ben, 2026-11-07:
   "add syntax highlighting for justfiles to viewer"). `justfile`,
   `Justfile`, `.justfile` and `*.just` are shown as plain text now:
@@ -1896,6 +1907,15 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Blocked
 
+- **Preferences ▸ Deskbar's own icon**: generated with
+  `tools/genicon.py deskbar "…" --variants 2` against the reference set
+  (docs/ICONS.md), which needs the image model's key (`OPENAI_API_KEY`
+  or `~ben/.env`, absent on 2026-11-07). Subject: "a slim upright panel
+  of light grey metal standing on the desk like a tall narrow plaque, a
+  short row of tiny coloured status lights near its top and a small
+  green rising line graph glowing on its face". Until then the panel
+  shows Activity Monitor's (`activity`).
+
 Each waits for what its entry's "Left" says: Ben at the machine (a
 password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
@@ -2106,6 +2126,22 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Deskbar's live performance widgets, and Preferences ▸ Deskbar**~~
+  (Ben, 2026-11-07: "add a preferences app for the deskbar and in it
+  support configuring/adding live performance widgets into it e.g. cpu,
+  gpu, disk, network monitors etc. -- it should all be very
+  customizable in terms of where they appear on the deskbar, how they
+  look, how often they update, exactly what to show and so on"). As
+  BeOS's Pulse and ProcessController replicants put CPU and memory bars
+  in the Deskbar's tray: sources (CPU, per core or all; memory; each
+  GPU; disk activity and space; network; temperatures; power draw),
+  looks (graph, bars, meter, number; label, value, colour, size), where
+  (the tray, rows under it, the Deskbar's foot; in any order), how often
+  and how much history; kept in app_server's settings (Deskbar follows
+  them live, agents read and set them); sampled on a worker only for
+  what's shown, nothing without widgets, NVIDIA's GPU never woken to be
+  read; Deskbar's cost measured before and after. *Done*: HACKING's "Live widgets"; its own icon waits for the image model's key (Blocked).
 
 - ~~**Agent Screens: Escape crashed the screen viewer**~~ (Ben, 2026-11-06:
   "in agent screens i hit escape and it crashed see the logs it just

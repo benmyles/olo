@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Preferences ▸ Deskbar
+
+*13:16* — The new Deskbar panel: the widgets in order (Add, Remove, Move Up, Move Down) beside the chosen one's settings: what it shows and which, where, look, size, name and value, how often, how far back, colour. Each change shows in the Deskbar at once.
+
+![Preferences ▸ Deskbar](2026-11-07/131634-preferences-deskbar.png)
+
+### Deskbar: live widgets
+
+*13:16* — Deskbar's new live widgets, as BeOS's Pulse and ProcessController put bars in its tray: a temperature and a CPU graph in the tray; under it a CPU graph, each core's bars, a memory-and-swap meter and the network's down and up; at the foot, the GPU and the system volume. Each is read on a worker only while shown, as often as it asks.
+
+![Deskbar: live widgets](2026-11-07/131634-deskbar-live-widgets.png)
+
 ### Olo Doctor: ignored findings, quietly last
 
 *10:49* — Every finding has Ignore beside its fix. What's ignored leaves the count, Fix All, the tray's bag and the notifications, and is listed last under Ignored, dim, with Stop Ignoring and its fix should the person change their mind. Doctor also offers Olo's own login screen where another's greets (not shown here: the sandbox's build has no olo-login).

@@ -57,6 +57,7 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("bluetooth", "Bluetooth", "bluetooth"),
     ("datetime", "Date & Time", "datetime"),
     ("default-apps", "Default Apps", "default-apps"),
+    ("deskbar", "Deskbar", "activity"),
     ("display", "Display", "display"),
     ("integrations", "Integrations", "integrations"),
     ("keyboard", "Keyboard", "keyboard"),
