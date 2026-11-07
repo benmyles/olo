@@ -126,6 +126,11 @@ impl Loader {
         let (text, _, _) = encoding.decode(&resource.bytes);
         Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), text.into_owned(), resource.url.to_string()))
     }
+    /// A fetch() for scripts: status, content type, bytes, final URL.
+    pub fn bytes(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
+        let resource = self.fetch(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Fetch)?;
+        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string()))
+    }
     /// An image: a raster format decoded here, or an SVG handed to `svg`
     /// (the engine rasterises it).
     pub fn image(

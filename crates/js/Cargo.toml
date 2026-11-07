@@ -14,3 +14,5 @@ tiny-skia = "0.12"
 # WebGL: OpenGL ES through EGL (surfaceless), loaded at first use.
 glow = "0.16"
 khronos-egl = { version = "6", features = ["dynamic"] }
+# OLO_GL_DUMP: canvases written out for checking.
+png = "0.17"

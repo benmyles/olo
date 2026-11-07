@@ -7689,6 +7689,7 @@ dependencies = [
  "glow",
  "khronos-egl",
  "olo-web",
+ "png 0.17.16",
  "tiny-skia 0.12.0",
  "url",
  "v8",

@@ -11,8 +11,10 @@
 //! and the page styles, lays out and paints from it.
 #![forbid(unsafe_op_in_unsafe_fn)]
 pub mod canvas;
+pub mod clone;
 pub mod html;
 pub mod webgl;
+pub mod worker;
 use olo_web::{
     css::{
         self,
@@ -29,7 +31,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Instant,
 };
-const PRELUDE: &str = concat!(include_str!("prelude.js"), "\n", include_str!("webgl.js"));
+const PRELUDE: &str = concat!(include_str!("shared.js"), "\n", include_str!("prelude.js"), "\n", include_str!("webgl.js"));
 /// What the page is, for `location`, `navigator` and the viewport.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -72,11 +74,25 @@ pub type Fetcher = Box<dyn FnMut(&str, &str, &str) -> Result<Fetched, String>>;
 /// (`Realm::take_image_requests`) and delivered (`Realm::image_loaded`)
 /// when fetched, off this thread.
 pub type ImageLookup = Box<dyn FnMut(&str) -> Option<Arc<olo_web::image::Image>>>;
-/// An image the scripts asked for: fetched and decoded by the browser.
-pub struct ImageRequest {
+/// Something the scripts asked for over the network: the browser fetches
+/// it (off this thread) and answers with `Realm::deliver`.
+pub struct Request {
     pub id: u64,
     pub url: String,
+    pub kind: RequestKind,
 }
+pub enum RequestKind {
+    /// An `img` element's image, decoded.
+    Image,
+    /// A fetch() or XMLHttpRequest: the bytes.
+    Text { method: String, body: String },
+}
+/// What a request got.
+pub enum Loaded {
+    Image(Arc<olo_web::image::Image>),
+    Text(Fetched),
+}
+pub use worker::{SharedFetcher, Waker};
 /// Lays out the document as it is now, for what scripts measure; the
 /// browser supplies one (olo_web::page::Measurer behind a host).
 pub type Measure = Box<dyn FnMut(&Document, Option<&olo_web::page::Measured>) -> Option<olo_web::page::Measured>>;
@@ -175,9 +191,15 @@ struct State {
     images: HashMap<NodeId, Arc<olo_web::image::Image>>,
     /// Image loads asked for and not yet taken by the browser, then in
     /// flight until delivered.
-    image_requests: Vec<(u64, NodeId, String)>,
-    images_in_flight: HashMap<u64, NodeId>,
-    next_image: u64,
+    requests: Vec<Request>,
+    /// The element each image request in flight is for.
+    in_flight: HashMap<u64, Option<NodeId>>,
+    next_request: u64,
+    /// Workers by id, with what they need to be made.
+    workers: HashMap<u32, worker::Handle>,
+    next_worker: u32,
+    worker_fetcher: Option<SharedFetcher>,
+    waker: Option<Waker>,
     measure: Option<Measure>,
     /// The last layout, good while the document's revision is its own.
     measured: Option<olo_web::page::Measured>,
@@ -191,7 +213,7 @@ struct State {
     started: Instant,
 }
 type Shared = Rc<RefCell<State>>;
-fn runtime() {
+pub(crate) fn runtime() {
     static INIT: OnceLock<()> = OnceLock::new();
     INIT.get_or_init(|| {
         let platform = v8::new_default_platform(0, false).make_shared();
@@ -222,9 +244,13 @@ impl Realm {
             gl: HashMap::new(),
             image_lookup: None,
             images: HashMap::new(),
-            image_requests: Vec::new(),
-            images_in_flight: HashMap::new(),
-            next_image: 1,
+            requests: Vec::new(),
+            in_flight: HashMap::new(),
+            next_request: 1,
+            workers: HashMap::new(),
+            next_worker: 1,
+            worker_fetcher: None,
+            waker: None,
             measure,
             measured: None,
             layout_seconds: 0.,
@@ -263,57 +289,123 @@ impl Realm {
         self.state.borrow_mut().image_lookup = lookup;
         self
     }
-    /// The image loads scripts asked for since last taken; the browser
-    /// fetches each and answers with `image_loaded`.
-    pub fn take_image_requests(&mut self) -> Vec<ImageRequest> {
+    /// Workers fetch their scripts (and fetch()) through this, on their
+    /// own threads; `waker` is called when one posts a message, so the
+    /// browser advances the page soon.
+    pub fn with_workers(self, fetcher: Option<SharedFetcher>, waker: Option<Waker>) -> Self {
         let mut s = self.state.borrow_mut();
-        let taken = std::mem::take(&mut s.image_requests);
-        taken
-            .into_iter()
-            .map(|(id, node, url)| {
-                s.images_in_flight.insert(id, node);
-                ImageRequest { id, url }
-            })
-            .collect()
+        s.worker_fetcher = fetcher;
+        s.waker = waker;
+        drop(s);
+        self
     }
-    /// An image load's outcome: the element gets its image (or none) and
-    /// its scripts hear `load` (or `error`).
-    pub fn image_loaded(&mut self, id: u64, result: Result<Arc<olo_web::image::Image>, String>) {
+    /// The requests scripts made since last taken; the browser fetches
+    /// each and answers with `deliver`.
+    pub fn take_requests(&mut self) -> Vec<Request> {
+        std::mem::take(&mut self.state.borrow_mut().requests)
+    }
+    /// A request's outcome: an image element gets its image and its scripts
+    /// hear `load` (or `error`); a fetch resolves (or rejects).
+    pub fn deliver(&mut self, id: u64, result: Result<Loaded, String>) {
         let state = self.state.clone();
-        let (node, size) = {
-            let mut s = state.borrow_mut();
-            let Some(node) = s.images_in_flight.remove(&id) else { return };
-            let size = match result {
-                Ok(image) => {
-                    let size = image.natural();
-                    s.images.insert(node, image);
-                    Some(size)
-                }
-                Err(e) => {
-                    s.report.console.push(format!("[warn] image: {e}"));
-                    None
-                }
-            };
-            (node, size)
-        };
+        let Some(node) = state.borrow_mut().in_flight.remove(&id) else { return };
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
         v8::tc_scope!(let tc, scope);
         let global = context.global(tc);
-        let Some(name) = v8::String::new(tc, "__olo_imageLoaded") else { return };
-        let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
-        let Some(element) = wrap(tc, &state, node) else { return };
-        let size: v8::Local<v8::Value> = match size {
-            Some((w, h)) => {
-                let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(tc, w.round()).into(), v8::Number::new(tc, h.round()).into()];
-                v8::Array::new_with_elements(tc, &items).into()
+        let (function, args): (&str, Vec<v8::Local<v8::Value>>) = match (node, result) {
+            (Some(node), result) => {
+                let size = match result {
+                    Ok(Loaded::Image(image)) => {
+                        let size = image.natural();
+                        state.borrow_mut().images.insert(node, image);
+                        Some(size)
+                    }
+                    Ok(Loaded::Text(_)) => None,
+                    Err(e) => {
+                        state.borrow_mut().report.console.push(format!("[warn] image: {e}"));
+                        None
+                    }
+                };
+                let Some(element) = wrap(tc, &state, node) else { return };
+                let size: v8::Local<v8::Value> = match size {
+                    Some((w, h)) => {
+                        let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(tc, w.round()).into(), v8::Number::new(tc, h.round()).into()];
+                        v8::Array::new_with_elements(tc, &items).into()
+                    }
+                    None => v8::null(tc).into(),
+                };
+                ("__olo_imageLoaded", vec![element.into(), size])
             }
-            None => v8::null(tc).into(),
+            (None, Ok(Loaded::Text(fetched))) => (
+                "__olo_fetched",
+                vec![
+                    v8::Number::new(tc, id as f64).into(),
+                    v8::Boolean::new(tc, true).into(),
+                    v8::Integer::new(tc, i32::from(fetched.status)).into(),
+                    string(tc, &fetched.content_type),
+                    bytes_array(tc, fetched.body, ByteKind::U8),
+                    string(tc, &fetched.url),
+                ],
+            ),
+            (None, Ok(Loaded::Image(_))) => return,
+            (None, Err(e)) => {
+                ("__olo_fetched", vec![v8::Number::new(tc, id as f64).into(), v8::Boolean::new(tc, false).into(), v8::null(tc).into(), v8::null(tc).into(), v8::null(tc).into(), string(tc, &e)])
+            }
         };
-        if f.call(tc, global.into(), &[element.into(), size]).is_none() {
-            let error = exception_text(tc, "image load");
+        let Some(name) = v8::String::new(tc, function) else { return };
+        let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
+        if f.call(tc, global.into(), &args).is_none() {
+            let error = exception_text(tc, function);
             state.borrow_mut().report.errors.push(error);
+        }
+    }
+    /// What the workers posted (messages, errors, console lines) reaches
+    /// the page's scripts.
+    fn pump_workers(&mut self) {
+        let state = self.state.clone();
+        let mut pending: Vec<(u32, worker::FromWorker)> = Vec::new();
+        {
+            let s = state.borrow();
+            for (id, handle) in &s.workers {
+                while let Some(m) = handle.try_recv() {
+                    pending.push((*id, m));
+                }
+            }
+        }
+        if pending.is_empty() {
+            return;
+        }
+        pending.sort_by_key(|(id, _)| *id);
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let global = context.global(tc);
+        let Some(name) = v8::String::new(tc, "__olo_workerEvent") else { return };
+        let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
+        for (id, message) in pending {
+            let (kind, value): (&str, v8::Local<v8::Value>) = match message {
+                worker::FromWorker::Message(bytes) => match clone::deserialize(tc, &bytes) {
+                    Some(v) => ("message", v),
+                    None => {
+                        tc.reset();
+                        ("error", string(tc, "message could not be read"))
+                    }
+                },
+                worker::FromWorker::Error(e) => ("error", string(tc, &e)),
+                worker::FromWorker::Console(line) => {
+                    state.borrow_mut().report.console.push(format!("worker: {line}"));
+                    continue;
+                }
+            };
+            let args: [v8::Local<v8::Value>; 3] = [v8::Number::new(tc, f64::from(id)).into(), string(tc, kind), value];
+            if f.call(tc, global.into(), &args).is_none() {
+                let error = exception_text(tc, "worker event");
+                state.borrow_mut().report.errors.push(error);
+                tc.reset();
+            }
         }
     }
     /// Run one script; an exception is recorded and returned, not fatal.
@@ -352,6 +444,7 @@ impl Realm {
         };
         let mut next_due_ms = None;
         for _ in 0..10_000 {
+            self.pump_workers();
             match self.call_prelude_number("__olo_tick", now_ms) {
                 Ok(next) if next < 0. => {
                     next_due_ms = None;
@@ -504,6 +597,7 @@ impl Realm {
             if self.over_time() {
                 break;
             }
+            self.pump_workers();
             let Ok(next) = self.call_prelude_number("__olo_tick", now) else { break };
             if next < 0. {
                 break;
@@ -594,9 +688,13 @@ impl State {
             gl: HashMap::new(),
             image_lookup: None,
             images: HashMap::new(),
-            image_requests: Vec::new(),
-            images_in_flight: HashMap::new(),
-            next_image: 1,
+            requests: Vec::new(),
+            in_flight: HashMap::new(),
+            next_request: 1,
+            workers: HashMap::new(),
+            next_worker: 1,
+            worker_fetcher: None,
+            waker: None,
             measure: None,
             measured: None,
             layout_seconds: 0.,
@@ -628,7 +726,7 @@ impl State {
         self.measured.as_ref()
     }
 }
-fn exception_text(tc: &mut v8::PinnedRef<'_, v8::TryCatch<'_, '_, v8::HandleScope<'_>>>, name: &str) -> String {
+pub(crate) fn exception_text(tc: &mut v8::PinnedRef<'_, v8::TryCatch<'_, '_, v8::HandleScope<'_>>>, name: &str) -> String {
     let mut text = String::new();
     if let Some(e) = tc.exception() {
         text.push_str(&e.to_rust_string_lossy(tc));
@@ -1116,6 +1214,11 @@ const NATIVES: &[&str] = &[
     "canvasOp",
     "canvasPixels",
     "loadImage",
+    "fetchAsync",
+    "structuredClone",
+    "workerStart",
+    "workerPost",
+    "workerTerminate",
     "imageSize",
     "imagePixels",
     "glCreate",
@@ -1205,7 +1308,7 @@ fn wrap<'s>(scope: &mut v8::PinScope<'s, '_>, state: &Shared, node: NodeId) -> O
     s.wrappers.insert(node, v8::Global::new(scope, object));
     Some(object)
 }
-fn string<'s>(scope: &mut v8::PinScope<'s, '_>, s: &str) -> v8::Local<'s, v8::Value> {
+pub(crate) fn string<'s>(scope: &mut v8::PinScope<'s, '_>, s: &str) -> v8::Local<'s, v8::Value> {
     v8::String::new(scope, s).map_or_else(|| v8::undefined(scope).into(), |v| v.into())
 }
 /// A script value as a GL argument: numbers (booleans as 0/1), strings,
@@ -1269,13 +1372,13 @@ fn unpremultiply(rgba: &[u8]) -> Vec<u8> {
     out
 }
 #[derive(Clone, Copy)]
-enum ByteKind {
+pub(crate) enum ByteKind {
     U8,
     I32,
     F32,
 }
 /// Bytes as a typed array of the given kind over a fresh buffer.
-fn bytes_array<'s>(scope: &mut v8::PinScope<'s, '_>, bytes: Vec<u8>, kind: ByteKind) -> v8::Local<'s, v8::Value> {
+pub(crate) fn bytes_array<'s>(scope: &mut v8::PinScope<'s, '_>, bytes: Vec<u8>, kind: ByteKind) -> v8::Local<'s, v8::Value> {
     let len = bytes.len();
     let store = v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
     let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
@@ -1697,7 +1800,7 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
                     let pairs: [(&str, v8::Local<v8::Value>); 4] = [
                         ("status", v8::Integer::new(scope, i32::from(fetched.status)).into()),
                         ("contentType", string(scope, &fetched.content_type)),
-                        ("body", string(scope, &String::from_utf8_lossy(&fetched.body))),
+                        ("body", bytes_array(scope, fetched.body, ByteKind::U8)),
                         ("url", string(scope, &fetched.url)),
                     ];
                     for (k, v) in pairs {
@@ -1708,6 +1811,67 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
                 }
                 Err(e) => throw(scope, &format!("TypeError: fetch failed: {e}")),
             }
+        }
+        // fetch(): (url, method, body) → request id; `__olo_fetched`
+        // follows when the browser has it. Null without a fetcher.
+        "fetchAsync" => {
+            let url = arg_string(scope, &args, 0);
+            let method = arg_string(scope, &args, 1);
+            let body = arg_string(scope, &args, 2);
+            let mut s = state.borrow_mut();
+            if s.fetcher.is_none() {
+                rv.set_null();
+            } else {
+                let id = s.next_request;
+                s.next_request += 1;
+                s.in_flight.insert(id, None);
+                s.requests.push(Request { id, url, kind: RequestKind::Text { method: if method.is_empty() { "GET".into() } else { method }, body } });
+                rv.set(v8::Number::new(scope, id as f64).into());
+            }
+        }
+        // structuredClone: through V8's serialisation.
+        "structuredClone" => {
+            if let Some(bytes) = clone::serialize(scope, args.get(0))
+                && let Some(value) = clone::deserialize(scope, &bytes)
+            {
+                rv.set(value);
+            }
+        }
+        // new Worker(url, source?): a thread with its own scope; its id.
+        "workerStart" => {
+            let url = arg_string(scope, &args, 0);
+            let source = if args.get(1).is_null_or_undefined() { None } else { Some(arg_string(scope, &args, 1)) };
+            let mut s = state.borrow_mut();
+            let Some(fetcher) = s.worker_fetcher.clone() else {
+                rv.set_null();
+                return;
+            };
+            let id = s.next_worker;
+            s.next_worker += 1;
+            let waker = s.waker.clone();
+            let user_agent = s.config.user_agent.clone();
+            match worker::Handle::spawn(url, source, fetcher, waker, user_agent) {
+                Ok(handle) => {
+                    s.workers.insert(id, handle);
+                    rv.set(v8::Number::new(scope, f64::from(id)).into());
+                }
+                Err(e) => {
+                    s.report.console.push(format!("[error] worker: {e}"));
+                    rv.set_null();
+                }
+            }
+        }
+        "workerPost" => {
+            let id = args.get(0).number_value(scope).unwrap_or(0.) as u32;
+            if let Some(bytes) = clone::serialize(scope, args.get(1))
+                && let Some(handle) = state.borrow().workers.get(&id)
+            {
+                handle.post(bytes);
+            }
+        }
+        "workerTerminate" => {
+            let id = args.get(0).number_value(scope).unwrap_or(0.) as u32;
+            state.borrow_mut().workers.remove(&id);
         }
         // A script inserted by a script: compiled and run here, in the global
         // scope, its exception recorded like a page script's. Returns whether
@@ -1831,9 +1995,10 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
                         rv.set(v8::Array::new_with_elements(scope, &items).into());
                     }
                     None if s.image_lookup.is_some() => {
-                        let id = s.next_image;
-                        s.next_image += 1;
-                        s.image_requests.push((id, n, url));
+                        let id = s.next_request;
+                        s.next_request += 1;
+                        s.in_flight.insert(id, Some(n));
+                        s.requests.push(Request { id, url, kind: RequestKind::Image });
                     }
                     None => rv.set_null(),
                 }
@@ -1874,11 +2039,12 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
                 let h = args.get(2).number_value(scope).unwrap_or(150.).max(1.) as u32;
                 let premultiplied = args.get(3).number_value(scope).unwrap_or(1.) != 0.;
                 let preserve = args.get(4).number_value(scope).unwrap_or(0.) != 0.;
+                let alpha = args.get(6).number_value(scope).unwrap_or(1.) != 0.;
                 let mut s = state.borrow_mut();
                 if s.gl.contains_key(&n) {
                     return true;
                 }
-                match webgl::Gl::shared().and_then(|gl| webgl::Context::new(gl, w, h, premultiplied, preserve)) {
+                match webgl::Gl::make().and_then(|gl| webgl::Context::new(gl, w, h, premultiplied, preserve, alpha)) {
                     Ok(c) => {
                         s.canvases.remove(&n);
                         s.gl.insert(n, c);

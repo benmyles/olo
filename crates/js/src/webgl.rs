@@ -11,42 +11,56 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 /// EGL_PLATFORM_SURFACELESS_MESA
 const PLATFORM_SURFACELESS_MESA: khronos_egl::Enum = 0x31DD;
+/// OLO_GL_TRACE: every call printed.
+static TRACE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+/// EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT
+const CONTEXT_OPENGL_ROBUST_ACCESS_EXT: khronos_egl::Int = 0x30BF;
+/// Vertex attributes a context tracks (WebGL's minimum is 16).
+const ATTRIBS: usize = 32;
+/// What WebGL validates before a draw: each enabled attribute array reads
+/// a buffer, and indexed draws have an index buffer. GL itself would read
+/// client memory (and fault).
+#[derive(Clone, Copy, Default)]
+struct Attrib {
+    enabled: bool,
+    buffer: Option<usize>,
+}
+#[derive(Clone)]
+struct VertexState {
+    attribs: [Attrib; ATTRIBS],
+    element_buffer: Option<usize>,
+}
+impl Default for VertexState {
+    fn default() -> Self {
+        Self { attribs: [Attrib::default(); ATTRIBS], element_buffer: None }
+    }
+}
 
-/// The thread's GL: one EGL context shared by every canvas (each draws into
-/// its own framebuffer).
-pub struct Gl {
+/// The thread's EGL: display and config, shared by every canvas's context.
+struct Display {
     egl: khronos_egl::DynamicInstance<khronos_egl::EGL1_4>,
     display: khronos_egl::Display,
-    context: khronos_egl::Context,
-    pub gl: glow::Context,
-    pub es3: bool,
+    config: khronos_egl::Config,
 }
 thread_local! {
-    static GL: RefCell<Option<Result<Rc<Gl>, String>>> = const { RefCell::new(None) };
+    static DISPLAY: RefCell<Option<Result<Rc<Display>, String>>> = const { RefCell::new(None) };
+    /// The EGL context current on this thread (a handle), to skip
+    /// make_current when it already is.
+    static CURRENT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
-impl Gl {
-    /// The thread's GL, made on first use; the error is remembered.
-    pub fn shared() -> Result<Rc<Gl>, String> {
-        GL.with(|cell| {
+impl Display {
+    fn shared() -> Result<Rc<Display>, String> {
+        DISPLAY.with(|cell| {
             let mut slot = cell.borrow_mut();
             if slot.is_none() {
-                let started = std::time::Instant::now();
-                let made = Self::new().map(Rc::new);
-                if std::env::var_os("OLO_WEB_TIMING").is_some() {
-                    match &made {
-                        Ok(gl) => eprintln!("webgl: {} (ES{}) in {:.1} ms", gl.renderer(), if gl.es3 { 3 } else { 2 }, started.elapsed().as_secs_f64() * 1e3),
-                        Err(e) => eprintln!("webgl: unavailable: {e}"),
-                    }
-                }
-                *slot = Some(made);
+                *slot = Some(Self::new().map(Rc::new));
             }
             slot.as_ref().unwrap().clone()
         })
     }
     fn new() -> Result<Self, String> {
         // SAFETY: loading libEGL and calling it as the EGL specification
-        // describes; the display, config and context are made and used on
-        // this thread only.
+        // describes; the display and config are used on this thread only.
         unsafe {
             let egl = khronos_egl::DynamicInstance::<khronos_egl::EGL1_4>::load_required().map_err(|e| format!("EGL: {e}"))?;
             let platform = egl.upcast::<khronos_egl::EGL1_5>();
@@ -67,22 +81,82 @@ impl Gl {
                     egl.choose_first_config(display, &attributes).ok().flatten().ok_or("EGL: no config")?
                 }
             };
-            let (context, es3) = match egl.create_context(display, config, None, &[khronos_egl::CONTEXT_CLIENT_VERSION, 3, khronos_egl::NONE]) {
-                Ok(c) => (c, true),
-                Err(_) => (egl.create_context(display, config, None, &[khronos_egl::CONTEXT_CLIENT_VERSION, 2, khronos_egl::NONE]).map_err(|e| format!("EGL context: {e}"))?, false),
-            };
-            egl.make_current(display, None, None, Some(context)).map_err(|e| format!("EGL current: {e}"))?;
-            let gl = glow::Context::from_loader_function(|s| egl.get_proc_address(s).map_or(std::ptr::null(), |p| p as *const std::ffi::c_void));
-            Ok(Self { egl, display, context, gl, es3 })
+            Ok(Self { egl, display, config })
         }
     }
-    /// Make the context current (another thread's GL could have been).
+}
+/// A canvas's own GL: its EGL context (WebGL contexts share nothing, and
+/// GL state is per context), with glow over it.
+pub struct Gl {
+    display: Rc<Display>,
+    context: khronos_egl::Context,
+    pub gl: glow::Context,
+    pub es3: bool,
+}
+impl Gl {
+    /// A new context on the thread's display (made on first use; its
+    /// error is remembered).
+    pub fn make() -> Result<Rc<Gl>, String> {
+        let started = std::time::Instant::now();
+        let first = DISPLAY.with(|cell| cell.borrow().is_none());
+        let made = Display::shared().and_then(Self::new).map(Rc::new);
+        if first && std::env::var_os("OLO_WEB_TIMING").is_some() {
+            match &made {
+                Ok(gl) => eprintln!("webgl: {} (ES{}) in {:.1} ms", gl.renderer(), if gl.es3 { 3 } else { 2 }, started.elapsed().as_secs_f64() * 1e3),
+                Err(e) => eprintln!("webgl: unavailable: {e}"),
+            }
+        }
+        made
+    }
+    fn new(display: Rc<Display>) -> Result<Self, String> {
+        // SAFETY: an EGL context on this thread's display, made current
+        // here before GL is loaded through it.
+        unsafe {
+            let d = &display;
+            // Robust buffer access first (reads past a buffer answer zero
+            // instead of faulting, as WebGL requires), then without.
+            let robust = [khronos_egl::CONTEXT_CLIENT_VERSION, 3, CONTEXT_OPENGL_ROBUST_ACCESS_EXT, 1, khronos_egl::NONE];
+            let (context, es3) = match d
+                .egl
+                .create_context(d.display, d.config, None, &robust)
+                .or_else(|_| d.egl.create_context(d.display, d.config, None, &[khronos_egl::CONTEXT_CLIENT_VERSION, 3, khronos_egl::NONE]))
+            {
+                Ok(c) => (c, true),
+                Err(_) => (d.egl.create_context(d.display, d.config, None, &[khronos_egl::CONTEXT_CLIENT_VERSION, 2, khronos_egl::NONE]).map_err(|e| format!("EGL context: {e}"))?, false),
+            };
+            d.egl.make_current(d.display, None, None, Some(context)).map_err(|e| format!("EGL current: {e}"))?;
+            CURRENT.with(|c| c.set(context.as_ptr() as usize));
+            let gl = glow::Context::from_loader_function(|s| d.egl.get_proc_address(s).map_or(std::ptr::null(), |p| p as *const std::ffi::c_void));
+            Ok(Self { display, context, gl, es3 })
+        }
+    }
+    /// Make this context current (another canvas's could be).
     pub fn current(&self) {
-        let _ = self.egl.make_current(self.display, None, None, Some(self.context));
+        let handle = self.context.as_ptr() as usize;
+        if CURRENT.with(|c| c.get()) != handle {
+            let d = &self.display;
+            let _ = d.egl.make_current(d.display, None, None, Some(self.context));
+            CURRENT.with(|c| c.set(handle));
+        }
+    }
+    /// The EGL context handle, for telling contexts apart.
+    pub fn handle(&self) -> usize {
+        self.context.as_ptr() as usize
     }
     pub fn renderer(&self) -> String {
+        self.current();
         // SAFETY: GL strings from a current context.
         unsafe { self.gl.get_parameter_string(glow::RENDERER) }
+    }
+}
+impl Drop for Gl {
+    fn drop(&mut self) {
+        let d = &self.display;
+        if CURRENT.with(|c| c.get()) == self.context.as_ptr() as usize {
+            let _ = d.egl.make_current(d.display, None, None, None);
+            CURRENT.with(|c| c.set(0));
+        }
+        let _ = d.egl.destroy_context(d.display, self.context);
     }
 }
 /// One argument from the script, as the natives pass it.
@@ -166,8 +240,19 @@ pub struct Context {
     uniforms: Vec<glow::UniformLocation>,
     /// The framebuffer bound by the script (None: the canvas's own).
     bound_framebuffer: Option<usize>,
+    /// The ARRAY_BUFFER bound, which vertexAttribPointer captures.
+    array_buffer: Option<usize>,
+    /// Vertex state of the default vertex array and of each VAO.
+    default_vertex: VertexState,
+    vao_vertex: Vec<VertexState>,
+    bound_vao: Option<usize>,
+    /// An error WebGL would raise that GL did not, for getError.
+    error: u32,
     pub premultiplied_alpha: bool,
     pub preserve_drawing_buffer: bool,
+    /// Whether the drawing buffer has an alpha channel the page sees
+    /// (`alpha: false`: the canvas is opaque whatever was drawn).
+    pub alpha: bool,
     /// Drawn since last read back.
     pub dirty: bool,
     pub touched: bool,
@@ -177,7 +262,7 @@ pub struct Context {
     unpack_premultiply: bool,
 }
 impl Context {
-    pub fn new(gl: Rc<Gl>, width: u32, height: u32, premultiplied_alpha: bool, preserve_drawing_buffer: bool) -> Result<Self, String> {
+    pub fn new(gl: Rc<Gl>, width: u32, height: u32, premultiplied_alpha: bool, preserve_drawing_buffer: bool, alpha: bool) -> Result<Self, String> {
         gl.current();
         let (width, height) = (width.clamp(1, 8192), height.clamp(1, 8192));
         // SAFETY: GL calls on the thread's current context, with objects made here.
@@ -203,8 +288,14 @@ impl Context {
                 vaos: Vec::new(),
                 uniforms: Vec::new(),
                 bound_framebuffer: None,
+                array_buffer: None,
+                default_vertex: VertexState::default(),
+                vao_vertex: Vec::new(),
+                bound_vao: None,
+                error: 0,
                 premultiplied_alpha,
                 preserve_drawing_buffer,
+                alpha,
                 dirty: false,
                 touched: false,
                 last: None,
@@ -298,9 +389,27 @@ impl Context {
         if !self.dirty && self.last.is_some() {
             return self.last.clone();
         }
-        let rgba = self.read_back();
+        let mut rgba = self.read_back();
+        if !self.alpha {
+            for px in rgba.chunks_exact_mut(4) {
+                px[3] = 255;
+            }
+        }
         let (w, h) = (self.width, self.height);
         self.dirty = false;
+        // OLO_GL_DUMP=DIR: each canvas's latest drawing buffer as a PNG
+        // (named by its size and context), for looking at.
+        if let Some(dir) = std::env::var_os("OLO_GL_DUMP") {
+            let path = std::path::Path::new(&dir).join(format!("canvas-{}-{w}x{h}.png", self.gl.handle() % 100_000));
+            if let Ok(file) = std::fs::File::create(&path) {
+                let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), w, h);
+                encoder.set_color(png::ColorType::Rgba);
+                encoder.set_depth(png::BitDepth::Eight);
+                if let Ok(mut writer) = encoder.write_header() {
+                    let _ = writer.write_image_data(&rgba);
+                }
+            }
+        }
         self.last = if self.premultiplied_alpha {
             olo_web::image::Image::from_premultiplied(w, h, rgba, 1., Default::default(), None).ok()
         } else {
@@ -324,12 +433,25 @@ impl Context {
     #[allow(clippy::too_many_lines)]
     pub fn op(&mut self, name: &str, a: &[Arg]) -> Out {
         self.gl.current();
+        if TRACE.get_or_init(|| std::env::var_os("OLO_GL_TRACE").is_some()).to_owned() {
+            let args: Vec<String> = a
+                .iter()
+                .map(|x| match x {
+                    Arg::Null => "null".into(),
+                    Arg::Num(n) => format!("{n}"),
+                    Arg::Str(t) => format!("{:?}", t.chars().take(40).collect::<String>()),
+                    Arg::Bytes(b, k) => format!("{k:?}[{}]", b.len()),
+                })
+                .collect();
+            eprintln!("gl#{} {name}({})", self.width ^ (self.height << 16), args.join(", "));
+        }
         let arg = |i: usize| a.get(i).unwrap_or(&Arg::Null);
         // SAFETY: every call below is a GL call on the thread's current
         // context with values from the script, which GL validates (bad
         // enums and objects set the context's error, as WebGL specifies).
+        let gl = self.gl.clone();
         unsafe {
-            let g = &self.gl.gl;
+            let g = &gl.gl;
             match name {
                 "createBuffer" => return Self::push(&mut self.buffers, g.create_buffer().unwrap_or(glow::NativeBuffer(std::num::NonZeroU32::new(1).unwrap()))),
                 "createTexture" => return g.create_texture().map_or(Out::None, |t| Self::push(&mut self.textures, t)),
@@ -342,13 +464,32 @@ impl Context {
                 }
                 "createFramebuffer" => return g.create_framebuffer().map_or(Out::None, |f| Self::push(&mut self.framebuffers, f)),
                 "createRenderbuffer" => return g.create_renderbuffer().map_or(Out::None, |r| Self::push(&mut self.renderbuffers, r)),
-                "createVertexArray" => return g.create_vertex_array().map_or(Out::None, |v| Self::push(&mut self.vaos, v)),
+                "createVertexArray" => {
+                    return g.create_vertex_array().map_or(Out::None, |v| {
+                        self.vao_vertex.push(VertexState::default());
+                        Self::push(&mut self.vaos, v)
+                    });
+                }
                 "deleteBuffer" => {
                     if let Arg::Num(i) = arg(0)
                         && let Some(slot) = self.buffers.get_mut(*i as usize)
                         && let Some(b) = slot.take()
                     {
                         g.delete_buffer(b);
+                        let i = *i as usize;
+                        if self.array_buffer == Some(i) {
+                            self.array_buffer = None;
+                        }
+                        for state in std::iter::once(&mut self.default_vertex).chain(self.vao_vertex.iter_mut()) {
+                            if state.element_buffer == Some(i) {
+                                state.element_buffer = None;
+                            }
+                            for a in &mut state.attribs {
+                                if a.buffer == Some(i) {
+                                    a.buffer = None;
+                                }
+                            }
+                        }
                     }
                 }
                 "deleteTexture" => {
@@ -399,7 +540,15 @@ impl Context {
                         g.delete_vertex_array(v);
                     }
                 }
-                "bindBuffer" => g.bind_buffer(arg(0).u(), Self::table(&self.buffers, arg(1))),
+                "bindBuffer" => {
+                    let index = if let Arg::Num(i) = arg(1) { Some(*i as usize).filter(|i| self.buffers.get(*i).is_some_and(Option::is_some)) } else { None };
+                    match arg(0).u() {
+                        glow::ARRAY_BUFFER => self.array_buffer = index,
+                        glow::ELEMENT_ARRAY_BUFFER => self.vertex_state().element_buffer = index,
+                        _ => {}
+                    }
+                    g.bind_buffer(arg(0).u(), Self::table(&self.buffers, arg(1)));
+                }
                 "bindTexture" => g.bind_texture(arg(0).u(), Self::table(&self.textures, arg(1))),
                 "bindFramebuffer" => {
                     self.bound_framebuffer = if let Arg::Num(i) = arg(1) { Some(*i as usize) } else { None };
@@ -407,7 +556,10 @@ impl Context {
                     g.bind_framebuffer(arg(0).u(), Some(fb));
                 }
                 "bindRenderbuffer" => g.bind_renderbuffer(arg(0).u(), Self::table(&self.renderbuffers, arg(1))),
-                "bindVertexArray" => g.bind_vertex_array(Self::table(&self.vaos, arg(0))),
+                "bindVertexArray" => {
+                    self.bound_vao = if let Arg::Num(i) = arg(0) { Some(*i as usize).filter(|i| self.vaos.get(*i).is_some_and(Option::is_some)) } else { None };
+                    g.bind_vertex_array(Self::table(&self.vaos, arg(0)));
+                }
                 "bufferData" => {
                     // (target, data or size, usage)
                     match arg(1) {
@@ -576,10 +728,37 @@ impl Context {
                         _ => g.uniform_matrix_4_f32_slice(Some(location), transpose, &values),
                     }
                 }
-                "enableVertexAttribArray" => g.enable_vertex_attrib_array(arg(0).u()),
-                "disableVertexAttribArray" => g.disable_vertex_attrib_array(arg(0).u()),
-                "vertexAttribPointer" => g.vertex_attrib_pointer_f32(arg(0).u(), arg(1).i(), arg(2).u(), arg(3).num() != 0., arg(4).i(), arg(5).i()),
-                "vertexAttribIPointer" => g.vertex_attrib_pointer_i32(arg(0).u(), arg(1).i(), arg(2).u(), arg(3).i(), arg(4).i()),
+                "enableVertexAttribArray" => {
+                    let i = arg(0).u() as usize;
+                    if i < ATTRIBS {
+                        self.vertex_state().attribs[i].enabled = true;
+                        g.enable_vertex_attrib_array(i as u32);
+                    }
+                }
+                "disableVertexAttribArray" => {
+                    let i = arg(0).u() as usize;
+                    if i < ATTRIBS {
+                        self.vertex_state().attribs[i].enabled = false;
+                        g.disable_vertex_attrib_array(i as u32);
+                    }
+                }
+                "vertexAttribPointer" | "vertexAttribIPointer" => {
+                    let i = arg(0).u() as usize;
+                    if i >= ATTRIBS {
+                        return Out::None;
+                    }
+                    let Some(buffer) = self.array_buffer else {
+                        // No buffer: WebGL refuses (a client pointer to GL).
+                        self.error = glow::INVALID_OPERATION;
+                        return Out::None;
+                    };
+                    self.vertex_state().attribs[i].buffer = Some(buffer);
+                    if name == "vertexAttribPointer" {
+                        g.vertex_attrib_pointer_f32(i as u32, arg(1).i(), arg(2).u(), arg(3).num() != 0., arg(4).i(), arg(5).i());
+                    } else {
+                        g.vertex_attrib_pointer_i32(i as u32, arg(1).i(), arg(2).u(), arg(3).i(), arg(4).i());
+                    }
+                }
                 "vertexAttribDivisor" => g.vertex_attrib_divisor(arg(0).u(), arg(1).u()),
                 "vertexAttrib1f" => g.vertex_attrib_1_f32(arg(0).u(), arg(1).f()),
                 "vertexAttrib2f" => g.vertex_attrib_2_f32(arg(0).u(), arg(1).f(), arg(2).f()),
@@ -596,20 +775,28 @@ impl Context {
                     }
                 }
                 "drawArrays" => {
-                    g.draw_arrays(arg(0).u(), arg(1).i(), arg(2).i());
-                    self.touch();
+                    if self.drawable(false) {
+                        g.draw_arrays(arg(0).u(), arg(1).i(), arg(2).i());
+                        self.touch();
+                    }
                 }
                 "drawElements" => {
-                    g.draw_elements(arg(0).u(), arg(1).i(), arg(2).u(), arg(3).i());
-                    self.touch();
+                    if self.drawable(true) {
+                        g.draw_elements(arg(0).u(), arg(1).i(), arg(2).u(), arg(3).i());
+                        self.touch();
+                    }
                 }
                 "drawArraysInstanced" => {
-                    g.draw_arrays_instanced(arg(0).u(), arg(1).i(), arg(2).i(), arg(3).i());
-                    self.touch();
+                    if self.drawable(false) {
+                        g.draw_arrays_instanced(arg(0).u(), arg(1).i(), arg(2).i(), arg(3).i());
+                        self.touch();
+                    }
                 }
                 "drawElementsInstanced" => {
-                    g.draw_elements_instanced(arg(0).u(), arg(1).i(), arg(2).u(), arg(3).i(), arg(4).i());
-                    self.touch();
+                    if self.drawable(true) {
+                        g.draw_elements_instanced(arg(0).u(), arg(1).i(), arg(2).u(), arg(3).i(), arg(4).i());
+                        self.touch();
+                    }
                 }
                 "clear" => {
                     g.clear(arg(0).u());
@@ -686,7 +873,11 @@ impl Context {
                     g.read_pixels(x, y, w, h, format, kind, glow::PixelPackData::Slice(Some(&mut out)));
                     return Out::Bytes(out);
                 }
-                "getError" => return Out::Num(f64::from(g.get_error())),
+                "getError" => {
+                    let gl_error = g.get_error();
+                    let error = if self.error != 0 { std::mem::take(&mut self.error) } else { gl_error };
+                    return Out::Num(f64::from(error));
+                }
                 "finish" => g.finish(),
                 "flush" => g.flush(),
                 "getParameter" => {
@@ -760,6 +951,29 @@ impl Context {
             }
         }
         out
+    }
+    /// The vertex state draws read: the bound VAO's, else the default's.
+    fn vertex_state(&mut self) -> &mut VertexState {
+        match self.bound_vao {
+            Some(i) if i < self.vao_vertex.len() => &mut self.vao_vertex[i],
+            _ => &mut self.default_vertex,
+        }
+    }
+    /// Whether a draw may go to GL: every enabled attribute reads a live
+    /// buffer, and an indexed draw has its index buffer. Otherwise WebGL
+    /// raises INVALID_OPERATION and draws nothing.
+    fn drawable(&mut self, indexed: bool) -> bool {
+        let buffers = &self.buffers;
+        let live = |b: Option<usize>| b.is_some_and(|i| buffers.get(i).is_some_and(Option::is_some));
+        let state = match self.bound_vao {
+            Some(i) if i < self.vao_vertex.len() => &self.vao_vertex[i],
+            _ => &self.default_vertex,
+        };
+        let ok = state.attribs.iter().all(|a| !a.enabled || live(a.buffer)) && (!indexed || live(state.element_buffer));
+        if !ok {
+            self.error = glow::INVALID_OPERATION;
+        }
+        ok
     }
     fn touch(&mut self) {
         self.dirty = true;

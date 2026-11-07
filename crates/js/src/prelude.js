@@ -261,7 +261,7 @@
       let r;
       try { r = fetchSync(name, 'GET', ''); } catch (e) { log('warn', ['script failed: ' + name + ': ' + (e && e.message || e)]); fireOn(el, 'error'); return; }
       if (r.status && (r.status < 200 || r.status >= 300)) { log('warn', ['script failed: ' + name + ': HTTP ' + r.status]); fireOn(el, 'error'); return; }
-      source = r.body;
+      source = typeof r.body === 'string' ? r.body : new TextDecoder().decode(r.body);
     } else {
       source = N.textContent(el);
       name = 'inserted inline script ' + (++inserts);
@@ -296,8 +296,6 @@
   });
 
   // ---------- Element
-  class DOMException extends Error { constructor(message, name) { super(message); this.name = name || 'Error'; this.code = { IndexSizeError: 1, HierarchyRequestError: 3, WrongDocumentError: 4, InvalidCharacterError: 5, NotFoundError: 8, NotSupportedError: 9, InvalidStateError: 11, SyntaxError: 12, InvalidModificationError: 13, NamespaceError: 14, InvalidAccessError: 15, TypeMismatchError: 17, SecurityError: 18, NetworkError: 19, AbortError: 20, QuotaExceededError: 22, TimeoutError: 23, InvalidNodeTypeError: 24, DataCloneError: 25 }[this.name] || 0; } }
-  global.DOMException = DOMException;
   const camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
   const kebab = (s) => s.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()).replace(/^webkit-/, '-webkit-');
   const parseStyle = (text) => {
@@ -415,8 +413,8 @@
     href: reflect('href', 'url'), src: reflect('src', 'url'), action: reflect('action', 'url'), poster: reflect('poster', 'url'),
     alt: reflect('alt'), type: reflect('type'), name: reflect('name'), placeholder: reflect('placeholder'), rel: reflect('rel'), target: reflect('target'), method: reflect('method'), htmlFor: reflect('for'), label: reflect('label'), charset: reflect('charset'), media: reflect('media'), srcset: reflect('srcset'), sizes: reflect('sizes'), loading: reflect('loading'), decoding: reflect('decoding'), crossOrigin: reflect('crossorigin'), referrerPolicy: reflect('referrerpolicy'), integrity: reflect('integrity'), nonce: reflect('nonce'), role: reflect('role'), autocomplete: reflect('autocomplete'), pattern: reflect('pattern'), min: reflect('min'), max: reflect('max'), step: reflect('step'), accept: reflect('accept'), enctype: reflect('enctype'), httpEquiv: reflect('http-equiv'), scope: reflect('scope'), headers: reflect('headers'), abbr: reflect('abbr'), axis: reflect('axis'), align: reflect('align'), valign: reflect('valign'), bgColor: reflect('bgcolor'), border: reflect('border'), cellPadding: reflect('cellpadding'), cellSpacing: reflect('cellspacing'), summary: reflect('summary'), frame: reflect('frame'), rules: reflect('rules'), coords: reflect('coords'), shape: reflect('shape'), download: reflect('download'), ping: reflect('ping'), hreflang: reflect('hreflang'), as: reflect('as'), form: { get() { return this.closest('form'); } },
     disabled: reflect('disabled', 'bool'), checked: reflect('checked', 'bool'), selected: reflect('selected', 'bool'), required: reflect('required', 'bool'), readOnly: reflect('readonly', 'bool'), multiple: reflect('multiple', 'bool'), autofocus: reflect('autofocus', 'bool'), open: reflect('open', 'bool'), controls: reflect('controls', 'bool'), autoplay: reflect('autoplay', 'bool'), loop: reflect('loop', 'bool'), muted: reflect('muted', 'bool'), playsInline: reflect('playsinline', 'bool'), async: reflect('async', 'bool'), defer: reflect('defer', 'bool'), noValidate: reflect('novalidate', 'bool'), reversed: reflect('reversed', 'bool'), isMap: reflect('ismap', 'bool'), noModule: reflect('nomodule', 'bool'),
-    width: { get() { const v = N.attr(this, 'width'); return v == null ? (N.nodeName(this) === 'CANVAS' ? 300 : 0) : (parseInt(v, 10) || 0); }, set(v) { N.setAttr(this, 'width', String(v)); if (N.nodeName(this) === 'CANVAS') { Object.defineProperty(this, '_sized', { value: true, configurable: true }); N.canvasSize(this, parseInt(v, 10) || 0, this.height); } } },
-    height: { get() { const v = N.attr(this, 'height'); return v == null ? (N.nodeName(this) === 'CANVAS' ? 150 : 0) : (parseInt(v, 10) || 0); }, set(v) { N.setAttr(this, 'height', String(v)); if (N.nodeName(this) === 'CANVAS') { Object.defineProperty(this, '_sized', { value: true, configurable: true }); N.canvasSize(this, this.width, parseInt(v, 10) || 0); } } },
+    width: { get() { const v = N.attr(this, 'width'); if (v == null) { const n = N.nodeName(this); if (n === 'CANVAS') return 300; if (n === 'IMG') { const r = N.rect(this); if (r && r[2] > 0) return Math.round(r[2]); const z = imageSizeOf(this); return z ? z[0] : 0; } return 0; } return parseInt(v, 10) || 0; }, set(v) { N.setAttr(this, 'width', String(v)); if (N.nodeName(this) === 'CANVAS') { Object.defineProperty(this, '_sized', { value: true, configurable: true }); N.canvasSize(this, parseInt(v, 10) || 0, this.height); } } },
+    height: { get() { const v = N.attr(this, 'height'); if (v == null) { const n = N.nodeName(this); if (n === 'CANVAS') return 150; if (n === 'IMG') { const r = N.rect(this); if (r && r[3] > 0) return Math.round(r[3]); const z = imageSizeOf(this); return z ? z[1] : 0; } return 0; } return parseInt(v, 10) || 0; }, set(v) { N.setAttr(this, 'height', String(v)); if (N.nodeName(this) === 'CANVAS') { Object.defineProperty(this, '_sized', { value: true, configurable: true }); N.canvasSize(this, this.width, parseInt(v, 10) || 0); } } },
     value: { get() { const tag = N.nodeName(this); if (tag === 'TEXTAREA') return N.textContent(this); if (tag === 'SELECT') { const o = N.query(this, 'option[selected]', false) || N.query(this, 'option', false); return o ? o.value : ''; } if (tag === 'OPTION') { const v = N.attr(this, 'value'); return v == null ? N.textContent(this) : v; } const v = this._value; return v !== undefined ? v : (N.attr(this, 'value') || ''); }, set(v) { const tag = N.nodeName(this); if (tag === 'TEXTAREA') N.setTextContent(this, String(v)); else Object.defineProperty(this, '_value', { value: String(v), writable: true, configurable: true }); } },
     defaultValue: reflect('value'),
     start: reflect('start', 'number'), span: reflect('span', 'number'), colSpan: reflect('colspan', 'number'), rowSpan: reflect('rowspan', 'number'), size: reflect('size', 'number'), maxLength: reflect('maxlength', 'number'), minLength: reflect('minlength', 'number'), rows: reflect('rows', 'number'), cols: reflect('cols', 'number'),
@@ -695,57 +693,6 @@
   global.CustomElementRegistry = function CustomElementRegistry() {};
 
   // ---------- Window: location, navigator, screen, timers, storage
-  const parseURL = (input, base) => {
-    const m = String(input).match(/^([a-zA-Z][a-zA-Z0-9+.-]*):(\/\/(?:([^@\/?#]*)@)?([^:\/?#]*)(?::(\d+))?)?([^?#]*)(\?[^#]*)?(#.*)?$/);
-    if (m) {
-      const protocol = m[1].toLowerCase() + ':';
-      const port = m[5] || '';
-      const host = (m[4] || '').toLowerCase() + (port ? ':' + port : '');
-      let pathname = m[6] || '';
-      if (m[2] !== undefined && !pathname) pathname = '/';
-      return { protocol, username: (m[3] || '').split(':')[0], password: (m[3] || '').split(':')[1] || '', hostname: (m[4] || '').toLowerCase(), port, host, pathname: normalizePath(pathname), search: m[7] && m[7] !== '?' ? m[7] : '', hash: m[8] && m[8] !== '#' ? m[8] : '' };
-    }
-    if (!base) return null;
-    const b = typeof base === 'string' ? parseURL(base) : base;
-    if (!b) return null;
-    const s = String(input);
-    const r = { protocol: b.protocol, username: b.username, password: b.password, hostname: b.hostname, port: b.port, host: b.host, pathname: b.pathname, search: '', hash: '' };
-    if (s.startsWith('//')) return parseURL(b.protocol + s);
-    if (s.startsWith('#')) { r.search = b.search; r.hash = s === '#' ? '' : s; return r; }
-    if (s.startsWith('?')) { r.search = s === '?' ? '' : s; return r; }
-    const hashAt = s.indexOf('#'); const path = hashAt >= 0 ? s.slice(0, hashAt) : s; r.hash = hashAt >= 0 && hashAt < s.length - 1 ? s.slice(hashAt) : '';
-    const qAt = path.indexOf('?'); const p = qAt >= 0 ? path.slice(0, qAt) : path; r.search = qAt >= 0 && qAt < path.length - 1 ? path.slice(qAt) : '';
-    if (p === '') { r.search = r.search || b.search; return r; }
-    r.pathname = normalizePath(p.startsWith('/') ? p : b.pathname.replace(/[^\/]*$/, '') + p);
-    return r;
-  };
-  const normalizePath = (p) => { const out = []; for (const seg of p.split('/')) { if (seg === '..') out.pop(); else if (seg !== '.') out.push(seg); } let s = out.join('/'); if (p.endsWith('/..') || p.endsWith('/.')) s += '/'; return s.startsWith('/') ? s : '/' + s; };
-  const serializeURL = (u) => u.protocol + (u.host || u.protocol === 'http:' || u.protocol === 'https:' ? '//' + (u.username ? u.username + (u.password ? ':' + u.password : '') + '@' : '') + u.host : '') + u.pathname + u.search + u.hash;
-  class URLSearchParams {
-    constructor(init) { this._list = []; if (init instanceof URLSearchParams) this._list = init._list.map((p) => p.slice()); else if (typeof init === 'string') { const s = init.startsWith('?') ? init.slice(1) : init; for (const part of s.split('&')) { if (!part) continue; const i = part.indexOf('='); const d = (x) => { try { return decodeURIComponent(x.replace(/\+/g, ' ')); } catch (e) { return x; } }; this._list.push(i < 0 ? [d(part), ''] : [d(part.slice(0, i)), d(part.slice(i + 1))]); } } else if (init && typeof init === 'object') { for (const [k, v] of (Array.isArray(init) ? init : Object.entries(init))) this._list.push([String(k), String(v)]); } }
-    append(k, v) { this._list.push([String(k), String(v)]); this._sync(); } delete(k) { this._list = this._list.filter((p) => p[0] !== String(k)); this._sync(); } get(k) { const p = this._list.find((p) => p[0] === String(k)); return p ? p[1] : null; } getAll(k) { return this._list.filter((p) => p[0] === String(k)).map((p) => p[1]); } has(k) { return this._list.some((p) => p[0] === String(k)); } set(k, v) { const i = this._list.findIndex((p) => p[0] === String(k)); if (i >= 0) { this._list[i][1] = String(v); this._list = this._list.filter((p, j) => j === i || p[0] !== String(k)); } else this._list.push([String(k), String(v)]); this._sync(); } sort() { this._list.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0); this._sync(); } forEach(fn, t) { for (const [k, v] of this._list) fn.call(t, v, k, this); } keys() { return this._list.map((p) => p[0])[Symbol.iterator](); } values() { return this._list.map((p) => p[1])[Symbol.iterator](); } entries() { return this._list.map((p) => p.slice())[Symbol.iterator](); } [Symbol.iterator]() { return this.entries(); } get size() { return this._list.length; }
-    toString() { return this._list.map(([k, v]) => encodeURIComponent(k).replace(/%20/g, '+') + '=' + encodeURIComponent(v).replace(/%20/g, '+')).join('&'); }
-    _sync() { if (this._url) { const s = this.toString(); this._url._u.search = s ? '?' + s : ''; } }
-  }
-  class URL {
-    constructor(input, base) { const u = parseURL(String(input), base !== undefined ? String(base) : undefined); if (!u) throw new TypeError("Failed to construct 'URL': Invalid URL"); this._u = u; }
-    get href() { return serializeURL(this._u); } set href(v) { const u = parseURL(String(v)); if (!u) throw new TypeError('Invalid URL'); this._u = u; }
-    get protocol() { return this._u.protocol; } set protocol(v) { this._u.protocol = String(v).replace(/:?$/, ':'); }
-    get host() { return this._u.host; } set host(v) { const [h, p] = String(v).split(':'); this._u.hostname = h; this._u.port = p || ''; this._u.host = h + (p ? ':' + p : ''); }
-    get hostname() { return this._u.hostname; } set hostname(v) { this._u.hostname = String(v); this._u.host = this._u.hostname + (this._u.port ? ':' + this._u.port : ''); }
-    get port() { return this._u.port; } set port(v) { this._u.port = String(v); this._u.host = this._u.hostname + (this._u.port ? ':' + this._u.port : ''); }
-    get pathname() { return this._u.pathname; } set pathname(v) { this._u.pathname = normalizePath(String(v)); }
-    get search() { return this._u.search; } set search(v) { v = String(v); this._u.search = v && v !== '?' ? (v.startsWith('?') ? v : '?' + v) : ''; }
-    get hash() { return this._u.hash; } set hash(v) { v = String(v); this._u.hash = v && v !== '#' ? (v.startsWith('#') ? v : '#' + v) : ''; }
-    get origin() { return /^(https?|wss?|ftp):$/.test(this._u.protocol) ? this._u.protocol + '//' + this._u.host : 'null'; }
-    get username() { return this._u.username; } get password() { return this._u.password; }
-    get searchParams() { const p = new URLSearchParams(this._u.search); p._url = this; return p; }
-    toString() { return this.href; } toJSON() { return this.href; }
-    static canParse(input, base) { try { new URL(input, base); return true; } catch (e) { return false; } }
-    static createObjectURL() { return 'blob:' + N.url() + '/' + Math.random().toString(36).slice(2); }
-    static revokeObjectURL() {}
-  }
-  global.URL = URL; global.URLSearchParams = URLSearchParams; global.webkitURL = URL;
   const resolveURL = (s) => { try { return new URL(s, N.url()).href; } catch (e) { return String(s); } };
   const pageURL = new URL(N.url());
   const location = {};
@@ -896,11 +843,7 @@
   global.indexedDB = { open() { const r = { onsuccess: null, onerror: null, onupgradeneeded: null, result: null, addEventListener() {} }; setTimeout(() => { if (r.onerror) r.onerror({ target: r }); }, 0); return r; }, deleteDatabase() { return { addEventListener() {} }; }, databases: () => Promise.resolve([]) };
   global.caches = { open: () => Promise.resolve({ match: () => Promise.resolve(undefined), put: () => Promise.resolve(), add: () => Promise.resolve(), addAll: () => Promise.resolve(), delete: () => Promise.resolve(false), keys: () => Promise.resolve([]) }), match: () => Promise.resolve(undefined), has: () => Promise.resolve(false), delete: () => Promise.resolve(false), keys: () => Promise.resolve([]) };
   // Encoding, base64, structured clone, crypto
-  global.atob = (s) => { const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'; s = String(s).replace(/[^A-Za-z0-9+\/]/g, ''); let out = '', bits = 0, acc = 0; for (const c of s) { acc = (acc << 6) | chars.indexOf(c); bits += 6; if (bits >= 8) { bits -= 8; out += String.fromCharCode((acc >> bits) & 255); } } return out; };
-  global.btoa = (s) => { const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'; s = String(s); let out = ''; for (let i = 0; i < s.length; i += 3) { const a = s.charCodeAt(i), b = s.charCodeAt(i + 1), c = s.charCodeAt(i + 2); if (a > 255 || b > 255 || c > 255) throw new DOMException('Invalid character', 'InvalidCharacterError'); const n = (a << 16) | ((b || 0) << 8) | (c || 0); out += chars[n >> 18] + chars[(n >> 12) & 63] + (isNaN(b) ? '=' : chars[(n >> 6) & 63]) + (isNaN(c) ? '=' : chars[n & 63]); } return out; };
-  global.TextEncoder = class TextEncoder { get encoding() { return 'utf-8'; } encode(s) { const str = unescape(encodeURIComponent(String(s == null ? '' : s))); const out = new Uint8Array(str.length); for (let i = 0; i < str.length; i++) out[i] = str.charCodeAt(i); return out; } encodeInto(s, dest) { const b = this.encode(s); const n = Math.min(b.length, dest.length); dest.set(b.subarray(0, n)); return { read: n, written: n }; } };
-  global.TextDecoder = class TextDecoder { constructor(label) { this.encoding = (label || 'utf-8').toLowerCase(); } decode(buf) { if (!buf) return ''; const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf.buffer || buf, buf.byteOffset || 0, buf.byteLength); let s = ''; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); try { return decodeURIComponent(escape(s)); } catch (e) { return s; } } };
-  global.structuredClone = (v) => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+  global.structuredClone = (v) => (v === undefined ? undefined : N.structuredClone(v));
   global.crypto = { getRandomValues(a) { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256) & (a.BYTES_PER_ELEMENT === 1 ? 255 : a.BYTES_PER_ELEMENT === 2 ? 65535 : 0xffffffff); return a; }, randomUUID() { const h = () => Math.floor(Math.random() * 16).toString(16); return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => c === 'x' ? h() : (8 + Math.floor(Math.random() * 4)).toString(16)); }, subtle: { digest: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')), importKey: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')), sign: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')) } };
   // Observers: intersection reports everything visible once; mutation and resize record nothing.
   global.MutationObserver = class MutationObserver { constructor(cb) { this._cb = cb; } observe() {} disconnect() {} takeRecords() { return []; } };
@@ -923,42 +866,33 @@
   // then mount what they show on scroll, as they would in time.
   global.IntersectionObserver = class IntersectionObserver { constructor(cb, options) { this._cb = cb; this.root = (options && options.root) || null; this.rootMargin = (options && options.rootMargin) || '0px'; this.thresholds = [].concat((options && options.threshold) || 0); this._targets = []; } observe(el) { if (this._targets.includes(el)) return; this._targets.push(el); const cb = this._cb; setTimeout(() => { if (!this._targets.includes(el)) return; const r = N.rect(el) || [0, 0, 0, 0]; const rect = new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]); const entry = { target: el, isIntersecting: true, intersectionRatio: 1, time: performanceNow(), boundingClientRect: rect, intersectionRect: rect, rootBounds: new DOMRect(0, 0, vw, vh) }; try { cb([entry], this); } catch (e) { reportError(e); } }, 0); } unobserve(el) { this._targets = this._targets.filter((t) => t !== el); } disconnect() { this._targets = []; } takeRecords() { return []; } };
   global.IntersectionObserverEntry = class IntersectionObserverEntry {};
-  // Network: fetch and XMLHttpRequest over the native synchronous fetch (results arrive as microtasks).
-  class Headers { constructor(init) { this._m = new Map(); if (init instanceof Headers) init.forEach((v, k) => this.append(k, v)); else if (Array.isArray(init)) for (const [k, v] of init) this.append(k, v); else if (init) for (const k of Object.keys(init)) this.append(k, init[k]); } append(k, v) { k = String(k).toLowerCase(); this._m.set(k, this._m.has(k) ? this._m.get(k) + ', ' + v : String(v)); } set(k, v) { this._m.set(String(k).toLowerCase(), String(v)); } get(k) { const v = this._m.get(String(k).toLowerCase()); return v === undefined ? null : v; } has(k) { return this._m.has(String(k).toLowerCase()); } delete(k) { this._m.delete(String(k).toLowerCase()); } forEach(fn, t) { for (const [k, v] of this._m) fn.call(t, v, k, this); } keys() { return this._m.keys(); } values() { return this._m.values(); } entries() { return this._m.entries(); } [Symbol.iterator]() { return this._m.entries(); } getSetCookie() { return []; } }
-  class Body { constructor(text) { this._text = text; this.bodyUsed = false; } text() { this.bodyUsed = true; return Promise.resolve(this._text); } json() { return this.text().then((t) => JSON.parse(t)); } arrayBuffer() { return this.text().then((t) => new TextEncoder().encode(t).buffer); } blob() { return this.text().then((t) => new Blob([t])); } formData() { return Promise.resolve(new FormData()); } get body() { return null; } }
-  class Response extends Body { constructor(body, init) { super(body == null ? '' : String(body)); init = init || {}; this.status = init.status === undefined ? 200 : init.status; this.statusText = init.statusText || ''; this.headers = new Headers(init.headers); this.url = init.url || ''; this.type = 'basic'; this.redirected = false; } get ok() { return this.status >= 200 && this.status < 300; } clone() { return new Response(this._text, { status: this.status, statusText: this.statusText, headers: this.headers, url: this.url }); } static json(data, init) { return new Response(JSON.stringify(data), init); } static error() { return new Response('', { status: 0 }); } static redirect() { return new Response('', { status: 302 }); } }
-  class Request extends Body { constructor(input, init) { init = init || {}; super(init.body == null ? '' : String(init.body)); this.url = input instanceof Request ? input.url : resolveURL(String(input)); this.method = (init.method || (input instanceof Request && input.method) || 'GET').toUpperCase(); this.headers = new Headers(init.headers || (input instanceof Request && input.headers)); this.credentials = init.credentials || 'same-origin'; this.mode = init.mode || 'cors'; this.signal = init.signal || null; this.cache = init.cache || 'default'; this.redirect = init.redirect || 'follow'; this.referrer = ''; this.keepalive = !!init.keepalive; } clone() { return new Request(this.url, { method: this.method, headers: this.headers, body: this._text }); } }
-  global.Headers = Headers; global.Response = Response; global.Request = Request;
-  const fetchSync = (url, method, body) => {
-    const m = /^data:([^,;]*)((?:;[^,]*)*),([\s\S]*)$/.exec(url);
-    if (m) { const base64 = /;base64/i.test(m[2]); let text; try { text = base64 ? atob(m[3]) : decodeURIComponent(m[3]); } catch (e) { text = m[3]; } return { status: 200, contentType: m[1] || 'text/plain;charset=US-ASCII', body: text, url }; }
-    return N.fetchSync(url, method, body);
-  };
-  global.fetch = (input, init) => new Promise((resolve, reject) => {
-    const req = input instanceof Request ? input : new Request(input, init);
-    if (req.signal && req.signal.aborted) return reject(new DOMException('The operation was aborted.', 'AbortError'));
-    let r;
-    try { r = fetchSync(req.url, req.method, req._text); } catch (e) { return reject(new TypeError(String(e && e.message || e))); }
-    resolve(new Response(r.body, { status: r.status, headers: { 'content-type': r.contentType }, url: r.url }));
-  });
+  // A synchronous fetch (XMLHttpRequest in synchronous mode): bytes.
+  const fetchSync = (url, method, body) => (/^(data|blob):/.test(url) ? global.__olo_fetchInline(url) : N.fetchSync(url, method, body));
   class XMLHttpRequest extends EventTargetCtor {
     constructor() { super(); this.readyState = 0; this.status = 0; this.statusText = ''; this.responseText = ''; this.response = ''; this.responseType = ''; this.responseURL = ''; this.responseXML = null; this.timeout = 0; this.withCredentials = false; this.upload = new EventTargetCtor(); this._headers = {}; this.onreadystatechange = null; this.onload = null; this.onerror = null; this.onabort = null; this.ontimeout = null; this.onprogress = null; this.onloadend = null; this.onloadstart = null; }
-    open(method, url) { this._method = String(method || 'GET').toUpperCase(); this._url = resolveURL(String(url)); this.readyState = 1; this._change(); }
+    open(method, url, async) { this._method = String(method || 'GET').toUpperCase(); this._url = resolveURL(String(url)); this._sync = async === false; this.readyState = 1; this._change(); }
     setRequestHeader(k, v) { this._headers[String(k).toLowerCase()] = String(v); }
     getResponseHeader(k) { return this._response && String(k).toLowerCase() === 'content-type' ? this._response.contentType : null; }
     getAllResponseHeaders() { return this._response ? 'content-type: ' + this._response.contentType + '\r\n' : ''; }
     overrideMimeType() {} abort() { this.readyState = 0; if (this.onabort) this.onabort(new ProgressEvent('abort')); }
     _change() { if (this.onreadystatechange) { try { this.onreadystatechange(new Event('readystatechange')); } catch (e) { reportError(e); } } dispatch(this, new Event('readystatechange')); }
+    _finish(r) {
+      this._response = r; this.status = r.status; this.statusText = r.status === 200 ? 'OK' : ''; this.responseURL = r.url;
+      const bytes = r.body instanceof Uint8Array ? r.body : new TextEncoder().encode(String(r.body));
+      const text = () => new TextDecoder().decode(bytes);
+      this.responseText = this.responseType === '' || this.responseType === 'text' ? text() : '';
+      this.response = this.responseType === 'json' ? (() => { try { return JSON.parse(text()); } catch (e) { return null; } })() : this.responseType === 'arraybuffer' ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : this.responseType === 'blob' ? new Blob([bytes], { type: r.contentType }) : this.responseType === 'document' ? null : text();
+      this.readyState = 2; this._change(); this.readyState = 3; this._change(); this.readyState = 4; this._change();
+      const load = new ProgressEvent('load', { lengthComputable: true, loaded: bytes.length, total: bytes.length }); dispatch(this, load);
+      dispatch(this, new ProgressEvent('loadend'));
+    }
+    _fail() { this.readyState = 4; this.status = 0; this._change(); dispatch(this, new ProgressEvent('error')); dispatch(this, new ProgressEvent('loadend')); }
     send(body) {
-      setTimeout(() => {
-        let r;
-        try { r = fetchSync(this._url, this._method, body == null ? '' : String(body)); } catch (e) { this.readyState = 4; this.status = 0; this._change(); const ev = new ProgressEvent('error'); if (this.onerror) this.onerror(ev); dispatch(this, ev); const end = new ProgressEvent('loadend'); if (this.onloadend) this.onloadend(end); dispatch(this, end); return; }
-        this._response = r; this.status = r.status; this.statusText = r.status === 200 ? 'OK' : ''; this.responseURL = r.url; this.responseText = this.responseType === '' || this.responseType === 'text' ? r.body : '';
-        this.response = this.responseType === 'json' ? (() => { try { return JSON.parse(r.body); } catch (e) { return null; } })() : this.responseType === 'arraybuffer' ? new TextEncoder().encode(r.body).buffer : r.body;
-        this.readyState = 2; this._change(); this.readyState = 3; this._change(); this.readyState = 4; this._change();
-        const load = new ProgressEvent('load', { lengthComputable: true, loaded: r.body.length, total: r.body.length }); if (this.onload) { try { this.onload(load); } catch (e) { reportError(e); } } dispatch(this, load);
-        const end = new ProgressEvent('loadend'); if (this.onloadend) this.onloadend(end); dispatch(this, end);
-      }, 0);
+      const payload = body == null ? '' : typeof body === 'string' ? body : body instanceof URLSearchParams ? body.toString() : (body instanceof Blob || body instanceof ArrayBuffer || ArrayBuffer.isView(body)) ? new TextDecoder().decode(body instanceof Blob ? body._bytes : body) : String(body);
+      if (this._sync) { try { this._finish(fetchSync(this._url, this._method, payload)); } catch (e) { this._fail(); } return; }
+      dispatch(this, new ProgressEvent('loadstart'));
+      if (/^(data|blob):/.test(this._url)) { setTimeout(() => { try { this._finish(global.__olo_fetchInline(this._url)); } catch (e) { this._fail(); } }, 0); return; }
+      global.__olo_fetchStart(this._url, this._method, payload).then((r) => this._finish(r), () => this._fail());
     }
   }
   XMLHttpRequest.UNSENT = 0; XMLHttpRequest.OPENED = 1; XMLHttpRequest.HEADERS_RECEIVED = 2; XMLHttpRequest.LOADING = 3; XMLHttpRequest.DONE = 4;
@@ -966,19 +900,43 @@
   global.AbortSignal = class AbortSignal extends EventTargetCtor { constructor() { super(); this.aborted = false; this.reason = undefined; this.onabort = null; } throwIfAborted() { if (this.aborted) throw this.reason; } static abort(reason) { const s = new AbortSignal(); s.aborted = true; s.reason = reason; return s; } static timeout(ms) { const c = new AbortController(); setTimeout(() => c.abort(new DOMException('timeout', 'TimeoutError')), ms); return c.signal; } static any() { return new AbortSignal(); } };
   global.AbortController = class AbortController { constructor() { this.signal = new AbortSignal(); } abort(reason) { if (this.signal.aborted) return; this.signal.aborted = true; this.signal.reason = reason === undefined ? new DOMException('The operation was aborted.', 'AbortError') : reason; const ev = new Event('abort'); if (this.signal.onabort) this.signal.onabort(ev); dispatch(this.signal, ev); } };
   global.FormData = class FormData { constructor(form) { this._l = []; if (form) for (const el of N.query(form, 'input[name],select[name],textarea[name]', true)) { const type = N.attr(el, 'type'); if ((type === 'checkbox' || type === 'radio') && N.attr(el, 'checked') == null) continue; this._l.push([N.attr(el, 'name'), el.value]); } } append(k, v) { this._l.push([String(k), v]); } set(k, v) { this.delete(k); this.append(k, v); } get(k) { const p = this._l.find((p) => p[0] === String(k)); return p ? p[1] : null; } getAll(k) { return this._l.filter((p) => p[0] === String(k)).map((p) => p[1]); } has(k) { return this._l.some((p) => p[0] === String(k)); } delete(k) { this._l = this._l.filter((p) => p[0] !== String(k)); } forEach(fn, t) { for (const [k, v] of this._l) fn.call(t, v, k, this); } entries() { return this._l[Symbol.iterator](); } keys() { return this._l.map((p) => p[0])[Symbol.iterator](); } values() { return this._l.map((p) => p[1])[Symbol.iterator](); } [Symbol.iterator]() { return this.entries(); } };
-  global.Blob = class Blob { constructor(parts, options) { this._parts = (parts || []).map(String); this.type = (options && options.type) || ''; } get size() { return this._parts.join('').length; } text() { return Promise.resolve(this._parts.join('')); } arrayBuffer() { return Promise.resolve(new TextEncoder().encode(this._parts.join('')).buffer); } slice() { return new Blob(this._parts, { type: this.type }); } stream() { return null; } };
-  global.File = class File extends global.Blob { constructor(parts, name, options) { super(parts, options); this.name = String(name); this.lastModified = Date.now(); } };
   global.FileReader = class FileReader extends EventTargetCtor { constructor() { super(); this.result = null; this.readyState = 0; this.onload = null; this.onerror = null; this.onloadend = null; } readAsText(b) { b.text().then((t) => { this.result = t; this.readyState = 2; const e = new ProgressEvent('load'); if (this.onload) this.onload(e); if (this.onloadend) this.onloadend(e); }); } readAsDataURL(b) { b.text().then((t) => { this.result = 'data:' + (b.type || 'application/octet-stream') + ';base64,' + btoa(t); this.readyState = 2; const e = new ProgressEvent('load'); if (this.onload) this.onload(e); if (this.onloadend) this.onloadend(e); }); } readAsArrayBuffer(b) { b.arrayBuffer().then((r) => { this.result = r; this.readyState = 2; const e = new ProgressEvent('load'); if (this.onload) this.onload(e); if (this.onloadend) this.onloadend(e); }); } abort() {} };
   global.WebSocket = class WebSocket extends EventTargetCtor { constructor(url) { super(); this.url = String(url); this.readyState = 3; this.onopen = null; this.onclose = null; this.onerror = null; this.onmessage = null; setTimeout(() => { const e = new Event('error'); if (this.onerror) this.onerror(e); dispatch(this, e); }, 0); } send() {} close() {} };
   global.WebSocket.CONNECTING = 0; global.WebSocket.OPEN = 1; global.WebSocket.CLOSING = 2; global.WebSocket.CLOSED = 3;
   global.EventSource = class EventSource extends EventTargetCtor { constructor(url) { super(); this.url = String(url); this.readyState = 2; } close() {} };
   global.BroadcastChannel = class BroadcastChannel extends EventTargetCtor { constructor(name) { super(); this.name = name; this.onmessage = null; } postMessage() {} close() {} };
   // Message ports deliver as macrotasks (React's scheduler runs on one).
-  class MessagePort extends EventTargetCtor { constructor() { super(); this.onmessage = null; this.onmessageerror = null; this._other = null; } postMessage(data) { const other = this._other; if (!other) return; setTimeout(() => { const ev = new MessageEvent('message', { data }); if (typeof other.onmessage === 'function') { try { other.onmessage(ev); } catch (e) { reportError(e); } } dispatch(other, ev); }, 0); } start() {} close() { this._other = null; } }
+  class MessagePort extends EventTargetCtor { constructor() { super(); this.onmessage = null; this.onmessageerror = null; this._other = null; } postMessage(data) { const other = this._other; if (!other) return; setTimeout(() => { if (other._other) dispatch(other, new MessageEvent('message', { data: N.structuredClone(data) })); }, 0); } start() {} close() { this._other = null; } }
   global.MessagePort = MessagePort;
   global.MessageChannel = class MessageChannel { constructor() { this.port1 = new MessagePort(); this.port2 = new MessagePort(); this.port1._other = this.port2; this.port2._other = this.port1; } };
-  global.Worker = class Worker extends EventTargetCtor { constructor() { super(); this.onmessage = null; this.onerror = null; } postMessage() {} terminate() {} };
-  global.SharedWorker = global.Worker;
+  // Workers: each a thread with its own scope (the engine's), its script
+  // fetched by the browser; messages are structured clones.
+  const workers = new Map();
+  global.Worker = class Worker extends EventTargetCtor {
+    constructor(url, options) {
+      super();
+      this.onmessage = null; this.onerror = null; this.onmessageerror = null;
+      const u = resolveURL(String(url));
+      const blob = global.__olo_blob(u);
+      const id = N.workerStart(u, blob ? new TextDecoder().decode(blob._bytes) : null);
+      if (id == null) throw new DOMException('Workers are not available', 'NotSupportedError');
+      this._id = id;
+      workers.set(id, this);
+    }
+    postMessage(data) { if (this._id != null) N.workerPost(this._id, data); }
+    terminate() { if (this._id != null) { N.workerTerminate(this._id); workers.delete(this._id); this._id = null; } }
+  };
+  global.__olo_workerEvent = (id, kind, data) => {
+    const w = workers.get(id);
+    if (!w) return;
+    if (kind === 'message') dispatch(w, new MessageEvent('message', { data }));
+    else if (kind === 'error') { log('error', ['Worker: ' + data]); dispatch(w, new ErrorEvent('error', { message: String(data) })); }
+  };
+  global.SharedWorker = class SharedWorker extends EventTargetCtor { constructor() { super(); throw new DOMException('Shared workers are not available', 'NotSupportedError'); } };
+  // fetch: the browser fetches, off this thread, and answers by id.
+  const fetches = new Map();
+  global.__olo_fetchStart = (url, method, body) => new Promise((resolve, reject) => { const id = N.fetchAsync(url, method, body); if (id == null) reject(new TypeError('no network')); else fetches.set(id, { resolve, reject }); });
+  global.__olo_fetched = (id, ok, status, contentType, bytes, urlOrError) => { const p = fetches.get(id); if (!p) return; fetches.delete(id); if (ok) p.resolve({ status, contentType, body: bytes, url: urlOrError }); else p.reject(new TypeError(String(urlOrError))); };
   global.Notification = class Notification extends EventTargetCtor { constructor() { super(); } static get permission() { return 'default'; } static requestPermission() { return Promise.resolve('denied'); } close() {} };
   // Web Animations on the virtual clock. Nothing is interpolated: when an
   // animation finishes, a forward fill writes its last keyframe to the
