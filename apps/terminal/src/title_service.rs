@@ -223,6 +223,20 @@ impl Response {
 
 /// Read one request from `r`: its head (up to a blank line), then its
 /// body (`Content-Length`, or chunked).
+/// Some of what's come, retried when a signal interrupts: a socket with a
+/// read timeout (`READ_LIMIT`) isn't restarted after a signal whatever its
+/// handler asks (signal(7)), and the upgrade's SIGURG landing on a request's
+/// thread had it answered 408 and closed before the request came (one in
+/// about 400 upgrades: the agent's send failed, "Broken pipe").
+fn read_some(r: &mut impl Read, chunk: &mut [u8]) -> std::io::Result<usize> {
+    loop {
+        match r.read(chunk) {
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            got => return got,
+        }
+    }
+}
+
 fn read_request(r: &mut impl Read) -> Result<Request, Response> {
     let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 4096];
@@ -233,7 +247,7 @@ fn read_request(r: &mut impl Read) -> Result<Request, Response> {
         if buf.len() > MOST_HEAD {
             return Err(Response::error(431, "the request's head is too big"));
         }
-        let n = r.read(&mut chunk).map_err(|_| Response::error(408, "the request didn't come"))?;
+        let n = read_some(r, &mut chunk).map_err(|_| Response::error(408, "the request didn't come"))?;
         if n == 0 {
             return Err(Response::error(400, "the request ended early"));
         }
@@ -247,7 +261,7 @@ fn read_request(r: &mut impl Read) -> Result<Request, Response> {
     let mut rest = buf[head_end + 4..].to_vec();
     let mut req = Request { method, path, headers, body: Vec::new() };
     let mut more = |rest: &mut Vec<u8>| -> Result<(), Response> {
-        let n = r.read(&mut chunk).map_err(|_| Response::error(408, "the request didn't come"))?;
+        let n = read_some(r, &mut chunk).map_err(|_| Response::error(408, "the request didn't come"))?;
         if n == 0 {
             return Err(Response::error(400, "the request ended early"));
         }
@@ -451,6 +465,27 @@ mod tests {
 
     fn nothing(_: &str, _: Option<&Path>) -> Result<String, String> {
         Ok("done".into())
+    }
+
+    /// A read interrupted by a signal is tried again, not a failed request.
+    #[test]
+    fn a_signal_isnt_a_failed_request() {
+        struct Interrupting<'a>(u32, &'a [u8]);
+        impl Read for Interrupting<'_> {
+            fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
+                if self.0 > 0 {
+                    self.0 -= 1;
+                    return Err(std::io::ErrorKind::Interrupted.into());
+                }
+                let n = self.1.len().min(b.len());
+                b[..n].copy_from_slice(&self.1[..n]);
+                self.1 = &self.1[n..];
+                Ok(n)
+            }
+        }
+        let text = b"POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{}";
+        let req = read_request(&mut Interrupting(3, text)).unwrap();
+        assert_eq!((req.method.as_str(), req.body.as_slice()), ("POST", &b"{}"[..]));
     }
 
     #[test]
