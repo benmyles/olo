@@ -2861,7 +2861,10 @@ for a 3-second `sleep`.
   them again. Blade marks the device lost where a submit, present, wait
   or acquire finds it (gpui/README.md), and the app starts anew as for
   the compositor gone (`upgrade::lost_compositor`: its state saved,
-  re-executed, same pid). Lost again within 10 s of that start
+  re-executed, same pid; an app that hands its work over,
+  `on_upgrade_due`, does that first and waits while
+  `upgrade_waits_while` says it's busy, as Token Pool's gateway, whose
+  connections aren't the compositor's). Lost again within 10 s of that start
   (`OLO_GPU_LOST_AT`, taken out of the environment as it starts), the
   GPU is broken, not reset, and the app ends rather than go round. Test
   with the app socket's debug-only `{"lose_gpu":true}`
@@ -12543,7 +12546,13 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   `drain.rs`; Ben, 2026-11-06: "it should serve new requests in the new
   process but allow old requests to finish in their existing process so
   that nothing errors"). olo-ui tells the app a new olo-pool is installed
-  (`olo_ui::on_upgrade_due`). The app starts a copy of the new version
+  (`olo_ui::on_upgrade_due`), and the same when app_server restarts (an
+  upgrade's reload, a crash: the compositor gone, `lost_compositor`,
+  which hands over first and waits while it's busy, rather than
+  re-executing at once: it had cut every agent's stream at each reload,
+  "API Error: Connection lost mid-response", Ben 2026-11-07; a tunnel
+  through the proxy with a ping every half second across `tsession
+  reload` broke a second in before, and answered 50 of 50 after). The app starts a copy of the new version
   beside itself with the listening sockets (copies kept at bind,
   `Drain::keep`; made inheritable for it alone, `Drain::for_a_copy`, and
   named in `OLO_POOL_LISTENERS`, `PORT=FD`), the windows' state (the
