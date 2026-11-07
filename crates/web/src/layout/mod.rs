@@ -178,7 +178,7 @@ impl Edges {
         self.top + self.bottom
     }
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Viewport {
     pub width: f64,
     pub height: f64,

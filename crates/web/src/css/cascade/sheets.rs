@@ -78,6 +78,8 @@ pub struct RuleSet {
     rules: Vec<Rule>,
     index: Index,
     issues: Vec<Issue>,
+    has_keys: selectors::HasKeys,
+    uses_empty: bool,
 }
 #[derive(Clone, Copy)]
 pub struct CompileLimits {
@@ -471,7 +473,9 @@ impl SheetBuilder {
                 index.pseudo.iter().map(|(p, b)| (*p, b.universal.len(), b.classes.len() + b.types.len() + b.ids.len())).collect::<Vec<_>>()
             );
         }
-        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues })
+        let has_keys = selectors.has_keys();
+        let uses_empty = selectors.uses_empty();
+        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues, has_keys, uses_empty })
     }
 }
 fn fold_arc(s: Arc<str>) -> Arc<str> {
@@ -502,6 +506,12 @@ impl RuleSet {
     }
     pub fn depends_on_descendants(&self) -> bool {
         self.selectors.depends_on_descendants()
+    }
+    pub fn has_keys(&self) -> &selectors::HasKeys {
+        &self.has_keys
+    }
+    pub fn uses_empty(&self) -> bool {
+        self.uses_empty
     }
     /// Whether any rule addresses this pseudo-element.
     pub fn has_pseudo(&self, pseudo: selectors::PseudoElement) -> bool {
@@ -637,6 +647,9 @@ impl RuleSet {
             check(cancelled)?;
             let rule = &self.rules[id as usize];
             let (matched, progress) = matcher.matches(rule.selector, match_limits.work.min(limits.work.saturating_sub(work))).map_err(Error::Selectors)?;
+            if progress.steps > 40 && std::env::var_os("OLO_STYLE_TIMING").is_some() {
+                eprintln!("    costly match: <{}> {} steps for {}", name.local_name, progress.steps, self.selectors.subject_summary(rule.selector));
+            }
             scratch.progress.compounds += progress.compounds;
             scratch.progress.tests += progress.tests;
             scratch.progress.steps += progress.steps;

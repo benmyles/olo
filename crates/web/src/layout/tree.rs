@@ -114,10 +114,10 @@ impl TextSource {
     }
 }
 pub struct Tree {
-    vectors: Box<[crate::svg::Viewport]>,
+    vectors: Arc<[crate::svg::Viewport]>,
     images: Option<Arc<crate::image::Set>>,
     pub(super) boxes: Box<[BoxNode]>,
-    pub(super) sources: Box<[TextSource]>,
+    pub(super) sources: Arc<[TextSource]>,
     pub(super) styles: Arc<StyleTree>,
     inlines: Box<[InlineBox]>,
     controls: Box<[Control]>,
@@ -126,6 +126,22 @@ pub struct Tree {
     text_bytes: usize,
 }
 impl Tree {
+    /// This tree with other styles for the same document and boxes (a
+    /// restyle that moved nothing).
+    pub fn with_styles(&self, styles: Arc<StyleTree>) -> Self {
+        Self {
+            vectors: self.vectors.clone(),
+            images: self.images.clone(),
+            boxes: self.boxes.clone(),
+            sources: self.sources.clone(),
+            styles,
+            inlines: self.inlines.clone(),
+            controls: self.controls.clone(),
+            document: self.document,
+            revision: self.revision,
+            text_bytes: self.text_bytes,
+        }
+    }
     pub fn vector(&self, index: u32) -> Option<&crate::svg::Viewport> {
         self.vectors.get(index as usize)
     }
@@ -967,7 +983,7 @@ impl<'a> BuildJob<'a> {
         controls.sort_by_key(|c| (c.source, c.offset));
         Ok(Arc::new(Tree {
             images: self.images,
-            vectors: self.vectors.into_boxed_slice(),
+            vectors: Arc::from(self.vectors),
             text_bytes,
             document: self.document.id(),
             revision: self.document.revision(),
@@ -975,7 +991,7 @@ impl<'a> BuildJob<'a> {
             inlines: self.inlines.into_boxed_slice(),
             controls: controls.into_boxed_slice(),
             boxes: self.boxes.into_boxed_slice(),
-            sources: self.sources.into_boxed_slice(),
+            sources: Arc::from(self.sources),
         }))
     }
 }

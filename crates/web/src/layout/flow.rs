@@ -4,7 +4,7 @@ use super::*;
 use crate::{
     css::{
         math,
-        style::{Keyword as K, Property as P, Value},
+        style::{Keyword as K, Property as P, StyleTree, Value},
     },
     font::Scope,
     text::{layout as inline, linebreak, prepare, shaping},
@@ -466,12 +466,26 @@ impl Geometry {
 pub struct Layout {
     cache: Arc<Cache>,
     geometry: Box<[Geometry]>,
-    texts: Box<[Option<inline::Layout>]>,
+    texts: Arc<[Option<inline::Layout>]>,
     scale: f64,
 }
 impl Layout {
     pub fn device_scale(&self) -> f64 {
         self.scale
+    }
+    /// This layout with other styles for the same boxes: a restyle that
+    /// changed only what is painted keeps every position and size.
+    pub fn with_styles(&self, styles: Arc<StyleTree>) -> Self {
+        let tree = Arc::new(self.cache.tree.with_styles(styles));
+        let cache = Arc::new(Cache {
+            tree,
+            texts: self.cache.texts.clone(),
+            shared: self.cache.shared.clone(),
+            intrinsics: self.cache.intrinsics.clone(),
+            glyph_geometry_bytes: self.cache.glyph_geometry_bytes,
+            fallbacks: self.cache.fallbacks.clone(),
+        });
+        Self { cache, geometry: self.geometry.clone(), texts: self.texts.clone(), scale: self.scale }
     }
     pub fn cache(&self) -> &Arc<Cache> {
         &self.cache
@@ -1440,6 +1454,6 @@ impl<'a> Job<'a> {
                 fallbacks: self.cache.fallbacks.clone(),
             });
         }
-        Ok(Layout { cache: self.cache, geometry: self.geometry.into_boxed_slice(), texts: self.texts.into_boxed_slice(), scale: self.scale })
+        Ok(Layout { cache: self.cache, geometry: self.geometry.into_boxed_slice(), texts: Arc::from(self.texts), scale: self.scale })
     }
 }

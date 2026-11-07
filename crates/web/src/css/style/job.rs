@@ -83,6 +83,12 @@ struct Styled {
     node: NodeId,
     style: Style,
     parent_box: Option<NonZeroU32>,
+    /// One past the last entry of this element's subtree (its pseudo-
+    /// elements and descendants follow it): the range to copy when the
+    /// subtree is unchanged.
+    end: u32,
+    /// Which pseudo-element this entry styles, if not the element itself.
+    pseudo: Option<PseudoElement>,
 }
 /// Completed styles for one immutable connected light document. No DOM,
 /// stylesheet, parent or state-source borrow survives completion.
@@ -96,6 +102,9 @@ pub struct StyleTree {
     /// element: entries in `styles` without a slot of their own.
     pseudos: std::collections::HashMap<(NodeId, PseudoElement), u32>,
     report: Report,
+    /// Made from a previous tree whose every difference is paint-only, over
+    /// an unchanged structure: a layout made for that tree serves this one.
+    geometry_kept: bool,
 }
 /// What a box or text span takes its style from: an element, or one of its
 /// pseudo-elements.
@@ -145,6 +154,11 @@ impl StyleTree {
     }
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+    /// Whether a layout of the previous tree's document serves this one
+    /// (see the field).
+    pub fn geometry_kept(&self) -> bool {
+        self.geometry_kept
     }
     pub fn document_revision(&self) -> u64 {
         self.revision
@@ -198,13 +212,22 @@ pub struct Job<'a> {
     /// Per styled entry: whether it is the same as in the previous tree,
     /// so its children may keep theirs.
     same: Vec<bool>,
+    /// Elements whose subtree is still open (their entry's index), to set
+    /// their `end` when the walk leaves them.
+    open: Vec<(NodeId, usize)>,
 }
 struct Incremental<'a> {
     tree: &'a StyleTree,
     nodes: std::collections::HashSet<NodeId>,
     children: std::collections::HashSet<NodeId>,
+    /// Nodes with a change somewhere below them (ancestors-or-self of the
+    /// changed): a reused element outside this set keeps its whole subtree.
+    below: std::collections::HashSet<NodeId>,
+    /// So far, every change is paint-only over an unchanged structure.
+    geometry_kept: bool,
+    /// Why not, when not (diagnostics).
+    why_not: Option<String>,
 }
-#[derive(Default)]
 struct Timing {
     hints: f64,
     matching: f64,
@@ -212,6 +235,18 @@ struct Timing {
     pseudo: f64,
     candidates: usize,
     elements: usize,
+    /// Subtrees copied whole: entries and time.
+    copied: usize,
+    copy: f64,
+    /// When the job was made, and when its construction finished.
+    started: std::time::Instant,
+    constructed: f64,
+    visited: usize,
+}
+impl Default for Timing {
+    fn default() -> Self {
+        Self { hints: 0., matching: 0., computing: 0., pseudo: 0., candidates: 0, elements: 0, copied: 0, copy: 0., started: std::time::Instant::now(), constructed: 0., visited: 0 }
+    }
 }
 impl<'a> Job<'a> {
     pub fn new(document: &'a Document, rules: &'a cascade::RuleSet, defaults: Arc<Defaults>, options: JobOptions<'a>, limits: JobLimits, cancelled: Option<&'a AtomicBool>) -> Result<Self> {
@@ -237,7 +272,7 @@ impl<'a> Job<'a> {
                 for p in compute::PHASES.iter().chain(&compute::COUNTS) {
                     p.store(0, std::sync::atomic::Ordering::Relaxed);
                 }
-                Timing::default()
+                Timing { started: std::time::Instant::now(), ..Default::default() }
             }),
             ancestors: Default::default(),
             chain: Vec::new(),
@@ -248,10 +283,14 @@ impl<'a> Job<'a> {
                 let changes = document.changes_since(tree.revision)?;
                 let mut nodes = std::collections::HashSet::new();
                 let mut children = std::collections::HashSet::new();
-                // With :has() or :empty in the rules, an element's style can
-                // change with its descendants: every ancestor of a change
-                // is restyled too (a chain, not a subtree).
-                let subtree_sensitive = rules.depends_on_descendants();
+                // With :has() in the rules, an element's style can change
+                // with its descendants: the ancestors of a change that could
+                // take part in a :has() argument (by the keys the arguments
+                // test) are restyled too, a chain, not a subtree; :empty
+                // makes a parent follow its children.
+                let has_keys = rules.has_keys();
+                let uses_has = !has_keys.is_empty();
+                let uses_empty = rules.uses_empty();
                 let dirty_ancestors = |n: NodeId, nodes: &mut std::collections::HashSet<NodeId>| {
                     let mut at = document.parent(n).ok().flatten();
                     while let Some(a) = at {
@@ -261,32 +300,49 @@ impl<'a> Job<'a> {
                         at = document.parent(a).ok().flatten();
                     }
                 };
+                let mut geometry_kept = true;
                 for (_, change) in changes {
                     match change {
                         crate::dom::Change::Node(n) => {
                             nodes.insert(*n);
-                            if subtree_sensitive {
+                            if uses_has && has_keys.touches(document, *n) {
                                 dirty_ancestors(*n, &mut nodes);
                             }
                         }
                         crate::dom::Change::Children(n) => {
+                            geometry_kept = false;
                             children.insert(*n);
-                            if subtree_sensitive {
+                            if uses_has {
                                 nodes.insert(*n);
                                 dirty_ancestors(*n, &mut nodes);
+                            } else if uses_empty {
+                                nodes.insert(*n);
                             }
                         }
                         crate::dom::Change::Text(n) => {
-                            if subtree_sensitive {
-                                dirty_ancestors(*n, &mut nodes);
+                            geometry_kept = false;
+                            if uses_empty && let Some(p) = document.parent(*n).ok().flatten() {
+                                nodes.insert(p);
                             }
                         }
                         crate::dom::Change::Unknown => return None,
                     }
                 }
-                Some(Incremental { tree, nodes, children })
+                let why_not = (!geometry_kept).then(|| "the document's structure or text changed".to_owned());
+                let mut below = std::collections::HashSet::new();
+                for &n in nodes.iter().chain(&children) {
+                    let mut at = Some(n);
+                    while let Some(a) = at {
+                        if !below.insert(a) {
+                            break;
+                        }
+                        at = document.parent(a).ok().flatten();
+                    }
+                }
+                Some(Incremental { tree, nodes, children, below, geometry_kept, why_not })
             }),
             same: Vec::new(),
+            open: Vec::new(),
             tree: StyleTree {
                 document: document.id(),
                 revision: document.revision(),
@@ -294,6 +350,7 @@ impl<'a> Job<'a> {
                 slots: Vec::new(),
                 styles: Vec::new(),
                 pseudos: Default::default(),
+                geometry_kept: false,
                 report: Report { stylesheet_issues: rules.issues().len(), ..Default::default() },
             },
         })
@@ -336,6 +393,11 @@ impl<'a> Job<'a> {
     }
     fn step_inner<H: Host>(&mut self, nodes: usize, host: &mut impl FnMut(NodeId) -> H) -> Result<Progress> {
         check(self.cancelled)?;
+        if let Some(t) = self.timing.as_mut()
+            && t.constructed == 0.
+        {
+            t.constructed = t.started.elapsed().as_secs_f64();
+        }
         for _ in 0..nodes {
             let Some(node) = self.next else {
                 self.progress.finished = true;
@@ -346,6 +408,9 @@ impl<'a> Job<'a> {
                 return Err(Error::Limit);
             }
             self.progress.visited += 1;
+            if let Some(t) = self.timing.as_mut() {
+                t.visited += 1;
+            }
             if self.document.node_type(node).map_err(Error::Dom)? == NodeType::Element {
                 // The filter holds the ancestors: pop to this node's parent,
                 // style it, then push it for its children.
@@ -356,7 +421,18 @@ impl<'a> Job<'a> {
                         self.ancestors.remove(h);
                     }
                 }
-                self.element(node, &host(node))?;
+                while self.open.last().is_some_and(|(n, _)| Some(*n) != parent) {
+                    let (_, i) = self.open.pop().unwrap();
+                    self.tree.styles[i].end = self.tree.styles.len() as u32;
+                }
+                let (index, skipped) = self.element(node, &host(node))?;
+                if skipped {
+                    // The subtree came over whole: on to what follows it.
+                    self.tree.styles[index].end = self.tree.styles.len() as u32;
+                    self.next = self.skip_subtree(node)?;
+                    continue;
+                }
+                self.open.push((node, index));
                 if !self.options.quirks {
                     let mut hashes = SmallVec::new();
                     let name = self.document.name(node).map_err(Error::Dom)?.unwrap_or("");
@@ -375,6 +451,18 @@ impl<'a> Job<'a> {
         }
         self.progress.finished = self.next.is_none();
         Ok(self.progress)
+    }
+    /// What follows `node` with its descendants left out.
+    fn skip_subtree(&mut self, mut node: NodeId) -> Result<Option<NodeId>> {
+        while node != self.document.root() {
+            self.tick()?;
+            if let Some(sibling) = self.document.next_sibling(node).map_err(Error::Dom)? {
+                return Ok(Some(sibling));
+            }
+            node = self.document.parent(node).map_err(Error::Dom)?.ok_or(Error::Invalid)?;
+            self.depth = self.depth.checked_sub(1).ok_or(Error::Invalid)?;
+        }
+        Ok(None)
     }
     fn successor(&mut self, mut node: NodeId) -> Result<Option<NodeId>> {
         if let Some(child) = self.document.first_child(node).map_err(Error::Dom)? {
@@ -594,7 +682,7 @@ impl<'a> Job<'a> {
         }
         Ok(())
     }
-    fn element(&mut self, node: NodeId, host: &impl Host) -> Result<()> {
+    fn element(&mut self, node: NodeId, host: &impl Host) -> Result<(usize, bool)> {
         if self.tree.styles.len() >= self.limits.elements || self.tree.styles.len() >= u32::MAX as usize || node.slot() as usize >= self.limits.slots {
             return Err(Error::Limit);
         }
@@ -613,7 +701,7 @@ impl<'a> Job<'a> {
         {
             let style = inc.tree.styles[i].style.clone();
             let index = self.tree.styles.len();
-            self.tree.styles.push(Styled { node, style, parent_box });
+            self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None });
             self.same.push(true);
             if self.root.is_none() {
                 self.root = Some(index);
@@ -623,19 +711,68 @@ impl<'a> Job<'a> {
             }
             self.tree.slots[node.slot() as usize] = NonZeroU32::new(index as u32 + 1);
             self.account.add(&self.tree.styles[index].style);
+            let mut pseudos = 0usize;
             for pseudo in [PseudoElement::Before, PseudoElement::After] {
                 if let Some(&p) = inc.tree.pseudos.get(&(node, pseudo)) {
                     let style = inc.tree.styles[p as usize].style.clone();
                     let at = self.tree.styles.len() as u32;
                     self.account.add(&style);
-                    self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1) });
+                    self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1), end: at + 1, pseudo: Some(pseudo) });
                     self.same.push(true);
                     self.tree.pseudos.insert((node, pseudo), at);
+                    pseudos += 1;
                 }
             }
             self.progress.styled += 1;
             self.progress.reused += 1;
-            return Ok(());
+            // Nothing changed below either: the whole subtree comes over,
+            // entry by entry (indices shift by the same amount), and the
+            // walk goes on past it.
+            if !inc.below.contains(&node) {
+                let old_end = inc.tree.styles[i].end as usize;
+                let first = i + 1 + pseudos;
+                if old_end > first && self.tree.styles.len() + (old_end - first) <= self.limits.elements {
+                    let copy_clock = self.timing.as_ref().map(|_| std::time::Instant::now());
+                    let delta = index as i64 - i as i64;
+                    for j in first..old_end {
+                        check(self.cancelled)?;
+                        self.work = self.work.saturating_add(1);
+                        if self.work > self.limits.work {
+                            return Err(Error::Limit);
+                        }
+                        let old = &inc.tree.styles[j];
+                        let k = self.tree.styles.len();
+                        // Shared with the previous tree: its memory is accounted there.
+                        self.tree.styles.push(Styled {
+                            node: old.node,
+                            style: old.style.clone(),
+                            parent_box: old.parent_box.and_then(|p| NonZeroU32::new((i64::from(p.get()) + delta) as u32)),
+                            end: (i64::from(old.end) + delta) as u32,
+                            pseudo: old.pseudo,
+                        });
+                        self.same.push(true);
+                        match old.pseudo {
+                            Some(p) => {
+                                self.tree.pseudos.insert((old.node, p), k as u32);
+                            }
+                            None => {
+                                if self.tree.slots.len() <= old.node.slot() as usize {
+                                    self.tree.slots.resize(old.node.slot() as usize + 1, None);
+                                }
+                                self.tree.slots[old.node.slot() as usize] = NonZeroU32::new(k as u32 + 1);
+                                self.progress.styled += 1;
+                                self.progress.reused += 1;
+                            }
+                        }
+                    }
+                    if let (Some(t), Some(c)) = (self.timing.as_mut(), copy_clock) {
+                        t.copy += c.elapsed().as_secs_f64();
+                        t.copied += old_end - first;
+                    }
+                    return Ok((index, true));
+                }
+            }
+            return Ok((index, false));
         }
         let clock = self.timing.as_ref().map(|_| std::time::Instant::now());
         let mut hints = Vec::new();
@@ -727,10 +864,23 @@ impl<'a> Job<'a> {
         }
         let index = self.tree.styles.len();
         self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
-        // Computed afresh: the same as before only if every value is.
+        // Computed afresh: the same as before only if every value is; a
+        // difference beyond paint means geometry may have changed.
         let same = self.previous.as_ref().and_then(|inc| inc.tree.index(node)).is_some_and(|i| self.previous.as_ref().unwrap().tree.styles[i].style.same_as(&style));
+        if let Some(inc) = self.previous.as_mut()
+            && inc.geometry_kept
+            && !same
+        {
+            inc.geometry_kept = inc.tree.index(node).is_some_and(|i| inc.tree.styles[i].style.differs_only_in_paint(&style));
+            if !inc.geometry_kept {
+                inc.why_not = Some(match inc.tree.index(node) {
+                    Some(i) => format!("<{}> changed {}", self.document.name(node).map_err(Error::Dom)?.unwrap_or("?"), inc.tree.styles[i].style.difference(&style)),
+                    None => format!("<{}> is new", self.document.name(node).map_err(Error::Dom)?.unwrap_or("?")),
+                });
+            }
+        }
         self.same.push(same);
-        self.tree.styles.push(Styled { node, style, parent_box });
+        self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None });
         if self.root.is_none() {
             self.root = Some(index);
         }
@@ -816,7 +966,14 @@ impl<'a> Job<'a> {
                 self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
                 self.account.add(&style);
                 let at = self.tree.styles.len() as u32;
-                self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1) });
+                // A generated pseudo-element computed afresh: geometry stands
+                // only if it was there before and differs in paint alone.
+                if let Some(inc) = self.previous.as_mut()
+                    && inc.geometry_kept
+                {
+                    inc.geometry_kept = inc.tree.pseudos.get(&(node, pseudo)).is_some_and(|&p| inc.tree.styles[p as usize].style.differs_only_in_paint(&style));
+                }
+                self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1), end: at + 1, pseudo: Some(pseudo) });
                 self.same.push(false);
                 self.tree.pseudos.insert((node, pseudo), at);
             }
@@ -836,9 +993,20 @@ impl<'a> Job<'a> {
             return Err(Error::Limit);
         }
         self.progress.styled += 1;
-        Ok(())
+        Ok((index, false))
     }
-    pub fn finish(self) -> Result<StyleTree> {
+    pub fn finish(mut self) -> Result<StyleTree> {
+        // Every subtree still open ends at the end.
+        let len = self.tree.styles.len() as u32;
+        for (_, i) in self.open.drain(..) {
+            self.tree.styles[i].end = len;
+        }
+        // The previous tree's pseudo-elements must all be here again, else
+        // one was lost (its element restyled without it): geometry changed.
+        if let Some(inc) = &self.previous {
+            let kept = inc.geometry_kept && inc.tree.pseudos.len() == self.tree.pseudos.len() && inc.tree.styles.len() == self.tree.styles.len();
+            self.tree.geometry_kept = kept;
+        }
         if let Some(t) = &self.timing {
             eprintln!(
                 "style timing: {} elements ({} reused), {} candidates ({:.1} per element; {} rejected, {} compounds, {} tests, {} steps): hints {:.1} ms, matching {:.1} ms, computing {:.1} ms, pseudo {:.1} ms; font cache {:?}",
@@ -866,9 +1034,23 @@ impl<'a> Job<'a> {
                     self.document.revision(),
                     self.document.changes_since(tree.revision).map(|c| c.len().to_string()).unwrap_or_else(|| "no".into())
                 ),
-                (Some(_), Some(inc)) => eprintln!("  incremental: {} changed elements, {} changed child lists", inc.nodes.len(), inc.children.len()),
+                (Some(_), Some(inc)) => eprintln!(
+                    "  incremental: {} changed elements, {} changed child lists; geometry {}; :has() keys {:?}",
+                    inc.nodes.len(),
+                    inc.children.len(),
+                    if inc.geometry_kept { "kept".to_owned() } else { format!("redone: {}", inc.why_not.as_deref().unwrap_or("?")) },
+                    self.rules.has_keys()
+                ),
                 _ => {}
             }
+            eprintln!(
+                "  job: {:.1} ms in all ({:.1} ms before the first step), {} nodes visited, {} entries copied whole in {:.1} ms",
+                t.started.elapsed().as_secs_f64() * 1000.,
+                t.constructed * 1000.,
+                t.visited,
+                t.copied,
+                t.copy * 1000.
+            );
             let ms: Vec<String> = compute::PHASES.iter().map(|p| format!("{:.1}", p.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e6)).collect();
             eprintln!(
                 "  computing: resolver {} ms, fonts {} ms, declared {} ms, coupled {} ms, customs {} ms ({} elements merged {} inherited entries), reuse {} ms",

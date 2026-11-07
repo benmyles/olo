@@ -116,6 +116,8 @@ pub enum InputKind {
 pub struct Advanced {
     pub next_due_ms: Option<f64>,
     pub changed: bool,
+    /// Wall time spent running scripts (and their measurements).
+    pub spent_ms: f64,
 }
 /// What happened.
 #[derive(Debug, Default, Clone)]
@@ -277,7 +279,7 @@ impl Realm {
             }
         }
         let after = self.state.borrow().document.revision();
-        Advanced { next_due_ms, changed: after != before }
+        Advanced { next_due_ms, changed: after != before, spent_ms: started.elapsed().as_secs_f64() * 1000. }
     }
     /// The last layout made for the scripts' measurements, if any: a render
     /// of the same document keeps its styles and texts.

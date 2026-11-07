@@ -109,6 +109,8 @@ struct Live {
     rendered: u64,
     last_render: Instant,
     last_eval: Option<String>,
+    /// Since the last summary: advances, script time, renders, render time.
+    stats: (usize, f64, usize, f64, Instant),
 }
 impl Drop for Live {
     fn drop(&mut self) {
@@ -327,6 +329,18 @@ fn render(
         let now_ms = live.started.elapsed().as_secs_f64() * 1000.;
         let advanced = live.realm.advance(now_ms, Duration::from_millis(30));
         live.next_due_ms = advanced.next_due_ms;
+        live.stats.0 += 1;
+        live.stats.1 += advanced.spent_ms;
+        if live.stats.4.elapsed() >= Duration::from_secs(2) && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            let (advances, js, renders, render_ms, since) = live.stats;
+            let report = live.realm.report();
+            eprintln!(
+                "  live: in {:.1} s, {advances} advances ({js:.0} ms of scripts), {renders} renders ({render_ms:.0} ms); {} layouts for measurements so far",
+                since.elapsed().as_secs_f64(),
+                report.layouts
+            );
+            live.stats = (0, 0., 0, 0., Instant::now());
+        }
         let revision = live.realm.revision();
         if revision != live.rendered {
             if live.last_render.elapsed() < LIVE_RENDER_INTERVAL {
@@ -380,6 +394,8 @@ fn render(
             }
             live.rendered = revision;
             live.last_render = Instant::now();
+            live.stats.2 += 1;
+            live.stats.3 += started.elapsed().as_secs_f64() * 1000.;
             cache.clear();
             rerendered = true;
         } else {
@@ -566,7 +582,16 @@ fn render(
             // The realm lives on: its timers keep running on the page's clock.
             let doc = realm.snapshot();
             layout_slot = realm.last_measured();
-            live_slot = Some(Live { realm, cancel: live_cancel.clone(), started: scripted_at, next_due_ms: Some(0.), rendered: doc.revision(), last_render: Instant::now(), last_eval: None });
+            live_slot = Some(Live {
+                realm,
+                cancel: live_cancel.clone(),
+                started: scripted_at,
+                next_due_ms: Some(0.),
+                rendered: doc.revision(),
+                last_render: Instant::now(),
+                last_eval: None,
+                stats: (0, 0., 0, 0., Instant::now()),
+            });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
                 report.scripts,

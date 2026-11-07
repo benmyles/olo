@@ -187,6 +187,9 @@ struct Machine<'a, 'k, T: Tree> {
     /// The element being matched and its name, looked up once for every
     /// selector tested against it.
     subject: Option<(T::Node, ElementName<'a>)>,
+    /// `:has()` results by (node, list), for the selectors of one element
+    /// asking the same question (a walk of the whole subtree each).
+    has: HashMap<(T::Node, u32), bool>,
 }
 /// One element's matcher: every selector tested against the same subject,
 /// with the machine, its caches and the subject's name made once.
@@ -271,9 +274,10 @@ impl Selectors {
             stack: SmallVec::new(),
             indices: HashMap::new(),
             pending_indices: 0,
-            cache_indices: false,
+            cache_indices: true,
             keys,
             subject: Some((node, name)),
+            has: HashMap::new(),
         };
         Ok(Matcher { machine, node })
     }
@@ -305,6 +309,7 @@ impl Selectors {
             cache_indices: !cfg!(feature = "baseline-selector-nth"),
             keys: &mut keys,
             subject: None,
+            has: HashMap::new(),
         };
         machine.tick(1)?;
         tree.content(root)?;
@@ -476,7 +481,17 @@ impl<'a, T: Tree> Machine<'a, '_, T> {
                 Test::Logical { mode, list } => {
                     let child = self.child_context(ctx)?;
                     match mode {
-                        Logical::Has => self.has(list, node, child)?,
+                        Logical::Has => {
+                            if let Some(&known) = self.has.get(&(node, list)) {
+                                known
+                            } else {
+                                let result = self.has(list, node, child)?;
+                                if self.has.len() < 1024 {
+                                    self.has.insert((node, list), result);
+                                }
+                                result
+                            }
+                        }
                         Logical::Is => self.list(list, node, child, false)?.is_some(),
                         Logical::Not => self.list(list, node, child, false)?.is_none(),
                     }

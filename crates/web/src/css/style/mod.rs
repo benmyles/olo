@@ -354,6 +354,49 @@ impl Dictionary {
         }
     }
 }
+/// Properties whose value changes what is painted but not any geometry.
+fn paint_only(p: Property) -> bool {
+    use Property as P;
+    matches!(
+        p,
+        P::Transform
+            | P::TransformOrigin
+            | P::Opacity
+            | P::Color
+            | P::BackgroundColor
+            | P::BackgroundImage
+            | P::BackgroundPosition
+            | P::BackgroundSize
+            | P::BackgroundRepeat
+            | P::BackgroundClip
+            | P::BackgroundOrigin
+            | P::BorderTopColor
+            | P::BorderRightColor
+            | P::BorderBottomColor
+            | P::BorderLeftColor
+            | P::BoxShadow
+            | P::Visibility
+            | P::ZIndex
+            | P::PointerEvents
+            | P::MaskImage
+            | P::MaskMode
+            | P::MaskPosition
+            | P::MaskRepeat
+            | P::MaskSize
+            | P::ClipPath
+            | P::Isolation
+            | P::TextDecorationColor
+            | P::CaretColor
+            | P::Fill
+            | P::FillOpacity
+            | P::Stroke
+            | P::StrokeOpacity
+            | P::StopColor
+            | P::StopOpacity
+            | P::FloodColor
+            | P::FloodOpacity
+    )
+}
 /// Typed initial declarations and their contextual computed baseline are
 /// compiled once per host generation, shared by all its element styles.
 pub struct Defaults {
@@ -637,6 +680,76 @@ impl Style {
     }
     pub fn overrides_share(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.values, &other.values)
+    }
+    /// The names of the properties in which `other` differs (diagnostics).
+    pub fn difference(&self, other: &Self) -> String {
+        let mut out = Vec::new();
+        for p in Property::ALL {
+            let (a, b) = (self.value(*p), other.value(*p));
+            if !a.same(b) {
+                out.push(p.as_str().to_string());
+            }
+        }
+        if !(Arc::ptr_eq(&self.font, &other.font) || self.font.request == other.font.request) {
+            out.push("font".into());
+        }
+        if !(Arc::ptr_eq(&self.customs, &other.customs) || self.customs.same_as(&other.customs)) {
+            out.push("custom properties".into());
+        }
+        out.join(", ")
+    }
+    /// Whether `other` differs from this style only in properties that
+    /// change what is painted, never where anything is (transforms,
+    /// colours, opacity, shadows, visibility, …): then a layout made for
+    /// one serves the other.
+    pub fn differs_only_in_paint(&self, other: &Self) -> bool {
+        if !Arc::ptr_eq(&self.defaults, &other.defaults) || self.axes != other.axes || self.line_height != other.line_height {
+            return false;
+        }
+        if !(Arc::ptr_eq(&self.font, &other.font) || self.font.request == other.font.request && self.font.context == other.font.context) {
+            return false;
+        }
+        if !(Arc::ptr_eq(&self.customs, &other.customs) || self.customs.same_as(&other.customs)) {
+            // Custom properties feed any declaration; conservatively a layout change.
+            return false;
+        }
+        let (mut a, mut b) = (self.values.iter().peekable(), other.values.iter().peekable());
+        loop {
+            match (a.peek(), b.peek()) {
+                (None, None) => return true,
+                (Some(x), Some(y)) if x.property == y.property => {
+                    if !x.value.same(&y.value) && !paint_only(x.property) {
+                        return false;
+                    }
+                    a.next();
+                    b.next();
+                }
+                (Some(x), Some(y)) => {
+                    // A property one has and the other does not (default).
+                    let p = if (x.property as u16) < (y.property as u16) { x.property } else { y.property };
+                    if !paint_only(p) {
+                        return false;
+                    }
+                    if (x.property as u16) < (y.property as u16) {
+                        a.next();
+                    } else {
+                        b.next();
+                    }
+                }
+                (Some(x), None) => {
+                    if !paint_only(x.property) {
+                        return false;
+                    }
+                    a.next();
+                }
+                (None, Some(y)) => {
+                    if !paint_only(y.property) {
+                        return false;
+                    }
+                    b.next();
+                }
+            }
+        }
     }
     /// Whether two styles are the same in every value (so children styled
     /// against either compute the same): the sparse entries, the font,

@@ -131,4 +131,11 @@ fn main() {
         println!("after a class toggle on {what}: style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms", p[0], p[1], p[2], p[3]);
         last = Some(m);
     }
+    // A transform set inline on a deep element: paint-only, so the layout
+    // should stand (boxes, text and layout at 0).
+    let node = elements.iter().copied().find(|&n| doc.attribute(n, "class").unwrap().is_some_and(|c| c.split(' ').any(|c| c == "logo-carousel__marquee"))).unwrap_or(elements[elements.len() / 3]);
+    doc.set_attribute(node, "style", "transform: translateX(-89px)").unwrap();
+    let m = measurer.measure(&doc, &host, &mut shaper, viewport, last.as_ref(), None).unwrap();
+    let p = m.phases_ms();
+    println!("after a transform on a deep element: style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms, all {:.1} ms", p[0], p[1], p[2], p[3], p[5]);
 }

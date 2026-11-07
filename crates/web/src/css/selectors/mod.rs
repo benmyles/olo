@@ -272,6 +272,74 @@ impl Selectors {
     pub fn depends_on_descendants(&self) -> bool {
         self.tests.iter().any(|t| matches!(t, Test::Logical { mode: Logical::Has, .. } | Test::Structural(Structural::Empty)))
     }
+    pub fn uses_empty(&self) -> bool {
+        self.tests.iter().any(|t| matches!(t, Test::Structural(Structural::Empty)))
+    }
+    /// What the `:has()` arguments test their subjects by, all together: a
+    /// changed element with none of these keys cannot change any `:has()`
+    /// result, so its ancestors keep their styles.
+    pub fn has_keys(&self) -> HasKeys {
+        let mut keys = HasKeys::default();
+        for test in &self.tests {
+            let Test::Logical { mode: Logical::Has, list } = test else { continue };
+            let links = &self.links[self.lists[*list as usize].links.start as usize..self.lists[*list as usize].links.end as usize];
+            for &i in links {
+                let complex = &self.complexes[i as usize];
+                // Every compound of the argument: any element on its path.
+                for step in &self.steps[complex.steps.start as usize..complex.steps.end as usize] {
+                    let tests = &self.tests[step.tests.start as usize..step.tests.end as usize];
+                    let mut keyed = false;
+                    for t in tests {
+                        match t {
+                            Test::Type { name, .. } if *name != ANY => {
+                                keys.tags.insert(self.symbols[*name as usize].to_ascii_lowercase());
+                                keyed = true;
+                            }
+                            Test::Id(n) => {
+                                keys.ids.insert(self.symbols[*n as usize].to_string());
+                                keyed = true;
+                            }
+                            Test::Class(n) => {
+                                keys.classes.insert(self.symbols[*n as usize].to_string());
+                                keyed = true;
+                            }
+                            Test::Attr { name, .. } => {
+                                keys.attributes.insert(self.symbols[*name as usize].to_ascii_lowercase());
+                                keyed = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                    // A compound of states alone (`:has(:focus-visible)`)
+                    // follows interaction, not the document: no key.
+                    let states_only = !keyed && !tests.is_empty() && tests.iter().all(|t| matches!(t, Test::State(_)));
+                    // The relative selector's anchor is the subject itself, not a key.
+                    let anchor = tests.iter().all(|t| matches!(t, Test::Structural(Structural::Anchor)));
+                    if !keyed && !states_only && !anchor {
+                        keys.universal = true;
+                        if std::env::var_os("OLO_STYLE_TIMING").is_some() {
+                            let kinds: Vec<String> = tests
+                                .iter()
+                                .map(|t| match t {
+                                    Test::Structural(s) => format!("{s:?}"),
+                                    Test::State(s) => format!(":{s:?}"),
+                                    Test::Pseudo(p) => format!("::{p:?}"),
+                                    Test::Logical { mode, .. } => format!("{mode:?}()"),
+                                    Test::Nth(_) => "nth".into(),
+                                    Test::Lang { .. } => "lang".into(),
+                                    Test::Dir(_) => "dir".into(),
+                                    Test::Type { .. } => "*".into(),
+                                    _ => "?".into(),
+                                })
+                                .collect();
+                            eprintln!("  :has() argument without a key: {}", kinds.join("+"));
+                        }
+                    }
+                }
+            }
+        }
+        keys
+    }
     /// Whether any selector addresses a pseudo-element (`::before`, …).
     pub fn has_pseudo_elements(&self) -> bool {
         self.complexes.iter().any(|c| c.pseudo.is_some())
@@ -318,6 +386,46 @@ fn check(cancelled: Option<&AtomicBool>) -> Result<()> {
 }
 fn white(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\r' | '\n' | '\x0c')
+}
+/// The keys `:has()` arguments test by (see `Selectors::has_keys`).
+#[derive(Default, Debug, Clone)]
+pub struct HasKeys {
+    pub tags: std::collections::HashSet<String>,
+    pub ids: std::collections::HashSet<String>,
+    pub classes: std::collections::HashSet<String>,
+    pub attributes: std::collections::HashSet<String>,
+    /// An argument compound with no key at all (`:has(> *)`, `:has(:hover)`).
+    pub universal: bool,
+}
+impl HasKeys {
+    pub fn is_empty(&self) -> bool {
+        !self.universal && self.tags.is_empty() && self.ids.is_empty() && self.classes.is_empty() && self.attributes.is_empty()
+    }
+    /// Whether this element (by its tag, id, classes and attribute names)
+    /// could take part in a `:has()` argument's match.
+    pub fn touches(&self, doc: &crate::dom::Document, node: crate::dom::NodeId) -> bool {
+        if self.universal {
+            return true;
+        }
+        if let Ok(Some(name)) = doc.name(node)
+            && self.tags.contains(&name.to_ascii_lowercase())
+        {
+            return true;
+        }
+        let Ok(attributes) = doc.attributes_ns(node) else { return true };
+        for a in attributes {
+            if self.attributes.contains(&a.local_name.to_ascii_lowercase()) {
+                return true;
+            }
+            if a.local_name == "id" && self.ids.contains(a.value) {
+                return true;
+            }
+            if a.local_name == "class" && a.value.split(white).any(|c| self.classes.contains(c)) {
+                return true;
+            }
+        }
+        false
+    }
 }
 /// What an element's ancestors are: their tags, ids and classes, hashed
 /// into a counting Bloom filter the style walk keeps as it descends. A

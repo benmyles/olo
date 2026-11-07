@@ -402,27 +402,32 @@ impl Measurer {
         while !job.step(256, |_| host)?.finished {}
         let styles = Arc::new(job.finish()?);
         phases[0] = started.elapsed().as_secs_f64() * 1000.;
-        let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
-        // The images were bound to the document before the scripts changed
-        // it; while they still fit, boxes take their sizes.
-        if let Some(images) = &self.images
-            && images.validate(doc).is_ok()
-        {
-            job = job.with_images(images.clone())?;
-        }
-        while !job.step(256)?.finished {}
-        let tree = job.finish()?;
-        phases[1] = started.elapsed().as_secs_f64() * 1000. - phases[0];
-        let mut job = layout::PrepareJob::new(shaper, &self.scope, tree, Default::default(), cancel)?;
-        if let Some(p) = previous {
-            job = job.with_previous(p.layout.cache());
-        }
-        while !job.step(4)?.finished {}
-        let cache = job.finish()?;
-        phases[2] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1];
-        let mut job = layout::Job::new(shaper, &self.scope, cache, viewport, Default::default(), cancel)?;
-        while !job.step(256)?.finished {}
-        let layout = Arc::new(job.finish()?);
+        let kept = previous.filter(|p| styles.geometry_kept() && p.viewport == viewport);
+        let layout = if let Some(p) = kept {
+            Arc::new(p.layout.with_styles(styles))
+        } else {
+            let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
+            // The images were bound to the document before the scripts changed
+            // it; while they still fit, boxes take their sizes.
+            if let Some(images) = &self.images
+                && images.validate(doc).is_ok()
+            {
+                job = job.with_images(images.clone())?;
+            }
+            while !job.step(256)?.finished {}
+            let tree = job.finish()?;
+            phases[1] = started.elapsed().as_secs_f64() * 1000. - phases[0];
+            let mut job = layout::PrepareJob::new(shaper, &self.scope, tree, Default::default(), cancel)?;
+            if let Some(p) = previous {
+                job = job.with_previous(p.layout.cache());
+            }
+            while !job.step(4)?.finished {}
+            let cache = job.finish()?;
+            phases[2] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1];
+            let mut job = layout::Job::new(shaper, &self.scope, cache, viewport, Default::default(), cancel)?;
+            while !job.step(256)?.finished {}
+            Arc::new(job.finish()?)
+        };
         phases[3] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1] - phases[2];
         let mut index = std::collections::HashMap::with_capacity(layout.cache().tree().boxes().len());
         for (id, b) in layout.cache().tree().iter() {
@@ -1194,39 +1199,47 @@ fn render(
         + styles.report().inline_invalid
         + styles.report().presentation_invalid
         + styles.report().presentation_unsupported;
-    progress(Phase::Boxes, 0);
-    let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
-    if let Some(images) = images {
-        job = job.with_images(images.clone())?;
-    }
-    while !job.step(128)?.finished {
-        progress(Phase::Boxes, job.progress().boxes)
-    }
-    fallbacks.merge(job.fallbacks());
-    let tree = job.finish()?;
-    if let Some(t) = timing {
-        stamps[1] = t.elapsed().as_secs_f64() * 1000.;
-    }
-    progress(Phase::Text, 0);
-    let mut job = layout::PrepareJob::new(shaper, scope, tree, Default::default(), cancel)?;
-    if let Some(p) = previous {
-        job = job.with_previous(p.cache());
-    }
-    while !job.step(1)?.finished {
-        progress(Phase::Text, job.progress().texts)
-    }
-    fallbacks.merge(job.fallbacks());
-    let cache = job.finish()?;
-    if let Some(t) = timing {
-        stamps[2] = t.elapsed().as_secs_f64() * 1000.;
-    }
-    progress(Phase::Layout, 0);
-    let mut job = layout::Job::new(shaper, scope, cache, viewport, Default::default(), cancel)?;
-    while !job.step(64)?.finished {
-        progress(Phase::Layout, job.progress().boxes)
-    }
-    fallbacks.merge(job.fallbacks());
-    let layout = Arc::new(job.finish()?);
+    // A restyle that changed only what is painted, over the same boxes:
+    // the previous layout stands, with the new styles.
+    let kept = previous.filter(|p| styles.geometry_kept() && p.device_scale() == viewport.scale && p.cache().tree().images().map(Arc::as_ptr) == images.map(Arc::as_ptr));
+    let layout = if let Some(p) = kept {
+        fallbacks.merge(&p.cache().fallbacks());
+        Arc::new(p.with_styles(styles))
+    } else {
+        progress(Phase::Boxes, 0);
+        let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
+        if let Some(images) = images {
+            job = job.with_images(images.clone())?;
+        }
+        while !job.step(128)?.finished {
+            progress(Phase::Boxes, job.progress().boxes)
+        }
+        fallbacks.merge(job.fallbacks());
+        let tree = job.finish()?;
+        if let Some(t) = timing {
+            stamps[1] = t.elapsed().as_secs_f64() * 1000.;
+        }
+        progress(Phase::Text, 0);
+        let mut job = layout::PrepareJob::new(shaper, scope, tree, Default::default(), cancel)?;
+        if let Some(p) = previous {
+            job = job.with_previous(p.cache());
+        }
+        while !job.step(1)?.finished {
+            progress(Phase::Text, job.progress().texts)
+        }
+        fallbacks.merge(job.fallbacks());
+        let cache = job.finish()?;
+        if let Some(t) = timing {
+            stamps[2] = t.elapsed().as_secs_f64() * 1000.;
+        }
+        progress(Phase::Layout, 0);
+        let mut job = layout::Job::new(shaper, scope, cache, viewport, Default::default(), cancel)?;
+        while !job.step(64)?.finished {
+            progress(Phase::Layout, job.progress().boxes)
+        }
+        fallbacks.merge(job.fallbacks());
+        Arc::new(job.finish()?)
+    };
     if let Some(t) = timing {
         stamps[3] = t.elapsed().as_secs_f64() * 1000.;
     }
