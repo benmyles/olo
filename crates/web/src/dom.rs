@@ -219,16 +219,16 @@ struct Attribute {
 
 #[derive(Debug, Clone)]
 struct Pool<T> {
-    slots: Vec<Option<T>>,
+    slots: crate::chunked::Chunked<Option<T>>,
     free: Vec<u32>,
     live: usize,
 }
 impl<T> Default for Pool<T> {
     fn default() -> Self {
-        Self { slots: Vec::new(), free: Vec::new(), live: 0 }
+        Self { slots: crate::chunked::Chunked::new(), free: Vec::new(), live: 0 }
     }
 }
-impl<T> Pool<T> {
+impl<T: Clone> Pool<T> {
     fn insert(&mut self, value: T) -> NonZeroU32 {
         self.live += 1;
         if let Some(at) = self.free.pop() {
@@ -305,7 +305,10 @@ pub struct Document {
     changes: Vec<(u64, Change)>,
     changes_from: u64,
     source: Arc<str>,
-    nodes: Vec<Node>,
+    /// In shared chunks: the document's snapshot, taken every frame of a
+    /// live page, copies the chunks' pointers, and a script's change copies
+    /// only its node's chunk.
+    nodes: crate::chunked::Chunked<Node>,
     free_nodes: Link,
     live_nodes: usize,
     attributes: Pool<Attribute>,
@@ -351,7 +354,11 @@ impl Document {
             changes: Vec::new(),
             changes_from: 0,
             source,
-            nodes: vec![Node::new(Data::Document, 1)],
+            nodes: {
+                let mut n = crate::chunked::Chunked::new();
+                n.push(Node::new(Data::Document, 1));
+                n
+            },
             free_nodes: None,
             live_nodes: 1,
             attributes: Pool::default(),

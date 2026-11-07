@@ -2,6 +2,7 @@
 //! conforming browser. See docs/browser for measured compatibility.
 #![forbid(unsafe_code)]
 
+pub(crate) mod chunked;
 pub mod css;
 pub mod dom;
 pub mod font;
