@@ -7202,6 +7202,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-dconf"
+version = "0.1.0"
+dependencies = [
+ "olo-crash",
+ "tracing",
+ "tracing-subscriber",
+ "zbus",
+ "zvariant",
+]
+
+[[package]]
 name = "olo-deskbar"
 version = "0.1.0"
 dependencies = [

@@ -383,6 +383,7 @@ socket.
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
+| `apps/dconf` | `olo-dconf`: Olo's dconf service (`ca.desrt.dconf`), GSettings programs' settings written into dconf's own database in place of GNOME's dconf-service (see "Other toolkits' programs"). |
 | `apps/secrets` | `olo-secrets`: Olo's own Secret Service, programs' secrets kept in place of GNOME Keyring when Preferences ▸ Security says so (see "Programs' secrets"). |
 | `crates/camera` | `olo-camera`: cameras in process: listed from sysfs (nothing opened till one is asked for), a V4L2 stream (MJPEG decoded by zune-jpeg, or YUYV converted) as BGRA frames; `OLO_CAMERA_FAKE=1` puts a stand-in first ("Test Camera", a moving pattern at 30 frames a second) for tests and headless sessions, which never open a real camera. For a recording's camera bubble (Screenshot's `bubble.rs`), later face sign-in. |
 | `crates/face` | `olo-face`: face unlock natively: the infrared camera over V4L2, its emitter through its UVC extension unit, YuNet and SFace run in process (tract), and `olo-faced`, the root service on the system bus. See "Face unlock". |
@@ -10287,7 +10288,50 @@ Programs not built on the kit take Olo's look as far as their toolkit
 allows. `toolkits.rs` publishes the palette where GTK 3, GTK 4,
 libadwaita and Chrome read it (GSettings through dconf, the Olo and
 Olo-dark GTK themes, GTK 4's user stylesheet, BeOS's close-left,
-zoom-right title buttons); see its module comment. Fonts are hinted as
+zoom-right title buttons); see its module comment. The GSettings keys
+are `olo_theme::toolkit::desktop_settings`, which olo-portal's Settings
+serves too (sandboxed programs, and those asking the portal), so the
+two say the same.
+
+**dconf is Olo's** (`apps/dconf`, `olo-dconf`). Programs read GSettings
+from dconf's database themselves (`~/.config/dconf/user`, mapped) and
+ask `ca.desrt.dconf` on the session bus to change it; olo-dconf answers
+for it in GNOME's dconf-service's place, with the same interface and the
+same file, so nothing that reads it changes, and a GNOME session later
+reads what was set under Olo. `ca.desrt.dconf.Writer` at
+`/ca/desrt/dconf/Writer/NAME`: `Change(ay) → s` takes a change as
+clients send it (a GVariant `a{smv}`, read by its framing alone in
+`changeset.rs`, so each value is stored as the bytes the program sent,
+never decoded and encoded again), makes it in the database as it is on
+disk then (read again each time, so nothing another writer did is
+lost; a folder path with no value resets the folder), writes the file
+whole (GLib's GVDB format, `gvdb.rs`, as dconf's writer makes it: every
+folder up to "/" an `L` item listing its children, each item keyed by
+what it adds to its parent's key, one bucket per item, no bloom
+filter), renames it into place with its mode kept, sets the readers'
+shared flag (`$XDG_RUNTIME_DIR/dconf/NAME`'s first byte, then removes
+it: each reader opens the file again), answers with a tag, and only
+then signals `Notify(prefix, paths, tag)`, so the writer knows its tag
+first. `Init()` makes an empty database if there's none. olo-session
+names it for D-Bus activation while an Olo session runs
+(`graphical::take_dconf`: `$XDG_RUNTIME_DIR/dbus-1/services/
+ca.desrt.dconf.service`, which the bus reads before `~/.local/share`'s
+and the system's: tried with dbus-broker 37, the same name in all
+three, and the runtime folder's was the one started; gone with the
+session's `stop` or the login, so a GNOME session has GNOME's), has the
+bus read its services again, and stops `dconf.service` if GNOME's was
+already answering (an app wrote a setting before the session got that
+far): the next change starts Olo's. It goes after ten minutes with
+nothing asked, giving up its name before answering what came meanwhile
+(the next change starts it again). Checked with GNOME's own tools:
+`olo-dconf --rewrite IN OUT` (a database written again as olo-dconf
+writes it) of a copy of a real database (69 keys) gives the same
+`dconf dump /`, byte for byte; through the service on a test bus,
+`dconf write`, `read`, `list`, `reset -f` of a folder and `gsettings
+set`/`get` work, and a running `dconf watch /` and `gsettings monitor`
+see each change. A write (the `dconf` command run each time) takes
+29 to 30 ms against GNOME's 37 ms; idle it costs nothing (0.0% of a
+core, 0 wakeups/s), in 5.3 MB against GNOME's 6.8 MB. Fonts are hinted as
 the kit hints them (`font-hinting` slight, `font-antialiasing`
 grayscale). The pointer: programs asking for one by name
 (cursor-shape-v1: GTK 4, Chrome and Electron, Qt 6) get app_server's;
