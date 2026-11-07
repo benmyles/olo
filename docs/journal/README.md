@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: bbc.com (left Olo, right Chrome)
+
+*15:36* — The BBC showed raw markup (noscript under scripting), grey boxes in one column (grid items now held to max-width, percentage images compressible, spanning items size only flexible tracks) and no hydration (CSSOM insertRule for styled-components, currentScript for Turbopack). Now as Chrome, bar the ad.
+
+![Browser: bbc.com (left Olo, right Chrome)](2026-11-07/153610-browser-bbc-com-left-olo-right-chrome.png)
+
+### Browser: apple.com (left Olo, right Chrome)
+
+*15:36* — Apple failed on its image budget, then hid its headline under its photo (a z-index inside a positioned z-index:auto box now belongs to the parent stacking context), fell back from SF Pro (its fonts sheet needs a Referer) and took the wrong crop (picture/srcset now chosen). Left: the ribbon's CSS animation and the gradient subhead.
+
+![Browser: apple.com (left Olo, right Chrome)](2026-11-07/153609-browser-apple-com-left-olo-right-chrome.png)
+
+### Browser: github.com as Chrome (left Olo, right Chrome)
+
+*15:36* — GitHub drew nothing (one 821 KB sheet linked four times passed the CSS cap), then unstyled (a rejected selector left stale symbol hashes), then without its hero (React needs import maps; GSAP needed 'opacity' in style and frames while nothing changed). Now its hero and header match; the sign-up form waits for container queries.
+
+![Browser: github.com as Chrome (left Olo, right Chrome)](2026-11-07/153608-browser-github-com-as-chrome-left-olo-right-chro.png)
+
 ### Preferences ▸ Deskbar
 
 *13:16* — The new Deskbar panel: the widgets in order (Add, Remove, Move Up, Move Down) beside the chosen one's settings: what it shows and which, where, look, size, name and value, how often, how far back, colour. Each change shows in the Deskbar at once.

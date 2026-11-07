@@ -6130,3 +6130,32 @@ The next site after Stripe, compared with Chrome on the agent screen at
   Chrome 1.3 to 1.9 the same minutes.
 - **Left** (TODO): container queries, flex `order`, CSS animations,
   the load cost.
+
+## 2026-11-07, evening: apple.com and bbc.com
+
+Compared with Chrome at 1000 × 700 on the agent screen (pictures in the
+visual journal).
+
+- **apple.com** drew nothing: its photographs ran past the page's 64 MB
+  image budget and the whole page failed. A page's images now have
+  256 MB, and one past it is left out, not the page. Its headline then
+  drew under its photo: a `z-index: 2` inside a positioned box with
+  `z-index: auto` stayed in that box instead of the parent stacking
+  context (CSS 2 Appendix E). Its fonts sheet answers 404 without a
+  Referer (now sent, strict-origin-when-cross-origin), and its hero took
+  the wrong crop (`<picture>` sources, `srcset` and `sizes` now chosen,
+  with the chosen density setting the natural size). Flex `order` now
+  works too. Open: CSS animations (its ribbon) and `background-clip:
+  text`.
+- **bbc.com** failed on a text run over 16 KB (now cut into runs), then
+  showed `<noscript>` markup (hidden when scripts run), then grey boxes
+  in one column. Grid items now follow their max-width. Percentage-sized
+  images contribute nothing at min-content. Items spanning flexible
+  tracks size only those tracks. Next.js never hydrated: Turbopack
+  needs `document.currentScript` and styled-components needs CSSOM's
+  `insertRule`. Page images now fire `load` so React swaps out its
+  placeholders. Its serif names a generic word inside an unquoted family
+  name. Now as Chrome, bar the ad.
+- **Found on the way.** Lifecycle calls into the page were outside the
+  watchdog; image load events on GitHub's lazy images started a timer
+  loop (lazy images now get none; see TODO).
