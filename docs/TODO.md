@@ -15,6 +15,17 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Syntax colouring for justfiles in the Viewer** (Ben, 2026-11-07:
+  "add syntax highlighting for justfiles to viewer"). `justfile`,
+  `Justfile`, `.justfile` and `*.just` are shown as plain text now:
+  syntect's bundled grammars have none, and Olo's own
+  (`crates/preview/src/syntaxes`) are TOML and INI. A just grammar
+  there (recipes and their parameters and dependencies, variables and
+  `:=`, settings, attributes, `{{ }}` interpolation, strings, comments,
+  and the recipe bodies as shell), its scopes mapped onto the theme's
+  token classes as the others are (`text::classify`), the names above
+  matched to it; Quick Look gets it too.
+
 ## Done, waiting for Ben to try or confirm
 
 - **Olo's history rewritten without personal details** (Ben, 2026-11-07:
