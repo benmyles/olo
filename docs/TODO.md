@@ -13,10 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Viewer: 4K60 video plays smoothly, decoded in hardware** (below, in
-  Not started), with the decoding device chosen in the Viewer and its
-  default in Preferences.
-
 ## Not started (highest priority first)
 
 - **Display: a touch screen's touch turned off and on** (Ben,
@@ -29,66 +25,29 @@ something nobody here has is in "Blocked", with what it waits for.
   (`DisplaySettings`, by its key), and agents read and set it like any
   other display setting.
 
-- **Viewer: 4K60 video plays smoothly, decoded in hardware** (Ben,
-  2026-11-06): "the viewer app can't even play 4k video at 60fps
-  smoothly. idk if it's currently being hardware accelerated but it must
-  use hardware acceleration for all common formats including av1, vp9,
-  h264/5 etc. and it must be accelerated on cpu (simd), intel xe and
-  nvidia". Today every picture is decoded in software on the CPU
-  (`olo-preview`'s `video.rs`: OpenH264, rav1d, filmcraft-vp9,
-  rust_h265), converted YUV to RGB on the CPU and uploaded. To do: decode
-  on the GPU where there is one, NVIDIA's NVDEC (CUVID, loaded at run
-  time as NVENC already is for recording) and Intel Xe's VA-API (as
-  `olo_vaapi` already encodes AV1), for AV1, VP9, H.264 and HEVC (8- and
-  10-bit), picked per file and machine with the CPU as the fallback;
-  keep the pictures on the GPU (dmabuf or the decoder's surface imported
-  as a texture, YUV to RGB in a shader) rather than copying them back;
-  and make the CPU path itself fast (SIMD in the YUV conversion and
-  scaling, the decoders' own SIMD turned on, threads). Measured on 4K60
-  samples of each format on this machine's Intel GPU and its NVIDIA, and
-  CPU only: every frame shown on time (no drops over a minute), the
-  cost per frame, and seeking. Everything native (no ffmpeg or GStreamer).
-  Ben, 2026-11-06: "make it so that you can choose the decoding device in
-  the viewer menu and also set the default decoding device in preferences
-  somewhere. please priotize this todo after what you're currently doing":
-  the Viewer's View menu (or a Video menu) chooses the device for the
-  video showing (Automatic, NVIDIA's GPU, the Intel GPU, the processor),
-  saying which is decoding now; Preferences (a Video or Media pane) sets
-  the default every app's playing uses (the Viewer, Quick Look). Next
-  after the screen recording work.
-  Done so far: pictures drawn by the GPU from their planes (H.264 29.6 →
-  60 frames a second at 4K, HEVC 24.4 → 59.8, AV1 52.2 → 60; the
-  window's work 18–25 ms → 0.5 ms a frame); NVDEC for H.264, HEVC, VP9
-  and AV1 (HEVC 246% of a core → 41.6%, H.264 100% → 29%, AV1 368% →
-  26%), handing over to the processor if it fails; View ▸ Decode With
-  (saying what decodes now) and Preferences ▸ GPUs ▸ Video Playback.
-  Intel's GPU decodes all four through VA-API (bit-exact against the
-  reference decoder; 4K60 at 60 with 21–25% of a core; a minute of
-  each, H.264, HEVC and AV1, with 0, 1 and 0 pictures dropped, NVDEC's
-  H.264 5), offered in both choices; Automatic takes
-  it where it decodes the video. H.264 and HEVC need RPM Fusion's full
-  driver (Fedora's leaves them out), which Olo Doctor installs (Ben,
-  2026-11-06: "we don't care about fedora's silly no-proprietary
-  stance, just have it install whatever gets the job done and olo
-  doctor manage it").
-  A GPU decoder's pictures are held where they're copied and the
-  window's GPU copies them from there (73ef7eec: 4K60 on Intel's GPU
-  21.9% of a core → 7.1%, NVIDIA's 30.3% → 21.9%); 10-bit and tiled
-  streams are bit-exact on every device against the reference
-  decoders (cb69d7a5: VP9 profile 2, AV1 10-bit, HEVC Main 10); VP9 at
-  4K60 (a minute made with libvpx built in scratch): Intel's GPU 7.2% of
-  a core, nothing dropped; NVIDIA's 7.0%, nothing dropped; the
-  processor 251%, 7 dropped. NVDEC's held pictures go into pinned memory
-  with CUDA sleeping while it waits: 4K60 AV1 on NVIDIA's GPU 21.9% of a
-  core → 7.0%. Nothing left but the processor's own (below). The
-  processor's own: rav1d's and OpenH264's assembly is built in now
-  (4K AV1 32 → 85 pictures a second, H.264 45 → 53–98), and 8-bit
-  pictures are kept as bytes rather than 16-bit samples (1523b172: 4K60
-  AV1 on the processor 1,510 of 3,600 pictures dropped in a minute → 3,
-  its video thread 57% of a core → 17.5%, its kernel time 23.5% →
-  0.1%).
-
 ## Done, waiting for Ben to try or confirm
+
+- **Viewer: 4K60 video plays smoothly, decoded in hardware** (Ben,
+  2026-11-06: "the viewer app can't even play 4k video at 60fps
+  smoothly … it must use hardware acceleration for all common formats
+  including av1, vp9, h264/5 etc. and it must be accelerated on cpu
+  (simd), intel xe and nvidia"; "make it so that you can choose the
+  decoding device in the viewer menu and also set the default decoding
+  device in preferences somewhere"). Done (HACKING, `crates/preview`'s
+  Video): H.264, HEVC, VP9 and AV1 (8- and 10-bit) decode on Intel's GPU
+  (VA-API, through RPM Fusion's driver for H.264 and HEVC, which Olo
+  Doctor installs) and NVIDIA's (NVDEC), bit-exact against the reference
+  decoders, with the processor (rav1d's and OpenH264's SIMD built in) as
+  the fallback; pictures drawn by the GPU from their planes, held where
+  the decoder copies them and copied from there by the window's GPU.
+  View ▸ Decode With chooses for the video showing; Preferences ▸ Power
+  ▸ Graphics ▸ Video Playback sets the default (Automatic: the built-in
+  GPU where it decodes the video, else NVIDIA's, on battery too). A
+  minute of 4K60, the Viewer's share of a core: Intel's GPU 7–8% for
+  every format (0–3 pictures dropped of 3600), NVIDIA's 7.0% (none
+  dropped), the processor 175–251% (AV1 3 dropped, VP9 7: the pure-Rust
+  VP9 and HEVC decoders have no SIMD of their own). To try: open a 4K
+  video in the Viewer; View ▸ Decode With says what decodes it.
 
 - **Preferences ▸ Power: every power setting in one place, each
   scenario a setting** (Ben, 2026-11-06: "automatic should also wake the
