@@ -4345,7 +4345,12 @@ opened, its own `panel::State` and text fields).
   same title and text (`store::same_as`), telling the app it expired.
 * Backup (`backup.rs`) exports every Olo setting and piece of saved
   state (`config_dir()` and `state_dir()`, as `config/…` and `state/…`;
-  not the automatic backups nor Agent Screens' own homes, `LEFT_OUT`)
+  not the automatic backups nor Agent Screens' own homes, `LEFT_OUT`;
+  and the GPUs' tuning and power plan root keeps, `/etc/olo/gpus.json`,
+  as `system/gpus.json`, the "Power (Preferences)" part, put back by
+  `olo-gpu-tune set` through polkit only if it changes anything, and
+  from another computer only its plan, each GPU's clocks kept: `Here`'s
+  `System`)
   into one `.olo-backup` file: a zstd tar with `manifest.json` first
   (format 2: version, when, each file and its size, where it was made,
   `Origin`: the home folder, a digest of the machine's id and the
@@ -11992,6 +11997,10 @@ ProcessController put their bars in its tray.
   second at 614 µs (a frame of the layer alone: ~200 µs of GPUI's own,
   ~27 µs a widget, ~200 submitting). Before they moved: 0.3%, 2.1
   frames a second at 773 µs, the whole bar each.
+* **Backups** carry them with app_server's settings; from another
+  computer, a widget measuring a GPU, disk, interface, sensor or volume
+  this one hasn't measures its default instead, said
+  (`backup::widgets_here`).
 
 Preferences ▸ Deskbar (`deskbar.rs`) lists the widgets in order (Add
 one of a kind after the chosen one, Remove, Move Up, Move Down) beside

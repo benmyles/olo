@@ -2,8 +2,10 @@
 //! back, on this computer or another. A backup is a zstd-compressed tar
 //! of `config/` (the settings directory, `~/.config/olo`) and `state/`
 //! (`~/.local/state/olo`), with `manifest.json` first saying what it
-//! holds and where it was made (`Origin`). Left out: the automatic
-//! backups, and Agent Screens' own homes (`LEFT_OUT`).
+//! holds and where it was made (`Origin`), and the GPUs' tuning, which
+//! the computer keeps as root (`GPUS`: put back through polkit, as
+//! Preferences ▸ Power does). Left out: the automatic backups, and Agent
+//! Screens' own homes (`LEFT_OUT`).
 //!
 //! Sealed with a passphrase (`Seal::Passphrase`: Argon2id, then
 //! XChaCha20-Poly1305 a megabyte at a time), a backup also holds the
@@ -53,6 +55,8 @@ use chacha20poly1305::{
 };
 use olo_protocol::Settings;
 use olo_system::{
+    gpu_tuning::{self, Tuning},
+    meters,
     network::{self, SavedWifi},
     secrets::{self, Carry},
 };
@@ -93,6 +97,11 @@ const LEFT_OUT: &[&str] = &["state/backups", "state/screens"];
 /// computer: the pool pauses its accounts as it next opens
 /// (`olo_token_pool::store::ARRIVED`).
 const ARRIVED: &str = "config/pool-arrived.json";
+/// The GPUs' tuning and what each power mode puts them on, in a backup:
+/// the computer's own, kept by root (`gpu_tuning::FILE`), not in the
+/// settings' folders.
+const GPUS: &str = "system/gpus.json";
+pub const POWER_PART: &str = "Power (Preferences)";
 /// The vaults whose keys are in the keyring: on another computer, one
 /// comes only with its key.
 const VAULTS: &[(&str, secrets::Kept)] = &[("config/passwords.vault", secrets::PASSWORDS_KEY), ("config/pool.vault", secrets::POOL_KEY), ("config/secrets.store", secrets::SECRETS_KEY)];
@@ -192,13 +201,37 @@ fn backup_key_attrs(id: &str) -> [(&str, &str); 3] {
 pub struct Here<'a> {
     pub keyring: &'a dyn Keyring,
     pub networks: &'a dyn Networks,
+    pub system: &'a dyn System,
     pub origin: Origin,
 }
 
 impl Here<'static> {
     /// The computer this runs on.
     pub fn this() -> Here<'static> {
-        Here { keyring: &Login, networks: &NetworkManager, origin: Origin::here() }
+        Here { keyring: &Login, networks: &NetworkManager, system: &Root, origin: Origin::here() }
+    }
+}
+
+/// What the computer keeps as root, as Backup uses it: the GPUs' tuning
+/// and what each power mode puts them on (`gpu_tuning::FILE`, set by
+/// `olo-gpu-tune` through polkit; tests use their own).
+pub trait System: Sync {
+    /// The tuning kept, as its file has it (None: there's none).
+    fn tuning(&self) -> Option<Vec<u8>>;
+    /// Keep `tuning` and apply it (polkit asks for an administrator's
+    /// password first).
+    fn set_tuning(&self, tuning: &Tuning) -> Result<(), String>;
+}
+
+/// This computer's.
+pub struct Root;
+
+impl System for Root {
+    fn tuning(&self) -> Option<Vec<u8>> {
+        std::fs::read(gpu_tuning::FILE).ok()
+    }
+    fn set_tuning(&self, tuning: &Tuning) -> Result<(), String> {
+        crate::gpus::run_tune(tuning).map(|_| ())
     }
 }
 
@@ -399,11 +432,14 @@ impl Choice {
 /// by name; the secrets' parts without files of their own (GitHub) and
 /// the Wi-Fi networks go only in a sealed backup. Walks the settings'
 /// folders: on a worker.
-pub fn parts_here(roots: &[(&'static str, PathBuf)]) -> Vec<(String, usize, u64)> {
+pub fn parts_here(roots: &[(&'static str, PathBuf)], system: &dyn System) -> Vec<(String, usize, u64)> {
     let mut parts: Vec<(String, usize, u64)> = Vec::new();
     for (name, path) in collect(roots) {
         let size = std::fs::metadata(&path).map_or(0, |m| m.len());
         add_to(&mut parts, app_of(&name), size);
+    }
+    if let Some(tuning) = system.tuning() {
+        add_to(&mut parts, POWER_PART.into(), tuning.len() as u64);
     }
     for k in secrets::KEPT {
         let part = part_of_secret(k.what);
@@ -428,6 +464,9 @@ fn add_to(parts: &mut Vec<(String, usize, u64)>, part: String, bytes: u64) {
 
 /// Which app a backed-up file belongs to, for the summary.
 fn app_of(path: &str) -> String {
+    if path == GPUS {
+        return POWER_PART.into();
+    }
     let rel = path.split_once('/').map_or(path, |(_, r)| r);
     for part in rel.split('/') {
         let stem = part.split('.').next().unwrap_or(part);
@@ -596,6 +635,13 @@ pub fn export_only(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, h
             }
             Err(e) => tracing::info!("backup: skipping {}: {e}", path.display()),
         }
+    }
+    // The GPUs' tuning, from outside the settings' folders.
+    if choice.has(POWER_PART)
+        && let Some(bytes) = here.system.tuning()
+    {
+        files.push(FileEntry { path: GPUS.into(), size: bytes.len() as u64 });
+        data.push((GPUS.into(), Zeroizing::new(bytes), 0o644));
     }
     // The key, and the keyring's secrets, if it's sealed.
     let (key, sealing) = match how {
@@ -805,6 +851,38 @@ fn without_connectors(json: &[u8]) -> Option<Vec<u8>> {
     changed.then(|| serde_json::to_vec_pretty(&v).ok()).flatten()
 }
 
+/// Deskbar's widgets from another computer, on this one: one measuring a
+/// GPU, disk, network interface, temperature sensor or volume this one
+/// hasn't measures its default instead (the GPU it started on, every
+/// disk, every interface, the processor's, the startup volume), each
+/// said. None: nothing to change.
+fn widgets_here(json: &[u8], here: &meters::Sources) -> Option<(Vec<u8>, Vec<String>)> {
+    let mut v: serde_json::Value = serde_json::from_slice(json).ok()?;
+    let widgets = v.pointer_mut("/deskbar/widgets")?.as_array_mut()?;
+    let mut said = Vec::new();
+    for w in widgets.iter_mut() {
+        let Some(m) = w.get_mut("measure").and_then(|m| m.as_object_mut()) else { continue };
+        let (field, there, default, kind, instead): (&str, &[(String, String)], serde_json::Value, &str, &str) = match m.get("kind").and_then(|k| k.as_str()) {
+            Some("gpu") => ("pci", &here.gpus, serde_json::Value::Null, "GPU", "the GPU it started on"),
+            Some("disk") => ("device", &here.disks, serde_json::Value::Null, "disk", "every disk"),
+            Some("network") => ("interface", &here.interfaces, serde_json::Value::Null, "network", "every interface"),
+            Some("temperature") => ("sensor", &here.sensors, serde_json::Value::Null, "temperature", "the processor's"),
+            Some("space") => ("mount", &here.volumes, "/".into(), "disk space", "the startup volume's"),
+            _ => continue,
+        };
+        let Some(name) = m.get(field).and_then(|f| f.as_str()).map(str::to_owned) else { continue };
+        if name == "/" || there.iter().any(|(id, _)| *id == name) {
+            continue;
+        }
+        m.insert(field.into(), default);
+        said.push(format!("Deskbar: a {kind} widget measured “{name}”, which this computer hasn't; it measures {instead} instead."));
+    }
+    if said.is_empty() {
+        return None;
+    }
+    Some((serde_json::to_vec_pretty(&v).ok()?, said))
+}
+
 /// What an import did.
 #[derive(Debug)]
 pub struct Imported {
@@ -945,9 +1023,15 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
     // From here on it runs to the end: each file is replaced whole.
     let total: u64 = files.iter().map(|(_, _, b)| b.len() as u64).sum();
     let (mut done, mut written, mut settings): (u64, usize, Option<Settings>) = (0, 0, None);
+    let mut gpus = None;
     for (name, mode, bytes) in files {
         let shown = name.to_string_lossy();
         if left_out(&shown) || skip.contains(&shown.as_ref()) {
+            continue;
+        }
+        // (Put back as root, once the files are: below.)
+        if name == Path::new(GPUS) {
+            gpus = Some(bytes);
             continue;
         }
         let Some(dest) = target(roots, &name) else {
@@ -960,6 +1044,10 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
         if name == Path::new("config/app_server.json") {
             if elsewhere && let Some(own) = without_connectors(&bytes) {
                 bytes = Zeroizing::new(own);
+            }
+            if elsewhere && let Some((own, said)) = widgets_here(&bytes, &meters::sources()) {
+                bytes = Zeroizing::new(own);
+                notes.extend(said);
             }
             settings = serde_json::from_slice(&bytes).ok();
         }
@@ -1018,6 +1106,27 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
         if !w.left.is_empty() {
             let (what, them) = if w.left.len() == 1 { ("an enterprise network", "it") } else { ("enterprise networks", "them") };
             notes.push(format!("Wi-Fi: {} didn't come along ({what}, set up with the other computer's certificates): join {them} again here.", list(&w.left)));
+        }
+    }
+    // The GPUs' tuning, kept as Preferences ▸ Power keeps it: as root,
+    // polkit asking first, only if it changes anything. From another
+    // computer, only what each power mode puts them on: each GPU's own
+    // clocks are this one's.
+    if let Some(bytes) = gpus {
+        let now: Tuning = here.system.tuning().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        match serde_json::from_slice::<Tuning>(&bytes) {
+            Ok(theirs) => {
+                // (The driver's limits are this computer's, noted as it's set.)
+                let wanted = if elsewhere { Tuning { plan: theirs.plan, ..now.clone() } } else { Tuning { driver: now.driver.clone(), ..theirs } };
+                if wanted != now {
+                    match here.system.set_tuning(&wanted) {
+                        Ok(()) if elsewhere => notes.push("Power: what each power mode puts the processors and GPUs on came along; each GPU's own clocks are this computer's.".into()),
+                        Ok(()) => {}
+                        Err(e) => notes.push(format!("Power: the GPUs' tuning is as it was here. {e} Preferences ▸ Power sets it.")),
+                    }
+                }
+            }
+            Err(_) => notes.push("Power: the backup's GPU tuning couldn't be read, so it's as it was here.".into()),
         }
     }
     if elsewhere {
@@ -1220,7 +1329,7 @@ impl State {
         let (tx, rx) = channel();
         let proxy = self.proxy.clone();
         let spawned = std::thread::Builder::new().name("backup parts".into()).spawn(move || {
-            let _ = tx.send(parts_here(&roots()));
+            let _ = tx.send(parts_here(&roots(), &Root));
             proxy.send(Msg::Redraw);
         });
         if spawned.is_ok() {
@@ -1761,6 +1870,33 @@ mod tests {
         (base.clone(), vec![("config", base.join("config")), ("state", base.join("state"))])
     }
 
+    /// No GPU tuning kept.
+    struct NoSystem;
+
+    impl System for NoSystem {
+        fn tuning(&self) -> Option<Vec<u8>> {
+            None
+        }
+        fn set_tuning(&self, _: &Tuning) -> Result<(), String> {
+            Err("not here".into())
+        }
+    }
+
+    /// GPU tuning of the test's own, and what was set.
+    #[derive(Default)]
+    struct Tuned(Mutex<Option<Vec<u8>>>, Mutex<Vec<Tuning>>);
+
+    impl System for Tuned {
+        fn tuning(&self) -> Option<Vec<u8>> {
+            self.0.lock().unwrap().clone()
+        }
+        fn set_tuning(&self, tuning: &Tuning) -> Result<(), String> {
+            *self.0.lock().unwrap() = Some(serde_json::to_vec(tuning).unwrap());
+            self.1.lock().unwrap().push(tuning.clone());
+            Ok(())
+        }
+    }
+
     /// No NetworkManager.
     struct NoNets;
 
@@ -1806,7 +1942,7 @@ mod tests {
 
     /// This computer for a test: its keyring, no networks, `origin`.
     fn on<'a>(keyring: &'a dyn Keyring, origin: &Origin) -> Here<'a> {
-        Here { keyring, networks: &NoNets, origin: origin.clone() }
+        Here { system: &NoSystem, keyring, networks: &NoNets, origin: origin.clone() }
     }
 
     fn here(home: &str, computer: &str) -> Origin {
@@ -2020,20 +2156,20 @@ mod tests {
         let k = Memory::default();
         let from = here("/home/ben", "mac");
         let file = base.join("b.olo-backup");
-        let m = export(&mac, &file, &words("pw"), &Here { keyring: &k, networks: &theirs, origin: from.clone() }, &|_, _| {}, &no).unwrap();
+        let m = export(&mac, &file, &words("pw"), &Here { system: &NoSystem, keyring: &k, networks: &theirs, origin: from.clone() }, &|_, _| {}, &no).unwrap();
         assert!(m.secrets.iter().any(|s| s == "Wi-Fi networks"));
         let raw = std::fs::read(&file).unwrap();
         for secret in [&b"hunter22"[..], b"eduroam"] {
             assert!(!raw.windows(secret.len()).any(|w| w == secret), "sealed: {}", String::from_utf8_lossy(secret));
         }
-        let open = export(&mac, &base.join("o.olo-backup"), &Seal::Open, &Here { keyring: &k, networks: &theirs, origin: from.clone() }, &|_, _| {}, &no).unwrap();
+        let open = export(&mac, &base.join("o.olo-backup"), &Seal::Open, &Here { system: &NoSystem, keyring: &k, networks: &theirs, origin: from.clone() }, &|_, _| {}, &no).unwrap();
         assert!(open.secrets.is_empty());
 
         std::fs::create_dir_all(&other[0].1).unwrap();
         std::fs::write(other[0].1.join("deskcalc.json"), b"{}").unwrap();
         let ours = Nets(Mutex::new(vec![wifi("Office", Some("new"))]), Vec::new());
         let k2 = Memory::default();
-        let i = import(&other, &file, Some("pw"), &Here { keyring: &k2, networks: &ours, origin: here("/home/b", "thinkpad") }, &|_, _| {}, &no).unwrap();
+        let i = import(&other, &file, Some("pw"), &Here { system: &NoSystem, keyring: &k2, networks: &ours, origin: here("/home/b", "thinkpad") }, &|_, _| {}, &no).unwrap();
         let now = ours.0.lock().unwrap().clone();
         assert_eq!(now.iter().map(|n| n.name()).collect::<Vec<_>>(), ["Office", "Home", "Cafe"]);
         assert_eq!(now[0].psk.as_deref(), Some("new"), "its own kept");
@@ -2071,7 +2207,7 @@ mod tests {
         let theirs = Nets(Mutex::new(vec![wifi("Home", Some("hunter22"))]), Vec::new());
         let from = here("/home/ben", "mac");
         let file = base.join("all.olo-backup");
-        let m = export(&mac, &file, &words("pw"), &Here { keyring: &a, networks: &theirs, origin: from.clone() }, &|_, _| {}, &no).unwrap();
+        let m = export(&mac, &file, &words("pw"), &Here { system: &NoSystem, keyring: &a, networks: &theirs, origin: from.clone() }, &|_, _| {}, &no).unwrap();
         let parts: Vec<String> = m.parts().into_iter().map(|p| p.0).collect();
         assert_eq!(parts, ["GitHub", "Passwords", "Terminal", "Token Pool", WIFI_PART]);
         assert!(Choice::only(&["Nope".into()], &parts).unwrap_err().contains("“Nope”"));
@@ -2084,7 +2220,7 @@ mod tests {
         b.put(secrets::PASSWORDS_KEY, b"key B");
         let ours = Nets::default();
         let only = Choice::only(&["token pool".into()], &parts).unwrap();
-        let there = Here { keyring: &b, networks: &ours, origin: here("/home/b", "thinkpad") };
+        let there = Here { system: &NoSystem, keyring: &b, networks: &ours, origin: here("/home/b", "thinkpad") };
         let i = import_only(&other, &file, Some("pw"), &there, &only, &|_, _| {}, &no).unwrap();
         assert_eq!((i.files, i.secrets), (2, 1));
         assert_eq!(std::fs::read(other[0].1.join("pool.vault")).unwrap(), b"pool sealed with key P");
@@ -2102,9 +2238,16 @@ mod tests {
         assert!(before.contains(&"Terminal".to_string()) && before.contains(&"Passwords".to_string()), "{before:?}");
 
         // An export of Terminal alone: nothing else, no secret, no network.
-        let t =
-            export_only(&mac, &base.join("t.olo-backup"), &words("pw"), &Here { keyring: &a, networks: &theirs, origin: from }, &Choice::only(&["Terminal".into()], &parts).unwrap(), &|_, _| {}, &no)
-                .unwrap();
+        let t = export_only(
+            &mac,
+            &base.join("t.olo-backup"),
+            &words("pw"),
+            &Here { system: &NoSystem, keyring: &a, networks: &theirs, origin: from },
+            &Choice::only(&["Terminal".into()], &parts).unwrap(),
+            &|_, _| {},
+            &no,
+        )
+        .unwrap();
         assert_eq!(t.parts().into_iter().map(|p| p.0).collect::<Vec<_>>(), ["Terminal"]);
         let raw = std::fs::read(base.join("t.olo-backup")).unwrap();
         assert!(t.secrets.is_empty() && !raw.is_empty());
@@ -2118,7 +2261,7 @@ mod tests {
         std::fs::create_dir_all(&roots[0].1).unwrap();
         std::fs::write(roots[0].1.join("terminal.json"), b"{}").unwrap();
         std::fs::write(roots[0].1.join("pool.json"), b"{}").unwrap();
-        let parts = parts_here(&roots);
+        let parts = parts_here(&roots, &NoSystem);
         let names: Vec<&str> = parts.iter().map(|p| p.0.as_str()).collect();
         // Its apps' files, and what goes only in a sealed backup.
         assert_eq!(names, ["GitHub", "Passwords", "Programs’ Secrets", "Telegram", "Terminal", "Token Pool", WIFI_PART]);
@@ -2187,5 +2330,89 @@ mod tests {
         assert_eq!(app_of("state/notifications/history.json"), "Notifications");
         assert_eq!(app_of("config/deskcalc.json"), "DeskCalc");
         assert_eq!(app_of("config/some-thing.json"), "Some thing");
+    }
+
+    /// The GPUs' tuning, kept by root outside the settings' folders, goes
+    /// in a backup and comes back as it was; from another computer, only
+    /// what each power mode puts them on, this one's clocks kept.
+    #[test]
+    fn the_gpus_tuning_comes_along() {
+        let (base, roots) = dirs("gpus");
+        let no = AtomicBool::new(false);
+        std::fs::create_dir_all(&roots[0].1).unwrap();
+        std::fs::write(roots[0].1.join("terminal.json"), b"{}").unwrap();
+        let mut theirs = Tuning::default();
+        theirs.gpus.push(gpu_tuning::GpuTune { pci: "0000:00:02.0".into(), preset: gpu_tuning::Preset::Fastest, min_mhz: Some(1600), ..Default::default() });
+        theirs.plan.chosen.insert("balanced/0000:01:00.0".into(), "cooler".into());
+        let tuned = Tuned::default();
+        *tuned.0.lock().unwrap() = Some(serde_json::to_vec(&theirs).unwrap());
+        let k = Memory::default();
+        let origin = here("/home/ben", "thinkpad");
+        let file = base.join("g.olo-backup");
+        let m = export(&roots, &file, &Seal::Open, &Here { system: &tuned, keyring: &k, networks: &NoNets, origin: origin.clone() }, &|_, _| {}, &no).unwrap();
+        assert!(m.files.iter().any(|f| f.path == GPUS));
+        assert!(m.parts().iter().any(|p| p.0 == POWER_PART), "{:?}", m.parts());
+        // Here, changed since: put back as it was.
+        let here_now = Tuned::default();
+        let i = import(&roots, &file, None, &Here { system: &here_now, keyring: &k, networks: &NoNets, origin: origin.clone() }, &|_, _| {}, &no).unwrap();
+        assert_eq!(here_now.1.lock().unwrap().as_slice(), [theirs.clone()], "{:?}", i.notes);
+        // The same again: nothing to set, no password asked.
+        let i = import(&roots, &file, None, &Here { system: &here_now, keyring: &k, networks: &NoNets, origin: origin.clone() }, &|_, _| {}, &no).unwrap();
+        assert_eq!(here_now.1.lock().unwrap().len(), 1, "{:?}", i.notes);
+        // Another computer: its plan, this one's clocks.
+        let mut ours = Tuning::default();
+        ours.gpus.push(gpu_tuning::GpuTune { pci: "0000:00:02.0".into(), preset: gpu_tuning::Preset::Cooler, max_mhz: Some(900), ..Default::default() });
+        let other = Tuned::default();
+        *other.0.lock().unwrap() = Some(serde_json::to_vec(&ours).unwrap());
+        let i = import(&roots, &file, None, &Here { system: &other, keyring: &k, networks: &NoNets, origin: here("/home/b", "mac") }, &|_, _| {}, &no).unwrap();
+        let set = other.1.lock().unwrap().clone();
+        assert_eq!(set.len(), 1);
+        assert_eq!((&set[0].gpus, &set[0].plan), (&ours.gpus, &theirs.plan));
+        assert!(i.notes.iter().any(|n| n.starts_with("Power: what each power mode")), "{:?}", i.notes);
+        // Not allowed (the password dialog dismissed): said, nothing else lost.
+        let i = import(&roots, &file, None, &Here { system: &NoSystem, keyring: &k, networks: &NoNets, origin: origin.clone() }, &|_, _| {}, &no).unwrap();
+        assert!(i.notes.iter().any(|n| n.starts_with("Power: the GPUs' tuning is as it was here.")), "{:?}", i.notes);
+        assert!(i.files > 0);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Deskbar's widgets from another computer: one measuring what this
+    /// one hasn't measures its default, each said; what it has, kept.
+    #[test]
+    fn deskbar_widgets_measure_what_is_here() {
+        let mut s = Settings::default();
+        let w = |id, measure| olo_protocol::deskbar::Widget::new(id, measure);
+        use olo_protocol::deskbar::Measure;
+        s.deskbar.widgets = vec![
+            w(1, Measure::Gpu { pci: Some("0000:01:00.0".into()) }),
+            w(2, Measure::Network { interface: Some("wlp0s20f3".into()), down: true, up: true }),
+            w(3, Measure::Space { mount: "/data".into() }),
+            w(4, Measure::Cpu { cores: true }),
+            w(5, Measure::Disk { device: Some("nvme0n1".into()), read: true, write: false }),
+        ];
+        let json = serde_json::to_vec(&s).unwrap();
+        let here = meters::Sources {
+            gpus: vec![("0000:00:02.0".into(), "Intel".into())],
+            disks: vec![("nvme0n1".into(), "SSD".into())],
+            interfaces: vec![("enp1s0".into(), "Ethernet".into())],
+            ..Default::default()
+        };
+        let (moved, said) = widgets_here(&json, &here).unwrap();
+        let s: Settings = serde_json::from_slice(&moved).unwrap();
+        let m: Vec<Measure> = s.deskbar.widgets.iter().map(|w| w.measure.clone()).collect();
+        assert_eq!(
+            m,
+            [
+                Measure::Gpu { pci: None },
+                Measure::Network { interface: None, down: true, up: true },
+                Measure::Space { mount: "/".into() },
+                Measure::Cpu { cores: true },
+                Measure::Disk { device: Some("nvme0n1".into()), read: true, write: false }
+            ]
+        );
+        assert_eq!(said.len(), 3, "{said:?}");
+        assert!(said[0].contains("“0000:01:00.0”") && said[0].ends_with("the GPU it started on instead."), "{said:?}");
+        // All of it here: nothing to change.
+        assert!(widgets_here(&serde_json::to_vec(&s).unwrap(), &here).is_none());
     }
 }
