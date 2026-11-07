@@ -177,7 +177,9 @@ pub struct Stratum {
 }
 pub struct Scene {
     pub(super) layout: Arc<layout::Layout>,
-    pub(super) commands: Box<[Command]>,
+    /// Shared with the scenes patched from this one (`with_transforms`): the
+    /// same commands, which `same_commands` tells.
+    pub(super) commands: Arc<[Command]>,
     pub(super) clips: Box<[Clip]>,
     pub(super) groups: Box<[Group]>,
     /// Cumulative affine matrices of transformed boxes, document space to
@@ -211,6 +213,11 @@ impl Scene {
     }
     pub fn commands(&self) -> &[Command] {
         &self.commands
+    }
+    /// Whether `other` paints the very same commands (it was patched from
+    /// this scene, or this one from it): only matrices or layers moved.
+    pub fn same_commands(&self, other: &Scene) -> bool {
+        Arc::ptr_eq(&self.commands, &other.commands)
     }
     /// Resolve a text paint segment back to its stable document node without
     /// duplicating full DOM handles in every command.
@@ -585,7 +592,7 @@ impl Scene {
             }
         }
         let mut extent = Rect::default();
-        for c in &self.commands {
+        for c in self.commands.iter() {
             let reach = extent_of(c, &transforms);
             extent = union(extent, if c.clip == NONE { reach } else { intersection(reach, self.clip_extent_with(c.clip, &transforms)) });
         }
@@ -1578,7 +1585,7 @@ impl<'a> BuildJob<'a> {
         let contexts = &self.contexts;
         let key = |d: &Draft| contexts[d.context as usize].path.iter().copied().chain(std::iter::once(u32::from(d.slot)));
         self.draft.sort_by(|a, b| key(a).cmp(key(b)).then(a.text.cmp(&b.text)));
-        let commands: Box<[Command]> = self.draft.into_iter().map(|d| d.command).collect();
+        let commands: Arc<[Command]> = self.draft.into_iter().map(|d| d.command).collect();
         let sorted_ms = timing.map_or(0., |t| t.elapsed().as_secs_f64() * 1000.);
         // Strata: runs of commands shown the same way, in paint order; the
         // first always a page run, for the base with the background.

@@ -290,6 +290,9 @@ struct Cached {
     origin: url::Url,
     base: url::Url,
     links: HashMap<olo_web::dom::NodeId, Option<Arc<crate::links::Link>>>,
+    /// The scene and document revision the focus targets were found in.
+    targets_scene: Option<Arc<olo_web::paint::Scene>>,
+    targets_revision: u64,
     navigation: u64,
     focus_targets: Option<Arc<crate::navigation::FocusTargets>>,
     anchor_scroll: Option<f64>,
@@ -1029,6 +1032,8 @@ fn render(
             links: HashMap::new(),
             navigation: 0,
             focus_targets: None,
+            targets_scene: None,
+            targets_revision: 0,
             anchor_scroll: None,
         });
         cache.clear();
@@ -1113,9 +1118,22 @@ fn render(
             sought = Some(rect.y + rect.height / 2. - height / 2.);
         }
     }
-    if scene_changed || cached.focus_targets.is_none() {
+    let before_targets = Instant::now();
+    // The targets come from the scene's commands and the links' and
+    // focusable elements' attributes: kept while the commands are the same
+    // and the document's changes since touched no attributes but styles (a
+    // frame of an animation).
+    let targets_stand = cached.focus_targets.is_some()
+        && cached.targets_scene.as_ref().is_some_and(|s| s.same_commands(&cached.page.scene))
+        && cached.page.document.changes_since(cached.targets_revision).is_some_and(|changes| changes.iter().all(|(_, c)| matches!(c, olo_web::dom::Change::Style(_))));
+    if (scene_changed || cached.focus_targets.is_none()) && !targets_stand {
         cached.focus_targets = Some(crate::navigation::focus_targets(&cached.page, &cached.base, &cached.origin, &mut cached.links, &r.cancel)?);
+        cached.targets_scene = Some(cached.page.scene.clone());
     }
+    // Checked up to now (the change log before this render is let go).
+    cached.targets_revision = cached.page.document.revision();
+    let targets_ms = before_targets.elapsed().as_secs_f64() * 1000.;
+    let before_labels = Instant::now();
     let page = &cached.page;
     let scene = &page.scene;
     let extent = scene.content_extent().height;
@@ -1193,6 +1211,9 @@ fn render(
             None => None,
         };
         labels.push(Label { image, text: text.into_owned().into(), rect, node, link, fixed, sticky });
+    }
+    if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+        eprintln!("  content: focus targets {targets_ms:.2} ms, labels {:.2} ms ({} labels)", before_labels.elapsed().as_secs_f64() * 1000., labels.len());
     }
     proxy.send(Reply::Content {
         id: r.id,

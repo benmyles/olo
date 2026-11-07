@@ -460,7 +460,12 @@ impl Context {
         }
         let was_dirty = self.dirty;
         self.dirty = false;
-        let Some((w, h, mut rgba)) = self.read_back_async(was_dirty) else {
+        let timing = std::env::var_os("OLO_CANVAS_TIMING").map(|_| std::time::Instant::now());
+        let read = self.read_back_async(was_dirty);
+        if let Some(t) = timing {
+            eprintln!("  canvas readback: {:.3} ms", t.elapsed().as_secs_f64() * 1000.);
+        }
+        let Some((w, h, mut rgba)) = read else {
             // The frame's readback is in flight: nothing new to show yet
             // (the next render takes it); keep whatever was shown.
             return self.last.clone();
@@ -483,11 +488,15 @@ impl Context {
                 }
             }
         }
+        let made = std::time::Instant::now();
         let mut image = if self.premultiplied_alpha {
             olo_web::image::Image::from_premultiplied(w, h, rgba, 1., Default::default(), None).ok()
         } else {
             olo_web::image::Image::from_rgba(w, h, rgba, Default::default(), None).ok()
         };
+        if timing.is_some() {
+            eprintln!("  canvas image: {:.3} ms ({w}x{h}, premultiplied {})", made.elapsed().as_secs_f64() * 1000., self.premultiplied_alpha);
+        }
         // Drawn on again after it was shown: an animating surface, shown
         // through a layer of its own from now on.
         if self.last.is_some()

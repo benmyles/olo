@@ -1639,11 +1639,16 @@ fn render(
         && let Ok(Patchable { nodes, relayout: text_changed }) = patchable(doc, rules, p.document_revision())
     {
         relayout = text_changed;
+        let copying = std::time::Instant::now();
         let mut tree = p.clone();
+        let copied_ms = copying.elapsed().as_secs_f64() * 1000.;
         let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation() };
         if let Some(result) = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)? {
             patched = Some(result);
             styles = Some(Arc::new(tree));
+        }
+        if timing.is_some() {
+            eprintln!("  render style: copy {copied_ms:.2} ms, patch {:.2} ms, {} nodes", copying.elapsed().as_secs_f64() * 1000. - copied_ms, nodes.len());
         }
     }
     let styles = match styles {
