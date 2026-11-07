@@ -15,6 +15,25 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Nothing of GNOME's needed: Olo's own in its place** (Ben, 2026-11-06:
+  "if we are still reliant on any gnome services or settings, create olo
+  replacements for it so we don't need any gnome stuff"). What Olo still
+  leans on (a look on 2026-11-06): GDM (olo-login replaces it once Ben
+  switches over); GNOME Keyring at login (`pam_gnome_keyring` in
+  olo-login's PAM services, the session finishing the keyring's start,
+  `crates/session/src/keyring.rs`, and the Secret portal pointed at it
+  in `graphical.rs`'s portals.conf: olo-secrets takes over from it after
+  the fact, `apps/secrets/src/gnome.rs`), to be olo-secrets unlocked by
+  the login password itself (a PAM module of Olo's, as pam_olo_face is)
+  and serving the Secret portal; and dconf (dconf-service running; Olo
+  writes GTK's theme, fonts and cursor as `org.gnome.desktop.interface`
+  keys, `olo_system::dconf`, which unsandboxed GTK apps read), to be a
+  settings source of Olo's that GTK reads (its GSettings backend, or the
+  settings portal for what reads it). Audit the rest (autostart's
+  GNOME-only entries, `toolkits.rs`, the portal's GNOME interfaces, any
+  gnome-* or gsd-* process that starts) and replace what's found; Olo
+  Doctor says if any GNOME service is still running.
+
 - **A window opened from a floating one opens on top of it** (Ben,
   2026-11-06: "if i'm in a floating window like prefs -> sound and click
   e.g. try it for the voice processing and that opens another window,
