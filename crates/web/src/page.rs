@@ -415,7 +415,7 @@ impl Measurer {
     /// reaches from or tests in a `:has()`): those elements, each with
     /// whether its rules must be matched again. None when the changes
     /// are anything else (or too many): the full incremental job's.
-    fn patchable(&self, doc: &Document, revision: u64) -> std::result::Result<Vec<(crate::dom::NodeId, bool)>, String> {
+    fn patchable(&self, doc: &Document, revision: u64) -> std::result::Result<Patchable, String> {
         patchable(doc, &self.rules, revision)
     }
     /// Style and lay out `doc` as it is now. The previous measurement is
@@ -447,9 +447,12 @@ impl Measurer {
         // holds them, else over a copy.
         let mut patched: Option<(style::Patched, Option<Arc<StyleTree>>)> = None;
         let mut path = String::new();
+        // The patch said the text changed: laid out again whatever the styles say.
+        let mut relayout = false;
         if let Some(m) = previous.as_mut() {
             match self.patchable(doc, m.layout.cache().tree().styles().document_revision()) {
-                Ok(nodes) => {
+                Ok(Patchable { nodes, relayout: text_changed }) => {
+                    relayout = text_changed;
                     let patch = |tree: &mut StyleTree| style::Job::patch(doc, &self.rules, defaults.clone(), options(), Default::default(), cancel, tree, &nodes, |_| host);
                     patched = match Arc::get_mut(&mut m.layout).and_then(|l| l.patch_styles(doc, patch)) {
                         Some(result) => {
@@ -482,7 +485,7 @@ impl Measurer {
             }
         };
         phases[0] = started.elapsed().as_secs_f64() * 1000.;
-        let kept = previous.as_ref().filter(|p| styles.geometry_kept() && p.viewport == viewport);
+        let kept = previous.as_ref().filter(|p| styles.geometry_kept() && !relayout && p.viewport == viewport);
         let layout = if let Some(p) = kept {
             match &patched {
                 // Patched in place: the layout holds the patched styles.
@@ -491,7 +494,15 @@ impl Measurer {
             }
         } else {
             let previous = previous.as_ref();
-            let dirty = previous_revision.and_then(|revision| dirty_nodes(doc, revision));
+            // The nodes changed since the previous layout, and the elements
+            // the patch restyled (in place, the styles compare equal to
+            // themselves), with their ancestors.
+            let dirty = previous_revision.and_then(|revision| dirty_nodes(doc, revision)).map(|mut d| {
+                if let Some((p, _)) = &patched {
+                    dirty_ancestors(doc, &p.nodes, &mut d);
+                }
+                d
+            });
             let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
             // The images were bound to the document before the scripts changed
             // it; while they still fit, boxes take their sizes.
@@ -1436,11 +1447,19 @@ fn dirty_nodes(doc: &Document, revision: u64) -> Option<std::collections::HashSe
         return None;
     }
     let mut dirty = std::collections::HashSet::new();
+    let mut nodes = Vec::with_capacity(changes.len());
     for (_, change) in changes {
-        let node = match change {
+        nodes.push(match change {
             Change::Node(n) | Change::Attribute { node: n, .. } | Change::Style(n) | Change::Text(n) | Change::Children { node: n, .. } => *n,
             Change::Unknown => return None,
-        };
+        });
+    }
+    dirty_ancestors(doc, &nodes, &mut dirty);
+    Some(dirty)
+}
+/// `nodes` and their ancestors into `dirty`.
+fn dirty_ancestors(doc: &Document, nodes: &[crate::dom::NodeId], dirty: &mut std::collections::HashSet<crate::dom::NodeId>) {
+    for &node in nodes {
         let mut at = Some(node);
         while let Some(n) = at {
             if !dirty.insert(n) {
@@ -1449,12 +1468,18 @@ fn dirty_nodes(doc: &Document, revision: u64) -> Option<std::collections::HashSe
             at = doc.parent(n).ok().flatten();
         }
     }
-    Some(dirty)
 }
 /// The elements whose styles the changes to `doc` since `revision` (the
 /// styles' document revision) can be patched over, each with whether its
 /// rules must be matched again; or why the whole tree must be styled.
-fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> std::result::Result<Vec<(crate::dom::NodeId, bool)>, String> {
+/// What a style patch covers: the elements to compute again (each with
+/// whether its rules must be matched again), and whether the document
+/// must be laid out again regardless (its text changed).
+struct Patchable {
+    nodes: Vec<(crate::dom::NodeId, bool)>,
+    relayout: bool,
+}
+fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> std::result::Result<Patchable, String> {
     let name = |n: crate::dom::NodeId| doc.name(n).ok().flatten().unwrap_or("?").to_owned();
     let changes = doc.changes_since(revision).ok_or_else(|| "the changes since are gone".to_owned())?;
     if changes.is_empty() {
@@ -1465,6 +1490,7 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
     }
     let has_keys = rules.has_keys();
     let invalidation = rules.invalidation();
+    let mut relayout = false;
     let mut nodes: Vec<(crate::dom::NodeId, bool)> = Vec::new();
     let mut add = |node, rematch: bool| match nodes.iter_mut().find(|(n, _)| *n == node) {
         Some(entry) => entry.1 |= rematch,
@@ -1501,12 +1527,35 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
                 add(*node, true);
             }
             crate::dom::Change::Node(n) => return Err(format!("<{}> attributes", name(*n))),
-            crate::dom::Change::Text(n) => return Err(format!("text in <{}>", doc.parent(*n).ok().flatten().map(name).unwrap_or_default())),
-            crate::dom::Change::Children { node, elements } => return Err(format!("children of <{}>{}", name(*node), if *elements { " (elements)" } else { "" })),
+            // Text alone changes no element's style, bar `:empty` on its
+            // parent (matched again) and a `:has()` testing that (not patched).
+            crate::dom::Change::Text(n) => {
+                if has_keys.empty {
+                    return Err(format!("text in <{}>: a :has() tests :empty", doc.parent(*n).ok().flatten().map(name).unwrap_or_default()));
+                }
+                if rules.uses_empty()
+                    && let Some(parent) = doc.parent(*n).ok().flatten()
+                {
+                    add(parent, true);
+                }
+                relayout = true;
+            }
+            crate::dom::Change::Children { node, elements } => {
+                if *elements {
+                    return Err(format!("children of <{}> (elements)", name(*node)));
+                }
+                if has_keys.empty {
+                    return Err(format!("children of <{}>: a :has() tests :empty", name(*node)));
+                }
+                if rules.uses_empty() {
+                    add(*node, true);
+                }
+                relayout = true;
+            }
             crate::dom::Change::Unknown => return Err("an unknown change".to_owned()),
         }
     }
-    Ok(nodes)
+    Ok(Patchable { nodes, relayout })
 }
 #[allow(clippy::too_many_arguments)]
 fn render(
@@ -1548,9 +1597,11 @@ fn render(
     // taking the previous styles where nothing changed.
     let mut patched: Option<style::Patched> = None;
     let mut styles = None;
+    let mut relayout = false;
     if let (Some(p), Some(_)) = (previous_styles, previous_scene)
-        && let Ok(nodes) = patchable(doc, rules, p.document_revision())
+        && let Ok(Patchable { nodes, relayout: text_changed }) = patchable(doc, rules, p.document_revision())
     {
+        relayout = text_changed;
         let mut tree = p.clone();
         let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation() };
         if let Some(result) = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)? {
@@ -1592,10 +1643,16 @@ fn render(
             _ => false,
         }
     };
-    let kept = previous.filter(|p| styles.geometry_kept() && p.device_scale() == viewport.scale && same_bindings(p));
+    let kept = previous.filter(|p| styles.geometry_kept() && !relayout && p.device_scale() == viewport.scale && same_bindings(p));
     let kept_layout = kept.is_some();
-    // What changed since the previous layout, for taking the rest from it.
-    let dirty = previous_revision.and_then(|revision| dirty_nodes(doc, revision));
+    // What changed since the previous layout (and what the patch restyled),
+    // for taking the rest from it.
+    let dirty = previous_revision.and_then(|revision| dirty_nodes(doc, revision)).map(|mut d| {
+        if let Some(p) = &patched {
+            dirty_ancestors(doc, &p.nodes, &mut d);
+        }
+        d
+    });
     let why_not_kept = match previous {
         _ if kept_layout => "",
         None => "nothing before",
