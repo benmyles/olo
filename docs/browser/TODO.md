@@ -67,7 +67,9 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   modules, dynamic `import()` fetching off the thread, CSSOM
   (`insertRule`, `styleSheets`, CSS-in-JS in production builds), `fetch`
   POST and headers, cookies from responses, `document.write` while
-  parsing, iframes, OffscreenCanvas, ResizeObserver.
+  parsing, iframes, OffscreenCanvas, IntersectionObserver with real
+  geometry (every target is reported intersecting once, after the next
+  frame), ResizeObserver.
 - [x] Stripe's graphics: the hero wave, the agentic and issuing
   backgrounds, the globe and the data-viz canvases are WebGL (three.js:
   textures from the page's images, geometry from Web Workers, render

@@ -5789,9 +5789,23 @@ redo only what changed.
   repeat's empty tracks collapse after placement with their gaps: the
   hero card's two columns, and three tracks for three items under
   `minmax(200px, 1fr)` in 1000px, as Chrome.
+- **The gradient that would not draw** taught three lessons. Its
+  colours come from `--gradientColorOne` and friends, read through
+  getComputedStyle: custom properties were not answered at all, and
+  the prelude folded their case-sensitive names to lower case. It
+  observes its canvas after scheduling the frame that initialises it:
+  our IntersectionObserver fired from a timer before any frame, so the
+  animation ran first, on nothing. And once it drew, the picture never
+  moved: the asynchronous readback cleared the dirty flag before asking
+  whether to read back, so every WebGL canvas had been frozen on its
+  first frame since the morning (the hero's tiles repainted for the
+  counter beside them, which hid it). A drawn-on canvas now makes the
+  live page render; the gradient and the hero wave move.
 - **Found on the way, open.** The pricing page's scripts add a "Guide
   me" button Chrome's never show (a script decides; why differs is
-  unknown); two WebGL errors from its gradient canvas (`material` and
-  `getDeclaration` of undefined, in a three.js-like chunk); the gradient
-  canvas stays 300×150 where Chrome sizes it (ResizeObserver?);
-  `getComputedStyle().lineHeight` prints a unitless number with px.
+  unknown, and it is in no chunk the page loads here). Its gradient's
+  tiles cost 4–5 ms each: CSS radial gradients painted per pixel per
+  tile (3 ms), and the skewed canvas through the transformed image path
+  (0.6–0.75 ms): a gradient raster cache like the shadows', and a SIMD
+  or GPU transformed blit, are next. `getComputedStyle().lineHeight`
+  prints a unitless number with px.
