@@ -409,6 +409,11 @@ fn check_url(url: &Url, initiator: Option<&Url>) -> page::Result<()> {
     Ok(())
 }
 impl Resource {
+    /// This resource's identity (URL, media type, status, encoding) without
+    /// its bytes, for loading relative to it later.
+    pub fn light(&self) -> Resource {
+        Resource { url: self.url.clone(), bytes: Vec::new(), mime: self.mime.clone(), status: self.status, document_encoding: Some(self.encoding()) }
+    }
     fn encoding(&self) -> &'static encoding_rs::Encoding {
         self.document_encoding.unwrap_or_else(|| {
             let protocol = self.mime.as_ref().and_then(|m| m.get_param("charset")).map(|p| p.as_str());

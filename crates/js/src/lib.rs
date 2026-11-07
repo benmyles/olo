@@ -68,10 +68,13 @@ pub type Fetcher = Box<dyn FnMut(&str, &str, &str) -> Result<Fetched, String>>;
 /// Lays out the document as it is now, for what scripts measure; the
 /// browser supplies one (olo_web::page::Measurer behind a host).
 pub type Measure = Box<dyn FnMut(&Document, Option<&olo_web::page::Measured>) -> Option<olo_web::page::Measured>>;
-/// How often scripts may have the page laid out, and for how long in all:
-/// past these, measurements come from the last layout.
+/// How often scripts may have the page laid out, and for how long, within
+/// one run (the page's scripts, or one advance of its clock): past these,
+/// measurements come from the last layout until the next run.
 const LAYOUTS: usize = 400;
 const LAYOUT_SECONDS: f64 = 4.;
+const LAYOUTS_PER_ADVANCE: usize = 60;
+const LAYOUT_SECONDS_PER_ADVANCE: f64 = 0.25;
 /// A script to run: its source and a name for errors.
 pub struct Script {
     pub source: Arc<str>,
@@ -153,6 +156,11 @@ struct State {
     /// The last layout, good while the document's revision is its own.
     measured: Option<olo_web::page::Measured>,
     layout_seconds: f64,
+    /// Layouts and their time within the current run, against the run's
+    /// budget.
+    run_layouts: usize,
+    run_layout_seconds: f64,
+    run_limits: (usize, f64),
     report: Report,
     started: Instant,
 }
@@ -187,6 +195,9 @@ impl Realm {
             measure,
             measured: None,
             layout_seconds: 0.,
+            run_layouts: 0,
+            run_layout_seconds: 0.,
+            run_limits: (LAYOUTS, LAYOUT_SECONDS),
             report: Report { revision_before: revision, ..Default::default() },
             started: Instant::now(),
         }));
@@ -236,7 +247,14 @@ impl Realm {
     /// `wall`. Returns when the next is due, and whether the document changed.
     pub fn advance(&mut self, now_ms: f64, wall: std::time::Duration) -> Advanced {
         let started = Instant::now();
-        let before = self.state.borrow().document.revision();
+        let before = {
+            let mut s = self.state.borrow_mut();
+            // Each advance has its own layout budget.
+            s.run_layouts = 0;
+            s.run_layout_seconds = 0.;
+            s.run_limits = (LAYOUTS_PER_ADVANCE, LAYOUT_SECONDS_PER_ADVANCE);
+            s.document.revision()
+        };
         let mut next_due_ms = None;
         for _ in 0..10_000 {
             match self.call_prelude_number("__olo_tick", now_ms) {
@@ -272,6 +290,12 @@ impl Realm {
     /// the focused one for keys). Returns whether a default was prevented.
     pub fn input(&mut self, input: &Input, target: Option<NodeId>) -> bool {
         let state = self.state.clone();
+        {
+            let mut s = state.borrow_mut();
+            s.run_layouts = 0;
+            s.run_layout_seconds = 0.;
+            s.run_limits = (LAYOUTS_PER_ADVANCE, LAYOUT_SECONDS_PER_ADVANCE);
+        }
         let (kind, down, key, code, text, dx, dy) = match &input.kind {
             InputKind::Move => ("move", false, "", "", None, 0., 0.),
             InputKind::Down => ("down", true, "", "", None, 0., 0.),
@@ -464,6 +488,9 @@ impl State {
             measure: None,
             measured: None,
             layout_seconds: 0.,
+            run_layouts: 0,
+            run_layout_seconds: 0.,
+            run_limits: (LAYOUTS, LAYOUT_SECONDS),
             report: Report::default(),
             started: Instant::now(),
         }
@@ -473,7 +500,7 @@ impl State {
     fn measured(&mut self) -> Option<&olo_web::page::Measured> {
         let revision = self.document.revision();
         let stale = self.measured.as_ref().is_none_or(|m| m.revision() != revision);
-        if stale && self.measure.is_some() && self.report.layouts < LAYOUTS && self.layout_seconds < LAYOUT_SECONDS {
+        if stale && self.measure.is_some() && self.run_layouts < self.run_limits.0 && self.run_layout_seconds < self.run_limits.1 {
             let started = Instant::now();
             let measure = self.measure.as_mut()?;
             if let Some(m) = measure(&self.document, self.measured.as_ref()) {
@@ -481,6 +508,8 @@ impl State {
             }
             let took = started.elapsed().as_secs_f64();
             self.layout_seconds += took;
+            self.run_layout_seconds += took;
+            self.run_layouts += 1;
             self.report.layouts += 1;
             self.report.layout_ms += took * 1000.;
         }

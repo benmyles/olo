@@ -58,6 +58,8 @@ pub struct Page {
     /// Every stylesheet in document order (the UA sheet first) with its URL,
     /// kept so a changed medium (viewport, scheme) can recompile the `@media` rules.
     sheets: Vec<(css::Syntax, Origin, Option<Arc<str>>)>,
+    base_scope: Scope,
+    sheet_ids: Vec<(crate::dom::NodeId, u64)>,
     media: css::media::Media,
     /// Whether any stylesheet has `@media` rules, so only such pages recompile.
     pub media_dependent: bool,
@@ -82,6 +84,11 @@ pub struct Prepared {
     resource_issues: usize,
     quirks: bool,
     scope: Scope,
+    /// The scope without the page's web fonts, to add them to again when
+    /// the sheets change.
+    base_scope: Scope,
+    /// The style/link elements the sheets came from, hashed.
+    sheet_ids: Vec<(crate::dom::NodeId, u64)>,
     /// The `background-image` URLs the sheets name (relative to each sheet).
     backgrounds: Vec<(Arc<str>, Option<Arc<str>>)>,
     /// Whether the rules (and fonts) are an earlier preparation's: styles
@@ -102,7 +109,16 @@ impl Prepared {
     /// A measurer for this page as prepared: styles and lays it out on
     /// demand (scripts' measurements, benchmarks).
     pub fn measurer(&self) -> Measurer {
-        Measurer { rules: self.rules.clone(), media: self.media, images: self.images.clone(), scope: self.scope.clone(), quirks: self.quirks }
+        Measurer {
+            rules: self.rules.clone(),
+            media: self.media,
+            images: self.images.clone(),
+            scope: self.scope.clone(),
+            base_scope: self.base_scope.clone(),
+            quirks: self.quirks,
+            sheet_ids: self.sheet_ids.clone(),
+            base: self.base.clone(),
+        }
     }
     /// What the stylesheets declared that the engine dropped.
     pub fn issues(&self) -> &[css::cascade::Issue] {
@@ -250,7 +266,7 @@ pub fn prepare_scripted(
     let mut load = |kind: ResourceKind, base: Option<&str>, href: &str| memo.load(kind, base, href, cancel, &mut resource);
     if let Some(run) = scripts {
         let mut first = gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load, &mut prefetch, None)?;
-        let measurer = Measurer { rules: first.rules.clone(), media, images: first.images.clone(), scope: first.scope.clone(), quirks };
+        let measurer = first.measurer();
         progress(Phase::Scripts, 0);
         let first_doc = std::mem::replace(&mut first.document, Document::new(Arc::from(""), Default::default())?);
         doc = run(first_doc, quirks, measurer)?;
@@ -327,9 +343,32 @@ pub struct Measurer {
     media: css::media::Media,
     images: Option<Arc<crate::image::Set>>,
     scope: Scope,
+    base_scope: Scope,
     quirks: bool,
+    sheet_ids: Vec<(crate::dom::NodeId, u64)>,
+    base: Option<String>,
 }
 impl Measurer {
+    /// Follow the document's stylesheets: when the style/link elements
+    /// changed since (a sheet a script added, removed or rewrote), load
+    /// them, compile the rules and fonts again. Returns whether they did
+    /// (then a host made for the old scope is stale).
+    pub fn refresh(&mut self, doc: &Document, cancel: Option<&AtomicBool>, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<bool> {
+        let (ids, base, nodes) = sheet_identities(doc)?;
+        if ids == self.sheet_ids {
+            return Ok(false);
+        }
+        let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None)];
+        let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel)?;
+        sheets.extend(loaded);
+        let (rules, _, faces, _) = compile(&sheets, self.media, cancel)?;
+        let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel)?;
+        self.rules = Arc::new(rules);
+        self.scope = if fonts.is_empty() { self.base_scope.clone() } else { self.base_scope.with_faces(fonts, cancel)? };
+        self.sheet_ids = ids;
+        self.base = base;
+        Ok(true)
+    }
     /// The fonts the page is styled with; a host for measuring is made for it.
     pub fn scope(&self) -> &Scope {
         &self.scope
@@ -568,13 +607,169 @@ fn trim(v: f64) -> String {
     let r = (v * 1000.).round() / 1000.;
     if r == r.trunc() { format!("{}", r as i64) } else { format!("{r}") }
 }
+/// The sheets of these `style` and `link` elements, in order, loaded
+/// through `resource` (an external one by its href against `base`).
+pub type Sheet = (css::Syntax, Origin, Option<Arc<str>>);
+fn load_sheets(
+    doc: &Document,
+    style_nodes: &[crate::dom::NodeId],
+    base: Option<&str>,
+    resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+    cancel: Option<&AtomicBool>,
+) -> Result<(Vec<Sheet>, usize)> {
+    let mut sheets = Vec::new();
+    let mut css_bytes = 0usize;
+    let mut resource_issues = 0usize;
+    for &node in style_nodes {
+        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+            return Err(paint::Error::Cancelled.into());
+        }
+        match doc.name(node)? {
+            Some("style") => {
+                if doc.attribute(node, "type")?.is_some_and(|t| !t.trim().is_empty() && !t.trim().eq_ignore_ascii_case("text/css")) {
+                    continue;
+                }
+                if doc.attribute(node, "media")?.is_some_and(|m| !m.trim().is_empty() && !m.eq_ignore_ascii_case("all")) {
+                    resource_issues += 1;
+                    continue;
+                }
+                let mut text = String::new();
+                for child in doc.children(node)? {
+                    if let Some(value) = doc.value(child)? {
+                        css_bytes = css_bytes.checked_add(value.len()).ok_or(paint::Error::Limit)?;
+                        if css_bytes > 4 * 1024 * 1024 {
+                            return Err(paint::Error::Limit.into());
+                        }
+                        text.push_str(value)
+                    }
+                }
+                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None));
+            }
+            Some("link") if doc.attribute(node, "rel")?.is_some_and(|r| r.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("stylesheet"))) => {
+                let rel = doc.attribute(node, "rel")?.unwrap_or("");
+                let media = doc.attribute(node, "media")?.unwrap_or("").trim();
+                let kind = doc.attribute(node, "type")?.unwrap_or("").trim();
+                if rel.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("alternate")) || doc.attribute(node, "disabled")?.is_some() {
+                    // Alternate and disabled sheets are not initially active.
+                } else if doc.attribute(node, "integrity")?.is_some_and(|v| !v.trim().is_empty()) {
+                    resource_issues += 1; // SRI validation is not implemented yet.
+                } else if !media.is_empty() && !media.eq_ignore_ascii_case("all") || !kind.is_empty() && !kind.eq_ignore_ascii_case("text/css") {
+                    resource_issues += 1;
+                } else if let Some(href) = doc.attribute(node, "href")? {
+                    if let Some(resource) = resource(ResourceKind::Stylesheet, base, href)? {
+                        let Resource::Stylesheet(syntax, url) = resource else { return Err(paint::Error::Invalid.into()) };
+                        css_bytes = css_bytes.checked_add(syntax.source().len()).ok_or(paint::Error::Limit)?;
+                        if css_bytes > 4 * 1024 * 1024 {
+                            return Err(paint::Error::Limit.into());
+                        }
+                        sheets.push((syntax, Origin::Author, url));
+                    } else {
+                        resource_issues += 1;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok((sheets, resource_issues))
+}
+/// What identifies the document's stylesheets without loading them: each
+/// style/link element with a hash of what matters (its attributes, its
+/// text), and the base URL. Changed identities mean the rules must be
+/// made again.
+fn sheet_identities(doc: &Document) -> Result<(Vec<(crate::dom::NodeId, u64)>, Option<String>, Vec<crate::dom::NodeId>)> {
+    use std::hash::{Hash, Hasher};
+    let mut ids = Vec::new();
+    let mut nodes = Vec::new();
+    let mut base = None;
+    let mut next = Some(doc.root());
+    while let Some(node) = next {
+        if doc.node_type(node)? == NodeType::Element {
+            match doc.name(node)? {
+                Some("base") if base.is_none() => {
+                    if let Some(href) = doc.attribute(node, "href")? {
+                        base = Some(href.to_owned());
+                    }
+                }
+                Some(name @ ("style" | "link")) => {
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    name.hash(&mut h);
+                    for a in ["href", "rel", "media", "type", "disabled", "integrity"] {
+                        doc.attribute(node, a)?.hash(&mut h);
+                    }
+                    for child in doc.children(node)? {
+                        doc.value(child)?.hash(&mut h);
+                    }
+                    ids.push((node, h.finish()));
+                    nodes.push(node);
+                }
+                _ => {}
+            }
+        }
+        next = next_node(doc, node)?;
+    }
+    Ok((ids, base, nodes))
+}
+/// The web fonts the faces name: the first decodable source of each, loaded
+/// and decoded (WOFF unpacked); a face that fails is unavailable.
+fn load_fonts(
+    faces: &[css::fonts::FontFace],
+    base: Option<&str>,
+    resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+    cancel: Option<&AtomicBool>,
+) -> Result<(Vec<(Arc<[u8]>, crate::font::Descriptor)>, usize)> {
+    let mut loaded = Vec::new();
+    let mut font_bytes = 0usize;
+    let mut resource_issues = 0usize;
+    for face in faces.iter().take(FONT_FACES) {
+        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+            return Err(paint::Error::Cancelled.into());
+        }
+        let Some(css::fonts::Source::Url { url, .. }) = face.sources.iter().find(|s| s.decodable()) else {
+            resource_issues += 1;
+            continue;
+        };
+        match resource(ResourceKind::Font, face.base.as_deref().or(base), url)? {
+            Some(Resource::Font(bytes)) => {
+                font_bytes = font_bytes.checked_add(bytes.len()).ok_or(paint::Error::Limit)?;
+                if font_bytes > FONT_BYTES {
+                    return Err(paint::Error::Limit.into());
+                }
+                let data: Arc<[u8]> = if crate::font::woff::is_woff(&bytes) {
+                    match crate::font::woff::decode(&bytes, cancel) {
+                        Ok(sfnt) => {
+                            font_bytes = font_bytes.checked_add(sfnt.len()).ok_or(paint::Error::Limit)?;
+                            if font_bytes > FONT_BYTES {
+                                return Err(paint::Error::Limit.into());
+                            }
+                            Arc::from(sfnt)
+                        }
+                        Err(crate::font::Error::Cancelled) => return Err(paint::Error::Cancelled.into()),
+                        Err(crate::font::Error::Limit) => return Err(paint::Error::Limit.into()),
+                        Err(_) => {
+                            resource_issues += 1;
+                            continue;
+                        }
+                    }
+                } else {
+                    bytes
+                };
+                loaded.push((data, face.descriptor.clone()));
+            }
+            None => resource_issues += 1,
+            _ => return Err(paint::Error::Invalid.into()),
+        }
+    }
+    resource_issues += faces.len().saturating_sub(FONT_FACES);
+    Ok((loaded, resource_issues))
+}
 /// Everything after parsing: the document's stylesheets, images and fonts
 /// loaded and the sheets compiled.
 #[allow(clippy::too_many_arguments)] // The page's inputs, each distinct.
 fn gather(
     doc: Document,
     quirks: bool,
-    scope: &Scope,
+    base_scope: &Scope,
     media: css::media::Media,
     fonts: bool,
     cancel: Option<&AtomicBool>,
@@ -669,57 +864,9 @@ fn gather(
     }
     // The ordered small list avoids a second walk of all text/elements. Base
     // discovery is complete before any resource is fetched.
-    for node in style_nodes {
-        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
-            return Err(paint::Error::Cancelled.into());
-        }
-        match doc.name(node)? {
-            Some("style") => {
-                if doc.attribute(node, "type")?.is_some_and(|t| !t.trim().is_empty() && !t.trim().eq_ignore_ascii_case("text/css")) {
-                    continue;
-                }
-                if doc.attribute(node, "media")?.is_some_and(|m| !m.trim().is_empty() && !m.eq_ignore_ascii_case("all")) {
-                    resource_issues += 1;
-                    continue;
-                }
-                let mut text = String::new();
-                for child in doc.children(node)? {
-                    if let Some(value) = doc.value(child)? {
-                        css_bytes = css_bytes.checked_add(value.len()).ok_or(paint::Error::Limit)?;
-                        if css_bytes > 4 * 1024 * 1024 {
-                            return Err(paint::Error::Limit.into());
-                        }
-                        text.push_str(value)
-                    }
-                }
-                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None));
-            }
-            Some("link") if doc.attribute(node, "rel")?.is_some_and(|r| r.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("stylesheet"))) => {
-                let rel = doc.attribute(node, "rel")?.unwrap_or("");
-                let media = doc.attribute(node, "media")?.unwrap_or("").trim();
-                let kind = doc.attribute(node, "type")?.unwrap_or("").trim();
-                if rel.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("alternate")) || doc.attribute(node, "disabled")?.is_some() {
-                    // Alternate and disabled sheets are not initially active.
-                } else if doc.attribute(node, "integrity")?.is_some_and(|v| !v.trim().is_empty()) {
-                    resource_issues += 1; // SRI validation is not implemented yet.
-                } else if !media.is_empty() && !media.eq_ignore_ascii_case("all") || !kind.is_empty() && !kind.eq_ignore_ascii_case("text/css") {
-                    resource_issues += 1;
-                } else if let Some(href) = doc.attribute(node, "href")? {
-                    if let Some(resource) = resource(ResourceKind::Stylesheet, base.as_deref(), href)? {
-                        let Resource::Stylesheet(syntax, url) = resource else { return Err(paint::Error::Invalid.into()) };
-                        css_bytes = css_bytes.checked_add(syntax.source().len()).ok_or(paint::Error::Limit)?;
-                        if css_bytes > 4 * 1024 * 1024 {
-                            return Err(paint::Error::Limit.into());
-                        }
-                        sheets.push((syntax, Origin::Author, url));
-                    } else {
-                        resource_issues += 1;
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
+    let (loaded_sheets, sheet_issues) = load_sheets(&doc, &style_nodes, base.as_deref(), &mut resource, cancel)?;
+    sheets.extend(loaded_sheets);
+    resource_issues += sheet_issues;
     let mut image_bindings = Vec::new();
     let mut image_unique = std::collections::HashSet::new();
     let mut image_bytes = 0usize;
@@ -805,55 +952,35 @@ fn gather(
     // Web fonts: the first decodable source of each face. A face whose file
     // fails to load or decode is simply unavailable, as in other browsers.
     let mut loaded = Vec::new();
-    let mut font_bytes = 0usize;
     if fonts {
-        for face in faces.iter().take(FONT_FACES) {
-            if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
-                return Err(paint::Error::Cancelled.into());
-            }
-            let Some(css::fonts::Source::Url { url, .. }) = face.sources.iter().find(|s| s.decodable()) else {
-                resource_issues += 1;
-                continue;
-            };
-            match resource(ResourceKind::Font, face.base.as_deref().or(base.as_deref()), url)? {
-                Some(Resource::Font(bytes)) => {
-                    font_bytes = font_bytes.checked_add(bytes.len()).ok_or(paint::Error::Limit)?;
-                    if font_bytes > FONT_BYTES {
-                        return Err(paint::Error::Limit.into());
-                    }
-                    let data: Arc<[u8]> = if crate::font::woff::is_woff(&bytes) {
-                        match crate::font::woff::decode(&bytes, cancel) {
-                            Ok(sfnt) => {
-                                font_bytes = font_bytes.checked_add(sfnt.len()).ok_or(paint::Error::Limit)?;
-                                if font_bytes > FONT_BYTES {
-                                    return Err(paint::Error::Limit.into());
-                                }
-                                Arc::from(sfnt)
-                            }
-                            Err(crate::font::Error::Cancelled) => return Err(paint::Error::Cancelled.into()),
-                            Err(crate::font::Error::Limit) => return Err(paint::Error::Limit.into()),
-                            Err(_) => {
-                                resource_issues += 1;
-                                continue;
-                            }
-                        }
-                    } else {
-                        bytes
-                    };
-                    loaded.push((data, face.descriptor.clone()));
-                }
-                None => resource_issues += 1,
-                _ => return Err(paint::Error::Invalid.into()),
-            }
-        }
-        resource_issues += faces.len().saturating_sub(FONT_FACES);
+        let (fonts_loaded, font_issues) = load_fonts(&faces, base.as_deref(), &mut resource, cancel)?;
+        loaded = fonts_loaded;
+        resource_issues += font_issues;
     }
     let scope = match reused {
         Some(p) => p.scope.clone(),
-        None if loaded.is_empty() => scope.clone(),
-        None => scope.with_faces(loaded, cancel)?,
+        None if loaded.is_empty() => base_scope.clone(),
+        None => base_scope.with_faces(loaded, cancel)?,
     };
-    Ok(Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope, backgrounds: background_urls, rules_reused })
+    let (sheet_ids, _, _) = sheet_identities(&doc)?;
+    Ok(Prepared {
+        document: doc,
+        sheets,
+        rules,
+        media,
+        media_dependent,
+        images,
+        title,
+        scripts,
+        base,
+        resource_issues,
+        quirks,
+        scope,
+        base_scope: base_scope.clone(),
+        sheet_ids,
+        backgrounds: background_urls,
+        rules_reused,
+    })
 }
 /// Style, lay out and paint a prepared document for a host made for its scope.
 pub fn finish(
@@ -880,7 +1007,7 @@ pub fn finish_with(
     previous: Option<&layout::Layout>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<Page> {
-    let Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope, rules_reused, .. } = prepared;
+    let Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope, rules_reused, base_scope, sheet_ids, .. } = prepared;
     if host.font_context() != scope.context() {
         return Err(style::Error::Stale.into());
     }
@@ -906,9 +1033,32 @@ pub fn finish_with(
         scope,
         quirks,
         resource_issues,
+        base_scope,
+        sheet_ids,
     })
 }
 impl Page {
+    /// Follow a later revision's stylesheets (see `Measurer::refresh`):
+    /// returns whether the rules were made again.
+    pub fn refresh(&mut self, doc: &Document, cancel: Option<&AtomicBool>, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<bool> {
+        let (ids, base, nodes) = sheet_identities(doc)?;
+        if ids == self.sheet_ids {
+            return Ok(false);
+        }
+        let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None)];
+        let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel)?;
+        sheets.extend(loaded);
+        let (rules, dependent, faces, _) = compile(&sheets, self.media, cancel)?;
+        let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel)?;
+        self.rules = Arc::new(rules);
+        self.media_dependent = dependent;
+        self.interaction_mask = self.rules.state_mask();
+        self.scope = if fonts.is_empty() { self.base_scope.clone() } else { self.base_scope.with_faces(fonts, cancel)? };
+        self.sheets = sheets;
+        self.sheet_ids = ids;
+        self.base_href = base;
+        Ok(true)
+    }
     /// The fonts this page is styled and shaped with.
     pub fn scope(&self) -> &Scope {
         &self.scope

@@ -102,10 +102,18 @@ enum Pass {
 /// due, and what has been rendered.
 struct Live {
     realm: olo_js::Realm,
+    /// Cancelled when the page goes (its fetches and measurements stop).
+    cancel: crate::network::Cancel,
     started: Instant,
     next_due_ms: Option<f64>,
     rendered: u64,
     last_render: Instant,
+    last_eval: Option<String>,
+}
+impl Drop for Live {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+    }
 }
 /// Renders of a live page are coalesced to this interval while its scripts
 /// keep changing it.
@@ -329,11 +337,46 @@ fn render(
             }
             let doc = live.realm.snapshot();
             let viewport = layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale };
-            let host = PageHost::new(c.page.scope(), &r.key);
             let started = Instant::now();
+            if let Some(document) = &c.document {
+                let light = document.light();
+                let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| -> page::Result<Option<page::Resource>> {
+                    Ok(match kind {
+                        page::ResourceKind::Stylesheet => {
+                            let absolute = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok().map(|u| Arc::<str>::from(u.as_str()));
+                            loader.stylesheet(&light, base, href, &r.cancel, |_| {}).ok().map(|s| page::Resource::Stylesheet(s, absolute))
+                        }
+                        page::ResourceKind::Font => {
+                            let url = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok();
+                            url.and_then(|u| loader.font(&light, u, &r.cancel, |_| {}).ok()).map(page::Resource::Font)
+                        }
+                        page::ResourceKind::Image => None,
+                    })
+                };
+                if c.page.refresh(&doc, Some(&r.cancel), &mut resource)? && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                    eprintln!("  live render: stylesheets changed, rules remade");
+                }
+            }
+            let host = PageHost::new(c.page.scope(), &r.key);
             c.page.rerender(doc, &host, shaper, painter, viewport, Some(&r.cancel), |_, _| {})?;
             if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
                 eprintln!("  live render: revision {} -> {} in {:.0} ms", live.rendered, revision, started.elapsed().as_secs_f64() * 1000.);
+            }
+            // OLO_BROWSER_EVAL_LIVE=FILE: its expression evaluated after each
+            // live render, logged when its value changes (inspecting a state
+            // reached by interaction).
+            if let Ok(file) = std::env::var("OLO_BROWSER_EVAL_LIVE")
+                && let Ok(js) = std::fs::read_to_string(file)
+            {
+                match live.realm.eval(&js) {
+                    Ok(value) => {
+                        if live.last_eval.as_deref() != Some(value.as_str()) {
+                            eprintln!("Browser live eval: {value}");
+                            live.last_eval = Some(value);
+                        }
+                    }
+                    Err(e) => eprintln!("Browser live eval failed: {e}"),
+                }
             }
             live.rendered = revision;
             live.last_render = Instant::now();
@@ -400,6 +443,9 @@ fn render(
         // what they add is then fetched and styled like the rest.
         let mut live_slot: Option<Live> = None;
         let mut layout_slot: Option<Arc<layout::Layout>> = None;
+        // The live page's own cancellation: later requests from the window
+        // cancel their predecessors, not the page living on.
+        let live_cancel = crate::network::Cancel::default();
         let mut run_scripts = |doc: olo_web::dom::Document, quirks: bool, measurer: page::Measurer| -> page::Result<olo_web::dom::Document> {
             let Some(document) = &document else {
                 return Ok(doc);
@@ -438,7 +484,7 @@ fn render(
             };
             let fetch_document = document.url.clone();
             let fetcher: olo_js::Fetcher = {
-                let cancel = r.cancel.clone();
+                let cancel = live_cancel.clone();
                 let loader = loader.clone();
                 Box::new(move |url: &str, method: &str, _body: &str| {
                     if method != "GET" {
@@ -452,12 +498,40 @@ fn render(
             // Measurements lay the document out with the styles and fonts
             // gathered so far, through a host for them.
             let measure: olo_js::Measure = {
-                let host = PageHost::new(measurer.scope(), &r.key);
+                let mut host = PageHost::new(measurer.scope(), &r.key);
                 let mut shaper = shaping::Engine::default();
-                let cancel = r.cancel.clone();
+                let cancel = live_cancel.clone();
+                let key = r.key.clone();
+                let loader = loader.clone();
+                let light = document.light();
+                let mut measurer = measurer;
                 let timing = std::env::var_os("OLO_BROWSER_TIMING").is_some();
                 Box::new(move |doc: &olo_web::dom::Document, previous: Option<&page::Measured>| {
                     let call = Instant::now();
+                    // Stylesheets the scripts added since: the rules follow.
+                    let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| -> page::Result<Option<page::Resource>> {
+                        Ok(match kind {
+                            page::ResourceKind::Stylesheet => {
+                                let absolute = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok().map(|u| Arc::<str>::from(u.as_str()));
+                                loader.stylesheet(&light, base, href, &cancel, |_| {}).ok().map(|s| page::Resource::Stylesheet(s, absolute))
+                            }
+                            page::ResourceKind::Font => {
+                                let url = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok();
+                                url.and_then(|u| loader.font(&light, u, &cancel, |_| {}).ok()).map(page::Resource::Font)
+                            }
+                            page::ResourceKind::Image => None,
+                        })
+                    };
+                    match measurer.refresh(doc, Some(&cancel), &mut resource) {
+                        Ok(true) => {
+                            if timing {
+                                eprintln!("  measuring: stylesheets changed, rules remade");
+                            }
+                            host = PageHost::new(measurer.scope(), &key);
+                        }
+                        Ok(false) => {}
+                        Err(e) => eprintln!("Browser scripts: stylesheets: {e}"),
+                    }
                     match measurer.measure(doc, &host, &mut shaper, viewport, previous, Some(&cancel)) {
                         Ok(m) => {
                             if timing {
@@ -492,7 +566,7 @@ fn render(
             // The realm lives on: its timers keep running on the page's clock.
             let doc = realm.snapshot();
             layout_slot = realm.last_measured();
-            live_slot = Some(Live { realm, started: scripted_at, next_due_ms: Some(0.), rendered: doc.revision(), last_render: Instant::now() });
+            live_slot = Some(Live { realm, cancel: live_cancel.clone(), started: scripted_at, next_due_ms: Some(0.), rendered: doc.revision(), last_render: Instant::now(), last_eval: None });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
                 report.scripts,
