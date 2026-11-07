@@ -244,7 +244,9 @@ impl Element for SlimScrollBar {
         // The pointer near the edge (or over the bar), whether it shows
         // or not: shown, it stays.
         let st = state.clone();
-        window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, _| {
+        // (The view it's in drawn again, not the whole window: control.rs.)
+        let view = window.current_view();
+        window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
             if !phase.capture() {
                 return;
             }
@@ -257,7 +259,7 @@ impl Element for SlimScrollBar {
                 }
                 (s.near, s.over) = (near, over);
                 drop(s);
-                window.refresh();
+                cx.notify(view);
             }
         });
         let Some(on_scroll) = self.on_scroll.clone() else { return };

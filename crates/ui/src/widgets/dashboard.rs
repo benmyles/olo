@@ -147,9 +147,12 @@ impl RenderOnce for Card {
                             state.update(cx, |s, _| s.hovered = hovered);
                         }
                         let hb = h.clone();
+                        // (The view it's in drawn again, not the whole
+                        // window: control.rs.)
+                        let view = window.current_view();
                         window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
                             if phase.bubble() && hb.is_hovered(window) != state.read(cx).hovered {
-                                window.refresh();
+                                cx.notify(view);
                             }
                         });
                         window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {

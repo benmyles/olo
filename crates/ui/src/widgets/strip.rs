@@ -743,9 +743,12 @@ impl RenderOnce for TabStrip {
                 // screen, may stop the event before it bubbles here.)
                 if drag.is_none() {
                     let hit = l.clone();
-                    window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, _| {
+                    // (The view it's in drawn again, not the whole window:
+                    // control.rs.)
+                    let view = window.current_view();
+                    window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
                         if phase.capture() && hit.hovered(window) != under {
-                            window.refresh();
+                            cx.notify(view);
                         }
                     });
                 }
