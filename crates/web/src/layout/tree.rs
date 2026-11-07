@@ -71,6 +71,8 @@ pub struct BoxNode {
     pub kind: BoxKind,
     /// Absolutely positioned: laid out after its containing block, out of flow.
     pub absolute: bool,
+    /// A table cell's column and row spans (1 elsewhere).
+    pub span: [u16; 2],
     pub parent: Option<BoxId>,
     pub first_child: Option<BoxId>,
     pub next_sibling: Option<BoxId>,
@@ -306,6 +308,7 @@ impl<'a> BuildJob<'a> {
                 style_node: document.root(),
                 kind: BoxKind::Viewport,
                 absolute: false,
+                span: [1, 1],
                 parent: None,
                 first_child: None,
                 last_child: None,
@@ -352,7 +355,7 @@ impl<'a> BuildJob<'a> {
         }
         self.boxes[parent.index()].last_child = Some(id);
         let absolute = matches!(kind, BoxKind::Block { absolute: true, .. });
-        self.boxes.push(BoxNode { node, style_node, kind, absolute, parent: Some(parent), first_child: None, last_child: None, next_sibling: None });
+        self.boxes.push(BoxNode { node, style_node, kind, absolute, span: [1, 1], parent: Some(parent), first_child: None, last_child: None, next_sibling: None });
         self.progress.boxes = self.boxes.len();
         Ok(id)
     }
@@ -788,8 +791,7 @@ impl<'a> BuildJob<'a> {
                                 self.note("run-in as block", node);
                             }
                             match inner {
-                                Inner::Flow | Inner::FlowRoot | Inner::Flex | Inner::Grid => {}
-                                Inner::Table => self.note("table as block", node),
+                                Inner::Flow | Inner::FlowRoot | Inner::Flex | Inner::Grid | Inner::Table => {}
                                 Inner::Ruby => self.note("ruby as block", node),
                             }
                             if list_item {
@@ -811,9 +813,14 @@ impl<'a> BuildJob<'a> {
                                     self.stack.last_mut().unwrap().inline = true;
                                 }
                                 _ => {
-                                    self.note("table part as block", node);
                                     self.flush()?;
                                     let id = self.add(node, node, BoxKind::Block { flow_root: true, root: false, absolute }, container)?;
+                                    if internal == I::TableCell {
+                                        let span = |name: &str| -> Result<u16> {
+                                            Ok(self.document.attribute(node, name)?.and_then(|v| v.trim().parse::<u16>().ok()).filter(|n| *n >= 1).unwrap_or(1).min(1000))
+                                        };
+                                        self.boxes[id.index()].span = [span("colspan")?, span("rowspan")?];
+                                    }
                                     self.push(node, id, node, true)?;
                                 }
                             }

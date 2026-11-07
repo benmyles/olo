@@ -401,6 +401,7 @@ pub struct Job<'a> {
     stack: Vec<Frame>,
     flex: Vec<flex_flow::Frame<'a>>,
     containers: Vec<container_flow::Container>,
+    tables: Vec<container_flow::Table>,
     absolute: Vec<absolute_flow::Deferred>,
     absolute_at: usize,
     absolute_indices: HashMap<BoxId, usize>,
@@ -470,6 +471,7 @@ impl<'a> Job<'a> {
             }],
             flex: Vec::new(),
             containers: Vec::new(),
+            tables: Vec::new(),
             absolute: Default::default(),
             absolute_at: 0,
             absolute_indices: HashMap::new(),
@@ -519,6 +521,9 @@ impl<'a> Job<'a> {
             Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?
         };
         used.bfc |= flow_root || root;
+        if container_flow::is_table(style) {
+            self.begin_table(id, style, &mut used, parent.width, queries)?;
+        }
         let collapse_top = !used.bfc && used.padding.top + used.border.top == 0.;
         let collapse_bottom = !used.bfc && used.height.is_none() && used.min_height == 0. && used.padding.bottom + used.border.bottom == 0.;
         let through = !used.bfc && used.padding.vertical() + used.border.vertical() == 0. && used.min_height == 0. && used.height.is_none_or(|h| h == 0.);
@@ -531,7 +536,7 @@ impl<'a> Job<'a> {
         if is_row_flex(style) {
             let frame = flex_flow::Frame::new(id, b.first_child, style, used, queries, &mut self.scratch, &mut self.fallbacks, self.cancel, self.scale)?;
             self.flex.push(frame);
-        } else if container_flow::is_grid(style) || container_flow::is_column_flex(style) {
+        } else if container_flow::is_grid(style) || container_flow::is_column_flex(style) || container_flow::is_table_row(style) {
             self.begin_container(id, style, used, queries)?;
         }
         let queries = queries.descendants(style, used.width, used.height(0.))?;
@@ -892,6 +897,7 @@ impl<'a> Job<'a> {
                     f.cursor = height;
                     f.pending = Strut::default();
                 }
+                self.finish_table(f.id);
                 let auto = f.cursor + if f.collapse_bottom { 0. } else { f.pending.value() };
                 let height = f.used.height(auto.max(0.));
                 let g = &mut self.geometry[f.id.index()];

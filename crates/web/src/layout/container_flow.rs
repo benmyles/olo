@@ -30,8 +30,27 @@ struct Item {
     basis: Option<f64>,
 }
 enum Kind {
-    Grid { columns: Vec<f64>, rows: Vec<Track>, align_content: K, justify_content: K },
-    ColumnFlex { reverse: bool, justify: K },
+    Grid {
+        columns: Vec<f64>,
+        rows: Vec<Track>,
+        align_content: K,
+        justify_content: K,
+    },
+    ColumnFlex {
+        reverse: bool,
+        justify: K,
+    },
+    /// A table row: cells at the enclosing table's column positions.
+    Row {
+        columns: Vec<f64>,
+        spacing: (f64, f64),
+    },
+}
+/// An open table: the column widths its rows place cells by.
+pub(super) struct Table {
+    pub id: BoxId,
+    columns: Vec<f64>,
+    spacing: (f64, f64),
 }
 pub(super) struct Container {
     pub id: BoxId,
@@ -62,6 +81,19 @@ pub(in crate::layout) fn is_grid(style: &Style) -> bool {
 }
 pub(super) fn is_column_flex(style: &Style) -> bool {
     super::flow::is_flex(style) && !super::flow::is_row_flex(style)
+}
+pub(in crate::layout) fn is_table(style: &Style) -> bool {
+    matches!(style.value(P::Display), Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Table, .. }))
+}
+pub(in crate::layout) fn is_table_row(style: &Style) -> bool {
+    matches!(style.value(P::Display), Value::Display(crate::css::properties::Display::Internal(crate::css::properties::Internal::TableRow)))
+}
+fn is_row_group(style: &Style) -> bool {
+    use crate::css::properties::Internal as I;
+    matches!(style.value(P::Display), Value::Display(crate::css::properties::Display::Internal(I::TableRowGroup | I::TableHeaderGroup | I::TableFooterGroup)))
+}
+fn is_cell(style: &Style) -> bool {
+    matches!(style.value(P::Display), Value::Display(crate::css::properties::Display::Internal(crate::css::properties::Internal::TableCell)))
 }
 fn keyword(s: &Style, p: P) -> K {
     if let Value::Keyword(k) = s.value(p) { *k } else { K::Auto }
@@ -141,6 +173,108 @@ impl Job<'_> {
         }
         Ok(out)
     }
+    /// The rows of a table box, through its row groups, each with its cells.
+    fn table_rows(&self, table: BoxId) -> Result<Vec<(BoxId, Vec<BoxId>)>> {
+        let tree = &self.cache.tree;
+        let mut rows = Vec::new();
+        let mut next = tree.get(table).ok_or(Error::Invalid)?.first_child;
+        let mut groups: Vec<Option<BoxId>> = Vec::new();
+        while let Some(child) = next.or_else(|| groups.pop().flatten()) {
+            check(self.cancel)?;
+            let b = tree.get(child).ok_or(Error::Invalid)?;
+            next = b.next_sibling;
+            if b.absolute || !matches!(b.kind, BoxKind::Block { .. }) {
+                continue;
+            }
+            let Some(s) = tree.style(child) else { continue };
+            if is_row_group(s) {
+                // Rows of this group come next; the table's own siblings after.
+                groups.push(next);
+                next = b.first_child;
+            } else if is_table_row(s) {
+                let mut cells = Vec::new();
+                let mut c = b.first_child;
+                while let Some(cell) = c {
+                    let cb = tree.get(cell).ok_or(Error::Invalid)?;
+                    c = cb.next_sibling;
+                    if !cb.absolute && matches!(cb.kind, BoxKind::Block { .. }) && tree.style(cell).is_some_and(is_cell) {
+                        cells.push(cell);
+                    }
+                }
+                rows.push((child, cells));
+            }
+            if rows.len() > self.limits.boxes {
+                return Err(Error::Limit);
+            }
+        }
+        Ok(rows)
+    }
+    /// Column contributions of a table (min and max, with column spans).
+    fn table_contributions(&mut self, table: BoxId, queries: QueryBasis, basis: f64) -> Result<(usize, Vec<(usize, usize, f64, f64)>)> {
+        let rows = self.table_rows(table)?;
+        let mut contributions = Vec::new();
+        let mut columns = 0;
+        for (_, cells) in &rows {
+            let mut at = 0usize;
+            for &cell in cells {
+                let span = usize::from(self.cache.tree.get(cell).ok_or(Error::Invalid)?.span[0]).max(1);
+                let w = self.intrinsic(cell, queries, basis, 0)?;
+                contributions.push((at, at + span, w.min_content, w.max_content));
+                at += span;
+            }
+            columns = columns.max(at);
+        }
+        Ok((columns, contributions))
+    }
+    /// A table's min- and max-content widths, spacing included.
+    pub(super) fn table_intrinsic(&mut self, table: BoxId, style: &Style, queries: QueryBasis, basis: f64) -> Result<(f64, f64)> {
+        let (columns, contributions) = self.table_contributions(table, queries, basis)?;
+        let (sx, _) = self.spacing(style, queries);
+        let gaps = sx * (columns + 1) as f64;
+        let tracks = vec![Track { min: Bound::Auto, max: Bound::Auto }; columns];
+        let mins = size_tracks(&tracks, &contributions, None, sx, false, self.scale);
+        let maxes = column_maxes(columns, &contributions);
+        Ok((mins.iter().sum::<f64>() + gaps, maxes.iter().sum::<f64>() + gaps))
+    }
+    fn spacing(&mut self, style: &Style, queries: QueryBasis) -> (f64, f64) {
+        let _ = queries;
+        match style.value(P::BorderSpacing) {
+            Value::Radius(r) => {
+                let v = |n: &crate::css::properties::Numeric| n.expression().constant().map_or(0., |q| q.value).max(0.);
+                (used::grid(v(&r.x), self.scale), used::grid(v(&r.y), self.scale))
+            }
+            _ => (0., 0.),
+        }
+    }
+    /// Settle a table's columns and its own width (shrink-to-fit when auto),
+    /// before its rows lay out.
+    pub(super) fn begin_table(&mut self, id: BoxId, style: &Style, used: &mut Used, available: f64, queries: QueryBasis) -> Result<()> {
+        let (columns, contributions) = self.table_contributions(id, queries, available)?;
+        let (sx, sy) = self.spacing(style, queries);
+        let gaps = sx * (columns + 1) as f64;
+        let extra = used.padding.horizontal() + used.border.horizontal();
+        let specified = used::length(style, P::Width, Some(available), None, queries, &mut self.scratch, self.cancel, self.scale)?;
+        let tracks = vec![Track { min: Bound::Auto, max: Bound::Auto }; columns];
+        let content = if specified.is_some() {
+            used.width
+        } else {
+            let mins = size_tracks(&tracks, &contributions, None, sx, false, self.scale);
+            let maxes = column_maxes(columns, &contributions);
+            let (min, max) = (mins.iter().sum::<f64>() + gaps, maxes.iter().sum::<f64>() + gaps);
+            let room = (available - extra - used.margin.horizontal()).max(0.);
+            max.min(room).max(min).max(0.)
+        };
+        // size_tracks places the spacing between columns; the two edge gaps are ours.
+        let widths = size_tracks(&tracks, &contributions, Some((content - 2. * sx).max(0.)), sx, true, self.scale);
+        used.width = used::grid(content, self.scale);
+        self.tables.push(Table { id, columns: widths, spacing: (sx, sy) });
+        Ok(())
+    }
+    pub(super) fn finish_table(&mut self, id: BoxId) {
+        if self.tables.last().is_some_and(|t| t.id == id) {
+            self.tables.pop();
+        }
+    }
     /// Start a grid or column-flex container for the block whose frame was
     /// just pushed: settle every item's width.
     pub(super) fn begin_container(&mut self, id: BoxId, style: &Style, used: Used, queries: QueryBasis) -> Result<()> {
@@ -206,7 +340,38 @@ impl Job<'_> {
                 basis,
             });
         }
-        let kind = if grid {
+        let kind = if is_table_row(style) {
+            // A row outside any table (an anonymous table in CSS) sizes its own columns.
+            let (columns, spacing) = match self.tables.last() {
+                Some(table) => (table.columns.clone(), table.spacing),
+                None => {
+                    let contributions: Vec<(usize, usize, f64, f64)> = items.iter().enumerate().map(|(i, item)| (i, i + 1, item.contribution.0, item.contribution.1)).collect();
+                    let tracks = vec![Track { min: Bound::Auto, max: Bound::Auto }; items.len()];
+                    (size_tracks(&tracks, &contributions, Some(width), 0., true, self.scale), (0., 0.))
+                }
+            };
+            let mut at = 0usize;
+            for item in &mut items {
+                let c = cache.tree.get(item.id).ok_or(Error::Invalid)?;
+                let span = usize::from(c.span[0]).max(1);
+                item.cell = Cell { columns: (at, (at + span).min(columns.len().max(at + 1))), rows: (0, 1) };
+                at += span;
+                let (a, z) = item.cell.columns;
+                let area = columns[a.min(columns.len())..z.min(columns.len())].iter().sum::<f64>() + spacing.0 * (z - a).saturating_sub(1) as f64;
+                let s = cache.tree.style(item.id).ok_or(Error::Stale)?;
+                let mut u = Used::flex(s, area, height, queries, &mut self.scratch, self.cancel, self.scale)?;
+                u.margin = Edges::default();
+                u.width = used::grid((area - u.padding.horizontal() - u.border.horizontal()).max(0.), self.scale);
+                // Cells align vertically by their vertical-align.
+                item.align = match s.value(P::VerticalAlign) {
+                    Value::Keyword(K::Middle) => K::Center,
+                    Value::Keyword(K::Bottom) => K::End,
+                    _ => K::Start,
+                };
+                item.used = u;
+            }
+            Kind::Row { columns, spacing }
+        } else if grid {
             let mut columns = self.tracks(style.value(P::GridTemplateColumns), Some(width), column_gap, queries)?;
             let explicit_rows = self.tracks(style.value(P::GridTemplateRows), height, row_gap, queries)?;
             let auto_columns = self.auto_tracks(style.value(P::GridAutoColumns), Some(width), queries)?;
@@ -327,6 +492,35 @@ impl Job<'_> {
         let container = self.containers.pop().ok_or(Error::Invalid)?;
         let scale = self.scale;
         let content_height = match container.kind {
+            Kind::Row { columns, spacing } => {
+                let height = container.items.iter().map(|i| i.outer_height).fold(0f64, f64::max);
+                let mut starts = Vec::with_capacity(columns.len() + 1);
+                let mut x = spacing.0;
+                for w in &columns {
+                    starts.push(x);
+                    x += w + spacing.0;
+                }
+                starts.push(x);
+                for item in &container.items {
+                    let (a, z) = item.cell.columns;
+                    let g = &mut self.geometry[item.id.index()];
+                    let cell_height = used::grid(height.max(g.border_box.height), scale);
+                    let dy = match item.align {
+                        K::Center => (height - g.border_box.height) / 2.,
+                        K::End => height - g.border_box.height,
+                        _ => 0.,
+                    };
+                    g.border_box.x = used::grid(starts[a.min(starts.len() - 1)], scale);
+                    g.border_box.y = used::grid(dy.max(0.), scale);
+                    let _ = z;
+                    // A cell fills its row; content stays where its alignment put it.
+                    if !matches!(item.align, K::Center | K::End) {
+                        g.border_box.height = cell_height;
+                    }
+                    g.margin = Edges::default();
+                }
+                height + spacing.1
+            }
             Kind::Grid { columns, rows, align_content, justify_content } => {
                 let contributions: Vec<(usize, usize, f64, f64)> = container.items.iter().map(|i| (i.cell.rows.0, i.cell.rows.1, i.outer_height, i.outer_height)).collect();
                 let row_sizes = size_tracks(&rows, &contributions, container.height, container.row_gap, matches!(align_content, K::Normal | K::Stretch), scale);
@@ -686,4 +880,28 @@ pub(super) fn lines(style: &Style, start: P, end: P, explicit: usize) -> (usize,
         }
         (None, None) => (usize::MAX, span_of(&s).max(span_of(&e))),
     }
+}
+
+/// Each column's max-content width: single-span cells' maxima, then spanning
+/// cells' excess shared equally.
+fn column_maxes(columns: usize, items: &[(usize, usize, f64, f64)]) -> Vec<f64> {
+    let mut maxes = vec![0f64; columns];
+    for &(a, z, _, max) in items.iter().filter(|(a, z, _, _)| z.saturating_sub(*a) <= 1) {
+        if a < columns {
+            maxes[a] = maxes[a].max(max);
+        }
+        let _ = z;
+    }
+    for &(a, z, _, max) in items.iter().filter(|(a, z, _, _)| z.saturating_sub(*a) > 1) {
+        let z = z.min(columns);
+        if a >= z {
+            continue;
+        }
+        let current: f64 = maxes[a..z].iter().sum();
+        let deficit = (max - current).max(0.) / (z - a) as f64;
+        for m in &mut maxes[a..z] {
+            *m += deficit;
+        }
+    }
+    maxes
 }

@@ -881,3 +881,27 @@ fn fit_content_flex_items_inside_a_flex_row_size_from_their_content() {
     assert!((b.x - (a.width + 8.)).abs() < 0.1, "{b:?}");
     assert!(b.width > 300. && b.width < 320., "{b:?}");
 }
+const TABLE: &str = "table{display:table;border-spacing:2px}tbody{display:table-row-group}tr{display:table-row}td{display:table-cell;padding:1px}";
+#[test]
+fn tables_size_columns_from_cells_and_place_rows() {
+    let s = scope();
+    let mut e = Engine::default();
+    // Two rows; the second cell of row two spans both columns. Cell padding 1px (UA), spacing 2px (UA).
+    let (d, t) = tree("<table id=t><tr><td id=a>AB</td><td id=b>CDEF</td></tr><tr><td id=c colspan=2>G</td></tr></table>", TABLE, &s, 1);
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 600., 1);
+    let (a, b, cc, table) = (rect(&d, &l, "a"), rect(&d, &l, "b"), rect(&d, &l, "c"), rect(&d, &l, "t"));
+    // Columns: AB = 40 + 2 padding, CDEF = 80 + 2; spacing 2 between and at the edges.
+    assert_eq!(a, layout::Rect { x: 2., y: 0., width: 42., height: 22. }, "{a:?}");
+    assert_eq!(b, layout::Rect { x: 46., y: 0., width: 82., height: 22. }, "{b:?}");
+    assert_eq!((cc.x, cc.width), (2., 42. + 2. + 82.), "{cc:?}");
+    assert_eq!(cc.y, 24., "{cc:?}");
+    assert_eq!(table.width, 130., "{table:?}");
+    // A table with a width stretches its columns to it.
+    let (d, t) = tree("<table id=t style='width:400px'><tr><td id=a>A</td><td id=b>B</td></tr></table>", TABLE, &s, 1);
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 600., 1);
+    let (a, b) = (rect(&d, &l, "a"), rect(&d, &l, "b"));
+    assert_eq!(a.width, b.width);
+    assert_eq!(a.width + b.width + 6., 400.);
+}

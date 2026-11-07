@@ -125,6 +125,9 @@ impl Job<'_> {
         let maximum = len(P::MaxWidth, None, &mut self.scratch)?.map(content).unwrap_or(f64::MAX).max(minimum);
         let mut widths = if let Some(w) = specified {
             inline::IntrinsicWidths { min_content: w, max_content: w }
+        } else if super::container_flow::is_table(s) {
+            let (min, max) = self.table_intrinsic(id, s, queries, basis)?;
+            inline::IntrinsicWidths { min_content: min, max_content: max }
         } else if b.kind.is_replaced() {
             let (w, h) = cache.tree.natural(id)?;
             // A specified height with an automatic width sizes a replaced box by its ratio.
@@ -134,8 +137,8 @@ impl Job<'_> {
             };
             inline::IntrinsicWidths { min_content: w, max_content: w }
         } else {
-            let row = super::flow::is_row_flex(s);
-            let wrap = row && !matches!(s.value(P::FlexWrap), Value::Keyword(K::Nowrap));
+            let row = super::flow::is_row_flex(s) || super::container_flow::is_table_row(s);
+            let wrap = row && !matches!(s.value(P::FlexWrap), Value::Keyword(K::Nowrap)) && !super::container_flow::is_table_row(s);
             let gap = if row && !matches!(s.value(P::ColumnGap), Value::Keyword(K::Normal)) { len(P::ColumnGap, Some(0.), &mut self.scratch)?.unwrap_or(0.).max(0.) } else { 0. };
             let (mut sum_min, mut sum_max, mut max_min, mut max_max, mut count) = (0f64, 0f64, 0f64, 0f64, 0usize);
             let mut next = b.first_child;

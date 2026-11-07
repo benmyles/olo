@@ -243,6 +243,155 @@ impl<'a> Job<'a> {
         }
         Ok(None)
     }
+    /// HTML's presentational hints (HTML §15.3): attributes that map to
+    /// declarations below author styles. Dimensions follow the rules for
+    /// parsing dimension values; colours are parsed as CSS colours.
+    fn html_hints(&mut self, node: NodeId, hints: &mut Vec<p::Declaration>) -> Result<()> {
+        let document = self.document;
+        let name = document.name(node).map_err(Error::Dom)?.unwrap_or("");
+        let push = |this: &mut Self, property: &str, value: String, hints: &mut Vec<p::Declaration>| -> Result<()> {
+            if value.len() > this.limits.inline_bytes || hints.len() >= this.limits.inline_declarations {
+                return Err(Error::Limit);
+            }
+            let syntax = Syntax::parse(Arc::from(value), this.limits.css, this.cancelled).map_err(Error::css)?;
+            match p::Declaration::parse(property, syntax.components(), false, this.limits.property, this.cancelled) {
+                Ok(declaration) => hints.push(declaration),
+                Err(p::Error::Invalid) => this.tree.report.presentation_invalid += 1,
+                Err(p::Error::Unsupported(_) | p::Error::UnknownProperty) => this.tree.report.presentation_unsupported += 1,
+                Err(error) => return Err(Error::Property(error)),
+            }
+            Ok(())
+        };
+        let attribute = |name: &str| document.attribute(node, name).map_err(Error::Dom);
+        let sized = matches!(name, "img" | "table" | "td" | "th" | "tr" | "col" | "colgroup" | "iframe" | "video" | "canvas" | "embed" | "object" | "hr" | "input");
+        if sized {
+            for dimension in ["width", "height"] {
+                if name == "input" && dimension == "height" {
+                    continue;
+                }
+                if let Some(value) = attribute(dimension)? {
+                    if value.len() > self.limits.inline_bytes {
+                        return Err(Error::Limit);
+                    }
+                    if let Some(value) = dimension_hint(value) {
+                        push(self, dimension, value, hints)?;
+                    }
+                }
+            }
+        }
+        if matches!(name, "body" | "table" | "tr" | "td" | "th" | "thead" | "tbody" | "tfoot" | "div" | "marquee" | "col" | "colgroup")
+            && let Some(value) = attribute("bgcolor")?
+        {
+            push(self, "background-color", legacy_color(value), hints)?;
+        }
+        if name == "body"
+            && let Some(value) = attribute("text")?
+        {
+            push(self, "color", legacy_color(value), hints)?;
+        }
+        if name == "font"
+            && let Some(value) = attribute("color")?
+        {
+            push(self, "color", legacy_color(value), hints)?;
+        }
+        if name == "font"
+            && let Some(value) = attribute("size")?
+        {
+            // <font size>: 1–7 absolute, +n/−n relative to 3 (HTML §15.3.9).
+            let v = value.trim();
+            let n: Option<i32> =
+                v.strip_prefix('+').map_or_else(|| v.strip_prefix('-').and_then(|d| d.parse::<i32>().ok().map(|d| 3 - d)), |d| d.parse::<i32>().ok().map(|d| 3 + d)).or_else(|| v.parse().ok());
+            if let Some(n) = n {
+                let keyword = match n.clamp(1, 7) {
+                    1 => "x-small",
+                    2 => "small",
+                    3 => "medium",
+                    4 => "large",
+                    5 => "x-large",
+                    6 => "xx-large",
+                    _ => "xxx-large",
+                };
+                push(self, "font-size", keyword.into(), hints)?;
+            }
+        }
+        if matches!(name, "td" | "th" | "tr" | "thead" | "tbody" | "tfoot" | "div" | "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "caption" | "legend")
+            && let Some(value) = attribute("align")?
+        {
+            let value = value.trim();
+            let align = if value.eq_ignore_ascii_case("center") || value.eq_ignore_ascii_case("middle") {
+                Some("center")
+            } else if value.eq_ignore_ascii_case("left") {
+                Some("left")
+            } else if value.eq_ignore_ascii_case("right") {
+                Some("right")
+            } else if value.eq_ignore_ascii_case("justify") {
+                Some("justify")
+            } else {
+                None
+            };
+            if let Some(align) = align {
+                push(self, "text-align", align.into(), hints)?;
+            }
+        }
+        if matches!(name, "table") {
+            if let Some(value) = attribute("align")?
+                && (value.trim().eq_ignore_ascii_case("center") || value.trim().eq_ignore_ascii_case("left") || value.trim().eq_ignore_ascii_case("right"))
+            {
+                let v = value.trim().to_ascii_lowercase();
+                if v == "center" {
+                    push(self, "margin-left", "auto".into(), hints)?;
+                    push(self, "margin-right", "auto".into(), hints)?;
+                }
+            }
+            if let Some(value) = attribute("cellspacing")?
+                && let Some(v) = dimension_hint(value)
+            {
+                push(self, "border-spacing", v, hints)?;
+            }
+        }
+        if matches!(name, "td" | "th" | "tr" | "thead" | "tbody" | "tfoot")
+            && let Some(value) = attribute("valign")?
+        {
+            let v = value.trim().to_ascii_lowercase();
+            if matches!(v.as_str(), "top" | "middle" | "bottom" | "baseline") {
+                push(self, "vertical-align", v, hints)?;
+            }
+        }
+        if matches!(name, "td" | "th") {
+            if attribute("nowrap")?.is_some() {
+                push(self, "white-space", "nowrap".into(), hints)?;
+            }
+            // cellpadding on the enclosing table pads every cell.
+            let mut ancestor = document.parent(node).map_err(Error::Dom)?;
+            let mut depth = 0;
+            while let Some(a) = ancestor {
+                depth += 1;
+                if depth > 64 {
+                    break;
+                }
+                if document.name(a).map_err(Error::Dom)? == Some("table") {
+                    if let Some(value) = document.attribute(a, "cellpadding").map_err(Error::Dom)?
+                        && let Some(v) = dimension_hint(value)
+                    {
+                        push(self, "padding", v, hints)?;
+                    }
+                    break;
+                }
+                ancestor = document.parent(a).map_err(Error::Dom)?;
+            }
+        }
+        if name == "hr" {
+            if let Some(value) = attribute("size")?
+                && let Some(v) = dimension_hint(value)
+            {
+                push(self, "height", v, hints)?;
+            }
+            if attribute("noshade")?.is_some() {
+                push(self, "border-style", "solid".into(), hints)?;
+            }
+        }
+        Ok(())
+    }
     fn svg_hints(&mut self, node: NodeId, hints: &mut Vec<p::Declaration>) -> Result<()> {
         let document = self.document;
         let geometry = matches!(document.name(node).map_err(Error::Dom)?, Some("svg" | "rect" | "image" | "foreignObject" | "symbol" | "use"));
@@ -298,17 +447,8 @@ impl<'a> Job<'a> {
             return Err(Error::Limit);
         }
         let mut hints = Vec::new();
-        if self.document.name(node).map_err(Error::Dom)? == Some("img") && self.document.namespace(node).map_err(Error::Dom)? == Some(crate::dom::Namespace::Html) {
-            for name in ["width", "height"] {
-                let Some(value) = self.document.attribute(node, name).map_err(Error::Dom)? else { continue };
-                if value.len() > self.limits.inline_bytes {
-                    return Err(Error::Limit);
-                }
-                if let Some(value) = dimension_hint(value) {
-                    let syntax = Syntax::parse(Arc::from(value), self.limits.css, self.cancelled).map_err(Error::css)?;
-                    hints.push(p::Declaration::parse(name, syntax.components(), false, self.limits.property, self.cancelled).map_err(Error::Property)?);
-                }
-            }
+        if self.document.namespace(node).map_err(Error::Dom)? == Some(crate::dom::Namespace::Html) {
+            self.html_hints(node, &mut hints)?;
         }
         if self.document.namespace(node).map_err(Error::Dom)? == Some(crate::dom::Namespace::Svg) {
             self.svg_hints(node, &mut hints)?;
@@ -407,6 +547,11 @@ impl<'a> Job<'a> {
 
 // HTML dimension-value microsyntax, used only as an author presentational
 // hint. Author CSS (including an explicit auto) participates in the cascade.
+/// Legacy colour values: a `#`-less hex triplet becomes a hex colour.
+fn legacy_color(value: &str) -> String {
+    let v = value.trim();
+    if !v.starts_with('#') && (v.len() == 6 || v.len() == 3) && v.bytes().all(|b| b.is_ascii_hexdigit()) { format!("#{v}") } else { v.to_owned() }
+}
 fn dimension_hint(input: &str) -> Option<String> {
     let input = input.trim_start_matches(['\t', '\n', '\u{c}', '\r', ' ']);
     let bytes = input.as_bytes();
