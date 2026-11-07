@@ -28,6 +28,8 @@ struct Item {
     autos: u8,
     align: K,
     stretch: bool,
+    /// `order`: items are laid out in order-modified document order.
+    order: i32,
 }
 /// One flex line: the items it holds, their solved main sizes, and its
 /// cross size and offset (CSS Flexbox 9.3, 9.4).
@@ -240,15 +242,13 @@ fn item(
             bfc: true,
             rtl: false,
         };
-        return Ok((Item { id, used, autos: 0, align: K::FlexStart, stretch: false }, flex::Item { base: widths.max_content, minimum: widths.min_content, ..Default::default() }));
+        return Ok((Item { id, used, autos: 0, align: K::FlexStart, stretch: false, order: 0 }, flex::Item { base: widths.max_content, minimum: widths.min_content, ..Default::default() }));
     }
     let s = tree.style(id).ok_or(Error::Stale)?;
     if keyword(s, P::Visibility)? == K::Collapse {
         fallbacks.note("visibility: collapse flex item kept", node);
     }
-    if s.value(P::Order).scalar() != Some(0.) {
-        fallbacks.note("flex order ignored", node);
-    }
+    let order = s.value(P::Order).scalar().unwrap_or(0.).clamp(i32::MIN as f64, i32::MAX as f64) as i32;
     let align = match keyword(s, P::AlignSelf)? {
         K::Auto => align,
         K::Baseline => {
@@ -283,7 +283,7 @@ fn item(
             shrink: s.value(P::FlexShrink).scalar().ok_or(Error::Invalid)?,
             outer: extra + used.margin.horizontal(),
         };
-        return Ok((Item { id, used, autos, align, stretch: false }, input));
+        return Ok((Item { id, used, autos, align, stretch: false, order }, input));
     }
     if !matches!(b.kind, BoxKind::Block { .. }) {
         return Err(Error::Invalid);
@@ -334,7 +334,7 @@ fn item(
         shrink: s.value(P::FlexShrink).scalar().ok_or(Error::Invalid)?,
         outer: extra + used.margin.horizontal(),
     };
-    Ok((Item { id, used, autos, align, stretch: matches!(s.value(P::Height), Value::Keyword(K::Auto)) }, input))
+    Ok((Item { id, used, autos, align, stretch: matches!(s.value(P::Height), Value::Keyword(K::Auto)), order }, input))
 }
 impl<'a> Job<'a> {
     pub(super) fn flex_child_used(&self, id: BoxId) -> Result<Option<Used>> {
@@ -380,6 +380,13 @@ impl<'a> Job<'a> {
             Stage::Collect => {
                 let Some(id) = self.flex[fi].next else {
                     let f = &mut self.flex[fi];
+                    // Order-modified document order (CSS Flexbox 5.4): by
+                    // `order`, document order among equals.
+                    if f.items.windows(2).any(|w| w[0].order > w[1].order) {
+                        let mut both: Vec<(Item, flex::Item)> = std::mem::take(&mut f.items).into_iter().zip(std::mem::take(&mut f.inputs)).collect();
+                        both.sort_by_key(|(item, _)| item.order);
+                        (f.items, f.inputs) = both.into_iter().unzip();
+                    }
                     f.partition(used.width);
                     f.stage = Stage::Solve;
                     return Ok(Tick::Pending);

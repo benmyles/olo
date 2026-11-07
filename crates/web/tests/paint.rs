@@ -876,3 +876,49 @@ fn a_patched_rerender_reports_the_whole_pages_fallbacks() {
         assert_eq!(page.fallbacks.to_string(), before, "after {colour}");
     }
 }
+#[test]
+fn flex_items_lay_out_in_order_modified_document_order() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}div{display:flex}span{display:block;width:20px;height:20px}</style><div><span style='order:1;background-color:red'></span><span style='order:-1;background-color:green'></span><span style='background-color:blue'></span><span style='order:1;background-color:black'></span></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    assert!(!page.fallbacks.to_string().contains("order"), "{}", page.fallbacks);
+    let tile = render(&mut painter, &page.scene);
+    // green (-1), blue (0), then red and black (1) in document order.
+    assert_eq!([10, 30, 50, 70].map(|x| pixel(&tile, x, 10)), [[0, 128, 0, 255], [0, 0, 255, 255], [255, 0, 0, 255], [0, 0, 0, 255]]);
+}
+#[test]
+fn column_flex_items_follow_order_too() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}div{display:flex;flex-direction:column}span{display:block;height:20px}</style><div><span style='order:1;background-color:red'></span><span style='background-color:green'></span><span style='order:-1;background-color:blue'></span></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let tile = render(&mut painter, &page.scene);
+    assert_eq!([10, 30, 50].map(|y| pixel(&tile, 50, y)), [[0, 0, 255, 255], [0, 128, 0, 255], [255, 0, 0, 255]]);
+}

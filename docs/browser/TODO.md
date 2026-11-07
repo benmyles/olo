@@ -24,7 +24,7 @@ GitHub's homepage, open (seen against Chrome at 1000 × 700):
 
 - [ ] Container queries (`@container`, `container:`): its sign-up form
   stays stacked (83 rules dropped).
-- [ ] Flex `order` (6 boxes; its header's menu button sits left).
+- [x] Flex `order`, row and column (its header's menu button sat left).
 - [ ] CSS animations and transitions: `animation`, `@keyframes` (207
   rules), `transition` are not parsed; also `outline`, `text-transform`,
   `text-overflow`, `appearance`, `filter`, `backdrop-filter`.

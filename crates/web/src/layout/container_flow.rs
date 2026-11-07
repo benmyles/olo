@@ -28,6 +28,8 @@ struct Item {
     grow: f64,
     shrink: f64,
     basis: Option<f64>,
+    /// `order` (flex items are placed in order-modified document order).
+    order: i32,
 }
 enum Kind {
     Grid {
@@ -377,6 +379,7 @@ impl Job<'_> {
                 grow,
                 shrink,
                 basis,
+                order: if text { 0 } else { s.value(P::Order).scalar().unwrap_or(0.).clamp(i32::MIN as f64, i32::MAX as f64) as i32 },
             });
         }
         let kind = if is_table_row(style) {
@@ -673,7 +676,13 @@ impl Job<'_> {
                 let free = height.map_or(0., |h| h - total);
                 let grown = container.items.iter().any(|i| i.grow > 0.) && free > 0.;
                 let (offset, between) = if grown { (0., 0.) } else { distribute(justify, free, n) };
-                let order: Vec<usize> = if reverse { (0..n).rev().collect() } else { (0..n).collect() };
+                // Order-modified document order (CSS Flexbox 5.4), reversed
+                // for column-reverse.
+                let mut order: Vec<usize> = (0..n).collect();
+                order.sort_by_key(|&i| container.items[i].order);
+                if reverse {
+                    order.reverse();
+                }
                 let mut y = offset;
                 for (k, &i) in order.iter().enumerate() {
                     let item = &container.items[i];
