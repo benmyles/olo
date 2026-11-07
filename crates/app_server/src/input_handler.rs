@@ -772,7 +772,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let output = self.space.output_under(location).next().cloned();
             if let Some(output) = output.as_ref() {
                 let output_geo = self.space.output_geometry(output).unwrap();
+                // (Not a window in front of it, which the windows below take.)
                 if let Some(window) = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()).filter(|_| !crate::rescue::active())
+                    && !self.in_front_of_fullscreen_under(output, &window, location)
                     && let Some((_, _)) = window.surface_under(location - output_geo.loc.to_f64(), WindowSurfaceType::ALL)
                 {
                     keyboard.set_focus(self, Some(window.into()), serial);
@@ -870,7 +872,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let mut under = None;
         // (In Rescue a full-screen window is put away with the rest.)
         let fullscreen = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()).filter(|_| !crate::rescue::active());
-        if let Some((surface, loc)) = fullscreen.and_then(|w| w.surface_under(pos - output_geo.loc.to_f64(), WindowSurfaceType::ALL)) {
+        // A window in front of it (a dialog) takes the pointer over itself.
+        let front = fullscreen.as_ref().and_then(|full| {
+            crate::shell::in_front_of_fullscreen(&self.space, output, full).into_iter().find_map(|w| {
+                let loc = self.space.element_location(&w)?;
+                w.surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL).map(|(surface, surf_loc)| (surface, surf_loc + loc))
+            })
+        });
+        if let Some(focus) = front {
+            under = Some(focus);
+        } else if let Some((surface, loc)) = fullscreen.and_then(|w| w.surface_under(pos - output_geo.loc.to_f64(), WindowSurfaceType::ALL)) {
             under = Some((surface, loc + output_geo.loc));
         } else if let Some(focus) = layer_under(WlrLayer::Overlay)
             .or(menu)
@@ -887,6 +898,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             under = Some(focus)
         };
         under.map(|(s, l)| (s, l.to_f64()))
+    }
+
+    /// Whether a window in front of `full` (filling `output`) is at
+    /// `pos` (global): a click there is that window's.
+    fn in_front_of_fullscreen_under(&self, output: &Output, full: &crate::shell::WindowElement, pos: Point<f64, Logical>) -> bool {
+        crate::shell::in_front_of_fullscreen(&self.space, output, full)
+            .iter()
+            .any(|w| self.space.element_location(w).is_some_and(|loc| w.surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL).is_some()))
     }
 
     /// A window's menu at `pos` (global): its surface there and where it

@@ -4840,7 +4840,17 @@ display it asks for, else the one it is on (`display_of`: most of it),
 else the one the pointer is on; that display draws it alone
 (`FullscreenSurface`), and the others leave it out
 (`WindowMeta::fullscreen`) rather than draw its display-sized buffer
-where it was, over their edge. When that display's size in points
+where it was, over their edge. Alone but for what's in front of it: a
+window that comes up while it fills the display (a password dialog, a
+new window: they come up in front) is drawn over it, its menus too, and
+takes the clicks over itself (`shell::in_front_of_fullscreen`, the
+windows above it in the space that show on that display, used by
+`gather_elements`, `surface_under` and the click's focus): drawn alone,
+the full-screen window hid them, and a password dialog asked for while
+Olo Setup filled the screen had the keyboard but was never seen (a
+stock Fedora 45, 2026-11-07). With nothing in front the loop stops at
+its first window (a display's gather, Setup full screen: 19.1 and 17.5
+µs a frame before, 18.8 and 16.9 after). When that display's size in points
 changes (a new scale, mode or rotation: `fixup_positions`), the window
 is told the new size, so it goes on filling it. With Preferences ▸ Appearance ▸ "Glow new
 windows for N seconds" (`Appearance::glow_new_windows`, off by default;
