@@ -116,11 +116,13 @@ impl TextSource {
 pub struct Tree {
     vectors: Arc<[crate::svg::Viewport]>,
     images: Option<Arc<crate::image::Set>>,
-    pub(super) boxes: Box<[BoxNode]>,
+    /// Shared with the trees restyled from this one (`with_styles`, every
+    /// frame of a live page): the same boxes, never copied.
+    pub(super) boxes: Arc<[BoxNode]>,
     pub(super) sources: Arc<[TextSource]>,
     pub(super) styles: Arc<StyleTree>,
-    inlines: Box<[InlineBox]>,
-    controls: Box<[Control]>,
+    inlines: Arc<[InlineBox]>,
+    controls: Arc<[Control]>,
     document: u64,
     revision: u64,
     text_bytes: usize,
@@ -1005,9 +1007,9 @@ impl<'a> BuildJob<'a> {
             document: self.document.id(),
             revision: self.document.revision(),
             styles: self.styles,
-            inlines: self.inlines.into_boxed_slice(),
-            controls: controls.into_boxed_slice(),
-            boxes: self.boxes.into_boxed_slice(),
+            inlines: Arc::from(self.inlines),
+            controls: Arc::from(controls),
+            boxes: Arc::from(self.boxes),
             sources: Arc::from(self.sources),
         }))
     }

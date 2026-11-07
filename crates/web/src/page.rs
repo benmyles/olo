@@ -1688,13 +1688,17 @@ fn render(
     let kept = previous.filter(|p| styles.geometry_kept() && !relayout && p.device_scale() == viewport.scale && same_bindings(p));
     let kept_layout = kept.is_some();
     // What changed since the previous layout (and what the patch restyled),
-    // for taking the rest from it.
-    let dirty = previous_revision.and_then(|revision| dirty_nodes(doc, revision)).map(|mut d| {
-        if let Some(p) = &patched {
-            dirty_ancestors(doc, &p.nodes, &mut d);
-        }
-        d
-    });
+    // for taking the rest from it: only when laid out again.
+    let dirty = if kept_layout {
+        None
+    } else {
+        previous_revision.and_then(|revision| dirty_nodes(doc, revision)).map(|mut d| {
+            if let Some(p) = &patched {
+                dirty_ancestors(doc, &p.nodes, &mut d);
+            }
+            d
+        })
+    };
     let why_not_kept = match previous {
         _ if kept_layout => "",
         None => "nothing before",
