@@ -6,9 +6,11 @@ item means implemented and verified; a partial implementation stays open.
 While working, fetch and merge `origin/main` at regular working checkpoints,
 revalidate the merged workspace and push the integration with browser work.
 
-**Active websites: [Stripe](eval/stripe/README.md) (static rendering
-matches Chrome; the rest is script) and Wikipedia's main page (matches
-Chrome at 1000 × 700 up to the search box and `overflow-wrap`).**
+**Active websites: [Stripe](eval/stripe/README.md) (homepage and
+pricing page as Chrome, live) and Wikipedia (the main page up to the
+search box and `overflow-wrap`; the Stripe, Inc. article with its
+scripts, JOURNAL 2026-11-08; next there: `vertical-align` on inlines
+for the reference superscripts).**
 Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it
 substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is
@@ -67,9 +69,9 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   modules, dynamic `import()` fetching off the thread, CSSOM
   (`insertRule`, `styleSheets`, CSS-in-JS in production builds), `fetch`
   POST and headers, cookies from responses, `document.write` while
-  parsing, iframes, OffscreenCanvas, IntersectionObserver with real
-  geometry (every target is reported intersecting once, after the next
-  frame), ResizeObserver.
+  parsing, iframes, OffscreenCanvas, ResizeObserver with real sizes.
+  IntersectionObserver follows the scroll and the layout (JOURNAL
+  2026-11-08); createHTMLDocument makes a document (jQuery needs one).
 - [x] Stripe's graphics: the hero wave, the agentic and issuing
   backgrounds, the globe and the data-viz canvases are WebGL (three.js:
   textures from the page's images, geometry from Web Workers, render

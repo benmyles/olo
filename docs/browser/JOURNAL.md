@@ -5838,3 +5838,29 @@ redo only what changed.
 - **Test pages** (a fixed header with links, a fixed banner, a fixed box
   under a transform; a sticky navigation bar, sticky section headings
   under it, a sticky bottom bar) match Chrome's placements when scrolled.
+
+## 2026-11-08, morning: Wikipedia's article page
+
+- **jQuery failed on every MediaWiki page**: its feature test puts two
+  forms into the body of `document.implementation.createHTMLDocument()`,
+  which gave a fragment posing as a document; the innerHTML into it
+  was a hierarchy error, and the page rendered as the no-script page
+  (the table of contents in the flow, above the article).
+  createHTMLDocument now makes a detached html, head and body with the
+  document methods scripts use. The Stripe, Inc. article then runs its
+  12 scripts (506 listeners) and lays out as Chrome: the contents
+  collapsed beside the title at this width, the infobox, the text.
+- **IntersectionObserver for real.** It reported every target as
+  intersecting once, from a timer. Observers now check after a frame
+  when a target was added, the scroll moved or the document changed:
+  the target's rect less the scroll against the viewport grown by the
+  root margin, entries on a change of intersection or threshold step,
+  and the initial one regardless. The test page's fixed header appears
+  when its title scrolls out; thresholds and root margins give Chrome's
+  entries.
+- **Found on the way.** Olo has no scrollbar, so its CSS viewport is the
+  window's full width where Chrome's is 15 px narrower: at exactly 1000
+  px the Vector skin's `(min-width: 1000px)` differs between the two
+  (its contents container choice); compare at widths off the
+  breakpoints. Wikipedia's reference superscripts rely on
+  `vertical-align` on inlines (124 fallbacks): next.
