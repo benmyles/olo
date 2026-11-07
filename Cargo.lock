@@ -6639,6 +6639,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nvdec-sys"
+version = "0.1.0"
+
+[[package]]
 name = "nvenc-sys"
 version = "0.4.0"
 
@@ -8108,6 +8112,7 @@ dependencies = [
  "gif 0.14.2",
  "libc",
  "mp4",
+ "nvdec-sys",
  "nvenc-sys",
  "olo-images",
  "olo-vaapi",

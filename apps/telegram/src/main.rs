@@ -1196,7 +1196,7 @@ impl Render for Tg {
         let me = cx.entity();
         self.focused = window.is_window_active();
         let bar_me = me.clone();
-        let bar = MenuBar::new(self.menus(), move |cmd, window, cx| bar_me.update(cx, |tg, cx| tg.command(cmd, window, cx)));
+        let bar = MenuBar::of(&me, |tg: &Self, _| tg.menus(), move |cmd, window, cx| bar_me.update(cx, |tg, cx| tg.command(cmd, window, cx)));
         let p = theme::palette(cx);
         let vs = window.viewport_size();
         let top = olo_ui::menu::BAR_HEIGHT;

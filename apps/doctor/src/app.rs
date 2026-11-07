@@ -436,9 +436,13 @@ impl Render for Doctor {
         let me = cx.entity();
         let p = theme::palette(cx);
         let bar_me = me.clone();
-        let bar = MenuBar::new(self.menus(), move |cmd, _, cx| {
-            bar_me.update(cx, |d, cx| d.command(cmd, cx));
-        });
+        let bar = MenuBar::of(
+            &me,
+            |d: &Self, _| d.menus(),
+            move |cmd, _, cx| {
+                bar_me.update(cx, |d, cx| d.command(cmd, cx));
+            },
+        );
         let (title, detail) = self.summary();
         let fixable = self.report.as_ref().is_some_and(|r| r.fixable().any(|f| self.outcomes.get(&f.id) != Some(&Outcome::Fixing)));
         let icon = canvas(

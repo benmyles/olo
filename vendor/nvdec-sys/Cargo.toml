@@ -1,0 +1,9 @@
+[package]
+name = "nvdec-sys"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "NVIDIA's video decoder (NVDEC, nvcuvid) declarations: types only, nothing linked (olo-video opens the library at run time)."
+
+[lib]
+path = "src/lib.rs"

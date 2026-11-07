@@ -10,6 +10,8 @@ openh264 = "0.9"
 libc = "0.2"
 # NVENC's declarations, nothing linked (nvenc.rs opens the library).
 nvenc-sys = { path = "../../vendor/nvenc-sys" }
+# NVDEC's declarations, nothing linked (nvdec.rs opens the library).
+nvdec-sys = { path = "../../vendor/nvdec-sys" }
 # AV1 on Intel's and AMD's GPUs (VA-API).
 olo-vaapi.workspace = true
 # Recordings made GIFs (gif.rs).

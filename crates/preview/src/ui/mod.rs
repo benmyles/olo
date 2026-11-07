@@ -83,6 +83,9 @@ pub enum PreviewEvent {
     /// What it shows changed gamut ([`PreviewView::gamut`]): a wide
     /// video's first picture came (or it stopped showing one).
     Gamut,
+    /// What decodes its video became known, or changed
+    /// ([`PreviewView::decoding`]): a menu saying it is drawn again.
+    Decoding,
 }
 
 /// A preview of a file, as Quick Look and the Viewer show one.
@@ -107,6 +110,10 @@ pub struct PreviewView {
     /// The video's frame showing as decoded (Y'CbCr, drawn by the GPU:
     /// `Window::paint_yuv`), in `frame`'s place.
     yuv_frame: Option<Arc<olo_ui::gpui::YuvFrame>>,
+    /// What decodes video here (`set_decode_with`), and what was said to
+    /// decode it last (`PreviewEvent::Decoding`).
+    decode_with: video::Device,
+    decoding_said: Option<&'static str>,
     /// Its video is known to be HDR (told as `PreviewEvent::Gamut`: its
     /// window may draw in HDR10).
     video_hdr: bool,
@@ -190,6 +197,8 @@ impl PreviewView {
             controls_hide: None,
             frame: None,
             yuv_frame: None,
+            decode_with: video::Device::default(),
+            decoding_said: None,
             video_hdr: false,
             art: None,
             art_making: None,
@@ -296,7 +305,7 @@ impl PreviewView {
                     Body::Media(md) if md.playable && md.video => Some(video::Video::start_with(
                         &input::Input::file(&self.item.path),
                         md.duration.unwrap_or(0.0),
-                        video::Options { playing: true, picture: true, sound: true, bgra: true, yuv: true },
+                        video::Options { playing: true, picture: true, sound: true, bgra: true, yuv: true, device: self.decode_with },
                     )),
                     _ => None,
                 };
@@ -421,6 +430,35 @@ impl PreviewView {
             Transport::seek(v, secs.max(0.0));
             cx.notify();
         }
+    }
+
+    /// What decodes video here, as asked (`Device::Default`: the
+    /// person's choice in Preferences).
+    pub fn decode_with(&self) -> video::Device {
+        self.decode_with
+    }
+
+    /// What decodes the video showing now ("NVIDIA's GPU (NVDEC)"), once
+    /// it has started.
+    pub fn decoding(&self) -> Option<&'static str> {
+        self.video.as_ref().map(|v| v.decoding()).filter(|d| !d.is_empty())
+    }
+
+    /// The video decoded by `device` from now on: started again there, at
+    /// the moment it's at, playing or not as it was.
+    pub fn set_decode_with(&mut self, device: video::Device, cx: &mut Context<Self>) {
+        if device == self.decode_with {
+            return;
+        }
+        self.decode_with = device;
+        let Some(old) = self.video.take() else { return };
+        let (at, playing) = (Transport::position(&old), Transport::playing(&old));
+        let duration = Transport::duration(&old);
+        drop(old);
+        let v = video::Video::start_with(&input::Input::file(&self.item.path), duration, video::Options { playing, picture: true, sound: true, bgra: true, yuv: true, device });
+        Transport::seek(&v, at);
+        self.video = Some(v);
+        cx.notify();
     }
 
     /// The video's length (seconds), if it plays.
@@ -1380,6 +1418,12 @@ impl PreviewView {
         // The video's next frame, and when the one after is due.
         let mut next_due = None;
         if let Some(v) = &self.video {
+            // What decodes it, once the worker says (or after a change).
+            let decoding = Some(v.decoding()).filter(|d| !d.is_empty());
+            if decoding != self.decoding_said {
+                self.decoding_said = decoding;
+                cx.emit(PreviewEvent::Decoding);
+            }
             let (frame, next) = v.tick_picture();
             if v.is_hdr() != self.video_hdr {
                 self.video_hdr = !self.video_hdr;

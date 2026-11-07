@@ -1458,6 +1458,8 @@ pub struct Settings {
     pub tracker: TrackerSettings,
     /// Screen recordings (Preferences ▸ GPUs ▸ Screen Recordings).
     pub screen_recording: ScreenRecordingSettings,
+    /// Video played (Preferences ▸ GPUs ▸ Video Playback).
+    pub video: VideoSettings,
     /// Olo's start-up sound as a session starts (Preferences ▸ Sound).
     pub startup_sound: bool,
     pub terminal: TerminalSettings,
@@ -1599,6 +1601,23 @@ impl Default for PasswordsSecurity {
 pub struct TrackerSettings {
     /// How a folder window shows its folder when it opens.
     pub default_view: FolderView,
+}
+
+/// How video is played (the Viewer's and Quick Look's player).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct VideoSettings {
+    /// What decodes it, unless the Viewer is told otherwise (View ▸
+    /// Decode With): "auto" (NVIDIA's GPU on mains power, else the
+    /// processor), "nvidia" (NVDEC), "intel" (the built-in GPU, VA-API)
+    /// or "cpu".
+    pub decoder: String,
+}
+
+impl Default for VideoSettings {
+    fn default() -> Self {
+        VideoSettings { decoder: "auto".into() }
+    }
 }
 
 /// What screen recordings are encoded on (olo-screenshot's recorder).
@@ -2239,6 +2258,7 @@ impl Default for Settings {
             tiling: TilingSettings::default(),
             tracker: TrackerSettings::default(),
             screen_recording: ScreenRecordingSettings::default(),
+            video: VideoSettings::default(),
             startup_sound: true,
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),

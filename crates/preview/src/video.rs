@@ -297,6 +297,9 @@ struct Shared {
     /// Make them Y'CbCr planes where they can be (`Picture::Yuv`), of this
     /// stream.
     yuv: Option<u64>,
+    /// What's asked to decode, and what does ("NVIDIA's GPU (NVDEC)").
+    device: Device,
+    decoding: &'static str,
     /// Make an HDR picture HDR10's (`Video::draw_hdr`: a window drawing
     /// in HDR10 shows it), rather than mapped for SDR.
     hdr: bool,
@@ -340,7 +343,7 @@ pub struct Video {
 impl Video {
     /// Start playing `input` (of `duration` seconds) at once.
     pub fn start(input: &Input, duration: f64) -> Video {
-        Video::start_with(input, duration, Options { playing: true, picture: true, sound: true, bgra: false, yuv: false })
+        Video::start_with(input, duration, Options { playing: true, picture: true, sound: true, bgra: false, yuv: false, device: Device::Processor })
     }
 
     /// Start `input` as `opts` say: playing or paused (showing its first
@@ -350,7 +353,7 @@ impl Video {
         let yuv = opts.yuv.then(olo_ui::gpui::YuvFrame::new_stream);
         #[cfg(not(feature = "gpui"))]
         let yuv = None;
-        let shared = Arc::new((Mutex::new(Shared { eof: !opts.picture, bgra: opts.bgra, yuv, ..Default::default() }), Condvar::new()));
+        let shared = Arc::new((Mutex::new(Shared { eof: !opts.picture, bgra: opts.bgra, yuv, device: opts.device, ..Default::default() }), Condvar::new()));
         let (i, s) = (input.clone(), shared.clone());
         let playing = opts.playing;
         let worker = opts
@@ -477,6 +480,12 @@ impl Video {
 
     /// Whether the stream's pictures are HDR (PQ or HLG), as far as it
     /// has been seen.
+    /// What decodes its pictures now ("NVIDIA's GPU (NVDEC)", "the
+    /// processor"), once it has started.
+    pub fn decoding(&self) -> &'static str {
+        self.shared.0.lock().unwrap().decoding
+    }
+
     pub fn is_hdr(&self) -> bool {
         self.shared.0.lock().unwrap().stream_hdr
     }
@@ -570,6 +579,49 @@ pub struct Options {
     /// (`Picture::Yuv`; a build with the `gpui` feature): a 4K picture is
     /// 12 MB rather than 33, and nothing converts it on the CPU.
     pub yuv: bool,
+    /// What decodes (a GPU only with `yuv`: its pictures are planes).
+    pub device: Device,
+}
+
+/// What decodes a video's pictures (the Viewer's View ▸ Decode With;
+/// Preferences ▸ Video's default).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Device {
+    /// The person's choice (Preferences ▸ GPUs ▸ Video Playback), read
+    /// by the player's worker.
+    #[default]
+    Default,
+    /// NVIDIA's GPU where there is one and the computer isn't on battery
+    /// (waking it costs power), else the processor.
+    Automatic,
+    /// NVIDIA's GPU (NVDEC).
+    Nvidia,
+    /// The built-in GPU (VA-API).
+    Intel,
+    /// The processor (OpenH264, rust_h265, filmcraft-vp9, rav1d).
+    Processor,
+}
+
+impl Device {
+    pub fn parse(s: &str) -> Option<Device> {
+        match s {
+            "auto" | "automatic" => Some(Device::Automatic),
+            "nvidia" => Some(Device::Nvidia),
+            "intel" | "vaapi" => Some(Device::Intel),
+            "cpu" | "processor" => Some(Device::Processor),
+            _ => None,
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Device::Default => "default",
+            Device::Automatic => "auto",
+            Device::Nvidia => "nvidia",
+            Device::Intel => "intel",
+            Device::Processor => "cpu",
+        }
+    }
 }
 
 /// Make the picture at the front of the queue ready to show (outside the
@@ -726,9 +778,76 @@ enum Decoder {
     Av1(av1::Decoder),
     Vp9(vp9::Decoder),
     Hevc(hevc::Decoder),
+    /// NVIDIA's GPU (pictures as planes for the window's GPU).
+    #[cfg(feature = "gpui")]
+    Nv(Box<Nv>),
 }
 
+/// NVDEC, and what it needs of the stream: HEVC's parameter sets and its
+/// NAL units' length size (its samples made Annex B), and whether the
+/// next packet starts a stream (after a seek: the sets first).
+#[cfg(feature = "gpui")]
+struct Nv {
+    dec: olo_video::nvdec::Nvdec,
+    hevc: Option<hevc::Config>,
+    fresh: bool,
+}
+
+#[cfg(feature = "gpui")]
+impl Nv {
+    /// `data` as NVDEC's parser takes it.
+    fn packet<'a>(&mut self, data: &'a [u8]) -> std::borrow::Cow<'a, [u8]> {
+        let Some(cfg) = &self.hevc else { return std::borrow::Cow::Borrowed(data) };
+        let mut out = Vec::with_capacity(data.len() + 128);
+        if std::mem::take(&mut self.fresh) {
+            for set in &cfg.sets {
+                out.extend_from_slice(&[0, 0, 0, 1]);
+                out.extend_from_slice(set);
+            }
+        }
+        media::avcc_to_annexb(data, usize::from(cfg.nal_len), &mut out);
+        std::borrow::Cow::Owned(out)
+    }
+}
+
+/// The names said of what decodes.
+const ON_NVIDIA: &str = "NVIDIA's GPU (NVDEC)";
+const ON_PROCESSOR: &str = "the processor";
+
 impl Decoder {
+    /// A decoder on `device` (NVIDIA's GPU only for pictures as planes,
+    /// `planes`), else on the processor; and what it is.
+    fn on(device: Device, planes: bool, codec: Codec, demux: &dyn Demux) -> Result<(Decoder, &'static str), String> {
+        #[cfg(feature = "gpui")]
+        {
+            // (The person's choice, read here: off the window's thread.)
+            let device = match device {
+                Device::Default => olo_ui::settings::current().and_then(|s| Device::parse(&s.video.decoder)).filter(|d| *d != Device::Default).unwrap_or(Device::Automatic),
+                d => d,
+            };
+            let nvidia = match device {
+                Device::Nvidia => true,
+                Device::Automatic => !olo_video::on_battery() && olo_video::nvdec::available(),
+                Device::Intel | Device::Processor | Device::Default => false,
+            };
+            if nvidia && planes {
+                let (c, hevc) = match codec {
+                    Codec::H264 => (olo_video::nvdec::Codec::H264, None),
+                    Codec::Hevc => (olo_video::nvdec::Codec::Hevc, demux.hevc().map(|(c, _)| c)),
+                    Codec::Vp9 => (olo_video::nvdec::Codec::Vp9, None),
+                    Codec::Av1 => (olo_video::nvdec::Codec::Av1, None),
+                };
+                match olo_video::nvdec::Nvdec::new(c) {
+                    Ok(dec) => return Ok((Decoder::Nv(Box::new(Nv { dec, hevc, fresh: true })), ON_NVIDIA)),
+                    Err(e) => tracing::info!("video: NVDEC: {e}; the processor decodes"),
+                }
+            }
+        }
+        #[cfg(not(feature = "gpui"))]
+        let _ = (device, planes);
+        Ok((Decoder::new(codec, demux)?, ON_PROCESSOR))
+    }
+
     fn new(codec: Codec, demux: &dyn Demux) -> Result<Decoder, String> {
         Ok(match codec {
             // Never flush after a packet: a picture forced out early breaks
@@ -754,7 +873,14 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
     let (m, cv) = shared;
     let mut demux = open(input)?;
     let codec = demux.codec();
-    let mut dec = Decoder::new(codec, demux.as_ref())?;
+    let (device, planes) = {
+        let sh = m.lock().unwrap();
+        (sh.device, sh.yuv.is_some())
+    };
+    let (mut dec, decoding) = Decoder::on(device, planes, codec, demux.as_ref())?;
+    m.lock().unwrap().decoding = decoding;
+    #[cfg(feature = "gpui")]
+    let mut nv_out: Vec<olo_video::nvdec::Picture> = Vec::new();
     let colour = demux.colour();
     // Presentation times of packets sent and not yet out: decoders hand
     // pictures back in display order, so each takes the earliest.
@@ -836,6 +962,11 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     // (Its workers kept.)
                     Decoder::Vp9(d) => d.reset(),
                     Decoder::Hevc(d) => d.reset(),
+                    #[cfg(feature = "gpui")]
+                    Decoder::Nv(n) => {
+                        n.dec.reset();
+                        n.fresh = true;
+                    }
                     _ => dec = Decoder::new(codec, demux.as_ref())?,
                 }
                 times.clear();
@@ -876,6 +1007,46 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                 for f in av1_out.drain(..) {
                     let f = Arc::new(f.with_colour(&colour));
                     if !push(&mut times, from, &mut lead, &|| Pic::Planes(f.clone())) {
+                        break;
+                    }
+                }
+            }
+            // NVIDIA's GPU: pictures in display order, as planes. One it
+            // can't decode (a format its NVDEC hasn't): the processor from
+            // where this stream started.
+            #[cfg(feature = "gpui")]
+            (Decoder::Nv(n), p) => {
+                nv_out.clear();
+                let failed = match &p {
+                    Some(p) => {
+                        let data = n.packet(&p.data);
+                        n.dec.decode(&data, (p.pts * 1e6) as i64, &mut nv_out).err()
+                    }
+                    None => {
+                        n.dec.flush(&mut nv_out);
+                        None
+                    }
+                };
+                if let Some(e) = failed {
+                    tracing::info!("video {}: NVDEC: {e}; the processor decodes", input.name);
+                    dec = Decoder::new(codec, demux.as_ref())?;
+                    m.lock().unwrap().decoding = ON_PROCESSOR;
+                    demux.seek(from);
+                    times.clear();
+                    continue;
+                }
+                let stream = m.lock().unwrap().yuv.unwrap_or(0);
+                for pic in nv_out.drain(..) {
+                    use olo_ui::gpui::{YuvFrame, YuvMatrix};
+                    let matrix = match pic.matrix {
+                        1 => YuvMatrix::Bt709,
+                        9 | 10 => YuvMatrix::Bt2020,
+                        5 | 6 => YuvMatrix::Bt601,
+                        _ if pic.height >= 720 => YuvMatrix::Bt709,
+                        _ => YuvMatrix::Bt601,
+                    };
+                    let frame = Arc::new(YuvFrame { stream, width: pic.width, height: pic.height, deep: pic.deep, y: pic.y, uv: pic.uv, matrix, full_range: pic.full_range });
+                    if !push(&mut times, from, &mut lead, &|| Pic::Ready(Picture::Yuv(frame.clone()))) {
                         break;
                     }
                 }
@@ -1413,7 +1584,7 @@ mod tests {
         assert_eq!(colour, Some("HDR (PQ), BT.2020"), "{:?}", m.rows);
         let input = Input::file(&path);
         assert!(picture_at(&input, 1.0).unwrap().p3);
-        let video = Video::start_with(&input, 3.0, Options { playing: false, picture: true, sound: false, bgra: true, yuv: false });
+        let video = Video::start_with(&input, 3.0, Options { playing: false, picture: true, sound: false, bgra: true, yuv: false, device: Device::Processor });
         video.draw_hdr(true);
         let t0 = Instant::now();
         let deep = loop {

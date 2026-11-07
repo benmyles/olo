@@ -1146,7 +1146,7 @@ impl Render for DiskUsage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let me = cx.entity();
         let bar_me = me.clone();
-        let bar = MenuBar::new(self.menus(), move |cmd, window, cx| bar_me.update(cx, |d, cx| d.command(cmd, window, cx)));
+        let bar = MenuBar::of(&me, |d: &Self, _| d.menus(), move |cmd, window, cx| bar_me.update(cx, |d, cx| d.command(cmd, window, cx)));
         let content = if self.scan.is_some() { self.scan_view(window, cx) } else { self.volumes_view(cx) };
         // While something is dragged: its name follows the pointer, and
         // letting go over the Collector collects it.

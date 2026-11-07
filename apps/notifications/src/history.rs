@@ -828,7 +828,7 @@ impl Render for HistoryWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         let me = cx.entity();
-        let bar = MenuBar::new(self.menus(cx), {
+        let bar = MenuBar::of(&me, |h: &Self, cx| h.menus(cx), {
             let me = me.clone();
             move |cmd, window, cx| me.update(cx, |h, cx| h.command(cmd, window, cx))
         });
