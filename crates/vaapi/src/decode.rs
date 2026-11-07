@@ -21,7 +21,7 @@ use std::{
     path::PathBuf,
     ptr::null_mut,
     rc::Rc,
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
 };
 
 use cros_codecs::codec::{av1::parser as av1, vp9::parser as vp9};
@@ -76,6 +76,45 @@ pub struct Picture {
     pub matrix: u8,
     /// Full range (0–255), else limited.
     pub full_range: bool,
+    /// Its planes left where the GPU copied them (`Decoder::hold`), `y`
+    /// and `uv` then empty.
+    pub held: Option<Held>,
+}
+
+/// A picture left in the memory the GPU copied it into (`Decoder::hold`):
+/// page-aligned, a whole number of pages, which a window's GPU can copy
+/// from as it is (`gpui::YuvMemory`), nothing copied by the processor.
+/// Its luma at `y`, its chroma (Cb and Cr interleaved) at `uv`: each an
+/// offset and a row pitch, in bytes. The memory is the decoder's again
+/// when this is dropped (freed, if the decoder has gone).
+pub struct Held {
+    host: Arc<Host>,
+    pub y: (usize, usize),
+    pub uv: (usize, usize),
+}
+
+impl Held {
+    /// Where its memory starts.
+    pub fn ptr(&self) -> *const u8 {
+        self.host.ptr
+    }
+
+    /// How long its memory is (a whole number of pages).
+    pub fn len(&self) -> usize {
+        self.host.layout.size()
+    }
+
+    /// Never empty (a picture has pages).
+    pub fn is_empty(&self) -> bool {
+        false
+    }
+
+    /// Its memory.
+    pub fn bytes(&self) -> &[u8] {
+        // SAFETY: ours, allocated with this size, unchanged while held
+        // (only a picture nothing holds is written).
+        unsafe { std::slice::from_raw_parts(self.host.ptr, self.host.layout.size()) }
+    }
 }
 
 /// A GPU's driver, what it decodes.
@@ -131,11 +170,15 @@ struct Session {
     config: va::VAConfigID,
     context: va::VAContextID,
     surfaces: Vec<va::VASurfaceID>,
-    /// What a picture is copied out through: a linear surface in memory
-    /// of ours (`Linear`), made at the first picture; none where the
-    /// driver can't (then the surface is mapped, `read_mapped`).
-    linear: Option<Option<Linear>>,
+    /// What pictures are copied out through: linear surfaces in memory of
+    /// ours (`Linear`), made as needed (one, unless pictures are held:
+    /// one each, up to `HELD`); `None` till the first picture, empty
+    /// where the driver can't (then surfaces are mapped, `read_mapped`).
+    linear: Option<Vec<Linear>>,
 }
+
+/// The most pictures held at once (`Decoder::hold`; past it, copied out).
+const HELD: usize = 16;
 
 /// An AV1 picture under way: its header, slot and buffers so far.
 struct Current {
@@ -180,7 +223,7 @@ impl Decoder {
         let d = Display::open(&node)?;
         let driver = d.vendor.clone();
         let stream = |d: Display| {
-            let va = Rc::new(RefCell::new(Va { d, session: None }));
+            let va = Rc::new(RefCell::new(Va { d, session: None, hold: false }));
             let look: Rc<RefCell<stateless::Look>> = Rc::default();
             (stateless::Backend::new(va.clone(), look.clone()), va, look)
         };
@@ -203,6 +246,17 @@ impl Decoder {
     /// What decodes, as its driver names itself.
     pub fn driver(&self) -> &str {
         &self.driver
+    }
+
+    /// Pictures left in the memory the GPU copies them into (`Held`), for
+    /// a window's GPU to copy from as they are, rather than copied out
+    /// into planes by the processor.
+    pub fn hold(&mut self, on: bool) {
+        match &mut self.inner {
+            Inner::Frames(f) => f.va.hold = on,
+            Inner::H264(s) => s.va.borrow_mut().hold = on,
+            Inner::Hevc(s) => s.va.borrow_mut().hold = on,
+        }
     }
 
     /// Decodes `data` (a sample: an AV1 temporal unit, a VP9 frame or
@@ -241,7 +295,7 @@ impl Frames {
     fn new(codec: Codec, d: Display) -> Frames {
         Frames {
             codec,
-            va: Va { d, session: None },
+            va: Va { d, session: None, hold: false },
             refs: [None; 8],
             waiting: false,
             av1: av1::Parser::default(),
@@ -513,6 +567,8 @@ impl Frames {
 struct Va {
     d: Display,
     session: Option<Session>,
+    /// Pictures left where the GPU copied them (`Decoder::hold`).
+    hold: bool,
 }
 
 impl Va {
@@ -558,7 +614,7 @@ impl Va {
         let Some(mut s) = self.session.take() else { return };
         let api = &self.d.api;
         // SAFETY: what the session made, once.
-        if let Some(Some(l)) = s.linear.take() {
+        for l in s.linear.take().into_iter().flatten() {
             l.end(&self.d);
         }
         unsafe {
@@ -626,13 +682,34 @@ impl Va {
             if let Err(e) = &made {
                 tracing::info!("VA-API: no copy into memory of ours ({e}); pictures are mapped");
             }
-            s.linear = Some(made.ok());
+            s.linear = Some(made.into_iter().collect());
         }
-        let (y, uv) = match s.linear.as_ref().unwrap() {
-            Some(l) => l.copy(&self.d, surface, w, h)?,
-            None => read_mapped(&self.d, surface, w, h, deep)?,
+        let pool = s.linear.as_mut().unwrap();
+        if pool.is_empty() {
+            let (y, uv) = read_mapped(&self.d, surface, w, h, deep)?;
+            return Ok(Picture { pts, width: w, height: h, deep, y, uv, matrix, full_range, held: None });
+        }
+        // One nothing holds (a picture shown and let go), else another made.
+        let free = match pool.iter().position(Linear::free) {
+            Some(i) => Some(i),
+            None if self.hold && pool.len() < HELD => Linear::new(&self.d, s.width, s.height, deep).ok().map(|l| {
+                pool.push(l);
+                pool.len() - 1
+            }),
+            None => None,
         };
-        Ok(Picture { pts, width: w, height: h, deep, y, uv, matrix, full_range })
+        let Some(i) = free else {
+            let (y, uv) = read_mapped(&self.d, surface, w, h, deep)?;
+            return Ok(Picture { pts, width: w, height: h, deep, y, uv, matrix, full_range, held: None });
+        };
+        let l = &pool[i];
+        l.copy_in(&self.d, surface)?;
+        if self.hold {
+            let held = Held { host: l.host.clone(), y: (0, l.pitch), uv: (l.uv_at, l.pitch) };
+            return Ok(Picture { pts, width: w, height: h, deep, y: Vec::new(), uv: Vec::new(), matrix, full_range, held: Some(held) });
+        }
+        let (y, uv) = l.copy_out(w, h);
+        Ok(Picture { pts, width: w, height: h, deep, y, uv, matrix, full_range, held: None })
     }
 }
 
@@ -684,6 +761,10 @@ struct Host {
     layout: std::alloc::Layout,
 }
 
+// SAFETY: plain memory, written only while nothing else holds it.
+unsafe impl Send for Host {}
+unsafe impl Sync for Host {}
+
 impl Drop for Host {
     fn drop(&mut self) {
         // SAFETY: allocated with this layout, once.
@@ -699,7 +780,8 @@ struct Linear {
     pitch: usize,
     uv_at: usize,
     deep: bool,
-    host: Host,
+    /// Its memory: held by a picture too while one is (`Held`).
+    host: Arc<Host>,
 }
 
 impl Linear {
@@ -718,7 +800,7 @@ impl Linear {
         if ptr.is_null() {
             return Err("out of memory".into());
         }
-        let host = Host { ptr, layout };
+        let host = Arc::new(Host { ptr, layout });
         let (fourcc, rt) = if deep { (va::VA_FOURCC_P010, va::VA_RT_FORMAT_YUV420_10) } else { (va::VA_FOURCC_NV12, va::VA_RT_FORMAT_YUV420) };
         let mut buffers = [host.ptr as usize];
         let mut ext = va::VASurfaceAttribExternalBuffers {
@@ -751,9 +833,13 @@ impl Linear {
         Ok(Linear { surface, pitch, uv_at, deep, host })
     }
 
-    /// `from`'s picture, `w` × `h`, copied by the GPU into our memory,
-    /// then into planes.
-    fn copy(&self, d: &Display, from: va::VASurfaceID, w: u32, h: u32) -> Result<(Vec<u8>, Vec<u8>), String> {
+    /// Nothing but its surface holds its memory: it can take a picture.
+    fn free(&self) -> bool {
+        Arc::strong_count(&self.host) == 1
+    }
+
+    /// `from`'s picture copied by the GPU into our memory, waited for.
+    fn copy_in(&self, d: &Display, from: va::VASurfaceID) -> Result<(), String> {
         let api = &d.api;
         let copy = api.copy.ok_or("no vaCopy")?;
         let object = |surface: va::VASurfaceID| va::VACopyObject { obj_type: va::VACopyObjectSurface, object: va::_VACopyObject__bindgen_ty_1 { surface_id: surface }, ..Default::default() };
@@ -761,7 +847,11 @@ impl Linear {
         // Waiting for it, by the copy engine as fast as it goes.
         let option = va::VACopyOption { value: va::VA_EXEC_SYNC | (va::VA_EXEC_MODE_DEFAULT << 2) };
         // SAFETY: our surfaces, as big as each other.
-        api.ok(unsafe { copy(d.dpy, &mut to, &mut from, option) }, "vaCopy")?;
+        api.ok(unsafe { copy(d.dpy, &mut to, &mut from, option) }, "vaCopy")
+    }
+
+    /// The picture in our memory, `w` × `h`, as planes (rows packed).
+    fn copy_out(&self, w: u32, h: u32) -> (Vec<u8>, Vec<u8>) {
         let (mut y, mut uv, row_y, row_uv) = planes(w, h, self.deep);
         // SAFETY: rows within our memory, as laid out in `new`; the GPU
         // is done with it (synced).
@@ -769,7 +859,7 @@ impl Linear {
             copy_rows(self.host.ptr, self.pitch, &mut y, row_y);
             copy_rows(self.host.ptr.add(self.uv_at), self.pitch, &mut uv, row_uv);
         }
-        Ok((y, uv))
+        (y, uv)
     }
 
     /// What it made goes (its memory after the surface).

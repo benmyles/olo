@@ -151,6 +151,116 @@ impl super::Context {
         }
     }
 
+    /// Olo: `size` bytes of the host's memory at `ptr` as a buffer the GPU
+    /// copies from, without a copy made (VK_EXT_external_memory_host): a
+    /// decoder's picture in memory it wrote. None where the device can't
+    /// take it (no such extension, `ptr` or `size` not aligned as it needs
+    /// (`host_alignment`), its driver refusing), never a panic. The memory
+    /// must stay, unchanged, till the buffer is destroyed (`destroy_buffer`)
+    /// and the GPU is past every use of it.
+    pub fn import_host_buffer(
+        &self,
+        name: &str,
+        ptr: *const u8,
+        size: u64,
+    ) -> Option<super::Buffer> {
+        let (ext, align) = self.device.host_memory.as_ref()?;
+        if size == 0 || (ptr as u64) % align != 0 || size % align != 0 {
+            return None;
+        }
+        let handle_type = vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT;
+        let mut external = vk::ExternalMemoryBufferCreateInfo {
+            handle_types: handle_type,
+            ..Default::default()
+        };
+        let info = vk::BufferCreateInfo {
+            size,
+            usage: vk::BufferUsageFlags::TRANSFER_SRC,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            ..Default::default()
+        }
+        .push_next(&mut external);
+        let raw = unsafe { self.device.core.create_buffer(&info, None) }.ok()?;
+        let fail = |what: &str| {
+            log::warn!("Importing host memory for '{}': {}", name, what);
+            unsafe { self.device.core.destroy_buffer(raw, None) };
+            None
+        };
+        let requirements = unsafe { self.device.core.get_buffer_memory_requirements(raw) };
+        let mut host = vk::MemoryHostPointerPropertiesEXT::default();
+        // (ash has no wrapper for it: its function, as declared.)
+        let asked = unsafe {
+            (ext.fp().get_memory_host_pointer_properties_ext)(
+                ext.device(),
+                handle_type,
+                ptr as *const std::ffi::c_void,
+                &mut host,
+            )
+        };
+        if asked != vk::Result::SUCCESS {
+            return fail("the pointer isn't the host's memory");
+        }
+        let mut manager = self.memory.lock().unwrap();
+        let types =
+            requirements.memory_type_bits & host.memory_type_bits & manager.valid_ash_memory_types;
+        if types == 0 || requirements.size > size {
+            drop(manager);
+            return fail("no memory type takes it");
+        }
+        let memory_type_index = types.trailing_zeros();
+        let mut import = vk::ImportMemoryHostPointerInfoEXT {
+            handle_type,
+            p_host_pointer: ptr as *mut std::ffi::c_void,
+            ..Default::default()
+        };
+        let allocation = vk::MemoryAllocateInfo {
+            allocation_size: size,
+            memory_type_index,
+            ..Default::default()
+        }
+        .push_next(&mut import);
+        let memory = match unsafe { self.device.core.allocate_memory(&allocation, None) } {
+            Ok(m) => m,
+            Err(e) => {
+                drop(manager);
+                return fail(&format!("{e}"));
+            }
+        };
+        if unsafe { self.device.core.bind_buffer_memory(raw, memory, 0) }.is_err() {
+            unsafe { self.device.core.free_memory(memory, None) };
+            drop(manager);
+            return fail("it couldn't be bound");
+        }
+        let memory_properties = unsafe {
+            self.instance
+                .core
+                .get_physical_device_memory_properties(self.physical_device)
+        };
+        let flags = memory_properties.memory_types[memory_type_index as usize].property_flags;
+        // (Kept by the allocator as an import, so `destroy_buffer` frees it.)
+        let block = unsafe {
+            manager.allocator.import_memory(
+                memory,
+                memory_type_index,
+                gpu_alloc_ash::memory_properties_from_ash(flags),
+                0,
+                size,
+            )
+        };
+        Some(super::Buffer {
+            raw,
+            memory_handle: manager.slab.insert(block),
+            mapped_data: ptr as *mut u8,
+            external: Some(crate::ExternalMemorySource::HostAllocation(ptr as usize)),
+        })
+    }
+
+    /// Olo: the alignment `import_host_buffer` needs of a pointer and a
+    /// size; None where host memory can't be imported.
+    pub fn host_alignment(&self) -> Option<u64> {
+        self.device.host_memory.as_ref().map(|(_, align)| *align)
+    }
+
     fn free_memory(&self, handle: usize) {
         let mut manager = self.memory.lock().unwrap();
         let block = manager.slab.remove(handle);
@@ -316,7 +426,7 @@ impl crate::traits::ResourceDevice for super::Context {
         requirements.alignment = requirements.alignment.max(self.min_buffer_alignment);
         let allocation = self.allocate_memory(requirements, desc.memory);
 
-        log::info!(
+        log::debug!(
             "Creating buffer {:?} of size {}, name '{}', handle {:?}",
             raw,
             desc.size,
@@ -344,7 +454,7 @@ impl crate::traits::ResourceDevice for super::Context {
     fn sync_buffer(&self, _buffer: super::Buffer) {}
 
     fn destroy_buffer(&self, buffer: super::Buffer) {
-        log::info!(
+        log::debug!(
             "Destroying buffer {:?}, handle {:?}",
             buffer.raw,
             buffer.memory_handle

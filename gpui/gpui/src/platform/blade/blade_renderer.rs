@@ -505,6 +505,14 @@ pub struct BladeRenderer {
     /// the frame before (the last that used them).
     #[cfg(not(target_os = "macos"))]
     yuv_retired: Vec<YuvPair>,
+    /// Olo: pictures copied straight from their decoder's memory
+    /// (`YuvMemory`) this frame and the one before: each imported buffer
+    /// and its picture, kept till the GPU is past the frame that copied
+    /// from them.
+    #[cfg(not(target_os = "macos"))]
+    yuv_importing: Vec<(gpu::Buffer, std::sync::Arc<crate::YuvFrame>)>,
+    #[cfg(not(target_os = "macos"))]
+    yuv_imported: Vec<(gpu::Buffer, std::sync::Arc<crate::YuvFrame>)>,
 }
 
 /// Olo: a window's raw handles, kept to make its surface again: they
@@ -691,6 +699,10 @@ impl BladeRenderer {
             }),
             #[cfg(not(target_os = "macos"))]
             yuv_retired: Vec::new(),
+            #[cfg(not(target_os = "macos"))]
+            yuv_importing: Vec::new(),
+            #[cfg(not(target_os = "macos"))]
+            yuv_imported: Vec::new(),
         })
     }
 
@@ -752,8 +764,14 @@ impl BladeRenderer {
             }
             let bytes = if f.deep { 2 } else { 1 };
             let (cw, ch) = f.chroma_size();
-            if f.y.len() < (f.width * f.height * bytes) as usize
-                || f.uv.len() < (cw * ch * 2 * bytes) as usize
+            let (row_y, row_uv) = ((f.width * bytes) as usize, (cw * 2 * bytes) as usize);
+            let ((luma, pitch_y), (chroma, pitch_uv)) = (f.luma(), f.chroma());
+            // (Each plane's rows there, at their pitch.)
+            let holds = |len: usize, pitch: usize, row: usize, rows: u32| {
+                rows > 0 && pitch >= row && len >= pitch * (rows as usize - 1) + row
+            };
+            if !holds(luma.len(), pitch_y, row_y, f.height)
+                || !holds(chroma.len(), pitch_uv, row_uv, ch)
             {
                 continue;
             }
@@ -783,14 +801,39 @@ impl BladeRenderer {
                 });
             }
             let pair = t.pairs[next].as_ref().expect("made");
-            let y = self
-                .yuv_belt
-                .alloc_bytes(&f.y[..(f.width * f.height * bytes) as usize], &self.gpu);
-            let uv = self
-                .yuv_belt
-                .alloc_bytes(&f.uv[..(cw * ch * 2 * bytes) as usize], &self.gpu);
-            uploads.push((y, f.width * bytes, pair.y, (f.width, f.height)));
-            uploads.push((uv, cw * 2 * bytes, pair.uv, (cw, ch)));
+            // In its decoder's memory: that memory imported, and copied
+            // from by the GPU (the processor copies nothing); else (or the
+            // import refused) staged as planes are.
+            let imported = f.memory.as_ref().and_then(|m| {
+                self.gpu
+                    .import_host_buffer("video picture", m.ptr(), m.len() as u64)
+                    .map(|buffer| (buffer, m.y.0 as u64, m.uv.0 as u64))
+            });
+            let (y, uv) = match imported {
+                Some((buffer, at_y, at_uv)) => {
+                    self.yuv_importing.push((buffer, std::sync::Arc::clone(f)));
+                    (
+                        gpu::BufferPiece {
+                            buffer,
+                            offset: at_y,
+                        },
+                        gpu::BufferPiece {
+                            buffer,
+                            offset: at_uv,
+                        },
+                    )
+                }
+                None => (
+                    self.yuv_belt.alloc_bytes(
+                        &luma[..pitch_y * (f.height as usize - 1) + row_y],
+                        &self.gpu,
+                    ),
+                    self.yuv_belt
+                        .alloc_bytes(&chroma[..pitch_uv * (ch as usize - 1) + row_uv], &self.gpu),
+                ),
+            };
+            uploads.push((y, pitch_y as u32, pair.y, (f.width, f.height)));
+            uploads.push((uv, pitch_uv as u32, pair.uv, (cw, ch)));
             (t.current, t.shown) = (next, at);
         }
         if !uploads.is_empty() {
@@ -837,6 +880,12 @@ impl BladeRenderer {
         for pair in self.yuv_retired.drain(..) {
             pair.destroy(&self.gpu);
         }
+        // The frame before's imports (the GPU is past it): their buffers
+        // destroyed, their pictures (and decoders' memory) let go.
+        for (buffer, _) in self.yuv_imported.drain(..) {
+            self.gpu.destroy_buffer(buffer);
+        }
+        self.yuv_imported = std::mem::take(&mut self.yuv_importing);
     }
 
     /// Olo: the window's surface was lost (its compositor went away and
@@ -1099,6 +1148,13 @@ impl BladeRenderer {
                 .collect();
             for pair in pairs {
                 pair.destroy(&self.gpu);
+            }
+            for (buffer, _) in self
+                .yuv_imported
+                .drain(..)
+                .chain(self.yuv_importing.drain(..))
+            {
+                self.gpu.destroy_buffer(buffer);
             }
             self.yuv_belt.destroy(&self.gpu);
         }

@@ -63,6 +63,9 @@ struct Device {
     external_memory: Option<ash::khr::external_memory_win32::Device>,
     #[cfg(not(target_os = "windows"))]
     external_memory: Option<ash::khr::external_memory_fd::Device>,
+    /// Olo: the host's memory imported as buffers, and the alignment it
+    /// needs (`Context::import_host_buffer`).
+    host_memory: Option<(ash::ext::external_memory_host::Device, u64)>,
     command_scope: Option<CommandScopeDevice>,
     timing: Option<TimingDevice>,
     workarounds: Workarounds,

@@ -163,13 +163,29 @@ fn decoded(device: Device, codec: Codec, frames: &[&[u8]]) -> Result<Vec<Planes>
                 Codec::Vp9 => olo_video::nvdec::Codec::Vp9,
                 Codec::Hevc => olo_video::nvdec::Codec::Hevc,
             };
+            // (As the Viewer has them: left where they were copied.)
             let mut d = olo_video::nvdec::Nvdec::new(c)?;
+            d.hold(true);
             let mut pics = Vec::new();
             for (i, f) in frames.iter().enumerate() {
                 d.decode(f, i as i64, &mut pics)?;
             }
             d.flush(&mut pics);
-            Ok(pics.into_iter().map(|p| Planes { width: p.width as usize, height: p.height as usize, deep: p.deep, y: p.y, uv: p.uv }).collect())
+            Ok(pics
+                .into_iter()
+                .map(|p| {
+                    let (y, uv) = match &p.held {
+                        Some(h) => {
+                            let bytes = if p.deep { 2 } else { 1 };
+                            let (row_y, row_uv) = (p.width as usize * bytes, p.width.div_ceil(2) as usize * 2 * bytes);
+                            let rows = |(at, pitch): (usize, usize), row: usize, n: usize| -> Vec<u8> { (0..n).flat_map(|r| h.bytes()[at + r * pitch..][..row].to_vec()).collect() };
+                            (rows(h.y, row_y, p.height as usize), rows(h.uv, row_uv, p.height.div_ceil(2) as usize))
+                        }
+                        None => (p.y, p.uv),
+                    };
+                    Planes { width: p.width as usize, height: p.height as usize, deep: p.deep, y, uv }
+                })
+                .collect())
         }
     }
 }
