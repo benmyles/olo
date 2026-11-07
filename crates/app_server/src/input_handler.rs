@@ -1079,10 +1079,22 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.pacer.sending_glide = false;
     }
 
-    fn touch_location_transformed<B: InputBackend, E: AbsolutePositionEvent<B>>(&self, evt: &E) -> Option<Point<f64, Logical>> {
-        let output = self.space.outputs().find(|output| output.name().starts_with("eDP")).or_else(|| self.space.outputs().next());
+    /// The display a touch screen is on: the built-in one (eDP), else the
+    /// first.
+    pub fn touch_output(&self) -> Option<smithay::output::Output> {
+        self.space.outputs().find(|output| output.name().starts_with("eDP")).or_else(|| self.space.outputs().next()).cloned()
+    }
 
-        let output = output?;
+    /// Whether the touch screen's touches are taken: on unless its display
+    /// says otherwise (Preferences ▸ Display's Touch; agents' synthetic
+    /// touches always are).
+    fn touch_on(&self) -> bool {
+        self.touch_output().is_none_or(|o| self.settings.display.touch_for(&crate::desktop::display_key(&o), &o.name()))
+    }
+
+    fn touch_location_transformed<B: InputBackend, E: AbsolutePositionEvent<B>>(&self, evt: &E) -> Option<Point<f64, Logical>> {
+        let output = self.touch_output()?;
+        let output = &output;
         let output_geometry = self.space.output_geometry(output)?;
 
         let transform = output.current_transform();
@@ -1113,6 +1125,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_touch_down<B: InputBackend>(&mut self, evt: B::TouchDownEvent) {
+        // (Turned off: nothing comes down. A finger already down still
+        // lifts.)
+        if !self.touch_on() {
+            return;
+        }
         let Some(touch_location) = self.touch_location_transformed(&evt) else {
             return;
         };
@@ -1124,6 +1141,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_touch_motion<B: InputBackend>(&mut self, evt: B::TouchMotionEvent) {
+        if !self.touch_on() {
+            return;
+        }
         let Some(touch_location) = self.touch_location_transformed(&evt) else {
             return;
         };
@@ -1327,8 +1347,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if device.has_capability(DeviceCapability::TabletTool) {
             self.seat.tablet_seat().add_wp_tablet(dh, &TabletDescriptor::from(&device));
         }
-        if device.has_capability(DeviceCapability::Touch) && self.seat.get_touch().is_none() {
-            self.seat.add_touch();
+        if device.has_capability(DeviceCapability::Touch) {
+            self.touch_screens += 1;
+            if self.seat.get_touch().is_none() {
+                self.seat.add_touch();
+            }
         }
     }
 
@@ -1342,6 +1365,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             if tablet_seat.count_tablets() == 0 {
                 tablet_seat.clear_tools();
             }
+        }
+        if device.has_capability(DeviceCapability::Touch) {
+            self.touch_screens = self.touch_screens.saturating_sub(1);
         }
     }
 }

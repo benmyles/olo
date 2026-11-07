@@ -349,6 +349,10 @@ fn update_entry(entry: &mut OutputConfig, config: &OutputConfig) {
     if let Some(on) = config.vrr {
         entry.vrr = on.then_some(true);
     }
+    // (Touch kept only when off: on is the default.)
+    if let Some(on) = config.touch {
+        entry.touch = (!on).then_some(false);
+    }
     // Its colours: Accurate isn't kept (the default); HDR only while on;
     // SDR's white whatever it's set to (unset, a built-in panel's
     // follows its brightness, so even 203 cd/m² is a choice).
@@ -1542,6 +1546,7 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     pub fn output_infos(&self) -> Vec<OutputInfo> {
         let main = self.main_output();
+        let touch_output = self.touch_output();
         let mut infos: Vec<OutputInfo> = self
             .space
             .outputs()
@@ -1593,6 +1598,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     hdr: crate::color::of(o).filter(|c| c.hdr_capable).map(|_| crate::color::applied(o).hdr),
                     sdr_nits: crate::color::applied(o).sdr_nits,
                     hdr_needs_boot: crate::color::of(o).is_some_and(|c| c.hdr_needs_boot),
+                    touch: (self.touch_screens > 0 && touch_output.as_ref() == Some(o)).then(|| self.settings.display.touch_for(&display_key(o), &o.name())),
                 }
             })
             .collect();
@@ -2115,6 +2121,19 @@ pub fn rotation_transform(degrees: u16) -> smithay::utils::Transform {
 #[cfg(test)]
 mod settings_tests {
     use super::*;
+
+    /// Turning a display's touch off is kept; on again, nothing is (the
+    /// default); other changes leave it be.
+    #[test]
+    fn touch_kept_only_when_off() {
+        let mut entry = OutputConfig::default();
+        update_entry(&mut entry, &OutputConfig { touch: Some(false), ..Default::default() });
+        assert_eq!(entry.touch, Some(false));
+        update_entry(&mut entry, &OutputConfig { scale: Some(2.0), ..Default::default() });
+        assert_eq!(entry.touch, Some(false));
+        update_entry(&mut entry, &OutputConfig { touch: Some(true), ..Default::default() });
+        assert_eq!(entry.touch, None);
+    }
 
     #[test]
     fn old_terminal_app_ids_are_olos() {

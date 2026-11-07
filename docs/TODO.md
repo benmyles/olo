@@ -27,17 +27,16 @@ something nobody here has is in "Blocked", with what it waits for.
   startup.rs` makes today's swell), replacing or offered beside today's
   sound (Preferences ▸ Sound's "Play a sound when Olo starts").
 
+## Done, waiting for Ben to try or confirm
+
 - **Display: a touch screen's touch turned off and on** (Ben,
   2026-11-06: "in display prefs for touchscreen displays have an option
   to enable/disable the touch functionality on the screen (enabled by
-  default)"). Preferences ▸ Display, for a display with a touch screen
-  (app_server's touch input matched to its output): "Touch" on by
-  default; off, app_server ignores that screen's touches (the pen too,
-  or its own switch), kept per display as its other settings are
-  (`DisplaySettings`, by its key), and agents read and set it like any
-  other display setting.
-
-## Done, waiting for Ben to try or confirm
+  default)"). Done (HACKING, "The touch screen"): Preferences ▸ Display
+  shows "Touch screen" for the display a touch screen is on, checked by
+  default; unchecked, app_server ignores that screen's fingers (the pen
+  goes on working), kept per display. To try: Preferences ▸ Display ▸
+  the built-in display ▸ uncheck Touch screen, and touch it.
 
 - **Viewer: 4K60 video plays smoothly, decoded in hardware** (Ben,
   2026-11-06: "the viewer app can't even play 4k video at 60fps

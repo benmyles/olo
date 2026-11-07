@@ -93,6 +93,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "display", tab: "", group: "Display", name: "Variable refresh rate", role: "CheckBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Scale", role: "ComboBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Rotation", role: "ComboBox" },
+    Setting { panel: "display", tab: "", group: "Display", name: "Touch screen", role: "CheckBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Use as", role: "ComboBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Identify", role: "Button" },
     Setting { panel: "display", tab: "", group: "Display", name: "Brightness", role: "Slider" },

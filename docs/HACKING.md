@@ -6391,6 +6391,16 @@ is it, and shows again as a mouse or touchpad moves
 The pen is a tablet tool (`zwp_tablet_v2`). Agents and tests touch with
 `SyntheticEvent::Touch { slot, phase, x, y }` (`tsession touch NAME X Y`,
 `tsession touchdrag NAME X1 Y1 X2 Y2`), which goes the same way.
+A display's touch screen can be turned off (Ben, 2026-11-06):
+Preferences ▸ Display's "Touch screen", shown for the display a touch
+screen is on (`OutputInfo::touch`: Some while app_server counts a touch
+device, `touch_screens`, on `touch_output`), on by default and kept off
+by its key as its other settings are (`OutputConfig::touch`,
+`DisplaySettings::touch_for`; on isn't written). Off, a finger coming
+down or moving on it is ignored (`touch_on`); one already down still
+lifts, the pen goes on working, and agents' synthetic touches are taken
+whatever it says (they drive it, not the hardware). Agents set it with
+`ConfigureOutput { touch }`.
 
 ## The touchpad (app_server udev.rs, momentum.rs, touch_filter.rs)
 
