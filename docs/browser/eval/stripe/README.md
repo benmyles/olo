@@ -14,6 +14,19 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest checkpoint
 
+2026-11-07 evening: the homepage renders as Chrome does at 1000 × 700,
+1× (static sections within a pixel; JOURNAL 2026-11-07), with its
+scripts run (V8), its WebGL scenes drawn on the GPU, its workers,
+fonts, SVG (`<use>`, masks, text) and the live page's animations
+(the hero wave, the bento scenes, the marquee, the counter) at ~20%
+of a core: scripts 300 ms, renders 65 ms, measurements 130 ms per
+2 s. Hover opens the navigation menus. Not yet compared: the animated
+states at the same moment of the page's clock, the pricing page and a
+navigation journey (click, scroll, back), the narrow viewport, dark
+mode and the other scales. No configuration is accepted.
+
+The checkpoint below is from before the layout and script work.
+
 The native browser renders the homepage end to end (2026-11-06 evening):
 hero heading, buttons and the hero image, with 1,054 recorded fallbacks
 (`Page::fallbacks`; the list is in the agent Document node and in the

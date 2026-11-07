@@ -5750,7 +5750,17 @@ redo only what changed.
   compared at the same page size. A window resize reaches the rendered
   page but not its scripts (innerHeight, measurements and `resize`
   stay at the size the page loaded at): to do.
+- **A live render in 5 ms.** Profiling the hero's tiles by image path
+  found the fallback picture behind the canvas drawn through a
+  transform at opacity 0, 0.56 ms a tile: a box at opacity 0 now emits
+  nothing (its subtree walked for states only); opaque images at 1:1
+  are copied row by row. The document's change log grew to 65536
+  entries and every render's snapshot cloned it: it is dropped once
+  rendered and measured. A hero live render: 15 → 5–6 ms (snapshot
+  0.4–0.8, style 0.8–1.1, scene 2.6, 4 tiles 1.5).
 - **Open.** Incremental layout (the GDP counter's text change redoes
-  boxes and layout, ~10 ms, in measurements and in every live render:
-  14 ms a render where 4 would do); compositing canvases on the GPU
-  without any readback; numeric GL opcodes; the scripts' own cost.
+  boxes and layout, ~10 ms, in measurements and in every live render);
+  an incremental scene (2.6 ms a render to rebuild 2500 boxes'
+  commands); compositing canvases on the GPU without any readback;
+  numeric GL opcodes; the scripts' own cost (~115 ms per 2 s of JS on
+  stripe.com, the rest measurements, GL and renders).
