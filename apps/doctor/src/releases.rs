@@ -32,9 +32,10 @@ fn agent() -> ureq::Agent {
 }
 
 fn fetch(agent: &ureq::Agent, url: &str, accept: &str, limit: u64, progress: &mut dyn FnMut(u64, u64)) -> Result<Vec<u8>, String> {
+    let host = url.split('/').nth(2).unwrap_or(url);
     let response = agent.get(url).header("Accept", accept).call().map_err(|e| match e {
-        ureq::Error::StatusCode(code) => format!("GitHub answered {code} for {url}"),
-        e => format!("GitHub couldn't be reached: {e}"),
+        ureq::Error::StatusCode(code) => format!("{host} answered {code} for {url}"),
+        e => format!("{host} couldn't be reached: {e}"),
     })?;
     let total = response.headers().get("content-length").and_then(|v| v.to_str().ok()?.parse().ok()).unwrap_or(0);
     let mut body = response.into_body();
@@ -53,6 +54,12 @@ fn fetch(agent: &ureq::Agent, url: &str, accept: &str, limit: u64, progress: &mu
         progress(out.len() as u64, total);
     }
     Ok(out)
+}
+
+/// A file at `url` (a repository's release package), at most `limit`
+/// bytes.
+pub fn download(url: &str, limit: u64, progress: &mut dyn FnMut(u64, u64)) -> Result<Vec<u8>, String> {
+    fetch(&agent(), url, "*/*", limit, progress)
 }
 
 /// The latest release's tag.

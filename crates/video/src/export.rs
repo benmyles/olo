@@ -624,15 +624,17 @@ mod tests {
     fn make_4k60() {
         let Some(dir) = std::env::var_os("OLO_FIXTURE_DIR").map(PathBuf::from) else { return };
         let (w, h) = (3840u32, 2160u32);
+        // Ten seconds, or `OLO_SECONDS`.
+        let seconds: u32 = std::env::var("OLO_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
         let mut frame = vec![0u8; (w * h * 4) as usize];
         for codec in [crate::Codec::H264, crate::Codec::Hevc, crate::Codec::Av1] {
             let Ok(mut enc) = Encoder::new(w, h, 60, Choice::Nvidia, codec) else {
                 eprintln!("no NVENC for {}", codec.name());
                 continue;
             };
-            let path = dir.join(format!("4k60-{}.mp4", codec.id()));
+            let path = dir.join(if seconds == 10 { format!("4k60-{}.mp4", codec.id()) } else { format!("4k60-{}-{seconds}s.mp4", codec.id()) });
             let mut mp4 = Mp4::create_for(&path, w, h, 60_000, enc.codec()).unwrap();
-            for f in 0..600u32 {
+            for f in 0..seconds * 60 {
                 for y in 0..h {
                     let row = &mut frame[(y * w * 4) as usize..((y + 1) * w * 4) as usize];
                     for (x, px) in row.chunks_exact_mut(4).enumerate() {

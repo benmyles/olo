@@ -92,6 +92,15 @@ pub enum Step {
     UpdatePackages {
         names: Vec<String>,
     },
+    /// Add a package repository: its release package (`url`, as the
+    /// repository's own instructions give it), downloaded and installed
+    /// (it brings the repository's settings and signing keys, which
+    /// every package from it is then checked against), and the package
+    /// lists read again.
+    InstallRepository {
+        name: String,
+        url: String,
+    },
     /// Install `name` from its maker's latest GitHub release, its
     /// published SHA-256 checked, to `to` (`crate::releases`): a program
     /// the system's repositories don't carry (mise, worktrunk).
@@ -132,6 +141,7 @@ impl Step {
             Step::InstallPackages { names } => format!("Installing {}", names.join(", ")),
             Step::UpdatePackages { names } => format!("Updating {}", short_list(names)),
             Step::InstallRelease { name, release, .. } => format!("Installing {name} from github.com/{}", release.repo),
+            Step::InstallRepository { name, .. } => format!("Adding the {name} repository"),
         }
     }
 
@@ -155,6 +165,20 @@ impl Step {
                 let waiting = olo_system::packages::updates().map_err(|e| format!("{}: {e}", self.describe()))?;
                 let ids: Vec<String> = waiting.into_iter().filter(|p| names.iter().any(|n| n == p.name())).map(|p| p.id).collect();
                 olo_system::packages::update(ids, &mut said).map_err(|e| format!("{}: {e}", self.describe()))
+            }
+            Step::InstallRepository { url, .. } => {
+                let fail = |e: String| format!("{}: {e}", self.describe());
+                said(olo_system::packages::Progress::Status("Downloading"));
+                let bytes = crate::releases::download(url, 16 << 20, &mut |_, _| {}).map_err(fail)?;
+                // (Where PackageKit, as root, reads it; gone after.)
+                let name = url.rsplit('/').next().filter(|n| n.ends_with(".rpm")).unwrap_or("release.rpm");
+                let dir = std::env::temp_dir().join(format!("olo-doctor-{}", std::process::id()));
+                std::fs::create_dir_all(&dir).map_err(|e| fail(e.to_string()))?;
+                let file = dir.join(name);
+                std::fs::write(&file, &bytes).map_err(|e| fail(e.to_string()))?;
+                let done = olo_system::packages::install_file(&file, &mut said).and_then(|_| olo_system::packages::refresh(&mut said));
+                let _ = std::fs::remove_dir_all(&dir);
+                done.map_err(|e| fail(e.to_string()))
             }
             Step::InstallRelease { release, to, .. } => {
                 let mut last = 0;
@@ -198,7 +222,7 @@ impl Step {
             Step::AddKernelArgument { arg } => add_kernel_argument(Path::new("/"), arg).map_err(failed),
             Step::TryShell { path } => try_shell(path),
             Step::SetLoginShell { user, shell } => set_login_shell(user, shell).map_err(|e| format!("{}: {e}", self.describe())),
-            Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRelease { .. } => self.run_with(&mut |_| {}),
+            Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRelease { .. } | Step::InstallRepository { .. } => self.run_with(&mut |_| {}),
         }
     }
 }

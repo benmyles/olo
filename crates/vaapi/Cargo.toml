@@ -6,8 +6,11 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-# AV1's and VP9's bitstream parsers (pure Rust; none of its backends).
-cros-codecs = { version = "0.0.6", default-features = false }
+# AV1's, VP9's, H.264's and HEVC's parsers, and its stateless decoders
+# (what a decoder keeps between pictures) driving a backend of ours
+# (vendored: its own backends, which link libva and libgbm, left out).
+cros-codecs = { path = "../../vendor/cros-codecs", default-features = false, features = ["backend"] }
+anyhow = "1"
 libc = "0.2"
 tracing.workspace = true
 # libva's declarations, nothing linked (the library is opened at run time).

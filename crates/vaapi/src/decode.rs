@@ -16,6 +16,7 @@
 //! each a surface of its own.
 
 use std::{
+    cell::RefCell,
     ffi::{c_int, c_uint, c_void},
     path::PathBuf,
     ptr::null_mut,
@@ -26,13 +27,21 @@ use std::{
 use cros_codecs::codec::{av1::parser as av1, vp9::parser as vp9};
 use va_sys as va;
 
+use cros_codecs::decoder::{BlockingMode, stateless::StatelessDecoder};
+
 use crate::{Display, nvidia, render_nodes};
+
+mod h264;
+mod h265;
+mod stateless;
 
 /// A codec VA-API may decode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Codec {
     Av1,
     Vp9,
+    H264,
+    Hevc,
 }
 
 impl Codec {
@@ -42,6 +51,8 @@ impl Codec {
         match self {
             Codec::Av1 => &[va::VAProfileAV1Profile0],
             Codec::Vp9 => &[va::VAProfileVP9Profile0, va::VAProfileVP9Profile2],
+            Codec::H264 => &[va::VAProfileH264High, va::VAProfileH264Main, va::VAProfileH264ConstrainedBaseline],
+            Codec::Hevc => &[va::VAProfileHEVCMain, va::VAProfileHEVCMain10],
         }
     }
 }
@@ -78,13 +89,13 @@ struct Probed {
 fn probed() -> &'static [Probed] {
     static PROBED: OnceLock<Vec<Probed>> = OnceLock::new();
     PROBED.get_or_init(|| {
-        let all = [va::VAProfileAV1Profile0, va::VAProfileVP9Profile0, va::VAProfileVP9Profile2];
+        let all = [Codec::Av1, Codec::Vp9, Codec::H264, Codec::Hevc].iter().flat_map(|c| c.profiles().iter().copied()).collect::<Vec<_>>();
         render_nodes()
             .into_iter()
             .filter(|n| !nvidia(n))
             .filter_map(|node| {
                 let d = Display::open(&node).ok()?;
-                let profiles = all.into_iter().filter(|&p| d.entrypoints(p).contains(&va::VAEntrypointVLD)).collect();
+                let profiles = all.iter().copied().filter(|&p| d.entrypoints(p).contains(&va::VAEntrypointVLD)).collect();
                 Some(Probed { node, driver: d.vendor.clone(), profiles })
             })
             .collect()
@@ -133,11 +144,10 @@ struct Current {
     buffers: Vec<va::VABufferID>,
 }
 
-/// A stream decoded on a GPU through VA-API.
-pub struct Decoder {
+/// AV1 and VP9, whose references are slots the stream names.
+struct Frames {
     codec: Codec,
-    d: Display,
-    session: Option<Session>,
+    va: Va,
     /// The eight reference slots.
     refs: [Option<Slot>; 8],
     /// After a seek: nothing is decoded until a key frame.
@@ -151,15 +161,87 @@ pub struct Decoder {
     sizes: Vec<(u32, u32)>,
 }
 
+/// A stream decoded on a GPU through VA-API.
+pub struct Decoder {
+    inner: Inner,
+    driver: String,
+}
+
+enum Inner {
+    Frames(Box<Frames>),
+    H264(Box<stateless::Stream<StatelessDecoder<cros_codecs::decoder::stateless::h264::H264, stateless::Backend>>>),
+    Hevc(Box<stateless::Stream<StatelessDecoder<cros_codecs::decoder::stateless::h265::H265, stateless::Backend>>>),
+}
+
 impl Decoder {
     /// A decoder for `codec` on the GPU that decodes it.
     pub fn new(codec: Codec) -> Result<Decoder, String> {
         let (node, _) = decoder_for(codec).ok_or_else(|| format!("no GPU here decodes {codec:?} through VA-API"))?;
         let d = Display::open(&node)?;
-        Ok(Decoder {
+        let driver = d.vendor.clone();
+        let stream = |d: Display| {
+            let va = Rc::new(RefCell::new(Va { d, session: None }));
+            let look: Rc<RefCell<stateless::Look>> = Rc::default();
+            (stateless::Backend::new(va.clone(), look.clone()), va, look)
+        };
+        let inner = match codec {
+            Codec::Av1 | Codec::Vp9 => Inner::Frames(Box::new(Frames::new(codec, d))),
+            Codec::H264 => {
+                let (backend, va, look) = stream(d);
+                let dec = StatelessDecoder::new(backend, BlockingMode::Blocking).map_err(|e| e.to_string())?;
+                Inner::H264(Box::new(stateless::Stream { dec, va, look }))
+            }
+            Codec::Hevc => {
+                let (backend, va, look) = stream(d);
+                let dec = StatelessDecoder::new(backend, BlockingMode::Blocking).map_err(|e| e.to_string())?;
+                Inner::Hevc(Box::new(stateless::Stream { dec, va, look }))
+            }
+        };
+        Ok(Decoder { inner, driver })
+    }
+
+    /// What decodes, as its driver names itself.
+    pub fn driver(&self) -> &str {
+        &self.driver
+    }
+
+    /// Decodes `data` (a sample: an AV1 temporal unit, a VP9 frame or
+    /// superframe, H.264's or HEVC's NAL units in Annex B), shown at
+    /// `pts`; the pictures it shows go in `out` (H.264's and HEVC's in
+    /// display order, each with its own sample's time).
+    pub fn decode(&mut self, data: &[u8], pts: i64, out: &mut Vec<Picture>) -> Result<(), String> {
+        match &mut self.inner {
+            Inner::Frames(f) => f.decode(data, pts, out),
+            Inner::H264(s) => s.decode(data, pts, out),
+            Inner::Hevc(s) => s.decode(data, pts, out),
+        }
+    }
+
+    /// The stream ended: the pictures still held, shown.
+    pub fn flush(&mut self, out: &mut Vec<Picture>) -> Result<(), String> {
+        match &mut self.inner {
+            Inner::Frames(_) => Ok(()),
+            Inner::H264(s) => s.flush(out),
+            Inner::Hevc(s) => s.flush(out),
+        }
+    }
+
+    /// Forgets the pictures it holds (a seek): it starts again at the
+    /// next key frame.
+    pub fn reset(&mut self) {
+        match &mut self.inner {
+            Inner::Frames(f) => f.reset(),
+            Inner::H264(s) => s.reset(),
+            Inner::Hevc(s) => s.reset(),
+        }
+    }
+}
+
+impl Frames {
+    fn new(codec: Codec, d: Display) -> Frames {
+        Frames {
             codec,
-            d,
-            session: None,
+            va: Va { d, session: None },
             refs: [None; 8],
             waiting: false,
             av1: av1::Parser::default(),
@@ -168,28 +250,20 @@ impl Decoder {
             vp9: vp9::Parser::default(),
             segments: Default::default(),
             sizes: Vec::new(),
-        })
-    }
-
-    /// What decodes, as its driver names itself.
-    pub fn driver(&self) -> &str {
-        &self.d.vendor
-    }
-
-    /// Decodes `data` (a sample: an AV1 temporal unit, a VP9 frame or
-    /// superframe), shown at `pts`; the pictures it shows go in `out`.
-    pub fn decode(&mut self, data: &[u8], pts: i64, out: &mut Vec<Picture>) -> Result<(), String> {
-        match self.codec {
-            Codec::Av1 => self.av1_decode(data, pts, out),
-            Codec::Vp9 => self.vp9_decode(data, pts, out),
         }
     }
 
-    /// Forgets the pictures it holds (a seek): it starts again at the
-    /// next key frame.
-    pub fn reset(&mut self) {
+    fn decode(&mut self, data: &[u8], pts: i64, out: &mut Vec<Picture>) -> Result<(), String> {
+        match self.codec {
+            Codec::Av1 => self.av1_decode(data, pts, out),
+            Codec::Vp9 => self.vp9_decode(data, pts, out),
+            Codec::H264 | Codec::Hevc => Err("not a codec of frames".into()),
+        }
+    }
+
+    fn reset(&mut self) {
         if let Some(c) = self.current.take() {
-            self.drop_buffers(&c.buffers);
+            self.va.drop_buffers(&c.buffers);
         }
         self.refs = [None; 8];
         self.waiting = true;
@@ -212,7 +286,7 @@ impl Decoder {
                 av1::ParsedObu::SequenceHeader(seq) => {
                     if self.sequence.as_deref() != Some(&*seq) {
                         if let Some(c) = self.current.take() {
-                            self.drop_buffers(&c.buffers);
+                            self.va.drop_buffers(&c.buffers);
                         }
                         self.refs = [None; 8];
                         self.sequence = Some(seq);
@@ -268,12 +342,12 @@ impl Decoder {
         let kept = self.free(&[])?;
         let applies = grain && header.film_grain_params.apply_grain;
         let shown = if applies { self.free(&[kept])? } else { kept };
-        let s = self.session.as_ref().unwrap();
+        let s = self.va.session.as_ref().unwrap();
         let surface = |i: usize| s.surfaces[i];
         let refs = self.refs.map(|r| r.map_or(va::VA_INVALID_SURFACE, |r| surface(r.kept)));
         let display = if applies { surface(shown) } else { va::VA_INVALID_SURFACE };
         let mut p = av1_picture(&header, &seq, surface(kept), display, refs)?;
-        let buffer = self.buffer(va::VAPictureParameterBufferType, &mut p, 1)?;
+        let buffer = self.va.buffer(va::VAPictureParameterBufferType, &mut p, 1)?;
         self.current = Some(Current { header, slot: Slot { kept, shown }, buffers: vec![buffer] });
         Ok(())
     }
@@ -305,12 +379,12 @@ impl Decoder {
         if n == 0 {
             return Ok(());
         }
-        let p = self.buffer_n(va::VASliceParameterBufferType, params.as_mut_ptr(), n)?;
+        let p = self.va.buffer_n(va::VASliceParameterBufferType, params.as_mut_ptr(), n)?;
         let data = group.obu.as_ref();
-        let d = match self.buffer_bytes(va::VASliceDataBufferType, data) {
+        let d = match self.va.buffer_bytes(va::VASliceDataBufferType, data) {
             Ok(d) => d,
             Err(e) => {
-                self.drop_buffers(&[p]);
+                self.va.drop_buffers(&[p]);
                 return Err(e);
             }
         };
@@ -325,9 +399,9 @@ impl Decoder {
         let Some(current) = self.current.take() else { return Ok(()) };
         let header = &current.header;
         if !header.show_existing_frame {
-            let surface = self.session.as_ref().unwrap().surfaces[current.slot.kept];
-            let done = self.run(surface, &current.buffers);
-            self.drop_buffers(&current.buffers);
+            let surface = self.va.session.as_ref().unwrap().surfaces[current.slot.kept];
+            let done = self.va.run(surface, &current.buffers);
+            self.va.drop_buffers(&current.buffers);
             done?;
         }
         // An existing key frame shown refreshes the references too.
@@ -343,7 +417,7 @@ impl Decoder {
             let seq = self.sequence.clone().ok_or("AV1: no sequence header")?;
             let (w, h) = (header.upscaled_width, header.frame_height);
             let cc = &seq.color_config;
-            let picture = self.read(current.slot.shown, w, h, pts, cc.matrix_coefficients as u8, cc.color_range)?;
+            let picture = self.va.read(current.slot.shown, w, h, pts, cc.matrix_coefficients as u8, cc.color_range)?;
             out.push(picture);
         }
         Ok(())
@@ -365,7 +439,7 @@ impl Decoder {
             if h.show_existing_frame {
                 let slot = self.refs[h.frame_to_show_map_idx as usize].ok_or("VP9: a frame shown that isn't there")?;
                 let (w, height) = self.size_of(slot);
-                out.push(self.read(slot.shown, w, height, pts, vp9_matrix(h.color_space), h.color_range == vp9::ColorRange::FullSwing)?);
+                out.push(self.va.read(slot.shown, w, height, pts, vp9_matrix(h.color_space), h.color_range == vp9::ColorRange::FullSwing)?);
                 continue;
             }
             let (profile, deep) = match (h.profile, h.bit_depth) {
@@ -375,13 +449,13 @@ impl Decoder {
             };
             // A key frame may change the size; another frame decodes
             // into the surfaces there are (as big, or bigger).
-            let fits = self.session.as_ref().is_some_and(|s| s.profile == profile && s.width >= h.width && s.height >= h.height);
+            let fits = self.va.session.as_ref().is_some_and(|s| s.profile == profile && s.width >= h.width && s.height >= h.height);
             if key || !fits {
                 self.session(profile, h.width, h.height, deep, 10)?;
             }
             vp9::Segmentation::update_segmentation(&mut self.segments, h);
             let kept = self.free(&[])?;
-            let surfaces = &self.session.as_ref().unwrap().surfaces;
+            let surfaces = &self.va.session.as_ref().unwrap().surfaces;
             let refs = self.refs.map(|r| r.map_or(va::VA_INVALID_SURFACE, |r| surfaces[r.kept]));
             let surface = surfaces[kept];
             let bytes = frame.as_ref();
@@ -389,13 +463,13 @@ impl Decoder {
             let mut s = vp9_slice(&self.segments, bytes.len());
             let mut buffers = Vec::with_capacity(3);
             let made = (|| -> Result<(), String> {
-                buffers.push(self.buffer(va::VAPictureParameterBufferType, &mut p, 1)?);
-                buffers.push(self.buffer(va::VASliceParameterBufferType, &mut s, 1)?);
-                buffers.push(self.buffer_bytes(va::VASliceDataBufferType, bytes)?);
+                buffers.push(self.va.buffer(va::VAPictureParameterBufferType, &mut p, 1)?);
+                buffers.push(self.va.buffer(va::VASliceParameterBufferType, &mut s, 1)?);
+                buffers.push(self.va.buffer_bytes(va::VASliceDataBufferType, bytes)?);
                 Ok(())
             })();
-            let done = made.and_then(|_| self.run(surface, &buffers));
-            self.drop_buffers(&buffers);
+            let done = made.and_then(|_| self.va.run(surface, &buffers));
+            self.va.drop_buffers(&buffers);
             done?;
             let slot = Slot { kept, shown: kept };
             for (i, r) in self.refs.iter_mut().enumerate() {
@@ -405,7 +479,7 @@ impl Decoder {
             }
             self.sizes[kept] = (h.width, h.height);
             if h.show_frame {
-                out.push(self.read(kept, h.width, h.height, pts, vp9_matrix(h.color_space), h.color_range == vp9::ColorRange::FullSwing)?);
+                out.push(self.va.read(kept, h.width, h.height, pts, vp9_matrix(h.color_space), h.color_range == vp9::ColorRange::FullSwing)?);
             }
         }
         Ok(())
@@ -413,15 +487,43 @@ impl Decoder {
 
     // ---- The GPU's side ----
 
-    /// A session for `profile` at `width` × `height` with `count`
-    /// surfaces: the one there is if it's the same, else a new one (the
+    /// The session for `profile` at `width` × `height` (a new one: the
     /// references go with the old).
     fn session(&mut self, profile: va::VAProfile, width: u32, height: u32, deep: bool, count: usize) -> Result<(), String> {
+        if self.va.session(profile, width, height, deep, count)? {
+            self.refs = [None; 8];
+            self.sizes = vec![(width, height); count];
+        }
+        Ok(())
+    }
+
+    /// A surface no reference holds, nor any of `but`.
+    fn free(&self, but: &[usize]) -> Result<usize, String> {
+        let n = self.va.session.as_ref().map_or(0, |s| s.surfaces.len());
+        (0..n).find(|i| !but.contains(i) && !self.refs.iter().flatten().any(|r| r.kept == *i || r.shown == *i)).ok_or_else(|| "no surface free to decode into".into())
+    }
+
+    /// The size the picture in a slot was decoded at.
+    fn size_of(&self, slot: Slot) -> (u32, u32) {
+        self.sizes.get(slot.kept).copied().unwrap_or((0, 0))
+    }
+}
+
+/// libva's display, and the session pictures are decoded in there.
+struct Va {
+    d: Display,
+    session: Option<Session>,
+}
+
+impl Va {
+    /// A session for `profile` at `width` × `height` with `count`
+    /// surfaces: the one there is if it's the same, else a new one (true:
+    /// pictures of the old are gone).
+    fn session(&mut self, profile: va::VAProfile, width: u32, height: u32, deep: bool, count: usize) -> Result<bool, String> {
         if self.session.as_ref().is_some_and(|s| s.profile == profile && s.width == width && s.height == height && s.deep == deep && s.surfaces.len() >= count) {
-            return Ok(());
+            return Ok(false);
         }
         self.end_session();
-        self.refs = [None; 8];
         let api = &self.d.api;
         let dpy = self.d.dpy;
         let rt = if deep { va::VA_RT_FORMAT_YUV420_10 } else { va::VA_RT_FORMAT_YUV420 };
@@ -448,9 +550,8 @@ impl Decoder {
             }
             return Err(e);
         }
-        self.sizes = vec![(width, height); count];
         self.session = Some(Session { profile, width, height, deep, config, context, surfaces, linear: None });
-        Ok(())
+        Ok(true)
     }
 
     fn end_session(&mut self) {
@@ -465,17 +566,6 @@ impl Decoder {
             (api.destroy_surfaces)(self.d.dpy, s.surfaces.as_mut_ptr(), s.surfaces.len() as c_int);
             (api.destroy_config)(self.d.dpy, s.config);
         }
-    }
-
-    /// A surface no reference holds, nor any of `but`.
-    fn free(&self, but: &[usize]) -> Result<usize, String> {
-        let n = self.session.as_ref().map_or(0, |s| s.surfaces.len());
-        (0..n).find(|i| !but.contains(i) && !self.refs.iter().flatten().any(|r| r.kept == *i || r.shown == *i)).ok_or_else(|| "no surface free to decode into".into())
-    }
-
-    /// The size the picture in a slot was decoded at.
-    fn size_of(&self, slot: Slot) -> (u32, u32) {
-        self.sizes.get(slot.kept).copied().unwrap_or((0, 0))
     }
 
     /// A buffer of one `T` (or `n`, from `value`).
@@ -543,6 +633,12 @@ impl Decoder {
             None => read_mapped(&self.d, surface, w, h, deep)?,
         };
         Ok(Picture { pts, width: w, height: h, deep, y, uv, matrix, full_range })
+    }
+}
+
+impl Drop for Va {
+    fn drop(&mut self) {
+        self.end_session();
     }
 }
 
@@ -685,12 +781,11 @@ impl Linear {
     }
 }
 
-impl Drop for Decoder {
+impl Drop for Frames {
     fn drop(&mut self) {
         if let Some(c) = self.current.take() {
-            self.drop_buffers(&c.buffers);
+            self.va.drop_buffers(&c.buffers);
         }
-        self.end_session();
     }
 }
 

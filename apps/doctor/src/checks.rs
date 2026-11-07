@@ -455,6 +455,7 @@ pub fn scan(roots: &Roots) -> Report {
     let gpus = pci_devices(&roots.fs);
     idle_gpu(roots, &gpus, &mut r);
     gpu_driver(roots, &gpus, &mut r);
+    intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
     thunderbolt_usb2(&gpus, &mut r);
@@ -1194,6 +1195,68 @@ fn gpu_driver(roots: &Roots, pcis: &[Pci], r: &mut Report) {
 
 /// NVIDIA's driver, as Fedora's repositories name it.
 const NVIDIA_DRIVER: &str = "akmod-nvidia";
+
+/// Intel's full video driver (iHD with every codec), as RPM Fusion's
+/// nonfree repository names it, and where it and its kind put theirs
+/// (libva looks there before its own folder).
+const INTEL_MEDIA: &str = "intel-media-driver";
+const FULL_VIDEO_DRIVERS: &[&str] = &["usr/lib64/dri-nonfree/iHD_drv_video.so", "usr/lib64/dri-freeworld/iHD_drv_video.so"];
+
+/// The system's name and version (`/etc/os-release`'s ID, and ID_LIKE's
+/// names, and VERSION_ID).
+fn os_release(fs: &Path) -> (Vec<String>, Option<String>) {
+    let text = read(&fs.join("etc/os-release")).or_else(|| read(&fs.join("usr/lib/os-release"))).unwrap_or_default();
+    let value = |key: &str| text.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix('=')).map(|v| v.trim().trim_matches('"').to_owned());
+    let mut ids: Vec<String> = value("ID").into_iter().collect();
+    ids.extend(value("ID_LIKE").unwrap_or_default().split_whitespace().map(str::to_owned));
+    (ids, value("VERSION_ID"))
+}
+
+/// Intel graphics on Fedora: its video driver is Fedora's, which leaves
+/// out H.264 and HEVC (their patents), so those decode on the processor
+/// or NVIDIA's card rather than the Intel GPU (Olo's player,
+/// `olo_vaapi::decode`). RPM Fusion's full driver decodes them: adding
+/// its repositories (their own release packages, as RPM Fusion says to)
+/// and installing it.
+fn intel_video(roots: &Roots, pcis: &[Pci], r: &mut Report) {
+    if !pcis.iter().any(|p| p.display() && p.vendor == 0x8086) {
+        return;
+    }
+    let (ids, version) = os_release(&roots.fs);
+    if !ids.iter().any(|i| i == "fedora") {
+        return;
+    }
+    if FULL_VIDEO_DRIVERS.iter().any(|p| roots.fs.join(p).exists()) {
+        r.fine.push(Fine { title: "Intel graphics decodes every video".into(), detail: "RPM Fusion's full driver for it is installed: H.264, HEVC, VP9 and AV1 play on the Intel GPU.".into() });
+        return;
+    }
+    let what = "Fedora's driver for the Intel graphics leaves out H.264 and HEVC (for their patents), so those videos are decoded by the processor (a whole core for 4K at 60 frames a second) or by waking the NVIDIA card. RPM Fusion's full driver decodes them on the Intel GPU, with a quarter of a core.";
+    let atomic = roots.fs.join("run/ostree-booted").exists();
+    let found = (roots.packages)(&[INTEL_MEDIA]);
+    let (detail, fix) = match (&found, version, atomic) {
+        (_, _, true) | (None, _, _) | (_, None, _) => (format!("{what} Add RPM Fusion's free and nonfree repositories and install {INTEL_MEDIA}, as rpmfusion.org says."), None),
+        (Some(packages), Some(version), false) => {
+            let mut steps = Vec::new();
+            let there = packages.iter().any(|(n, _)| n == INTEL_MEDIA);
+            if !there {
+                for kind in ["free", "nonfree"] {
+                    steps.push(Step::InstallRepository {
+                        name: format!("RPM Fusion ({kind})"),
+                        url: format!("https://mirrors.rpmfusion.org/{kind}/fedora/rpmfusion-{kind}-release-{version}.noarch.rpm"),
+                    });
+                }
+            }
+            steps.push(Step::InstallPackages { names: vec![INTEL_MEDIA.into()] });
+            let how = if there {
+                format!("The fix installs it ({INTEL_MEDIA}, from RPM Fusion)")
+            } else {
+                format!("The fix adds RPM Fusion's repositories (their release packages, as rpmfusion.org says to) and installs it ({INTEL_MEDIA})")
+            };
+            (format!("{what} {how}; videos opened afterwards use it."), Some(Fix { label: "Install the Full Video Driver".into(), root: true, steps }))
+        }
+    };
+    r.findings.push(Finding { id: "video:intel".into(), severity: Severity::Advice, title: "Intel graphics can't decode H.264 and HEVC".into(), detail, fix });
+}
 /// The firmware's Secure Boot variable (its last byte 1: on).
 const SECURE_BOOT_VAR: &str = "sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
 
@@ -2117,6 +2180,55 @@ mod tests {
         thunderbolt(&roots, &mut r);
         assert!(r.findings.is_empty());
         assert_eq!(r.fine[0].title, "Thunderbolt devices are let in");
+    }
+
+    /// Intel graphics on Fedora with its own driver: RPM Fusion's full
+    /// one, its repositories added first where they aren't; nothing to
+    /// do once it's there, or on another system.
+    #[test]
+    fn intel_graphics_decode_every_video() {
+        let (fs, roots) = machine("intel-video");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        w("sys/bus/pci/devices/0000:00:02.0/class", "0x030000\n");
+        w("sys/bus/pci/devices/0000:00:02.0/vendor", "0x8086\n");
+        w("etc/os-release", "NAME=\"Fedora Linux\"\nID=fedora\nVERSION_ID=45\n");
+        // No PackageKit: what to do, said.
+        let r = scan(&roots);
+        let f = r.find("video:intel").expect("the driver to install");
+        assert!(f.fix.is_none() && f.detail.contains("rpmfusion.org"), "{}", f.detail);
+        // RPM Fusion not added: added, then the driver.
+        let roots = Roots { packages: Box::new(|_| Some(Vec::new())), ..roots };
+        let fix = scan(&roots).find("video:intel").unwrap().fix.clone().expect("a fix");
+        assert!(fix.root);
+        assert_eq!(
+            fix.steps,
+            vec![
+                Step::InstallRepository { name: "RPM Fusion (free)".into(), url: "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-45.noarch.rpm".into() },
+                Step::InstallRepository { name: "RPM Fusion (nonfree)".into(), url: "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-45.noarch.rpm".into() },
+                Step::InstallPackages { names: vec!["intel-media-driver".into()] },
+            ]
+        );
+        // RPM Fusion there: only the driver.
+        let roots = Roots { packages: Box::new(|_| Some(vec![("intel-media-driver".into(), false)])), ..roots };
+        let fix = scan(&roots).find("video:intel").unwrap().fix.clone().unwrap();
+        assert_eq!(fix.steps, vec![Step::InstallPackages { names: vec!["intel-media-driver".into()] }]);
+        // Installed: fine.
+        w("usr/lib64/dri-nonfree/iHD_drv_video.so", "");
+        let r = scan(&roots);
+        assert!(r.find("video:intel").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "Intel graphics decodes every video"));
+        // An atomic Fedora: by hand.
+        std::fs::remove_file(fs.join("usr/lib64/dri-nonfree/iHD_drv_video.so")).unwrap();
+        w("run/ostree-booted", "");
+        assert!(scan(&roots).find("video:intel").unwrap().fix.is_none());
+        // Not Fedora: nothing.
+        std::fs::remove_file(fs.join("run/ostree-booted")).unwrap();
+        w("etc/os-release", "ID=arch\n");
+        assert!(scan(&roots).find("video:intel").is_none());
     }
 
     #[test]
