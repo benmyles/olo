@@ -15,12 +15,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The README: one wordmark, and screenshots that show Olo off** (Ben,
-  2026-11-07: "update the olo readme so that there's just the one
-  wordmark logo at the top not two and a full collection of screenshots
-  in light/dark and different themes and make sure they cover all the
-  different apps, features, agent functionality etc -- it needs to do a
-  much better job of showing off olo"). After Deskbar's widgets.
 - **Intel's render GT busy on an idle desktop**: on 2026-11-07 its idle
   residency rose 4 ms in a second (the media GT's 928), so the GPU never
   rests (RC6). Find what keeps it awake (app_server drawing every frame?
@@ -2126,6 +2120,13 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The README: one wordmark, and screenshots that show Olo off**~~ (Ben,
+  2026-11-07: "update the olo readme so that there's just the one
+  wordmark logo at the top not two and a full collection of screenshots
+  in light/dark and different themes and make sure they cover all the
+  different apps, features, agent functionality etc -- it needs to do a
+  much better job of showing off olo"). *Done* (9a3adc80): the wordmark alone, twelve pictures (light and dark, all ten themes, the palette, overview and tiling, apps, Preferences, Agent Screens), made again by `tools/dev/readme-shots` from the sample home.
 
 - ~~**Deskbar's live performance widgets, and Preferences ▸ Deskbar**~~
   (Ben, 2026-11-07: "add a preferences app for the deskbar and in it
