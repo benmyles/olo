@@ -108,6 +108,19 @@ pub struct Clip {
     /// The transform the clipping box paints through, or NONE.
     pub transform: u32,
 }
+/// What a stratum holds: a run of the page's own commands, the fixed
+/// layer, or a sticky box's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerKind {
+    Page,
+    Fixed,
+    Sticky(BoxId),
+}
+/// A run of commands in paint order that are shown the same way.
+pub struct Stratum {
+    pub kind: LayerKind,
+    pub(super) index: index::Index,
+}
 pub struct Scene {
     pub(super) layout: Arc<layout::Layout>,
     pub(super) commands: Box<[Command]>,
@@ -118,12 +131,12 @@ pub struct Scene {
     pub(super) transforms: Box<[[f64; 6]]>,
     pub(super) vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     pub(super) vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
-    pub(super) index: index::Index,
-    /// The fixed commands, apart: not in the page's tiles.
-    pub(super) fixed_index: index::Index,
-    /// The sticky commands, apart likewise, by their roots.
-    pub(super) sticky_index: index::Index,
-    pub(super) sticky_roots: Box<[BoxId]>,
+    /// The commands in paint order cut into strata: runs of the page's own
+    /// commands, and the fixed and sticky boxes' layers between them, each
+    /// indexed by place. The first is always a page run (the base, with
+    /// the page's background); the rest are shown over it in order, the
+    /// page runs scrolled, the fixed layer not, a sticky layer shifted.
+    pub(super) strata: Box<[Stratum]>,
     pub(super) base: [u8; 4],
     pub(super) canvas: [u8; 4],
     extent: Rect,
@@ -239,7 +252,7 @@ impl Scene {
     pub fn command_payload_bytes(&self) -> usize {
         self.commands.len() * size_of::<Command>()
             + self.clips.len() * size_of::<Clip>()
-            + self.index.payload_bytes()
+            + self.strata.iter().map(|s| s.index.payload_bytes()).sum::<usize>()
             + self.vector_geometry.capacity() * (size_of::<(u32, crate::svg::used::Geometry)>() + 1)
             + self.vector_geometry.values().map(|g| g.payload_bytes()).sum::<usize>()
             + self.vector_clips.capacity() * (size_of::<(u32, Vec<crate::svg::clip::Resolved>)>() + 1)
@@ -382,44 +395,26 @@ impl Scene {
         }
         Ok((combined.finish(), parts))
     }
-    /// The fixed commands over `region` (viewport coordinates), in paint
-    /// order: what paints over the scrolled page.
-    pub fn query_fixed(&self, region: Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
+    pub fn strata(&self) -> &[Stratum] {
+        &self.strata
+    }
+    /// Stratum `i`'s commands over `region` (document coordinates, as laid
+    /// out: a fixed layer's are viewport coordinates, a sticky layer's its
+    /// flow position), in paint order.
+    pub fn query_stratum(&self, i: usize, region: Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
         if !valid(region) {
             return Err(Error::Invalid);
         }
-        self.fixed_index.query(&self.commands, &self.transforms, region, out, cancel)?;
+        let stratum = self.strata.get(i).ok_or(Error::Invalid)?;
+        stratum.index.query(&self.commands, &self.transforms, region, out, cancel)?;
         out.sort_unstable();
         Ok(())
     }
-    /// The sticky boxes with commands of their own, in tree order.
-    pub fn sticky_roots(&self) -> &[BoxId] {
-        &self.sticky_roots
-    }
-    /// The commands under sticky box `root` over `region` (document
-    /// coordinates, at the box's flow position), in paint order.
-    pub fn query_sticky(&self, root: BoxId, region: Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
-        if !valid(region) {
-            return Err(Error::Invalid);
-        }
-        self.sticky_index.query(&self.commands, &self.transforms, region, out, cancel)?;
-        out.retain(|&id| self.commands[id as usize].sticky == Some(root));
-        out.sort_unstable();
-        Ok(())
-    }
-    /// What sticky box `root`'s commands cover at its flow position.
-    pub fn sticky_extent(&self, root: BoxId) -> Option<Rect> {
-        self.layer_extent(self.sticky_index.ids().iter().copied().filter(|&id| self.commands[id as usize].sticky == Some(root)))
-    }
-    /// The signature of sticky box `root`'s commands (see `tile_signature`).
-    pub fn sticky_signature(&self, root: BoxId, cancel: Option<&AtomicBool>) -> Result<u64> {
-        let mut hits: Vec<u32> = self.sticky_index.ids().iter().copied().filter(|&id| self.commands[id as usize].sticky == Some(root)).collect();
-        hits.sort_unstable();
-        Ok(self.signature_parts(&hits, cancel)?.0)
-    }
-    fn layer_extent(&self, ids: impl Iterator<Item = u32>) -> Option<Rect> {
+    /// What stratum `i`'s commands cover (clips applied), or None without any.
+    pub fn stratum_extent(&self, i: usize) -> Option<Rect> {
+        let stratum = self.strata.get(i)?;
         let mut out: Option<Rect> = None;
-        for id in ids {
+        for &id in stratum.index.ids() {
             let c = &self.commands[id as usize];
             let mut reach = extent(c, &self.transforms);
             if c.clip != NONE {
@@ -434,26 +429,74 @@ impl Scene {
         }
         out
     }
-    /// Whether anything is fixed to the viewport.
-    pub fn has_fixed(&self) -> bool {
-        !self.fixed_index.ids().is_empty()
-    }
-    /// What the fixed commands cover, in viewport coordinates (clips
-    /// applied), or None without any.
-    pub fn fixed_extent(&self) -> Option<Rect> {
-        self.layer_extent(self.fixed_index.ids().iter().copied())
-    }
-    /// The signature of the fixed layer (see `tile_signature`).
-    pub fn fixed_signature(&self, cancel: Option<&AtomicBool>) -> Result<u64> {
-        let mut hits: Vec<u32> = self.fixed_index.ids().to_vec();
+    /// The signature of all of stratum `i` (see `tile_signature`).
+    pub fn stratum_signature(&self, i: usize, cancel: Option<&AtomicBool>) -> Result<u64> {
+        let stratum = self.strata.get(i).ok_or(Error::Invalid)?;
+        let mut hits: Vec<u32> = stratum.index.ids().to_vec();
         hits.sort_unstable();
         Ok(self.signature_parts(&hits, cancel)?.0)
     }
+    /// The signature of stratum `i` over a tile (see `tile_signature`), and
+    /// whether anything of it is there at all.
+    pub fn stratum_tile_signature(&self, i: usize, region: Rect, cancel: Option<&AtomicBool>) -> Result<(u64, bool)> {
+        let mut hits = Vec::new();
+        self.query_stratum(i, region, &mut hits, cancel)?;
+        Ok((self.signature_parts(&hits, cancel)?.0, !hits.is_empty()))
+    }
+    /// The node at document point (x, y) with the page scrolled by `scroll`
+    /// in a viewport `height` tall: the topmost command there in paint
+    /// order, strata from the top down, each tested where it is shown
+    /// (the fixed layer at the viewport point, a sticky layer shifted),
+    /// skipping boxes with `pointer-events: none` or hidden.
+    pub fn hit_test(&self, x: f64, y: f64, scroll: f64, height: f64, stickies: &[layout::Sticky]) -> Option<crate::dom::NodeId> {
+        let tree = self.layout.cache().tree();
+        let mut hits = Vec::new();
+        for (i, stratum) in self.strata.iter().enumerate().rev() {
+            let py = match stratum.kind {
+                LayerKind::Page => y,
+                LayerKind::Fixed => y - scroll,
+                LayerKind::Sticky(root) => y - stickies.iter().find(|s| s.root == root).map_or(0., |s| s.offset(scroll, height)),
+            };
+            let region = Rect { x: x - 0.5, y: py - 0.5, width: 1., height: 1. };
+            if self.query_stratum(i, region, &mut hits, None).is_err() {
+                continue;
+            }
+            for &id in hits.iter().rev() {
+                let c = &self.commands[id as usize];
+                let reach = extent(c, &self.transforms);
+                if x < reach.x || x >= reach.x + reach.width || py < reach.y || py >= reach.y + reach.height {
+                    continue;
+                }
+                if c.clip != NONE {
+                    let clip = &self.clips[c.clip as usize];
+                    let clip_rect = if clip.transform == NONE { clip.rect } else { aabb(self.transforms[clip.transform as usize], clip.rect) };
+                    if x < clip_rect.x || x >= clip_rect.x + clip_rect.width || py < clip_rect.y || py >= clip_rect.y + clip_rect.height {
+                        continue;
+                    }
+                }
+                let Some(node) = self.node(id) else { continue };
+                if let Some(style) = tree.styles().snapshot(node)
+                    && (matches!(style.value(P::PointerEvents), Value::Keyword(K::None)) || matches!(style.value(P::Visibility), Value::Keyword(K::Hidden)))
+                {
+                    continue;
+                }
+                return Some(node);
+            }
+        }
+        None
+    }
+    /// The page's own commands over `region` (every page stratum), in
+    /// paint order: not the fixed or sticky layers'.
     pub fn query(&self, region: Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
         if !valid(region) {
             return Err(Error::Invalid);
         }
-        self.index.query(&self.commands, &self.transforms, region, out, cancel)?;
+        out.clear();
+        let mut part = Vec::new();
+        for stratum in self.strata.iter().filter(|s| s.kind == LayerKind::Page) {
+            stratum.index.query(&self.commands, &self.transforms, region, &mut part, cancel)?;
+            out.extend_from_slice(&part);
+        }
         out.retain(|&id| {
             let c = &self.commands[id as usize];
             c.clip == NONE || {
@@ -1280,14 +1323,31 @@ impl<'a> BuildJob<'a> {
         let key = |d: &Draft| contexts[d.context as usize].path.iter().copied().chain(std::iter::once(u32::from(d.slot)));
         self.draft.sort_by(|a, b| key(a).cmp(key(b)).then(a.text.cmp(&b.text)));
         let commands: Box<[Command]> = self.draft.into_iter().map(|d| d.command).collect();
-        let (fixed_ids, rest): (Vec<u32>, Vec<u32>) = (0..commands.len() as u32).partition(|&i| commands[i as usize].fixed);
-        let (sticky_ids, page_ids): (Vec<u32>, Vec<u32>) = rest.into_iter().partition(|&i| commands[i as usize].sticky.is_some());
-        let mut sticky_roots: Vec<BoxId> = sticky_ids.iter().filter_map(|&i| commands[i as usize].sticky).collect();
-        sticky_roots.sort_by_key(|b| b.index());
-        sticky_roots.dedup();
-        let index = index::Index::over(&commands, &self.transforms, page_ids, self.cancel)?;
-        let fixed_index = index::Index::over(&commands, &self.transforms, fixed_ids, self.cancel)?;
-        let sticky_index = index::Index::over(&commands, &self.transforms, sticky_ids, self.cancel)?;
+        // Strata: runs of commands shown the same way, in paint order; the
+        // first always a page run, for the base with the background.
+        let mut runs: Vec<(LayerKind, Vec<u32>)> = vec![(LayerKind::Page, Vec::new())];
+        for i in 0..commands.len() as u32 {
+            let c = &commands[i as usize];
+            let kind = if c.fixed {
+                LayerKind::Fixed
+            } else if let Some(root) = c.sticky {
+                LayerKind::Sticky(root)
+            } else {
+                LayerKind::Page
+            };
+            match runs.last_mut() {
+                Some((k, ids)) if *k == kind => ids.push(i),
+                _ => runs.push((kind, vec![i])),
+            }
+        }
+        if runs.len() > self.limits.commands {
+            return Err(Error::Limit);
+        }
+        let mut strata = Vec::with_capacity(runs.len());
+        for (kind, ids) in runs {
+            check(self.cancel)?;
+            strata.push(Stratum { kind, index: index::Index::over(&commands, &self.transforms, ids, self.cancel)? });
+        }
         Ok(Arc::new(Scene {
             extent: self.extent,
             layout: self.layout,
@@ -1297,10 +1357,7 @@ impl<'a> BuildJob<'a> {
             transforms: self.transforms.into_boxed_slice(),
             vector_geometry: self.vector_geometry,
             vector_clips: self.vector_clips,
-            index,
-            fixed_index,
-            sticky_index,
-            sticky_roots: sticky_roots.into_boxed_slice(),
+            strata: strata.into_boxed_slice(),
             base: self.options.canvas,
             canvas: self.canvas,
         }))

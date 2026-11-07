@@ -70,14 +70,22 @@ pub struct Label {
     pub link: Option<Arc<crate::links::Link>>,
     /// Fixed to the viewport: `rect` is viewport coordinates.
     pub fixed: bool,
-    /// Under a sticky box: which (an index into the page's sticky layers),
-    /// whose shift at the current scroll applies to `rect`.
-    pub sticky: Option<usize>,
+    /// Under a sticky box: that box, whose shift at the current scroll
+    /// applies to `rect`.
+    pub sticky: Option<layout::Sticky>,
 }
-/// A sticky box's layer: its tiles at its flow position (document device
-/// coordinates), shown shifted by `sticky.offset(scroll, height)`.
-pub struct StickyLayer {
-    pub sticky: layout::Sticky,
+/// Where a layer's tiles are shown: scrolled with the page, fixed to the
+/// viewport, or shifted as a sticky box's scroll has it.
+#[derive(Clone, Copy, Debug)]
+pub enum Placement {
+    Page,
+    Fixed,
+    Sticky(layout::Sticky),
+}
+/// One of the page's layers above its base: tiles (device coordinates in
+/// the layer's own space) and how they are placed.
+pub struct LayerTiles {
+    pub placement: Placement,
     pub tiles: Vec<(paint::DeviceRect, Arc<RenderImage>)>,
 }
 pub enum Reply {
@@ -102,11 +110,10 @@ pub enum Reply {
         focus_targets: Arc<crate::navigation::FocusTargets>,
     },
     Batch(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
-    /// The page's fixed layer (viewport device coordinates), painted over
-    /// the tiles wherever they scroll; empty when nothing is fixed.
-    Fixed(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
-    /// The page's sticky layers, one per sticky box; empty without any.
-    Sticky(u64, Vec<StickyLayer>),
+    /// The page's layers above its base tiles, in paint order (later page
+    /// runs over fixed and sticky layers before them); empty when the
+    /// base is all there is.
+    Layers(u64, Vec<LayerTiles>),
     Error(u64, String),
 }
 /// Which pass of a page: the static page first, shown at once, then the
@@ -376,7 +383,8 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                     olo_js::InputKind::Key { .. } | olo_js::InputKind::Scroll => None,
                                     _ => {
                                         let (scroll, height) = last.as_ref().map_or((0., f64::INFINITY), |r| (f64::from(r.scroll) / r.key.scale, f64::from(r.key.height) / r.key.scale));
-                                        c.page.scene.layout().hit_test_scrolled(input.x, input.y, scroll, height)
+                                        let stickies = c.page.scene.layout().sticky();
+                                        c.page.scene.hit_test(input.x, input.y, scroll, height, &stickies)
                                     }
                                 };
                                 live.realm.input(&input, target);
@@ -1032,19 +1040,29 @@ fn render(
     // The fixed layer's content lies in the viewport at the initial scroll.
     let viewport_rect = layout::Rect { x: 0., y: 0., width: visible.width, height: visible.height };
     let mut fixed_hits = Vec::new();
-    scene.query_fixed(viewport_rect, &mut fixed_hits, Some(&r.cancel))?;
-    // Sticky boxes' content, each with its layer (shifted by the scroll).
-    let stickies = scene.layout().sticky();
-    let mut sticky_hits: Vec<(u32, usize)> = Vec::new();
-    for (i, st) in stickies.iter().enumerate() {
-        if let Some(extent) = scene.sticky_extent(st.root) {
+    for (i, stratum) in scene.strata().iter().enumerate() {
+        if stratum.kind == paint::LayerKind::Fixed {
             let mut ids = Vec::new();
-            scene.query_sticky(st.root, extent, &mut ids, Some(&r.cancel))?;
-            sticky_hits.extend(ids.into_iter().map(|id| (id, i)));
+            scene.query_stratum(i, viewport_rect, &mut ids, Some(&r.cancel))?;
+            fixed_hits.extend(ids);
+        }
+    }
+    // Sticky boxes' content, each with its box (shifted by the scroll).
+    let stickies = scene.layout().sticky();
+    let mut sticky_hits: Vec<(u32, layout::Sticky)> = Vec::new();
+    for (i, stratum) in scene.strata().iter().enumerate() {
+        if let paint::LayerKind::Sticky(root) = stratum.kind
+            && let Some(st) = stickies.iter().find(|s| s.root == root)
+            && let Some(extent) = scene.stratum_extent(i)
+        {
+            let mut ids = Vec::new();
+            scene.query_stratum(i, extent, &mut ids, Some(&r.cancel))?;
+            sticky_hits.extend(ids.into_iter().map(|id| (id, *st)));
         }
     }
     let mut labels = Vec::new();
-    for (id, fixed, sticky) in hits.into_iter().map(|id| (id, false, None)).chain(fixed_hits.into_iter().map(|id| (id, true, None))).chain(sticky_hits.into_iter().map(|(id, i)| (id, false, Some(i))))
+    for (id, fixed, sticky) in
+        hits.into_iter().map(|id| (id, false, None)).chain(fixed_hits.into_iter().map(|id| (id, true, None))).chain(sticky_hits.into_iter().map(|(id, st)| (id, false, Some(st))))
     {
         let vector = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Vector { .. });
         let image = vector || matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
@@ -1088,202 +1106,137 @@ fn render(
     let mut tile_parts_store = TILE_PARTS.with(|t| std::mem::take(&mut *t.borrow_mut()));
     let tile_parts = &mut tile_parts_store;
     let painting = Instant::now();
+    let scale = scene.device_scale();
     let top = scroll.div_euclid(256) * 256;
-    for y in (top..scroll + r.key.height as i32).step_by(256) {
-        for x in (0..r.key.width as i32).step_by(256) {
-            if r.cancel.load(Ordering::Relaxed) {
-                return Err(paint::Error::Cancelled.into());
+    // The strata in paint order: the base page run (opaque, sent as it
+    // paints), then each layer above it (transparent): page runs over the
+    // visible rows, the fixed layer over the viewport, a sticky layer over
+    // its own extent; every tile kept by the stratum's signature there,
+    // tiles with nothing of the stratum skipped.
+    let mut layers: Vec<LayerTiles> = Vec::new();
+    for (si, stratum) in scene.strata().iter().enumerate() {
+        let (x0, y0, x1, y1) = match stratum.kind {
+            paint::LayerKind::Page => (0, top, r.key.width as i32, scroll + r.key.height as i32),
+            paint::LayerKind::Fixed | paint::LayerKind::Sticky(_) => {
+                let Some(extent) = scene.stratum_extent(si) else {
+                    layers.push(LayerTiles { placement: Placement::Fixed, tiles: Vec::new() });
+                    continue;
+                };
+                let (limit_x, limit_y) = if stratum.kind == paint::LayerKind::Fixed { (f64::from(r.key.width), f64::from(r.key.height)) } else { (f64::INFINITY, f64::INFINITY) };
+                let x0 = (extent.x * scale).floor().max(0.).min(limit_x) as i32;
+                let y0 = (extent.y * scale).floor().max(0.).min(limit_y) as i32;
+                let x1 = ((extent.x + extent.width) * scale).ceil().min(limit_x).min(f64::from(x0) + 2048.) as i32;
+                let y1 = ((extent.y + extent.height) * scale).ceil().min(limit_y).min(f64::from(y0) + 2048.) as i32;
+                (x0.div_euclid(256) * 256, y0.div_euclid(256) * 256, x1, y1)
             }
-            *clock = clock.wrapping_add(1);
-            let region = paint::DeviceRect { x, y, width: 256, height: 256 };
-            // A tile painted from the same commands over the same images,
-            // styles and texts is the same tile: kept across re-renders.
-            let scale = scene.device_scale();
-            let tile_rect = layout::Rect { x: f64::from(x) / scale, y: f64::from(y) / scale, width: 256. / scale, height: 256. / scale };
-            let signature = if std::env::var_os("OLO_TILE_DEBUG").is_some() {
-                // Name the first command that changed since the last paint of this tile.
-                let (signature, parts) = scene.tile_signature_parts(tile_rect, Some(&r.cancel))?;
-                let previous = tile_parts.insert((x, y), parts.clone());
-                if let Some(previous) = previous
-                    && let Some((image, _, kept)) = cache.get(&(x, y))
-                    && *kept != signature
-                {
-                    let _ = image;
-                    let first = parts.iter().zip(previous.iter()).position(|(a, b)| a.0 != b.0);
-                    let which = first.map(|i| {
-                        let names = ["bounds", "transform", "clip", "groups", "primitive"];
-                        (0..5).find(|&k| parts[i].2[k] != previous[i].2[k]).map_or("?", |k| names[k])
-                    });
-                    let owner = first.and_then(|i| scene.node(parts[i].3)).map(|n| {
-                        let doc = &page.document;
-                        format!(
-                            "<{} id={:?} class={:?}>",
-                            doc.name(n).ok().flatten().unwrap_or("?"),
-                            doc.attribute(n, "id").ok().flatten().unwrap_or(""),
-                            doc.attribute(n, "class").ok().flatten().unwrap_or("").chars().take(60).collect::<String>()
-                        )
-                    });
-                    eprintln!(
-                        "  tile {x},{y} changed: {} commands (was {}), first difference at {:?} in {:?} of {:?}",
-                        parts.len(),
-                        previous.len(),
-                        first.map(|i| (i, parts[i].1, previous[i].1)),
-                        which,
-                        owner
-                    );
-                }
-                signature
-            } else {
-                scene.tile_signature(tile_rect, Some(&r.cancel))?
-            };
-            let image = if let Some((image, stamp, kept)) = cache.get_mut(&(x, y))
-                && *kept == signature
-            {
-                *stamp = *clock;
-                image.clone()
-            } else {
-                let tile = painter.raster(scene, region, Some(&r.cancel))?;
-                let mut bytes = tile.into_rgba();
-                for p in bytes.as_chunks_mut::<4>().0 {
-                    p.swap(0, 2)
-                }
-                let image = olo_ui::widgets::image_view::from_bgra(256, 256, bytes).ok_or("Tile upload failed")?;
-                if cache.len() >= 256 {
-                    let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;
-                    cache.remove(&key);
-                }
-                cache.insert((x, y), (image.clone(), *clock, signature));
-                repainted += 1;
-                image
-            };
-            tiles.push((region, image));
-            total += 1;
-            if last.elapsed() > Duration::from_millis(120) {
-                proxy.send(Reply::Batch(r.id, std::mem::take(&mut tiles)));
-                last = Instant::now();
-            }
-        }
-    }
-    TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);
-    // The fixed layer: what `position: fixed` boxes paint, over the tiles
-    // at viewport coordinates, as one image, kept by signature like a tile.
-    let mut fixed_layer = Vec::new();
-    if let Some(extent) = scene.fixed_extent() {
-        let scale = scene.device_scale();
-        let x0 = (extent.x * scale).floor().max(0.) as i32;
-        let y0 = (extent.y * scale).floor().max(0.) as i32;
-        let x1 = ((extent.x + extent.width) * scale).ceil().min(f64::from(r.key.width)) as i32;
-        let y1 = ((extent.y + extent.height) * scale).ceil().min(f64::from(r.key.height)) as i32;
-        if x1 > x0 && y1 > y0 {
-            // In tiles like the page (the raster limits are a tile's), each
-            // kept by the layer's signature and its place.
-            let layer_signature = scene.fixed_signature(Some(&r.cancel))?;
-            for y in (y0.div_euclid(256) * 256..y1).step_by(256) {
-                for x in (x0.div_euclid(256) * 256..x1).step_by(256) {
-                    if r.cancel.load(Ordering::Relaxed) {
-                        return Err(paint::Error::Cancelled.into());
-                    }
-                    let region = paint::DeviceRect { x, y, width: 256, height: 256 };
-                    let signature = {
-                        use std::hash::{Hash, Hasher};
-                        let mut h = std::hash::DefaultHasher::new();
-                        layer_signature.hash(&mut h);
-                        (x, y).hash(&mut h);
-                        h.finish()
-                    };
-                    *clock = clock.wrapping_add(1);
-                    // Apart from the page's tiles in the cache.
-                    let key = (x | (1 << 30), y);
-                    let image = if let Some((image, stamp, kept)) = cache.get_mut(&key)
-                        && *kept == signature
-                    {
-                        *stamp = *clock;
-                        image.clone()
-                    } else {
-                        let tile = painter.raster_fixed(scene, region, Some(&r.cancel))?;
-                        let mut bytes = tile.into_rgba();
-                        for p in bytes.as_chunks_mut::<4>().0 {
-                            p.swap(0, 2)
-                        }
-                        let image = olo_ui::widgets::image_view::from_bgra(256, 256, bytes).ok_or("Fixed layer upload failed")?;
-                        if cache.len() >= 256 {
-                            let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;
-                            cache.remove(&key);
-                        }
-                        cache.insert(key, (image.clone(), *clock, signature));
-                        image
-                    };
-                    fixed_layer.push((region, image));
-                }
-            }
-        }
-    }
-    let fixed_tiles = fixed_layer.len();
-    proxy.send(Reply::Fixed(r.id, fixed_layer));
-    // The sticky layers: each sticky box's commands at its flow position,
-    // in tiles kept by signature; the window moves them with the scroll.
-    let mut sticky_layers = Vec::new();
-    for st in &stickies {
-        // One layer per sticky box, in order (the labels index them), with
-        // no tiles when nothing of it paints.
-        let Some(extent) = scene.sticky_extent(st.root) else {
-            sticky_layers.push(StickyLayer { sticky: *st, tiles: Vec::new() });
-            continue;
         };
-        let scale = scene.device_scale();
-        let x0 = (extent.x * scale).floor().max(0.) as i32;
-        let y0 = (extent.y * scale).floor().max(0.) as i32;
-        let x1 = ((extent.x + extent.width) * scale).ceil().min(f64::from(x0) + 2048.) as i32;
-        let y1 = ((extent.y + extent.height) * scale).ceil().min(f64::from(y0) + 2048.) as i32;
-        if x1 <= x0 || y1 <= y0 {
-            sticky_layers.push(StickyLayer { sticky: *st, tiles: Vec::new() });
-            continue;
-        }
-        let layer_signature = scene.sticky_signature(st.root, Some(&r.cancel))?;
+        let placement = match stratum.kind {
+            paint::LayerKind::Page => Placement::Page,
+            paint::LayerKind::Fixed => Placement::Fixed,
+            paint::LayerKind::Sticky(root) => match stickies.iter().find(|s| s.root == root) {
+                Some(st) => Placement::Sticky(*st),
+                None => Placement::Page,
+            },
+        };
+        let layer_signature = if si == 0 { 0 } else { scene.stratum_signature(si, Some(&r.cancel))? };
         let mut layer_tiles = Vec::new();
-        for y in (y0.div_euclid(256) * 256..y1).step_by(256) {
-            for x in (x0.div_euclid(256) * 256..x1).step_by(256) {
+        for y in (y0..y1).step_by(256) {
+            for x in (x0..x1).step_by(256) {
                 if r.cancel.load(Ordering::Relaxed) {
                     return Err(paint::Error::Cancelled.into());
                 }
+                *clock = clock.wrapping_add(1);
                 let region = paint::DeviceRect { x, y, width: 256, height: 256 };
-                let signature = {
+                let tile_rect = layout::Rect { x: f64::from(x) / scale, y: f64::from(y) / scale, width: 256. / scale, height: 256. / scale };
+                // A tile painted from the same commands over the same images,
+                // styles and texts is the same tile: kept across re-renders.
+                let signature = if si == 0 && std::env::var_os("OLO_TILE_DEBUG").is_some() {
+                    // Name the first command that changed since the last paint of this tile.
+                    let (signature, parts) = scene.tile_signature_parts(tile_rect, Some(&r.cancel))?;
+                    let previous = tile_parts.insert((x, y), parts.clone());
+                    if let Some(previous) = previous
+                        && let Some((image, _, kept)) = cache.get(&(x, y))
+                        && *kept != signature
+                    {
+                        let _ = image;
+                        let first = parts.iter().zip(previous.iter()).position(|(a, b)| a.0 != b.0);
+                        let which = first.map(|i| {
+                            let names = ["bounds", "transform", "clip", "groups", "primitive"];
+                            (0..5).find(|&k| parts[i].2[k] != previous[i].2[k]).map_or("?", |k| names[k])
+                        });
+                        let owner = first.and_then(|i| scene.node(parts[i].3)).map(|n| {
+                            let doc = &page.document;
+                            format!(
+                                "<{} id={:?} class={:?}>",
+                                doc.name(n).ok().flatten().unwrap_or("?"),
+                                doc.attribute(n, "id").ok().flatten().unwrap_or(""),
+                                doc.attribute(n, "class").ok().flatten().unwrap_or("").chars().take(60).collect::<String>()
+                            )
+                        });
+                        eprintln!(
+                            "  tile {x},{y} changed: {} commands (was {}), first difference at {:?} in {:?} of {:?}",
+                            parts.len(),
+                            previous.len(),
+                            first.map(|i| (i, parts[i].1, previous[i].1)),
+                            which,
+                            owner
+                        );
+                    }
+                    signature
+                } else {
+                    let (signature, any) = scene.stratum_tile_signature(si, tile_rect, Some(&r.cancel))?;
+                    if si > 0 && !any {
+                        // Nothing of this layer here: no tile.
+                        continue;
+                    }
                     use std::hash::{Hash, Hasher};
                     let mut h = std::hash::DefaultHasher::new();
-                    layer_signature.hash(&mut h);
-                    (x, y, st.root.index()).hash(&mut h);
+                    (signature, layer_signature, si).hash(&mut h);
                     h.finish()
                 };
-                *clock = clock.wrapping_add(1);
-                let key = (x | (1 << 29) | ((st.root.index() as i32 & 0x3FF) << 18), y);
+                // Each stratum's tiles apart in the cache (x stays below 2^16).
+                let key = (x | ((si as i32) << 16), y);
                 let image = if let Some((image, stamp, kept)) = cache.get_mut(&key)
                     && *kept == signature
                 {
                     *stamp = *clock;
                     image.clone()
                 } else {
-                    let tile = painter.raster_sticky(scene, st.root, region, Some(&r.cancel))?;
+                    let tile = painter.raster_stratum(scene, si, region, si == 0, Some(&r.cancel))?;
                     let mut bytes = tile.into_rgba();
                     for p in bytes.as_chunks_mut::<4>().0 {
                         p.swap(0, 2)
                     }
-                    let image = olo_ui::widgets::image_view::from_bgra(256, 256, bytes).ok_or("Sticky layer upload failed")?;
-                    if cache.len() >= 256 {
+                    let image = olo_ui::widgets::image_view::from_bgra(256, 256, bytes).ok_or("Tile upload failed")?;
+                    if cache.len() >= 512 {
                         let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;
                         cache.remove(&key);
                     }
                     cache.insert(key, (image.clone(), *clock, signature));
+                    repainted += 1;
                     image
                 };
-                layer_tiles.push((region, image));
+                total += 1;
+                if si == 0 {
+                    tiles.push((region, image));
+                    if last.elapsed() > Duration::from_millis(120) {
+                        proxy.send(Reply::Batch(r.id, std::mem::take(&mut tiles)));
+                        last = Instant::now();
+                    }
+                } else {
+                    layer_tiles.push((region, image));
+                }
             }
         }
-        sticky_layers.push(StickyLayer { sticky: *st, tiles: layer_tiles });
+        if si > 0 {
+            layers.push(LayerTiles { placement, tiles: layer_tiles });
+        }
     }
-    if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() && (fixed_tiles > 0 || !sticky_layers.is_empty()) {
-        eprintln!("  layers: fixed {fixed_tiles} tiles, sticky {} ({} tiles)", sticky_layers.len(), sticky_layers.iter().map(|l| l.tiles.len()).sum::<usize>());
+    TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);
+    if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() && !layers.is_empty() {
+        eprintln!("  layers: {} ({} tiles)", layers.len(), layers.iter().map(|l| l.tiles.len()).sum::<usize>());
     }
-    proxy.send(Reply::Sticky(r.id, sticky_layers));
+    proxy.send(Reply::Layers(r.id, layers));
     if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
         eprintln!("  tiles: {repainted} of {total} repainted in {:.1} ms", painting.elapsed().as_secs_f64() * 1000.);
     }
