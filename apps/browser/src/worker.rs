@@ -427,7 +427,7 @@ fn render(
     painter: &mut paint::Engine,
     cached: &mut Option<Cached>,
     proxy: &Proxy,
-    cache: &mut HashMap<(i32, i32), (Arc<RenderImage>, u64)>,
+    cache: &mut HashMap<(i32, i32), (Arc<RenderImage>, u64, u64)>,
     clock: &mut u64,
     pass: Pass,
 ) -> page::Result<()> {
@@ -521,7 +521,6 @@ fn render(
             live.last_render = Instant::now();
             live.stats.2 += 1;
             live.stats.3 += started.elapsed().as_secs_f64() * 1000.;
-            cache.clear();
             rerendered = true;
         } else {
             return Ok(());
@@ -1014,6 +1013,14 @@ fn render(
     });
     let mut tiles = Vec::new();
     let mut last = Instant::now();
+    let mut repainted = 0usize;
+    let mut total = 0usize;
+    thread_local! {
+        static TILE_PARTS: std::cell::RefCell<HashMap<(i32, i32), Vec<(u64, &'static str, [u64; 5], u32)>>> = std::cell::RefCell::new(HashMap::new());
+    }
+    let mut tile_parts_store = TILE_PARTS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let tile_parts = &mut tile_parts_store;
+    let painting = Instant::now();
     let top = scroll.div_euclid(256) * 256;
     for y in (top..scroll + r.key.height as i32).step_by(256) {
         for x in (0..r.key.width as i32).step_by(256) {
@@ -1022,7 +1029,49 @@ fn render(
             }
             *clock = clock.wrapping_add(1);
             let region = paint::DeviceRect { x, y, width: 256, height: 256 };
-            let image = if let Some((image, stamp)) = cache.get_mut(&(x, y)) {
+            // A tile painted from the same commands over the same images,
+            // styles and texts is the same tile: kept across re-renders.
+            let scale = scene.device_scale();
+            let tile_rect = layout::Rect { x: f64::from(x) / scale, y: f64::from(y) / scale, width: 256. / scale, height: 256. / scale };
+            let signature = if std::env::var_os("OLO_TILE_DEBUG").is_some() {
+                // Name the first command that changed since the last paint of this tile.
+                let (signature, parts) = scene.tile_signature_parts(tile_rect, Some(&r.cancel))?;
+                let previous = tile_parts.insert((x, y), parts.clone());
+                if let Some(previous) = previous
+                    && let Some((image, _, kept)) = cache.get(&(x, y))
+                    && *kept != signature
+                {
+                    let _ = image;
+                    let first = parts.iter().zip(previous.iter()).position(|(a, b)| a.0 != b.0);
+                    let which = first.map(|i| {
+                        let names = ["bounds", "transform", "clip", "groups", "primitive"];
+                        (0..5).find(|&k| parts[i].2[k] != previous[i].2[k]).map_or("?", |k| names[k])
+                    });
+                    let owner = first.and_then(|i| scene.node(parts[i].3)).map(|n| {
+                        let doc = &page.document;
+                        format!(
+                            "<{} id={:?} class={:?}>",
+                            doc.name(n).ok().flatten().unwrap_or("?"),
+                            doc.attribute(n, "id").ok().flatten().unwrap_or(""),
+                            doc.attribute(n, "class").ok().flatten().unwrap_or("").chars().take(60).collect::<String>()
+                        )
+                    });
+                    eprintln!(
+                        "  tile {x},{y} changed: {} commands (was {}), first difference at {:?} in {:?} of {:?}",
+                        parts.len(),
+                        previous.len(),
+                        first.map(|i| (i, parts[i].1, previous[i].1)),
+                        which,
+                        owner
+                    );
+                }
+                signature
+            } else {
+                scene.tile_signature(tile_rect, Some(&r.cancel))?
+            };
+            let image = if let Some((image, stamp, kept)) = cache.get_mut(&(x, y))
+                && *kept == signature
+            {
                 *stamp = *clock;
                 image.clone()
             } else {
@@ -1033,18 +1082,24 @@ fn render(
                 }
                 let image = olo_ui::widgets::image_view::from_bgra(256, 256, bytes).ok_or("Tile upload failed")?;
                 if cache.len() >= 256 {
-                    let key = *cache.iter().min_by_key(|(_, (_, stamp))| *stamp).unwrap().0;
+                    let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;
                     cache.remove(&key);
                 }
-                cache.insert((x, y), (image.clone(), *clock));
+                cache.insert((x, y), (image.clone(), *clock, signature));
+                repainted += 1;
                 image
             };
             tiles.push((region, image));
+            total += 1;
             if last.elapsed() > Duration::from_millis(120) {
                 proxy.send(Reply::Batch(r.id, std::mem::take(&mut tiles)));
                 last = Instant::now();
             }
         }
+    }
+    TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);
+    if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+        eprintln!("  tiles: {repainted} of {total} repainted in {:.1} ms", painting.elapsed().as_secs_f64() * 1000.);
     }
     proxy.send(Reply::Ready {
         id: r.id,

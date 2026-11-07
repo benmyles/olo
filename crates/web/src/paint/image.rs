@@ -60,6 +60,11 @@ pub(super) fn raster(
     if x0 >= x1 || y0 >= y1 {
         return Ok(());
     }
+    // Drawn at its own size on whole device pixels (a canvas, an icon at
+    // 1:1): rows copied and composited, no sampling.
+    if width == f64::from(image.width()) && height == f64::from(image.height()) {
+        return direct(out, image.rgba(), image.width() as usize, Frame { left, top, width, height, x0, y0, x1, y1 }, region, mask, cancel);
+    }
     // Source-pixel mipmaps, with the sharpening bias used by the reference
     // backend. This is a filtering policy, not a promise of GPU LOD bit identity.
     let lod =
@@ -147,6 +152,46 @@ fn draw<const BLEND: bool>(out: &mut Pixmap, upper: Plane<'_>, lower: Plane<'_>,
     }
     Ok(())
 }
+/// Premultiplied source pixels over the tile, one to one.
+fn direct(out: &mut Pixmap, rgba: &[u8], stride_px: usize, frame: Frame, region: DeviceRect, mask: Option<&Mask>, cancel: Option<&AtomicBool>) -> Result<()> {
+    let Frame { left, top, x0, y0, x1, y1, .. } = frame;
+    let out_stride = region.width as usize * 4;
+    let data = out.data_mut();
+    let columns = (x1 - x0) as usize;
+    let col0 = (x0 - f64::from(region.x)) as usize;
+    let src_x0 = (x0 - left) as usize;
+    for gy in y0 as i64..y1 as i64 {
+        check(cancel)?;
+        let row = (gy - i64::from(region.y)) as usize;
+        let src_row = (gy - top as i64) as usize * stride_px * 4;
+        let src = &rgba[src_row + src_x0 * 4..src_row + (src_x0 + columns) * 4];
+        let dst = &mut data[row * out_stride + col0 * 4..row * out_stride + (col0 + columns) * 4];
+        let mask_row = mask.map(|m| &m.data()[row * region.width as usize + col0..row * region.width as usize + col0 + columns]);
+        for (i, (d, s)) in dst.as_chunks_mut::<4>().0.iter_mut().zip(src.as_chunks::<4>().0).enumerate() {
+            let m = mask_row.map_or(255, |m| u32::from(m[i]));
+            if m == 0 {
+                continue;
+            }
+            let (mut sr, mut sg, mut sb, mut sa) = (u32::from(s[0]), u32::from(s[1]), u32::from(s[2]), u32::from(s[3]));
+            if m != 255 {
+                sr = (sr * m + 127) / 255;
+                sg = (sg * m + 127) / 255;
+                sb = (sb * m + 127) / 255;
+                sa = (sa * m + 127) / 255;
+            }
+            if sa == 255 {
+                *d = [sr as u8, sg as u8, sb as u8, 255];
+            } else if sa != 0 {
+                let inverse = 255 - sa;
+                d[0] = (sr + (u32::from(d[0]) * inverse + 127) / 255).min(255) as u8;
+                d[1] = (sg + (u32::from(d[1]) * inverse + 127) / 255).min(255) as u8;
+                d[2] = (sb + (u32::from(d[2]) * inverse + 127) / 255).min(255) as u8;
+                d[3] = (sa + (u32::from(d[3]) * inverse + 127) / 255).min(255) as u8;
+            }
+        }
+    }
+    Ok(())
+}
 #[inline]
 fn channel(p: Plane<'_>, x: &Tap, y: &Tap, c: usize) -> f64 {
     let stride = p.width as usize * 4;
@@ -190,15 +235,27 @@ pub(super) fn transformed(
     if width <= 0. || height <= 0. {
         return Ok(());
     }
-    let pixmap = surface(engine, image, width, height, cancel)?;
+    let surface = surface(engine, image, width, height, cancel)?;
+    let Some(pixmap) = surface.pixmap() else { return Ok(()) };
     let pattern = Transform::from_scale(rect.width() / pixmap.width() as f32, rect.height() / pixmap.height() as f32).post_translate(rect.x(), rect.y());
-    let paint = Paint { shader: Pattern::new((*pixmap).as_ref(), SpreadMode::Pad, FilterQuality::Bilinear, 1., pattern), anti_alias: true, ..Default::default() };
+    let paint = Paint { shader: Pattern::new(pixmap, SpreadMode::Pad, FilterQuality::Bilinear, 1., pattern), anti_alias: true, ..Default::default() };
     out.fill_rect(rect, &paint, transform, mask);
     Ok(())
 }
-/// The image as a tiny-skia surface at the mip level nearest `width` ×
-/// `height` device pixels, for drawing through a pattern shader.
-pub(super) fn surface(engine: &mut Engine, image: &Arc<crate::image::Image>, width: f64, height: f64, cancel: Option<&AtomicBool>) -> Result<Arc<Pixmap>> {
+/// The image's pixels at the mip level nearest `width` × `height` device
+/// pixels, borrowed as a tiny-skia surface for a pattern shader: no copy,
+/// since an image is premultiplied RGBA8 as tiny-skia wants it.
+pub(super) struct Surface {
+    image: Arc<crate::image::Image>,
+    level: Option<Arc<super::mipmap::Level>>,
+}
+impl Surface {
+    pub fn pixmap(&self) -> Option<tiny_skia::PixmapRef<'_>> {
+        let plane = self.level.as_ref().map_or_else(|| Plane::from(self.image.as_ref()), |l| l.plane());
+        tiny_skia::PixmapRef::from_bytes(plane.rgba, plane.width, plane.height)
+    }
+}
+pub(super) fn surface(engine: &mut Engine, image: &Arc<crate::image::Image>, width: f64, height: f64, cancel: Option<&AtomicBool>) -> Result<Surface> {
     let max_level = 31 - image.width().max(image.height()).leading_zeros();
     let lod =
         if width < f64::from(image.width()) && height < f64::from(image.height()) { ((f64::from(image.width()) / width).max(f64::from(image.height()) / height).log2() - 0.5).max(0.) } else { 0. };
@@ -214,24 +271,5 @@ pub(super) fn surface(engine: &mut Engine, image: &Arc<crate::image::Image>, wid
             Err(error) => return Err(error),
         }
     };
-    let plane = source.as_ref().map_or_else(|| Plane::from(image.as_ref()), |p| p.plane());
-    engine.premultiplied(image, level, plane, cancel)
-}
-impl Engine {
-    /// The image's pixels at a mip level as a tiny-skia surface (the same
-    /// premultiplied RGBA8), kept for the next tile that draws the same one.
-    fn premultiplied(&mut self, image: &Arc<crate::image::Image>, level: u32, plane: Plane<'_>, cancel: Option<&AtomicBool>) -> Result<Arc<Pixmap>> {
-        let key = (Arc::as_ptr(image) as usize, level);
-        if let Some((k, p)) = &self.transformed_image
-            && *k == key
-        {
-            return Ok(p.clone());
-        }
-        check(cancel)?;
-        let size = tiny_skia::IntSize::from_wh(plane.width, plane.height).ok_or(Error::Invalid)?;
-        let pixmap = Pixmap::from_vec(plane.rgba.to_vec(), size).ok_or(Error::Invalid)?;
-        let pixmap = Arc::new(pixmap);
-        self.transformed_image = Some((key, pixmap.clone()));
-        Ok(pixmap)
-    }
+    Ok(Surface { image: image.clone(), level: source })
 }

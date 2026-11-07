@@ -260,11 +260,11 @@ impl Value {
             (Self::Tracks(a), Self::Tracks(b)) => a.same(b),
             (Self::GridLine(a), Self::GridLine(b)) => a == b,
             (Self::Radius(a), Self::Radius(b)) => a.same(b),
-            (Self::Images(a), Self::Images(b)) => Arc::ptr_eq(&a.0, &b.0),
-            (Self::Shadows(a), Self::Shadows(b)) => Arc::ptr_eq(&a.0, &b.0),
-            (Self::Sizes(a), Self::Sizes(b)) => Arc::ptr_eq(&a.0, &b.0),
-            (Self::Positions(a), Self::Positions(b)) => Arc::ptr_eq(&a.0, &b.0),
-            (Self::Repeats(a), Self::Repeats(b)) => Arc::ptr_eq(&a.0, &b.0),
+            (Self::Images(a), Self::Images(b)) => a.same(b),
+            (Self::Shadows(a), Self::Shadows(b)) => a.same(b),
+            (Self::Sizes(a), Self::Sizes(b)) => a.same(b),
+            (Self::Positions(a), Self::Positions(b)) => a.same(b),
+            (Self::Repeats(a), Self::Repeats(b)) => a.same(b),
             (Self::Transforms(a), Self::Transforms(b)) => a.same(b),
             (Self::Features(a), Self::Features(b)) => Arc::ptr_eq(&a.0, &b.0) || a == b,
             (Self::Content(a), Self::Content(b)) => Arc::ptr_eq(&a.0, &b.0) || a == b,
@@ -523,6 +523,13 @@ pub struct Style {
     root: bool,
 }
 impl Style {
+    /// The identity of what this style paints with (its values and font;
+    /// custom properties only feed values): equal for styles copied whole
+    /// from a previous tree, different for ones computed anew, even when
+    /// equal in value.
+    pub fn identity(&self) -> (usize, usize) {
+        (Arc::as_ptr(&self.values) as *const u8 as usize, Arc::as_ptr(&self.font) as usize)
+    }
     /// Scale at which computed device-dependent values (such as borders) froze.
     pub fn device_scale(&self) -> f64 {
         self.defaults.device_scale
@@ -762,6 +769,20 @@ impl Style {
                 || self.values.len() == other.values.len() && self.values.iter().zip(other.values.iter()).all(|(a, b)| a.property == b.property && a.value.same(&b.value)))
             && (Arc::ptr_eq(&self.font, &other.font) || self.font.request == other.font.request && self.font.context == other.font.context)
             && (Arc::ptr_eq(&self.customs, &other.customs) || self.customs.same_as(&other.customs))
+    }
+    /// Share `other`'s values and font when equal to this style's by value:
+    /// a style computed anew that paints the same keeps the same identity
+    /// (so painted tiles over it can be kept), and the memory.
+    pub fn share_with(&mut self, other: &Self) {
+        if !Arc::ptr_eq(&self.values, &other.values)
+            && self.values.len() == other.values.len()
+            && self.values.iter().zip(other.values.iter()).all(|(a, b)| a.property == b.property && a.value.same(&b.value))
+        {
+            self.values = other.values.clone();
+        }
+        if !Arc::ptr_eq(&self.font, &other.font) && self.font.request == other.font.request && self.font.context == other.font.context && self.font.metrics.id == other.font.metrics.id {
+            self.font = other.font.clone();
+        }
     }
     pub fn custom(&self, name: &str) -> Option<variables::Computed> {
         self.customs.get(name).cloned()

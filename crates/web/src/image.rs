@@ -245,6 +245,19 @@ impl Set {
     pub fn image(&self, index: u32) -> Option<&Arc<Image>> {
         self.bindings.get(index as usize).map(|(_, image)| image)
     }
+    /// A hash of the background images' identities (URL and pixels): the
+    /// same across rebinds, so painted tiles can tell they are unchanged.
+    pub fn backgrounds_identity(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut keys: Vec<(&Arc<str>, usize)> = self.backgrounds.iter().map(|(k, v)| (k, Arc::as_ptr(v) as usize)).collect();
+        keys.sort_by(|a, b| a.0.cmp(b.0));
+        let mut h = std::hash::DefaultHasher::new();
+        for (k, v) in keys {
+            k.hash(&mut h);
+            v.hash(&mut h);
+        }
+        h.finish()
+    }
     pub fn background(&self, url: &str) -> Option<&Arc<Image>> {
         self.backgrounds.get(url)
     }

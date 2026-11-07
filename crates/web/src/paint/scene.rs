@@ -121,7 +121,8 @@ impl Scene {
         &self.layout
     }
     pub fn node(&self, command: u32) -> Option<crate::dom::NodeId> {
-        if let Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } | Primitive::Decoration { owner, .. } = self.commands.get(command as usize)?.primitive {
+        if let Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } | Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } = self.commands.get(command as usize)?.primitive
+        {
             self.layout.cache().tree().get(owner).map(|b| b.node)
         } else {
             self.text_node(command)
@@ -231,6 +232,139 @@ impl Scene {
             + self.vector_geometry.values().map(|g| g.payload_bytes()).sum::<usize>()
             + self.vector_clips.capacity() * (size_of::<(u32, Vec<crate::svg::clip::Resolved>)>() + 1)
             + self.vector_clips.values().map(|v| crate::svg::clip::resolved_bytes(v)).sum::<usize>()
+    }
+    /// What painting `region` depends on, as a hash: the commands over it
+    /// (their geometry, paint and clips), the identities of the images,
+    /// styles, texts and vectors they draw from. A tile whose signature is
+    /// unchanged between scenes paints the same pixels and can be kept.
+    pub fn tile_signature(&self, region: Rect, cancel: Option<&AtomicBool>) -> Result<u64> {
+        Ok(self.tile_signature_parts(region, cancel)?.0)
+    }
+    /// The signature and, for checking why a tile repaints, each command's
+    /// own hash with what it is.
+    pub fn tile_signature_parts(&self, region: Rect, cancel: Option<&AtomicBool>) -> Result<(u64, Vec<(u64, &'static str, [u64; 5], u32)>)> {
+        use std::hash::{Hash, Hasher};
+        let mut parts = Vec::new();
+        let mut hits = Vec::new();
+        self.query(region, &mut hits, cancel)?;
+        let tree = self.layout.cache().tree();
+        let mut h = std::hash::DefaultHasher::new();
+        self.base.hash(&mut h);
+        self.canvas.hash(&mut h);
+        self.layout.device_scale().to_bits().hash(&mut h);
+        hits.len().hash(&mut h);
+        let rect = |r: Rect, h: &mut std::hash::DefaultHasher| {
+            r.x.to_bits().hash(h);
+            r.y.to_bits().hash(h);
+            r.width.to_bits().hash(h);
+            r.height.to_bits().hash(h);
+        };
+        let matrix = |t: u32, h: &mut std::hash::DefaultHasher| {
+            (t != NONE).hash(h);
+            if t != NONE {
+                for v in self.transforms[t as usize] {
+                    v.to_bits().hash(h);
+                }
+            }
+        };
+        let style_identity = |owner: BoxId, h: &mut std::hash::DefaultHasher| {
+            if let Some(s) = tree.style(owner) {
+                s.identity().hash(h);
+            }
+        };
+        let backgrounds = tree.images().map_or(0, |i| i.backgrounds_identity());
+        let whole = h.finish();
+        let mut combined = std::hash::DefaultHasher::new();
+        whole.hash(&mut combined);
+        for id in hits {
+            check(cancel)?;
+            let c = &self.commands[id as usize];
+            let mut h = std::hash::DefaultHasher::new();
+            let mut sub = [0u64; 5];
+            rect(c.bounds, &mut h);
+            sub[0] = h.clone().finish();
+            matrix(c.transform, &mut h);
+            sub[1] = h.clone().finish();
+            (c.clip != NONE).hash(&mut h);
+            if c.clip != NONE {
+                let clip = &self.clips[c.clip as usize];
+                rect(clip.rect, &mut h);
+                clip.radii.is_some().hash(&mut h);
+                if let Some(r) = &clip.radii {
+                    for corner in r {
+                        for v in corner {
+                            v.to_bits().hash(&mut h);
+                        }
+                    }
+                }
+                matrix(clip.transform, &mut h);
+            }
+            sub[2] = h.clone().finish();
+            let mut group = c.group;
+            while group != NONE {
+                let g = &self.groups[group as usize];
+                g.opacity.to_bits().hash(&mut h);
+                if let Some(m) = g.mask {
+                    rect(m.outer, &mut h);
+                    style_identity(m.owner, &mut h);
+                }
+                group = g.parent;
+            }
+            sub[3] = h.clone().finish();
+            match &c.primitive {
+                Primitive::Image { image, .. } => {
+                    0u8.hash(&mut h);
+                    (tree.image(*image).map_or(0, |i| Arc::as_ptr(i) as usize)).hash(&mut h);
+                }
+                Primitive::Vector { vector, origin, .. } => {
+                    1u8.hash(&mut h);
+                    origin.x.to_bits().hash(&mut h);
+                    origin.y.to_bits().hash(&mut h);
+                    tree.vector(*vector).map_or(0, |v| v.fingerprint).hash(&mut h);
+                }
+                Primitive::Fill { color } => {
+                    2u8.hash(&mut h);
+                    color.hash(&mut h);
+                }
+                Primitive::Border { owner, colors } => {
+                    3u8.hash(&mut h);
+                    colors.hash(&mut h);
+                    style_identity(*owner, &mut h);
+                }
+                Primitive::Decoration { owner, outer } => {
+                    4u8.hash(&mut h);
+                    rect(*outer, &mut h);
+                    style_identity(*owner, &mut h);
+                    backgrounds.hash(&mut h);
+                }
+                Primitive::Text { owner, fragment, glyphs, origin, color } => {
+                    5u8.hash(&mut h);
+                    glyphs.start.hash(&mut h);
+                    glyphs.end.hash(&mut h);
+                    origin.x.to_bits().hash(&mut h);
+                    origin.y.to_bits().hash(&mut h);
+                    color.hash(&mut h);
+                    self.layout.text_layout(*owner).and_then(|t| t.fragment_identity(*fragment)).hash(&mut h);
+                }
+            }
+            let part = h.finish();
+            sub[4] = part;
+            parts.push((
+                part,
+                match &c.primitive {
+                    Primitive::Image { .. } => "image",
+                    Primitive::Vector { .. } => "vector",
+                    Primitive::Fill { .. } => "fill",
+                    Primitive::Border { .. } => "border",
+                    Primitive::Decoration { .. } => "decoration",
+                    Primitive::Text { .. } => "text",
+                },
+                sub,
+                id,
+            ));
+            part.hash(&mut combined);
+        }
+        Ok((combined.finish(), parts))
     }
     pub fn query(&self, region: Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
         if !valid(region) {

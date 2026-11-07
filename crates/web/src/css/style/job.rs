@@ -871,7 +871,28 @@ impl<'a> Job<'a> {
         self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
         // Computed afresh: the same as before only if every value is; a
         // difference beyond paint means geometry may have changed.
+        let mut style = style;
         let same = self.previous.as_ref().and_then(|inc| inc.tree.index(node)).is_some_and(|i| self.previous.as_ref().unwrap().tree.styles[i].style.same_as(&style));
+        if let Some(inc) = self.previous.as_ref()
+            && let Some(i) = inc.tree.index(node)
+        {
+            // The same as before: the previous style itself (its identity
+            // tells painted tiles nothing changed). Different (custom
+            // properties, say) but painting the same: the previous values.
+            if same {
+                style = inc.tree.styles[i].style.clone();
+            } else {
+                style.share_with(&inc.tree.styles[i].style);
+            }
+            if !same && std::env::var_os("OLO_STYLE_DIFF").is_some() {
+                eprintln!(
+                    "style differs: <{} class={:?}> {}",
+                    self.document.name(node).map_err(Error::Dom)?.unwrap_or("?"),
+                    self.document.attribute(node, "class").map_err(Error::Dom)?.unwrap_or("").chars().take(50).collect::<String>(),
+                    inc.tree.styles[i].style.difference(&style)
+                );
+            }
+        }
         if let Some(inc) = self.previous.as_mut()
             && inc.geometry_kept
             && !same

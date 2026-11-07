@@ -528,7 +528,7 @@ impl Realm {
     /// the page's images, a canvas renders like an image of its pixels.
     pub fn canvases(&self) -> Vec<(NodeId, Arc<olo_web::image::Image>)> {
         let mut s = self.state.borrow_mut();
-        let mut out: Vec<_> = s.canvases.iter().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))).collect();
+        let mut out: Vec<_> = s.canvases.iter_mut().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))).collect();
         out.extend(s.gl.iter_mut().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))));
         // Images the scripts loaded into `img` elements render too.
         out.extend(s.images.iter().map(|(n, i)| (*n, i.clone())));

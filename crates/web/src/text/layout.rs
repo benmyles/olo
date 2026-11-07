@@ -593,6 +593,29 @@ impl Layout {
     pub fn fragments(&self) -> &[Fragment] {
         &self.fragments
     }
+    /// What a fragment paints from, as a hash: the shaped text's identity
+    /// (shared across layouts while the text, its fonts and breaks are
+    /// unchanged) and the fragment's place in it.
+    pub fn fragment_identity(&self, fragment: u32) -> Option<u64> {
+        use std::hash::{Hash, Hasher};
+        let f = self.fragments.get(fragment as usize)?;
+        let mut h = std::hash::DefaultHasher::new();
+        (Arc::as_ptr(&self.text) as usize).hash(&mut h);
+        f.source.start.hash(&mut h);
+        f.source.end.hash(&mut h);
+        f.glyphs.start.hash(&mut h);
+        f.glyphs.end.hash(&mut h);
+        f.x.to_bits().hash(&mut h);
+        f.advance.to_bits().hash(&mut h);
+        f.level.hash(&mut h);
+        f.run.hash(&mut h);
+        if f.run & OWNED != 0
+            && let Some(run) = self.owned.get((f.run & !OWNED) as usize)
+        {
+            (Arc::as_ptr(run) as usize).hash(&mut h);
+        }
+        Some(h.finish())
+    }
     pub fn run(&self, fragment: &Fragment) -> Option<&Run> {
         if fragment.run & OWNED == 0 { self.text.paragraph.runs.get(fragment.run as usize) } else { self.owned.get((fragment.run & !OWNED) as usize).map(Arc::as_ref) }
     }

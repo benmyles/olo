@@ -278,6 +278,20 @@ fn blur(mask: &mut [u8], width: usize, height: usize, sigma: f64, cancel: Option
     }
     Ok(())
 }
+thread_local! {
+    /// OLO_TILE_PROFILE: time in shadows, background colour, image layers,
+    /// gradients and borders, taken per tile.
+    pub(super) static PROFILE: std::cell::Cell<[f64; 8]> = const { std::cell::Cell::new([0.; 8]) };
+}
+fn charge(slot: usize, started: Option<std::time::Instant>) {
+    if let Some(t) = started {
+        PROFILE.with(|p| {
+            let mut v = p.get();
+            v[slot] += t.elapsed().as_secs_f64() * 1000.;
+            p.set(v);
+        });
+    }
+}
 /// Draw a box's shadows, backgrounds and borders.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn raster(
@@ -297,11 +311,45 @@ pub(super) fn raster(
     let radii = radii(s, outer);
     let Some(border_path) = path(outer, &radii, scale, region) else { return Ok(()) };
     let current = s.used_color(P::Color)?;
+    let profiling = std::env::var_os("OLO_TILE_PROFILE").is_some();
+    let now = || if profiling { Some(std::time::Instant::now()) } else { None };
     // Outer shadows, last declared first, each outside the border box.
-    if let Value::Shadows(shadows) = s.value(P::BoxShadow) {
+    let started = now();
+    if let Value::Shadows(shadows) = s.value(P::BoxShadow)
+        && shadows.0.iter().any(|sh| !sh.inset)
+    {
+        let (w, h) = (region.width as usize, region.height as usize);
+        if w.saturating_mul(h).saturating_mul(5) > limits.layer_bytes {
+            return Err(Error::Limit);
+        }
+        // An axis-aligned transform (a scaled, moved container holding its
+        // cards) scales and moves the shadow: the cached coverage, made at
+        // the device size, still serves.
+        let axis_aligned = if transform.is_identity() {
+            Some((1f64, 1f64, 0f64, 0f64))
+        } else if transform.kx == 0. && transform.ky == 0. && transform.sx > 0. && transform.sy > 0. && (transform.sx - transform.sy).abs() < 1e-3 {
+            Some((f64::from(transform.sx), f64::from(transform.sy), f64::from(transform.tx), f64::from(transform.ty)))
+        } else {
+            None
+        };
+        let (ax, ay, tx, ty) = axis_aligned.unwrap_or((1., 1., 0., 0.));
+        // Outer shadows paint only outside the border box: a tile wholly
+        // inside it (past the corners) shows none.
+        let largest = radii.iter().flat_map(|r| r.iter()).copied().fold(0f64, f64::max);
+        let inner_left = (outer.x + largest) * scale * ax + tx;
+        let inner_top = (outer.y + largest) * scale * ay + ty;
+        let inner_right = (outer.x + outer.width - largest) * scale * ax + tx;
+        let inner_bottom = (outer.y + outer.height - largest) * scale * ay + ty;
+        let covered = axis_aligned.is_some()
+            && f64::from(region.x) >= inner_left
+            && f64::from(region.y) >= inner_top
+            && f64::from(region.x) + f64::from(region.width) <= inner_right
+            && f64::from(region.y) + f64::from(region.height) <= inner_bottom;
+        // What is inside the box, cut from every shadow (made once).
+        let mut inside: Option<Mask> = None;
         for shadow in shadows.0.iter().rev() {
             check(cancel)?;
-            if shadow.inset {
+            if shadow.inset || covered {
                 continue;
             }
             let constant = |n: &crate::css::properties::Numeric| n.expression().constant().map_or(0., |q| q.value);
@@ -312,25 +360,133 @@ pub(super) fn raster(
             }
             let rect = Rect { x: outer.x + dx - spread, y: outer.y + dy - spread, width: (outer.width + 2. * spread).max(0.), height: (outer.height + 2. * spread).max(0.) };
             let shadow_radii: Radii = radii.map(|r| [if r[0] > 0. { (r[0] + spread).max(0.) } else { 0. }, if r[1] > 0. { (r[1] + spread).max(0.) } else { 0. }]);
-            let Some(shadow_path) = path(rect, &shadow_radii, scale, region) else { continue };
-            let (w, h) = (region.width as usize, region.height as usize);
-            if w.saturating_mul(h).saturating_mul(5) > limits.layer_bytes {
-                return Err(Error::Limit);
+            let sigma = blur_radius * scale / 2.;
+            // In device pixels, through the axis-aligned transform.
+            let sigma_device = sigma * ax;
+            let (dev_w, dev_h) = (rect.width * scale * ax, rect.height * scale * ay);
+            if sigma_device > 0.3 && axis_aligned.is_some() && dev_w <= 8192. && dev_h <= 8192. {
+                // A blurred shadow's coverage is the same in every tile and
+                // frame that draws it: made once at its device size, and
+                // composited here over the pixels it reaches, less the box.
+                let margin = (sigma_device * 3.).ceil() as u32 + 1;
+                let (dw, dh) = (dev_w.round().max(1.) as u32, dev_h.round().max(1.) as u32);
+                let device_radii: Radii = shadow_radii.map(|r| [r[0] * scale * ax, r[1] * scale * ay]);
+                let key = (dw, dh, device_radii.map(|r| [(r[0] * 64.).round() as i32, (r[1] * 64.).round() as i32]), sigma_device.to_bits());
+                let cached = engine.shadow_mask(key, || {
+                    let (width, height) = (dw + 2 * margin, dh + 2 * margin);
+                    if (width as usize).saturating_mul(height as usize) > limits.layer_bytes {
+                        return Err(Error::Limit);
+                    }
+                    let mut mask = Mask::new(width, height).ok_or(Error::Limit)?;
+                    let whole = DeviceRect { x: 0, y: 0, width, height };
+                    let at = Rect { x: f64::from(margin), y: f64::from(margin), width: f64::from(dw), height: f64::from(dh) };
+                    if let Some(p) = path(at, &device_radii, 1., whole) {
+                        mask.fill_path(&p, FillRule::Winding, true, Transform::identity());
+                    }
+                    blur(mask.data_mut(), width as usize, height as usize, sigma_device, cancel)?;
+                    Ok(super::glyph::ShadowMask { width, height, margin, data: mask.data().into() })
+                })?;
+                let ox = (rect.x * scale * ax + tx).round() as i64 - i64::from(cached.margin);
+                let oy = (rect.y * scale * ay + ty).round() as i64 - i64::from(cached.margin);
+                let (cw, ch) = (i64::from(cached.width), i64::from(cached.height));
+                let (rx, ry) = (i64::from(region.x), i64::from(region.y));
+                let x_start = (ox - rx).max(0);
+                let x_end = (ox + cw - rx).min(w as i64);
+                let y_start = (oy - ry).max(0);
+                let y_end = (oy + ch - ry).min(h as i64);
+                if x_end <= x_start || y_end <= y_start {
+                    continue;
+                }
+                if inside.is_none() {
+                    let t = now();
+                    let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
+                    m.fill_path(&border_path, FillRule::Winding, true, transform);
+                    inside = Some(m);
+                    charge(5, t);
+                }
+                charge(6, Some(std::time::Instant::now()).filter(|_| profiling).map(|t| t - std::time::Duration::from_micros(1)));
+                let inside = inside.as_ref().ok_or(Error::Invalid)?;
+                let (cr, cg, cb, ca) = (u32::from(color[0]), u32::from(color[1]), u32::from(color[2]), u32::from(color[3]));
+                let data = out.data_mut();
+                // Only the ring outside the box's interior (inset by its
+                // corner radii) can show a shadow: rows and columns inside
+                // it are skipped whole.
+                let (il, it, ir, ib) = (inner_left.ceil() as i64 - rx, inner_top.ceil() as i64 - ry, inner_right.floor() as i64 - rx, inner_bottom.floor() as i64 - ry);
+                for ty in y_start..y_end {
+                    let sy = (ry + ty - oy) as usize;
+                    let src_row = sy * cached.width as usize;
+                    let row = ty as usize * w;
+                    let spans: [(i64, i64); 2] = if ty >= it && ty < ib { [(x_start, x_end.min(il)), (x_start.max(ir), x_end)] } else { [(x_start, x_end), (0, 0)] };
+                    for (a0, a1) in spans {
+                        if a1 <= a0 {
+                            continue;
+                        }
+                        let src_x0 = (rx + a0 - ox) as usize;
+                        let src = &cached.data[src_row + src_x0..src_row + src_x0 + (a1 - a0) as usize];
+                        let inside_row = &inside.data()[row + a0 as usize..row + a1 as usize];
+                        let clip_row = mask.map(|m| &m.data()[row + a0 as usize..row + a1 as usize]);
+                        let dst = &mut data[(row + a0 as usize) * 4..(row + a1 as usize) * 4];
+                        for (i, d) in dst.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                            let mut c = u32::from(src[i]);
+                            if c == 0 {
+                                continue;
+                            }
+                            c = c * (255 - u32::from(inside_row[i])) / 255;
+                            if let Some(clip) = clip_row {
+                                c = c * u32::from(clip[i]) / 255;
+                            }
+                            let a = (ca * c + 127) / 255;
+                            if a == 0 {
+                                continue;
+                            }
+                            let inverse = 255 - a;
+                            d[0] = (((cr * a + 127) / 255) + (u32::from(d[0]) * inverse + 127) / 255).min(255) as u8;
+                            d[1] = (((cg * a + 127) / 255) + (u32::from(d[1]) * inverse + 127) / 255).min(255) as u8;
+                            d[2] = (((cb * a + 127) / 255) + (u32::from(d[2]) * inverse + 127) / 255).min(255) as u8;
+                            d[3] = (a + (u32::from(d[3]) * inverse + 127) / 255).min(255) as u8;
+                        }
+                    }
+                }
+            } else if sigma_device <= 0.3 {
+                // A hard shadow: its shape filled outside the box, through
+                // the box's inverted coverage (and the clip).
+                charge(7, Some(std::time::Instant::now()).filter(|_| profiling).map(|t| t - std::time::Duration::from_micros(1)));
+                let Some(shadow_path) = path(rect, &shadow_radii, scale, region) else { continue };
+                if inside.is_none() {
+                    let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
+                    m.fill_path(&border_path, FillRule::Winding, true, transform);
+                    inside = Some(m);
+                }
+                let mut outside = inside.as_ref().ok_or(Error::Invalid)?.clone();
+                outside.invert();
+                if let Some(clip) = mask {
+                    for (o, c) in outside.data_mut().iter_mut().zip(clip.data()) {
+                        *o = ((u32::from(*o) * u32::from(*c) + 127) / 255) as u8;
+                    }
+                }
+                let mut p = paint_for(color);
+                p.anti_alias = true;
+                out.fill_path(&shadow_path, &p, FillRule::Winding, transform, Some(&outside));
+            } else {
+                charge(7, Some(std::time::Instant::now()).filter(|_| profiling).map(|t| t - std::time::Duration::from_micros(1)));
+                if profiling {
+                    eprintln!("  shadow fallback: sigma {sigma:.2}, blur {blur_radius}, transform {:?}, size {}x{}", transform, rect.width * scale, rect.height * scale);
+                }
+                let Some(shadow_path) = path(rect, &shadow_radii, scale, region) else { continue };
+                let mut coverage = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
+                coverage.fill_path(&shadow_path, FillRule::Winding, true, transform);
+                if blur_radius > 0. {
+                    blur(coverage.data_mut(), w, h, sigma, cancel)?;
+                }
+                let mut layer = Pixmap::new(region.width, region.height).ok_or(Error::Limit)?;
+                layer.fill_rect(tiny_skia::Rect::from_xywh(0., 0., region.width as f32, region.height as f32).ok_or(Error::Invalid)?, &paint_for(color), Transform::identity(), Some(&coverage));
+                let cut = Paint { blend_mode: BlendMode::DestinationOut, anti_alias: true, ..Default::default() };
+                layer.fill_path(&border_path, &cut, FillRule::Winding, transform, None);
+                out.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), mask);
             }
-            // Coverage of the shadow shape, blurred, with the box cut out.
-            let mut coverage = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
-            coverage.fill_path(&shadow_path, FillRule::Winding, true, transform);
-            if blur_radius > 0. {
-                let sigma = blur_radius * scale / 2.;
-                blur(coverage.data_mut(), w, h, sigma, cancel)?;
-            }
-            let mut layer = Pixmap::new(region.width, region.height).ok_or(Error::Limit)?;
-            layer.fill_rect(tiny_skia::Rect::from_xywh(0., 0., region.width as f32, region.height as f32).ok_or(Error::Invalid)?, &paint_for(color), Transform::identity(), Some(&coverage));
-            let cut = Paint { blend_mode: BlendMode::DestinationOut, anti_alias: true, ..Default::default() };
-            layer.fill_path(&border_path, &cut, FillRule::Winding, transform, None);
-            out.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), mask);
         }
     }
+    charge(0, started);
     // Backgrounds: the colour under the images, each clipped to its box.
     let clip_box = match s.value(P::BackgroundClip) {
         Value::Keyword(K::PaddingBox) => 1,
@@ -370,12 +526,14 @@ pub(super) fn raster(
         _ => Some(border_path.clone()),
     };
     if let Some(clip_path) = &clip_path {
+        let started = now();
         let bg = s.used_color(P::BackgroundColor)?.srgb8_clipped();
         if bg[3] != 0 {
             let mut p = paint_for(bg);
             p.anti_alias = rounded(&radii) || !transform.is_identity();
             out.fill_path(clip_path, &p, FillRule::Winding, transform, mask);
         }
+        charge(1, started);
         if let Value::Images(images) = s.value(P::BackgroundImage) {
             let origin_box = match s.value(P::BackgroundOrigin) {
                 Value::Keyword(K::BorderBox) => outer,
@@ -386,20 +544,25 @@ pub(super) fn raster(
                 check(cancel)?;
                 let Some(image) = image else { continue };
                 if let Image::Url(url) = image {
+                    let started = now();
                     if let Some(bitmap) = tree.background(url) {
                         image_layer(out, s, (P::BackgroundSize, P::BackgroundPosition, P::BackgroundRepeat), layer, bitmap, origin_box, clip_path, scale, region, mask, transform, engine, cancel)?;
                     }
+                    charge(2, started);
                     continue;
                 }
+                let started = now();
                 let Some(shader) = shader(image, current, origin_box, scale, region) else { continue };
                 let p = Paint { shader, anti_alias: rounded(&radii) || !transform.is_identity(), ..Default::default() };
                 out.fill_path(clip_path, &p, FillRule::Winding, transform, mask);
+                charge(3, started);
             }
         }
     }
     // Borders: one colour and solid or painted as solid → the ring between
     // the outer and inner rounded rectangles; otherwise the straight painter.
     let widths = [g.border_width.top, g.border_width.right, g.border_width.bottom, g.border_width.left];
+    let started = now();
     if widths.iter().any(|w| *w > 0.) {
         let colors: Vec<[u8; 4]> =
             [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor].iter().map(|p| s.used_color(*p).map(|c| c.srgb8_clipped())).collect::<std::result::Result<_, _>>()?;
@@ -429,6 +592,7 @@ pub(super) fn raster(
             super::border::raster(out, outer, inner, [colors[0], colors[1], colors[2], colors[3]], scale, region, mask, transform, cancel)?;
         }
     }
+    charge(4, started);
     Ok(())
 }
 /// One `background-image: url()` layer (CSS Backgrounds 3 §3): sized by
@@ -499,13 +663,14 @@ fn image_layer(
     };
     let repeat_x = rx != RepeatAxis::NoRepeat;
     let repeat_y = ry != RepeatAxis::NoRepeat;
-    let pixmap = super::image::surface(engine, image, w * scale, h * scale, cancel)?;
+    let surface = super::image::surface(engine, image, w * scale, h * scale, cancel)?;
+    let Some(pixmap) = surface.pixmap() else { return Ok(()) };
     // The tile's origin and size in untransformed device space.
     let origin = Point::from_xy(((area.x + x) * scale - f64::from(region.x)) as f32, ((area.y + y) * scale - f64::from(region.y)) as f32);
     let (tile_w, tile_h) = ((w * scale) as f32, (h * scale) as f32);
     let pattern = Transform::from_scale(tile_w / pixmap.width() as f32, tile_h / pixmap.height() as f32).post_translate(origin.x, origin.y);
     let spread = if repeat_x || repeat_y { SpreadMode::Repeat } else { SpreadMode::Pad };
-    let paint = Paint { shader: Pattern::new((*pixmap).as_ref(), spread, FilterQuality::Bilinear, 1., pattern), anti_alias: true, ..Default::default() };
+    let paint = Paint { shader: Pattern::new(pixmap, spread, FilterQuality::Bilinear, 1., pattern), anti_alias: true, ..Default::default() };
     if repeat_x && repeat_y {
         out.fill_path(clip_path, &paint, FillRule::Winding, transform, mask);
         return Ok(());

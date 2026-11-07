@@ -90,6 +90,8 @@ pub struct Limits {
     pub layer_pixel_work: usize,
     pub image_mip_bytes: usize,
     pub image_mip_sources: usize,
+    /// Blurred box-shadow coverage kept across tiles and frames.
+    pub shadow_bytes: usize,
 }
 impl Default for Limits {
     fn default() -> Self {
@@ -107,6 +109,7 @@ impl Default for Limits {
             layer_pixel_work: 64 << 20,
             image_mip_bytes: 32 << 20,
             image_mip_sources: 128,
+            shadow_bytes: 48 * 1024 * 1024,
         }
     }
 }

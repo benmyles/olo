@@ -70,6 +70,7 @@ pub struct Canvas {
     pub dirty: bool,
     /// Ever drawn on (an untouched canvas paints as nothing, transparent).
     pub touched: bool,
+    last_image: Option<Arc<olo_web::image::Image>>,
 }
 /// Canvas sizes are bounded (a canvas is a raster the page keeps).
 const MAX_SIDE: u32 = 8192;
@@ -91,6 +92,7 @@ impl Canvas {
             gradients: Vec::new(),
             dirty: false,
             touched: false,
+            last_image: None,
         })
     }
     pub fn width(&self) -> u32 {
@@ -109,8 +111,15 @@ impl Canvas {
         }
     }
     /// The pixels, premultiplied RGBA, as the page's image of the canvas.
-    pub fn image(&self) -> Option<Arc<olo_web::image::Image>> {
-        olo_web::image::Image::from_premultiplied(self.pixmap.width(), self.pixmap.height(), self.pixmap.data().to_vec(), 1., Default::default(), None).ok()
+    /// The raster as the page's image, kept while nothing was drawn since
+    /// (the same image means the same pixels to the painter).
+    pub fn image(&mut self) -> Option<Arc<olo_web::image::Image>> {
+        if !self.dirty && self.last_image.is_some() {
+            return self.last_image.clone();
+        }
+        self.dirty = false;
+        self.last_image = olo_web::image::Image::from_premultiplied(self.pixmap.width(), self.pixmap.height(), self.pixmap.data().to_vec(), 1., Default::default(), None).ok();
+        self.last_image.clone()
     }
     fn paint(&self, style: &Style) -> Paint<'static> {
         let mut paint = Paint { anti_alias: self.state.smoothing, blend_mode: self.state.blend, ..Default::default() };

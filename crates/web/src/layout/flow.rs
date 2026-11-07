@@ -522,6 +522,11 @@ impl Layout {
     pub fn geometry(&self, id: BoxId) -> Option<&Geometry> {
         self.geometry.get(id.index())
     }
+    /// The identity of the laid-out texts: the same while the layout is
+    /// kept, new after a relayout.
+    pub fn texts_identity(&self) -> usize {
+        Arc::as_ptr(&self.texts) as *const u8 as usize
+    }
     pub fn text_layout(&self, id: BoxId) -> Option<&inline::Layout> {
         let BoxKind::InlineContent { source } = self.cache.tree.get(id)?.kind else { return None };
         self.texts.get(source as usize)?.as_ref()

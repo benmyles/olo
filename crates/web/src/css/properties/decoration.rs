@@ -85,6 +85,94 @@ pub struct Repeats(pub Arc<[(RepeatAxis, RepeatAxis)]>);
 fn bytes(n: &Numeric) -> usize {
     n.expression().memory().accounted_reserved_bytes
 }
+fn same_option(a: &Option<Numeric>, b: &Option<Numeric>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => a.same(b),
+        (None, None) => true,
+        _ => false,
+    }
+}
+impl Direction {
+    fn same(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Angle(a), Self::Angle(b)) => a.same(b),
+            (Self::To { x: ax, y: ay }, Self::To { x: bx, y: by }) => ax == bx && ay == by,
+            _ => false,
+        }
+    }
+}
+/// Value comparison of computed images, shadows and the rest: by content,
+/// so a value computed anew that reads the same counts as unchanged.
+impl Images<crate::css::color::Computed> {
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        let stops = |a: &[Stop<crate::css::color::Computed>], b: &[Stop<crate::css::color::Computed>]| {
+            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.color.same(&b.color) && same_option(&a.position, &b.position))
+        };
+        Arc::ptr_eq(&self.0, &other.0)
+            || self.0.len() == other.0.len()
+                && self.0.iter().zip(other.0.iter()).all(|(a, b)| match (a, b) {
+                    (None, None) => true,
+                    (Some(Image::Url(a)), Some(Image::Url(b))) => a == b,
+                    (Some(Image::Linear { direction: da, stops: sa, repeating: ra }), Some(Image::Linear { direction: db, stops: sb, repeating: rb })) => ra == rb && da.same(db) && stops(sa, sb),
+                    (
+                        Some(Image::Radial { circle: ca, size: za, explicit: ea, at: aa, stops: sa, repeating: ra }),
+                        Some(Image::Radial { circle: cb, size: zb, explicit: eb, at: ab, stops: sb, repeating: rb }),
+                    ) => {
+                        ca == cb
+                            && za == zb
+                            && ra == rb
+                            && match (ea, eb) {
+                                (Some((ax, ay)), Some((bx, by))) => ax.same(bx) && ay.same(by),
+                                (None, None) => true,
+                                _ => false,
+                            }
+                            && aa.0.same(&ab.0)
+                            && aa.1.same(&ab.1)
+                            && stops(sa, sb)
+                    }
+                    _ => false,
+                })
+    }
+}
+impl Shadows<crate::css::color::Computed> {
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+            || self.0.len() == other.0.len()
+                && self.0.iter().zip(other.0.iter()).all(|(a, b)| {
+                    a.inset == b.inset
+                        && a.x.same(&b.x)
+                        && a.y.same(&b.y)
+                        && a.blur.same(&b.blur)
+                        && a.spread.same(&b.spread)
+                        && match (&a.color, &b.color) {
+                            (Some(a), Some(b)) => a.same(b),
+                            (None, None) => true,
+                            _ => false,
+                        }
+                })
+    }
+}
+impl Sizes {
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+            || self.0.len() == other.0.len()
+                && self.0.iter().zip(other.0.iter()).all(|(a, b)| match (a, b) {
+                    (Size::Auto, Size::Auto) | (Size::Cover, Size::Cover) | (Size::Contain, Size::Contain) => true,
+                    (Size::Explicit(aw, ah), Size::Explicit(bw, bh)) => same_option(aw, bw) && same_option(ah, bh),
+                    _ => false,
+                })
+    }
+}
+impl Positions {
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0) || self.0.len() == other.0.len() && self.0.iter().zip(other.0.iter()).all(|(a, b)| a.0.same(&b.0) && a.1.same(&b.1))
+    }
+}
+impl Repeats {
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0) || self.0.len() == other.0.len() && self.0.iter().zip(other.0.iter()).all(|(a, b)| a == b)
+    }
+}
 impl<C> Images<C> {
     pub(crate) fn reserved_bytes(&self) -> usize {
         self.0.len() * size_of::<Option<Image<C>>>()

@@ -22,11 +22,19 @@ pub struct CacheStats {
     pub hits: usize,
     pub misses: usize,
 }
+/// A box shadow's blurred coverage: the shadow shape at a fixed device
+/// size with `margin` pixels of blur around it. Shared across the tiles and
+/// frames that draw the same shadow.
+pub(super) struct ShadowMask {
+    pub width: u32,
+    pub height: u32,
+    pub margin: u32,
+    pub data: Box<[u8]>,
+}
 pub struct Engine {
     pub(super) image_mips: Option<Box<super::mipmap::Cache>>,
-    /// The last image drawn through a transform, as a surface, keyed by its
-    /// pointer and mip level.
-    pub(super) transformed_image: Option<((usize, u32), std::sync::Arc<tiny_skia::Pixmap>)>,
+    pub(super) shadows: HashMap<(u32, u32, [[i32; 2]; 4], u64), Arc<ShadowMask>>,
+    pub(super) shadow_bytes: usize,
     fonts: HashMap<usize, FontEntry>,
     limits: Limits,
     clock: u64,
@@ -39,13 +47,33 @@ impl Default for Engine {
 }
 impl Engine {
     pub fn new(limits: Limits) -> Self {
-        Self { image_mips: None, transformed_image: None, fonts: HashMap::new(), limits, clock: 0, stats: CacheStats::default() }
+        Self { image_mips: None, shadows: HashMap::new(), shadow_bytes: 0, fonts: HashMap::new(), limits, clock: 0, stats: CacheStats::default() }
     }
     pub(super) fn limits(&self) -> Limits {
         self.limits
     }
+    /// The shadow mask for a key, made by `build` when not cached; the cache
+    /// starts over when past its budget.
+    pub(super) fn shadow_mask(&mut self, key: (u32, u32, [[i32; 2]; 4], u64), build: impl FnOnce() -> Result<ShadowMask>) -> Result<Arc<ShadowMask>> {
+        if let Some(m) = self.shadows.get(&key) {
+            return Ok(m.clone());
+        }
+        let mask = Arc::new(build()?);
+        let bytes = mask.data.len();
+        if self.shadow_bytes + bytes > self.limits.shadow_bytes {
+            self.shadows.clear();
+            self.shadow_bytes = 0;
+        }
+        if bytes <= self.limits.shadow_bytes {
+            self.shadow_bytes += bytes;
+            self.shadows.insert(key, mask.clone());
+        }
+        Ok(mask)
+    }
     pub fn clear(&mut self) {
         self.clear_image_cache();
+        self.shadows.clear();
+        self.shadow_bytes = 0;
         self.fonts.clear();
         self.clock = 0;
         self.stats = CacheStats::default()

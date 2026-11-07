@@ -81,6 +81,10 @@ impl Engine {
         };
         let mut hits = Vec::new();
         scene.query(rect, &mut hits, cancel)?;
+        // OLO_TILE_PROFILE: time per primitive kind, per tile.
+        let profile = std::env::var_os("OLO_TILE_PROFILE").map(|_| std::time::Instant::now());
+        let mut counts = [0usize; 6];
+        let mut spent = [0f64; 6];
         let mut last_clip = u32::MAX;
         let mut mask: Option<Mask> = None;
         let mut layer_work = 0usize;
@@ -154,6 +158,16 @@ impl Engine {
                 last_clip = c.clip;
             }
             let ct = device(c.transform);
+            let kind = match &c.primitive {
+                Primitive::Image { .. } => 0,
+                Primitive::Vector { .. } => 1,
+                Primitive::Fill { .. } => 2,
+                Primitive::Border { .. } => 3,
+                Primitive::Decoration { .. } => 4,
+                Primitive::Text { .. } => 5,
+            };
+            let started = profile.map(|_| std::time::Instant::now());
+            counts[kind] += 1;
             match &c.primitive {
                 Primitive::Image { owner, image } => {
                     let image = scene.layout.cache().tree().image(*image).ok_or(Error::Invalid)?;
@@ -276,6 +290,29 @@ impl Engine {
                     }
                 }
             }
+            if let Some(t) = started {
+                spent[kind] += t.elapsed().as_secs_f64() * 1000.;
+            }
+        }
+        if let Some(t) = profile {
+            let names = ["image", "vector", "fill", "border", "decoration", "text"];
+            let parts: Vec<String> = (0..6).filter(|&k| counts[k] > 0).map(|k| format!("{} {}×{:.2}", names[k], counts[k], spent[k])).collect();
+            let d = super::decoration::PROFILE.with(|p| p.replace([0.; 8]));
+            eprintln!(
+                "  tile {},{}: {:.1} ms: {} (decoration: shadows {:.2} [inside {:.2}, cached ×{:.0}, fallback ×{:.0}], colour {:.2}, images {:.2}, gradients {:.2}, borders {:.2})",
+                region.x,
+                region.y,
+                t.elapsed().as_secs_f64() * 1000.,
+                parts.join(", "),
+                d[0],
+                d[5],
+                d[6] * 1000.,
+                d[7] * 1000.,
+                d[1],
+                d[2],
+                d[3],
+                d[4]
+            );
         }
         while let Some((group, layer)) = layers.pop() {
             let opacity = scene.groups[group as usize].opacity;

@@ -78,8 +78,74 @@ pub struct Viewport {
     pub ink_bounds: Option<tiny_skia::Rect>,
     pub visited: usize,
     pub work: usize,
+    /// A hash of everything drawn (shapes, colours, layers, masks, texts):
+    /// two loads of the same SVG fingerprint alike, so a painted tile over
+    /// it can be kept across layouts.
+    pub fingerprint: u64,
 }
 impl Viewport {
+    fn fingerprint(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::hash::DefaultHasher::new();
+        let shape = |s: &Shape, h: &mut std::hash::DefaultHasher| {
+            s.node.hash(h);
+            s.color.hash(h);
+            s.evenodd.hash(h);
+            match &s.geometry {
+                Geometry::Path(p) => {
+                    0u8.hash(h);
+                    if let Some(g) = p.geometry() {
+                        g.verbs().len().hash(h);
+                        for pt in g.points() {
+                            pt.x.to_bits().hash(h);
+                            pt.y.to_bits().hash(h);
+                        }
+                    }
+                }
+                Geometry::Rectangle { slot, transform, .. } => {
+                    1u8.hash(h);
+                    slot.hash(h);
+                    if let Some(t) = transform {
+                        for v in [t.sx, t.kx, t.ky, t.sy, t.tx, t.ty] {
+                            v.to_bits().hash(h);
+                        }
+                    }
+                }
+                Geometry::Text { slot } => {
+                    2u8.hash(h);
+                    slot.hash(h);
+                }
+            }
+        };
+        self.shapes.len().hash(&mut h);
+        for s in &self.shapes {
+            shape(s, &mut h);
+        }
+        for m in &self.masks {
+            m.shapes.len().hash(&mut h);
+            for s in &m.shapes {
+                shape(s, &mut h);
+            }
+        }
+        for t in &self.texts {
+            t.text.hash(&mut h);
+            t.x.to_bits().hash(&mut h);
+            t.y.to_bits().hash(&mut h);
+            (t.anchor as u8).hash(&mut h);
+            (t.baseline as u8).hash(&mut h);
+        }
+        for l in self.layers() {
+            l.first.hash(&mut h);
+            l.end.hash(&mut h);
+            l.opacity.to_bits().hash(&mut h);
+            l.clip.hash(&mut h);
+            l.mask.hash(&mut h);
+        }
+        self.clip_nodes().len().hash(&mut h);
+        self.view_box.map(|v| v.map(f64::to_bits)).hash(&mut h);
+        self.clip.hash(&mut h);
+        h.finish()
+    }
     pub fn load(doc: &Document, styles: &StyleTree, root: NodeId, nodes_limit: usize, work_limit: usize, cancel: Option<&AtomicBool>) -> Result<Self> {
         Self::load_with_sources(doc, styles, root, nodes_limit, work_limit, 64 * 1024 * 1024, &mut clip::Sources::default(), &mut Fallbacks::default(), cancel)
     }
@@ -122,6 +188,7 @@ impl Viewport {
             ink_bounds: None,
             visited: 0,
             work: 0,
+            fingerprint: 0,
         };
         if let Some(value) = doc.attribute(root, "viewBox")? {
             if value.len() > 1024 * 1024 {
@@ -466,6 +533,7 @@ impl Viewport {
         }
         result.visited = visited;
         result.work = work;
+        result.fingerprint = result.fingerprint();
         Ok(result)
     }
     pub fn payload_bytes(&self) -> usize {
