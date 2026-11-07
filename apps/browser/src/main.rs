@@ -852,12 +852,41 @@ impl Render for Browser {
             .child(div().p(px(olo_ui::metrics::WINDOW_INSET)).child(StringView::new(self.status.clone()).fit(true).height(olo_ui::metrics::LABEL_ROW)))
     }
 }
+/// What a page may use, from the machine's size: the browser's process (its
+/// one page) runs in a scope of its own with these, so a page that leaks,
+/// spins or floods the GPU's memory slows or ends alone, never the machine
+/// (a GPU-atlas leak once took 35 GB of a 62 GB laptop and its session).
+/// Memory: a quarter of the RAM before it is reclaimed hard (at most 4 GiB),
+/// three eighths at most (6 GiB), 256 MiB of swap. CPU: a quarter of the
+/// cores, at least two, at half the weight of the desktop's programs.
+fn page_limits() -> olo_xdg::scope::Limits {
+    let total = std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|m| m.lines().find(|l| l.starts_with("MemTotal:")).and_then(|l| l.split_whitespace().nth(1)?.parse::<u64>().ok()))
+        .map_or(8 << 30, |kb| kb * 1024);
+    let cores = std::thread::available_parallelism().map_or(4, |n| n.get() as u64);
+    const GIB: u64 = 1 << 30;
+    olo_xdg::scope::Limits {
+        memory_high: (total / 4).min(4 * GIB),
+        memory_max: (total * 3 / 8).min(6 * GIB),
+        swap_max: 256 << 20,
+        cpu_quota_us: (cores / 4).max(2) * 1_000_000,
+        cpu_weight: 50,
+        tasks_max: 512,
+    }
+}
+
 fn main() {
     olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;
     }
+    let limits = page_limits();
+    if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+        eprintln!("Browser: limits {limits:?}");
+    }
+    olo_xdg::scope::confine_self(APP_ID, limits);
     olo_ui::run(APP_ID, |cx| {
         let view: Rc<RefCell<Option<Entity<Browser>>>> = Rc::default();
         let made = view.clone();

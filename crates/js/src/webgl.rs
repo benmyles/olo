@@ -165,6 +165,9 @@ pub struct Gl {
     /// GL_EXT_memory_object_fd: memory another API exported, drawn into
     /// here (a canvas shown by the window's renderer with no copy).
     interop: Option<Interop>,
+    /// EXT_disjoint_timer_query: the GPU time a page's drawing takes can be
+    /// measured (and the page slowed when it takes too much).
+    pub timer_queries: bool,
 }
 /// The entry points of GL_EXT_memory_object(_fd), and the GPU's UUID.
 struct Interop {
@@ -174,6 +177,56 @@ struct Interop {
     tex_storage_mem_2d: unsafe extern "system" fn(u32, i32, u32, i32, i32, u32, u64),
     device_uuid: [u8; 16],
 }
+/// What a page's WebGL may hold in the GPU's memory, all its canvases
+/// together (buffers, textures, renderbuffers, the canvases' own storage):
+/// past it, an allocation does nothing and reports GL_OUT_OF_MEMORY, as
+/// WebGL says, and the page goes on, the GPU (and on an integrated one, the
+/// machine's memory) left for everything else.
+pub const GPU_BUDGET: u64 = 1 << 30;
+/// What the page's WebGL holds now (one page a process).
+static GPU_BYTES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// What the page's WebGL holds in the GPU's memory now.
+pub fn gpu_bytes() -> u64 {
+    GPU_BYTES.load(std::sync::atomic::Ordering::Relaxed)
+}
+/// What an allocation is counted as: a buffer, a texture's image (its
+/// target, for cube faces, and level), a renderbuffer, the canvas's own.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Held {
+    Buffer(usize),
+    Texture(usize, u32, i32),
+    Renderbuffer(usize),
+    Canvas,
+}
+/// Bytes a pixel of `format` and `kind` (GL enums) takes.
+fn texel_bytes(format: u32, kind: u32) -> u64 {
+    let channels = match format {
+        glow::RGBA | glow::RGBA_INTEGER | glow::BGRA => 4,
+        glow::RGB | glow::RGB_INTEGER => 3,
+        glow::RG | glow::RG_INTEGER | glow::LUMINANCE_ALPHA => 2,
+        _ => 1,
+    };
+    let per = match kind {
+        glow::FLOAT | glow::INT | glow::UNSIGNED_INT => 4,
+        glow::HALF_FLOAT | 0x8D61 | glow::SHORT | glow::UNSIGNED_SHORT => 2,
+        glow::UNSIGNED_SHORT_5_6_5 | glow::UNSIGNED_SHORT_4_4_4_4 | glow::UNSIGNED_SHORT_5_5_5_1 => return 2,
+        glow::UNSIGNED_INT_2_10_10_10_REV | glow::UNSIGNED_INT_24_8 | glow::UNSIGNED_INT_10F_11F_11F_REV | glow::UNSIGNED_INT_5_9_9_9_REV => return 4,
+        _ => 1,
+    };
+    channels * per
+}
+/// Bytes a pixel of renderbuffer format `internal` takes.
+fn renderbuffer_bytes(internal: u32) -> u64 {
+    match internal {
+        glow::RGBA32F | glow::RGBA32I | glow::RGBA32UI => 16,
+        glow::RGBA16F | glow::RGBA16I | glow::RGBA16UI | glow::DEPTH32F_STENCIL8 => 8,
+        glow::RGB565 | glow::RGBA4 | glow::RGB5_A1 | glow::DEPTH_COMPONENT16 | glow::R16F | glow::RG8 => 2,
+        glow::R8 | glow::STENCIL_INDEX8 => 1,
+        _ => 4,
+    }
+}
+/// GL_TIME_ELAPSED_EXT
+const TIME_ELAPSED: u32 = 0x88BF;
 /// GL_HANDLE_TYPE_OPAQUE_FD_EXT
 const HANDLE_TYPE_OPAQUE_FD: u32 = 0x9586;
 /// GL_DEVICE_UUID_EXT
@@ -221,7 +274,9 @@ impl Gl {
             CURRENT.with(|c| c.set(context.as_ptr() as usize));
             let gl = glow::Context::from_loader_function(|s| d.egl.get_proc_address(s).map_or(std::ptr::null(), |p| p as *const std::ffi::c_void));
             let interop = Interop::load(d, &gl);
-            Ok(Self { display, context, gl, es3, interop })
+            let extensions = gl.supported_extensions();
+            let timer_queries = es3 && (extensions.contains("GL_EXT_disjoint_timer_query") || extensions.contains("GL_EXT_disjoint_timer_query_webgl2") || extensions.contains("GL_ARB_timer_query"));
+            Ok(Self { display, context, gl, es3, interop, timer_queries })
         }
     }
     /// Make this context current (another canvas's could be).
@@ -402,6 +457,20 @@ pub struct Context {
     /// The canvas shows where the window can't show a shared texture (under
     /// a transform, in a group): read back instead.
     shared_refused: bool,
+    /// What this context holds in the GPU's memory, by allocation, counted
+    /// against the page's `GPU_BUDGET`; and the bindings that say which
+    /// object an allocating call is for.
+    held: std::collections::HashMap<Held, u64>,
+    /// The GPU time the page's drawing takes (EXT_disjoint_timer_query):
+    /// a query open over a frame's calls, those ended waiting for their
+    /// results, and the nanoseconds read since asked (`take_gpu_ns`).
+    timer: Option<glow::Query>,
+    timers: std::collections::VecDeque<glow::Query>,
+    gpu_ns: u64,
+    bound_buffers: std::collections::HashMap<u32, usize>,
+    bound_textures: std::collections::HashMap<(u32, u32), usize>,
+    active_unit: u32,
+    bound_renderbuffer: Option<usize>,
 }
 impl Context {
     pub fn new(gl: Rc<Gl>, width: u32, height: u32, premultiplied_alpha: bool, preserve_drawing_buffer: bool, alpha: bool) -> Result<Self, String> {
@@ -450,8 +519,17 @@ impl Context {
                 shared_asked: None,
                 shared_released: Vec::new(),
                 shared_refused: false,
+                held: std::collections::HashMap::new(),
+                timer: None,
+                timers: std::collections::VecDeque::new(),
+                gpu_ns: 0,
+                bound_buffers: std::collections::HashMap::new(),
+                bound_textures: std::collections::HashMap::new(),
+                active_unit: glow::TEXTURE0,
+                bound_renderbuffer: None,
             };
             this.attach();
+            this.hold_canvas();
             g.bind_framebuffer(glow::FRAMEBUFFER, Some(this.framebuffer));
             g.viewport(0, 0, width as i32, height as i32);
             g.clear_color(0., 0., 0., 0.);
@@ -485,9 +563,18 @@ impl Context {
         if (width, height) == (self.width, self.height) {
             return;
         }
-        self.pending = None;
+        // A canvas the page's budget can't hold keeps its size (as a context
+        // that couldn't be resized).
+        let (old_w, old_h) = (self.width, self.height);
         self.width = width;
         self.height = height;
+        if !self.hold_canvas() {
+            self.width = old_w;
+            self.height = old_h;
+            self.error = glow::OUT_OF_MEMORY;
+            return;
+        }
+        self.pending = None;
         self.release_shared();
         self.gl.current();
         // SAFETY: as in `new`.
@@ -573,6 +660,11 @@ impl Context {
             self.shared = made;
             self.shared_next = 0;
             self.dirty = true;
+            if !self.hold_canvas() {
+                // Past the page's budget: no ring (read back instead).
+                self.release_shared();
+                self.shared_refused = true;
+            }
         } else {
             // Too few to draw one while another shows: let go of them.
             let keys: Vec<u64> = made.iter().map(|t| t.key).collect();
@@ -735,6 +827,7 @@ impl Context {
     /// The drawing buffer as the page's image: read back when drawn since
     /// the last time, premultiplied unless already so.
     pub fn image(&mut self) -> Option<Arc<olo_web::image::Image>> {
+        self.end_frame_timing();
         if !self.dirty && self.pending.is_none() && self.last.is_some() {
             return self.last.clone();
         }
@@ -814,6 +907,7 @@ impl Context {
     /// One call. Unknown or malformed calls do nothing.
     #[allow(clippy::too_many_lines)]
     pub fn op(&mut self, name: &str, a: &[Arg]) -> Out {
+        self.time_frame();
         self.gl.current();
         if TRACE.get_or_init(|| std::env::var_os("OLO_GL_TRACE").is_some()).to_owned() {
             let args: Vec<String> = a
@@ -859,6 +953,8 @@ impl Context {
                     {
                         g.delete_buffer(b);
                         let i = *i as usize;
+                        self.release(|h| *h == Held::Buffer(i));
+                        self.bound_buffers.retain(|_, b| *b != i);
                         if self.array_buffer == Some(i) {
                             self.array_buffer = None;
                         }
@@ -880,6 +976,9 @@ impl Context {
                         && let Some(t) = slot.take()
                     {
                         g.delete_texture(t);
+                        let i = *i as usize;
+                        self.release(|h| matches!(h, Held::Texture(t, ..) if *t == i));
+                        self.bound_textures.retain(|_, t| *t != i);
                     }
                 }
                 "deleteProgram" => {
@@ -912,6 +1011,11 @@ impl Context {
                         && let Some(r) = slot.take()
                     {
                         g.delete_renderbuffer(r);
+                        let i = *i as usize;
+                        self.release(|h| *h == Held::Renderbuffer(i));
+                        if self.bound_renderbuffer == Some(i) {
+                            self.bound_renderbuffer = None;
+                        }
                     }
                 }
                 "deleteVertexArray" => {
@@ -924,6 +1028,10 @@ impl Context {
                 }
                 "bindBuffer" => {
                     let index = if let Arg::Num(i) = arg(1) { Some(*i as usize).filter(|i| self.buffers.get(*i).is_some_and(Option::is_some)) } else { None };
+                    match index {
+                        Some(i) => self.bound_buffers.insert(arg(0).u(), i),
+                        None => self.bound_buffers.remove(&arg(0).u()),
+                    };
                     match arg(0).u() {
                         glow::ARRAY_BUFFER => self.array_buffer = index,
                         glow::ELEMENT_ARRAY_BUFFER => self.vertex_state().element_buffer = index,
@@ -931,19 +1039,40 @@ impl Context {
                     }
                     g.bind_buffer(arg(0).u(), Self::table(&self.buffers, arg(1)));
                 }
-                "bindTexture" => g.bind_texture(arg(0).u(), Self::table(&self.textures, arg(1))),
+                "bindTexture" => {
+                    let key = (self.active_unit, arg(0).u());
+                    match arg(1) {
+                        Arg::Num(i) if self.textures.get(*i as usize).is_some_and(Option::is_some) => self.bound_textures.insert(key, *i as usize),
+                        _ => self.bound_textures.remove(&key),
+                    };
+                    g.bind_texture(arg(0).u(), Self::table(&self.textures, arg(1)))
+                }
                 "bindFramebuffer" => {
                     self.bound_framebuffer = if let Arg::Num(i) = arg(1) { Some(*i as usize) } else { None };
                     let fb = Self::table(&self.framebuffers, arg(1)).unwrap_or(self.framebuffer);
                     g.bind_framebuffer(arg(0).u(), Some(fb));
                 }
-                "bindRenderbuffer" => g.bind_renderbuffer(arg(0).u(), Self::table(&self.renderbuffers, arg(1))),
+                "bindRenderbuffer" => {
+                    self.bound_renderbuffer = if let Arg::Num(i) = arg(1) { Some(*i as usize).filter(|i| self.renderbuffers.get(*i).is_some_and(Option::is_some)) } else { None };
+                    g.bind_renderbuffer(arg(0).u(), Self::table(&self.renderbuffers, arg(1)))
+                }
                 "bindVertexArray" => {
                     self.bound_vao = if let Arg::Num(i) = arg(0) { Some(*i as usize).filter(|i| self.vaos.get(*i).is_some_and(Option::is_some)) } else { None };
                     g.bind_vertex_array(Self::table(&self.vaos, arg(0)));
                 }
                 "bufferData" => {
                     // (target, data or size, usage)
+                    let bytes = match arg(1) {
+                        Arg::Bytes(b, _) => b.len() as u64,
+                        Arg::Num(size) => size.max(0.) as u64,
+                        _ => 0,
+                    };
+                    if let Some(&i) = self.bound_buffers.get(&arg(0).u())
+                        && !self.hold(Held::Buffer(i), bytes)
+                    {
+                        self.error = glow::OUT_OF_MEMORY;
+                        return Out::None;
+                    }
                     match arg(1) {
                         Arg::Bytes(bytes, _) => g.buffer_data_u8_slice(arg(0).u(), bytes, arg(2).u()),
                         Arg::Num(size) => g.buffer_data_size(arg(0).u(), *size as i32, arg(2).u()),
@@ -1212,7 +1341,10 @@ impl Context {
                 "polygonOffset" => g.polygon_offset(arg(0).f(), arg(1).f()),
                 "sampleCoverage" => g.sample_coverage(arg(0).f(), arg(1).num() != 0.),
                 "hint" => g.hint(arg(0).u(), arg(1).u()),
-                "activeTexture" => g.active_texture(arg(0).u()),
+                "activeTexture" => {
+                    self.active_unit = arg(0).u();
+                    g.active_texture(arg(0).u())
+                }
                 "texParameteri" => g.tex_parameter_i32(arg(0).u(), arg(1).u(), arg(2).i()),
                 "texParameterf" => g.tex_parameter_f32(arg(0).u(), arg(1).u(), arg(2).f()),
                 "pixelStorei" => match arg(0).u() {
@@ -1224,6 +1356,14 @@ impl Context {
                 "texImage2D" => {
                     // (target, level, internalformat, width, height, border, format, type, pixels or null)
                     let (target, level, internal, width, height, format, kind) = (arg(0).u(), arg(1).i(), arg(2).i(), arg(3).i(), arg(4).i(), arg(6).u(), arg(7).u());
+                    let bind = if (glow::TEXTURE_CUBE_MAP_POSITIVE_X..=glow::TEXTURE_CUBE_MAP_NEGATIVE_Z).contains(&target) { glow::TEXTURE_CUBE_MAP } else { target };
+                    let bytes = (width.max(0) as u64) * (height.max(0) as u64) * texel_bytes(format, kind);
+                    if let Some(&i) = self.bound_textures.get(&(self.active_unit, bind))
+                        && !self.hold(Held::Texture(i, target, level), bytes)
+                    {
+                        self.error = glow::OUT_OF_MEMORY;
+                        return Out::None;
+                    }
                     let pixels = arg(8).bytes().map(|b| self.unpack(b, width, height, format, kind));
                     g.tex_image_2d(target, level, internal, width, height, arg(5).i(), format, kind, glow::PixelUnpackData::Slice(pixels.as_deref()));
                 }
@@ -1235,12 +1375,37 @@ impl Context {
                     }
                 }
                 "generateMipmap" => g.generate_mipmap(arg(0).u()),
-                "copyTexImage2D" => g.copy_tex_image_2d(arg(0).u(), arg(1).i(), arg(2).u(), arg(3).i(), arg(4).i(), arg(5).i(), arg(6).i(), arg(7).i()),
+                "copyTexImage2D" => {
+                    let (target, level) = (arg(0).u(), arg(1).i());
+                    let bind = if (glow::TEXTURE_CUBE_MAP_POSITIVE_X..=glow::TEXTURE_CUBE_MAP_NEGATIVE_Z).contains(&target) { glow::TEXTURE_CUBE_MAP } else { target };
+                    let bytes = (arg(5).i().max(0) as u64) * (arg(6).i().max(0) as u64) * 4;
+                    if let Some(&i) = self.bound_textures.get(&(self.active_unit, bind))
+                        && !self.hold(Held::Texture(i, target, level), bytes)
+                    {
+                        self.error = glow::OUT_OF_MEMORY;
+                        return Out::None;
+                    }
+                    g.copy_tex_image_2d(arg(0).u(), arg(1).i(), arg(2).u(), arg(3).i(), arg(4).i(), arg(5).i(), arg(6).i(), arg(7).i())
+                }
                 "copyTexSubImage2D" => g.copy_tex_sub_image_2d(arg(0).u(), arg(1).i(), arg(2).i(), arg(3).i(), arg(4).i(), arg(5).i(), arg(6).i(), arg(7).i()),
                 "framebufferTexture2D" => g.framebuffer_texture_2d(arg(0).u(), arg(1).u(), arg(2).u(), Self::table(&self.textures, arg(3)), arg(4).i()),
                 "framebufferRenderbuffer" => g.framebuffer_renderbuffer(arg(0).u(), arg(1).u(), arg(2).u(), Self::table(&self.renderbuffers, arg(3))),
-                "renderbufferStorage" => g.renderbuffer_storage(arg(0).u(), arg(1).u(), arg(2).i(), arg(3).i()),
-                "renderbufferStorageMultisample" => g.renderbuffer_storage_multisample(arg(0).u(), arg(1).i(), arg(2).u(), arg(3).i(), arg(4).i()),
+                "renderbufferStorage" | "renderbufferStorageMultisample" => {
+                    let multi = name == "renderbufferStorageMultisample";
+                    let (samples, internal, w, h) = if multi { (arg(1).i().max(1) as u64, arg(2).u(), arg(3).i(), arg(4).i()) } else { (1, arg(1).u(), arg(2).i(), arg(3).i()) };
+                    let bytes = (w.max(0) as u64) * (h.max(0) as u64) * renderbuffer_bytes(internal) * samples;
+                    if let Some(i) = self.bound_renderbuffer
+                        && !self.hold(Held::Renderbuffer(i), bytes)
+                    {
+                        self.error = glow::OUT_OF_MEMORY;
+                        return Out::None;
+                    }
+                    if multi {
+                        g.renderbuffer_storage_multisample(arg(0).u(), arg(1).i(), arg(2).u(), arg(3).i(), arg(4).i())
+                    } else {
+                        g.renderbuffer_storage(arg(0).u(), arg(1).u(), arg(2).i(), arg(3).i())
+                    }
+                }
                 "checkFramebufferStatus" => return Out::Num(f64::from(g.check_framebuffer_status(arg(0).u()))),
                 "drawBuffers" => {
                     let b: Vec<u32> = arg(0).ints().into_iter().map(|v| v as u32).collect();
@@ -1335,6 +1500,83 @@ impl Context {
         out
     }
     /// The vertex state draws read: the bound VAO's, else the default's.
+    /// Count `what` as `bytes` (replacing what it held): false, and nothing
+    /// counted, when the page's WebGL would hold more than `GPU_BUDGET`.
+    fn hold(&mut self, what: Held, bytes: u64) -> bool {
+        use std::sync::atomic::Ordering::Relaxed;
+        let old = self.held.get(&what).copied().unwrap_or(0);
+        let total = GPU_BYTES.load(Relaxed);
+        if bytes > old && total - old.min(total) + bytes > GPU_BUDGET {
+            return false;
+        }
+        GPU_BYTES.fetch_add(bytes, Relaxed);
+        GPU_BYTES.fetch_sub(old.min(GPU_BYTES.load(Relaxed)), Relaxed);
+        if bytes == 0 {
+            self.held.remove(&what);
+        } else {
+            self.held.insert(what, bytes);
+        }
+        true
+    }
+    /// Let go of everything `matches` says (a deleted object's images).
+    fn release(&mut self, matches: impl Fn(&Held) -> bool) {
+        use std::sync::atomic::Ordering::Relaxed;
+        let gone: Vec<Held> = self.held.keys().filter(|k| matches(k)).copied().collect();
+        for k in gone {
+            if let Some(b) = self.held.remove(&k) {
+                GPU_BYTES.fetch_sub(b.min(GPU_BYTES.load(Relaxed)), Relaxed);
+            }
+        }
+    }
+    /// A frame's calls timed on the GPU: a query opened at the first.
+    fn time_frame(&mut self) {
+        if self.timer.is_some() || !self.gl.timer_queries || self.timers.len() > 4 {
+            return;
+        }
+        self.gl.current();
+        // SAFETY: a query on the current context.
+        unsafe {
+            if let Ok(q) = self.gl.gl.create_query() {
+                self.gl.gl.begin_query(TIME_ELAPSED, q);
+                self.timer = Some(q);
+            }
+        }
+    }
+    /// The frame's timing closed (it is shown), and the results the GPU has
+    /// for earlier ones read (never waited for).
+    fn end_frame_timing(&mut self) {
+        if !self.gl.timer_queries {
+            return;
+        }
+        self.gl.current();
+        // SAFETY: queries of the current context.
+        unsafe {
+            let g = &self.gl.gl;
+            if let Some(q) = self.timer.take() {
+                g.end_query(TIME_ELAPSED);
+                self.timers.push_back(q);
+            }
+            while let Some(&q) = self.timers.front() {
+                if g.get_query_parameter_u32(q, glow::QUERY_RESULT_AVAILABLE) == 0 {
+                    break;
+                }
+                self.gpu_ns += u64::from(g.get_query_parameter_u32(q, glow::QUERY_RESULT));
+                g.delete_query(q);
+                self.timers.pop_front();
+            }
+        }
+    }
+    /// The GPU time read since last asked (nanoseconds).
+    pub fn take_gpu_ns(&mut self) -> u64 {
+        std::mem::take(&mut self.gpu_ns)
+    }
+    /// The canvas's own storage: its colour and depth, its readback buffers
+    /// and its shared textures.
+    fn hold_canvas(&mut self) -> bool {
+        let pixels = u64::from(self.width) * u64::from(self.height);
+        let shared = self.shared.len() as u64;
+        self.hold(Held::Canvas, pixels * 4 * (2 + 2 + shared))
+    }
     fn vertex_state(&mut self) -> &mut VertexState {
         match self.bound_vao {
             Some(i) if i < self.vao_vertex.len() => &mut self.vao_vertex[i],
@@ -1364,7 +1606,18 @@ impl Context {
 }
 impl Drop for Context {
     fn drop(&mut self) {
+        self.gl.current();
+        // SAFETY: this context's own queries.
+        unsafe {
+            if self.timer.take().is_some() {
+                self.gl.gl.end_query(TIME_ELAPSED);
+            }
+            for q in self.timers.drain(..) {
+                self.gl.gl.delete_query(q);
+            }
+        }
         self.release_shared();
+        self.release(|_| true);
         self.gl.current();
         // SAFETY: deleting this context's own objects on the current context.
         unsafe {

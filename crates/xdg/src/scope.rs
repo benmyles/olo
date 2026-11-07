@@ -59,6 +59,73 @@ pub fn place(pid: u32, app_id: &str) {
     });
 }
 
+/// What a confined process may use (systemd's resource control, cgroup v2):
+/// memory before it is reclaimed hard and throttled (`MemoryHigh`), memory
+/// it is never given past (`MemoryMax`: the kernel ends it, alone), swap
+/// (`MemorySwapMax`), CPU time a second across cores (`CPUQuota`), its share
+/// beside others when CPU is short (`CPUWeight`, 100 the default), and how
+/// many threads (`TasksMax`).
+#[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    pub memory_high: u64,
+    pub memory_max: u64,
+    pub swap_max: u64,
+    /// Microseconds of CPU a second (a core is 1,000,000).
+    pub cpu_quota_us: u64,
+    pub cpu_weight: u64,
+    pub tasks_max: u64,
+}
+
+/// Put this process in a scope of its own for `app_id` with `limits`, so
+/// whatever it does (a page's scripts, a leak) cannot take the machine
+/// with it: in the background, systemd's answer not waited for; where
+/// there is no systemd it stays where it was. A process already in a scope
+/// of its own (an app started by Olo) is moved to the new one.
+pub fn confine_self(app_id: &str, limits: Limits) {
+    let pid = std::process::id();
+    let name = unit_name(app_id, pid);
+    let _ = std::thread::Builder::new().name("app-scope".into()).spawn(move || {
+        // The person's systemd, at its own bus (an Agent Screen's session
+        // bus has none), then the session's.
+        let user_bus = std::env::var_os("XDG_RUNTIME_DIR").map(|d| format!("unix:path={}/bus", std::path::Path::new(&d).display()));
+        let started = user_bus
+            .and_then(|address| zbus::blocking::connection::Builder::address(address.as_str()).ok())
+            .map_or_else(zbus::blocking::connection::Builder::session, Ok)
+            .and_then(|b| b.method_timeout(PATIENCE).build())
+            .and_then(|bus| start_limited(&bus, &name, pid, limits));
+        match started {
+            Ok(()) => tracing::debug!("started {name} with {limits:?}"),
+            Err(e) => {
+                tracing::warn!("{name}: {e}");
+                if std::env::var_os("OLO_SCOPE_DEBUG").is_some() {
+                    eprintln!("scope: {name}: {e}");
+                }
+            }
+        }
+    });
+}
+
+/// Ask systemd's manager on `bus` for scope `name` holding `pid`, limited.
+fn start_limited(bus: &zbus::blocking::Connection, name: &str, pid: u32, l: Limits) -> zbus::Result<()> {
+    let properties: Vec<(&str, Value)> = vec![
+        ("PIDs", Value::from(vec![pid])),
+        ("CollectMode", Value::from("inactive-or-failed")),
+        ("Description", Value::from("Olo program, resources limited")),
+        ("MemoryAccounting", Value::from(true)),
+        ("MemoryHigh", Value::from(l.memory_high)),
+        ("MemoryMax", Value::from(l.memory_max)),
+        ("MemorySwapMax", Value::from(l.swap_max)),
+        ("CPUAccounting", Value::from(true)),
+        ("CPUQuotaPerSecUSec", Value::from(l.cpu_quota_us)),
+        ("CPUWeight", Value::from(l.cpu_weight)),
+        ("TasksAccounting", Value::from(true)),
+        ("TasksMax", Value::from(l.tasks_max)),
+    ];
+    let aux: Vec<(&str, Vec<(&str, Value)>)> = Vec::new();
+    bus.call_method(Some("org.freedesktop.systemd1"), "/org/freedesktop/systemd1", Some("org.freedesktop.systemd1.Manager"), "StartTransientUnit", &(name, "fail", properties, aux))?;
+    Ok(())
+}
+
 /// Ask systemd's manager on `bus` for scope `name` holding `pid`.
 fn start(bus: &zbus::blocking::Connection, name: &str, pid: u32) -> zbus::Result<()> {
     let properties: Vec<(&str, Value)> = vec![("PIDs", Value::from(vec![pid])), ("CollectMode", Value::from("inactive-or-failed")), ("Description", Value::from("Application started by Olo"))];

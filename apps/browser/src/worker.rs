@@ -182,6 +182,50 @@ struct Live {
     render_due: bool,
     /// Canvases whose last frame is in a shared texture, with its key.
     shared_frames: Vec<(olo_web::dom::NodeId, u64)>,
+    /// Display frames seen, and what the page's frames cost.
+    frame_count: u64,
+    usage: Usage,
+}
+/// What a live page's frames cost (its scripts and renders on the CPU, its
+/// WebGL on the GPU), reviewed each second: over budget, it draws every
+/// second, then fourth, then eighth display frame; well under again, back
+/// to every frame. A page's animation slows rather than the machine.
+struct Usage {
+    cpu_ms: f64,
+    gpu_ms: f64,
+    frames: u32,
+    since: Instant,
+    divisor: u32,
+    /// Seconds in a row over budget (a page's first, loading, second is
+    /// not held against it).
+    over: u32,
+}
+impl Usage {
+    /// CPU a drawn frame may take (60% of a 60 Hz frame), and GPU (half).
+    const CPU_MS: f64 = 10.;
+    const GPU_MS: f64 = 8.;
+    fn new() -> Self {
+        Self { cpu_ms: 0., gpu_ms: 0., frames: 0, since: Instant::now(), divisor: 1, over: 0 }
+    }
+    /// After a second: the divisor changed, if it did.
+    fn review(&mut self) -> Option<u32> {
+        if self.since.elapsed() < Duration::from_secs(1) || self.frames == 0 {
+            return None;
+        }
+        let (cpu, gpu) = (self.cpu_ms / f64::from(self.frames), self.gpu_ms / f64::from(self.frames));
+        let before = self.divisor;
+        let mut over = 0;
+        if cpu > Self::CPU_MS || gpu > Self::GPU_MS {
+            over = self.over + 1;
+            if over >= 2 {
+                self.divisor = (self.divisor * 2).min(8);
+            }
+        } else if cpu < Self::CPU_MS / 2. && gpu < Self::GPU_MS / 2. {
+            self.divisor = (self.divisor / 2).max(1);
+        }
+        *self = Self { divisor: self.divisor, over, ..Self::new() };
+        (self.divisor != before).then_some(self.divisor)
+    }
 }
 /// RGBA (the engine's tiles and images, premultiplied) as BGRA, for the
 /// kit's premultiplied pictures (`from_premultiplied_bgra`: the GPU makes
@@ -285,6 +329,9 @@ impl Loads {
 impl Drop for Live {
     fn drop(&mut self) {
         self.cancel.cancel();
+        if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            eprintln!("  live: the page's realm let go");
+        }
     }
 }
 /// A live page's frame: its animation frames run and it renders once a
@@ -573,7 +620,7 @@ fn render(
         // on its ticks and the page renders right after them, so what a frame
         // draws is what shows (two clocks, the page's 16 ms and the render's
         // 16.7, beat against each other and dropped frames).
-        let frame = now_ms + 0.5 >= live.next_frame_ms;
+        let mut frame = now_ms + 0.5 >= live.next_frame_ms;
         if frame {
             let period = FRAME.as_secs_f64() * 1000.;
             live.next_frame_ms += period;
@@ -582,7 +629,21 @@ fn render(
                 live.next_frame_ms = ((now_ms / period).floor() + 1.) * period;
             }
         }
+        // A page over its budget draws every `frame_divisor`th frame (see
+        // `Usage`): its animations slower, the machine left its share.
+        if frame {
+            live.frame_count = live.frame_count.wrapping_add(1);
+            frame = live.frame_count % u64::from(live.usage.divisor) == 0;
+        }
         let advanced = live.realm.advance_frame(now_ms, Duration::from_millis(30), Some(frame));
+        live.usage.cpu_ms += advanced.spent_ms;
+        // Its scripts stopped (memory, a hang): the page stays as it was
+        // last shown, its realm (and the memory it held) let go.
+        if let Some(why) = live.realm.stopped() {
+            proxy.send(Reply::Status(r.id, format!("This page's scripts were stopped: {why}.")));
+            c.live = None;
+            return Ok(());
+        }
         live.loads.dispatch(&mut live.realm);
         if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
             for line in live.realm.take_console() {
@@ -714,6 +775,14 @@ fn render(
             live.last_render = Instant::now();
             live.stats.2 += 1;
             live.stats.3 += started.elapsed().as_secs_f64() * 1000.;
+            live.usage.cpu_ms += started.elapsed().as_secs_f64() * 1000.;
+            live.usage.gpu_ms += live.realm.take_gpu_ms();
+            live.usage.frames += 1;
+            if let Some(divisor) = live.usage.review() {
+                if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                    eprintln!("  usage: the page draws every {divisor} frames");
+                }
+            }
             rerendered = true;
         } else {
             return Ok(());
@@ -943,6 +1012,8 @@ fn render(
                 wants_frame: false,
                 render_due: false,
                 shared_frames: Vec::new(),
+                frame_count: 0,
+                usage: Usage::new(),
             });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",

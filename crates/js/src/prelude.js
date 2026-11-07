@@ -794,14 +794,19 @@
   global.requestIdleCallback = (fn, options) => schedule(() => fn({ didTimeout: false, timeRemaining: () => 50 }), (options && options.timeout) || 1, [], false);
   global.cancelIdleCallback = global.clearTimeout;
   global.queueMicrotask = (fn) => { Promise.resolve().then(fn).catch(reportError); };
-  const performanceNow = () => now + 0.001;
+  // The page's time: its clock at the task's start, then real time as the
+  // task runs (a script timing itself in a loop sees time pass, as in
+  // browsers; it spun forever on a clock that moved only between tasks),
+  // never going back.
+  let tickWall = 0, lastPerf = 0;
+  const performanceNow = () => { const t = now + (N.wallNow() - tickWall) + 0.001; if (t > lastPerf) lastPerf = t; return lastPerf; };
   const timeOrigin = Date.now();
   // The wall clock follows the virtual one, so what scripts time with
   // Date.now() (animations, throttles, token expiries) agrees with timers.
   const NativeDate = Date;
   global.Date = class Date extends NativeDate {
-    constructor(...args) { if (args.length === 0) super(timeOrigin + now); else super(...args); }
-    static now() { return timeOrigin + now; }
+    constructor(...args) { if (args.length === 0) super(Math.floor(timeOrigin + performanceNow())); else super(...args); }
+    static now() { return Math.floor(timeOrigin + performanceNow()); }
   };
   global.performance = { now: performanceNow, timeOrigin, timing: { navigationStart: timeOrigin, domLoading: timeOrigin, domInteractive: timeOrigin, domContentLoadedEventStart: timeOrigin, domContentLoadedEventEnd: timeOrigin, domComplete: timeOrigin, loadEventStart: timeOrigin, loadEventEnd: timeOrigin, fetchStart: timeOrigin, responseStart: timeOrigin, responseEnd: timeOrigin, requestStart: timeOrigin, connectStart: timeOrigin, connectEnd: timeOrigin, domainLookupStart: timeOrigin, domainLookupEnd: timeOrigin, redirectStart: 0, redirectEnd: 0, unloadEventStart: 0, unloadEventEnd: 0, secureConnectionStart: 0 }, navigation: { type: 0, redirectCount: 0 }, mark() { return {}; }, measure() { return {}; }, clearMarks() {}, clearMeasures() {}, clearResourceTimings() {}, getEntries: () => [], getEntriesByType: () => [], getEntriesByName: () => [], setResourceTimingBufferSize() {}, addEventListener() {}, removeEventListener() {}, toJSON() { return {}; }, memory: { usedJSHeapSize: 1e7, totalJSHeapSize: 2e7, jsHeapSizeLimit: 2e9 }, eventCounts: new Map() };
   global.PerformanceObserver = class PerformanceObserver { constructor(cb) { this.cb = cb; } observe() {} disconnect() {} takeRecords() { return []; } static get supportedEntryTypes() { return ['navigation', 'resource', 'paint', 'mark', 'measure', 'longtask', 'largest-contentful-paint', 'layout-shift', 'first-input']; } };
@@ -814,11 +819,14 @@
     frameDriven = frame === 0 || frame === 1;
     frameNow = frame === 1;
     now = Math.max(now, Number(clock) || 0);
+    tickWall = N.wallNow();
     // Due timers, earliest first; one pass, then report the next due time.
     const due = [...timers.entries()].filter(([, t]) => t.due <= now).sort((a, b) => a[1].due - b[1].due || a[0] - b[0]);
     for (const [id, t] of due) {
       if (!timers.has(id)) continue;
-      if (t.interval) { t.runs++; if (t.runs > 50) { timers.delete(id); continue; } t.due = now + t.interval; } else timers.delete(id);
+      // Intervals run for as long as the page lives (a clock, a carousel);
+      // a page that spins is the watchdog's and the page's caps' to stop.
+      if (t.interval) { t.runs++; t.due = now + t.interval; } else timers.delete(id);
       timerNesting = t.nesting + 1;
       try { t.fn.apply(global, t.args); } catch (e) { reportError(e); }
       timerNesting = 0;

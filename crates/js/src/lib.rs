@@ -229,6 +229,12 @@ type Shared = Rc<RefCell<State>>;
 pub(crate) fn runtime() {
     static INIT: OnceLock<()> = OnceLock::new();
     INIT.get_or_init(|| {
+        // A page's heap goes back to the system when its isolate goes (a
+        // page stopped at its memory limit, a page left): V8 kept the pages
+        // of a dead isolate in a process-wide pool for the next one (1.8 GB
+        // held after a page was stopped at 2 GB), and pooled pages are let
+        // go after five seconds unused.
+        v8::V8::set_flags_from_string("--no-memory-pool-share-memory-on-teardown --memory-pool-timeout=5");
         let platform = v8::new_default_platform(0, false).make_shared();
         v8::V8::initialize_platform(platform);
         v8::V8::initialize();
@@ -239,6 +245,96 @@ pub struct Realm {
     isolate: v8::OwnedIsolate,
     context: v8::Global<v8::Context>,
     state: Shared,
+    /// What stops the page's scripts: its heap at the limit, a task that
+    /// never ends (see `Guard`).
+    guard: Arc<Guard>,
+}
+/// A page's scripts may use this much of V8's heap: past it they are
+/// stopped (the page, not the browser or the machine, out of memory).
+const HEAP_MAX: usize = 2 << 30;
+/// A task (a script, a timer, an event) may run this long before the
+/// page's scripts are stopped (a page that hangs).
+const TASK_MAX: std::time::Duration = std::time::Duration::from_secs(10);
+/// Why a page's scripts were stopped.
+const STOPPED_MEMORY: u8 = 1;
+const STOPPED_HUNG: u8 = 2;
+/// The realm's stop switch, shared with V8's heap callback and the
+/// watchdog thread: when the running task began (ms since the watchdog
+/// started; 0: none runs), and why its scripts were stopped (0: they
+/// weren't).
+pub struct Guard {
+    handle: v8::IsolateHandle,
+    busy_since: std::sync::atomic::AtomicU64,
+    stopped: std::sync::atomic::AtomicU8,
+}
+/// The realms the watchdog watches.
+static GUARDS: std::sync::Mutex<Vec<std::sync::Weak<Guard>>> = std::sync::Mutex::new(Vec::new());
+static WATCH_EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+fn watch_now_ms() -> u64 {
+    WATCH_EPOCH.get_or_init(Instant::now).elapsed().as_millis() as u64 + 1
+}
+/// One thread for every realm of the process: twice a second, a task
+/// running longer than `TASK_MAX` stops its realm's scripts. Asleep, it
+/// costs nothing but those wakeups, and only while a realm lives.
+fn watch(guard: &Arc<Guard>) {
+    let mut guards = GUARDS.lock().unwrap_or_else(|e| e.into_inner());
+    guards.retain(|g| g.strong_count() > 0);
+    let first = guards.is_empty();
+    guards.push(Arc::downgrade(guard));
+    drop(guards);
+    if first {
+        let _ = std::thread::Builder::new().name("script-watchdog".into()).spawn(|| {
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                let mut guards = GUARDS.lock().unwrap_or_else(|e| e.into_inner());
+                guards.retain(|g| g.strong_count() > 0);
+                if guards.is_empty() {
+                    break;
+                }
+                let now = watch_now_ms();
+                for g in guards.iter().filter_map(|g| g.upgrade()) {
+                    let since = g.busy_since.load(std::sync::atomic::Ordering::Relaxed);
+                    if since != 0 && now.saturating_sub(since) > TASK_MAX.as_millis() as u64 && g.stopped.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+                        g.stopped.store(STOPPED_HUNG, std::sync::atomic::Ordering::Relaxed);
+                        g.handle.terminate_execution();
+                    }
+                }
+            }
+        });
+    }
+}
+/// V8 near its heap limit: the page's scripts are stopped, with room to
+/// unwind (else V8 aborts the process).
+unsafe extern "C" fn near_heap_limit(data: *mut std::ffi::c_void, current: usize, _initial: usize) -> usize {
+    // SAFETY: `data` is the realm's guard, alive while its isolate is.
+    let guard = unsafe { &*(data as *const Guard) };
+    if guard.stopped.swap(STOPPED_MEMORY, std::sync::atomic::Ordering::Relaxed) == 0 {
+        guard.handle.terminate_execution();
+    }
+    current + (64 << 20)
+}
+impl Drop for Realm {
+    fn drop(&mut self) {
+        // What the heap held goes back to the system with the isolate: told
+        // to let go of what it keeps for reuse first.
+        self.isolate.low_memory_notification();
+        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+            eprintln!("realm: dropped");
+        }
+    }
+}
+/// A task running in the realm (see `Guard`), until dropped.
+struct Busy<'a>(&'a Guard);
+impl<'a> Busy<'a> {
+    fn new(guard: &'a Guard) -> Self {
+        guard.busy_since.store(watch_now_ms(), std::sync::atomic::Ordering::Relaxed);
+        Self(guard)
+    }
+}
+impl Drop for Busy<'_> {
+    fn drop(&mut self) {
+        self.0.busy_since.store(0, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 impl Realm {
     pub fn new(document: Document, config: Config, fetcher: Option<Fetcher>, measure: Option<Measure>) -> Result<Self, String> {
@@ -277,7 +373,10 @@ impl Realm {
             report: Report { revision_before: revision, ..Default::default() },
             started: Instant::now(),
         }));
-        let mut isolate = v8::Isolate::new(v8::CreateParams::default());
+        let mut isolate = v8::Isolate::new(v8::CreateParams::default().heap_limits(0, HEAP_MAX));
+        let guard = Arc::new(Guard { handle: isolate.thread_safe_handle(), busy_since: Default::default(), stopped: Default::default() });
+        isolate.add_near_heap_limit_callback(near_heap_limit, Arc::as_ptr(&guard) as *mut std::ffi::c_void);
+        watch(&guard);
         isolate.set_slot(state.clone());
         modules::install(&mut isolate);
         modules::enter(&state);
@@ -295,7 +394,7 @@ impl Realm {
             install(scope, &state)?;
             v8::Global::new(scope, context)
         };
-        let mut realm = Self { isolate, context, state };
+        let mut realm = Self { isolate, context, state, guard };
         realm.run(PRELUDE, "prelude.js").map_err(|e| format!("prelude: {e}"))?;
         Ok(realm)
     }
@@ -331,6 +430,11 @@ impl Realm {
     /// A request's outcome: an image element gets its image and its scripts
     /// hear `load` (or `error`); a fetch resolves (or rejects).
     pub fn deliver(&mut self, id: u64, result: Result<Loaded, String>) {
+        let guard = self.guard.clone();
+        if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            return;
+        }
+        let _busy = Busy::new(&guard);
         let state = self.state.clone();
         let Some(node) = state.borrow_mut().in_flight.remove(&id) else { return };
         v8::scope!(let scope, &mut self.isolate);
@@ -434,6 +538,11 @@ impl Realm {
     }
     /// Run one script; an exception is recorded and returned, not fatal.
     pub fn run(&mut self, source: &str, name: &str) -> Result<(), String> {
+        let guard = self.guard.clone();
+        if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            return Err("stopped".into());
+        }
+        let _busy = Busy::new(&guard);
         let state = self.state.clone();
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
@@ -456,6 +565,11 @@ impl Realm {
     /// Run a module script: its imports fetched and compiled first, then
     /// the graph instantiated and evaluated (see `modules`).
     pub fn run_module(&mut self, source: &str, url: &str) -> Result<(), String> {
+        let guard = self.guard.clone();
+        if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            return Err("stopped".into());
+        }
+        let _busy = Busy::new(&guard);
         let state = self.state.clone();
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
@@ -481,6 +595,9 @@ impl Realm {
     /// on the page's own 16 ms clock). `Advanced::wants_frame` says whether
     /// the page waits for one.
     pub fn advance_frame(&mut self, now_ms: f64, wall: std::time::Duration, frame: Option<bool>) -> Advanced {
+        if self.guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            return Advanced { next_due_ms: None, changed: false, spent_ms: 0., ticks: 0, wants_frame: false };
+        }
         let started = Instant::now();
         let before = {
             let mut s = self.state.borrow_mut();
@@ -536,6 +653,11 @@ impl Realm {
     /// scroll) dispatched to `target` (the element under the pointer, or
     /// the focused one for keys). Returns whether a default was prevented.
     pub fn input(&mut self, input: &Input, target: Option<NodeId>) -> bool {
+        let guard = self.guard.clone();
+        if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            return false;
+        }
+        let _busy = Busy::new(&guard);
         let state = self.state.clone();
         {
             let mut s = state.borrow_mut();
@@ -593,6 +715,20 @@ impl Realm {
     /// Animating WebGL canvases that would draw their frames into textures
     /// of the window's renderer (shown with no copy): each with its size and
     /// its GPU's UUID (the window's must match). Each is asked for once.
+    /// The GPU time the page's WebGL took since last asked (milliseconds).
+    pub fn take_gpu_ms(&mut self) -> f64 {
+        let mut s = self.state.borrow_mut();
+        s.gl.values_mut().map(|c| c.take_gpu_ns()).sum::<u64>() as f64 / 1e6
+    }
+    /// Why the page's scripts were stopped, if they were: they used the
+    /// heap they may, or a task ran past its time. Nothing runs after.
+    pub fn stopped(&self) -> Option<&'static str> {
+        match self.guard.stopped.load(std::sync::atomic::Ordering::Relaxed) {
+            STOPPED_MEMORY => Some("it used all the memory a page may"),
+            STOPPED_HUNG => Some("a script ran for more than ten seconds"),
+            _ => None,
+        }
+    }
     pub fn shared_wanted(&mut self) -> Vec<(NodeId, u32, u32, [u8; 16])> {
         let mut s = self.state.borrow_mut();
         s.gl.iter_mut().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.wants_shared().map(|(w, h, uuid)| (*n, w, h, uuid))).collect()
@@ -756,6 +892,11 @@ impl Realm {
         self.call_prelude_numbers(function, &[arg])
     }
     fn call_prelude_numbers(&mut self, function: &str, args: &[f64]) -> Result<f64, String> {
+        let guard = self.guard.clone();
+        if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            return Err("stopped".into());
+        }
+        let _busy = Busy::new(&guard);
         let state = self.state.clone();
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
@@ -1336,6 +1477,7 @@ const NATIVES: &[&str] = &[
     "query",
     "matches",
     "layoutGeneration",
+    "wallNow",
     "innerHTML",
     "setInnerHTML",
     "outerHTML",
@@ -2117,6 +2259,11 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         "revision" => {
             let r = state.borrow().document.revision();
             rv.set(v8::Number::new(scope, r as f64).into());
+        }
+        // Real time since the realm began (ms), for time within a task.
+        "wallNow" => {
+            let t = state.borrow().started.elapsed().as_secs_f64() * 1000.;
+            rv.set(v8::Number::new(scope, t).into());
         }
         // The layout's geometry identity: the same while nothing moved or
         // resized (a restyle, a transform), so observers need not look.
