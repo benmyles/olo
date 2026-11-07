@@ -1905,6 +1905,21 @@ people.
 
 ## Done (most recently finished first)
 
+- ~~**Agent Screens: Escape crashed the screen viewer**~~ (Ben, 2026-11-06:
+  "in agent screens i hit escape and it crashed see the logs it just
+  happened"). olo-screen panicked (crash report
+  olo-screen-3508739-1794028779015, 21:19): "cannot read
+  olo_screen::viewer::Viewer while it is already being updated", at
+  crates/ui/src/menu.rs:1186. The viewer's key handler (viewer.rs
+  `key`, inside the Viewer's own update) asks `menu::shortcut_command`
+  whether the key is a menu's shortcut; the menu bar, built on demand
+  since `MenuBar::of` (d1d0438b), reads the Viewer to build its menus,
+  which GPUI refuses mid-update. A regression of that change: the bar
+  must answer from what it built last when its view is busy (or be
+  built without reading it then), for every app whose key handlers ask.
+  Fixed (3a1cd2e4): GPUI's `Entity::try_read`; the bar answers from what it
+  built last while its app is being updated; its test asks from inside.
+
 - ~~**Deskbar's tray icons: either click shows their menu**~~ (Ben,
   2026-11-06): "in the deskbar, left clicking or right clicking an icon
   should show the context menu for that icon (if there is one -- if not
