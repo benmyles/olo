@@ -64,6 +64,9 @@ pub struct UdevBackend {
     devices: UdevDevices,
     monitor: MonitorSocket,
     token: Option<Token>,
+    /// The seat whose GPUs these are (a GPU plugged in on another seat
+    /// isn't this one's).
+    seat: OsString,
     span: tracing::Span,
 }
 
@@ -114,6 +117,7 @@ impl UdevBackend {
             devices,
             monitor,
             token: None,
+            seat: OsString::from(seat),
             span,
         })
     }
@@ -158,6 +162,11 @@ impl EventSource for UdevBackend {
             match event.event_type() {
                 // New device
                 EventType::Add => {
+                    // (Another seat's GPU: its own session's, never ours.)
+                    if seat_of(&event) != self.seat {
+                        debug!("Device on another seat: {:?}", event.devnode());
+                        continue;
+                    }
                     if let (Some(path), Some(devnum)) = (event.devnode(), event.devnum()) {
                         info!("New device: #{} at {}", devnum, path.display());
                         if self.devices.insert(devnum, path.to_path_buf()).is_none() {
@@ -331,15 +340,17 @@ fn gpus_for_seat<S: AsRef<str>>(seat: S) -> io::Result<Vec<Device>> {
     enumerator.match_sysname("card[0-9]*")?;
     let gpus = enumerator
         .scan_devices()?
-        .filter(|device| {
-            device
-                .property_value("ID_SEAT")
-                .map(|x| x.to_os_string())
-                .unwrap_or_else(|| OsString::from("seat0"))
-                == *seat.as_ref()
-        })
+        .filter(|device| seat_of(device) == *seat.as_ref())
         .collect::<Vec<_>>();
     Ok(gpus)
+}
+
+/// The seat a device is on (udev's `ID_SEAT`; seat0 when it has none).
+fn seat_of(device: &Device) -> OsString {
+    device
+        .property_value("ID_SEAT")
+        .map(|x| x.to_os_string())
+        .unwrap_or_else(|| OsString::from("seat0"))
 }
 
 /// Returns the loaded driver for a device named by it's [`dev_t`].
