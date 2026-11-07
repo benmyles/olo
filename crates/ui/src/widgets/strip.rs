@@ -316,7 +316,7 @@ struct Placed {
 
 impl Placed {
     fn place(&self, at: Point<Pixels>) -> Option<usize> {
-        let near = if self.side { self.area.dilate(px(m::SPACING)) } else { self.area.dilate(px(m::SPACING)) };
+        let near = self.area.dilate(px(m::SPACING));
         let along = if self.side { at.y } else { at.x };
         near.contains(&at).then(|| self.mids.iter().filter(|&&m| m < along).count())
     }
