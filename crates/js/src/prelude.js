@@ -298,11 +298,14 @@
   // ---------- Element
   const camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
   const kebab = (s) => s.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()).replace(/^webkit-/, '-webkit-');
+  // Property names fold to lower case, except custom properties (CSS
+  // Variables 1 §2: case-sensitive).
+  const propName = (name) => { name = String(name); return name.startsWith('--') ? name : name.toLowerCase(); };
   const parseStyle = (text) => {
     const out = [];
     let depth = 0, quote = null, start = 0;
     text = text || '';
-    const flush = (part) => { const i = part.indexOf(':'); if (i > 0) { const name = part.slice(0, i).trim().toLowerCase(); let value = part.slice(i + 1).trim(); let important = false; const m = value.match(/\s*!\s*important\s*$/i); if (m) { value = value.slice(0, m.index).trim(); important = true; } if (name) { const j = out.findIndex((p) => p.name === name); if (j >= 0) out.splice(j, 1); out.push({ name, value, important }); } } };
+    const flush = (part) => { const i = part.indexOf(':'); if (i > 0) { const name = propName(part.slice(0, i).trim()); let value = part.slice(i + 1).trim(); let important = false; const m = value.match(/\s*!\s*important\s*$/i); if (m) { value = value.slice(0, m.index).trim(); important = true; } if (name) { const j = out.findIndex((p) => p.name === name); if (j >= 0) out.splice(j, 1); out.push({ name, value, important }); } } };
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
       if (quote) { if (c === quote && text[i - 1] !== '\\') quote = null; continue; }
@@ -331,10 +334,10 @@
   };
   class CSSStyleDeclaration {
     constructor(read, write) { this._read = read; this._write = write; }
-    getPropertyValue(name) { const p = parseStyle(this._read()).find((p) => p.name === String(name).toLowerCase()); return p ? p.value : ''; }
-    getPropertyPriority(name) { const p = parseStyle(this._read()).find((p) => p.name === String(name).toLowerCase()); return p && p.important ? 'important' : ''; }
+    getPropertyValue(name) { const p = parseStyle(this._read()).find((p) => p.name === propName(name)); return p ? p.value : ''; }
+    getPropertyPriority(name) { const p = parseStyle(this._read()).find((p) => p.name === propName(name)); return p && p.important ? 'important' : ''; }
     setProperty(name, value, priority) {
-      name = String(name).toLowerCase();
+      name = propName(name);
       const props = parseStyle(this._read()).filter((p) => p.name !== name);
       if (value !== '' && value != null) props.push({ name, value: String(value), important: priority === 'important' });
       this._write(styleText(props));
@@ -719,7 +722,7 @@
     const defaults = { display: ['div', 'p', 'body', 'html', 'section', 'header', 'footer', 'main', 'nav', 'article', 'aside', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'form', 'table', 'pre', 'blockquote', 'figure', 'hr', 'fieldset', 'details', 'dialog', 'address', 'dd', 'dl', 'dt'].includes(tag) ? 'block' : (tag === 'script' || tag === 'style' || tag === 'head' || tag === 'meta' || tag === 'link' || tag === 'title' || tag === 'template' ? 'none' : 'inline'), visibility: 'visible', opacity: '1', position: 'static', overflow: 'visible', color: 'rgb(0, 0, 0)', backgroundColor: 'rgba(0, 0, 0, 0)', fontSize: '16px', fontFamily: 'serif', fontWeight: '400', lineHeight: 'normal', width: 'auto', height: 'auto', zIndex: 'auto', transform: 'none', transition: 'all 0s ease 0s', animationName: 'none', pointerEvents: 'auto', direction: 'ltr', boxSizing: 'content-box', textAlign: 'start', top: 'auto', left: 'auto', right: 'auto', bottom: 'auto', margin: '0px', padding: '0px', border: '0px none rgb(0, 0, 0)', marginTop: '0px', marginRight: '0px', marginBottom: '0px', marginLeft: '0px', paddingTop: '0px', paddingRight: '0px', paddingBottom: '0px', paddingLeft: '0px', borderTopWidth: '0px', borderRightWidth: '0px', borderBottomWidth: '0px', borderLeftWidth: '0px', float: 'none', clear: 'none', cursor: 'auto', content: 'none', flexDirection: 'row', flexWrap: 'nowrap', justifyContent: 'normal', alignItems: 'normal', gap: 'normal', minWidth: '0px', maxWidth: 'none', minHeight: '0px', maxHeight: 'none', letterSpacing: 'normal', textTransform: 'none', textDecoration: 'none solid rgb(0, 0, 0)', whiteSpace: 'normal', wordBreak: 'normal', backgroundImage: 'none', backgroundSize: 'auto', backgroundPosition: '0% 0%', userSelect: 'auto', willChange: 'auto', filter: 'none', backdropFilter: 'none', clipPath: 'none', mixBlendMode: 'normal', isolation: 'auto', objectFit: 'fill', aspectRatio: 'auto', scrollBehavior: 'auto', overflowX: 'visible', overflowY: 'visible', touchAction: 'auto', writingMode: 'horizontal-tb', columnCount: 'auto', outline: 'rgb(0, 0, 0) none 0px', boxShadow: 'none', borderRadius: '0px', verticalAlign: 'baseline', listStyle: 'outside none disc', tableLayout: 'auto', borderCollapse: 'separate', emptyCells: 'show', captionSide: 'top', resize: 'none', appearance: 'none', colorScheme: 'normal', accentColor: 'auto', containerType: 'normal', contain: 'none', perspective: 'none', transformOrigin: '0px 0px', transformStyle: 'flat', backfaceVisibility: 'visible', animationDuration: '0s', transitionDuration: '0s', fontStyle: 'normal', fontVariant: 'normal', textIndent: '0px', textOverflow: 'clip', textShadow: 'none', wordSpacing: '0px', tabSize: '8', hyphens: 'manual', inset: 'auto' };
     const decl = new CSSStyleDeclaration(() => Object.entries(defaults).map(([k, v]) => kebab(k) + ': ' + v).concat(inline.map((p) => p.name + ': ' + p.value)).join('; '), () => {});
     const engine = (name) => (el && N.nodeType(el) === 1 ? N.computed(el, name) : null);
-    decl.getPropertyValue = (name) => { name = String(name).toLowerCase(); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(name)] !== undefined ? defaults[camel(name)] : ''; };
+    decl.getPropertyValue = (name) => { name = propName(name); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(name)] !== undefined ? defaults[camel(name)] : ''; };
     return new Proxy(decl, { get(target, key) { if (typeof key !== 'string') return undefined; if (key in target) return target[key]; const name = kebab(key); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(key)] !== undefined ? defaults[camel(key)] : ''; }, set() { return true; } });
   };
   global.matchMedia = (query) => { const q = String(query); let matches = false; const m = q.match(/\((min|max)-width:\s*([\d.]+)px\)/); if (m) matches = m[1] === 'min' ? vw >= Number(m[2]) : vw <= Number(m[2]); if (/prefers-color-scheme:\s*dark/.test(q)) matches = false; if (/prefers-color-scheme:\s*light/.test(q)) matches = true; if (/prefers-reduced-motion:\s*no-preference/.test(q)) matches = true; if (/hover:\s*hover/.test(q) || /pointer:\s*fine/.test(q)) matches = true; if (/\(min-resolution:\s*([\d.]+)(dppx|x)\)/.test(q)) matches = dpr >= Number(q.match(/\(min-resolution:\s*([\d.]+)/)[1]); if (/orientation:\s*landscape/.test(q)) matches = vw >= vh; if (/orientation:\s*portrait/.test(q)) matches = vw < vh; if (/^\s*(all|screen)\s*$/.test(q)) matches = true; if (/print/.test(q)) matches = false; const mql = { media: q, matches, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; } }; return mql; };
@@ -733,6 +736,7 @@
   global.setTimeout = (fn, delay, ...args) => schedule(fn, delay, args, false);
   global.setInterval = (fn, delay, ...args) => schedule(fn, delay, args, true);
   global.clearTimeout = global.clearInterval = (id) => { timers.delete(id); };
+  const pendingIntersections = [];
   global.requestAnimationFrame = (fn) => { const id = nextTimer++; rafs.push({ id, fn }); return id; };
   global.cancelAnimationFrame = (id) => { const i = rafs.findIndex((r) => r.id === id); if (i >= 0) rafs.splice(i, 1); };
   global.requestIdleCallback = (fn, options) => schedule(() => fn({ didTimeout: false, timeRemaining: () => 50 }), (options && options.timeout) || 1, [], false);
@@ -758,16 +762,22 @@
       if (t.interval) { t.runs++; if (t.runs > 50) { timers.delete(id); continue; } t.due = now + t.interval; } else timers.delete(id);
       try { t.fn.apply(global, t.args); } catch (e) { reportError(e); }
     }
-    if (rafs.length && now >= lastFrame + 16) {
+    // A frame: animation callbacks, then the intersections observed since
+    // (HTML's "update the rendering" runs the callbacks and then updates
+    // the observations, whose notifications follow), so a page that
+    // schedules a frame and then observes sees the frame first.
+    if ((rafs.length || pendingIntersections.length) && now >= lastFrame + 16) {
       lastFrame = now;
       const batch = rafs.splice(0, rafs.length);
       for (const r of batch) { try { r.fn.call(global, performanceNow()); } catch (e) { reportError(e); } }
+      const observed = pendingIntersections.splice(0, pendingIntersections.length);
+      for (const f of observed) f();
     }
     // Sizes can only have changed with the document: one check per change.
     if (resizeObservers.size) { const r = N.revision(); if (r !== resizeRevision) { resizeRevision = r; for (const o of [...resizeObservers]) o._check(); } }
     let next = -1;
     for (const t of timers.values()) if (next < 0 || t.due < next) next = t.due;
-    if (rafs.length) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
+    if (rafs.length || pendingIntersections.length) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
     if (next >= 0 && next <= now) next = now + 1;
     return next;
   };
@@ -864,7 +874,7 @@
   // IntersectionObserver reports every target as intersecting (its rect
   // from the layout; the viewport is the root), once, as a task: pages
   // then mount what they show on scroll, as they would in time.
-  global.IntersectionObserver = class IntersectionObserver { constructor(cb, options) { this._cb = cb; this.root = (options && options.root) || null; this.rootMargin = (options && options.rootMargin) || '0px'; this.thresholds = [].concat((options && options.threshold) || 0); this._targets = []; } observe(el) { if (this._targets.includes(el)) return; this._targets.push(el); const cb = this._cb; setTimeout(() => { if (!this._targets.includes(el)) return; const r = N.rect(el) || [0, 0, 0, 0]; const rect = new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]); const entry = { target: el, isIntersecting: true, intersectionRatio: 1, time: performanceNow(), boundingClientRect: rect, intersectionRect: rect, rootBounds: new DOMRect(0, 0, vw, vh) }; try { cb([entry], this); } catch (e) { reportError(e); } }, 0); } unobserve(el) { this._targets = this._targets.filter((t) => t !== el); } disconnect() { this._targets = []; } takeRecords() { return []; } };
+  global.IntersectionObserver = class IntersectionObserver { constructor(cb, options) { this._cb = cb; this.root = (options && options.root) || null; this.rootMargin = (options && options.rootMargin) || '0px'; this.thresholds = [].concat((options && options.threshold) || 0); this._targets = []; } observe(el) { if (this._targets.includes(el)) return; this._targets.push(el); const cb = this._cb; pendingIntersections.push(() => { if (!this._targets.includes(el)) return; const r = N.rect(el) || [0, 0, 0, 0]; const rect = new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]); const entry = { target: el, isIntersecting: true, intersectionRatio: 1, time: performanceNow(), boundingClientRect: rect, intersectionRect: rect, rootBounds: new DOMRect(0, 0, vw, vh) }; try { cb([entry], this); } catch (e) { reportError(e); } }); } unobserve(el) { this._targets = this._targets.filter((t) => t !== el); } disconnect() { this._targets = []; } takeRecords() { return []; } };
   global.IntersectionObserverEntry = class IntersectionObserverEntry {};
   // A synchronous fetch (XMLHttpRequest in synchronous mode): bytes.
   const fetchSync = (url, method, body) => (/^(data|blob):/.test(url) ? global.__olo_fetchInline(url) : N.fetchSync(url, method, body));

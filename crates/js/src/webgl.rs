@@ -399,7 +399,7 @@ impl Context {
     /// copies when its drawing is done; nothing waits here), and take the
     /// previous readback, flipped to rows from the top. None until the
     /// first readback lands.
-    fn read_back_async(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+    fn read_back_async(&mut self, dirty: bool) -> Option<(u32, u32, Vec<u8>)> {
         // The first frame is read synchronously, so a canvas never shows
         // blank; later frames come back one render late, without a stall.
         if !self.gl.es3 || self.last.is_none() {
@@ -415,7 +415,7 @@ impl Context {
         // read within its mapping.
         unsafe {
             let g = &self.gl.gl;
-            if self.dirty {
+            if dirty {
                 let pbo = match self.pbos[next] {
                     Some(b) => b,
                     None => {
@@ -460,10 +460,9 @@ impl Context {
         }
         let was_dirty = self.dirty;
         self.dirty = false;
-        let Some((w, h, mut rgba)) = self.read_back_async() else {
-            // The first frame's readback is in flight: nothing to show yet
+        let Some((w, h, mut rgba)) = self.read_back_async(was_dirty) else {
+            // The frame's readback is in flight: nothing new to show yet
             // (the next render takes it); keep whatever was shown.
-            let _ = was_dirty;
             return self.last.clone();
         };
         if !self.alpha {

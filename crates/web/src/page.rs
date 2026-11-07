@@ -668,6 +668,11 @@ impl Measured {
         use css::style::Value;
         let tree = self.layout.cache().tree();
         let style = tree.styles().snapshot(node)?;
+        // A custom property: its computed value as spelled, substituted
+        // (a page's gradient reads its colours from `--gradientColorOne`).
+        if name.starts_with("--") {
+            return style.custom(name).and_then(|c| c.value().map(|v| v.source_spelling().trim().to_owned()));
+        }
         let Name::Longhand(p) = Name::parse(name)? else { return None };
         let g = self.geometry(node);
         let px = |v: f64| format!("{}px", trim(v));

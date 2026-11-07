@@ -467,7 +467,9 @@ fn render(
             live.stats = (0, 0., 0, 0., Instant::now());
         }
         let revision = live.realm.revision();
-        if revision != live.rendered || live.render_again {
+        // The document changed, a readback is in flight, or a canvas was
+        // drawn on (its drawing shows only through a render).
+        if revision != live.rendered || live.render_again || live.realm.canvases_dirty() {
             if live.last_render.elapsed() < LIVE_RENDER_INTERVAL {
                 // Coalesce: render at the interval, not at every change.
                 let soon = now_ms + (LIVE_RENDER_INTERVAL - live.last_render.elapsed()).as_secs_f64() * 1000.;
@@ -503,6 +505,9 @@ fn render(
             }
             let host = PageHost::new(c.page.scope(), &r.key);
             let before_canvases = Instant::now();
+            if std::env::var_os("OLO_CANVAS_DEBUG").is_some() {
+                eprintln!("  canvases before render: {}", live.realm.canvas_states());
+            }
             let canvases = live.realm.canvases();
             let canvases_ms = before_canvases.elapsed().as_secs_f64() * 1000.;
             let before_rerender = Instant::now();

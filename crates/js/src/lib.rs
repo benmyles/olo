@@ -561,6 +561,25 @@ impl Realm {
     pub fn canvases_pending(&self) -> bool {
         self.state.borrow().gl.values().any(webgl::Context::readback_pending)
     }
+    /// Whether a canvas in the page was drawn on since it was last shown
+    /// (a render shows the drawing; nothing else in the document changed).
+    pub fn canvases_dirty(&self) -> bool {
+        let s = self.state.borrow();
+        s.canvases.iter().any(|(_, c)| c.touched && c.dirty) || s.gl.iter().any(|(_, c)| c.touched && c.dirty)
+    }
+    /// The canvases' states, for the timing log: kind, size, touched,
+    /// dirty, and whether a readback is in flight.
+    pub fn canvas_states(&self) -> String {
+        let s = self.state.borrow();
+        let mut out = Vec::new();
+        for (n, c) in s.canvases.iter() {
+            out.push(format!("2d {:?} {}x{} touched={} dirty={}", n, c.width(), c.height(), c.touched, c.dirty));
+        }
+        for (n, c) in s.gl.iter() {
+            out.push(format!("gl {:?} {}x{} touched={} dirty={} pending={}", n, c.width(), c.height(), c.touched, c.dirty, c.readback_pending()));
+        }
+        out.join("; ")
+    }
     pub fn canvases(&self) -> Vec<(NodeId, Arc<olo_web::image::Image>)> {
         let mut s = self.state.borrow_mut();
         let mut out: Vec<_> = s.canvases.iter_mut().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))).collect();
