@@ -880,7 +880,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // A window in front of it (a dialog) takes the pointer over itself.
         let front = fullscreen.as_ref().and_then(|full| {
             crate::shell::in_front_of_fullscreen(&self.space, output, full).into_iter().find_map(|w| {
-                let loc = self.space.element_location(&w)?;
+                let loc = self.render_location(&w)?;
                 w.surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL).map(|(surface, surf_loc)| (surface, surf_loc + loc))
             })
         });
@@ -908,9 +908,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Whether a window in front of `full` (filling `output`) is at
     /// `pos` (global): a click there is that window's.
     fn in_front_of_fullscreen_under(&self, output: &Output, full: &crate::shell::WindowElement, pos: Point<f64, Logical>) -> bool {
-        crate::shell::in_front_of_fullscreen(&self.space, output, full)
-            .iter()
-            .any(|w| self.space.element_location(w).is_some_and(|loc| w.surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL).is_some()))
+        crate::shell::in_front_of_fullscreen(&self.space, output, full).iter().any(|w| self.render_location(w).is_some_and(|loc| w.surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL).is_some()))
+    }
+
+    /// Where window `w`'s surfaces are, as `Space::element_under` gives it:
+    /// its place less its geometry's own offset (a client-decorated
+    /// window's shadow; none for Olo's decorated ones), so a point is
+    /// tried where the window is drawn.
+    fn render_location(&self, w: &crate::shell::WindowElement) -> Option<Point<i32, Logical>> {
+        Some(self.space.element_location(w)? - smithay::desktop::space::SpaceElement::geometry(w).loc)
     }
 
     /// A window's menu at `pos` (global): its surface there and where it

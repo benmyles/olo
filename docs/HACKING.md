@@ -4860,7 +4860,10 @@ window that comes up while it fills the display (a password dialog, a
 new window: they come up in front) is drawn over it, its menus too, and
 takes the clicks over itself (`shell::in_front_of_fullscreen`, the
 windows above it in the space that show on that display, used by
-`gather_elements`, `surface_under` and the click's focus): drawn alone,
+`gather_elements`, `surface_under` and the click's focus; each tried
+where it's drawn, its render location: its place less its geometry's
+offset, a client-decorated window's shadow, as `Space::element_under`
+does): drawn alone,
 the full-screen window hid them, and a password dialog asked for while
 Olo Setup filled the screen had the keyboard but was never seen (a
 stock Fedora 45, 2026-11-07). A click on the full-screen window raises
