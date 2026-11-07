@@ -4751,7 +4751,12 @@ apps, other programs, a portal's dialog, a program in the background):
 `new_toplevel` gives it the keyboard as it is made, on the display and
 workspace it opens on (the one showing), auto-tiled, zoomed in Focus or
 grouped as its tab in front; wm-fuzz fails a step whose new window
-doesn't have it. Windows coming back after an upgrade are the exception:
+doesn't have it. One an app opens from one of its own floating windows
+(Preferences ▸ Sound's Try It, from the Sound panel) floats too, over
+it, in Focus and Auto-Tiling (`new_toplevel`: the window that had the
+focus is its app's and `floats`; it's floated as by hand): zoomed or
+tiled, it was under the window it was opened from, floats being above
+tiles (Ben, 2026-11-06). Windows coming back after an upgrade are the exception:
 they come back as they were. Not an alert or a dialog of an app that
 was started again (a new process: the old one is gone): it is placed
 afresh, in the middle of the screen or over its parent, not where the

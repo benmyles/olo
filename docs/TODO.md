@@ -62,18 +62,18 @@ something nobody here has is in "Blocked", with what it waits for.
   gnome-* or gsd-* process that starts) and replace what's found; Olo
   Doctor says if any GNOME service is still running.
 
+## Done, waiting for Ben to try or confirm
+
 - **A window opened from a floating one opens on top of it** (Ben,
   2026-11-06: "if i'm in a floating window like prefs -> sound and click
   e.g. try it for the voice processing and that opens another window,
   that other window should open on top not under the one i launched it
-  from"). A window an app opens (Preferences ▸ Sound ▸ Voice Processing's
-  Try It, any dialog or panel opened from a floating window) is placed
-  and stacked above the window it was opened from, and has the focus:
-  app_server's new-window placement (shell/xdg.rs) raising a new
-  toplevel above its app's (or its parent's) floating windows, for
-  every app, not only Preferences.
-
-## Done, waiting for Ben to try or confirm
+  from"). Done (HACKING, "New windows"): on Ben's displays in Focus (and
+  the Dell in Auto-Tiling) a new window was zoomed or tiled, and floating
+  windows show above those, so it opened under the panel. Now a window
+  an app opens from one of its own floating windows floats too, in
+  front and focused. Tried in a tsession in Focus and Auto-Tiling: Try
+  It in front of Sound, focused. To try: Preferences ▸ Sound ▸ Try It.
 
 - **The start-up screen's sound says "olo"** (Ben, 2026-11-06: "a
   startup sound that is like \"ooollllooooo\" reminiscent of the mac

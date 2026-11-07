@@ -58,9 +58,22 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             Some(new) => new.meta().focus_before.borrow().clone(),
             None => (self.seat.get_keyboard().and_then(|k| k.current_focus()), self.space.elements().find(|w| w.decoration().focused).cloned()),
         };
+        let opener = before.1.clone();
         *window.meta().focus_before.borrow_mut() = before;
-        let near = self.new_window_near(client.map(|c| c.id()));
+        let near = self.new_window_near(client.as_ref().map(|c| c.id()));
         place_new_window(&mut self.space, near, &window, true);
+        // Opened from one of its app's floating windows (Preferences ▸
+        // Sound's Try It, from the Sound panel), it floats too, over it:
+        // zoomed by Focus or tiled, it would be under the window it was
+        // opened from (Ben, 2026-11-06).
+        if let (Some(opener), Some(client)) = (opener, &client)
+            && opener.meta().owner.borrow().as_ref().is_some_and(|(_, c)| *c == client.id())
+            && self.floats(&opener)
+            && self.window_output(&window).is_some_and(|o| self.mode_now(&o) != olo_protocol::WindowingMode::Standard)
+        {
+            tracing::info!(window = window.id(), opener = opener.id(), "opened from its app's floating window: it floats too");
+            Self::restore_float_override(&window, Some(true));
+        }
         self.focus_window(&window);
 
         compositor::add_post_commit_hook(surface.wl_surface(), |state: &mut Self, _, surface| {
