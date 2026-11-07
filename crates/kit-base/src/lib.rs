@@ -6,6 +6,7 @@
 //! selection (`list`) and the keyboard profile's keys (`keys`).
 
 pub mod clipboard;
+pub mod clock;
 pub mod commands;
 pub mod files;
 pub mod gpu;

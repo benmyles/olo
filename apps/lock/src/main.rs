@@ -6,7 +6,7 @@
 //! Both checks run on worker threads: PAM for the password (which sleeps on
 //! a failure) and fprintd for Touch ID, listening the whole time.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use olo_system::{auth, fingerprint};
 use olo_ui::{
@@ -79,59 +79,8 @@ struct Lock {
 }
 
 fn clock_text() -> (String, String) {
-    // Local time without a tz database: the C library knows the zone.
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
-    let mut tm: libc_tm::Tm = Default::default();
-    libc_tm::localtime(now, &mut tm);
-    let hour12 = match tm.hour % 12 {
-        0 => 12,
-        h => h,
-    };
-    let time = format!("{hour12}:{:02}", tm.min);
-    const DAYS: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    let date = format!("{}, {} {}", DAYS[tm.wday.clamp(0, 6) as usize], MONTHS[tm.mon.clamp(0, 11) as usize], tm.mday);
-    (time, date)
-}
-
-/// A thin wrapper over localtime_r (the kit has no calendar of its own).
-mod libc_tm {
-    #[derive(Default)]
-    pub struct Tm {
-        pub min: i32,
-        pub hour: i32,
-        pub mday: i32,
-        pub mon: i32,
-        pub wday: i32,
-    }
-
-    #[repr(C)]
-    struct CTm {
-        tm_sec: i32,
-        tm_min: i32,
-        tm_hour: i32,
-        tm_mday: i32,
-        tm_mon: i32,
-        tm_year: i32,
-        tm_wday: i32,
-        tm_yday: i32,
-        tm_isdst: i32,
-        tm_gmtoff: i64,
-        tm_zone: *const std::ffi::c_char,
-    }
-
-    unsafe extern "C" {
-        fn localtime_r(t: *const i64, out: *mut CTm) -> *mut CTm;
-    }
-
-    pub fn localtime(t: i64, out: &mut Tm) {
-        let mut c = CTm { tm_sec: 0, tm_min: 0, tm_hour: 0, tm_mday: 1, tm_mon: 0, tm_year: 70, tm_wday: 4, tm_yday: 0, tm_isdst: 0, tm_gmtoff: 0, tm_zone: std::ptr::null() };
-        // SAFETY: both pointers are valid for the call; localtime_r is reentrant.
-        if unsafe { localtime_r(&t, &mut c) }.is_null() {
-            return;
-        }
-        *out = Tm { min: c.tm_min, hour: c.tm_hour, mday: c.tm_mday, mon: c.tm_mon, wday: c.tm_wday };
-    }
+    let now = olo_ui::clock::now();
+    (now.time(), now.date())
 }
 
 impl Lock {
@@ -448,8 +397,7 @@ fn main() {
         let l = lock.clone();
         cx.spawn(async move |cx| {
             loop {
-                let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
-                cx.background_executor().timer(Duration::from_secs(60 - secs % 60)).await;
+                cx.background_executor().timer(olo_ui::clock::to_next_minute()).await;
                 if l.update(cx, |_, cx| cx.notify()).is_err() {
                     break;
                 }

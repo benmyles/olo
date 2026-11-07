@@ -1,0 +1,20 @@
+[package]
+name = "olo-login"
+description = "Olo's login screen's daemon, in GDM's place: the seat, the greeter's session, a worker process per way in (PAM), and the person's session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-login"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+olo-crash.workspace = true
+olo-greet = { path = "../../crates/greet" }
+olo-system.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+libc = "0.2"

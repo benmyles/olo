@@ -1,0 +1,20 @@
+[package]
+name = "olo-greeter"
+description = "Olo's login screen: who, their password (or fingerprint, or face, through the login daemon's PAM), the session, and the power buttons"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-greeter"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+olo-greet = { path = "../../crates/greet" }
+olo-theme.workspace = true
+olo-ui.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
