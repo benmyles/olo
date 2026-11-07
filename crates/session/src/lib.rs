@@ -1,7 +1,7 @@
 //! olo-session: starts an Olo session and keeps it running.
 //!
 //! ```text
-//! olo-session [--tty-udev | --winit | --headless WxH] [--no-shell]
+//! olo-session [--tty-udev | --winit | --headless WxH] [--no-shell | --greeter]
 //! olo-session reload     restart app_server in place (picks up upgrades)
 //! olo-session upgrade    install newer programs from the build tree, then reload
 //! olo-session quit       end the session
@@ -49,7 +49,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-const USAGE: &str = "usage: olo-session [--tty-udev | --winit | --headless WxH] [--no-shell]
+const USAGE: &str = "usage: olo-session [--tty-udev | --winit | --headless WxH] [--no-shell | --greeter]
        olo-session reload     restart app_server in place (picks up upgrades)
        olo-session upgrade    install newer programs from the build tree, then reload
        olo-session quit       end the session";
@@ -231,6 +231,9 @@ struct Resume {
     /// its new version only when `check_stale` asked again, 20 s on.)
     #[serde(default)]
     nudge_in_ms: Option<u64>,
+    /// The login screen's session (`--greeter`).
+    #[serde(default)]
+    greeter: bool,
 }
 
 /// olo-wlproxy and app_server's two other sockets: one for Olo's own
@@ -300,6 +303,8 @@ struct Session {
     /// The session is starting: its first app_server shows Olo's
     /// start-up screen (`OLO_STARTING`; app_server's `veil.rs`).
     starting: bool,
+    /// The login screen's session (`--greeter`).
+    greeter: bool,
 }
 
 const RESUME_ENV: &str = "OLO_SESSION_RESUME";
@@ -316,13 +321,16 @@ impl Session {
             }
         }
         let no_shell = args.iter().any(|a| a == "--no-shell");
+        // The login screen's (olo-login's greeter session): the greeter
+        // alone, as its own user, none of a person's services.
+        let greeter = args.iter().any(|a| a == "--greeter");
         // An agent screen's: a session bus of its own (`own_bus`).
         let own_bus = args.iter().position(|a| a == "--own-bus").and_then(|i| args.get(i + 1)).cloned();
         let mut args = args;
         if let Some(i) = args.iter().position(|a| a == "--own-bus") {
             args.drain(i..(i + 2).min(args.len()));
         }
-        let mut backend: Vec<String> = args.into_iter().filter(|a| a != "--no-shell").collect();
+        let mut backend: Vec<String> = args.into_iter().filter(|a| a != "--no-shell" && a != "--greeter").collect();
         if backend.is_empty() {
             backend.push("--tty-udev".into());
         }
@@ -373,14 +381,15 @@ impl Session {
             retired: Vec::new(),
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
             // (A real session's start; a test's when asked.)
-            starting: real_start || std::env::var_os("OLO_STARTUP_VEIL").is_some(),
+            starting: (real_start && !greeter) || std::env::var_os("OLO_STARTUP_VEIL").is_some(),
+            greeter,
         };
         s.own_files();
         s.start_server();
         // Only a real session owns the user's environment: a headless or
         // nested one (tests, development) must not point the user's portals
         // and services at itself.
-        let real = s.backend.iter().any(|b| b == "--tty-udev");
+        let real = s.backend.iter().any(|b| b == "--tty-udev") && !greeter;
         // SAFETY: single-threaded start-up.
         unsafe {
             if real {
@@ -397,13 +406,19 @@ impl Session {
             keyd::pass_through();
             skills::start();
         }
-        s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+        if !greeter {
+            s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+        }
         // The screen's bus, looked after with the shell (started again if
         // it ends, ended with the session).
         if let Some((argv, pid)) = bus.as_ref().map(|b| (b.argv.clone(), b.pid)) {
             s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
         }
-        if !no_shell {
+        if greeter {
+            let argv = vec!["olo-greeter".to_string()];
+            let pid = spawn(&argv, &[]).unwrap_or(0);
+            s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
+        } else if !no_shell {
             let extra: &[&[&str]] = if real { REAL_SHELL } else { &[] };
             let mut argvs: Vec<Vec<String>> = SHELL.iter().chain(extra).map(|argv| argv.iter().map(|a| a.to_string()).collect()).collect();
             // On a bus of its own, the services the person's session has
@@ -440,7 +455,8 @@ impl Session {
             (UnixListener::from_raw_fd(p.direct_fd), UnixListener::from_raw_fd(p.proxied_fd), p.child)
         });
         let ipc_path = run_file(format!("olo-{}.sock", r.display));
-        let real = r.backend.iter().any(|b| b == "--tty-udev");
+        let real = r.backend.iter().any(|b| b == "--tty-udev") && !r.greeter;
+        let greeter = r.greeter;
         let mut s = Session {
             watchdog: watchdog::Watchdog::start(ipc_path.clone()),
             display: r.display,
@@ -467,9 +483,12 @@ impl Session {
             retired,
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
             starting: false,
+            greeter,
         };
         s.own_files();
-        s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+        if !greeter {
+            s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+        }
         // A new proxy (this upgrade's) takes new programs from now on.
         s.renew_proxy_if_upgraded();
         // A service left stopped after crashing again and again may be
@@ -999,6 +1018,7 @@ impl Session {
             reloading,
             proxy,
             nudge,
+            greeter: self.greeter,
         };
         let Ok(state) = serde_json::to_string(&resume) else { return };
         for &fd in &fds {
@@ -1067,6 +1087,12 @@ impl Session {
             } else if let Some(i) = self.shell.iter().position(|c| c.pid == pid) {
                 if self.stopping {
                     continue;
+                }
+                // The greeter done (someone logging in): the login
+                // screen's session ends, for theirs to start.
+                if self.greeter && clean {
+                    log("the greeter is done; ending the login screen's session");
+                    self.shutdown(0);
                 }
                 let c = &mut self.shell[i];
                 if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == olo_xdg::SERVICE_NOT_WANTED {

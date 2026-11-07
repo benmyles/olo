@@ -7478,6 +7478,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-greet"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "libloading",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "olo-greeter"
+version = "0.1.0"
+dependencies = [
+ "olo-crash",
+ "olo-greet",
+ "olo-theme",
+ "olo-ui",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "olo-hvif"
 version = "0.1.0"
 dependencies = [
@@ -7548,6 +7572,17 @@ dependencies = [
  "olo-xdg",
  "tracing",
  "zeroize",
+]
+
+[[package]]
+name = "olo-login"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-crash",
+ "olo-greet",
+ "olo-system",
+ "serde_json",
 ]
 
 [[package]]
