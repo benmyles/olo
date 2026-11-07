@@ -529,6 +529,9 @@ this is a harness correction, not a browser speedup.
 - [x] Initial non-root SVG object/group opacity and isolated clipping: retained
   ranges/bounds, cropped bounded worker surfaces, nested compositing, byte alpha.
   140 Chrome bounds match;65 exact crops,75 explicit pixel nonpasses.
+- [ ] Profile native ordinary scroll hitch observed at opacity checkpoint:
+  before0/after1 hitch and still frame; slowest client draw4.89→9.27ms. Median
+  client-submit latency improved, but does not establish smoothness acceptance.
 - [ ] Optimize isolated clipped-layer raster:256×256 tile418/408→542/537us
   for100/1000 SVG workloads (~30% slower); full ink bounds are needed with the
   current scan converter. Investigate exact binary-clip fast paths and raster
@@ -542,3 +545,6 @@ this is a harness correction, not a browser speedup.
 - [x] Clarify probe shutdown: Cmd+Q was not proof of process termination; explicit
   documented menu quit exits promptly. Harnesses must invoke quit, await actual
   window PID and verify fresh launch identity; forwarded launches aren't fresh.
+- [ ] Verify Browser's human quit shortcut and last-window lifecycle separately:
+  the Cmd+Q probe left a live single-instance process; explicit menu quit exits.
+  Correct harness cleanup is not proof that every human quit path works.

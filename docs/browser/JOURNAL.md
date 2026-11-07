@@ -5242,3 +5242,16 @@ Screens stopped; explicit quit/await checks passed. Measured evidence under
 measurements/2026-11-06-stripe-svg-opacity-*.json. Screenshot journal added.
 No useful Stripe render/configuration accepted; Stripe0/30, corpus0/100.
 Next visible rect geometry/painting and existing raster/stacking gaps. Goal active.
+
+Review of native burst details: before had0 hitches/still frames, after1/1,
+slowest client draw4.89→9.27ms. Median latency alone does not establish smoothness;
+this single observed hitch remains an explicit performance follow-up alongside
+the clipped raster regression. No causal attribution from this sample.
+
+Componentb068a278 pushed. Merged maincb69d7a5 via b87e6358 (Doctor and video/image
+updates); combined workspace release passes3m02s. Targeted merged native image/
+Browser checks:30 passed,5 ignored; web image/object/SVG checks:
+25 passed,0 ignored. Clean integration. Native scroll hitch and clipped
+raster/pixel regressions stay open. Removed9 completed owned profiles/binaries;
+current evidence and after binaries retained. Full goal active; Stripe remains
+the only selected site. Next visible rectangle geometry/painting.

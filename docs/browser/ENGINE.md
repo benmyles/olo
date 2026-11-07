@@ -2631,7 +2631,8 @@ per-shape ancestor-mask raster strategy described above.
 Worker scratch covers only each group's ink bounds intersected with its
 parent tile. Empty, transparent and off-tile groups skip allocation. Limits cap
 nesting, concurrent surface/mask/transformed-path bytes and aggregate tile pixel/
-clip work; the default scratch budget is16MiB. Ordinary SVGs allocate no layers.
+clip work; the default surface/mask/path buffer budget is16MiB. Stack metadata
+and the raster backend's internal scratch are additional. Ordinary SVGs allocate no layers.
 There is no URL parsing or numeric evaluation during raster. A2×2 group test
 proves16 surface bytes suffice, independent of viewport size; tile-origin,
 cancellation and byte/work limit tests pass.

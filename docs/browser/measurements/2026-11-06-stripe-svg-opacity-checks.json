@@ -25,5 +25,30 @@
   "native_reviews": 15,
   "native_review_findings": 0,
   "main_at_measurement": "ca0dcc77086bd8b330fce55a06863304351ba22a",
-  "process_cleanup": "Documented quit command and actual window PID awaited before each fresh launch; both owned screens stopped"
+  "process_cleanup": "Documented quit command and actual window PID awaited before each fresh launch; both owned screens stopped",
+  "merged_main": "cb69d7a5330c81f389ebccc4a9a18b39f3a51e99",
+  "merge_commit": "b87e6358",
+  "merged_workspace_release_duration": "3m 02s",
+  "merged_tests": {
+    "merged-tests.log": {
+      "passed": 30,
+      "failed": 0,
+      "ignored": 5
+    },
+    "merged-web-tests.log": {
+      "passed": 25,
+      "failed": 0,
+      "ignored": 0
+    }
+  },
+  "native_performance_nonpasses": {
+    "before_hitches": 0,
+    "after_hitches": 1,
+    "before_still_frames": 0,
+    "after_still_frames": 1,
+    "slowest_client_draw_ms": [
+      4.89,
+      9.27
+    ]
+  }
 }
