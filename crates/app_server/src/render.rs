@@ -623,8 +623,28 @@ where
     if let Some(window) = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()).filter(|_| !crate::rescue::active()) {
         let scale = output.current_scale().fractional_scale().into();
         let window_render_elements: Vec<WindowRenderElement<R>> = AsRenderElements::<R>::render_elements(&window, renderer, (0, 0).into(), scale, 1.0);
+        // What's in front of it (a dialog, a new window), over it, as
+        // `space_elements` draws windows, their menus over them all.
+        let mut front = Vec::new();
+        let mut menus = Vec::new();
+        if let Some(region) = space.output_geometry(output) {
+            for w in crate::shell::in_front_of_fullscreen(space, output, &window) {
+                let Some(at) = space.element_location(&w) else { continue };
+                let location = (at - SpaceElement::geometry(&w).loc - region.loc).to_physical_precise_round(scale);
+                let menu: Vec<WindowRenderElement<R>> = w.menu_elements(renderer, location, scale, 1.0);
+                menus.extend(menu.into_iter().map(|e| OutputRenderElements::Window(Wrap::from(e))));
+                let parts: Vec<WindowRenderElement<R>> = w.render_parts(renderer, location, scale, 1.0, false);
+                front.extend(parts.into_iter().map(|e| OutputRenderElements::Window(Wrap::from(e))));
+            }
+        }
 
-        let elements = custom_elements.into_iter().map(OutputRenderElements::from).chain(window_render_elements.into_iter().map(|e| OutputRenderElements::Window(Wrap::from(e)))).collect::<Vec<_>>();
+        let elements = custom_elements
+            .into_iter()
+            .map(OutputRenderElements::from)
+            .chain(menus)
+            .chain(front)
+            .chain(window_render_elements.into_iter().map(|e| OutputRenderElements::Window(Wrap::from(e))))
+            .collect::<Vec<_>>();
         let mut elements = elements;
         add_indicator(&mut elements, indicator);
         for e in shown {

@@ -61,7 +61,11 @@ pub fn start_stop(name: &str, start: bool) -> Result<()> {
 /// Restart a unit (start it if it isn't running), and wait (up to five
 /// seconds) for it to be running.
 pub fn restart(name: &str) -> Result<()> {
-    bus::call::<_, zvariant::OwnedObjectPath>(bus::system()?, SYSTEMD, MANAGER, MANAGER_IFACE, "RestartUnit", &(name, "replace"))?;
+    let job = bus::call::<_, zvariant::OwnedObjectPath>(bus::system()?, SYSTEMD, MANAGER, MANAGER_IFACE, "RestartUnit", &(name, "replace"))?;
+    // Its job done (a one-shot that stays active, such as
+    // systemd-sysusers, is active before it runs again: Olo Setup made a
+    // folder for a user not made yet, 2026-11-07).
+    wait_for_job(&job, Duration::from_secs(60));
     let until = Instant::now() + Duration::from_secs(5);
     while Instant::now() < until {
         if unit_state(name).is_ok_and(|s| s.active) {
@@ -70,6 +74,20 @@ pub fn restart(name: &str) -> Result<()> {
         std::thread::sleep(Duration::from_millis(50));
     }
     Ok(())
+}
+
+/// Wait (at most `limit`) for systemd's job `job` to be done: its object
+/// is gone once it has.
+fn wait_for_job(job: &zvariant::OwnedObjectPath, limit: Duration) {
+    let Ok(conn) = bus::system() else { return };
+    let until = Instant::now() + limit;
+    while Instant::now() < until {
+        let there: Result<zvariant::OwnedValue> = bus::call(conn, SYSTEMD, job.as_str(), "org.freedesktop.DBus.Properties", "Get", &("org.freedesktop.systemd1.Job", "State"));
+        if there.is_err() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 /// Have a unit start at boot (`enable` true), or not.

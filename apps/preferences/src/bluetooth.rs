@@ -64,14 +64,7 @@ fn test_status() -> Status {
         modalias: None,
     };
     Status {
-        adapter: Some(bt::Adapter {
-            path: "/org/bluez/hci0".into(),
-            name: "studio-laptop".into(),
-            address: "02:00:00:00:A1:03".into(),
-            powered: true,
-            discoverable: false,
-            discovering: true,
-        }),
+        adapter: Some(bt::Adapter { path: "/org/bluez/hci0".into(), name: "studio-laptop".into(), address: "02:00:00:00:A1:03".into(), powered: true, discoverable: false, discovering: true }),
         devices: vec![
             device("Sony WH-1000XM5 Wireless Noise Canceling Headphones", "audio-headset", true, true, Some(80)),
             device("Logitech MX Master 3S for Mac", "input-mouse", true, false, Some(45)),

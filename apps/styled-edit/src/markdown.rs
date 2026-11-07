@@ -397,7 +397,9 @@ impl Look {
                         };
                         let fenced = matches!(kind, CodeBlockKind::Fenced(_));
                         let k = self.blocks.len();
-                        // (Its content's bytes: its text's, as found.)
+                        // (Its content's bytes: its text's, as found; empty
+                        // to start, widened by min and max as lines come.)
+                        #[allow(clippy::reversed_empty_ranges)]
                         self.blocks.push(CodeBlock { lang, range: usize::MAX..0, code: None });
                         code_block = Some(k);
                         for i in ls.clone() {

@@ -295,9 +295,12 @@ impl RenderOnce for Sidebar {
                     );
                 }
                 let (st, hbs) = (paint_state.clone(), hitboxes.clone());
+                // (The view it's in drawn again, not the whole window:
+                // control.rs.)
+                let view = window.current_view();
                 window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
                     if phase.bubble() && hbs.iter().position(|h| h.as_ref().is_some_and(|h| h.is_hovered(window))) != st.read(cx).hover {
-                        window.refresh();
+                        cx.notify(view);
                     }
                 });
                 let (st, choose, pick, menu, several) = (paint_state.clone(), choose.clone(), on_pick.clone(), on_menu.clone(), !paint_also.is_empty());

@@ -8,13 +8,15 @@ through QEMU's monitor (QMP): pictures of its screen, keys, the pointer.
   tools/dev/installer-check install [--fedora 45]
       a fresh Fedora Workstation (the network installer's ISO, a
       kickstart choosing Workstation's own package set) on DIR/disk.qcow2
-  tools/dev/installer-check boot [--serve DIR] [--size WxH]
+  tools/dev/installer-check boot [--serve DIR] [--size WxH] [--gl [RENDER]]
       boot it, in the background; DIR (tools/release.sh's output) served
-      to the machine at http://10.0.2.2:8642/
+      to the machine at http://10.0.2.2:8642/; --gl gives it a GPU with
+      3D (virgl through this computer's render node), as Olo needs one
   tools/dev/installer-check shot FILE.png
   tools/dev/installer-check type TEXT       (typed on the machine's keyboard)
   tools/dev/installer-check key COMBO       (e.g. ret, meta_l, ctrl-alt-t)
   tools/dev/installer-check click X Y [right]   (screen pixels)
+  tools/dev/installer-check dclick X Y          (a double-click)
   tools/dev/installer-check stop
 
 Everything is kept in /var/tmp/olo-installer-check (the ISO, the disk,
@@ -112,7 +114,7 @@ KEYS.update({" ": ("spc", False), "\n": ("ret", False), "-": ("minus", False), "
              "/": ("slash", False), "?": ("slash", True), ".": ("dot", False), ">": ("dot", True), ",": ("comma", False), "<": ("comma", True),
              ";": ("semicolon", False), ":": ("semicolon", True), "'": ("apostrophe", False), '"': ("apostrophe", True), "&": ("7", True),
              "|": ("backslash", True), "\\": ("backslash", False), "~": ("grave_accent", True), "!": ("1", True), "@": ("2", True), "#": ("3", True),
-             "$": ("4", True), "%": ("5", True), "*": ("8", True), "(": ("9", True), ")": ("0", True), "[": ("bracket_left", False), "]": ("bracket_right", False)})
+             "$": ("4", True), "%": ("5", True), "^": ("6", True), "`": ("grave_accent", False), "*": ("8", True), "{": ("bracket_left", True), "}": ("bracket_right", True), "(": ("9", True), ")": ("0", True), "[": ("bracket_left", False), "]": ("bracket_right", False)})
 
 
 def type_text(m, text):
@@ -123,22 +125,78 @@ def type_text(m, text):
         time.sleep(0.04)
 
 
+def vnc_shot(path):
+    """The screen as the VNC socket sends it (RFB 3.8, no password, raw
+    pixels): for a 3D GPU, whose frames QEMU's screendump can't read."""
+    from PIL import Image
+    import struct
+    s = socket.socket(socket.AF_UNIX)
+    s.connect(os.path.join(DIR, "vnc.sock"))
+
+    def read(n):
+        b = b""
+        while len(b) < n:
+            chunk = s.recv(n - len(b))
+            if not chunk:
+                raise OSError("the VNC socket closed")
+            b += chunk
+        return b
+
+    read(12)
+    s.sendall(b"RFB 003.008\n")
+    types = read(read(1)[0])
+    if 1 not in types:
+        raise OSError("VNC wants a password")
+    s.sendall(b"\x01")
+    if struct.unpack(">I", read(4))[0] != 0:
+        raise OSError("VNC refused")
+    s.sendall(b"\x01")
+    w, h = struct.unpack(">HH", read(4))
+    read(16)
+    read(struct.unpack(">I", read(4))[0])
+    # 32-bit little-endian BGRX, raw only.
+    s.sendall(struct.pack(">BxxxBBBBHHHBBBxxx", 0, 32, 24, 0, 1, 255, 255, 255, 16, 8, 0))
+    s.sendall(struct.pack(">BxHi", 2, 1, 0))
+    s.sendall(struct.pack(">BBHHHH", 3, 0, 0, 0, w, h))
+    img = Image.new("RGB", (w, h))
+    while True:
+        kind = read(1)[0]
+        if kind != 0:
+            raise OSError(f"VNC sent message {kind}")
+        read(1)
+        n = struct.unpack(">H", read(2))[0]
+        for _ in range(n):
+            x, y, rw, rh, enc = struct.unpack(">HHHHi", read(12))
+            if enc != 0:
+                raise OSError(f"VNC sent encoding {enc}")
+            data = read(rw * rh * 4)
+            img.paste(Image.frombytes("RGB", (rw, rh), data, "raw", "BGRX"), (x, y))
+        break
+    s.close()
+    img.save(path)
+    return {"return": {}}
+
+
 def screen_size(m):
     path = os.path.join(DIR, ".size.ppm")
-    m.cmd("screendump", filename=path)
+    if "error" in m.cmd("screendump", filename=path):
+        from PIL import Image
+        vnc_shot(path + ".png")
+        return Image.open(path + ".png").size
     with open(path, "rb") as f:
         head = f.read(64).split()
     return int(head[1]), int(head[2])
 
 
-def click(m, x, y, button="left"):
+def click(m, x, y, button="left", times=1):
     w, h = screen_size(m)
     ax, ay = int(x * 32767 / (w - 1)), int(y * 32767 / (h - 1))
     m.cmd("input-send-event", events=[{"type": "abs", "data": {"axis": "x", "value": ax}}, {"type": "abs", "data": {"axis": "y", "value": ay}}])
     time.sleep(0.1)
-    for down in (True, False):
-        m.cmd("input-send-event", events=[{"type": "btn", "data": {"down": down, "button": button}}])
-        time.sleep(0.08)
+    for _ in range(times):
+        for down in (True, False):
+            m.cmd("input-send-event", events=[{"type": "btn", "data": {"down": down, "button": button}}])
+            time.sleep(0.05)
 
 
 def install(fedora):
@@ -171,8 +229,18 @@ def install(fedora):
     print(json.dumps({"installed": vm.returncode == 0, "minutes": round((time.time() - started) / 60, 1), "disk": disk, "log": log.name}))
 
 
-def boot(serve_dir, size):
+def boot(serve_dir, size, gl):
     w, h = size.split("x")
+    # A virtio GPU with 3D (virgl, through this computer's own GPU: the
+    # first render node, or `gl`), as Olo needs one to draw; else a plain
+    # one, which Fedora's GNOME draws on in software and Olo can't.
+    if gl:
+        render = gl if gl.startswith("/dev/") else "/dev/dri/renderD128"
+        # (A VNC listener on a private socket has egl-headless read each
+        # frame back, so the monitor's screendump has a picture.)
+        gpu = ["-device", f"virtio-vga-gl,xres={w},yres={h}", "-display", f"egl-headless,rendernode={render}", "-vnc", f"unix:{os.path.join(DIR, 'vnc.sock')}"]
+    else:
+        gpu = ["-device", f"virtio-vga,xres={w},yres={h}", "-display", "none"]
     if serve_dir:
         # The served folder in a process of its own, which outlives this one.
         pid = os.fork()
@@ -183,11 +251,17 @@ def boot(serve_dir, size):
                 time.sleep(3600)
         with open(os.path.join(DIR, "http.pid"), "w") as f:
             f.write(str(pid))
-    subprocess.run(["qemu-kvm", "-m", "8192", "-smp", "4", "-cpu", "host", "-daemonize", "-pidfile", PID,
+    # (In a session of its own, its complaints kept in qemu.log.)
+    subprocess.Popen(["qemu-kvm", "-m", "8192", "-smp", "4", "-cpu", "host", "-pidfile", PID,
                     "-drive", f"file={os.path.join(DIR, 'disk.qcow2')},if=virtio,format=qcow2",
                     "-netdev", "user,id=n", "-device", "virtio-net-pci,netdev=n",
-                    "-device", f"virtio-vga,xres={w},yres={h}", "-device", "qemu-xhci", "-device", "usb-tablet",
-                    "-display", "none", "-serial", "null", "-qmp", f"unix:{SOCK},server=on,wait=off"], check=True)
+                    *gpu, "-device", "qemu-xhci", "-device", "usb-tablet",
+                    "-serial", "null", "-qmp", f"unix:{SOCK},server=on,wait=off"],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=open(os.path.join(DIR, "qemu.log"), "w"), start_new_session=True)
+    for _ in range(100):
+        if os.path.exists(SOCK) and os.path.exists(PID):
+            break
+        time.sleep(0.1)
     print(json.dumps({"booted": True, "served": serve_dir}))
 
 
@@ -215,6 +289,7 @@ def main():
     b = sub.add_parser("boot")
     b.add_argument("--serve")
     b.add_argument("--size", default="1920x1200")
+    b.add_argument("--gl", nargs="?", const="/dev/dri/renderD128", help="a 3D GPU (virgl) through this render node")
     s = sub.add_parser("shot")
     s.add_argument("file")
     t = sub.add_parser("type")
@@ -225,24 +300,32 @@ def main():
     c.add_argument("x", type=int)
     c.add_argument("y", type=int)
     c.add_argument("button", nargs="?", default="left")
+    d = sub.add_parser("dclick")
+    d.add_argument("x", type=int)
+    d.add_argument("y", type=int)
     sub.add_parser("stop")
     a = p.parse_args()
     if a.what == "install":
         install(a.fedora)
     elif a.what == "boot":
-        boot(a.serve, a.size)
+        boot(a.serve, a.size, a.gl)
     elif a.what == "stop":
         stop()
     else:
         m = Monitor()
         if a.what == "shot":
-            print(m.cmd("screendump", filename=os.path.abspath(a.file), format="png"))
+            r = m.cmd("screendump", filename=os.path.abspath(a.file), format="png")
+            if "error" in r and os.path.exists(os.path.join(DIR, "vnc.sock")):
+                r = vnc_shot(os.path.abspath(a.file))
+            print(r)
         elif a.what == "type":
             type_text(m, a.text.replace("\\n", "\n"))
         elif a.what == "key":
             m.cmd("send-key", keys=[{"type": "qcode", "data": k} for k in a.combo.split("-")])
         elif a.what == "click":
             click(m, a.x, a.y, a.button)
+        elif a.what == "dclick":
+            click(m, a.x, a.y, "left", 2)
 
 
 if __name__ == "__main__":

@@ -64,11 +64,15 @@ pub fn reload_bus_services() -> Result<()> {
     bus::call::<_, ()>(bus::session()?, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ReloadConfig", &())
 }
 
-/// The process answering for `name` on the session bus, if one does.
-pub fn bus_name_pid(name: &str) -> Option<u32> {
-    let conn = bus::session().ok()?;
-    let owner: String = bus::call(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", &(name,)).ok()?;
-    bus::call(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetConnectionUnixProcessID", &(owner.as_str(),)).ok()
+/// Whether the user's systemd unit `name` is active or on its way
+/// (`activating`, `reloading`).
+pub fn user_unit_active(name: &str) -> bool {
+    let Ok(conn) = bus::session() else { return false };
+    let Ok(path) = bus::call::<_, zvariant::OwnedObjectPath>(conn, "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "GetUnit", &(name,)) else {
+        return false;
+    };
+    let state: Result<zvariant::OwnedValue> = bus::call(conn, "org.freedesktop.systemd1", path.as_str(), "org.freedesktop.DBus.Properties", "Get", &("org.freedesktop.systemd1.Unit", "ActiveState"));
+    state.ok().and_then(|v| String::try_from(v).ok()).is_some_and(|s| matches!(s.as_str(), "active" | "activating" | "reloading"))
 }
 
 /// Start (`start` true) or stop a systemd user unit, without waiting for

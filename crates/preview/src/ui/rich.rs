@@ -24,8 +24,8 @@ use olo_ui::{
     agent,
     gpui::{
         self, AppContext as _, Bounds, Context, CursorStyle, Font, FontStyle, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
-        MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollHandle, SharedString, StrikethroughStyle, Styled as _, Task, TextAlign, TextRun, Window, WrappedLine, canvas,
-        div, point, px, size,
+        MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollHandle, SharedString, StatefulInteractiveElement as _, StrikethroughStyle, Styled as _, Task, TextAlign, TextRun,
+        Window, WrappedLine, canvas, div, point, px, size,
     },
     style, theme,
     widgets::{ScrollView, image_view},
@@ -170,7 +170,10 @@ struct Laid {
 enum Draw {
     Text {
         at: (f32, f32),
-        lines: SmallVec<[WrappedLine; 1]>,
+        /// (Boxed: a wrapped line keeps its decoration runs inline, about
+        /// 2.5 KB, and unboxed every draw of a document, a fill or a rule
+        /// too, was that big.)
+        lines: Box<SmallVec<[WrappedLine; 1]>>,
         leading: f32,
     },
     Fill(Rect, f32, Hsla),
@@ -466,7 +469,7 @@ impl RichView {
                         let run = TextRun { len: number.len(), font: font(false, false, false), color: text_ink, background_color: None, underline: None, strikethrough: None, size: None };
                         let n = window.text_system().shape_text(number.to_owned().into(), px(BODY), &[run], None, None).unwrap_or_default();
                         let nw = n.first().map_or(0.0, |l| f32::from(l.width()));
-                        laid.draws.push(Draw::Text { at: (snap(text_x - 7.0 - nw), y), lines: n, leading: LEADING });
+                        laid.draws.push(Draw::Text { at: (snap(text_x - 7.0 - nw), y), lines: Box::new(n), leading: LEADING });
                     }
                 }
                 y += place_lines(&mut laid, lines, &job, (text_x, y), ink);
@@ -503,7 +506,7 @@ impl RichView {
                 let h = height(&shaped, CODE_LEADING).max(CODE_LEADING) + 2.0 * CODE_PAD.1;
                 laid.draws.push(Draw::Fill(Rect { x, y, w, h: snap(h) }, 6.0, ink.code_fill));
                 laid.text = lines.join("\n");
-                laid.draws.push(Draw::Text { at: (x + CODE_PAD.0, y + CODE_PAD.1), lines: shaped, leading: CODE_LEADING });
+                laid.draws.push(Draw::Text { at: (x + CODE_PAD.0, y + CODE_PAD.1), lines: Box::new(shaped), leading: CODE_LEADING });
                 y += snap(h);
             }
             Block::Table { align, rows } => y += table(window, &mut laid, align, rows, (x0, y), w, ink, s),
@@ -539,7 +542,7 @@ impl RichView {
                     };
                     let lines = window.text_system().shape_text(title.into(), px(BODY), &[run], None, None).unwrap_or_default();
                     laid.text = title.into();
-                    laid.draws.push(Draw::Text { at: (x0 + QUOTE_INDENT, y), lines, leading: LEADING });
+                    laid.draws.push(Draw::Text { at: (x0 + QUOTE_INDENT, y), lines: Box::new(lines), leading: LEADING });
                     y += LEADING;
                 }
             }
@@ -689,7 +692,7 @@ impl RichView {
                             }
                         }
                         let mut y = o.y + px(at.1);
-                        for line in lines {
+                        for line in lines.iter() {
                             let _ = line.paint(point(o.x + px(at.0), y), px(*leading), TextAlign::Left, None, window, cx);
                             y += line.size(px(*leading)).height;
                         }
@@ -1105,6 +1108,14 @@ impl Render for RichView {
                     cx.notify();
                 }
             }))
+            // (Its moves come only while the pointer is over the page:
+            // gone, from the view or the window, its link is no longer
+            // underlined.)
+            .on_hover(cx.listener(|v, inside: &bool, _, cx| {
+                if !*inside && v.hover.take().is_some() {
+                    cx.notify();
+                }
+            }))
             .on_mouse_up(MouseButton::Left, cx.listener(|v, _: &gpui::MouseUpEvent, _, _| v.dragging = false))
             .on_mouse_down(
                 MouseButton::Left,
@@ -1147,7 +1158,7 @@ fn place_lines(laid: &mut Laid, lines: SmallVec<[WrappedLine; 1]>, job: &Job, at
             }
         }
     }
-    laid.draws.push(Draw::Text { at, lines, leading: job.leading });
+    laid.draws.push(Draw::Text { at, lines: Box::new(lines), leading: job.leading });
     h
 }
 

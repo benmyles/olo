@@ -237,6 +237,8 @@ fn follow() -> i32 {
     battery::watch(move |_| {
         let _ = tx.send(Change::Supply);
     });
+    // (Its first change opens NVML, held from then on, which keeps NVIDIA's
+    // GPU's lock: `gpu_tuning::nvml`.)
     let (mut mode, mut on_battery) = (None, !battery::on_ac());
     let mut last = None;
     for change in rx.iter() {

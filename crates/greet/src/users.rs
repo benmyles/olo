@@ -55,14 +55,14 @@ mod tests {
         std::fs::create_dir_all(root.join("var/lib/AccountsService/icons")).unwrap();
         std::fs::write(
             root.join("etc/passwd"),
-            "root:x:0:0:root:/root:/bin/bash\nnobody:x:65534:65534:Kernel Overflow User:/:/usr/sbin/nologin\nben:x:1000:1000:Sam Example,,,:/home/ben:/usr/bin/brush\nsvc:x:1001:1001::/var/svc:/usr/sbin/nologin\nalice:x:1002:1002::/home/alice:/bin/bash\n",
+            "root:x:0:0:root:/root:/bin/bash\nnobody:x:65534:65534:Kernel Overflow User:/:/usr/sbin/nologin\nsam:x:1000:1000:Sam Example,,,:/home/sam:/usr/bin/brush\nsvc:x:1001:1001::/var/svc:/usr/sbin/nologin\nalice:x:1002:1002::/home/alice:/bin/bash\n",
         )
         .unwrap();
         std::fs::write(root.join("etc/login.defs"), "# ids\nUID_MIN                  1000\nUID_MAX                 60000\n").unwrap();
-        std::fs::write(root.join("var/lib/AccountsService/icons/ben"), b"png").unwrap();
+        std::fs::write(root.join("var/lib/AccountsService/icons/sam"), b"png").unwrap();
         let users = all(&root);
         let names: Vec<(&str, &str, bool)> = users.iter().map(|u| (u.name.as_str(), u.full_name.as_str(), u.picture.is_some())).collect();
-        assert_eq!(names, [("alice", "alice", false), ("ben", "Sam Example", true)]);
+        assert_eq!(names, [("alice", "alice", false), ("sam", "Sam Example", true)]);
         let _ = std::fs::remove_dir_all(&root);
     }
 }

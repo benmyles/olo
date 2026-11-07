@@ -98,6 +98,17 @@ impl FullscreenSurface {
     }
 }
 
+/// The windows in front of `full`, the window filling `output`, that
+/// show on it, the front one first. A new window comes up in front
+/// (`new_toplevel`), and a display filled by one window drew that one
+/// alone and gave it every click: a password dialog asked for while
+/// Olo Setup filled the screen (a stock Fedora 45, 2026-11-07) had the
+/// keyboard but was never seen, and Setup waited for it.
+pub fn in_front_of_fullscreen(space: &Space<WindowElement>, output: &Output, full: &WindowElement) -> Vec<WindowElement> {
+    let Some(region) = space.output_geometry(output) else { return Vec::new() };
+    space.elements().rev().take_while(|w| *w != full).filter(|w| !w.meta().fullscreen.get() && space.element_bbox(w).is_some_and(|b| region.overlaps(b))).cloned().collect()
+}
+
 impl<BackendData: Backend> BufferHandler for AnvilState<BackendData> {
     fn buffer_destroyed(&mut self, _buffer: &WlBuffer) {
         self.backend_data.buffer_gone();

@@ -231,6 +231,24 @@ impl Tracker {
         })
     }
 
+    /// The desktop (its window), unless this Tracker has it already: as it
+    /// starts with `--desktop`, or told so by the session's Tracker when
+    /// another, started by D-Bus as the file manager (`--file-manager`),
+    /// was running first.
+    fn open_desktop(&mut self, cx: &mut Context<Self>) {
+        if self.desktop().is_some() {
+            return;
+        }
+        olo_ui::stay_resident(cx);
+        let me = cx.weak_entity();
+        let d = cx.new(|cx| Desktop::new(me, cx));
+        let key = d.entity_id();
+        let content = d.clone();
+        if let Some(handle) = olo_ui::open_window(cx, desktop::options(), move |_, _| content) {
+            self.register(key, handle.into(), Win::Desktop(d), cx);
+        }
+    }
+
     /// Takes a window just opened: closing it, and drops on it, come here.
     fn register(&mut self, key: EntityId, handle: AnyWindowHandle, win: Win, cx: &mut Context<Self>) {
         let (closing, dropping) = (cx.weak_entity(), cx.weak_entity());
@@ -544,7 +562,10 @@ impl Tracker {
                     }
                     opened = true;
                 }
-                "--desktop" | FILE_MANAGER_ARG => {}
+                // (A Tracker D-Bus started as the file manager, then
+                // the session's: the desktop is this one's to show.)
+                "--desktop" => self.open_desktop(cx),
+                FILE_MANAGER_ARG => {}
                 // Another window, always (not one brought forward): home.
                 "--new-window" => {
                     self.new_folder_window(fs::home(), self.default_view, (560, 380), |_| {}, cx);
@@ -1494,6 +1515,17 @@ fn main() {
     olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
+        // The session's desktop, handed to a Tracker D-Bus started first
+        // (as the file manager, `FILE_MANAGER_ARG`), which shows it now.
+        // This process is the one the session looks after: it stays
+        // while that one runs, so when that one goes the session starts
+        // the desktop's Tracker again (gone at once, it was started
+        // again and again, then left stopped).
+        if args.iter().any(|a| a == "--desktop")
+            && let Some(pid) = instance::running_pid(APP_ID)
+        {
+            instance::wait_for_exit(pid);
+        }
         return;
     }
     olo_preview::audio::set_identity("Tracker", "olo-tracker");
@@ -1538,16 +1570,7 @@ fn main() {
         let busy = app.clone();
         olo_ui::upgrade_waits_while(cx, move |cx| !busy.read(cx).jobs.is_empty());
         if desktop {
-            olo_ui::stay_resident(cx);
-            app.update(cx, |t, cx| {
-                let me = cx.weak_entity();
-                let d = cx.new(|cx| Desktop::new(me, cx));
-                let key = d.entity_id();
-                let content = d.clone();
-                if let Some(handle) = olo_ui::open_window(cx, desktop::options(), move |_, _| content) {
-                    t.register(key, handle.into(), Win::Desktop(d), cx);
-                }
-            });
+            app.update(cx, |t, cx| t.open_desktop(cx));
         }
         if file_manager {
             // (Started by D-Bus for the name alone: it stays to answer.)

@@ -73,11 +73,13 @@ const LICENCE: &str = include_str!("licence.txt");
 
 impl Setup {
     pub fn new(proxy: Proxy, given: Option<String>, auto: bool, choices: Choices) -> Setup {
+        let computer = plan::look();
         Setup {
             page: Page::Welcome,
-            computer: plan::look(),
+            // (What it has already chosen again: run again, Setup updates it.)
+            choices: choices.and(computer.had),
+            computer,
             accepted: false,
-            choices,
             stage: None,
             share: None,
             doing: String::new(),
@@ -338,6 +340,9 @@ impl Setup {
                     div().flex().flex_col().gap(px(2.0)).child(check).child(div().pl(px(m::MARK_SIZE + m::MARK_GAP + 4.0)).child(StringView::new(t.to_owned()).wrap(true).dim(true)))
                 };
                 let nvidia = if self.computer.nvidia { " This computer has an NVIDIA graphics card." } else { "" };
+                // (Installed before: kept chosen, and said so.)
+                let had = self.computer.had;
+                let updated = |on: bool, words: &str| if on { format!("{words} Installed already: Setup brings it up to date.") } else { words.to_owned() };
                 let c = col()
                     .child(heading("Choose What to Install"))
                     .child(choice(
@@ -346,15 +351,19 @@ impl Setup {
                     ))
                     .child(choice(
                         CheckBox::new("Olo's login screen", ch.login_screen).id("login-screen").on_toggle(toggle(|c, on| c.login_screen = on)),
-                        "Olo's own login screen in place of GNOME's (GDM, which stays installed). Your password there also opens Olo's keyring.",
+                        &updated(had.login_screen, "Olo's own login screen in place of GNOME's (GDM, which stays installed). Your password there also opens Olo's keyring."),
                     ))
                     .child(choice(
                         CheckBox::new("Olo's boot splash", ch.boot_splash).id("boot-splash").on_toggle(toggle(|c, on| c.boot_splash = on)),
-                        "Olo's picture while the computer starts, in place of Fedora's.",
+                        &updated(had.boot_splash, "Olo's picture while the computer starts, in place of Fedora's."),
                     ))
                     .child(choice(
                         CheckBox::new("RPM Fusion", ch.rpm_fusion).id("rpm-fusion").on_toggle(toggle(|c, on| c.rpm_fusion = on)),
-                        &format!("Fedora's companion repositories: NVIDIA's own driver and more video formats.{nvidia}"),
+                        &if had.rpm_fusion {
+                            "Fedora's companion repositories: NVIDIA's own driver and more video formats. Added already.".to_owned()
+                        } else {
+                            format!("Fedora's companion repositories: NVIDIA's own driver and more video formats.{nvidia}")
+                        },
                     ));
                 ("Choose What to Install", "preferences", c.into_any_element())
             }
@@ -367,12 +376,18 @@ impl Setup {
                     None => ("Starting…".into(), String::new()),
                 };
                 let doing = if self.password { "Waiting for the administrator's password…".to_owned() } else { self.doing.clone() };
-                let mut c =
-                    col().h_full().child(heading("Installing Olo")).child(div().w_full().child(StatusBar::new(self.overall()).label(title).trailing(through))).child(StringView::new(doing).dim(true));
+                let mut c = col()
+                    .h_full()
+                    // (What has a size of its own keeps it: the notes give way.)
+                    .child(div().flex_shrink_0().child(heading("Installing Olo")))
+                    .child(div().flex().flex_shrink_0().child(div().flex_1().min_w_0().child(StatusBar::new(self.overall()).label(title).trailing(through))))
+                    .child(div().flex_shrink_0().child(StringView::new(doing).wrap(true).dim(true)));
                 if let Some(Outcome::Failed { what, why, advice }) = &self.outcome {
                     // ("Adding Olo to…" as part of a sentence: its first letter small.)
                     let what = what.chars().next().map(|f| f.to_lowercase().chain(what.chars().skip(1)).collect::<String>()).unwrap_or_default();
-                    c = c.child(StringView::new(format!("Setup couldn't finish {what}: {why}")).wrap(true).color(style::c(p.failure))).child(para(advice.clone()));
+                    c = c
+                        .child(div().flex_shrink_0().child(StringView::new(format!("Setup couldn't finish {what}: {why}")).wrap(true).color(style::c(p.failure))))
+                        .child(div().flex_shrink_0().child(para(advice.clone())));
                 }
                 let mut notes = div().flex().flex_col().gap(px(2.0)).p(px(m::TEXT_INSET));
                 for n in &self.notes {

@@ -245,6 +245,21 @@ fn connect() -> Result<(UnixStream, u16), String> {
     let (name, icon) = IDENTITY.get().map_or(("Olo", "olo"), |(n, i)| (n.as_str(), i.as_str()));
     props.set(protocol::Prop::ApplicationName, CString::new(name).unwrap_or_default());
     props.set(protocol::Prop::ApplicationIconName, CString::new(icon).unwrap_or_default());
+    // Who is playing, as libpulse says (and the crate's own client): the
+    // sound server puts it on the stream's node. Without it, Fedora's
+    // uresourced, which follows the programs playing sound by their
+    // process, crashed at every Olo login on the start-up sound's stream
+    // (a null process id), and Olo's own streams couldn't be told apart.
+    props.set(protocol::Prop::ApplicationProcessId, CString::new(std::process::id().to_string()).unwrap_or_default());
+    if let Some(binary) = std::env::current_exe().ok().and_then(|e| e.file_name().map(|n| n.to_string_lossy().trim_end_matches(" (deleted)").to_owned())) {
+        props.set(protocol::Prop::ApplicationProcessBinary, CString::new(binary).unwrap_or_default());
+    }
+    if let Ok(user) = std::env::var("USER") {
+        props.set(protocol::Prop::ApplicationProcessUser, CString::new(user).unwrap_or_default());
+    }
+    if let Ok(host) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
+        props.set(protocol::Prop::ApplicationProcessHost, CString::new(host.trim()).unwrap_or_default());
+    }
     protocol::write_command_message(&mut w, 1, &protocol::Command::SetClientName(props), version).map_err(err)?;
     protocol::read_reply_message::<protocol::SetClientNameReply>(&mut r, version).map_err(err)?;
     Ok((w, version))

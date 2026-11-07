@@ -15,6 +15,8 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+## Done, waiting for Ben to try or confirm
+
 - **The Olo installer: stock Fedora 45 to Olo in one GUI** (Ben,
   2026-11-06: "build a polished, robust olo installer so that someone
   can download/install a stock fedora 45 then download the olo installer
@@ -45,8 +47,61 @@ something nobody here has is in "Blocked", with what it waits for.
   Workstation install, the installer downloaded and run, a reboot into
   Olo, Olo used: its apps opened, a file opened, Preferences changed),
   screenshots of every step kept, at the VM's screen's scale and 2×.
-
-## Done, waiting for Ben to try or confirm
+  Done (HACKING, "Olo Setup"; e72b112a, 2169a524): `olo-installer`,
+  full screen, Windows 95's Setup in BeOS's look (the blue backdrop and
+  big serif title; each page a BeOS window: Welcome, Licence Agreement,
+  Choose What to Install, Installing, Olo Is Installed; About), and the
+  dedication on the last page and in About. It installs what Olo needs
+  through PackageKit, Olo's release (downloaded, its SHA-256 checked,
+  unpacked into the home folder), Olo on the login screen's menu, and if
+  chosen Olo's login screen, boot splash and RPM Fusion; it asks for the
+  password once (GNOME's own dialog), can be stopped and run again, says
+  what failed and what to do, and makes Olo the next session.
+  `tools/release.sh` makes the release (`olo-VERSION-ARCH.tar.zst`, 894
+  MB, and the 38 MB installer, each with its `.sha256`).
+  Tested whole (`tools/dev/installer-check`): a fresh Fedora 45
+  Workstation installed in a VM from Fedora's network installer, the
+  installer downloaded and run from GNOME's terminal, Olo's login screen
+  and boot splash chosen, a restart into Olo's login screen, logged in,
+  Home opened in Tracker, a file opened in StyledEdit, Preferences
+  switched to dark (docs/journal, 2026-11-07). The first runs found what
+  kept anyone from logging in through Olo's login screen on a stock
+  Fedora, and what stopped Setup; fixed (2169a524): kmscon on tty1,
+  sessions' output to a terminal taken away, SELinux (olo-login a
+  display manager, `xdm_t`, the person's session started through a
+  system program), a second greeter after a restart, Fedora's
+  fingerprint placeholder shown, a login screen that never shows now
+  handing the seat to GDM; and in Setup, the login screen's user and
+  folders (systemd won't run its own services again by hand), a unit's
+  restart waited for, and package lookups that saw an update waiting
+  as not installed. The last run, from scratch with the final release,
+  went through with nothing done by hand. Not seen: the boot splash
+  itself (installed, and the start-up images made again; the VM's
+  screen comes back only once the GPU's driver has it). Olo Doctor in
+  that VM then found what of GNOME's still ran in an Olo session and
+  what still reached for it; fixed: GNOME's dconf (started before Olo's
+  was named) and gvfs (started for uresourced), uresourced crashing at
+  every login on the start-up sound's stream (6a1a9223), and programs'
+  "Show in folder" starting GNOME's Files while no Tracker answered
+  (the session names Tracker for it; f9d45081, tried in the VM with
+  D-Bus's Tracker started first). Published (Ben, 2026-11-07: "mit is
+  fine", "release is fine too"): LICENSE (MIT), the release
+  v2026.11.07 (https://github.com/benmyles/olo/releases/tag/v2026.11.07,
+  `tools/release.sh`'s four files), and the README's install from it;
+  tried from GitHub in the VM (Setup downloaded with curl from
+  `releases/latest`, installed over the earlier one, restarted, logged
+  in). Run again over an install, Setup now chooses what it installed
+  before (2757548d), and its password dialog shows over it (8c9bf3cd).
+  Updated as v2026.11.07.2 (9338942c: the day's later fixes), tried from
+  GitHub in the VM over the first: Setup found it, updated it and the
+  login screen's own copies, restarted, logged in, nothing of GNOME's
+  running.
+  Left for Ben: publishing a release (a GitHub release of
+  benmyles/olo with tools/release.sh's four files: Setup takes the
+  newest one's archive; until then it needs `--bundle URL`), then a
+  line in README.md on downloading and running it; and the repository
+  has no LICENSE file: Setup's Licence page shows the MIT terms
+  Cargo.toml names, "the authors of Olo" the holder.
 
 - **Nothing of GNOME's needed: Olo's own in its place** (Ben, 2026-11-06:
   "if we are still reliant on any gnome services or settings, create olo
@@ -181,9 +236,13 @@ something nobody here has is in "Blocked", with what it waits for.
   greeter reviewed at every scale in light and dark, and the boot splash
   booted in the real Plymouth in a VM (`tools/dev/plymouth-check`: every
   frame pixel for pixel at 1, 1.25, 1.5, 1.75 and 2×, the LUKS prompt
-  typed into). Not tried: the daemon as root on a real seat (on a vkms
-  seat its greeter would need the machine's PAM and logind, and
-  plymouthd can't draw there without switching Ben's screen). To try:
+  typed into). Tried since as root on a real seat, with a stock Fedora
+  45's own PAM, logind and SELinux, in a VM (the Olo installer's test,
+  2026-11-07: installed by Setup, restarted into, logged in through,
+  locked and unlocked; the login keyring opened by `pam_olo_keyring`;
+  what that found is fixed, 2169a524). Not tried on Ben's ThinkPad
+  (fingerprint and face, its NVIDIA and Intel GPUs at the login screen;
+  its boot splash). To try:
   `tools/install-login.sh` installs it beside GDM (asks for sudo once);
   `--switch` makes it the login screen from the next start, `--plymouth`
   the boot splash (it makes the start-up image again); `--revert` and
@@ -388,15 +447,15 @@ something nobody here has is in "Blocked", with what it waits for.
   as it is in 1Password, both ways.
   *Found* (2026-11-06, a probe Ben allowed that shows fields' types and
   values' shapes only, `examples/card_shapes.rs`): 1Password's SDK gives
-  most cards' expiry as `MonthYear` "NN/NNNN", but three cards' (his
-  "card of his" among them) as `Unsupported`, with no value and no
+  most cards' expiry as `MonthYear` "NN/NNNN", but three cards' (one of
+  his among them) as `Unsupported`, with no value and no
   section; asked for by its secret reference, the expiry comes, "NN/NNNN".
   *Fixed*: sync asks for every such field by reference
   (`resolve_unread`), a card's expiry and valid-from becoming month and
   years, and fetches again, once, any item synced before with one empty
   (`a_card_expiry_1password_wont_give_is_asked_for`; the stand-in now
   leaves an unsupported field's value out as 1Password does). *Left*
-  (Ben): Sync Now after upgrading; the work card's expiry shows.
+  (Ben): Sync Now after upgrading; that card's expiry shows.
 
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native
@@ -489,7 +548,7 @@ something nobody here has is in "Blocked", with what it waits for.
   *Re-checked* (2026-11-06, read-only, on the ThinkPad P1 Gen 9 this
   session runs on): a backup was imported here on 2026-11-04 at 14:24
   (the automatic "Before import" backup is in `state/olo/backups`); the
-  Mac's Wi-Fi networks are in NetworkManager (Home used 2026-11-05),
+  Mac's Wi-Fi networks are in NetworkManager (one used 2026-11-05),
   Passwords' vault is there, and the Token Pool's store is written to
   (its arrival marker gone: it has run since). *Left* (Ben): what only
   he can see: each pane and app as he left it, Passwords opening, and
@@ -2076,7 +2135,7 @@ people.
   headless: a second Terminal process each way, a plain click unchanged.
 
 - ~~**Passwords in an agent screen opens black**~~ (Ben, 2026-11-06, with a
-  screenshot of the screen "work-qa"): "trying to open
+  screenshot of one of his agent screens): "trying to open
   passwords in agent screens doesn't seem to work anymore". Its window
   shows (Deskbar lists it) but stays a black rectangle over Chrome.
   *Found*: the screen drew Passwords (its own screenshot showed it); the
@@ -2928,7 +2987,7 @@ people.
   "Resume this session with: claude --dangerously-skip-permissions
   --resume 00000000-…", then `claude --allow-dangerously-skip-permissions
   --dangerously-skip-permissions --resume 00000000-…` run, then
-  "Restored from Nov 5, 2026, 9:15 AM", `cd ~/src/notes`,
+  "Restored from Nov 5, 2026, 9:15 AM", `cd` into the worktree,
   and `cl` typed: it suggested `claude --help|grep allow`; "here i would
   expect the model's prediction to be that claude command to resume
   with the session id etc". So the candidates can't come only from the
@@ -3345,15 +3404,15 @@ people.
 - ~~**Terminal: a tab in a worktree isn't seen as the repository's**~~
   (Ben, 2026-11-04, with a screenshot): "for some reason terminal isn't
   picking up my worktree and github pr associated with them like it
-  recognized the main work-repo repo but then didn't recognize the
-  notes worktree". The first tab (in ~/src/work-repo) is
-  in the work-repo group with its PR badge; the second, `cd`'d into
-  ~/src/notes, sits outside it with no branch or PR. That
+  recognized the main [work] repo but then didn't recognize the
+  [its] worktree" (names left out here). The first tab (in the main
+  repository) is in its group with its PR badge; the second, `cd`'d
+  into the worktree beside it, sits outside it with no branch or PR. That
   folder is a linked worktree (its `.git` file: `gitdir:
-  /home/ben/src/work-repo/.git/worktrees/notes`, branch
-  `knowledge`), made at 11:37 that day, outside Terminal (git or
+  ~/src/REPO/.git/worktrees/REPO.WORKTREE`, on its own
+  branch), made at 11:37 that day, outside Terminal (git or
   worktrunk). apps/terminal/src/git.rs's watcher should take it as
-  work-repo's, on its branch, with that branch's PR. *Done*: the
+  the main repository's, on its branch, with that branch's PR. *Done*: the
   worktree was fine (git and Terminal's `git::look` read it); the tab's
   folder wasn't. Terminal reads it from the shell's `/proc/PID/cwd`, and
   brush (the login shell) never moved its process on `cd`. olo-brush
@@ -5505,8 +5564,8 @@ people.
   the firmware in that state; the healer's reports carry the times to
   match against the journal.) (Ben, 2026-10-31;
   after the move to GPUI is done): "something is wrong with the wifi- if
-  i try to connect to the normal Home-WPA3 it just says network cannot
-  be joined and if i try to connect to another like Home it says it
+  i try to connect to the normal [WPA3 network] it just says network cannot
+  be joined and if i try to connect to another like [the WPA2 one] it says it
   is connecting but then fails to connect. idk if the driver is flaky or
   if it's something else but whatever it is please root cause it and make
   it so it will reliably work -- olo should supervise this stuff and

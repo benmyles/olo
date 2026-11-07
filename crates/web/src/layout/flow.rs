@@ -900,6 +900,11 @@ pub struct Job<'a> {
     stored: Vec<Option<Stored>>,
     previous: Option<Reuse<'a>>,
     reuse_roots: Vec<BoxId>,
+    /// Why blocks could not be taken from the previous layout (profiled):
+    /// dirty, not in flow, floats about, no old box, no record, other
+    /// inputs, a float, and a difference inside (node, style, kind, text,
+    /// absolute, float).
+    refused: [u32; 8],
     stack: Vec<Frame>,
     flex: Vec<flex_flow::Frame<'a>>,
     containers: Vec<container_flow::Container>,
@@ -961,6 +966,7 @@ impl<'a> Job<'a> {
             stored: vec![None; geometry.len()],
             previous: None,
             reuse_roots: Vec::new(),
+            refused: [0; 8],
             geometry,
             texts,
             stack: vec![Frame {
@@ -1032,34 +1038,49 @@ impl<'a> Job<'a> {
         let Some(prev) = &self.previous else { return Ok(false) };
         let frame = self.stack.last().ok_or(Error::Invalid)?;
         if frame.atomic_host || self.containers.last().is_some_and(|c| c.id == frame.id) || self.active_absolute.as_ref().is_some_and(|a| a.id == child) {
+            self.refused[1] += 1;
             return Ok(false);
         }
         if !self.stack[self.bfc_index()].floats.is_empty() {
+            self.refused[2] += 1;
             return Ok(false);
         }
         let new_tree = &self.cache.tree;
         let b = new_tree.get(child).ok_or(Error::Invalid)?;
         if prev.dirty.contains(&b.node) {
+            self.refused[0] += 1;
             return Ok(false);
         }
         let old_tree = &prev.layout.cache.tree;
         // The old box for this one: the same ordinal among its node's blocks.
         let Some(ordinal) = new_tree.boxes_of(b.node).filter(|&id| matches!(new_tree.boxes[id.index()].kind, BoxKind::Block { .. })).position(|id| id == child) else { return Ok(false) };
-        let Some(&old) = prev.by_node.get(&b.node).and_then(|v| v.get(ordinal)) else { return Ok(false) };
+        let Some(&old) = prev.by_node.get(&b.node).and_then(|v| v.get(ordinal)) else {
+            self.refused[3] += 1;
+            return Ok(false);
+        };
         let inputs = Inputs { width: frame.used.width, height: frame.used.height.map(|h| frame.used.height(h)), rtl: frame.used.rtl, queries: frame.queries };
-        let Some(stored) = prev.layout.stored.get(old.index()).copied().flatten() else { return Ok(false) };
-        let Some(result) = stored.result else { return Ok(false) };
+        let Some(stored) = prev.layout.stored.get(old.index()).copied().flatten() else {
+            self.refused[4] += 1;
+            return Ok(false);
+        };
+        let Some(result) = stored.result else {
+            self.refused[4] += 1;
+            return Ok(false);
+        };
         if stored.inputs != inputs {
+            self.refused[5] += 1;
             return Ok(false);
         }
         let positioned = |s: &crate::css::style::Style| !matches!(s.value(P::Position), Value::Keyword(K::Static)) || matches!(s.value(P::Transform), Value::Transforms(_));
         let style = new_tree.style(child).ok_or(Error::Invalid)?;
         if self.float_side(style).is_some() {
+            self.refused[6] += 1;
             return Ok(false);
         }
         // The subtrees side by side: the same in everything layout reads.
         let mut pairs: Vec<(BoxId, BoxId, bool, bool)> = vec![(child, old, positioned(style), stored.bfc)];
         let mut copied: Vec<(BoxId, BoxId)> = Vec::new();
+        self.refused[7] += 1;
         while let Some((a, o, cb_inside, bfc_inside)) = pairs.pop() {
             check(self.cancel)?;
             let (Some(n), Some(ob)) = (new_tree.get(a), old_tree.get(o)) else { return Ok(false) };
@@ -1109,6 +1130,7 @@ impl<'a> Job<'a> {
                 }
             }
         }
+        self.refused[7] -= 1;
         let count = copied.len();
         for (a, o) in copied {
             self.geometry[a.index()] = prev.layout.geometry[o.index()];
@@ -1877,7 +1899,22 @@ impl<'a> Job<'a> {
             let p = LAYOUT_PROFILE.with(|p| p.replace([(0, 0.); 7]));
             let names = ["enter", "text", "replaced", "finish", "flex", "absolute", "intrinsic"];
             let parts: Vec<String> = names.iter().zip(p).filter(|(_, (n, _))| *n > 0).map(|(name, (n, secs))| format!("{name} {n}×{:.1} ms", secs * 1000.)).collect();
-            eprintln!("layout profile: {}; {} of {} boxes reused", parts.join(", "), self.progress.reused, self.cache.tree.boxes.len());
+            let r = self.refused;
+            eprintln!(
+                "layout profile: {}; {} of {} boxes reused in {} subtrees (refused: dirty {}, not in flow {}, floats about {}, no old box {}, no record {}, other inputs {}, a float {}, differs inside {})",
+                parts.join(", "),
+                self.progress.reused,
+                self.cache.tree.boxes.len(),
+                self.reuse_roots.len(),
+                r[0],
+                r[1],
+                r[2],
+                r[3],
+                r[4],
+                r[5],
+                r[6],
+                r[7]
+            );
         }
         if !self.intrinsics.is_empty() {
             if let Some(previous) = &self.cache.intrinsics {

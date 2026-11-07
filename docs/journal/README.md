@@ -47,6 +47,48 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Browser: stripe.com with JavaScript](2026-11-07/021547-browser-stripe-com-with-javascript.png)
 
+### Power ▸ Graphics says what each GPU is on now
+
+*01:28* — Ben asked whether changing the power mode changes the NVIDIA GPU's clock. It does in Power Saver (its clock capped at 70%), but its box showed only its Custom slider, at the card's top clock whatever the mode, while Intel's sliders moved: now each GPU's line says what the mode has it on, in numbers (here Performance: Intel 1650–2450 MHz; NVIDIA as its driver has it, since a laptop's takes no power limit), and Custom's sliders show Custom's own settings, which don't move with the mode.
+
+![Power ▸ Graphics says what each GPU is on now](2026-11-07/012824-power-graphics-says-what-each-gpu-is-on-now.png)
+
+### Olo on a fresh Fedora 45, installed by Setup
+
+*00:39* — Logged in through Olo's login screen; Home open in Tracker and Preferences switched to dark.
+
+![Olo on a fresh Fedora 45, installed by Setup](2026-11-07/003932-olo-on-a-fresh-fedora-45-installed-by-setup.png)
+
+### Olo's login screen after Setup, on a fresh Fedora 45
+
+*00:39* — Restarted from Setup's last page: Olo's own login screen in GDM's place, Olo Desktop chosen.
+
+![Olo's login screen after Setup, on a fresh Fedora 45](2026-11-07/003931-olo-s-login-screen-after-setup-on-a-fresh-fedora.png)
+
+### Olo Setup: Olo Is Installed
+
+*00:39* — The last page, with its dedication: Olo is a work of love, dedicated to Sir Samwise, the bestest English Labrador that ever walked the earth.
+
+![Olo Setup: Olo Is Installed](2026-11-07/003931-olo-setup-olo-is-installed.png)
+
+### Olo Setup: Installing
+
+*00:39* — A BeOS status bar, the stage over it and how far through at its right; the stages and notes below.
+
+![Olo Setup: Installing](2026-11-07/003930-olo-setup-installing.png)
+
+### Olo Setup: Choose What to Install
+
+*00:39* — Olo Desktop always; Olo's login screen, its boot splash and RPM Fusion offered, each with what it does.
+
+![Olo Setup: Choose What to Install](2026-11-07/003930-olo-setup-choose-what-to-install.png)
+
+### Olo Setup: Welcome, full screen on a stock Fedora 45
+
+*00:39* — Windows 95's Setup in BeOS's look: the blue backdrop and big serif title, a BeOS window for each page. Downloaded and run in a fresh Fedora 45 Workstation VM, 1x.
+
+![Olo Setup: Welcome, full screen on a stock Fedora 45](2026-11-07/003929-olo-setup-welcome-full-screen-on-a-stock-fedora-.png)
+
 ### Browser: Wikipedia's main page as Chrome lays it out
 
 *00:29* — System fonts with Chrome's family policy, SVG images, mask-image icons, floats and text decoration: the main page's header, tabs, columns and floated thumbnail match Chrome at 1000 × 700.

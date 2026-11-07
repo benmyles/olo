@@ -221,20 +221,25 @@ impl Element for Control {
         if !enabled {
             return;
         }
-        // The pointer coming or going: drawn again.
+        // The pointer coming or going: the view it's in drawn again, as
+        // GPUI's own hover styles do, not the whole window (every view of
+        // it rendered again, cached or not: a pointer swept over
+        // Notifications' buttons, a screen of 200 cards, took 12 to 46 ms
+        // frames, its others 2 ms).
         let hb = hitbox.clone();
         let was = hovered;
-        window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, _| {
+        let view = window.current_view();
+        window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
             if phase.bubble() && hb.is_hovered(window) != was {
-                window.refresh();
+                cx.notify(view);
             }
         });
         let hb = hitbox.clone();
         let h = held.clone();
-        window.on_mouse_event(move |e: &MouseDownEvent, phase, window, _| {
+        window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
             if phase.bubble() && e.button == MouseButton::Left && hb.is_hovered(window) {
                 h.0.set(true);
-                window.refresh();
+                cx.notify(view);
             }
         });
         // The window's Return, as its default button (while it can be
@@ -261,7 +266,7 @@ impl Element for Control {
         window.on_mouse_event(move |e: &MouseUpEvent, phase, window, cx| {
             if phase.bubble() && e.button == MouseButton::Left && held.0.get() {
                 held.0.set(false);
-                window.refresh();
+                cx.notify(view);
                 if hb.is_hovered(window)
                     && let Some(f) = &on_click
                 {

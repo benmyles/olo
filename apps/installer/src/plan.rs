@@ -67,6 +67,30 @@ impl Default for Choices {
     }
 }
 
+impl Choices {
+    /// These, and whatever `had` has: what Setup installed before is
+    /// chosen again, so running it again updates it (the login screen
+    /// runs copies of its own outside the home folder, which an update
+    /// leaving it out kept old).
+    pub fn and(self, had: Choices) -> Choices {
+        Choices { login_screen: self.login_screen || had.login_screen, boot_splash: self.boot_splash || had.boot_splash, rpm_fusion: self.rpm_fusion || had.rpm_fusion }
+    }
+
+    /// Which of them this computer has, under `root` ("/"): Olo's login
+    /// screen as its display manager, Olo's boot splash as Plymouth's
+    /// theme, RPM Fusion's repositories.
+    pub fn installed_under(root: &Path) -> Choices {
+        let at = |p: &str| root.join(p.trim_start_matches('/'));
+        let dm = std::fs::read_link(at("/etc/systemd/system/display-manager.service")).ok();
+        let theme = std::fs::read_to_string(at("/etc/plymouth/plymouthd.conf")).unwrap_or_default();
+        Choices {
+            login_screen: dm.as_deref().and_then(Path::file_name).is_some_and(|n| n == "olo-login.service"),
+            boot_splash: theme.lines().any(|l| l.trim() == "Theme=olo"),
+            rpm_fusion: at("/etc/yum.repos.d/rpmfusion-free.repo").exists(),
+        }
+    }
+}
+
 /// What the window is told.
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -114,6 +138,8 @@ pub struct Computer {
     pub free: u64,
     /// The version of Olo installed already, if any.
     pub installed: Option<String>,
+    /// What of the Choose page's this computer has already.
+    pub had: Choices,
 }
 
 /// What this computer is.
@@ -135,6 +161,7 @@ pub fn look() -> Computer {
         atomic: Path::new("/run/ostree-booted").exists(),
         user: std::env::var("USER").unwrap_or_default(),
         installed: bundle::installed(&home),
+        had: Choices::installed_under(Path::new("/")),
         home,
         nvidia,
         free,
@@ -215,6 +242,12 @@ fn session_steps(c: &Computer, olo: &Path) -> Result<Vec<Step>, String> {
     Ok(steps)
 }
 
+/// SELinux's labels for Olo's login screen, as GDM's are: its program
+/// runs as a display manager (`xdm_t`, from which the person's session may
+/// start: as `bin_t` it was `unconfined_service_t`, which may not), its
+/// folders the display manager's own (tools/install-login.sh: the same).
+const SELINUX_LABELS: &[(&str, &str)] = &[("/usr/local/libexec/olo/olo-login", "xdm_exec_t"), ("/run/olo-login(/.*)?", "xdm_var_run_t"), ("/var/lib/olo-greeter(/.*)?", "xdm_var_lib_t")];
+
 /// The root steps for Olo's own login screen in GDM's place (as
 /// tools/install-login.sh --switch does), from the unpacked `olo`.
 fn login_screen_steps(olo: &Path) -> Result<Vec<Step>, String> {
@@ -237,15 +270,39 @@ fn login_screen_steps(olo: &Path) -> Result<Vec<Step>, String> {
     // The login password opens Olo's keyring (olo-login's PAM names it).
     steps.push(Step::CopyFile { from: olo.join("bin/pam_olo_keyring.so"), to: PathBuf::from("/usr/lib64/security/pam_olo_keyring.so"), mode: 0o755 });
     steps.push(Step::WriteFile { path: "/etc/sysusers.d/olo-greeter.conf".into(), content: read(olo.join("system/sysusers/olo-greeter.conf"))?, mode: 0o644 });
-    steps.push(Step::WriteFile { path: "/etc/tmpfiles.d/olo-greeter.conf".into(), content: read(olo.join("system/tmpfiles/olo-greeter.conf"))?, mode: 0o644 });
-    // systemd makes the login screen's user and folders, as at boot.
-    steps.push(Step::Unit { name: "systemd-sysusers.service".into(), action: UnitAction::Restart });
-    steps.push(Step::Unit { name: "systemd-tmpfiles-setup.service".into(), action: UnitAction::Restart });
+    let tmpfiles = read(olo.join("system/tmpfiles/olo-greeter.conf"))?;
+    steps.push(Step::WriteFile { path: "/etc/tmpfiles.d/olo-greeter.conf".into(), content: tmpfiles.clone(), mode: 0o644 });
+    // The login screen's user, made by systemd's own program; its folders
+    // made here (systemd won't start its tmpfiles service again by hand,
+    // and its sysusers service runs only after an update).
+    steps.push(Step::MakeSystemUsers { config: "/etc/sysusers.d/olo-greeter.conf".into() });
+    steps.extend(folders(&tmpfiles));
+    // A display manager to SELinux, as GDM is (its program, its folders).
+    steps.push(Step::SelinuxLabels {
+        rules: SELINUX_LABELS.iter().map(|(r, t)| ((*r).to_owned(), (*t).to_owned())).collect(),
+        restore: ["/usr/local/libexec/olo", "/run/olo-login", "/var/lib/olo-greeter"].map(PathBuf::from).to_vec(),
+    });
     steps.push(Step::WriteFile { path: "/etc/systemd/system/olo-login.service".into(), content: read(olo.join("system/systemd/olo-login.service"))?, mode: 0o644 });
     steps.push(Step::Unit { name: "olo-login.service".into(), action: UnitAction::Reload });
     steps.push(Step::Unit { name: "gdm.service".into(), action: UnitAction::Disable });
     steps.push(Step::Unit { name: "olo-login.service".into(), action: UnitAction::Enable });
     Ok(steps)
+}
+
+/// The folders a tmpfiles.d file's `d` lines ask for (`d PATH MODE USER
+/// GROUP -`), as steps.
+fn folders(tmpfiles: &str) -> Vec<Step> {
+    tmpfiles
+        .lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            (f.len() >= 4 && f[0] == "d").then(|| Step::MakeDir {
+                path: PathBuf::from(f[1]),
+                mode: u32::from_str_radix(f[2], 8).unwrap_or(0o755),
+                owner: (f[3] != "root" && f[3] != "-").then(|| f[3].to_owned()),
+            })
+        })
+        .collect()
 }
 
 /// The root steps for Olo's boot splash, the theme made (as the person,
@@ -486,4 +543,48 @@ fn default_session(session: &str) -> Result<(), String> {
         .and_then(|r| r.body().deserialize())
         .map_err(|e| e.to_string())?;
     conn.call_method(Some("org.freedesktop.Accounts"), path.as_str(), Some("org.freedesktop.Accounts.User"), "SetSession", &(session,)).map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run again, Setup chooses what it installed before (and updates it).
+    #[test]
+    fn what_was_installed_is_chosen_again() {
+        let root = std::env::temp_dir().join(format!("olo-setup-had-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(Choices::installed_under(&root), Choices::default());
+        std::fs::create_dir_all(root.join("etc/systemd/system")).unwrap();
+        std::fs::create_dir_all(root.join("etc/plymouth")).unwrap();
+        std::fs::create_dir_all(root.join("etc/yum.repos.d")).unwrap();
+        // GDM's: not Olo's login screen.
+        std::os::unix::fs::symlink("/usr/lib/systemd/system/gdm.service", root.join("etc/systemd/system/display-manager.service")).unwrap();
+        std::fs::write(root.join("etc/plymouth/plymouthd.conf"), "[Daemon]\nTheme=bgrt\n").unwrap();
+        assert_eq!(Choices::installed_under(&root), Choices::default());
+        std::fs::remove_file(root.join("etc/systemd/system/display-manager.service")).unwrap();
+        std::os::unix::fs::symlink("/etc/systemd/system/olo-login.service", root.join("etc/systemd/system/display-manager.service")).unwrap();
+        std::fs::write(root.join("etc/plymouth/plymouthd.conf"), "# Olo's boot splash (Olo Setup).\n[Daemon]\nTheme=olo\nDeviceScale=1\n").unwrap();
+        std::fs::write(root.join("etc/yum.repos.d/rpmfusion-free.repo"), "").unwrap();
+        let had = Choices::installed_under(&root);
+        assert_eq!(had, Choices { login_screen: true, boot_splash: true, rpm_fusion: true });
+        assert_eq!(Choices::default().and(had), had);
+        assert_eq!(Choices { login_screen: true, ..Choices::default() }.and(Choices::default()).login_screen, true);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_tmpfiles_file_s_folders() {
+        let steps = folders("# a comment\nd /var/lib/olo-greeter 0750 olo-greeter olo-greeter -\nd /run/olo-login 0755 root root -\nL /x - - - - /y\n");
+        assert_eq!(
+            steps,
+            [Step::MakeDir { path: "/var/lib/olo-greeter".into(), mode: 0o750, owner: Some("olo-greeter".into()) }, Step::MakeDir { path: "/run/olo-login".into(), mode: 0o755, owner: None },]
+        );
+    }
+
+    #[test]
+    fn the_session_entry_names_the_person_s_session() {
+        let e = session_entry("[Desktop Entry]\nName=Olo Desktop\nExec=olo-session\nTryExec=olo-session\n", Path::new("/home/u/.local/bin"));
+        assert_eq!(e, "[Desktop Entry]\nName=Olo Desktop\nExec=/home/u/.local/bin/olo-session\n");
+    }
 }

@@ -551,10 +551,40 @@ fn edit(ui: &Ui, shared: &Arc<Mutex<Shared>>, pci: &str, f: impl Fn(&mut GpuTune
     })
 }
 
+/// What GPU `caps` is set to now by `tune` (the tuning in force): an xe
+/// GPU's clocks as its driver says (read as the panel was), NVIDIA's as
+/// they were set (its driver doesn't say what clocks are locked).
+fn in_force(tune: &GpuTune, caps: &Caps) -> String {
+    match caps {
+        Caps::Xe(x) => {
+            let profile = if x.power_saving_now { ", the power-saving profile" } else { "" };
+            format!("{}–{} MHz{profile}", x.min_now, x.max_now)
+        }
+        Caps::Nvidia(n) => {
+            let mut s = match tune.max_gpu_mhz {
+                Some(max) => format!("its clock up to {max} MHz"),
+                None => format!("its clock as the driver has it, up to {} MHz", n.max_gpu_mhz),
+            };
+            if let Some(w) = tune.power_limit_w {
+                s.push_str(&format!(", a {w} W power limit"));
+            }
+            if tune.persistent == Some(true) {
+                s.push_str(", its driver kept ready");
+            }
+            s
+        }
+        Caps::None => String::new(),
+    }
+}
+
 fn gpu_box(ui: &mut Ui, e: &Entry, edited: &Tuning, shared: &Arc<Mutex<Shared>>) {
     let g = &e.gpu;
     let pci = g.pci.clone();
-    let now = shared.lock().unwrap().kept.of(&pci).preset;
+    let (tune, driver) = {
+        let s = shared.lock().unwrap();
+        (s.kept.of(&pci), s.kept.driver.iter().find(|d| d.pci == pci).cloned())
+    };
+    let now = tune.preset;
     ui.bbox(&g.name, |ui| {
         let state = if e.asleep { "asleep: nothing uses it" } else { "awake" };
         ui.note(format!("{} driver, {state}; {}.", g.driver, drives(g)));
@@ -572,34 +602,44 @@ fn gpu_box(ui: &mut Ui, e: &Entry, edited: &Tuning, shared: &Arc<Mutex<Shared>>)
             ui.note(format!("Nothing to tune for its driver ({}) yet.", g.driver));
             return;
         }
-        ui.note(format!("On {} now: Power Modes says what each mode puts it on.", now.name()));
+        // (What the mode has it on, in numbers: the Custom settings below
+        // are Custom's alone, and don't move as the mode changes.)
+        ui.note(format!("On {} now: {}. Power Modes says what each mode puts it on.", now.name(), in_force(&tune, &caps)));
         // (Its own heading: what a mode set to Custom puts it on.)
         ui.label("Custom settings");
-        knobs(ui, &caps, &edited.custom_of(&pci), shared, &pci);
+        knobs(ui, &caps, &edited.custom_of(&pci), driver.as_ref(), shared, &pci);
     });
 }
 
-fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, shared: &Arc<Mutex<Shared>>, pci: &str) {
+/// GPU `pci`'s Custom settings, `tune`: a knob not set shows what Custom
+/// would set it to, the driver's own (xe's limits as noted before it was
+/// first tuned, `driver`), never what the mode has it on now (it had
+/// xe's, so they moved with the mode and NVIDIA's didn't).
+fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, driver: Option<&gpu_tuning::DriverLimits>, shared: &Arc<Mutex<Shared>>, pci: &str) {
     let mhz = |v: f32| format!("{v:.0} MHz");
     match caps {
         Caps::Xe(x) => {
             let (lo, hi) = (x.lowest as f32, x.highest as f32);
-            let min = tune.min_mhz.unwrap_or(x.min_now) as f32;
-            let max = tune.max_mhz.unwrap_or(x.max_now) as f32;
-            let on_min = edit(ui, shared, pci, |t, v| {
+            // (As `gpu_tuning::apply` takes a knob left unset.)
+            let own_min = driver.and_then(|d| d.min_mhz).unwrap_or(x.efficient.max(x.lowest)).clamp(x.lowest, x.highest);
+            let own_max = driver.and_then(|d| d.max_mhz).unwrap_or(x.highest).clamp(own_min, x.highest);
+            let min = tune.min_mhz.unwrap_or(own_min) as f32;
+            let max = tune.max_mhz.unwrap_or(own_max) as f32;
+            // (The other end kept as shown: it had taken the one moved.)
+            let on_min = edit(ui, shared, pci, move |t, v| {
                 let v = v.round() as u32;
                 t.min_mhz = Some(v);
-                t.max_mhz = Some(t.max_mhz.unwrap_or(v).max(v));
+                t.max_mhz = Some(t.max_mhz.unwrap_or(own_max).max(v));
             });
             ui.add(Slider::new(format!("gpu-{pci}-min"), min, lo..=hi).step(50.0).label("Lowest clock").value_text(mhz(min)).on_change(on_min));
-            let on_max = edit(ui, shared, pci, |t, v| {
+            let on_max = edit(ui, shared, pci, move |t, v| {
                 let v = v.round() as u32;
                 t.max_mhz = Some(v);
-                t.min_mhz = t.min_mhz.map(|m| m.min(v));
+                t.min_mhz = Some(t.min_mhz.unwrap_or(own_min).min(v));
             });
             ui.add(Slider::new(format!("gpu-{pci}-max"), max, lo..=hi).step(50.0).label("Highest clock").value_text(mhz(max)).on_change(on_max));
             if x.profiles {
-                let saving = tune.power_saving.unwrap_or(x.power_saving_now);
+                let saving = tune.power_saving.unwrap_or(false);
                 let on = edit(ui, shared, pci, |t, v| t.power_saving = Some(v > 0.5));
                 ui.add(CheckBox::new("Power-saving profile", saving).id(format!("gpu-{pci}-saving")).on_toggle(move |b, w, cx| on(if b { 1.0 } else { 0.0 }, w, cx)));
             }
@@ -622,5 +662,26 @@ fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, shared: &Arc<Mutex<Shared>>, 
             ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new("Its work starts sooner, but it never sleeps: more power, more warmth.").dim(true).wrap(true)));
         }
         Caps::None => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use olo_system::gpu_tuning::{NvidiaCaps, XeCaps};
+
+    /// Each GPU says what the mode has it on, in numbers (Ben,
+    /// 2026-11-07: "changing the power mode in prefs -> power doesn't
+    /// change the clock setting of the nvidia gpu?": its box showed only
+    /// Custom's slider, at its highest clock whatever the mode).
+    #[test]
+    fn what_each_gpu_is_on_now() {
+        let nvidia = Caps::Nvidia(NvidiaCaps { power: None, min_gpu_mhz: 180, max_gpu_mhz: 3090, persistent_now: Some(false) });
+        let cooler = gpu_tuning::preset("0000:01:00.0", Preset::Cooler, &nvidia);
+        assert_eq!(in_force(&cooler, &nvidia), "its clock up to 2160 MHz");
+        let fastest = gpu_tuning::preset("0000:01:00.0", Preset::Fastest, &nvidia);
+        assert_eq!(in_force(&fastest, &nvidia), "its clock as the driver has it, up to 3090 MHz");
+        let xe = Caps::Xe(XeCaps { lowest: 400, efficient: 650, highest: 2450, min_now: 650, max_now: 1600, profiles: true, power_saving_now: true });
+        assert_eq!(in_force(&GpuTune::default(), &xe), "650–1600 MHz, the power-saving profile");
     }
 }

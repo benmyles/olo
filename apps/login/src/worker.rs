@@ -113,6 +113,14 @@ pub fn run(setup: Setup) -> i32 {
         vars.push(("XDG_VTNR".into(), setup.vt.to_string()));
     }
     vars.extend(env);
+    // Through the system's olo-session beside us (`--exec`): SELinux moves
+    // the session into the person's domain as it starts a system program,
+    // as GDM's does through gdm-wayland-session (a fresh Fedora 45: starting
+    // ~/.local/bin/olo-session from the login screen's domain was denied).
+    let command: Vec<String> = match std::env::current_exe().ok().and_then(|e| Some(e.parent()?.join("olo-session"))) {
+        Some(trampoline) if setup.test.is_none() && trampoline.is_file() => std::iter::once(trampoline.display().to_string()).chain(std::iter::once("--exec".to_owned())).chain(command).collect(),
+        _ => command,
+    };
     // SAFETY: one thread (the worker never starts another), so the child
     // may do anything before it execs.
     let pid = unsafe { libc::fork() };
@@ -134,6 +142,17 @@ pub fn run(setup: Setup) -> i32 {
     // (Dropping the transaction closes the session and its credentials.)
     drop(p);
     0
+}
+
+/// A stream into the journal (systemd's stdout socket, its header said:
+/// `identifier`, info, no level prefixes, nothing forwarded), as a file
+/// descriptor; None without one.
+fn journal_stream(identifier: &str) -> Option<i32> {
+    use std::{io::Write as _, os::fd::IntoRawFd as _};
+    let mut s = std::os::unix::net::UnixStream::connect("/run/systemd/journal/stdout").ok()?;
+    s.write_all(format!("{identifier}\n\n6\n0\n0\n0\n0\n").as_bytes()).ok()?;
+    let _ = s.shutdown(std::net::Shutdown::Read);
+    Some(s.into_raw_fd())
 }
 
 struct Account {
@@ -180,6 +199,16 @@ fn become_and_exec(setup: &Setup, account: &Account, tty: &str, command: &[Strin
             }
             if fd > 2 {
                 libc::close(fd);
+            }
+            // What it says to the journal, as GDM's sessions do, not to
+            // the terminal: on a terminal another took (Fedora 45's
+            // kmscon), writing failed and Olo's programs ended; and the
+            // journal keeps it (`journalctl -t olo-session`).
+            let program = if command.get(1).is_some_and(|a| a == "--exec") { command.get(2) } else { command.first() };
+            if let Some(out) = journal_stream(program.and_then(|p| p.rsplit('/').next()).unwrap_or("olo-session")) {
+                libc::dup2(out, 1);
+                libc::dup2(out, 2);
+                libc::close(out);
             }
             let name = CString::new(setup.user.as_str()).unwrap_or_default();
             if libc::initgroups(name.as_ptr(), account.gid) != 0 || libc::setgid(account.gid) != 0 || libc::setuid(account.uid) != 0 {

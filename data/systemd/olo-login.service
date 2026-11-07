@@ -2,9 +2,13 @@
 Description=Olo's login screen
 Documentation=https://github.com/benmyles/olo/blob/main/docs/HACKING.md
 
-# In the console's place on the first terminal.
-Conflicts=getty@tty1.service
-After=getty@tty1.service
+# In the console's place on the first terminal: the text console's login
+# or Fedora's kmscon (from Fedora 45), as GDM's unit has it. With kmscon
+# left on tty1, the login screen's session lost its terminal (writing to
+# it failed, and Olo's programs ended), seen in a fresh Fedora 45,
+# 2026-11-07.
+Conflicts=getty@tty1.service kmsconvt@tty1.service
+After=getty@tty1.service kmsconvt@tty1.service
 # The boot's splash handed over as GDM does: olo-login tells Plymouth to
 # let go of the screen and, once the login screen shows, to quit leaving
 # its picture there (so no console flashes between); Plymouth's own quit
@@ -18,6 +22,9 @@ OnFailure=plymouth-quit.service
 ExecStart=/usr/local/libexec/olo/olo-login --daemon --programs /usr/local/libexec/olo --vt 1
 KillMode=mixed
 Restart=always
+# Handed to another login screen for this boot (Olo's couldn't show:
+# daemon.rs, hand_over): not started again.
+RestartPreventExitStatus=75
 IgnoreSIGPIPE=no
 EnvironmentFile=-/etc/locale.conf
 KeyringMode=shared

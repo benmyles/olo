@@ -111,11 +111,38 @@ pub enum Step {
         to: PathBuf,
         mode: u32,
     },
+    /// Make a folder (and those above it) with `mode`, owned by `owner`
+    /// (a user's name, its group the user's own) if given: a tmpfiles.d
+    /// `d` line's work, done now rather than at the next boot (systemd
+    /// won't start its tmpfiles service again by hand).
+    MakeDir {
+        path: PathBuf,
+        mode: u32,
+        owner: Option<String>,
+    },
+    /// SELinux's file labels for these paths (`(regex, type)`, recorded
+    /// with the system's own others: `semanage fcontext`), then put on
+    /// what's there (`restorecon -R` on `restore`). Nothing without
+    /// SELinux. Olo's login screen is a display manager to SELinux, as GDM
+    /// is: its program `xdm_exec_t` (so it runs as `xdm_t`, from which the
+    /// person's session may start), its folders `xdm_var_run_t` and
+    /// `xdm_var_lib_t`.
+    SelinuxLabels {
+        rules: Vec<(String, String)>,
+        restore: Vec<PathBuf>,
+    },
+    /// Make the system users and groups a sysusers.d file names (as at
+    /// boot): systemd's own program for it, run on that file
+    /// (systemd-sysusers.service runs only after an update, and there's
+    /// no other way to have systemd make one).
+    MakeSystemUsers {
+        config: PathBuf,
+    },
     /// Make the start-up images (initramfs) again, for every kernel
     /// installed: what's in them (Plymouth's theme and settings) changed.
-    /// The one step that runs another program (dracut, as root): the
-    /// images are the boot system's own, and there is no other way to
-    /// have it make them.
+    /// One of the two steps that run another program (dracut, as root):
+    /// the images are the boot system's own, and there is no other way
+    /// to have it make them.
     RebuildInitramfs,
     /// Install `name` from its maker's latest GitHub release, its
     /// published SHA-256 checked, to `to` (`crate::releases`): a program
@@ -154,11 +181,14 @@ impl Step {
             Step::AddKernelArgument { arg } => format!("Starting the kernel with {arg}"),
             Step::TryShell { path } => format!("Trying {}", path.display()),
             Step::SetLoginShell { user, shell } => format!("Making {} {user}'s login shell", shell.display()),
-            Step::InstallPackages { names } => format!("Installing {}", names.join(", ")),
+            Step::InstallPackages { names } => format!("Installing {}", short_list(names)),
             Step::UpdatePackages { names } => format!("Updating {}", short_list(names)),
             Step::InstallRelease { name, release, .. } => format!("Installing {name} from github.com/{}", release.repo),
             Step::InstallRepository { name, .. } => format!("Adding the {name} repository"),
             Step::CopyTree { to, .. } => format!("Installing {}", to.display()),
+            Step::MakeDir { path, .. } => format!("Making {}", path.display()),
+            Step::MakeSystemUsers { config } => format!("Making the users {} names", config.display()),
+            Step::SelinuxLabels { restore, .. } => format!("Labelling {} for SELinux", restore.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")),
             Step::RebuildInitramfs => "Making the start-up images again".into(),
         }
     }
@@ -242,6 +272,16 @@ impl Step {
             Step::SetLoginShell { user, shell } => set_login_shell(user, shell).map_err(|e| format!("{}: {e}", self.describe())),
             Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRelease { .. } | Step::InstallRepository { .. } => self.run_with(&mut |_| {}),
             Step::CopyTree { from, to, mode } => copy_tree(from, to, *mode).map_err(failed),
+            Step::MakeDir { path, mode, owner } => make_dir(path, *mode, owner.as_deref()).map_err(failed),
+            Step::SelinuxLabels { rules, restore } => selinux_labels(rules, restore).map_err(|e| format!("{}: {e}", self.describe())),
+            Step::MakeSystemUsers { config } => {
+                let out = std::process::Command::new("systemd-sysusers").arg(config).stdin(std::process::Stdio::null()).output();
+                match out {
+                    Ok(o) if o.status.success() => Ok(()),
+                    Ok(o) => Err(format!("{}: systemd-sysusers: {}", self.describe(), String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("failed"))),
+                    Err(e) => Err(failed(e)),
+                }
+            }
             Step::RebuildInitramfs => {
                 let status = std::process::Command::new("dracut")
                     .args(["--force", "--regenerate-all"])
@@ -257,6 +297,46 @@ impl Step {
             }
         }
     }
+}
+
+/// Record SELinux's labels for `rules` and put them on `restore` (see
+/// `Step::SelinuxLabels`); nothing where SELinux is off.
+fn selinux_labels(rules: &[(String, String)], restore: &[PathBuf]) -> Result<(), String> {
+    if !Path::new("/sys/fs/selinux/enforce").exists() {
+        return Ok(());
+    }
+    let run = |args: &[&str]| -> Result<String, String> {
+        let o = std::process::Command::new(args[0]).args(&args[1..]).stdin(std::process::Stdio::null()).output().map_err(|e| format!("{}: {e}", args[0]))?;
+        if o.status.success() { Ok(String::new()) } else { Err(format!("{}: {}", args[0], String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("failed"))) }
+    };
+    for (regex, kind) in rules {
+        // Added, or changed if one is there already.
+        if run(&["semanage", "fcontext", "-a", "-t", kind, regex]).is_err() {
+            run(&["semanage", "fcontext", "-m", "-t", kind, regex])?;
+        }
+    }
+    for p in restore.iter().filter(|p| p.exists()) {
+        run(&["restorecon", "-R", &p.display().to_string()])?;
+    }
+    Ok(())
+}
+
+/// `path` made with `mode`, owned by user `owner` and their group.
+fn make_dir(path: &Path, mode: u32, owner: Option<&str>) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::create_dir_all(path)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+    if let Some(name) = owner {
+        let c = std::ffi::CString::new(name).map_err(std::io::Error::other)?;
+        // SAFETY: getpwnam's static entry, read at once.
+        let ids = unsafe {
+            let pw = libc::getpwnam(c.as_ptr());
+            (!pw.is_null()).then(|| ((*pw).pw_uid, (*pw).pw_gid))
+        };
+        let (uid, gid) = ids.ok_or_else(|| std::io::Error::other(format!("there's no user {name}")))?;
+        std::os::unix::fs::chown(path, Some(uid), Some(gid))?;
+    }
+    Ok(())
 }
 
 /// Every file of `from` copied into `to`, each over its old self.
