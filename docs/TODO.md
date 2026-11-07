@@ -77,7 +77,18 @@ something nobody here has is in "Blocked", with what it waits for.
   as not installed. The last run, from scratch with the final release,
   went through with nothing done by hand. Not seen: the boot splash
   itself (installed, and the start-up images made again; the VM's
-  screen comes back only once the GPU's driver has it).
+  screen comes back only once the GPU's driver has it). Olo Doctor in
+  that VM then found what of GNOME's still ran in an Olo session and
+  what still reached for it; fixed: GNOME's dconf (started before Olo's
+  was named) and gvfs (started for uresourced), uresourced crashing at
+  every login on the start-up sound's stream (6a1a9223), and programs'
+  "Show in folder" starting GNOME's Files while no Tracker answered
+  (the session names Tracker for it; f9d45081, tried in the VM with
+  D-Bus's Tracker started first). Left for Ben: publishing the release
+  (`tools/release.sh`'s four files as a GitHub release of the public
+  repository: outward-facing, so his to say) and a download line in the
+  README; the repository has no LICENSE file (Setup's Licence page shows
+  `apps/installer/src/licence.txt`).
   Left for Ben: publishing a release (a GitHub release of
   benmyles/olo with tools/release.sh's four files: Setup takes the
   newest one's archive; until then it needs `--bundle URL`), then a
@@ -218,9 +229,13 @@ something nobody here has is in "Blocked", with what it waits for.
   greeter reviewed at every scale in light and dark, and the boot splash
   booted in the real Plymouth in a VM (`tools/dev/plymouth-check`: every
   frame pixel for pixel at 1, 1.25, 1.5, 1.75 and 2×, the LUKS prompt
-  typed into). Not tried: the daemon as root on a real seat (on a vkms
-  seat its greeter would need the machine's PAM and logind, and
-  plymouthd can't draw there without switching Ben's screen). To try:
+  typed into). Tried since as root on a real seat, with a stock Fedora
+  45's own PAM, logind and SELinux, in a VM (the Olo installer's test,
+  2026-11-07: installed by Setup, restarted into, logged in through,
+  locked and unlocked; the login keyring opened by `pam_olo_keyring`;
+  what that found is fixed, 2169a524). Not tried on Ben's ThinkPad
+  (fingerprint and face, its NVIDIA and Intel GPUs at the login screen;
+  its boot splash). To try:
   `tools/install-login.sh` installs it beside GDM (asks for sudo once);
   `--switch` makes it the login screen from the next start, `--plymouth`
   the boot splash (it makes the start-up image again); `--revert` and
