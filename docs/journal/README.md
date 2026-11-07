@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: Stripe's bento live, tiles kept, canvases read back asynchronously
+
+*06:31* — Three WebGL canvases animate in a live render of 6-11 ms: only the tiles they and the changing texts touch repaint, and their drawing buffers come back through pixel pack buffers a render late instead of stalling on the GPU.
+
+![Browser: Stripe's bento live, tiles kept, canvases read back asynchronously](2026-11-07/063123-browser-stripe-s-bento-live-tiles-kept-canvases-.png)
+
 ### Browser: stripe.com's hero wave live
 
 *04:54* — The hero wave is the page's own three.js scene (geometry from a worker, a palette texture, a post-processing render target), running on the page's clock; the Sign in button is an SVG mask with text, not drawn yet.

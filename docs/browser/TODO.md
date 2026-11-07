@@ -71,15 +71,22 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   targets) and draw through the engine's OpenGL ES contexts, one per
   canvas, read back when drawn (JOURNAL 2026-11-07 afternoon); the
   carousel's 2D canvas draws. Events from the person reach the scripts
-  (hover opens the menus). Remaining on Stripe: the Sign in button (an
-  SVG mask with `<text>`), the animated states checked against Chrome at
-  the same moment of the page's clock, and the live page's cost (below).
+  (hover opens the menus). The Sign in button (an SVG mask with
+  `<text>`) renders. Remaining on Stripe: the animated states checked
+  against Chrome at the same moment of the page's clock, and the live
+  page's cost (below).
 - [x] The page lives: after the static render (612 ms on stripe.com,
   prefetching subresources together) and the scripted one (3.6 s), the
   realm's timers and animation frames run on the page's clock, the
   document is re-rendered from a snapshot when it changes (incremental
-  style, prepared texts kept; 19 ms a render on stripe.com, coalesced to
-  10 a second), and nothing runs while nothing is due.
+  style through selector invalidation sets and kept matches, prepared
+  texts kept, tiles kept by signature so only what changed repaints,
+  WebGL canvases read back asynchronously; 6–10 ms a render on
+  stripe.com, coalesced to 10 a second), and nothing runs while nothing
+  is due. Next: incremental layout (a text change redoes boxes and
+  layout, ~10 ms), the restyle floor (the tree's styles copied, 0.6–2
+  ms), `:has()` walks, canvases composited on the GPU without readback,
+  numeric GL opcodes.
 - [ ] Performance, the first priority: styling Stripe is 34 ms (was 115:
   pseudo-element buckets, ancestor Bloom filter, hashed keys, root/
   attribute/:is() buckets, sparse computed values, chained custom

@@ -3754,5 +3754,11 @@
   "title": "Browser: stripe.com's hero wave live",
   "caption": "The hero wave is the page's own three.js scene (geometry from a worker, a palette texture, a post-processing render target), running on the page's clock; the Sign in button is an SVG mask with text, not drawn yet.",
   "image": "2026-11-07/045452-browser-stripe-com-s-hero-wave-live.png"
+ },
+ {
+  "time": "2026-11-07T06:31:23",
+  "title": "Browser: Stripe's bento live, tiles kept, canvases read back asynchronously",
+  "caption": "Three WebGL canvases animate in a live render of 6-11 ms: only the tiles they and the changing texts touch repaint, and their drawing buffers come back through pixel pack buffers a render late instead of stalling on the GPU.",
+  "image": "2026-11-07/063123-browser-stripe-s-bento-live-tiles-kept-canvases-.png"
  }
 ]

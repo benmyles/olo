@@ -5688,3 +5688,51 @@ redo only what changed.
   and fewer allocations per GL call, damage-limited repaints, and
   compositing canvases on the GPU without a readback.
 
+## 2026-11-07, evening: SVG text and masks; the live page made cheap
+
+- **SVG `<use>`, `<mask>` and `<text>`.** A use instantiates its target
+  in its own space (a symbol's viewBox scaled to the use's size); a mask
+  is its content drawn on a transparent surface whose luminance masks
+  the layer; text is shaped where the fonts are, when the layout is
+  prepared, its glyph outlines one path placed when the geometry is
+  resolved (percentage x/y against the viewport, then the element's
+  transform). Stripe's Sign in button, text cut out of a white rectangle
+  by a mask, renders as in Chrome.
+- **Tiles kept by signature.** A live render repaints only the tiles
+  whose content changed: each tile's signature hashes the commands over
+  it and what they draw from by identity (an image's pixels, a style's
+  values and font, a prepared text, an SVG's fingerprint). For that to
+  hold across the relayouts a live page makes, a recomputed style equal
+  to the previous one keeps the previous object, lists compare by
+  content, an unchanged 2D canvas keeps its image. Blurred box shadows
+  are made once at device size and composited over the ring outside the
+  box. Stripe's bento, 16 tiles: 65 → 30 ms per render, and only the
+  tiles the canvases and changing texts touch repaint (10 of 16, 5 of 16
+  when the animations pause); shadows 1.8–3.6 → 0.01–0.2 ms a tile.
+- **Restyles touch what changed.** Selector invalidation sets: every
+  rule's non-subject compounds are indexed by their keys to the subjects
+  they lead to, by descendant and sibling combinators, and a change says
+  which attribute changed with its old and new values, so a class
+  toggle re-matches exactly the elements its selectors can reach. The
+  rules an element matched are kept with its style: an inline style
+  change cascades them with the new declarations instead of matching
+  again. Inline styles never dirty `:has()` ancestors unless an argument
+  tests `[style]`; an attribute change dirties them only when an
+  argument tests a key that changed. A transform on a card no longer
+  restyles its subtree (children copied whole when the parent changed
+  only in what they never inherit). Stripe: a measurement restyle
+  visits 46–113 nodes in 4–6 ms (was 194 in 6–17 ms with layout
+  redone); a body class toggle 6.6 ms, layout kept.
+- **Canvases read back asynchronously.** A live render read every WebGL
+  canvas with a synchronous glReadPixels, waiting for the GPU: 14 ms of
+  each stripe.com render. Now two pixel pack buffers per canvas: a
+  render issues this frame's readback and maps the previous frame's,
+  one render late and without a stall (the first frame synchronous, so
+  a canvas never shows blank; a render that left a readback in flight
+  is followed by one more, so a canvas that stops shows its last
+  frame). Stripe hero live render: 34 → 6 ms (canvases 14.0 → 0.1).
+- **Open.** Incremental layout (the GDP counter's text change redoes
+  boxes and layout, ~10 ms); the restyle floor (the whole tree's styles
+  copied, 0.6–2 ms); `:has()` evaluation walks (html: 3604 steps);
+  compositing canvases on the GPU without any readback; numeric GL
+  opcodes; the scripts' own ~450 ms per 2 s.
