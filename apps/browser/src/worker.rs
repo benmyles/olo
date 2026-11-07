@@ -159,6 +159,12 @@ struct Live {
     /// Since the last summary: the page's ticks, and the most in one advance.
     ticks: usize,
     max_ticks: usize,
+    /// The next display frame (the page's clock, ms).
+    next_frame_ms: f64,
+    /// The page waits for a frame, or changed since the last render: the
+    /// worker wakes at the next frame.
+    wants_frame: bool,
+    render_due: bool,
 }
 /// Premultiplied RGBA (the engine's tiles and images) into straight BGRA
 /// (what the kit's image shader composites: it multiplies by alpha
@@ -265,11 +271,10 @@ impl Drop for Live {
         self.cancel.cancel();
     }
 }
-/// Renders of a live page are coalesced to a frame while its scripts keep
-/// changing it: one render a display frame (60 Hz), so animations are as
-/// smooth as the page draws them (at 100 ms they showed at 10 frames a
-/// second and stuttered).
-const LIVE_RENDER_INTERVAL: Duration = Duration::from_micros(16_667);
+/// A live page's frame: its animation frames run and it renders once a
+/// display frame (60 Hz), so animations are as smooth as the page draws
+/// them (at 100 ms they showed at 10 frames a second and stuttered).
+const FRAME: Duration = Duration::from_micros(16_667);
 struct Cached {
     key: Key,
     page: page::Page,
@@ -359,7 +364,16 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     }
                     // A live page's next timer sets how long to wait for a
                     // message; nothing due, nothing to wait for.
-                    let wait = cached.as_ref().and_then(|c| c.live.as_ref()).and_then(|l| l.next_due_ms.map(|due| Duration::from_secs_f64((due / 1000. - l.started.elapsed().as_secs_f64()).max(0.))));
+                    // Until its next timer, or its next frame when it waits for
+                    // one (animation frames, a change or a canvas to show).
+                    let wait = cached.as_ref().and_then(|c| c.live.as_ref()).and_then(|l| {
+                        let frame = (l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty()).then_some(l.next_frame_ms);
+                        let due = match (l.next_due_ms, frame) {
+                            (Some(a), Some(b)) => Some(a.min(b)),
+                            (a, b) => a.or(b),
+                        };
+                        due.map(|due| Duration::from_secs_f64((due / 1000. - l.started.elapsed().as_secs_f64()).max(0.)))
+                    });
                     let received = if let Some(m) = pending.pop_front() {
                         Some(m)
                     } else {
@@ -431,8 +445,9 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                 live.realm.input(&input, target);
                                 live.loads.dispatch(&mut live.realm);
                                 if live.realm.revision() != live.rendered {
+                                    // What the person did shows at once, not at the next frame.
                                     live.next_due_ms = Some(0.);
-                                    live.last_render = Instant::now() - LIVE_RENDER_INTERVAL;
+                                    live.next_frame_ms = 0.;
                                 }
                                 if let Some(r) = &last
                                     && !r.cancel.load(Ordering::Relaxed)
@@ -512,7 +527,20 @@ fn render(
         let Some(c) = cached.as_mut() else { return Ok(()) };
         let Some(live) = c.live.as_mut() else { return Ok(()) };
         let now_ms = live.started.elapsed().as_secs_f64() * 1000.;
-        let advanced = live.realm.advance(now_ms, Duration::from_millis(30));
+        // One frame clock, 60 Hz from the page's start: animation frames run
+        // on its ticks and the page renders right after them, so what a frame
+        // draws is what shows (two clocks, the page's 16 ms and the render's
+        // 16.7, beat against each other and dropped frames).
+        let frame = now_ms + 0.5 >= live.next_frame_ms;
+        if frame {
+            let period = FRAME.as_secs_f64() * 1000.;
+            live.next_frame_ms += period;
+            if live.next_frame_ms <= now_ms {
+                // Behind (a long task): the next frame from now, on the grid.
+                live.next_frame_ms = ((now_ms / period).floor() + 1.) * period;
+            }
+        }
+        let advanced = live.realm.advance_frame(now_ms, Duration::from_millis(30), Some(frame));
         live.loads.dispatch(&mut live.realm);
         if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
             for line in live.realm.take_console() {
@@ -520,6 +548,7 @@ fn render(
             }
         }
         live.next_due_ms = advanced.next_due_ms;
+        live.wants_frame = advanced.wants_frame;
         live.stats.0 += 1;
         live.stats.1 += advanced.spent_ms;
         live.ticks += advanced.ticks;
@@ -552,15 +581,12 @@ fn render(
         // The document changed, a readback is in flight, or a canvas was
         // drawn on (its drawing shows only through a render).
         if revision != live.rendered || live.render_again || live.realm.canvases_dirty() {
-            // Read once: read twice, the interval can pass between the reads
-            // and the subtraction underflow (it did, and the page thread died).
-            let since = live.last_render.elapsed();
-            if since < LIVE_RENDER_INTERVAL {
-                // Coalesce: render at the interval, not at every change.
-                let soon = now_ms + (LIVE_RENDER_INTERVAL - since).as_secs_f64() * 1000.;
-                live.next_due_ms = Some(live.next_due_ms.map_or(soon, |d| d.min(soon)));
+            if !frame {
+                // Changes between frames show at the next frame.
+                live.render_due = true;
                 return Ok(());
             }
+            live.render_due = false;
             let started = Instant::now();
             let doc = live.realm.snapshot();
             let snapshot_ms = started.elapsed().as_secs_f64() * 1000.;
@@ -597,11 +623,8 @@ fn render(
             let canvases_ms = before_canvases.elapsed().as_secs_f64() * 1000.;
             let before_rerender = Instant::now();
             // A readback still in flight shows at the next render: soon.
+            // A readback in flight shows at the next frame.
             live.render_again = live.realm.canvases_pending();
-            if live.render_again {
-                let soon = now_ms + LIVE_RENDER_INTERVAL.as_secs_f64() * 1000.;
-                live.next_due_ms = Some(live.next_due_ms.map_or(soon, |d| d.min(soon)));
-            }
             c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&cancel), |_, _| {})?;
             if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
                 eprintln!(
@@ -860,6 +883,9 @@ fn render(
                 stats: (0, 0., 0, 0., Instant::now()),
                 ticks: 0,
                 max_ticks: 0,
+                next_frame_ms: 0.,
+                wants_frame: false,
+                render_due: false,
             });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",

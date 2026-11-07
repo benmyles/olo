@@ -805,7 +805,14 @@
   };
   global.performance = { now: performanceNow, timeOrigin, timing: { navigationStart: timeOrigin, domLoading: timeOrigin, domInteractive: timeOrigin, domContentLoadedEventStart: timeOrigin, domContentLoadedEventEnd: timeOrigin, domComplete: timeOrigin, loadEventStart: timeOrigin, loadEventEnd: timeOrigin, fetchStart: timeOrigin, responseStart: timeOrigin, responseEnd: timeOrigin, requestStart: timeOrigin, connectStart: timeOrigin, connectEnd: timeOrigin, domainLookupStart: timeOrigin, domainLookupEnd: timeOrigin, redirectStart: 0, redirectEnd: 0, unloadEventStart: 0, unloadEventEnd: 0, secureConnectionStart: 0 }, navigation: { type: 0, redirectCount: 0 }, mark() { return {}; }, measure() { return {}; }, clearMarks() {}, clearMeasures() {}, clearResourceTimings() {}, getEntries: () => [], getEntriesByType: () => [], getEntriesByName: () => [], setResourceTimingBufferSize() {}, addEventListener() {}, removeEventListener() {}, toJSON() { return {}; }, memory: { usedJSHeapSize: 1e7, totalJSHeapSize: 2e7, jsHeapSizeLimit: 2e9 }, eventCounts: new Map() };
   global.PerformanceObserver = class PerformanceObserver { constructor(cb) { this.cb = cb; } observe() {} disconnect() {} takeRecords() { return []; } static get supportedEntryTypes() { return ['navigation', 'resource', 'paint', 'mark', 'measure', 'longtask', 'largest-contentful-paint', 'layout-shift', 'first-input']; } };
-  global.__olo_tick = (clock) => {
+  // The host's frame clock: frame 1 at a display frame (callbacks run),
+  // 0 between frames (they wait), -1 for none (frames every 16 ms of the
+  // page's own clock).
+  let frameDriven = false, frameNow = false;
+  global.__olo_wants_frame = () => (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) ? 1 : 0);
+  global.__olo_tick = (clock, frame) => {
+    frameDriven = frame === 0 || frame === 1;
+    frameNow = frame === 1;
     now = Math.max(now, Number(clock) || 0);
     // Due timers, earliest first; one pass, then report the next due time.
     const due = [...timers.entries()].filter(([, t]) => t.due <= now).sort((a, b) => a[1].due - b[1].due || a[0] - b[0]);
@@ -821,7 +828,7 @@
     // the observations, whose notifications follow), so a page that
     // schedules a frame and then observes sees the frame first.
     const intersectionsWanted = intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout);
-    if ((rafs.length || intersectionsWanted) && now >= lastFrame + 16) {
+    if ((rafs.length || intersectionsWanted) && (frameDriven ? frameNow : now >= lastFrame + 16)) {
       lastFrame = now;
       const batch = rafs.splice(0, rafs.length);
       for (const r of batch) { try { r.fn.call(global, performanceNow()); } catch (e) { reportError(e); } }
@@ -831,7 +838,8 @@
     if (resizeObservers.size) { const r = layoutNow(); if (r !== resizeRevision) { resizeRevision = r; for (const o of [...resizeObservers]) o._check(); } }
     let next = -1;
     for (const t of timers.values()) if (next < 0 || t.due < next) next = t.due;
-    if (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout))) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
+    // Frames driven by the host come when it says: only timers set the next time.
+    if (!frameDriven && (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)))) { const frame = lastFrame + 16; if (next < 0 || frame < next) next = frame; }
     if (next >= 0 && next <= now) next = now + 1;
     return next;
   };

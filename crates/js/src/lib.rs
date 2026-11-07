@@ -148,6 +148,9 @@ pub struct Advanced {
     /// How many times the page's tick ran (more than one: work due at the
     /// same moment, scheduled by what ran).
     pub ticks: usize,
+    /// The page waits for a display frame (animation frame callbacks,
+    /// intersection checks): driven by frames, see `advance_frame`.
+    pub wants_frame: bool,
 }
 /// What happened.
 #[derive(Debug, Default, Clone)]
@@ -470,6 +473,14 @@ impl Realm {
     /// ran): timers and animation frames due by then run, for at most
     /// `wall`. Returns when the next is due, and whether the document changed.
     pub fn advance(&mut self, now_ms: f64, wall: std::time::Duration) -> Advanced {
+        self.advance_frame(now_ms, wall, None)
+    }
+    /// `advance`, saying whether this moment is a display frame
+    /// (`Some(true)`: animation frame callbacks run, as a browser runs them
+    /// once a frame; `Some(false)`: only timers and tasks; `None`: frames
+    /// on the page's own 16 ms clock). `Advanced::wants_frame` says whether
+    /// the page waits for one.
+    pub fn advance_frame(&mut self, now_ms: f64, wall: std::time::Duration, frame: Option<bool>) -> Advanced {
         let started = Instant::now();
         let before = {
             let mut s = self.state.borrow_mut();
@@ -484,7 +495,12 @@ impl Realm {
         for _ in 0..10_000 {
             ticks += 1;
             self.pump_workers();
-            match self.call_prelude_number("__olo_tick", now_ms) {
+            // A frame's callbacks run on its first tick only.
+            let as_frame = match frame {
+                Some(f) => f64::from(u8::from(f && ticks == 1)),
+                None => -1.,
+            };
+            match self.call_prelude_numbers("__olo_tick", &[now_ms, as_frame]) {
                 Ok(next) if next < 0. => {
                     next_due_ms = None;
                     break;
@@ -507,7 +523,8 @@ impl Realm {
             }
         }
         let after = self.state.borrow().document.revision();
-        Advanced { next_due_ms, changed: after != before, spent_ms: started.elapsed().as_secs_f64() * 1000., ticks }
+        let wants_frame = frame.is_some() && self.call_prelude_number("__olo_wants_frame", 0.).is_ok_and(|v| v > 0.);
+        Advanced { next_due_ms, changed: after != before, spent_ms: started.elapsed().as_secs_f64() * 1000., ticks, wants_frame }
     }
     /// The last layout made for the scripts' measurements, if any: a render
     /// of the same document keeps its styles and texts.
@@ -705,6 +722,9 @@ impl Realm {
         Ok(())
     }
     fn call_prelude_number(&mut self, function: &str, arg: f64) -> Result<f64, String> {
+        self.call_prelude_numbers(function, &[arg])
+    }
+    fn call_prelude_numbers(&mut self, function: &str, args: &[f64]) -> Result<f64, String> {
         let state = self.state.clone();
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
@@ -714,8 +734,8 @@ impl Realm {
         let name = v8::String::new(tc, function).ok_or("string")?;
         let f = global.get(tc, name.into()).ok_or("missing")?;
         let f = v8::Local::<v8::Function>::try_from(f).map_err(|_| "not a function")?;
-        let arg: v8::Local<v8::Value> = v8::Number::new(tc, arg).into();
-        match f.call(tc, global.into(), &[arg]) {
+        let args: Vec<v8::Local<v8::Value>> = args.iter().map(|a| v8::Number::new(tc, *a).into()).collect();
+        match f.call(tc, global.into(), &args) {
             Some(v) => Ok(v.number_value(tc).unwrap_or(-1.)),
             None => {
                 let error = exception_text(tc, function);
