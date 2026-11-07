@@ -87,6 +87,8 @@ struct Shared {
     applying: bool,
     /// What the last Apply said.
     said: Option<Result<String, String>>,
+    /// The GPU Ask It is asking now (its PCI address).
+    asking: Option<String>,
     /// The power mode's follower, as installed.
     follower: Follower,
     /// The power mode now (None: no daemon), and whether on battery.
@@ -103,9 +105,13 @@ struct Shared {
 #[derive(Clone)]
 struct Entry {
     gpu: Gpu,
-    /// What it allows (None: asleep, never asked).
+    /// What it allows (None: asleep, never asked, or it didn't answer).
     caps: Option<Caps>,
     asleep: bool,
+    /// Asked, what its driver said instead of answering.
+    unanswered: Option<String>,
+    /// The kernel has its power management in an error state.
+    power_failed: bool,
 }
 
 /// Read every GPU, what each allows and the tuning kept, on a thread
@@ -135,8 +141,14 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
         s.av1 = vec!["Intel Graphics".into()];
         s.decodes = Some(("Intel Graphics".into(), false));
         s.gpus = Some(vec![
-            Entry { gpu: gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "HDMI-A-1"]), caps: Some(xe), asleep: false },
-            Entry { gpu: gpu("0000:01:00.0", "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU", "nvidia", false, &["HDMI-A-2"]), caps: Some(nv), asleep: true },
+            Entry { gpu: gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "HDMI-A-1"]), caps: Some(xe), asleep: false, unanswered: None, power_failed: false },
+            Entry {
+                gpu: gpu("0000:01:00.0", "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU", "nvidia", false, &["HDMI-A-2"]),
+                caps: Some(nv),
+                asleep: true,
+                unanswered: None,
+                power_failed: false,
+            },
         ]);
         return;
     }
@@ -147,7 +159,8 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
                 .into_iter()
                 .map(|g| {
                     let wake = wake.as_deref() == Some(g.pci.as_str());
-                    Entry { caps: gpu_tuning::caps(&g, wake), asleep: gpu_tuning::asleep(&g), gpu: g }
+                    let (caps, unanswered) = gpu_tuning::caps_or_why(&g, wake);
+                    Entry { caps, unanswered, asleep: gpu_tuning::asleep(&g), power_failed: gpu_tuning::power_failed(&g), gpu: g }
                 })
                 .collect();
             let kept = Tuning::load();
@@ -177,6 +190,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
                 }
                 s.kept = kept;
                 s.gpus = Some(gpus);
+                s.asking = None;
             }
             proxy.send(Msg::Redraw);
             drop(hold);
@@ -585,17 +599,34 @@ fn gpu_box(ui: &mut Ui, e: &Entry, edited: &Tuning, shared: &Arc<Mutex<Shared>>)
         (s.kept.of(&pci), s.kept.driver.iter().find(|d| d.pci == pci).cloned())
     };
     let now = tune.preset;
+    let asking = shared.lock().unwrap().asking.as_deref() == Some(pci.as_str());
     ui.bbox(&g.name, |ui| {
-        let state = if e.asleep { "asleep: nothing uses it" } else { "awake" };
+        let state = if e.power_failed {
+            "its power management failed"
+        } else if e.asleep {
+            "asleep: nothing uses it"
+        } else {
+            "awake"
+        };
         ui.note(format!("{} driver, {state}; {}.", g.driver, drives(g)));
         let Some(caps) = e.caps.clone() else {
-            ui.note("What it can be set to isn't known yet: asking it wakes it for a moment.");
+            // (Asking, it says so; asked, what its driver said: Ask It
+            // came back to the same words, and looked to do nothing.)
+            let words = match (&e.unanswered, e.power_failed) {
+                _ if asking => "Asking it…".to_owned(),
+                (Some(why), true) => format!("What it can be set to isn't known: {why}. It stays so until the computer restarts, which starts its driver again."),
+                (Some(why), false) => format!("What it can be set to isn't known: {why}."),
+                (None, _) => "What it can be set to isn't known yet: asking it wakes it for a moment.".to_owned(),
+            };
+            ui.note(words);
             let (shared, proxy, pci) = (shared.clone(), olo_ui::proxy(ui.cx), pci.clone());
             let wake = ui.on_click_view(move |_, _, cx| {
+                shared.lock().unwrap().asking = Some(pci.clone());
                 read(shared.clone(), proxy.clone(), Some(pci.clone()), None);
                 cx.notify();
             });
-            ui.button("Ask It", wake);
+            let label = if e.unanswered.is_some() { "Ask Again" } else { "Ask It" };
+            ui.enabled_if(!asking, |ui| ui.button(label, wake));
             return;
         };
         if matches!(caps, Caps::None) {

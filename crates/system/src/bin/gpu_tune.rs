@@ -71,12 +71,15 @@ fn show(wake: bool) -> i32 {
     let out: Vec<serde_json::Value> = gpus::list()
         .into_iter()
         .map(|g| {
+            let (caps, why) = gpu_tuning::caps_or_why(&g, wake);
             serde_json::json!({
                 "pci": g.pci,
                 "name": g.name,
                 "driver": g.driver,
                 "asleep": gpu_tuning::asleep(&g),
-                "caps": gpu_tuning::caps(&g, wake),
+                "power_failed": gpu_tuning::power_failed(&g),
+                "caps": caps,
+                "unanswered": why,
                 "tuning": tuning.of(&g.pci),
             })
         })

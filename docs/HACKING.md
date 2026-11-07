@@ -6473,7 +6473,16 @@ Power on Graphics (`--tab` picks a tab: `power::show_tab`).
 
 What a GPU allows is read without root (`gpu_tuning::caps`); a sleeping
 NVIDIA GPU isn't asked (it would wake): what it said last time is shown
-(`~/.cache/olo/gpus/`), or "Ask It". Apply runs `olo-gpu-tune set`
+(`~/.cache/olo/gpus/`), or "Ask It". Asked and not answering, its box
+says what the driver said (`caps_or_why`: "its driver didn't answer (an
+internal driver error occurred)"), and that a restart starts its driver
+again when the kernel has its power management in an error state
+(`power_failed`: `runtime_status` "error", as NVIDIA's was after memory
+ran out on 2026-11-07), with Ask Again; "Asking it…" while it asks.
+NVIDIA's library is started again at each ask until it starts once (a
+failed start had been kept for the life of the process: Preferences
+never asked again). `olo-gpu-tune show` says the same, as
+`power_failed` and `unanswered`. Apply runs `olo-gpu-tune set`
 through pkexec (only in the person's own session: `OLO_REAL_SESSION`),
 which keeps the tuning in `/etc/olo/gpus.json` (the computer's: it's the
 hardware's), notes each GPU's limits as its driver had them before it
