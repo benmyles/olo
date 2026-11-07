@@ -92,3 +92,10 @@ pub fn watch_login(on: impl Fn(LoginEvent) + Send + Sync + 'static) -> Result<()
     })?;
     Ok(())
 }
+
+/// End every login of user `uid` (logind's `TerminateUser`): Olo's login
+/// screen ends what an earlier run of it left of its own user's sessions
+/// (a greeter still drawing on the screen when it starts again).
+pub fn terminate_user(uid: u32) -> Result<()> {
+    bus::call::<_, ()>(bus::system()?, DEST, PATH, MANAGER, "TerminateUser", &(uid,))
+}

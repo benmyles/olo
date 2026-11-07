@@ -92,7 +92,21 @@ struct Daemon {
     /// The greeter's session, to start once its worker is in.
     pending_greeter: Option<Launch>,
     splash: Splash,
+    /// The greeter's sessions in a row that ended with no greeter ever
+    /// connecting (Olo can't draw here: no GPU it can render on).
+    failed_greeters: u32,
+    /// A greeter connected in the session now.
+    greeter_seen: bool,
 }
+
+/// After this many greeter sessions in a row that never showed, the seat
+/// goes to another login screen for this boot (`hand_over`).
+const GREETER_TRIES: u32 = 3;
+/// What olo-login exits with having handed over: systemd doesn't start it
+/// again for it (`RestartPreventExitStatus`, data/systemd/olo-login.service).
+pub const HANDED_OVER: i32 = 75;
+/// Where it says why, for Olo Doctor.
+pub const HANDED_OVER_NOTE: &str = "/run/olo-login/handed-over";
 
 pub fn run(config: Config) -> i32 {
     let socket = match &config.test {
@@ -113,6 +127,14 @@ pub fn run(config: Config) -> i32 {
     if config.test.is_none() {
         // Only the greeter's user may connect.
         give_to_greeter(&socket);
+        // What an earlier run left of the greeter's sessions (they're
+        // logind's, not this service's: restarted, olo-login started a
+        // second greeter beside the first, both drawing): ended.
+        if let Some(uid) = greeter_uid()
+            && olo_system::power::terminate_user(uid).is_ok()
+        {
+            eprintln!("olo-login: ended the login screen's sessions left from before");
+        }
     }
     let (tx, rx) = mpsc::channel();
     let accept = tx.clone();
@@ -124,7 +146,7 @@ pub fn run(config: Config) -> i32 {
         }
     });
     let splash = if config.test.is_none() && crate::plymouth::Splash::system().running() { Splash::Showing } else { Splash::Gone };
-    let mut d = Daemon { config, tx, workers: HashMap::new(), next: 1, greeter: None, user: None, pending: None, pending_greeter: None, splash };
+    let mut d = Daemon { config, tx, workers: HashMap::new(), next: 1, greeter: None, user: None, pending: None, pending_greeter: None, splash, failed_greeters: 0, greeter_seen: false };
     d.greeter_session();
     for msg in rx {
         d.handle(msg);
@@ -271,6 +293,8 @@ impl Daemon {
     fn handle(&mut self, msg: Msg) {
         match msg {
             Msg::Greeter(stream) => {
+                self.greeter_seen = true;
+                self.failed_greeters = 0;
                 let id = self.id();
                 let Ok(reader) = stream.try_clone() else { return };
                 let tx = self.tx.clone();
@@ -325,7 +349,7 @@ impl Daemon {
                 self.user = Some(user.clone());
                 for way in [Way::Password, Way::Fingerprint, Way::Face] {
                     // (Not in a test: the person's own sensor and camera.)
-                    if way != Way::Password && self.config.test.is_some() {
+                    if way != Way::Password && (self.config.test.is_some() || !way_here(way)) {
                         continue;
                     }
                     self.spawn(Role::Login(way), &user);
@@ -436,8 +460,16 @@ impl Daemon {
                     self.send(winner, &ToWorker::Start { command, env });
                 } else {
                     // It ended (it crashed, or was ended): again, the boot
-                    // splash gone so its console shows why if this fails too.
+                    // splash gone so its console shows why if this fails too;
+                    // but never showing, time after time, the seat goes to
+                    // a login screen that can (`hand_over`).
                     self.splash_gone(false);
+                    if !std::mem::take(&mut self.greeter_seen) {
+                        self.failed_greeters += 1;
+                    }
+                    if self.failed_greeters >= GREETER_TRIES && self.config.test.is_none() {
+                        hand_over(self.failed_greeters);
+                    }
                     self.greeter_session();
                 }
             }
@@ -452,4 +484,49 @@ impl Daemon {
             Role::Login(_) => {}
         }
     }
+}
+
+/// The greeter's user's uid.
+fn greeter_uid() -> Option<u32> {
+    let name = std::ffi::CString::new(GREETER_USER).ok()?;
+    // SAFETY: getpwnam's static entry, read at once.
+    unsafe {
+        let pw = libc::getpwnam(name.as_ptr());
+        (!pw.is_null()).then(|| (*pw).pw_uid)
+    }
+}
+
+/// Whether this computer can log people in `way`: a fingerprint where
+/// Fedora's fingerprint stack is set up (fprintd's module in it; when it
+/// isn't, authselect leaves `pam_debug.so auth=authinfo_unavail`, which
+/// says just that through the conversation: the login screen showed
+/// "auth=authinfo_unavail", a fresh Fedora 45), a face where Olo's face
+/// module is installed.
+fn way_here(way: Way) -> bool {
+    match way {
+        Way::Password => true,
+        Way::Fingerprint => std::fs::read_to_string("/etc/pam.d/fingerprint-auth").is_ok_and(|t| t.lines().any(|l| !l.trim_start().starts_with('#') && l.contains("pam_fprintd"))),
+        Way::Face => ["/usr/lib64/security/pam_olo_face.so", "/usr/lib/security/pam_olo_face.so"].iter().any(|p| Path::new(p).exists()),
+    }
+}
+
+/// Olo's login screen can't show here (its session ended `tries` times
+/// in a row before its greeter ever came: no GPU Olo can render on, a
+/// broken install), so nobody would get in: the seat goes to the
+/// computer's other login screen for this boot (GDM, else SDDM, else the
+/// text console's login), and olo-login steps aside, saying why
+/// (`HANDED_OVER_NOTE`, which Olo Doctor reads). The next boot tries
+/// Olo's again. Never returns.
+fn hand_over(tries: u32) -> ! {
+    let why = format!("Olo's login screen didn't show {tries} times in a row; the login screen was handed to another for this boot.");
+    eprintln!("olo-login: {why}");
+    let _ = std::fs::create_dir_all("/run/olo-login");
+    let _ = std::fs::write(HANDED_OVER_NOTE, format!("{why}\n"));
+    for other in ["gdm.service", "sddm.service", "getty@tty1.service"] {
+        if Path::new("/usr/lib/systemd/system").join(other.replace("@tty1", "@")).exists() && olo_system::systemd::start_stop(other, true).is_ok() {
+            eprintln!("olo-login: {other} has the seat");
+            break;
+        }
+    }
+    std::process::exit(HANDED_OVER)
 }

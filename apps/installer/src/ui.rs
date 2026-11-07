@@ -367,12 +367,18 @@ impl Setup {
                     None => ("Starting…".into(), String::new()),
                 };
                 let doing = if self.password { "Waiting for the administrator's password…".to_owned() } else { self.doing.clone() };
-                let mut c =
-                    col().h_full().child(heading("Installing Olo")).child(div().w_full().child(StatusBar::new(self.overall()).label(title).trailing(through))).child(StringView::new(doing).dim(true));
+                let mut c = col()
+                    .h_full()
+                    // (What has a size of its own keeps it: the notes give way.)
+                    .child(div().flex_shrink_0().child(heading("Installing Olo")))
+                    .child(div().flex().flex_shrink_0().child(div().flex_1().min_w_0().child(StatusBar::new(self.overall()).label(title).trailing(through))))
+                    .child(div().flex_shrink_0().child(StringView::new(doing).dim(true)));
                 if let Some(Outcome::Failed { what, why, advice }) = &self.outcome {
                     // ("Adding Olo to…" as part of a sentence: its first letter small.)
                     let what = what.chars().next().map(|f| f.to_lowercase().chain(what.chars().skip(1)).collect::<String>()).unwrap_or_default();
-                    c = c.child(StringView::new(format!("Setup couldn't finish {what}: {why}")).wrap(true).color(style::c(p.failure))).child(para(advice.clone()));
+                    c = c
+                        .child(div().flex_shrink_0().child(StringView::new(format!("Setup couldn't finish {what}: {why}")).wrap(true).color(style::c(p.failure))))
+                        .child(div().flex_shrink_0().child(para(advice.clone())));
                 }
                 let mut notes = div().flex().flex_col().gap(px(2.0)).p(px(m::TEXT_INSET));
                 for n in &self.notes {

@@ -215,6 +215,12 @@ fn session_steps(c: &Computer, olo: &Path) -> Result<Vec<Step>, String> {
     Ok(steps)
 }
 
+/// SELinux's labels for Olo's login screen, as GDM's are: its program
+/// runs as a display manager (`xdm_t`, from which the person's session may
+/// start: as `bin_t` it was `unconfined_service_t`, which may not), its
+/// folders the display manager's own (tools/install-login.sh: the same).
+const SELINUX_LABELS: &[(&str, &str)] = &[("/usr/local/libexec/olo/olo-login", "xdm_exec_t"), ("/run/olo-login(/.*)?", "xdm_var_run_t"), ("/var/lib/olo-greeter(/.*)?", "xdm_var_lib_t")];
+
 /// The root steps for Olo's own login screen in GDM's place (as
 /// tools/install-login.sh --switch does), from the unpacked `olo`.
 fn login_screen_steps(olo: &Path) -> Result<Vec<Step>, String> {
@@ -237,15 +243,39 @@ fn login_screen_steps(olo: &Path) -> Result<Vec<Step>, String> {
     // The login password opens Olo's keyring (olo-login's PAM names it).
     steps.push(Step::CopyFile { from: olo.join("bin/pam_olo_keyring.so"), to: PathBuf::from("/usr/lib64/security/pam_olo_keyring.so"), mode: 0o755 });
     steps.push(Step::WriteFile { path: "/etc/sysusers.d/olo-greeter.conf".into(), content: read(olo.join("system/sysusers/olo-greeter.conf"))?, mode: 0o644 });
-    steps.push(Step::WriteFile { path: "/etc/tmpfiles.d/olo-greeter.conf".into(), content: read(olo.join("system/tmpfiles/olo-greeter.conf"))?, mode: 0o644 });
-    // systemd makes the login screen's user and folders, as at boot.
-    steps.push(Step::Unit { name: "systemd-sysusers.service".into(), action: UnitAction::Restart });
-    steps.push(Step::Unit { name: "systemd-tmpfiles-setup.service".into(), action: UnitAction::Restart });
+    let tmpfiles = read(olo.join("system/tmpfiles/olo-greeter.conf"))?;
+    steps.push(Step::WriteFile { path: "/etc/tmpfiles.d/olo-greeter.conf".into(), content: tmpfiles.clone(), mode: 0o644 });
+    // The login screen's user, made by systemd's own program; its folders
+    // made here (systemd won't start its tmpfiles service again by hand,
+    // and its sysusers service runs only after an update).
+    steps.push(Step::MakeSystemUsers { config: "/etc/sysusers.d/olo-greeter.conf".into() });
+    steps.extend(folders(&tmpfiles));
+    // A display manager to SELinux, as GDM is (its program, its folders).
+    steps.push(Step::SelinuxLabels {
+        rules: SELINUX_LABELS.iter().map(|(r, t)| ((*r).to_owned(), (*t).to_owned())).collect(),
+        restore: ["/usr/local/libexec/olo", "/run/olo-login", "/var/lib/olo-greeter"].map(PathBuf::from).to_vec(),
+    });
     steps.push(Step::WriteFile { path: "/etc/systemd/system/olo-login.service".into(), content: read(olo.join("system/systemd/olo-login.service"))?, mode: 0o644 });
     steps.push(Step::Unit { name: "olo-login.service".into(), action: UnitAction::Reload });
     steps.push(Step::Unit { name: "gdm.service".into(), action: UnitAction::Disable });
     steps.push(Step::Unit { name: "olo-login.service".into(), action: UnitAction::Enable });
     Ok(steps)
+}
+
+/// The folders a tmpfiles.d file's `d` lines ask for (`d PATH MODE USER
+/// GROUP -`), as steps.
+fn folders(tmpfiles: &str) -> Vec<Step> {
+    tmpfiles
+        .lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            (f.len() >= 4 && f[0] == "d").then(|| Step::MakeDir {
+                path: PathBuf::from(f[1]),
+                mode: u32::from_str_radix(f[2], 8).unwrap_or(0o755),
+                owner: (f[3] != "root" && f[3] != "-").then(|| f[3].to_owned()),
+            })
+        })
+        .collect()
 }
 
 /// The root steps for Olo's boot splash, the theme made (as the person,
@@ -486,4 +516,24 @@ fn default_session(session: &str) -> Result<(), String> {
         .and_then(|r| r.body().deserialize())
         .map_err(|e| e.to_string())?;
     conn.call_method(Some("org.freedesktop.Accounts"), path.as_str(), Some("org.freedesktop.Accounts.User"), "SetSession", &(session,)).map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tmpfiles_file_s_folders() {
+        let steps = folders("# a comment\nd /var/lib/olo-greeter 0750 olo-greeter olo-greeter -\nd /run/olo-login 0755 root root -\nL /x - - - - /y\n");
+        assert_eq!(
+            steps,
+            [Step::MakeDir { path: "/var/lib/olo-greeter".into(), mode: 0o750, owner: Some("olo-greeter".into()) }, Step::MakeDir { path: "/run/olo-login".into(), mode: 0o755, owner: None },]
+        );
+    }
+
+    #[test]
+    fn the_session_entry_names_the_person_s_session() {
+        let e = session_entry("[Desktop Entry]\nName=Olo Desktop\nExec=olo-session\nTryExec=olo-session\n", Path::new("/home/u/.local/bin"));
+        assert_eq!(e, "[Desktop Entry]\nName=Olo Desktop\nExec=/home/u/.local/bin/olo-session\n");
+    }
 }

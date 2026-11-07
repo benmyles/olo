@@ -487,6 +487,7 @@ pub fn scan(roots: &Roots) -> Report {
     panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
+    login_screen_handed_over(roots, &mut r);
     temp_files(roots, &mut r);
     file_manager(roots, &mut r);
     r
@@ -1787,6 +1788,23 @@ fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
     });
 }
 
+/// Olo's login screen gave the seat to another this boot (olo-login's
+/// `hand_over`: its greeter never showed, time after time), which leaves
+/// a note in /run/olo-login: said, with what usually causes it.
+fn login_screen_handed_over(roots: &Roots, r: &mut Report) {
+    let Ok(note) = std::fs::read_to_string(roots.fs.join("run/olo-login/handed-over")) else { return };
+    r.findings.push(Finding {
+        id: "login:handed-over".into(),
+        severity: Severity::Problem,
+        title: "Olo's login screen couldn't show this time".into(),
+        detail: format!(
+            "{} Olo draws with the GPU: a computer (or virtual machine) without one it can render on, or a graphics driver that failed to load, keeps its login screen from showing. It tries again at the next start; tools/install-login.sh --revert makes GDM the login screen for good.",
+            note.trim()
+        ),
+        fix: None,
+    });
+}
+
 fn login_entry(roots: &Roots, r: &mut Report) {
     let atomic = roots.fs.join("run/ostree-booted").exists();
     let home = if atomic { SESSION_ENTRY_LOCAL_PATH } else { SESSION_ENTRY_PATH };
@@ -1985,6 +2003,16 @@ mod tests {
         let r = scan(&roots);
         assert!(r.find("usb2:thunderbolt5:0000:a9:00.0").is_none());
         assert!(r.fine.iter().any(|f| f.title == "The Thunderbolt 5 ports' USB is kept awake"));
+    }
+
+    #[test]
+    fn a_login_screen_handed_over_is_said() {
+        let (fs, roots) = machine("handed");
+        assert!(scan(&roots).find("login:handed-over").is_none());
+        std::fs::create_dir_all(fs.join("run/olo-login")).unwrap();
+        std::fs::write(fs.join("run/olo-login/handed-over"), "Olo's login screen didn't show 3 times in a row.\n").unwrap();
+        let f = scan(&roots).find("login:handed-over").cloned().unwrap();
+        assert!(f.detail.starts_with("Olo's login screen didn't show 3 times in a row. Olo draws with the GPU"), "{}", f.detail);
     }
 
     #[test]

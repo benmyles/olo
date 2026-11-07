@@ -3072,6 +3072,53 @@ nothing switches without those.
   conflicts with `plymouth-quit.service` and comes after it, as
   `gdm.service` does.
 
+**On a stock Fedora, as GDM is** (each found in a fresh Fedora 45 in a
+virtual machine, Olo Setup's test, 2026-11-07, and each one kept anyone
+from logging in):
+
+* **The first terminal its own.** Fedora 45 runs its text consoles in
+  kmscon (`kmsconvt@tty1.service`, `autovt@`'s alias): the unit
+  conflicts with it and comes after it, as with `getty@tty1.service`
+  (GDM's unit has both). Left there, kmscon kept the terminal, and the
+  greeter's session found it gone.
+* **What sessions say goes to the journal**, not the terminal (a
+  stream to journald's stdout socket, `worker.rs` `journal_stream`,
+  each named for its program: `journalctl -t olo-session`), as GDM's
+  sessions' does: writing to a terminal taken away failed and ended
+  olo-session and app_server (Rust's `eprintln!` stops a program when
+  it can't write).
+* **A display manager to SELinux.** Its program is labelled `xdm_exec_t`
+  so it runs as `xdm_t`, as GDM's daemon does (`/usr/sbin/gdm`); its
+  socket's folder `xdm_var_run_t` and the greeter's home
+  `xdm_var_lib_t`, as `/run/gdm` and `/var/lib/gdm` are (recorded with
+  `semanage fcontext` and put on with `restorecon`: install-login.sh,
+  and Olo Setup's `Step::SelinuxLabels`). As an ordinary program it ran
+  as `unconfined_service_t`, which SELinux won't let start a session in
+  the person's domain (`unconfined_t`). And the person's session starts
+  through the system's own copy of olo-session (`olo-session --exec
+  PROGRAM…`, which only hands over), as GDM's starts through
+  gdm-wayland-session: SELinux moves into the person's domain as it
+  starts a system program; `~/.local/bin/olo-session` (labelled
+  `gconf_home_t`, as everything in `~/.local`) is no program the login
+  screen's domain may start.
+* **Only the ways in this computer has**: a fingerprint where Fedora's
+  fingerprint stack is set up (fprintd's module in
+  `/etc/pam.d/fingerprint-auth`; otherwise authselect leaves
+  `pam_debug.so auth=authinfo_unavail` there, which says exactly that,
+  and the greeter showed it), the face where Olo's face module is
+  installed (`way_here`).
+* **One greeter.** Its sessions are logind's, not the service's, so a
+  restarted olo-login started a second beside the first, both drawing;
+  starting, it ends what's left of its user's (`TerminateUser`).
+* **It steps aside where it can't show.** Its greeter's session ending
+  three times in a row before the greeter ever connected (no GPU Olo
+  can render on, a broken install) hands the seat to the computer's
+  other login screen for this boot (GDM, else SDDM, else the text
+  console's login), notes why in `/run/olo-login/handed-over` (Olo
+  Doctor says so) and exits 75, which its unit doesn't restart
+  (`RestartPreventExitStatus=75`); the next boot tries again
+  (`hand_over`).
+
 **The boot splash** (app_server `plymouth.rs`): `olo-app-server
 --plymouth-theme DIR [--scale S]` makes a theme for Plymouth's two-step
 plugin from the start-up screen's own drawing (`veil.rs`): the wordmark
@@ -8499,12 +8546,17 @@ told to look again by their `uevent`); and if chosen, Olo's login
 screen (tools/install-login.sh `--switch`'s work: its programs in
 /usr/local/libexec/olo, Olo's data in /usr/local/share/olo, the PAM
 services and `pam_olo_keyring.so`, its user and folders made by
-systemd's own `systemd-sysusers` and `systemd-tmpfiles-setup` started
-again, its unit, GDM disabled and olo-login enabled) and boot splash
+`systemd-sysusers` and Setup itself, its unit, GDM disabled and olo-login enabled) and boot splash
 (the theme drawn by `olo-app-server --plymouth-theme` as the person,
 then put in /usr/share/plymouth/themes/olo with plymouthd.conf kept
 beside as `.before-olo`, and the start-up images made again:
-`Step::RebuildInitramfs`, dracut, the one program a step runs). What
+`Step::RebuildInitramfs`, dracut). Two steps run another program,
+each the system's own and with no other way in: dracut, and
+`systemd-sysusers` on the login screen's own file
+(`Step::MakeSystemUsers`: systemd's sysusers service runs only after an
+update, `ConditionNeedsUpdate=/etc`, so restarting it made no user);
+the tmpfiles entry's folders are made by Setup itself (`Step::MakeDir`:
+systemd refuses to restart its tmpfiles service by hand). What
 needs root is Olo Doctor's privileged helper (`helper.rs`, the same
 `Step`s, two added for Setup: `CopyTree` and `RebuildInitramfs`), this
 program run again through pkexec (`--helper`), asked for once: the
@@ -8530,7 +8582,13 @@ stripped beside it, each with its `.sha256`. Publishing them (a GitHub
 release) is a separate step.
 
 `tools/dev/installer-check` tries it all in a virtual machine (KVM, a
-virtio GPU, no window, driven through QEMU's monitor): `install` puts a
+virtio GPU, no window, driven through QEMU's monitor; `boot --gl
+RENDER` gives it a GPU with 3D, virgl through one of this computer's
+render nodes, as Olo needs one to draw: Fedora's GNOME draws in
+software on the plain one, Olo can't and its login screen steps aside;
+its screen is then read through a VNC socket of its own, as QEMU's
+screendump has no picture of a 3D scanout, and here only through the
+NVIDIA node's EGL): `install` puts a
 fresh Fedora Workstation on a disk from Fedora's own network installer
 (a kickstart choosing Workstation's package set; for the test alone,
 GDM logs the tester in and GNOME's first-run tour is skipped), `boot

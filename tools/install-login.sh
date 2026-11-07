@@ -106,6 +106,16 @@ as_root install -D -m 644 data/sysusers/olo-greeter.conf /etc/sysusers.d/olo-gre
 as_root install -D -m 644 data/tmpfiles/olo-greeter.conf /etc/tmpfiles.d/olo-greeter.conf
 as_root systemd-sysusers /etc/sysusers.d/olo-greeter.conf
 as_root systemd-tmpfiles --create /etc/tmpfiles.d/olo-greeter.conf
+# A display manager to SELinux, as GDM is: olo-login runs as xdm_t (from
+# which the person's session may start, through the system's olo-session),
+# its folders the display manager's (Olo Setup's plan.rs has the same).
+if [ -e /sys/fs/selinux/enforce ] && command -v semanage >/dev/null; then
+    for rule in "xdm_exec_t /usr/local/libexec/olo/olo-login" "xdm_var_run_t /run/olo-login(/.*)?" "xdm_var_lib_t /var/lib/olo-greeter(/.*)?"; do
+        kind=${rule%% *}; path=${rule#* }
+        as_root semanage fcontext -a -t "$kind" "$path" 2>/dev/null || as_root semanage fcontext -m -t "$kind" "$path"
+    done
+    as_root restorecon -R "$LIBEXEC" /run/olo-login /var/lib/olo-greeter
+fi
 as_root install -D -m 644 data/systemd/olo-login.service /etc/systemd/system/olo-login.service
 as_root systemctl daemon-reload
 echo "Olo's login screen is installed (not switched to)."
