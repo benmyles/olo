@@ -15,6 +15,18 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The start-up screen's sound says "olo"** (Ben, 2026-11-06: "for
+  the olo startup screen add a startup sound that is like
+  \"ooollllooooo\" reminiscent of the mac startup sound but saying olo
+  in the same style as that mac sound"). As the session starts (the
+  start-up screen, `Why::Starting`): a sound in the spirit of the Mac's
+  start-up chime (a big, warm, bright chord swelling and ringing out),
+  but voiced as "ooo-lll-ooo": the chord's notes shaped through an "o"
+  vowel's formants, a gliding "l", and "o" again, made in process (no
+  recording, no sampled voice: synthesis, as `notifications/src/
+  startup.rs` makes today's swell), replacing or offered beside today's
+  sound (Preferences ▸ Sound's "Play a sound when Olo starts").
+
 - **Display: a touch screen's touch turned off and on** (Ben,
   2026-11-06: "in display prefs for touchscreen displays have an option
   to enable/disable the touch functionality on the screen (enabled by
