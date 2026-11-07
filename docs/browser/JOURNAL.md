@@ -5764,3 +5764,34 @@ redo only what changed.
   commands); compositing canvases on the GPU without any readback;
   numeric GL opcodes; the scripts' own cost (~115 ms per 2 s of JS on
   stripe.com, the rest measurements, GL and renders).
+
+## 2026-11-07, night: the pricing page, and what it needed
+
+- **The same user agent everywhere.** HTTP requests said "OloBrowser/0.1"
+  while scripts saw a Chrome string: stripe.com/pricing served an older
+  page variant to the first (a "Guide me" button, other scripts). The
+  network now sends the string scripts see. Sites must take Olo for
+  Chrome, or they serve it their fallbacks.
+- **ES modules.** The pricing page's scripts are `type="module"`, which
+  did not run at all. A module's imports are resolved against its URL,
+  fetched and compiled before it is instantiated, level by level with
+  each level's sources fetched on threads (65 modules in 18 graphs in
+  216 ms; one after another they took 9 s); `import.meta.url`; dynamic
+  `import()` answering a promise (its fetches still synchronous).
+  `nomodule` scripts no longer run. Not yet: import maps, JSON modules.
+- **The `font` shorthand** was not in the registry at all: every `font:`
+  declaration was dropped, so headings set as `font: var(--titleFont)`
+  came out 16px normal. It parses now, through var() substitution like
+  the other shorthands, assigning every longhand it covers.
+- **Indefinite auto-repeats.** `repeat(auto-fit, minmax(0, 1fr))` made
+  one track; Chrome makes hundreds and collapses the empty ones. An
+  indefinite auto-repeat now makes one track per item, and an auto-fit
+  repeat's empty tracks collapse after placement with their gaps: the
+  hero card's two columns, and three tracks for three items under
+  `minmax(200px, 1fr)` in 1000px, as Chrome.
+- **Found on the way, open.** The pricing page's scripts add a "Guide
+  me" button Chrome's never show (a script decides; why differs is
+  unknown); two WebGL errors from its gradient canvas (`material` and
+  `getDeclaration` of undefined, in a three.js-like chunk); the gradient
+  canvas stays 300×150 where Chrome sizes it (ResizeObserver?);
+  `getComputedStyle().lineHeight` prints a unitless number with px.

@@ -61,10 +61,13 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   does), images loaded for scripts (`img.src`, textures, drawImage,
   ImageBitmap) and fetch()/XMLHttpRequest, both fetched off the thread
   and delivered to the live page, Web Workers (a thread and isolate
-  each, structured clones), blob URLs, events from the person. Next:
-  CSSOM (`insertRule`, `styleSheets`, CSS-in-JS in production builds),
-  modules (`import`), `fetch` POST and headers, cookies from responses,
-  `document.write` while parsing, iframes, OffscreenCanvas.
+  each, structured clones), blob URLs, ES modules (static graphs
+  fetched level by level on threads, `import.meta.url`, dynamic
+  `import()`), events from the person. Next: import maps and JSON
+  modules, dynamic `import()` fetching off the thread, CSSOM
+  (`insertRule`, `styleSheets`, CSS-in-JS in production builds), `fetch`
+  POST and headers, cookies from responses, `document.write` while
+  parsing, iframes, OffscreenCanvas, ResizeObserver.
 - [x] Stripe's graphics: the hero wave, the agentic and issuing
   backgrounds, the globe and the data-viz canvases are WebGL (three.js:
   textures from the page's images, geometry from Web Workers, render

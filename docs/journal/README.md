@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: stripe.com/pricing with ES modules, the font shorthand and auto-fit grids
+
+*07:51* — The pricing page's scripts are ES modules (65 in 18 graphs, loaded level by level in 216 ms); its headings are font shorthands over custom properties, its hero card a repeat(auto-fit, minmax(0, 1fr)) grid. All three were missing; it now lays out as Chrome does at 1000 × 700.
+
+![Browser: stripe.com/pricing with ES modules, the font shorthand and auto-fit grids](2026-11-07/075121-browser-stripe-com-pricing-with-es-modules-the-f.png)
+
 ### Browser: Stripe's bento live, tiles kept, canvases read back asynchronously
 
 *06:31* — Three WebGL canvases animate in a live render of 6-11 ms: only the tiles they and the changing texts touch repaint, and their drawing buffers come back through pixel pack buffers a render late instead of stalling on the GPU.
