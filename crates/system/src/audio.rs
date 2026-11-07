@@ -763,7 +763,9 @@ fn listening(q: &mut Conn) -> Result<Vec<String>> {
     let outputs: protocol::SourceOutputInfoList = q.request(&Command::GetSourceOutputInfoList)?;
     let mut apps: Vec<String> = outputs
         .iter()
-        .filter(|o| !o.corked && !monitors.contains(&o.source_index))
+        // (A monitor's, by its source, or as PipeWire marks one not yet
+        // linked to it.)
+        .filter(|o| !o.corked && !monitors.contains(&o.source_index) && prop(&o.props, "stream.capture.sink").as_deref() != Some("true"))
         .filter(|o| prop(&o.props, "node.name").as_deref() != Some(VOICE_MICROPHONE))
         .filter(|o| !prop(&o.props, "application.process.binary").is_some_and(|b| b.starts_with("olo-") || b.starts_with("olo_")))
         .map(|o| prop(&o.props, "application.name").or_else(|| prop(&o.props, "application.process.binary")).unwrap_or_else(|| "An app".to_owned()))
@@ -810,5 +812,22 @@ mod no_output_tests {
         }
         eprintln!("no_output={} outputs={:?}", d.no_output, d.outputs.iter().map(|o| (&o.description, o.is_default)).collect::<Vec<_>>());
         assert!(d.no_output && !d.outputs.iter().any(|o| o.name == super::NO_OUTPUT));
+    }
+}
+
+#[cfg(test)]
+mod listening_tests {
+    /// The apps recording, as a sound server says them
+    /// (`OLO_LISTEN_SECONDS=N cargo test -p olo-system listening_live --
+    /// --ignored --nocapture`, with `PULSE_SERVER` a private server's).
+    #[test]
+    #[ignore]
+    fn listening_live() {
+        let seconds: u64 = std::env::var("OLO_LISTEN_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(5);
+        let start = std::time::Instant::now();
+        std::thread::spawn(move || {
+            super::watch_listening(move |apps| eprintln!("{:.1}: {apps:?}", start.elapsed().as_secs_f32()));
+        });
+        std::thread::sleep(std::time::Duration::from_secs(seconds));
     }
 }
