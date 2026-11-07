@@ -1470,10 +1470,16 @@ a quotation or a bulleted, numbered or task list, by their marks.
    mode). Never hard-code a grey: it will be wrong in the other theme.
    Semantic accent colours (graph lines, file-type tints) must be checked in
    both themes.
-2. **Spacing only from `olo_ui::metrics`** (`SPACING` 8, `TIGHT` 4,
-   `WINDOW_INSET` 12, `BOX_INSET` 10, `LABEL_GAP` 8, `CONTROL_HEIGHT` 24,
-   `LIST_ROW` 20, …). If you need a new kind of gap, add a named constant
-   there rather than a literal in your app.
+2. **Spacing only from `olo_ui::metrics`** (`SPACING` 12, `TIGHT` 6,
+   `STACK` 10, `WINDOW_INSET` 16, `BOX_INSET` 14, `LABEL_GAP` 10,
+   `MARK_SIZE` 12 and `MARK_GAP` 6, `CONTROL_HEIGHT` 24, `LIST_ROW` 20,
+   …). If you need a new kind of gap, add a named constant there rather
+   than a literal in your app. Things line up as in BeOS: a box's
+   contents with its label (both `BOX_INSET` in: BeOS's BBox drew its
+   label 10 px in, and its preferences put what it held 10 px in), and
+   a check box or radio button with what's around it by its mark, its
+   label where the mark puts it (BeOS's 20 px in; Olo's 18), so a check
+   box under a box lines up with the box's frame, not its text.
 3. **Text**: draw single lines with `style::label(window, cx, x,
    center_y, align, text, size, font, color)`; it centres capitals
    optically and puts the baseline on a device pixel. Any line that can
@@ -1927,6 +1933,8 @@ event reaches it.
   each series' latest value), `widgets::CellGrid` (Pulse's LED wells,
   `GridCell`s lit in colours, `on_click` with the cell; a click either
   takes is its own, not the clickable card's it's on), and
+  `charts::paint_sparkline`/`paint_bars`/`paint_meter`/`paint_well`
+  (small graphs painted in a canvas: Deskbar's widgets),
   `widgets::legend`/`legend_height` (swatches, names and values in
   wrapping rows, each name and value on one baseline; laid out by their
   lengths, the review keeps them on a grid of their own, as it does a
@@ -2846,7 +2854,18 @@ for a 3-second `sleep`.
 
 * `olo-session reload` (SIGHUP): if `olo-session` itself was
   upgraded it re-executes the new binary first, keeping its children and
-  sockets. Then it stops app_server (SIGTERM; it saves every window's
+  sockets, with the arguments it was started with (`start_args`, made
+  from what it keeps: its backend's, `--greeter`, a screen's
+  `--own-bus`; the new self resumes and doesn't read them, but
+  olo-screen knows a screen's session by its `--headless`, and every
+  screen re-executed bare looked ended, so starting it again by name
+  started another, the old one left running unknown: nine on
+  2026-11-07). Resumed, it stops the children this version doesn't run
+  (`retire_dropped`, by program: `SHELL`, `REAL_SHELL`, a screen's bus
+  and services, the greeter), rather than starting them again each time
+  they end: agent screens from before their portals were Olo's alone
+  kept GTK's portal backend going, so Olo Doctor's Quit Them never
+  held. Then it stops app_server (SIGTERM; it saves every window's
   place to `$XDG_RUNTIME_DIR/olo-layout-<display>.json`) and starts the
   one now on disk, which puts returning windows back (same app id and
   title within 60 s; position, size, workspace, minimized, focus).
@@ -2902,7 +2921,10 @@ for a 3-second `sleep`.
   them again. Blade marks the device lost where a submit, present, wait
   or acquire finds it (gpui/README.md), and the app starts anew as for
   the compositor gone (`upgrade::lost_compositor`: its state saved,
-  re-executed, same pid). Lost again within 10 s of that start
+  re-executed, same pid; an app that hands its work over,
+  `on_upgrade_due`, does that first and waits while
+  `upgrade_waits_while` says it's busy, as Token Pool's gateway, whose
+  connections aren't the compositor's). Lost again within 10 s of that start
   (`OLO_GPU_LOST_AT`, taken out of the environment as it starts), the
   GPU is broken, not reset, and the app ends rather than go round. Test
   with the app socket's debug-only `{"lose_gpu":true}`
@@ -3946,7 +3968,11 @@ recorded otherwise.
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off
-  level), `near-edge` (left edges almost lined up down a column),
+  level, in one box: two boxes side by side lay their rows out each by
+  itself), `near-edge` (left edges almost lined up down a column, in
+  one box: what a box holds lines up with its own label and inset, not
+  with what's outside it; not a column set from its right, whose left
+  edges are its lengths'),
   `off-centre` (text or an icon off-centre in the band it sits in; only
   bands no clip cuts, since a card at the foot of a scroll view is
   centred in the whole of it, not in what shows), `uneven-rows` (rows
@@ -6520,10 +6546,18 @@ configurable with reasonable defaults"), in three tabs:
   NVIDIA's as they were set, which its driver doesn't say back; Ben,
   2026-11-07: "changing the power mode in prefs -> power doesn't change
   the clock setting of the nvidia gpu?", its box showing only Custom's
-  slider), and its Custom settings, each knob not set showing what
-  Custom would set, the driver's own, so they never move with the mode
-  (xe's had shown what was in force, and moving its lowest clock with
-  no highest set pinned the highest to it):
+  slider), and its settings. On a preset they show what it runs at
+  now (`gpus::shown`: xe's clocks and profile as its driver says,
+  NVIDIA's as set; Ben, 2026-11-07: "it says nvidia is on cooler and
+  quieter but the slider hasn't changed?", they had been Custom's alone
+  under a heading of their own), and moving one makes it Custom where
+  it is now (`gpus::situation`: on battery when the plan has a choice
+  for it there, else the power mode), starting from those, so nothing
+  else jumps: "Custom in Performance once applied (on Cooler and
+  Quieter until then)", Revert back to the preset. On Custom they're
+  Custom's, a knob not set showing what Custom would set, the driver's
+  own (moving xe's lowest clock with no highest set had pinned the
+  highest to it):
   Intel's xe the render GT's lowest and highest clock, `freq0/min_freq`
   and `max_freq` within `rpn_freq`..`rp0_freq`, and every GT's power
   profile; NVIDIA's, through NVML in process, its highest GPU clock,
@@ -6541,7 +6575,16 @@ Power on Graphics (`--tab` picks a tab: `power::show_tab`).
 
 What a GPU allows is read without root (`gpu_tuning::caps`); a sleeping
 NVIDIA GPU isn't asked (it would wake): what it said last time is shown
-(`~/.cache/olo/gpus/`), or "Ask It". Apply runs `olo-gpu-tune set`
+(`~/.cache/olo/gpus/`), or "Ask It". Asked and not answering, its box
+says what the driver said (`caps_or_why`: "its driver didn't answer (an
+internal driver error occurred)"), and that a restart starts its driver
+again when the kernel has its power management in an error state
+(`power_failed`: `runtime_status` "error", as NVIDIA's was after memory
+ran out on 2026-11-07), with Ask Again; "Asking it…" while it asks.
+NVIDIA's library is started again at each ask until it starts once (a
+failed start had been kept for the life of the process: Preferences
+never asked again). `olo-gpu-tune show` says the same, as
+`power_failed` and `unanswered`. Apply runs `olo-gpu-tune set`
 through pkexec (only in the person's own session: `OLO_REAL_SESSION`),
 which keeps the tuning in `/etc/olo/gpus.json` (the computer's: it's the
 hardware's), notes each GPU's limits as its driver had them before it
@@ -8368,7 +8411,10 @@ scan made for the sudo user). What it looks for:
   dconf-service, GNOME's and GTK's portal backends, gvfs's daemons and
   volume monitors, GNOME Online Accounts, and GNOME Keyring while Olo's
   keyring answers), running in this session or as the user's services
-  (not when GNOME is logged in elsewhere): advice, quit by the fix (what
+  (not when GNOME is logged in elsewhere, nor an agent screen's:
+  `OLO_SCREEN` in its environment, `on_a_screen`, its own session's,
+  which starts its services again; the same for another desktop's
+  daemons and old versions): advice, quit by the fix (what
   asks for dconf, a portal or the keyring reaches Olo's). None, and
   nothing of another desktop either: "Nothing of GNOME's runs".
 - **USB input devices allowed to sleep** (an interface of class 03 with
@@ -8408,6 +8454,23 @@ scan made for the sudo user). What it looks for:
 - **The login screen's entry** (/usr/share/wayland-sessions, or
   /usr/local/share's on an atomic system) missing or pointing at
   nothing.
+- **Olo's own login screen** (`own_login_screen`, where Olo's build has
+  olo-login and olo-greeter; not on an atomic Fedora, whose /etc and
+  /usr/local Setup doesn't change; Ben, 2026-11-07: "the login screen
+  should come up in olo doctor as something it can do for me"):
+  another display manager's (`display-manager.service`'s link,
+  `login_screen::display_manager`) is advice, "The login screen is
+  GNOME's (GDM), not Olo's own", and Use Olo's Login Screen runs what
+  Olo Setup's login-screen stage runs (`login_screen::steps`, the one
+  list both use: programs copied to /usr/local/libexec/olo, data to
+  /usr/local/share/olo, PAM, `pam_olo_keyring.so`, sysusers and
+  tmpfiles, its user and folders, SELinux's labels, its unit, the other
+  disabled and olo-login enabled), from the next start. Olo's already:
+  fine, with Go Back to GDM (or SDDM) beside it as its undo
+  (`login:own-undo`), unless a copy in libexec is older than the build
+  in ~/.local/bin (an upgrade replaces those, not the copies:
+  `login_screen::stale`), which is advice, Update the Login Screen
+  (`login:own-older`).
 - **Olo's Wi-Fi healer** (below) missing, out of date or stopped, on a
   machine whose Wi-Fi chip needs it (brcmfmac): installed as a root-owned
   copy, with its unit and NetworkManager's setting for the chip.
@@ -8417,6 +8480,31 @@ scan made for the sudo user). What it looks for:
   `data/udev/72-olo-idle-gpu.rules` (runtime power management for such
   cards, at every start) and sets it now. On the ThinkPad P1 Gen 9 the
   RTX PRO 2000 went from D0 to D3cold.
+- **A graphics card that stopped answering** (`gpu_stuck`: its
+  `power/runtime_status` "error", the kernel's word for power
+  management that failed, its driver not answering until it starts
+  again: NVIDIA's after memory ran out on 2026-11-07, NVML saying "an
+  internal driver error occurred"). NVIDIA's is started again without
+  restarting the computer (Ben: "i don't want you to restart the
+  machine just fix the card/driver or whatever"), Start It Again: the
+  person's programs with its nodes open quit (`/dev/nvidia*`, its
+  `/dev/dri` card and render node; named, each program once: Chrome
+  writes its whole command line into its first word, so a process is
+  named by its executable then), then one root step,
+  `Step::RestartGpu`: the services that keep it open stopped
+  (nvidia-powerd, nvidia-persistenced, Olo's own olo-gpu-follow, which
+  holds NVML), its modules unloaded in order (nvidia_drm,
+  nvidia_modeset, nvidia_uvm, nvidia_peermem, nvidia: `delete_module`
+  with `O_NONBLOCK`, refused at once while anything has them open,
+  asked again for 8 s, then the error names what has the nodes open),
+  the card reset (`reset`: FLR, else its bus), taken off the bus and
+  found again (`remove`, its bridge's `rescan`: a fresh device, its
+  power management new), udev loading its driver by the card's PCI
+  alias (nvidia_drm's) as at start, and the services started. Failing
+  partway it leaves nothing off: the card's `uevent` told "add" (the
+  driver loaded again) and the services started. Not while the
+  session's display server has it open (a display on its ports): then
+  what to do. Another maker's card stuck: said, a restart its fix.
 - **A graphics card with no working driver** (NVIDIA's, no driver
   bound; nouveau loaded and gone says it tried): NVIDIA's driver
   (`akmod-nvidia`, built for each kernel) installed from the system's
@@ -8466,7 +8554,15 @@ and `FromHelper::Done`), asked for only in the person's own session;
 `OLO_DOCTOR_HELPER=direct|off` as `OLO_ACTIVITY_HELPER`. After a fix the
 report is taken again; what was fixed and is gone is listed under Fixed.
 Scans run on a thread; nothing is polled: Check Again (⌘R), a fix, or
-the app opened again looks again.
+the app opened again looks again. What can't be found out says nothing,
+never a problem: systemd's user manager busy past its 10 s (as it was
+while memory ran low on 2026-11-07) left the watcher, started at login
+before Doctor's TMPDIR fix, judging by its own environment, and the
+tray said "Temporary files take memory" while the window said all was
+well (Ben: "seems like some of the checks are flaky"). The session's
+TMPDIR is the manager's, else what Olo's environment.d file sets, only
+then Doctor's own (`session_tmpdir`); a unit systemd didn't say the
+state of (the Wi-Fi healer's, rtkit's) is left until the next look.
 
 `olo-doctor --report` prints the report as JSON (agents, scripts).
 `olo-doctor --watch` is one of the real session's services
@@ -8485,6 +8581,26 @@ Deskbar follows it by inotify and shows Olo Doctor's bag in the tray
 while there is something, a click opening it. Tests build a
 machine in a folder (`Roots { fs, bin, uid, scope, units }`) and check
 the findings and their steps exactly.
+
+Any finding can be ignored (Ben, 2026-11-07: "each item can be ignored
+which puts it into an ignored section and also has a button for each
+ignored item to still fix it if the user changes their mind but it
+won't alert about ignored items or draw attention to them"): its
+Ignore button, before its fix, keeps its id in
+`~/.config/olo/doctor-ignored.json` (`ignored.rs`: `doctor` and
+`suggestions`, by id), and every look sets those aside
+(`checks::look`, `suggest::look`: `Report::set_aside` moves them from
+`findings` to `ignored`), so the count, Fix All (Apply All), the tray's
+bag, the watcher's notifications and `--fix all` leave them out. The
+window lists them last, under Ignored: each title dim, with Stop
+Ignoring and its own fix button, which fixes it as ever. From a
+terminal or an agent: `olo-doctor --ignore ID…` and `--unignore ID…`
+(`olo-suggestions` the same; with no ids, the ignored listed), and
+`--report`'s `ignored`; `--fix` lists them as "ignored" and fixes one
+only when it's named. A process list says each program once with its
+processes ("GTK's portal backend (xdg-desktop-portal-gtk, processes
+1625065 and 1625111)", `by_program`), and the title counts programs:
+D-Bus had started GTK's portal backend six times, said six times over.
 
 ## Olo Suggestions (apps/doctor, `olo-suggestions`)
 
@@ -8713,7 +8829,9 @@ told to look again by their `uevent`); and if chosen, Olo's login
 screen (tools/install-login.sh `--switch`'s work: its programs in
 /usr/local/libexec/olo, Olo's data in /usr/local/share/olo, the PAM
 services and `pam_olo_keyring.so`, its user and folders made by
-`systemd-sysusers` and Setup itself, its unit, GDM disabled and olo-login enabled) and boot splash
+`systemd-sysusers` and Setup itself, its unit, the display manager
+it replaces disabled (GDM's) and olo-login enabled: Olo Doctor's
+`login_screen::steps`, which its "Use Olo's Login Screen" runs too) and boot splash
 (the theme drawn by `olo-app-server --plymouth-theme` as the person,
 then put in /usr/share/plymouth/themes/olo with plymouthd.conf kept
 beside as `.before-olo`, and the start-up images made again:
@@ -10799,7 +10917,12 @@ Forward, ⌘[ and ⌘] on the Mac profile, Alt+← and → on Windows', and the
 mouse's back and forward buttons go through the folders a window showed
 in that window, as Haiku's Tracker navigates in one: `FolderWin::history`,
 the folder it was opened from first (`came_from`, `open_from`), the one
-it comes back out of selected), Get Info, Find,
+it comes back out of selected; in column view every place it was,
+its deepest column's folder, a column opened or closed by the person
+kept as a step (`record_location`), Back and Forward opening the columns
+down to it again with nothing selected in its own, as Finder's columns
+do: Ben, 2026-11-07, "in column mode and go between columns/files the
+back/forward navigation doesn't seem to work", none were kept), Get Info, Find,
 the file operations (ops.rs, on workers; Tracker Status after 400 ms),
 drops, pastes, Quick Look, the watcher's changes and an upgrade's saved
 state (the egui Tracker's, unchanged). Each window's view does the
@@ -10876,7 +10999,17 @@ without `DISPLAY` (X programs would show on the person's screen), and on
 a D-Bus session bus of its own (below, "A screen's own bus"). Screens
 are listed in `$XDG_RUNTIME_DIR/olo-screens/NAME.json` (the session's
 pid, its sockets, the size); `screens.rs` checks the pid is still that
-session before trusting an entry. The rest is the screen's own app_server
+session before trusting an entry, by the `OLO_SCREEN=NAME` it was started
+with (`is_session_of`: kept across an upgrade's re-execution; its command
+line, which a session re-executed bare before 2026-11-07, isn't, so
+every upgrade had `list` drop each running screen, and starting it again
+by name made a second, ten left running unknown). An entry is dropped
+only once its session has ended (`running`), `stop` ends the session's
+whole process group if it hasn't ended 5 s after being asked (and keeps
+the entry while it runs), and `start` and `stop` end any screen's
+session nothing lists (`strays`: of that name whatever its age, others
+once two minutes old so one being started isn't; never a session
+inside a screen's). The rest is the screen's own app_server
 IPC (`Client::connect_to`): `run` (a program with the screen's
 `WAYLAND_DISPLAY`, `OLO_SOCKET` and `OLO_SCREEN`), `look` (a PNG,
 `--window ID` for one), `windows` (`Reply::Windows`, whose `WindowInfo`s
@@ -11858,6 +11991,60 @@ only if that changed. Measured beside the old Wi-Fi-only watch over
 60 s, idle on Ben's machine (Ethernet and Wi-Fi both up): under one
 wakeup a second, against about two.
 
+### Live widgets (widgets.rs, Preferences ▸ Deskbar)
+
+Ben, 2026-11-07: "add a preferences app for the deskbar and in it
+support configuring/adding live performance widgets into it e.g. cpu,
+gpu, disk, network monitors etc. -- it should all be very customizable
+in terms of where they appear on the deskbar, how they look, how often
+they update, exactly what to show and so on". As BeOS's Pulse and
+ProcessController put their bars in its tray.
+
+* **Settings**: `Settings::deskbar` (`olo_protocol::deskbar`), kept by
+  app_server, so Deskbar follows a change at once (`SettingsChanged`)
+  and agents read and set them (`GetSettings`/`SetSettings`; a widget
+  with only `id`, `measure` and `place` takes the rest as it comes).
+  Each `Widget`: an `id`, what it measures (`Measure`: CPU, all or each
+  core; memory, and swap; a GPU by PCI address; a disk's reads and
+  writes; a volume's fullness; an interface's down and up; a hwmon
+  temperature, "chip/label"; battery power), where (`Place`: an icon's
+  place in the tray, a row under the tray, a row at the foot under the
+  applications), its look (`Look`: graph, bars, meter, number), its
+  row's size, its name and value shown, how often it's read
+  (`every_ms`, 250 ms to a minute), how far back its graph looks
+  (`span_s`) and its colour (a `Hue`, or the accent).
+* **Readings**: `olo_system::meters` (Preferences' list of what there
+  is too, `sources`: cores, GPUs, disks, volumes, interfaces, sensors,
+  a battery): `/proc/stat`, `meminfo`, `diskstats`, `net/dev`, statvfs,
+  hwmon, the battery's `power_now`, and the GPUs through
+  `olo_system::gpu_load` (Activity Monitor's, moved there for both: a
+  GPU asleep is never asked, an idle NVIDIA one only every 20 s, each
+  question being use that keeps it awake; xe's busy is its render GT's
+  idle residency). A worker (`deskbar-widgets`) reads each widget when
+  it's due and sends them together (`Msg::Meters`); with no widgets
+  there is no thread, and with the displays asleep or the screen locked
+  nothing is read (`Live::pause`). What a widget draws is made once a
+  reading (`Shown`: each series' levels over its history, rates against
+  the highest in it, its value in words), not each frame.
+* **Drawing**: tray widgets take the tray's first slots (a graph, bars
+  or meter in a sunken well, or the value in small figures); rows have
+  the name at the left and the value at the right (shortened, "↓27K
+  ↑102K", or without the name, when both don't fit), the drawing
+  between them in a small row and under them in a medium or large one.
+  A tip says what it measures in full and each series' value; a click
+  opens Activity Monitor; the other button, Activity Monitor and
+  Deskbar Preferences…. Agents read each as a `Meter` with its value.
+* **Cost**, over 20 s on release builds (`tools/dev/cost`): no widgets,
+  0.1% of a core, 2 wakeups a second, 0.2 frames a second; eight (most
+  read every second), 0.2%, 5 wakeups (2 the worker's), 1.1 frames a
+  second at 613 µs (430 without).
+
+Preferences ▸ Deskbar (`deskbar.rs`) lists the widgets in order (Add
+one of a kind after the chosen one, Remove, Move Up, Move Down) beside
+the chosen one's settings (what it shows and which of it, where, look,
+size, name and value, how often, how far back, colour), each changing
+the Deskbar at once; Defaults has none.
+
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 
 `lock_screen()` (Ctrl+⌘Q, Deskbar ▸ Lock Screen, `Request::Lock`, the
@@ -12437,7 +12624,13 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   `drain.rs`; Ben, 2026-11-06: "it should serve new requests in the new
   process but allow old requests to finish in their existing process so
   that nothing errors"). olo-ui tells the app a new olo-pool is installed
-  (`olo_ui::on_upgrade_due`). The app starts a copy of the new version
+  (`olo_ui::on_upgrade_due`), and the same when app_server restarts (an
+  upgrade's reload, a crash: the compositor gone, `lost_compositor`,
+  which hands over first and waits while it's busy, rather than
+  re-executing at once: it had cut every agent's stream at each reload,
+  "API Error: Connection lost mid-response", Ben 2026-11-07; a tunnel
+  through the proxy with a ping every half second across `tsession
+  reload` broke a second in before, and answered 50 of 50 after). The app starts a copy of the new version
   beside itself with the listening sockets (copies kept at bind,
   `Drain::keep`; made inheritable for it alone, `Drain::for_a_copy`, and
   named in `OLO_POOL_LISTENERS`, `PORT=FD`), the windows' state (the

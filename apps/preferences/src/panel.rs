@@ -9,8 +9,8 @@ use olo_ui::{
 };
 
 use crate::{
-    PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security,
-    security_keys, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces,
+    PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, deskbar, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver,
+    security, security_keys, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +25,8 @@ pub enum Panel {
     Bluetooth,
     DateTime,
     DefaultApps,
+    /// Deskbar's live widgets.
+    Deskbar,
     Display,
     /// Each GPU's tuning.
     Integrations,
@@ -55,6 +57,7 @@ impl Panel {
         Panel::Bluetooth,
         Panel::DateTime,
         Panel::DefaultApps,
+        Panel::Deskbar,
         Panel::Display,
         Panel::Integrations,
         Panel::Keyboard,
@@ -111,6 +114,7 @@ impl Panel {
             Panel::Bluetooth => "bluetooth",
             Panel::DateTime => "datetime",
             Panel::DefaultApps => "default-apps",
+            Panel::Deskbar => "deskbar",
             Panel::Display => "display",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
@@ -142,6 +146,7 @@ impl Panel {
             Panel::Bluetooth => "Bluetooth",
             Panel::DateTime => "Date & Time",
             Panel::DefaultApps => "Default Apps",
+            Panel::Deskbar => "Deskbar",
             Panel::Display => "Display",
             Panel::Integrations => "Integrations",
             Panel::Keyboard => "Keyboard",
@@ -173,6 +178,9 @@ impl Panel {
             Panel::Bluetooth => "bluetooth",
             Panel::DateTime => "datetime",
             Panel::DefaultApps => "default-apps",
+            // (Its own icon to come: generated against the reference set,
+            // which needs the image model's key.)
+            Panel::Deskbar => "activity",
             Panel::Display => "display",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
@@ -208,6 +216,8 @@ impl Panel {
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
             Panel::DefaultApps => (520, 662),
+            // The widgets beside the chosen one's settings.
+            Panel::Deskbar => (760, 470),
             // With its panel beside it: what it is, how Olo draws for it
             // and why. As tall as the display's rows (`Fit`).
             Panel::Display => (940, 520),
@@ -311,6 +321,7 @@ impl Panel {
             Panel::Terminal => settings.terminal = from.terminal.clone(),
             Panel::Workspaces => settings.workspace_count = from.workspace_count,
             Panel::DateTime => settings.clock = from.clock.clone(),
+            Panel::Deskbar => settings.deskbar = from.deskbar.clone(),
             Panel::Power => settings.power = from.power.clone(),
             Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
             Panel::Security => settings.security = from.security.clone(),
@@ -345,6 +356,7 @@ pub enum State {
     Sound(sound::State),
     DateTime(Box<datetime::State>),
     DefaultApps(Box<default_apps::State>),
+    Deskbar(Box<deskbar::State>),
     Network(Box<network::State>),
     Notifications(Box<notifications::State>),
     Performance(Box<performance::State>),
@@ -369,6 +381,7 @@ impl State {
             Panel::Sound => State::Sound(sound::State::new(cx)),
             Panel::DateTime => State::DateTime(Box::new(datetime::State::new(cx))),
             Panel::DefaultApps => State::DefaultApps(Box::new(default_apps::State::new(cx))),
+            Panel::Deskbar => State::Deskbar(Box::new(deskbar::State::new(cx))),
             Panel::Network => State::Network(Box::new(network::State::new(cx))),
             Panel::Notifications => State::Notifications(Box::new(notifications::State::new(cx))),
             Panel::Performance => State::Performance(Box::new(performance::State::new(cx))),
@@ -435,6 +448,7 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
         (Panel::Themes, _) => themes::ui(&mut ui),
         (Panel::DateTime, State::DateTime(st)) => datetime::ui(&mut ui, st),
         (Panel::DefaultApps, State::DefaultApps(st)) => default_apps::ui(&mut ui, st),
+        (Panel::Deskbar, State::Deskbar(st)) => deskbar::ui(&mut ui, st),
         (Panel::Network, State::Network(st)) => network::ui(&mut ui, st),
         (Panel::Notifications, State::Notifications(st)) => notifications::ui(&mut ui, st),
         (Panel::Performance, State::Performance(st)) => performance::ui(&mut ui, st),

@@ -1,9 +1,9 @@
 [
  {
   "time": "2026-10-25T19:58:28",
-  "title": "First Tracker desktop",
-  "caption": "Volumes and Home beside the Deskbar, Trash in the corner. Labels were off-centre (centred galleys double-offset) and ~/Desktop items were missing.",
-  "image": "2026-10-25/195828-first-tracker-desktop.png"
+  "title": "Icon set before the style guide",
+  "caption": "Text-only prompts: about, bluetooth, screenshot, display and trash drift to flat or straight-on views.",
+  "image": "2026-10-25/195828-icon-set-before-the-style-guide.png"
  },
  {
   "time": "2026-10-25T19:58:28",
@@ -13,9 +13,9 @@
  },
  {
   "time": "2026-10-25T19:58:28",
-  "title": "Icon set before the style guide",
-  "caption": "Text-only prompts: about, bluetooth, screenshot, display and trash drift to flat or straight-on views.",
-  "image": "2026-10-25/195828-icon-set-before-the-style-guide.png"
+  "title": "First Tracker desktop",
+  "caption": "Volumes and Home beside the Deskbar, Trash in the corner. Labels were off-centre (centred galleys double-offset) and ~/Desktop items were missing.",
+  "image": "2026-10-25/195828-first-tracker-desktop.png"
  },
  {
   "time": "2026-10-25T19:58:29",
@@ -61,15 +61,15 @@
  },
  {
   "time": "2026-10-25T20:29:52",
-  "title": "Menus: shortcut glyphs on the baseline",
-  "caption": "\u2318, \u21e7 and arrows come from a fallback font; each is now laid out separately so it shares the item's baseline. The Trash is titled Trash.",
-  "image": "2026-10-25/202952-menus-shortcut-glyphs-on-the-baseline.png"
- },
- {
-  "time": "2026-10-25T20:29:52",
   "title": "Tracker: Find",
   "caption": "Find takes focus on open, closes with \u2318W, shows home-relative locations and a baseline-aligned status.",
   "image": "2026-10-25/202952-tracker-find.png"
+ },
+ {
+  "time": "2026-10-25T20:29:52",
+  "title": "Menus: shortcut glyphs on the baseline",
+  "caption": "\u2318, \u21e7 and arrows come from a fallback font; each is now laid out separately so it shares the item's baseline. The Trash is titled Trash.",
+  "image": "2026-10-25/202952-menus-shortcut-glyphs-on-the-baseline.png"
  },
  {
   "time": "2026-10-25T20:38:34",
@@ -85,15 +85,15 @@
  },
  {
   "time": "2026-10-25T21:01:32",
-  "title": "In-place reload: after an upgrade",
-  "caption": "After tabula-session reload with new tabula-session, app_server and Tracker binaries: the session re-executed itself, restarted app_server, and Tracker re-executed with its saved state. Pixel-identical to the screenshot before.",
-  "image": "2026-10-25/210132-in-place-reload-after-an-upgrade.png"
- },
- {
-  "time": "2026-10-25T21:01:32",
   "title": "In-place reload: before",
   "caption": "Tracker (desktop + Home window, Home icon selected) and Deskbar under tabula-session, before rebuilding and running tabula-session reload.",
   "image": "2026-10-25/210132-in-place-reload-before.png"
+ },
+ {
+  "time": "2026-10-25T21:01:32",
+  "title": "In-place reload: after an upgrade",
+  "caption": "After tabula-session reload with new tabula-session, app_server and Tracker binaries: the session re-executed itself, restarted app_server, and Tracker re-executed with its saved state. Pixel-identical to the screenshot before.",
+  "image": "2026-10-25/210132-in-place-reload-after-an-upgrade.png"
  },
  {
   "time": "2026-10-25T21:35:24",
@@ -103,15 +103,15 @@
  },
  {
   "time": "2026-10-25T21:36:33",
-  "title": "Terminal (dark)",
-  "caption": "The same session in Tabula Dark (graphite, soft pastels). The scheme follows the desktop theme, and OSC 10/11 colour queries answer from it, so TUIs like Claude Code choose the matching theme.",
-  "image": "2026-10-25/213633-terminal-dark.png"
- },
- {
-  "time": "2026-10-25T21:36:33",
   "title": "Terminal (light)",
   "caption": "Tabula Light scheme: 16 ANSI colours tuned for contrast on paper white, SGR attributes and truecolor, CJK/Greek/symbol fallback fonts, box drawing drawn as geometry (rounded and heavy), block elements, a kitty-protocol inline image, and a compiler-style path link.",
   "image": "2026-10-25/213633-terminal-light.png"
+ },
+ {
+  "time": "2026-10-25T21:36:33",
+  "title": "Terminal (dark)",
+  "caption": "The same session in Tabula Dark (graphite, soft pastels). The scheme follows the desktop theme, and OSC 10/11 colour queries answer from it, so TUIs like Claude Code choose the matching theme.",
+  "image": "2026-10-25/213633-terminal-dark.png"
  },
  {
   "time": "2026-10-25T22:00:49",
@@ -133,18 +133,6 @@
  },
  {
   "time": "2026-10-25T22:34:46",
-  "title": "Kit FilePanel: Export Flattened PDF",
-  "caption": "BFilePanel-style Save panel: path popup, Home, Name/Size/Modified list, Save as field.",
-  "image": "2026-10-25/223446-kit-filepanel-export-flattened-pdf.png"
- },
- {
-  "time": "2026-10-25T22:34:46",
-  "title": "Quick Look pop-out to Viewer",
-  "caption": "Popping a Quick Look out of Tracker opens the file in a standalone Viewer window (dark).",
-  "image": "2026-10-25/223446-quick-look-pop-out-to-viewer.png"
- },
- {
-  "time": "2026-10-25T22:34:46",
   "title": "Viewer: PDF form filling (light)",
   "caption": "Text, comb, combo, list box, radio and check fields filled in place, with a placed signature.",
   "image": "2026-10-25/223446-viewer-pdf-form-filling-light.png"
@@ -156,16 +144,28 @@
   "image": "2026-10-25/223446-viewer-pdf-form-in-dark-mode.png"
  },
  {
-  "time": "2026-10-25T22:51:44",
-  "title": "Twitcher (dark)",
-  "caption": "The same in dark mode.",
-  "image": "2026-10-25/225144-twitcher-dark.png"
+  "time": "2026-10-25T22:34:46",
+  "title": "Kit FilePanel: Export Flattened PDF",
+  "caption": "BFilePanel-style Save panel: path popup, Home, Name/Size/Modified list, Save as field.",
+  "image": "2026-10-25/223446-kit-filepanel-export-flattened-pdf.png"
+ },
+ {
+  "time": "2026-10-25T22:34:46",
+  "title": "Quick Look pop-out to Viewer",
+  "caption": "Popping a Quick Look out of Tracker opens the file in a standalone Viewer window (dark).",
+  "image": "2026-10-25/223446-quick-look-pop-out-to-viewer.png"
  },
  {
   "time": "2026-10-25T22:51:44",
   "title": "Twitcher (light)",
   "caption": "\u2318Tab held: app_server draws the BeOS Twitcher strip with each running app's icon and the chosen app's name.",
   "image": "2026-10-25/225144-twitcher-light.png"
+ },
+ {
+  "time": "2026-10-25T22:51:44",
+  "title": "Twitcher (dark)",
+  "caption": "The same in dark mode.",
+  "image": "2026-10-25/225144-twitcher-dark.png"
  },
  {
   "time": "2026-10-25T23:20:28",
@@ -175,15 +175,15 @@
  },
  {
   "time": "2026-10-25T23:20:29",
-  "title": "Preferences launcher",
-  "caption": "tabula-preferences with no argument: a grid of every panel.",
-  "image": "2026-10-25/232029-preferences-launcher.png"
- },
- {
-  "time": "2026-10-25T23:20:29",
   "title": "Preferences panels (dark)",
   "caption": "Appearance, Keyboard, Touchpad, Backgrounds, Display and About in dark mode: one fixed-size window per panel with Defaults/Revert.",
   "image": "2026-10-25/232029-preferences-panels-dark.png"
+ },
+ {
+  "time": "2026-10-25T23:20:29",
+  "title": "Preferences launcher",
+  "caption": "tabula-preferences with no argument: a grid of every panel.",
+  "image": "2026-10-25/232029-preferences-launcher.png"
  },
  {
   "time": "2026-10-25T23:30:13",
@@ -193,15 +193,15 @@
  },
  {
   "time": "2026-10-25T23:43:28",
-  "title": "Display \u25b8 Brightness",
-  "caption": "The built-in display's brightness slider (simulated backlight in a headless session).",
-  "image": "2026-10-25/234328-display-brightness.png"
- },
- {
-  "time": "2026-10-25T23:43:28",
   "title": "Preferences \u25b8 Power",
   "caption": "Battery health and state, idle display-off and sleep times, caffeinated mode (light and dark).",
   "image": "2026-10-25/234328-preferences-power.png"
+ },
+ {
+  "time": "2026-10-25T23:43:28",
+  "title": "Display \u25b8 Brightness",
+  "caption": "The built-in display's brightness slider (simulated backlight in a headless session).",
+  "image": "2026-10-25/234328-display-brightness.png"
  },
  {
   "time": "2026-10-25T23:43:29",
@@ -211,9 +211,9 @@
  },
  {
   "time": "2026-10-26T00:07:01",
-  "title": "Deskbar: Lock Screen",
-  "caption": "Lock Screen in the Tabula menu; the off cup in the tray is now visible in dark mode.",
-  "image": "2026-10-26/000701-deskbar-lock-screen.png"
+  "title": "Lock screen",
+  "caption": "tabula-lock over ext-session-lock: clock, date, and a BeOS panel asking for the password or Touch ID (dark).",
+  "image": "2026-10-26/000701-lock-screen.png"
  },
  {
   "time": "2026-10-26T00:07:01",
@@ -223,9 +223,9 @@
  },
  {
   "time": "2026-10-26T00:07:01",
-  "title": "Lock screen",
-  "caption": "tabula-lock over ext-session-lock: clock, date, and a BeOS panel asking for the password or Touch ID (dark).",
-  "image": "2026-10-26/000701-lock-screen.png"
+  "title": "Deskbar: Lock Screen",
+  "caption": "Lock Screen in the Tabula menu; the off cup in the tray is now visible in dark mode.",
+  "image": "2026-10-26/000701-deskbar-lock-screen.png"
  },
  {
   "time": "2026-10-26T00:07:01",
@@ -235,15 +235,15 @@
  },
  {
   "time": "2026-10-26T00:31:00",
-  "title": "Preferences: Screen Saver, Fade",
-  "caption": "R5's Fade tab: run after, turn off screen, password lock, Fade now / Don't fade corners.",
-  "image": "2026-10-26/003100-preferences-screen-saver-fade.png"
- },
- {
-  "time": "2026-10-26T00:31:00",
   "title": "Screen saver modules",
   "caption": "BeOS R5's modules redrawn: BuyNow, Flip, Icons, Lens, Lissart, Message, Spiral, Spots, StringTheme, SuperString (plus Blackness).",
   "image": "2026-10-26/003100-screen-saver-modules.png"
+ },
+ {
+  "time": "2026-10-26T00:31:00",
+  "title": "Preferences: Screen Saver, Fade",
+  "caption": "R5's Fade tab: run after, turn off screen, password lock, Fade now / Don't fade corners.",
+  "image": "2026-10-26/003100-preferences-screen-saver-fade.png"
  },
  {
   "time": "2026-10-26T00:31:01",
@@ -259,15 +259,15 @@
  },
  {
   "time": "2026-10-26T00:53:04",
-  "title": "Screenshot: active window (dark)",
-  "caption": "Active-window capture with the tab's shape kept; JPEG into a folder chosen with the new folder panel.",
-  "image": "2026-10-26/005304-screenshot-active-window-dark.png"
- },
- {
-  "time": "2026-10-26T00:53:04",
   "title": "Screenshot (light)",
   "caption": "Haiku-style Screenshot app: preview, capture options, name/format/folder; restored after an in-place reload.",
   "image": "2026-10-26/005304-screenshot-light.png"
+ },
+ {
+  "time": "2026-10-26T00:53:04",
+  "title": "Screenshot: active window (dark)",
+  "caption": "Active-window capture with the tab's shape kept; JPEG into a folder chosen with the new folder panel.",
+  "image": "2026-10-26/005304-screenshot-active-window-dark.png"
  },
  {
   "time": "2026-10-26T01:02:11",
@@ -283,15 +283,15 @@
  },
  {
   "time": "2026-10-26T01:31:35",
-  "title": "Alerts get their icons",
-  "caption": "The warning, stop, info and idea alert icons were missing from the set (every alert drew none); generated against the reference set.",
-  "image": "2026-10-26/013135-alerts-get-their-icons.png"
- },
- {
-  "time": "2026-10-26T01:31:35",
   "title": "StyledEdit: fonts, sizes and colours",
   "caption": "StyledEdit with a bold red word and a 24 pt Comfortaa word in the system font's line; styles live in the file's user.tabula.styles attribute, the text stays plain.",
   "image": "2026-10-26/013135-stylededit-fonts-sizes-and-colours.png"
+ },
+ {
+  "time": "2026-10-26T01:31:35",
+  "title": "StyledEdit: selection keeps its colours",
+  "caption": "egui paints selected text in one colour; StyledEdit draws the selected glyphs again over the highlight in their own colours.",
+  "image": "2026-10-26/013135-stylededit-selection-keeps-its-colours.png"
  },
  {
   "time": "2026-10-26T01:31:35",
@@ -301,9 +301,9 @@
  },
  {
   "time": "2026-10-26T01:31:35",
-  "title": "StyledEdit: selection keeps its colours",
-  "caption": "egui paints selected text in one colour; StyledEdit draws the selected glyphs again over the highlight in their own colours.",
-  "image": "2026-10-26/013135-stylededit-selection-keeps-its-colours.png"
+  "title": "Alerts get their icons",
+  "caption": "The warning, stop, info and idea alert icons were missing from the set (every alert drew none); generated against the reference set.",
+  "image": "2026-10-26/013135-alerts-get-their-icons.png"
  },
  {
   "time": "2026-10-26T01:41:16",
@@ -313,9 +313,9 @@
  },
  {
   "time": "2026-10-26T01:41:17",
-  "title": "Activity Monitor: dark mode",
-  "caption": "Graphs and legend in dark mode.",
-  "image": "2026-10-26/014117-activity-monitor-dark-mode.png"
+  "title": "Activity Monitor: processes",
+  "caption": "Sortable process list with search by name or ID and an owner filter.",
+  "image": "2026-10-26/014117-activity-monitor-processes.png"
  },
  {
   "time": "2026-10-26T01:41:17",
@@ -325,21 +325,15 @@
  },
  {
   "time": "2026-10-26T01:41:17",
-  "title": "Activity Monitor: processes",
-  "caption": "Sortable process list with search by name or ID and an owner filter.",
-  "image": "2026-10-26/014117-activity-monitor-processes.png"
+  "title": "Activity Monitor: dark mode",
+  "caption": "Graphs and legend in dark mode.",
+  "image": "2026-10-26/014117-activity-monitor-dark-mode.png"
  },
  {
   "time": "2026-10-26T01:44:03",
   "title": "Alerts open over their window",
   "caption": "Alerts are children of the focused window; app_server centres them across it a quarter of the way down, as BAlert did.",
   "image": "2026-10-26/014403-alerts-open-over-their-window.png"
- },
- {
-  "time": "2026-10-26T01:54:06",
-  "title": "Date & Time (dark)",
-  "caption": "Calendar and clock face; disabled while network time is on.",
-  "image": "2026-10-26/015406-date-time-dark.png"
  },
  {
   "time": "2026-10-26T01:54:06",
@@ -354,16 +348,22 @@
   "image": "2026-10-26/015406-date-time-time-zones.png"
  },
  {
-  "time": "2026-10-26T02:02:41",
-  "title": "polkit agent: password",
-  "caption": "After the fingerprint times out PAM asks for the password; the field takes focus.",
-  "image": "2026-10-26/020241-polkit-agent-password.png"
+  "time": "2026-10-26T01:54:06",
+  "title": "Date & Time (dark)",
+  "caption": "Calendar and clock face; disabled while network time is on.",
+  "image": "2026-10-26/015406-date-time-dark.png"
  },
  {
   "time": "2026-10-26T02:02:41",
   "title": "polkit agent",
   "caption": "Authentication Required: polkit message, Touch ID through PAM first (fprintd), new padlock icon.",
   "image": "2026-10-26/020241-polkit-agent.png"
+ },
+ {
+  "time": "2026-10-26T02:02:41",
+  "title": "polkit agent: password",
+  "caption": "After the fingerprint times out PAM asks for the password; the field takes focus.",
+  "image": "2026-10-26/020241-polkit-agent-password.png"
  },
  {
   "time": "2026-10-26T02:06:23",
@@ -397,27 +397,27 @@
  },
  {
   "time": "2026-10-26T02:31:41",
-  "title": "Backgrounds in dark mode",
-  "caption": "The chosen wallpaper survives an in-place reload via About Tabula, Restart Tabula.",
-  "image": "2026-10-26/023141-backgrounds-in-dark-mode.png"
- },
- {
-  "time": "2026-10-26T02:31:41",
   "title": "Choose a Wallpaper panel",
   "caption": "The kit FilePanel as a child of Backgrounds, limited to picture types, kept on screen when wider than its parent.",
   "image": "2026-10-26/023141-choose-a-wallpaper-panel.png"
  },
  {
-  "time": "2026-10-26T02:40:50",
-  "title": "Display: arranged screens, dark",
-  "caption": "Two headless screens stacked by dragging in the map; the lower one follows when the upper changes size.",
-  "image": "2026-10-26/024050-display-arranged-screens-dark.png"
+  "time": "2026-10-26T02:31:41",
+  "title": "Backgrounds in dark mode",
+  "caption": "The chosen wallpaper survives an in-place reload via About Tabula, Restart Tabula.",
+  "image": "2026-10-26/023141-backgrounds-in-dark-mode.png"
  },
  {
   "time": "2026-10-26T02:40:50",
   "title": "Display: resolution with revert countdown",
   "caption": "HEADLESS-1 switched to 1920 by 1200; its right-hand neighbour moved with the edge; Keep or Revert, else it reverts after 15 s.",
   "image": "2026-10-26/024050-display-resolution-with-revert-countdown.png"
+ },
+ {
+  "time": "2026-10-26T02:40:50",
+  "title": "Display: arranged screens, dark",
+  "caption": "Two headless screens stacked by dragging in the map; the lower one follows when the upper changes size.",
+  "image": "2026-10-26/024050-display-arranged-screens-dark.png"
  },
  {
   "time": "2026-10-26T02:48:51",
@@ -433,27 +433,27 @@
  },
  {
   "time": "2026-10-26T03:01:40",
-  "title": "Cursors in a session",
-  "caption": "Headless 2x session: StyledEdit asks for the text cursor over cursor-shape-v1, the desktop shows the hand, the window frame shows the resize arrow.",
-  "image": "2026-10-26/030140-cursors-in-a-session.png"
- },
- {
-  "time": "2026-10-26T03:01:40",
   "title": "Haiku system cursors",
   "caption": "All 28 of Haiku app_server cursors drawn by the new tabula-hvif renderer at 1x, 1.5x and 2x on light and dark grounds, with the soft offset shadow. ResizeWest is mirrored from ResizeEast since the upstream data duplicates it.",
   "image": "2026-10-26/030140-haiku-system-cursors.png"
  },
  {
-  "time": "2026-10-26T03:15:04",
-  "title": "Deskbar Stay Awake menu",
-  "caption": "Right-click the cup (also in the Tabula menu): until turned off, 1 to 8 hours, even with the lid closed, Allow Sleep with the end time. The menu now flips to stay on screen.",
-  "image": "2026-10-26/031504-deskbar-stay-awake-menu.png"
+  "time": "2026-10-26T03:01:40",
+  "title": "Cursors in a session",
+  "caption": "Headless 2x session: StyledEdit asks for the text cursor over cursor-shape-v1, the desktop shows the hand, the window frame shows the resize arrow.",
+  "image": "2026-10-26/030140-cursors-in-a-session.png"
  },
  {
   "time": "2026-10-26T03:15:04",
   "title": "Level indicator",
   "caption": "app_server panel for the brightness and volume keys and Ctrl+Cmd+A caffeinated, light and dark, 2x.",
   "image": "2026-10-26/031504-level-indicator.png"
+ },
+ {
+  "time": "2026-10-26T03:15:04",
+  "title": "Deskbar Stay Awake menu",
+  "caption": "Right-click the cup (also in the Tabula menu): until turned off, 1 to 8 hours, even with the lid closed, Allow Sleep with the end time. The menu now flips to stay on screen.",
+  "image": "2026-10-26/031504-deskbar-stay-awake-menu.png"
  },
  {
   "time": "2026-10-26T03:18:18",
@@ -529,15 +529,15 @@
  },
  {
   "time": "2026-10-26T06:38:35",
-  "title": "NetPositive error page",
-  "caption": "Network errors answer in haiku, as NetPositive did, picked at random from six new verses",
-  "image": "2026-10-26/063835-netpositive-error-page.png"
- },
- {
-  "time": "2026-10-26T06:38:35",
   "title": "NetPositive in dark mode",
   "caption": "The new Servo based browser: tabs, toolbar and location field follow the theme while pages stay light",
   "image": "2026-10-26/063835-netpositive-in-dark-mode.png"
+ },
+ {
+  "time": "2026-10-26T06:38:35",
+  "title": "NetPositive error page",
+  "caption": "Network errors answer in haiku, as NetPositive did, picked at random from six new verses",
+  "image": "2026-10-26/063835-netpositive-error-page.png"
  },
  {
   "time": "2026-10-26T07:25:05",
@@ -817,15 +817,15 @@
  },
  {
   "time": "2026-10-26T21:46:23",
-  "title": "Passwords: its own store, synced with 1Password",
-  "caption": "Items are read from the local encrypted store at once; 1Password is only for syncing, in the background. The status line shows the last sync.",
-  "image": "2026-10-26/214623-passwords-its-own-store-synced-with-1password.png"
- },
- {
-  "time": "2026-10-26T21:46:23",
   "title": "Passwords: setup offers sync or local",
   "caption": "Passwords now keeps its own encrypted store. The first time, it asks whether to sync with a 1Password account (both ways) or keep items only on this computer.",
   "image": "2026-10-26/214623-passwords-setup-offers-sync-or-local.png"
+ },
+ {
+  "time": "2026-10-26T21:46:23",
+  "title": "Passwords: its own store, synced with 1Password",
+  "caption": "Items are read from the local encrypted store at once; 1Password is only for syncing, in the background. The status line shows the last sync.",
+  "image": "2026-10-26/214623-passwords-its-own-store-synced-with-1password.png"
  },
  {
   "time": "2026-10-26T21:46:24",
@@ -925,15 +925,15 @@
  },
  {
   "time": "2026-10-27T01:41:43",
-  "title": "Deskbar's notification bell",
-  "caption": "The bell counts unread notifications; click for the history, right-click for Do Not Disturb (now, for an hour, until morning) and the settings. Struck through while quiet.",
-  "image": "2026-10-27/014143-deskbar-s-notification-bell.png"
- },
- {
-  "time": "2026-10-27T01:41:43",
   "title": "Notification history",
   "caption": "The History window (Deskbar's bell, or tabula-notifications --history): every notification newest first, kept across a restart. Click to act on it (or bring the app forward), \u00d7 to forget one; Do Not Disturb and Clear All along the top.",
   "image": "2026-10-27/014143-notification-history.png"
+ },
+ {
+  "time": "2026-10-27T01:41:43",
+  "title": "Deskbar's notification bell",
+  "caption": "The bell counts unread notifications; click for the history, right-click for Do Not Disturb (now, for an hour, until morning) and the settings. Struck through while quiet.",
+  "image": "2026-10-27/014143-deskbar-s-notification-bell.png"
  },
  {
   "time": "2026-10-27T01:41:43",
@@ -955,9 +955,9 @@
  },
  {
   "time": "2026-10-27T02:12:50",
-  "title": "Quick Look rotates pictures",
-  "caption": "Quick Look's footer has Rotate Left and Right (\u2318L and \u2318R), which turn the picture and save it at once, as on the Mac. Anything more opens in Viewer.",
-  "image": "2026-10-27/021250-quick-look-rotates-pictures.png"
+  "title": "Viewer: crop a picture",
+  "caption": "Image \u25b8 Crop\u2026 puts a frame over the picture: drag one out, move it or pull its edges; the size shows below and the rest dims. Crop (or Return) keeps it, and the title says the picture is edited until it's saved.",
+  "image": "2026-10-27/021250-viewer-crop-a-picture.png"
  },
  {
   "time": "2026-10-27T02:12:50",
@@ -967,9 +967,9 @@
  },
  {
   "time": "2026-10-27T02:12:50",
-  "title": "Viewer: crop a picture",
-  "caption": "Image \u25b8 Crop\u2026 puts a frame over the picture: drag one out, move it or pull its edges; the size shows below and the rest dims. Crop (or Return) keeps it, and the title says the picture is edited until it's saved.",
-  "image": "2026-10-27/021250-viewer-crop-a-picture.png"
+  "title": "Quick Look rotates pictures",
+  "caption": "Quick Look's footer has Rotate Left and Right (\u2318L and \u2318R), which turn the picture and save it at once, as on the Mac. Anything more opens in Viewer.",
+  "image": "2026-10-27/021250-quick-look-rotates-pictures.png"
  },
  {
   "time": "2026-10-27T02:23:02",
@@ -1177,27 +1177,27 @@
  },
  {
   "time": "2026-10-27T15:32:23",
-  "title": "Preferences \u25b8 AI",
-  "caption": "AI features go through the Token Pool, or an Anthropic key; Smart Tiling picks its model and how hard it thinks.",
-  "image": "2026-10-27/153223-preferences-ai.png"
- },
- {
-  "time": "2026-10-27T15:32:23",
   "title": "Smart Tiling",
   "caption": "Smart Tile (\u2303\u21e7\u2318\u21a9) shows a model the screen and what each window holds, then tiles them; the note says how and offers Undo. (Here a fake model answered.)",
   "image": "2026-10-27/153223-smart-tiling.png"
  },
  {
-  "time": "2026-10-27T15:40:28",
-  "title": "Appearance: Longest window title",
-  "caption": "The new slider in Preferences \u25b8 Appearance.",
-  "image": "2026-10-27/154028-appearance-longest-window-title.png"
+  "time": "2026-10-27T15:32:23",
+  "title": "Preferences \u25b8 AI",
+  "caption": "AI features go through the Token Pool, or an Anthropic key; Smart Tiling picks its model and how hard it thinks.",
+  "image": "2026-10-27/153223-preferences-ai.png"
  },
  {
   "time": "2026-10-27T15:40:28",
   "title": "Longest window title",
   "caption": "A tab shows at most this many characters of its title, then an ellipsis (here 20; 100 by default).",
   "image": "2026-10-27/154028-longest-window-title.png"
+ },
+ {
+  "time": "2026-10-27T15:40:28",
+  "title": "Appearance: Longest window title",
+  "caption": "The new slider in Preferences \u25b8 Appearance.",
+  "image": "2026-10-27/154028-appearance-longest-window-title.png"
  },
  {
   "time": "2026-10-27T15:45:33",
@@ -1309,15 +1309,15 @@
  },
  {
   "time": "2026-10-27T20:42:17",
-  "title": "Touchpad preferences in dark",
-  "caption": "The Touch, Gestures and Mouse tabs in dark mode.",
-  "image": "2026-10-27/204217-touchpad-preferences-in-dark.png"
- },
- {
-  "time": "2026-10-27T20:42:17",
   "title": "Touchpad preferences: profiles and every tunable",
   "caption": "Preferences \u25b8 Touchpad now names the pad app_server found and recommends a profile (MacBook, Magic Trackpad, Standard; hand tuning makes it Custom). Touch holds Olo's palm and hover filter, a libinput plugin that counts a touch only while it presses, ignores palms and makes the click from the fingers' pressure alone; Gestures has scrolling speed, momentum glide, three-finger drag, drag lock and acceleration.",
   "image": "2026-10-27/204217-touchpad-preferences-profiles-and-every-tunable.png"
+ },
+ {
+  "time": "2026-10-27T20:42:17",
+  "title": "Touchpad preferences in dark",
+  "caption": "The Touch, Gestures and Mouse tabs in dark mode.",
+  "image": "2026-10-27/204217-touchpad-preferences-in-dark.png"
  },
  {
   "time": "2026-10-27T21:04:30",
@@ -1381,21 +1381,21 @@
  },
  {
   "time": "2026-10-27T23:19:56",
-  "title": "Power: after the layout lint",
-  "caption": "One pixel taller (460\u00d7363) so the boxes clear the buttons by WINDOW_INSET, and the menu fields' divider moved out to 176 so the longest label has a LABEL_GAP before its field.",
-  "image": "2026-10-27/231956-power-after-the-layout-lint.png"
- },
- {
-  "time": "2026-10-27T23:19:56",
   "title": "Power: before the layout lint",
   "caption": "Caught by the new layout lint (olo_kit::layout_lint): at 2\u00d7 the Caffeinated box ran 1 px past the window's body, leaving 11 px above Defaults/Revert instead of WINDOW_INSET (12), and \u201cPut the computer to sleep after:\u201d stood 3 px from its field.",
   "image": "2026-10-27/231956-power-before-the-layout-lint.png"
  },
  {
+  "time": "2026-10-27T23:19:56",
+  "title": "Power: after the layout lint",
+  "caption": "One pixel taller (460\u00d7363) so the boxes clear the buttons by WINDOW_INSET, and the menu fields' divider moved out to 176 so the longest label has a LABEL_GAP before its field.",
+  "image": "2026-10-27/231956-power-after-the-layout-lint.png"
+ },
+ {
   "time": "2026-10-27T23:19:57",
-  "title": "About: wide enough for long facts",
-  "caption": "The layout lint runs About with long real-world facts (e.g. \u201cAMD Ryzen 9 7945HX with Radeon Graphics, 32 cores\u201d); at 420 the processor was cut short with \u201c\u2026\u201d, so About is now 440 wide.",
-  "image": "2026-10-27/231957-about-wide-enough-for-long-facts.png"
+  "title": "Tracker: before the layout lint",
+  "caption": "The layout lint found the New Windows Open In box 1 px past the panel's body at 2\u00d7 (11 px to the buttons, not 12).",
+  "image": "2026-10-27/231957-tracker-before-the-layout-lint.png"
  },
  {
   "time": "2026-10-27T23:19:57",
@@ -1405,9 +1405,9 @@
  },
  {
   "time": "2026-10-27T23:19:57",
-  "title": "Tracker: before the layout lint",
-  "caption": "The layout lint found the New Windows Open In box 1 px past the panel's body at 2\u00d7 (11 px to the buttons, not 12).",
-  "image": "2026-10-27/231957-tracker-before-the-layout-lint.png"
+  "title": "About: wide enough for long facts",
+  "caption": "The layout lint runs About with long real-world facts (e.g. \u201cAMD Ryzen 9 7945HX with Radeon Graphics, 32 cores\u201d); at 420 the processor was cut short with \u201c\u2026\u201d, so About is now 440 wide.",
+  "image": "2026-10-27/231957-about-wide-enough-for-long-facts.png"
  },
  {
   "time": "2026-10-27T23:20:39",
@@ -1549,27 +1549,27 @@
  },
  {
   "time": "2026-10-28T15:30:47",
-  "title": "Terminal tabs down the side, Show All Tabs, dark",
-  "caption": "Side tabs with the group's chip at the top and no band. In Show All Tabs the active pane's head is lit instead of edged.",
-  "image": "2026-10-28/153047-terminal-tabs-down-the-side-show-all-tabs-dark.png"
- },
- {
-  "time": "2026-10-28T15:30:47",
   "title": "Terminal tabs without the lines",
   "caption": "The group shows as its chip alone: no coloured band under the strip, no separators beside the chip. The current tab is a raised page joined to the terminal below.",
   "image": "2026-10-28/153047-terminal-tabs-without-the-lines.png"
  },
  {
-  "time": "2026-10-28T15:30:48",
-  "title": "Notification banners without the lines, dark",
-  "caption": "",
-  "image": "2026-10-28/153048-notification-banners-without-the-lines-dark.png"
+  "time": "2026-10-28T15:30:47",
+  "title": "Terminal tabs down the side, Show All Tabs, dark",
+  "caption": "Side tabs with the group's chip at the top and no band. In Show All Tabs the active pane's head is lit instead of edged.",
+  "image": "2026-10-28/153047-terminal-tabs-down-the-side-show-all-tabs-dark.png"
  },
  {
   "time": "2026-10-28T15:30:48",
   "title": "Notification banners without the lines",
   "caption": "No accent band, top line or coloured edge. The app's colour is in its badge, tile and progress bar only; an error's title starts with a small crisp stop sign, level with the capitals, and there is more room around the icon.",
   "image": "2026-10-28/153048-notification-banners-without-the-lines.png"
+ },
+ {
+  "time": "2026-10-28T15:30:48",
+  "title": "Notification banners without the lines, dark",
+  "caption": "",
+  "image": "2026-10-28/153048-notification-banners-without-the-lines-dark.png"
  },
  {
   "time": "2026-10-28T15:30:48",
@@ -1627,15 +1627,15 @@
  },
  {
   "time": "2026-10-28T16:34:14",
-  "title": "Themes: colour sets selected, dark",
-  "caption": "The chosen colour set's plate in dark mode.",
-  "image": "2026-10-28/163414-themes-colour-sets-selected-dark.png"
- },
- {
-  "time": "2026-10-28T16:34:14",
   "title": "Themes: colour sets selected the same way",
   "caption": "Preferences \u25b8 Themes marks the chosen colour set with the kit's selection plate, the same soft ground as a selected card, in place of a coloured ring.",
   "image": "2026-10-28/163414-themes-colour-sets-selected-the-same-way.png"
+ },
+ {
+  "time": "2026-10-28T16:34:14",
+  "title": "Themes: colour sets selected, dark",
+  "caption": "The chosen colour set's plate in dark mode.",
+  "image": "2026-10-28/163414-themes-colour-sets-selected-dark.png"
  },
  {
   "time": "2026-10-28T16:34:15",
@@ -1645,15 +1645,15 @@
  },
  {
   "time": "2026-10-28T16:34:15",
-  "title": "Notification banners: a quieter close box",
-  "caption": "One close box per banner, in its header beside the app's name, instead of one in the header and another on every notification. In a group of several, each notification shows its own only while the pointer is over it. Both are named buttons in the tree (Close, Close All from Builds), so agents can find them.",
-  "image": "2026-10-28/163415-notification-banners-a-quieter-close-box.png"
- },
- {
-  "time": "2026-10-28T16:34:15",
   "title": "Terminal: the group colour you picked",
   "caption": "The chosen colour in Name Group is a soft ring around the swatch, in light and dark, instead of a heavy outline.",
   "image": "2026-10-28/163415-terminal-the-group-colour-you-picked.png"
+ },
+ {
+  "time": "2026-10-28T16:34:15",
+  "title": "Notification banners: a quieter close box",
+  "caption": "One close box per banner, in its header beside the app's name, instead of one in the header and another on every notification. In a group of several, each notification shows its own only while the pointer is over it. Both are named buttons in the tree (Close, Close All from Builds), so agents can find them.",
+  "image": "2026-10-28/163415-notification-banners-a-quieter-close-box.png"
  },
  {
   "time": "2026-10-28T16:34:16",
@@ -1747,15 +1747,15 @@
  },
  {
   "time": "2026-10-28T20:48:18",
-  "title": "Frames and tabs even at fractional scales",
-  "caption": "app_server draws the window frame out from where the content lands, in device pixels: outline a hairline, bevel light and shadow a point each rounded, the flat middle taking the rest, the same on all four sides (1, 2, 3, 2 pixels at 1.5x; it was 2, 1, 2, 1, 2 on one side and mirrored differently on the other). Tabs, the wallpaper, the switcher and other app_server pictures are drawn pixel for pixel instead of resampled a pixel off their size. 1.5x, 8x zoom.",
-  "image": "2026-10-28/204818-frames-and-tabs-even-at-fractional-scales.png"
- },
- {
-  "time": "2026-10-28T20:48:18",
   "title": "Menu bar one row with the tabs",
   "caption": "The kit's menu bar is 26 points tall, the same row as a tab strip and a pane head, instead of 21 (31.5 device pixels at 1.5x, cramped against the rest). Terminal at 1.5x, tabs down the side.",
   "image": "2026-10-28/204818-menu-bar-one-row-with-the-tabs.png"
+ },
+ {
+  "time": "2026-10-28T20:48:18",
+  "title": "Frames and tabs even at fractional scales",
+  "caption": "app_server draws the window frame out from where the content lands, in device pixels: outline a hairline, bevel light and shadow a point each rounded, the flat middle taking the rest, the same on all four sides (1, 2, 3, 2 pixels at 1.5x; it was 2, 1, 2, 1, 2 on one side and mirrored differently on the other). Tabs, the wallpaper, the switcher and other app_server pictures are drawn pixel for pixel instead of resampled a pixel off their size. 1.5x, 8x zoom.",
+  "image": "2026-10-28/204818-frames-and-tabs-even-at-fractional-scales.png"
  },
  {
   "time": "2026-10-28T21:51:32",
@@ -1765,15 +1765,15 @@
  },
  {
   "time": "2026-10-28T21:51:32",
-  "title": "Terminal: side tabs beside Show All Tabs",
-  "caption": "Pane heads beside a side strip are its first tab and the room round it tall (32), so the tab's middle is level with the heads'.",
-  "image": "2026-10-28/215132-terminal-side-tabs-beside-show-all-tabs.png"
- },
- {
-  "time": "2026-10-28T21:51:32",
   "title": "Terminal: side tabs with even room",
   "caption": "Side tabs are rounded rows with the same 4-point room on every side: from the window edge, the strip's edge, the menu bar and each other; the selected one is raised in the content's colours. 2x shown; checked at 1x, 1.5x and 2x.",
   "image": "2026-10-28/215132-terminal-side-tabs-with-even-room.png"
+ },
+ {
+  "time": "2026-10-28T21:51:32",
+  "title": "Terminal: side tabs beside Show All Tabs",
+  "caption": "Pane heads beside a side strip are its first tab and the room round it tall (32), so the tab's middle is level with the heads'.",
+  "image": "2026-10-28/215132-terminal-side-tabs-beside-show-all-tabs.png"
  },
  {
   "time": "2026-10-28T21:51:33",
@@ -1873,21 +1873,15 @@
  },
  {
   "time": "2026-10-29T04:12:07",
-  "title": "StyledEdit keeps its place through an upgrade",
-  "caption": "After an in-place reload StyledEdit comes back scrolled where it was, with its caret, its selection and any unsaved edits (here line 614, edited).",
-  "image": "2026-10-29/041207-stylededit-keeps-its-place-through-an-upgrade.png"
- },
- {
-  "time": "2026-10-29T04:12:07",
   "title": "StyledEdit on the kit's text editor",
   "caption": "StyledEdit now draws with olo_kit::editor, one laid-out paragraph each, so a long document types and scrolls inside a frame. Left, centred, right and justified text keep their edges on the margin, trailing spaces and all.",
   "image": "2026-10-29/041207-stylededit-on-the-kit-s-text-editor.png"
  },
  {
-  "time": "2026-10-29T04:12:08",
-  "title": "Notifications: times sit on the title's baseline",
-  "caption": "The app and time line up with the title's baseline rather than its box, and rows land on whole device pixels at 1.5\u00d7 too.",
-  "image": "2026-10-29/041208-notifications-times-sit-on-the-title-s-baseline.png"
+  "time": "2026-10-29T04:12:07",
+  "title": "StyledEdit keeps its place through an upgrade",
+  "caption": "After an in-place reload StyledEdit comes back scrolled where it was, with its caret, its selection and any unsaved edits (here line 614, edited).",
+  "image": "2026-10-29/041207-stylededit-keeps-its-place-through-an-upgrade.png"
  },
  {
   "time": "2026-10-29T04:12:08",
@@ -1897,21 +1891,27 @@
  },
  {
   "time": "2026-10-29T04:12:08",
+  "title": "Notifications: times sit on the title's baseline",
+  "caption": "The app and time line up with the title's baseline rather than its box, and rows land on whole device pixels at 1.5\u00d7 too.",
+  "image": "2026-10-29/041208-notifications-times-sit-on-the-title-s-baseline.png"
+ },
+ {
+  "time": "2026-10-29T04:12:08",
   "title": "Tracker's item count lines up with its list",
   "caption": "The count bar's text starts in line with the list's icons above it (here at 1\u00d7 and 2\u00d7), and the free space keeps the same inset from the right.",
   "image": "2026-10-29/041208-tracker-s-item-count-lines-up-with-its-list.png"
  },
  {
   "time": "2026-10-29T04:37:40",
-  "title": "Themes: after, every card fits",
-  "caption": "Preferences panels are sized for their tallest content (Themes 560x634, Display 500x490, Keyboard 480x736, Touchpad 460x586, About 444x290), checked at 1x, 1.5x and 2x, light and dark. Power and Security's menus share widgets::divider_for, the widest label and the gap after it, so the wells line up and every label fits.",
-  "image": "2026-10-29/043740-themes-after-every-card-fits.png"
- },
- {
-  "time": "2026-10-29T04:37:40",
   "title": "Themes: before, the colour schemes ran into the buttons",
   "caption": "At 1x the panel's fixed height was too short for the colour-scheme cards: BeOS's description ran onto three lines and pushed under Defaults and Revert.",
   "image": "2026-10-29/043740-themes-before-the-colour-schemes-ran-into-the-bu.png"
+ },
+ {
+  "time": "2026-10-29T04:37:40",
+  "title": "Themes: after, every card fits",
+  "caption": "Preferences panels are sized for their tallest content (Themes 560x634, Display 500x490, Keyboard 480x736, Touchpad 460x586, About 444x290), checked at 1x, 1.5x and 2x, light and dark. Power and Security's menus share widgets::divider_for, the widest label and the gap after it, so the wells line up and every label fits.",
+  "image": "2026-10-29/043740-themes-after-every-card-fits.png"
  },
  {
   "time": "2026-10-29T04:37:41",
@@ -1927,15 +1927,15 @@
  },
  {
   "time": "2026-10-29T08:25:30",
-  "title": "Disk Usage: crisp hairlines and bars at 1.5\u00d7",
-  "caption": "The lines between slices, round each ring and round the hub are one device pixel at every scale (style::hairline), and the bars' widths land on whole device pixels, so at 1.5\u00d7 nothing is blurred across two.",
-  "image": "2026-10-29/082530-disk-usage-crisp-hairlines-and-bars-at-1-5.png"
- },
- {
-  "time": "2026-10-29T08:25:30",
   "title": "Screenshot's caption lines up with Save as",
   "caption": "The caption under the preview sits level with the Save as: row beside it at 1\u00d7, 1.5\u00d7 and 2\u00d7, in light, dark and night.",
   "image": "2026-10-29/082530-screenshot-s-caption-lines-up-with-save-as.png"
+ },
+ {
+  "time": "2026-10-29T08:25:30",
+  "title": "Disk Usage: crisp hairlines and bars at 1.5\u00d7",
+  "caption": "The lines between slices, round each ring and round the hub are one device pixel at every scale (style::hairline), and the bars' widths land on whole device pixels, so at 1.5\u00d7 nothing is blurred across two.",
+  "image": "2026-10-29/082530-disk-usage-crisp-hairlines-and-bars-at-1-5.png"
  },
  {
   "time": "2026-10-29T08:25:32",
@@ -1969,15 +1969,15 @@
  },
  {
   "time": "2026-10-29T10:30:33",
-  "title": "Terminal's sudo window shows the whole command",
-  "caption": "A command too long for the window is elided in the field; resting on it shows the whole command in a kit tip that extends past the window (egui's own was cut at its edge).",
-  "image": "2026-10-29/103033-terminal-s-sudo-window-shows-the-whole-command.png"
- },
- {
-  "time": "2026-10-29T10:30:33",
   "title": "The key's tip, past Deskbar's edge",
   "caption": "While on, the key is gold and its tip says how long is left. Tray tips now show in a popup of their own (olo_kit::tip), so they reach past Deskbar's narrow window instead of being cut.",
   "image": "2026-10-29/103033-the-key-s-tip-past-deskbar-s-edge.png"
+ },
+ {
+  "time": "2026-10-29T10:30:33",
+  "title": "Terminal's sudo window shows the whole command",
+  "caption": "A command too long for the window is elided in the field; resting on it shows the whole command in a kit tip that extends past the window (egui's own was cut at its edge).",
+  "image": "2026-10-29/103033-terminal-s-sudo-window-shows-the-whole-command.png"
  },
  {
   "time": "2026-10-29T11:05:57",
@@ -2131,15 +2131,15 @@
  },
  {
   "time": "2026-10-29T22:46:13",
-  "title": "Icons: Integrations, GitHub, Chrome and Slack",
-  "caption": "Olo's own takes on GitHub's, Chrome's and Slack's marks (and Integrations' puzzle pieces), in every theme; Chrome's and Slack's replace the icons those programs ship wherever Olo shows them.",
-  "image": "2026-10-29/224613-icons-integrations-github-chrome-and-slack.png"
- },
- {
-  "time": "2026-10-29T22:46:13",
   "title": "Preferences: Integrations, dark",
   "caption": "",
   "image": "2026-10-29/224613-preferences-integrations-dark.png"
+ },
+ {
+  "time": "2026-10-29T22:46:13",
+  "title": "Icons: Integrations, GitHub, Chrome and Slack",
+  "caption": "Olo's own takes on GitHub's, Chrome's and Slack's marks (and Integrations' puzzle pieces), in every theme; Chrome's and Slack's replace the icons those programs ship wherever Olo shows them.",
+  "image": "2026-10-29/224613-icons-integrations-github-chrome-and-slack.png"
  },
  {
   "time": "2026-10-29T23:04:06",
@@ -2149,27 +2149,27 @@
  },
  {
   "time": "2026-10-29T23:04:07",
-  "title": "Filter menus with counts",
-  "caption": "A filter's menu: Any, then each value with how many items have it, where a shortcut would be.",
-  "image": "2026-10-29/230407-filter-menus-with-counts.png"
- },
- {
-  "time": "2026-10-29T23:04:07",
   "title": "Passwords: search, dark",
   "caption": "A left-out filter (-has:reused) in red; matches marked.",
   "image": "2026-10-29/230407-passwords-search-dark.png"
  },
  {
-  "time": "2026-10-29T23:11:43",
-  "title": "Log Viewer: narrow, dark",
-  "caption": "In a narrow window the menus go under the search, their text over the list's first column.",
-  "image": "2026-10-29/231143-log-viewer-narrow-dark.png"
+  "time": "2026-10-29T23:04:07",
+  "title": "Filter menus with counts",
+  "caption": "A filter's menu: Any, then each value with how many items have it, where a shortcut would be.",
+  "image": "2026-10-29/230407-filter-menus-with-counts.png"
  },
  {
   "time": "2026-10-29T23:11:43",
   "title": "Log Viewer: one search, filters as menus",
   "caption": "The search takes words, phrases, -words and program:/level:/since:/pid: filters (several programs at once, all, or one left out), with Program, Level and Time menus beside it editing the same text; what was found is marked in the messages.",
   "image": "2026-10-29/231143-log-viewer-one-search-filters-as-menus.png"
+ },
+ {
+  "time": "2026-10-29T23:11:43",
+  "title": "Log Viewer: narrow, dark",
+  "caption": "In a narrow window the menus go under the search, their text over the list's first column.",
+  "image": "2026-10-29/231143-log-viewer-narrow-dark.png"
  },
  {
   "time": "2026-10-29T23:28:08",
@@ -2425,15 +2425,15 @@
  },
  {
   "time": "2026-10-30T15:08:53",
-  "title": "Deskbar: the supervisor's gauge at 1\u00d7, 1.25\u00d7, 1.5\u00d7, 1.75\u00d7, 2\u00d7",
-  "caption": "On (dial tinted, needle up, the findings counted, red if urgent) and off (dim, needle resting). A click turns it on or off; its menu lists the findings, Show in Activity Monitor and Performance Settings\u2026",
-  "image": "2026-10-30/150853-deskbar-the-supervisor-s-gauge-at-1-1-25-1-5-1-7.png"
- },
- {
-  "time": "2026-10-30T15:08:53",
   "title": "Inspector: the Supervisor tab",
   "caption": "A process's inspector has a Supervisor tab: its findings, how sure and why, and whether it was lowered and why. The alert's Show in Activity Monitor opens it there.",
   "image": "2026-10-30/150853-inspector-the-supervisor-tab.png"
+ },
+ {
+  "time": "2026-10-30T15:08:53",
+  "title": "Deskbar: the supervisor's gauge at 1\u00d7, 1.25\u00d7, 1.5\u00d7, 1.75\u00d7, 2\u00d7",
+  "caption": "On (dial tinted, needle up, the findings counted, red if urgent) and off (dim, needle resting). A click turns it on or off; its menu lists the findings, Show in Activity Monitor and Performance Settings\u2026",
+  "image": "2026-10-30/150853-deskbar-the-supervisor-s-gauge-at-1-1-25-1-5-1-7.png"
  },
  {
   "time": "2026-10-30T15:27:51",
@@ -2449,15 +2449,15 @@
  },
  {
   "time": "2026-10-30T15:33:48",
-  "title": "Quick Look full screen on two displays: after",
-  "caption": "F fills only the display the window is on; the other is untouched, and F again puts it back where it was. Same at 1.5\u00d7 and 2\u00d7.",
-  "image": "2026-10-30/153348-quick-look-full-screen-on-two-displays-after.png"
- },
- {
-  "time": "2026-10-30T15:33:48",
   "title": "Quick Look full screen on two displays: before",
   "caption": "Quick Look on the right display, F: it filled the left display (the first one), and on the right it hung off its old place at full-screen size.",
   "image": "2026-10-30/153348-quick-look-full-screen-on-two-displays-before.png"
+ },
+ {
+  "time": "2026-10-30T15:33:48",
+  "title": "Quick Look full screen on two displays: after",
+  "caption": "F fills only the display the window is on; the other is untouched, and F again puts it back where it was. Same at 1.5\u00d7 and 2\u00d7.",
+  "image": "2026-10-30/153348-quick-look-full-screen-on-two-displays-after.png"
  },
  {
   "time": "2026-10-30T17:02:47",
@@ -2731,15 +2731,15 @@
  },
  {
   "time": "2026-11-02T11:28:44",
-  "title": "Deskbar: AirPods",
-  "caption": "Deskbar's tray shows AirPods while they're connected (amber or red when a bud runs low); its menu has their levels, noise control, Conversation Awareness and their settings.",
-  "image": "2026-11-02/112844-deskbar-airpods.png"
- },
- {
-  "time": "2026-11-02T11:28:44",
   "title": "Sound: AirPods",
   "caption": "Preferences \u25b8 Sound with AirPods as the output: their model, codec and whether they play at music or call quality, noise control, and where to record from while they're connected.",
   "image": "2026-11-02/112844-sound-airpods.png"
+ },
+ {
+  "time": "2026-11-02T11:28:44",
+  "title": "Deskbar: AirPods",
+  "caption": "Deskbar's tray shows AirPods while they're connected (amber or red when a bud runs low); its menu has their levels, noise control, Conversation Awareness and their settings.",
+  "image": "2026-11-02/112844-deskbar-airpods.png"
  },
  {
   "time": "2026-11-02T11:28:45",
@@ -3049,15 +3049,15 @@
  },
  {
   "time": "2026-11-04T00:09:33",
-  "title": "Performance in two tabs, the thresholds two by two",
-  "caption": "It was 1,220 points tall in a scroll view of its own; now Supervisor and Watchdog tabs, fitting a 1280 \u00d7 800 screen unscrolled.",
-  "image": "2026-11-04/000933-performance-in-two-tabs-the-thresholds-two-by-tw.png"
- },
- {
-  "time": "2026-11-04T00:09:33",
   "title": "Power: the power mode",
   "caption": "Performance, Balanced or Power Saver, through the power profiles daemon (tuned-ppd here): the processors' energy preference, the ThinkPad's platform profile. Also in Deskbar's battery menu; Performance has a button here.",
   "image": "2026-11-04/000933-power-the-power-mode.png"
+ },
+ {
+  "time": "2026-11-04T00:09:33",
+  "title": "Performance in two tabs, the thresholds two by two",
+  "caption": "It was 1,220 points tall in a scroll view of its own; now Supervisor and Watchdog tabs, fitting a 1280 \u00d7 800 screen unscrolled.",
+  "image": "2026-11-04/000933-performance-in-two-tabs-the-thresholds-two-by-tw.png"
  },
  {
   "time": "2026-11-04T00:09:34",
@@ -3349,9 +3349,9 @@
  },
  {
   "time": "2026-11-05T18:04:15",
-  "title": "A Terminal window moved to an agent screen",
-  "caption": "The same shell (its pid) on the screen, typed into there.",
-  "image": "2026-11-05/180415-a-terminal-window-moved-to-an-agent-screen.png"
+  "title": "Window menu: Move to Agent Screen",
+  "caption": "A window's tab menu puts the window on an agent screen (or a new one), the program running on: an Olo app re-executed there, any other program replayed there by olo-wlproxy.",
+  "image": "2026-11-05/180415-window-menu-move-to-agent-screen.png"
  },
  {
   "time": "2026-11-05T18:04:15",
@@ -3361,9 +3361,9 @@
  },
  {
   "time": "2026-11-05T18:04:15",
-  "title": "Window menu: Move to Agent Screen",
-  "caption": "A window's tab menu puts the window on an agent screen (or a new one), the program running on: an Olo app re-executed there, any other program replayed there by olo-wlproxy.",
-  "image": "2026-11-05/180415-window-menu-move-to-agent-screen.png"
+  "title": "A Terminal window moved to an agent screen",
+  "caption": "The same shell (its pid) on the screen, typed into there.",
+  "image": "2026-11-05/180415-a-terminal-window-moved-to-an-agent-screen.png"
  },
  {
   "time": "2026-11-05T18:52:03",
@@ -3427,15 +3427,15 @@
  },
  {
   "time": "2026-11-05T23:16:37",
-  "title": "Remote control in Deskbar, with Stop Remote Control",
-  "caption": "While a program controls the computer, Deskbar's sharing item says so (An app is controlling your keyboard and pointer) and Stop Remote Control ends the session: app_server closes its libei connection and lets go of keys left down.",
-  "image": "2026-11-05/231637-remote-control-in-deskbar-with-stop-remote-contr.png"
- },
- {
-  "time": "2026-11-05T23:16:37",
   "title": "Remote control: the picker asks to share and control",
   "caption": "The RemoteDesktop portal: a program that wants to see a screen and control the keyboard and pointer (Chrome Remote Desktop, Deskflow, a call's remote control) gets the screen picker, titled Share and Control Your Screen, saying what it will control, its button Allow. For control alone, the permission dialog asks. Never remembered: asked every time.",
   "image": "2026-11-05/231637-remote-control-the-picker-asks-to-share-and-cont.png"
+ },
+ {
+  "time": "2026-11-05T23:16:37",
+  "title": "Remote control in Deskbar, with Stop Remote Control",
+  "caption": "While a program controls the computer, Deskbar's sharing item says so (An app is controlling your keyboard and pointer) and Stop Remote Control ends the session: app_server closes its libei connection and lets go of keys left down.",
+  "image": "2026-11-05/231637-remote-control-in-deskbar-with-stop-remote-contr.png"
  },
  {
   "time": "2026-11-05T23:36:32",
@@ -3822,6 +3822,12 @@
   "image": "2026-11-07/093828-stripe-com-live-at-14-of-a-core-under-chrome-s-1.png"
  },
  {
+  "time": "2026-11-07T10:49:51",
+  "title": "Olo Doctor: ignored findings, quietly last",
+  "caption": "Every finding has Ignore beside its fix. What's ignored leaves the count, Fix All, the tray's bag and the notifications, and is listed last under Ignored, dim, with Stop Ignoring and its fix should the person change their mind. Doctor also offers Olo's own login screen where another's greets (not shown here: the sandbox's build has no olo-login).",
+  "image": "2026-11-07/104951-olo-doctor-ignored-findings-quietly-last.png"
+ },
+ {
   "time": "2026-11-07T10:52:36",
   "title": "stripe.com at 11.6% of a core, Chrome 18.1%",
   "caption": "Observers checked only when the geometry changed, a tick that spun 10,000 times an advance fixed, and translucent layers composited as straight alpha (the Google button over the hero canvas was grey).",
@@ -3832,5 +3838,17 @@
   "title": "stripe.com live at 60 frames a second",
   "caption": "Renders once a display frame; the marquee is a moved layer (nothing repainted when it slides); the window frees the GPU images it stops showing (it kept them all, and filled the GPU).",
   "image": "2026-11-07/112409-stripe-com-live-at-60-frames-a-second.png"
+ },
+ {
+  "time": "2026-11-07T13:16:34",
+  "title": "Deskbar: live widgets",
+  "caption": "Deskbar's new live widgets, as BeOS's Pulse and ProcessController put bars in its tray: a temperature and a CPU graph in the tray; under it a CPU graph, each core's bars, a memory-and-swap meter and the network's down and up; at the foot, the GPU and the system volume. Each is read on a worker only while shown, as often as it asks.",
+  "image": "2026-11-07/131634-deskbar-live-widgets.png"
+ },
+ {
+  "time": "2026-11-07T13:16:34",
+  "title": "Preferences \u25b8 Deskbar",
+  "caption": "The new Deskbar panel: the widgets in order (Add, Remove, Move Up, Move Down) beside the chosen one's settings: what it shows and which, where, look, size, name and value, how often, how far back, colour. Each change shows in the Deskbar at once.",
+  "image": "2026-11-07/131634-preferences-deskbar.png"
  }
 ]

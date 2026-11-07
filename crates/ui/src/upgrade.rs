@@ -34,10 +34,11 @@ extern "C" fn on_signal(_: libc::c_int) {
 
 /// The compositor's connection is gone (app_server restarted in place,
 /// or a protocol error): the app re-executes as it does for an upgrade,
-/// with its state saved, and reconnects to the app_server now there;
-/// at once, whatever it was busy with (no compositor, nothing to show
-/// it on). Here, synchronously: GPUI calls this with nothing borrowed,
-/// and its loop may be over.
+/// with its state saved, and reconnects to the app_server now there; at
+/// once, unless it hands its work over (`on_upgrade_due`), which it does
+/// first, waiting while `upgrade_waits_while` says it's busy. Here,
+/// synchronously: GPUI calls this with nothing borrowed, and its loop may
+/// be over.
 ///
 /// The GPU device lost (a driver reset, `gpui::gpu_device_lost`) is the
 /// same: what it made (pictures, pages, glyphs) went with it, and only
@@ -54,6 +55,33 @@ fn lost_compositor(cx: &mut App, binary: &Binary) {
         tracing::warn!("the GPU device is lost: re-executing to start anew, with the state saved");
     } else {
         tracing::warn!("the compositor is gone: re-executing to reconnect, with the state saved");
+        // An app that hands its work over (`on_upgrade_due`: Token Pool's
+        // gateway, whose connections aren't the compositor's) does so now
+        // as for an upgrade, and what is under way finishes first
+        // (`upgrade_waits_while`, here on this thread: nothing is drawn
+        // without a compositor). Re-executed at once, the gateway cut
+        // every agent's stream whenever app_server restarted (Ben,
+        // 2026-11-07: "I still see 'API Error: Connection lost
+        // mid-response' in my agents sometimes"). A copy it handed over to
+        // takes the connections and the compositor now there; this one
+        // ends (or keeps) by itself once it has finished.
+        let due = cx.try_global::<Waiting>().is_some().then(|| cx.global_mut::<Waiting>().due.take()).flatten();
+        if let Some(due) = due {
+            tracing::info!("the compositor is gone: handing over first, as for an upgrade");
+            due(cx);
+            cx.global_mut::<Waiting>().due = Some(due);
+            let mut marked = false;
+            while cx.try_global::<Waiting>().and_then(|w| w.busy.as_ref()).is_some_and(|busy| busy(cx)) {
+                if !marked {
+                    olo_kit_base::restore::mark_waiting(true);
+                    marked = true;
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            if marked {
+                olo_kit_base::restore::mark_waiting(false);
+            }
+        }
     }
     let state = saved_state(cx);
     // The person's app on an agent screen that has gone goes back to

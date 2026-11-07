@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Preferences ▸ Deskbar
+
+*13:16* — The new Deskbar panel: the widgets in order (Add, Remove, Move Up, Move Down) beside the chosen one's settings: what it shows and which, where, look, size, name and value, how often, how far back, colour. Each change shows in the Deskbar at once.
+
+![Preferences ▸ Deskbar](2026-11-07/131634-preferences-deskbar.png)
+
+### Deskbar: live widgets
+
+*13:16* — Deskbar's new live widgets, as BeOS's Pulse and ProcessController put bars in its tray: a temperature and a CPU graph in the tray; under it a CPU graph, each core's bars, a memory-and-swap meter and the network's down and up; at the foot, the GPU and the system volume. Each is read on a worker only while shown, as often as it asks.
+
+![Deskbar: live widgets](2026-11-07/131634-deskbar-live-widgets.png)
+
 ### stripe.com live at 60 frames a second
 
 *11:24* — Renders once a display frame; the marquee is a moved layer (nothing repainted when it slides); the window frees the GPU images it stops showing (it kept them all, and filled the GPU).
@@ -16,6 +28,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 *10:52* — Observers checked only when the geometry changed, a tick that spun 10,000 times an advance fixed, and translucent layers composited as straight alpha (the Google button over the hero canvas was grey).
 
 ![stripe.com at 11.6% of a core, Chrome 18.1%](2026-11-07/105236-stripe-com-at-11-6-of-a-core-chrome-18-1.png)
+
+### Olo Doctor: ignored findings, quietly last
+
+*10:49* — Every finding has Ignore beside its fix. What's ignored leaves the count, Fix All, the tray's bag and the notifications, and is listed last under Ignored, dim, with Stop Ignoring and its fix should the person change their mind. Doctor also offers Olo's own login screen where another's greets (not shown here: the sandbox's build has no olo-login).
+
+![Olo Doctor: ignored findings, quietly last](2026-11-07/104951-olo-doctor-ignored-findings-quietly-last.png)
 
 ### stripe.com live at 14% of a core, under Chrome's 15.6%
 
@@ -405,17 +423,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Screen recordings on the Intel GPU: AV1 through VA-API](2026-11-05/233632-screen-recordings-on-the-intel-gpu-av1-through-v.png)
 
-### Remote control: the picker asks to share and control
-
-*23:16* — The RemoteDesktop portal: a program that wants to see a screen and control the keyboard and pointer (Chrome Remote Desktop, Deskflow, a call's remote control) gets the screen picker, titled Share and Control Your Screen, saying what it will control, its button Allow. For control alone, the permission dialog asks. Never remembered: asked every time.
-
-![Remote control: the picker asks to share and control](2026-11-05/231637-remote-control-the-picker-asks-to-share-and-cont.png)
-
 ### Remote control in Deskbar, with Stop Remote Control
 
 *23:16* — While a program controls the computer, Deskbar's sharing item says so (An app is controlling your keyboard and pointer) and Stop Remote Control ends the session: app_server closes its libei connection and lets go of keys left down.
 
 ![Remote control in Deskbar, with Stop Remote Control](2026-11-05/231637-remote-control-in-deskbar-with-stop-remote-contr.png)
+
+### Remote control: the picker asks to share and control
+
+*23:16* — The RemoteDesktop portal: a program that wants to see a screen and control the keyboard and pointer (Chrome Remote Desktop, Deskflow, a call's remote control) gets the screen picker, titled Share and Control Your Screen, saying what it will control, its button Allow. For control alone, the permission dialog asks. Never remembered: asked every time.
+
+![Remote control: the picker asks to share and control](2026-11-05/231637-remote-control-the-picker-asks-to-share-and-cont.png)
 
 ### Quick Look scrolls without the pointer moving first
 
@@ -477,11 +495,11 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Private windows kept out of shares](2026-11-05/185203-private-windows-kept-out-of-shares.png)
 
-### Window menu: Move to Agent Screen
+### A Terminal window moved to an agent screen
 
-*18:04* — A window's tab menu puts the window on an agent screen (or a new one), the program running on: an Olo app re-executed there, any other program replayed there by olo-wlproxy.
+*18:04* — The same shell (its pid) on the screen, typed into there.
 
-![Window menu: Move to Agent Screen](2026-11-05/180415-window-menu-move-to-agent-screen.png)
+![A Terminal window moved to an agent screen](2026-11-05/180415-a-terminal-window-moved-to-an-agent-screen.png)
 
 ### Terminal: a tab to an agent screen
 
@@ -489,11 +507,11 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Terminal: a tab to an agent screen](2026-11-05/180415-terminal-a-tab-to-an-agent-screen.png)
 
-### A Terminal window moved to an agent screen
+### Window menu: Move to Agent Screen
 
-*18:04* — The same shell (its pid) on the screen, typed into there.
+*18:04* — A window's tab menu puts the window on an agent screen (or a new one), the program running on: an Olo app re-executed there, any other program replayed there by olo-wlproxy.
 
-![A Terminal window moved to an agent screen](2026-11-05/180415-a-terminal-window-moved-to-an-agent-screen.png)
+![Window menu: Move to Agent Screen](2026-11-05/180415-window-menu-move-to-agent-screen.png)
 
 ### Agent Screens: Move Windows To…
 
@@ -785,17 +803,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Deskbar: Olo Doctor's bag in the tray](2026-11-04/000934-deskbar-olo-doctor-s-bag-in-the-tray.png)
 
-### Power: the power mode
-
-*00:09* — Performance, Balanced or Power Saver, through the power profiles daemon (tuned-ppd here): the processors' energy preference, the ThinkPad's platform profile. Also in Deskbar's battery menu; Performance has a button here.
-
-![Power: the power mode](2026-11-04/000933-power-the-power-mode.png)
-
 ### Performance in two tabs, the thresholds two by two
 
 *00:09* — It was 1,220 points tall in a scroll view of its own; now Supervisor and Watchdog tabs, fitting a 1280 × 800 screen unscrolled.
 
 ![Performance in two tabs, the thresholds two by two](2026-11-04/000933-performance-in-two-tabs-the-thresholds-two-by-tw.png)
+
+### Power: the power mode
+
+*00:09* — Performance, Balanced or Power Saver, through the power profiles daemon (tuned-ppd here): the processors' energy preference, the ThinkPad's platform profile. Also in Deskbar's battery menu; Performance has a button here.
+
+![Power: the power mode](2026-11-04/000933-power-the-power-mode.png)
 
 ### Display: settings beside the panel, the window as tall as both
 
@@ -1107,17 +1125,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![AirPods icons in every theme](2026-11-02/112845-airpods-icons-in-every-theme.png)
 
-### Sound: AirPods
-
-*11:28* — Preferences ▸ Sound with AirPods as the output: their model, codec and whether they play at music or call quality, noise control, and where to record from while they're connected.
-
-![Sound: AirPods](2026-11-02/112844-sound-airpods.png)
-
 ### Deskbar: AirPods
 
 *11:28* — Deskbar's tray shows AirPods while they're connected (amber or red when a bud runs low); its menu has their levels, noise control, Conversation Awareness and their settings.
 
 ![Deskbar: AirPods](2026-11-02/112844-deskbar-airpods.png)
+
+### Sound: AirPods
+
+*11:28* — Preferences ▸ Sound with AirPods as the output: their model, codec and whether they play at music or call quality, noise control, and where to record from while they're connected.
+
+![Sound: AirPods](2026-11-02/112844-sound-airpods.png)
 
 ### AirPods panel, dark, 1×
 
@@ -1395,17 +1413,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![StyledEdit: paragraph styles and lists](2026-10-30/170247-stylededit-paragraph-styles-and-lists.png)
 
-### Quick Look full screen on two displays: before
-
-*15:33* — Quick Look on the right display, F: it filled the left display (the first one), and on the right it hung off its old place at full-screen size.
-
-![Quick Look full screen on two displays: before](2026-10-30/153348-quick-look-full-screen-on-two-displays-before.png)
-
 ### Quick Look full screen on two displays: after
 
 *15:33* — F fills only the display the window is on; the other is untouched, and F again puts it back where it was. Same at 1.5× and 2×.
 
 ![Quick Look full screen on two displays: after](2026-10-30/153348-quick-look-full-screen-on-two-displays-after.png)
+
+### Quick Look full screen on two displays: before
+
+*15:33* — Quick Look on the right display, F: it filled the left display (the first one), and on the right it hung off its old place at full-screen size.
+
+![Quick Look full screen on two displays: before](2026-10-30/153348-quick-look-full-screen-on-two-displays-before.png)
 
 ### Preferences ▸ Terminal: Let coding agents keep their tab's title current
 
@@ -1419,17 +1437,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Terminal: a coding agent's title for its tab](2026-10-30/152751-terminal-a-coding-agent-s-title-for-its-tab.png)
 
-### Inspector: the Supervisor tab
-
-*15:08* — A process's inspector has a Supervisor tab: its findings, how sure and why, and whether it was lowered and why. The alert's Show in Activity Monitor opens it there.
-
-![Inspector: the Supervisor tab](2026-10-30/150853-inspector-the-supervisor-tab.png)
-
 ### Deskbar: the supervisor's gauge at 1×, 1.25×, 1.5×, 1.75×, 2×
 
 *15:08* — On (dial tinted, needle up, the findings counted, red if urgent) and off (dim, needle resting). A click turns it on or off; its menu lists the findings, Show in Activity Monitor and Performance Settings…
 
 ![Deskbar: the supervisor's gauge at 1×, 1.25×, 1.5×, 1.75×, 2×](2026-10-30/150853-deskbar-the-supervisor-s-gauge-at-1-1-25-1-5-1-7.png)
+
+### Inspector: the Supervisor tab
+
+*15:08* — A process's inspector has a Supervisor tab: its findings, how sure and why, and whether it was lowered and why. The alert's Show in Activity Monitor opens it there.
+
+![Inspector: the Supervisor tab](2026-10-30/150853-inspector-the-supervisor-tab.png)
 
 ### Supervisor alert, sized for its buttons
 
@@ -1685,23 +1703,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Terminal: smaller pull request marks in the tab strip](2026-10-29/232808-terminal-smaller-pull-request-marks-in-the-tab-s.png)
 
-### Log Viewer: one search, filters as menus
-
-*23:11* — The search takes words, phrases, -words and program:/level:/since:/pid: filters (several programs at once, all, or one left out), with Program, Level and Time menus beside it editing the same text; what was found is marked in the messages.
-
-![Log Viewer: one search, filters as menus](2026-10-29/231143-log-viewer-one-search-filters-as-menus.png)
-
 ### Log Viewer: narrow, dark
 
 *23:11* — In a narrow window the menus go under the search, their text over the list's first column.
 
 ![Log Viewer: narrow, dark](2026-10-29/231143-log-viewer-narrow-dark.png)
 
-### Passwords: search, dark
+### Log Viewer: one search, filters as menus
 
-*23:04* — A left-out filter (-has:reused) in red; matches marked.
+*23:11* — The search takes words, phrases, -words and program:/level:/since:/pid: filters (several programs at once, all, or one left out), with Program, Level and Time menus beside it editing the same text; what was found is marked in the messages.
 
-![Passwords: search, dark](2026-10-29/230407-passwords-search-dark.png)
+![Log Viewer: one search, filters as menus](2026-10-29/231143-log-viewer-one-search-filters-as-menus.png)
 
 ### Filter menus with counts
 
@@ -1709,23 +1721,29 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Filter menus with counts](2026-10-29/230407-filter-menus-with-counts.png)
 
+### Passwords: search, dark
+
+*23:04* — A left-out filter (-has:reused) in red; matches marked.
+
+![Passwords: search, dark](2026-10-29/230407-passwords-search-dark.png)
+
 ### Passwords: search with filters
 
 *23:04* — The search field colours filters and suggests them as you type (has:we → Website, Weak Password, with counts); a filter bar over the list (Tag, Has) edits the same query. Words find usernames and non-secret fields of every item, best matches first, marked in the rows.
 
 ![Passwords: search with filters](2026-10-29/230406-passwords-search-with-filters.png)
 
-### Preferences: Integrations, dark
-
-*22:46*
-
-![Preferences: Integrations, dark](2026-10-29/224613-preferences-integrations-dark.png)
-
 ### Icons: Integrations, GitHub, Chrome and Slack
 
 *22:46* — Olo's own takes on GitHub's, Chrome's and Slack's marks (and Integrations' puzzle pieces), in every theme; Chrome's and Slack's replace the icons those programs ship wherever Olo shows them.
 
 ![Icons: Integrations, GitHub, Chrome and Slack](2026-10-29/224613-icons-integrations-github-chrome-and-slack.png)
+
+### Preferences: Integrations, dark
+
+*22:46*
+
+![Preferences: Integrations, dark](2026-10-29/224613-preferences-integrations-dark.png)
 
 ### Preferences: Integrations
 
@@ -1877,17 +1895,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Focus mode](2026-10-29/110557-focus-mode.png)
 
-### The key's tip, past Deskbar's edge
-
-*10:30* — While on, the key is gold and its tip says how long is left. Tray tips now show in a popup of their own (olo_kit::tip), so they reach past Deskbar's narrow window instead of being cut.
-
-![The key's tip, past Deskbar's edge](2026-10-29/103033-the-key-s-tip-past-deskbar-s-edge.png)
-
 ### Terminal's sudo window shows the whole command
 
 *10:30* — A command too long for the window is elided in the field; resting on it shows the whole command in a kit tip that extends past the window (egui's own was cut at its edge).
 
 ![Terminal's sudo window shows the whole command](2026-10-29/103033-terminal-s-sudo-window-shows-the-whole-command.png)
+
+### The key's tip, past Deskbar's edge
+
+*10:30* — While on, the key is gold and its tip says how long is left. Tray tips now show in a popup of their own (olo_kit::tip), so they reach past Deskbar's narrow window instead of being cut.
+
+![The key's tip, past Deskbar's edge](2026-10-29/103033-the-key-s-tip-past-deskbar-s-edge.png)
 
 ### Approve Without Asking
 
@@ -1919,17 +1937,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Deskbar's badge ring is one device pixel](2026-10-29/082532-deskbar-s-badge-ring-is-one-device-pixel.png)
 
-### Screenshot's caption lines up with Save as
-
-*08:25* — The caption under the preview sits level with the Save as: row beside it at 1×, 1.5× and 2×, in light, dark and night.
-
-![Screenshot's caption lines up with Save as](2026-10-29/082530-screenshot-s-caption-lines-up-with-save-as.png)
-
 ### Disk Usage: crisp hairlines and bars at 1.5×
 
 *08:25* — The lines between slices, round each ring and round the hub are one device pixel at every scale (style::hairline), and the bars' widths land on whole device pixels, so at 1.5× nothing is blurred across two.
 
 ![Disk Usage: crisp hairlines and bars at 1.5×](2026-10-29/082530-disk-usage-crisp-hairlines-and-bars-at-1-5.png)
+
+### Screenshot's caption lines up with Save as
+
+*08:25* — The caption under the preview sits level with the Save as: row beside it at 1×, 1.5× and 2×, in light, dark and night.
+
+![Screenshot's caption lines up with Save as](2026-10-29/082530-screenshot-s-caption-lines-up-with-save-as.png)
 
 ### Terminal shows its tab strip with one tab
 
@@ -1943,17 +1961,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Menu shortcuts: ⇧ stands with the capitals](2026-10-29/043741-menu-shortcuts-stands-with-the-capitals.png)
 
-### Themes: before, the colour schemes ran into the buttons
-
-*04:37* — At 1x the panel's fixed height was too short for the colour-scheme cards: BeOS's description ran onto three lines and pushed under Defaults and Revert.
-
-![Themes: before, the colour schemes ran into the buttons](2026-10-29/043740-themes-before-the-colour-schemes-ran-into-the-bu.png)
-
 ### Themes: after, every card fits
 
 *04:37* — Preferences panels are sized for their tallest content (Themes 560x634, Display 500x490, Keyboard 480x736, Touchpad 460x586, About 444x290), checked at 1x, 1.5x and 2x, light and dark. Power and Security's menus share widgets::divider_for, the widest label and the gap after it, so the wells line up and every label fits.
 
 ![Themes: after, every card fits](2026-10-29/043740-themes-after-every-card-fits.png)
+
+### Themes: before, the colour schemes ran into the buttons
+
+*04:37* — At 1x the panel's fixed height was too short for the colour-scheme cards: BeOS's description ran onto three lines and pushed under Defaults and Revert.
+
+![Themes: before, the colour schemes ran into the buttons](2026-10-29/043740-themes-before-the-colour-schemes-ran-into-the-bu.png)
 
 ### Tracker's item count lines up with its list
 
@@ -1961,29 +1979,29 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Tracker's item count lines up with its list](2026-10-29/041208-tracker-s-item-count-lines-up-with-its-list.png)
 
-### Read-only documents grey out their Font menu
-
-*04:12* — A file you can't write opens read-only: Font and Document's commands are disabled, and so are their submenus, rather than doing nothing when chosen.
-
-![Read-only documents grey out their Font menu](2026-10-29/041208-read-only-documents-grey-out-their-font-menu.png)
-
 ### Notifications: times sit on the title's baseline
 
 *04:12* — The app and time line up with the title's baseline rather than its box, and rows land on whole device pixels at 1.5× too.
 
 ![Notifications: times sit on the title's baseline](2026-10-29/041208-notifications-times-sit-on-the-title-s-baseline.png)
 
-### StyledEdit on the kit's text editor
+### Read-only documents grey out their Font menu
 
-*04:12* — StyledEdit now draws with olo_kit::editor, one laid-out paragraph each, so a long document types and scrolls inside a frame. Left, centred, right and justified text keep their edges on the margin, trailing spaces and all.
+*04:12* — A file you can't write opens read-only: Font and Document's commands are disabled, and so are their submenus, rather than doing nothing when chosen.
 
-![StyledEdit on the kit's text editor](2026-10-29/041207-stylededit-on-the-kit-s-text-editor.png)
+![Read-only documents grey out their Font menu](2026-10-29/041208-read-only-documents-grey-out-their-font-menu.png)
 
 ### StyledEdit keeps its place through an upgrade
 
 *04:12* — After an in-place reload StyledEdit comes back scrolled where it was, with its caret, its selection and any unsaved edits (here line 614, edited).
 
 ![StyledEdit keeps its place through an upgrade](2026-10-29/041207-stylededit-keeps-its-place-through-an-upgrade.png)
+
+### StyledEdit on the kit's text editor
+
+*04:12* — StyledEdit now draws with olo_kit::editor, one laid-out paragraph each, so a long document types and scrolls inside a frame. Left, centred, right and justified text keep their edges on the margin, trailing spaces and all.
+
+![StyledEdit on the kit's text editor](2026-10-29/041207-stylededit-on-the-kit-s-text-editor.png)
 
 ### Deskbar lights the workspace showing
 
@@ -2083,17 +2101,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Keyboard hints: instant on a busy screen](2026-10-28/215133-keyboard-hints-instant-on-a-busy-screen.png)
 
-### Terminal: side tabs with even room
-
-*21:51* — Side tabs are rounded rows with the same 4-point room on every side: from the window edge, the strip's edge, the menu bar and each other; the selected one is raised in the content's colours. 2x shown; checked at 1x, 1.5x and 2x.
-
-![Terminal: side tabs with even room](2026-10-28/215132-terminal-side-tabs-with-even-room.png)
-
 ### Terminal: side tabs beside Show All Tabs
 
 *21:51* — Pane heads beside a side strip are its first tab and the room round it tall (32), so the tab's middle is level with the heads'.
 
 ![Terminal: side tabs beside Show All Tabs](2026-10-28/215132-terminal-side-tabs-beside-show-all-tabs.png)
+
+### Terminal: side tabs with even room
+
+*21:51* — Side tabs are rounded rows with the same 4-point room on every side: from the window edge, the strip's edge, the menu bar and each other; the selected one is raised in the content's colours. 2x shown; checked at 1x, 1.5x and 2x.
+
+![Terminal: side tabs with even room](2026-10-28/215132-terminal-side-tabs-with-even-room.png)
 
 ### Terminal: side tabs before
 
@@ -2101,17 +2119,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Terminal: side tabs before](2026-10-28/215132-terminal-side-tabs-before.png)
 
-### Menu bar one row with the tabs
-
-*20:48* — The kit's menu bar is 26 points tall, the same row as a tab strip and a pane head, instead of 21 (31.5 device pixels at 1.5x, cramped against the rest). Terminal at 1.5x, tabs down the side.
-
-![Menu bar one row with the tabs](2026-10-28/204818-menu-bar-one-row-with-the-tabs.png)
-
 ### Frames and tabs even at fractional scales
 
 *20:48* — app_server draws the window frame out from where the content lands, in device pixels: outline a hairline, bevel light and shadow a point each rounded, the flat middle taking the rest, the same on all four sides (1, 2, 3, 2 pixels at 1.5x; it was 2, 1, 2, 1, 2 on one side and mirrored differently on the other). Tabs, the wallpaper, the switcher and other app_server pictures are drawn pixel for pixel instead of resampled a pixel off their size. 1.5x, 8x zoom.
 
 ![Frames and tabs even at fractional scales](2026-10-28/204818-frames-and-tabs-even-at-fractional-scales.png)
+
+### Menu bar one row with the tabs
+
+*20:48* — The kit's menu bar is 26 points tall, the same row as a tab strip and a pane head, instead of 21 (31.5 device pixels at 1.5x, cramped against the rest). Terminal at 1.5x, tabs down the side.
+
+![Menu bar one row with the tabs](2026-10-28/204818-menu-bar-one-row-with-the-tabs.png)
 
 ### Text fields: the hint on the label's baseline
 
@@ -2203,17 +2221,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Notification banners: close box, dark](2026-10-28/163416-notification-banners-close-box-dark.png)
 
-### Terminal: the group colour you picked
-
-*16:34* — The chosen colour in Name Group is a soft ring around the swatch, in light and dark, instead of a heavy outline.
-
-![Terminal: the group colour you picked](2026-10-28/163415-terminal-the-group-colour-you-picked.png)
-
 ### Notification banners: a quieter close box
 
 *16:34* — One close box per banner, in its header beside the app's name, instead of one in the header and another on every notification. In a group of several, each notification shows its own only while the pointer is over it. Both are named buttons in the tree (Close, Close All from Builds), so agents can find them.
 
 ![Notification banners: a quieter close box](2026-10-28/163415-notification-banners-a-quieter-close-box.png)
+
+### Terminal: the group colour you picked
+
+*16:34* — The chosen colour in Name Group is a soft ring around the swatch, in light and dark, instead of a heavy outline.
+
+![Terminal: the group colour you picked](2026-10-28/163415-terminal-the-group-colour-you-picked.png)
 
 ### Backgrounds: the chosen wallpaper on a plate
 
@@ -2221,17 +2239,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Backgrounds: the chosen wallpaper on a plate](2026-10-28/163415-backgrounds-the-chosen-wallpaper-on-a-plate.png)
 
-### Themes: colour sets selected the same way
-
-*16:34* — Preferences ▸ Themes marks the chosen colour set with the kit's selection plate, the same soft ground as a selected card, in place of a coloured ring.
-
-![Themes: colour sets selected the same way](2026-10-28/163414-themes-colour-sets-selected-the-same-way.png)
-
 ### Themes: colour sets selected, dark
 
 *16:34* — The chosen colour set's plate in dark mode.
 
 ![Themes: colour sets selected, dark](2026-10-28/163414-themes-colour-sets-selected-dark.png)
+
+### Themes: colour sets selected the same way
+
+*16:34* — Preferences ▸ Themes marks the chosen colour set with the kit's selection plate, the same soft ground as a selected card, in place of a coloured ring.
+
+![Themes: colour sets selected the same way](2026-10-28/163414-themes-colour-sets-selected-the-same-way.png)
 
 ### Selected cards in every look and colour set
 
@@ -2287,29 +2305,29 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Notification cards without the lines, dark](2026-10-28/153048-notification-cards-without-the-lines-dark.png)
 
-### Notification banners without the lines
-
-*15:30* — No accent band, top line or coloured edge. The app's colour is in its badge, tile and progress bar only; an error's title starts with a small crisp stop sign, level with the capitals, and there is more room around the icon.
-
-![Notification banners without the lines](2026-10-28/153048-notification-banners-without-the-lines.png)
-
 ### Notification banners without the lines, dark
 
 *15:30*
 
 ![Notification banners without the lines, dark](2026-10-28/153048-notification-banners-without-the-lines-dark.png)
 
-### Terminal tabs without the lines
+### Notification banners without the lines
 
-*15:30* — The group shows as its chip alone: no coloured band under the strip, no separators beside the chip. The current tab is a raised page joined to the terminal below.
+*15:30* — No accent band, top line or coloured edge. The app's colour is in its badge, tile and progress bar only; an error's title starts with a small crisp stop sign, level with the capitals, and there is more room around the icon.
 
-![Terminal tabs without the lines](2026-10-28/153047-terminal-tabs-without-the-lines.png)
+![Notification banners without the lines](2026-10-28/153048-notification-banners-without-the-lines.png)
 
 ### Terminal tabs down the side, Show All Tabs, dark
 
 *15:30* — Side tabs with the group's chip at the top and no band. In Show All Tabs the active pane's head is lit instead of edged.
 
 ![Terminal tabs down the side, Show All Tabs, dark](2026-10-28/153047-terminal-tabs-down-the-side-show-all-tabs-dark.png)
+
+### Terminal tabs without the lines
+
+*15:30* — The group shows as its chip alone: no coloured band under the strip, no separators beside the chip. The current tab is a raised page joined to the terminal below.
+
+![Terminal tabs without the lines](2026-10-28/153047-terminal-tabs-without-the-lines.png)
 
 ### Notifications: unread first, fading with age
 
@@ -2451,11 +2469,11 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Touchpad: 576 tall, measured by the layout lint](2026-10-27/232039-touchpad-576-tall-measured-by-the-layout-lint.png)
 
-### Tracker: before the layout lint
+### About: wide enough for long facts
 
-*23:19* — The layout lint found the New Windows Open In box 1 px past the panel's body at 2× (11 px to the buttons, not 12).
+*23:19* — The layout lint runs About with long real-world facts (e.g. “AMD Ryzen 9 7945HX with Radeon Graphics, 32 cores”); at 420 the processor was cut short with “…”, so About is now 440 wide.
 
-![Tracker: before the layout lint](2026-10-27/231957-tracker-before-the-layout-lint.png)
+![About: wide enough for long facts](2026-10-27/231957-about-wide-enough-for-long-facts.png)
 
 ### Tracker: after the layout lint
 
@@ -2463,23 +2481,23 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Tracker: after the layout lint](2026-10-27/231957-tracker-after-the-layout-lint.png)
 
-### About: wide enough for long facts
+### Tracker: before the layout lint
 
-*23:19* — The layout lint runs About with long real-world facts (e.g. “AMD Ryzen 9 7945HX with Radeon Graphics, 32 cores”); at 420 the processor was cut short with “…”, so About is now 440 wide.
+*23:19* — The layout lint found the New Windows Open In box 1 px past the panel's body at 2× (11 px to the buttons, not 12).
 
-![About: wide enough for long facts](2026-10-27/231957-about-wide-enough-for-long-facts.png)
-
-### Power: before the layout lint
-
-*23:19* — Caught by the new layout lint (olo_kit::layout_lint): at 2× the Caffeinated box ran 1 px past the window's body, leaving 11 px above Defaults/Revert instead of WINDOW_INSET (12), and “Put the computer to sleep after:” stood 3 px from its field.
-
-![Power: before the layout lint](2026-10-27/231956-power-before-the-layout-lint.png)
+![Tracker: before the layout lint](2026-10-27/231957-tracker-before-the-layout-lint.png)
 
 ### Power: after the layout lint
 
 *23:19* — One pixel taller (460×363) so the boxes clear the buttons by WINDOW_INSET, and the menu fields' divider moved out to 176 so the longest label has a LABEL_GAP before its field.
 
 ![Power: after the layout lint](2026-10-27/231956-power-after-the-layout-lint.png)
+
+### Power: before the layout lint
+
+*23:19* — Caught by the new layout lint (olo_kit::layout_lint): at 2× the Caffeinated box ran 1 px past the window's body, leaving 11 px above Defaults/Revert instead of WINDOW_INSET (12), and “Put the computer to sleep after:” stood 3 px from its field.
+
+![Power: before the layout lint](2026-10-27/231956-power-before-the-layout-lint.png)
 
 ### Keyboard: Option+Tab switches tabs
 
@@ -2541,17 +2559,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![DiskUsage: where the space went](2026-10-27/210430-diskusage-where-the-space-went.png)
 
-### Touchpad preferences: profiles and every tunable
-
-*20:42* — Preferences ▸ Touchpad now names the pad app_server found and recommends a profile (MacBook, Magic Trackpad, Standard; hand tuning makes it Custom). Touch holds Olo's palm and hover filter, a libinput plugin that counts a touch only while it presses, ignores palms and makes the click from the fingers' pressure alone; Gestures has scrolling speed, momentum glide, three-finger drag, drag lock and acceleration.
-
-![Touchpad preferences: profiles and every tunable](2026-10-27/204217-touchpad-preferences-profiles-and-every-tunable.png)
-
 ### Touchpad preferences in dark
 
 *20:42* — The Touch, Gestures and Mouse tabs in dark mode.
 
 ![Touchpad preferences in dark](2026-10-27/204217-touchpad-preferences-in-dark.png)
+
+### Touchpad preferences: profiles and every tunable
+
+*20:42* — Preferences ▸ Touchpad now names the pad app_server found and recommends a profile (MacBook, Magic Trackpad, Standard; hand tuning makes it Custom). Touch holds Olo's palm and hover filter, a libinput plugin that counts a touch only while it presses, ignores palms and makes the click from the fingers' pressure alone; Gestures has scrolling speed, momentum glide, three-finger drag, drag lock and acceleration.
+
+![Touchpad preferences: profiles and every tunable](2026-10-27/204217-touchpad-preferences-profiles-and-every-tunable.png)
 
 ### Twitcher rows, dark
 
@@ -2661,29 +2679,29 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Roll up](2026-10-27/154533-roll-up.png)
 
-### Longest window title
-
-*15:40* — A tab shows at most this many characters of its title, then an ellipsis (here 20; 100 by default).
-
-![Longest window title](2026-10-27/154028-longest-window-title.png)
-
 ### Appearance: Longest window title
 
 *15:40* — The new slider in Preferences ▸ Appearance.
 
 ![Appearance: Longest window title](2026-10-27/154028-appearance-longest-window-title.png)
 
-### Smart Tiling
+### Longest window title
 
-*15:32* — Smart Tile (⌃⇧⌘↩) shows a model the screen and what each window holds, then tiles them; the note says how and offers Undo. (Here a fake model answered.)
+*15:40* — A tab shows at most this many characters of its title, then an ellipsis (here 20; 100 by default).
 
-![Smart Tiling](2026-10-27/153223-smart-tiling.png)
+![Longest window title](2026-10-27/154028-longest-window-title.png)
 
 ### Preferences ▸ AI
 
 *15:32* — AI features go through the Token Pool, or an Anthropic key; Smart Tiling picks its model and how hard it thinks.
 
 ![Preferences ▸ AI](2026-10-27/153223-preferences-ai.png)
+
+### Smart Tiling
+
+*15:32* — Smart Tile (⌃⇧⌘↩) shows a model the screen and what each window holds, then tiles them; the note says how and offers Undo. (Here a fake model answered.)
+
+![Smart Tiling](2026-10-27/153223-smart-tiling.png)
 
 ### The wallpaper pack
 
@@ -2889,11 +2907,11 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Preferences: Backup](2026-10-27/022302-preferences-backup.png)
 
-### Viewer: crop a picture
+### Quick Look rotates pictures
 
-*02:12* — Image ▸ Crop… puts a frame over the picture: drag one out, move it or pull its edges; the size shows below and the rest dims. Crop (or Return) keeps it, and the title says the picture is edited until it's saved.
+*02:12* — Quick Look's footer has Rotate Left and Right (⌘L and ⌘R), which turn the picture and save it at once, as on the Mac. Anything more opens in Viewer.
 
-![Viewer: crop a picture](2026-10-27/021250-viewer-crop-a-picture.png)
+![Quick Look rotates pictures](2026-10-27/021250-quick-look-rotates-pictures.png)
 
 ### Viewer: Adjust Size
 
@@ -2901,11 +2919,11 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Viewer: Adjust Size](2026-10-27/021250-viewer-adjust-size.png)
 
-### Quick Look rotates pictures
+### Viewer: crop a picture
 
-*02:12* — Quick Look's footer has Rotate Left and Right (⌘L and ⌘R), which turn the picture and save it at once, as on the Mac. Anything more opens in Viewer.
+*02:12* — Image ▸ Crop… puts a frame over the picture: drag one out, move it or pull its edges; the size shows below and the rest dims. Crop (or Return) keeps it, and the title says the picture is edited until it's saved.
 
-![Quick Look rotates pictures](2026-10-27/021250-quick-look-rotates-pictures.png)
+![Viewer: crop a picture](2026-10-27/021250-viewer-crop-a-picture.png)
 
 ### Tracker says when a long copy is done
 
@@ -2925,17 +2943,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Preferences ▸ Notifications](2026-10-27/014143-preferences-notifications.png)
 
-### Notification history
-
-*01:41* — The History window (Deskbar's bell, or tabula-notifications --history): every notification newest first, kept across a restart. Click to act on it (or bring the app forward), × to forget one; Do Not Disturb and Clear All along the top.
-
-![Notification history](2026-10-27/014143-notification-history.png)
-
 ### Deskbar's notification bell
 
 *01:41* — The bell counts unread notifications; click for the history, right-click for Do Not Disturb (now, for an hour, until morning) and the settings. Struck through while quiet.
 
 ![Deskbar's notification bell](2026-10-27/014143-deskbar-s-notification-bell.png)
+
+### Notification history
+
+*01:41* — The History window (Deskbar's bell, or tabula-notifications --history): every notification newest first, kept across a restart. Click to act on it (or bring the app forward), × to forget one; Do Not Disturb and Clear All along the top.
+
+![Notification history](2026-10-27/014143-notification-history.png)
 
 ### Notifications, grouped
 
@@ -3035,17 +3053,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Passwords: changes wait while 1Password is away](2026-10-26/214624-passwords-changes-wait-while-1password-is-away.png)
 
-### Passwords: setup offers sync or local
-
-*21:46* — Passwords now keeps its own encrypted store. The first time, it asks whether to sync with a 1Password account (both ways) or keep items only on this computer.
-
-![Passwords: setup offers sync or local](2026-10-26/214623-passwords-setup-offers-sync-or-local.png)
-
 ### Passwords: its own store, synced with 1Password
 
 *21:46* — Items are read from the local encrypted store at once; 1Password is only for syncing, in the background. The status line shows the last sync.
 
 ![Passwords: its own store, synced with 1Password](2026-10-26/214623-passwords-its-own-store-synced-with-1password.png)
+
+### Passwords: setup offers sync or local
+
+*21:46* — Passwords now keeps its own encrypted store. The first time, it asks whether to sync with a 1Password account (both ways) or keep items only on this computer.
+
+![Passwords: setup offers sync or local](2026-10-26/214623-passwords-setup-offers-sync-or-local.png)
 
 ### Tracker: Open in Terminal
 
@@ -3323,17 +3341,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Passwords: Password Generator](2026-10-26/072505-passwords-password-generator.png)
 
-### NetPositive in dark mode
-
-*06:38* — The new Servo based browser: tabs, toolbar and location field follow the theme while pages stay light
-
-![NetPositive in dark mode](2026-10-26/063835-netpositive-in-dark-mode.png)
-
 ### NetPositive error page
 
 *06:38* — Network errors answer in haiku, as NetPositive did, picked at random from six new verses
 
 ![NetPositive error page](2026-10-26/063835-netpositive-error-page.png)
+
+### NetPositive in dark mode
+
+*06:38* — The new Servo based browser: tabs, toolbar and location field follow the theme while pages stay light
+
+![NetPositive in dark mode](2026-10-26/063835-netpositive-in-dark-mode.png)
 
 ### Network: joining enterprise Wi-Fi
 
@@ -3407,29 +3425,29 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Keyboard backlight](2026-10-26/031818-keyboard-backlight.png)
 
-### Level indicator
-
-*03:15* — app_server panel for the brightness and volume keys and Ctrl+Cmd+A caffeinated, light and dark, 2x.
-
-![Level indicator](2026-10-26/031504-level-indicator.png)
-
 ### Deskbar Stay Awake menu
 
 *03:15* — Right-click the cup (also in the Tabula menu): until turned off, 1 to 8 hours, even with the lid closed, Allow Sleep with the end time. The menu now flips to stay on screen.
 
 ![Deskbar Stay Awake menu](2026-10-26/031504-deskbar-stay-awake-menu.png)
 
-### Haiku system cursors
+### Level indicator
 
-*03:01* — All 28 of Haiku app_server cursors drawn by the new tabula-hvif renderer at 1x, 1.5x and 2x on light and dark grounds, with the soft offset shadow. ResizeWest is mirrored from ResizeEast since the upstream data duplicates it.
+*03:15* — app_server panel for the brightness and volume keys and Ctrl+Cmd+A caffeinated, light and dark, 2x.
 
-![Haiku system cursors](2026-10-26/030140-haiku-system-cursors.png)
+![Level indicator](2026-10-26/031504-level-indicator.png)
 
 ### Cursors in a session
 
 *03:01* — Headless 2x session: StyledEdit asks for the text cursor over cursor-shape-v1, the desktop shows the hand, the window frame shows the resize arrow.
 
 ![Cursors in a session](2026-10-26/030140-cursors-in-a-session.png)
+
+### Haiku system cursors
+
+*03:01* — All 28 of Haiku app_server cursors drawn by the new tabula-hvif renderer at 1x, 1.5x and 2x on light and dark grounds, with the soft offset shadow. ResizeWest is mirrored from ResizeEast since the upstream data duplicates it.
+
+![Haiku system cursors](2026-10-26/030140-haiku-system-cursors.png)
 
 ### Rotated main display
 
@@ -3443,29 +3461,29 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Display: Identify](2026-10-26/024851-display-identify.png)
 
-### Display: resolution with revert countdown
-
-*02:40* — HEADLESS-1 switched to 1920 by 1200; its right-hand neighbour moved with the edge; Keep or Revert, else it reverts after 15 s.
-
-![Display: resolution with revert countdown](2026-10-26/024050-display-resolution-with-revert-countdown.png)
-
 ### Display: arranged screens, dark
 
 *02:40* — Two headless screens stacked by dragging in the map; the lower one follows when the upper changes size.
 
 ![Display: arranged screens, dark](2026-10-26/024050-display-arranged-screens-dark.png)
 
-### Choose a Wallpaper panel
+### Display: resolution with revert countdown
 
-*02:31* — The kit FilePanel as a child of Backgrounds, limited to picture types, kept on screen when wider than its parent.
+*02:40* — HEADLESS-1 switched to 1920 by 1200; its right-hand neighbour moved with the edge; Keep or Revert, else it reverts after 15 s.
 
-![Choose a Wallpaper panel](2026-10-26/023141-choose-a-wallpaper-panel.png)
+![Display: resolution with revert countdown](2026-10-26/024050-display-resolution-with-revert-countdown.png)
 
 ### Backgrounds in dark mode
 
 *02:31* — The chosen wallpaper survives an in-place reload via About Tabula, Restart Tabula.
 
 ![Backgrounds in dark mode](2026-10-26/023141-backgrounds-in-dark-mode.png)
+
+### Choose a Wallpaper panel
+
+*02:31* — The kit FilePanel as a child of Backgrounds, limited to picture types, kept on screen when wider than its parent.
+
+![Choose a Wallpaper panel](2026-10-26/023141-choose-a-wallpaper-panel.png)
 
 ### Wallpaper drawn by app_server
 
@@ -3497,17 +3515,23 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Preferences: Network](2026-10-26/020623-preferences-network.png)
 
+### polkit agent: password
+
+*02:02* — After the fingerprint times out PAM asks for the password; the field takes focus.
+
+![polkit agent: password](2026-10-26/020241-polkit-agent-password.png)
+
 ### polkit agent
 
 *02:02* — Authentication Required: polkit message, Touch ID through PAM first (fprintd), new padlock icon.
 
 ![polkit agent](2026-10-26/020241-polkit-agent.png)
 
-### polkit agent: password
+### Date & Time (dark)
 
-*02:02* — After the fingerprint times out PAM asks for the password; the field takes focus.
+*01:54* — Calendar and clock face; disabled while network time is on.
 
-![polkit agent: password](2026-10-26/020241-polkit-agent-password.png)
+![Date & Time (dark)](2026-10-26/015406-date-time-dark.png)
 
 ### Date & Time: time zones
 
@@ -3521,29 +3545,11 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Date & Time: Deskbar clock](2026-10-26/015406-date-time-deskbar-clock.png)
 
-### Date & Time (dark)
-
-*01:54* — Calendar and clock face; disabled while network time is on.
-
-![Date & Time (dark)](2026-10-26/015406-date-time-dark.png)
-
 ### Alerts open over their window
 
 *01:44* — Alerts are children of the focused window; app_server centres them across it a quarter of the way down, as BAlert did.
 
 ![Alerts open over their window](2026-10-26/014403-alerts-open-over-their-window.png)
-
-### Activity Monitor: processes
-
-*01:41* — Sortable process list with search by name or ID and an owner filter.
-
-![Activity Monitor: processes](2026-10-26/014117-activity-monitor-processes.png)
-
-### Activity Monitor: permission alert
-
-*01:41* — Force Quit of another user's process shows a stop alert; nothing is signalled.
-
-![Activity Monitor: permission alert](2026-10-26/014117-activity-monitor-permission-alert.png)
 
 ### Activity Monitor: dark mode
 
@@ -3551,17 +3557,29 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Activity Monitor: dark mode](2026-10-26/014117-activity-monitor-dark-mode.png)
 
+### Activity Monitor: permission alert
+
+*01:41* — Force Quit of another user's process shows a stop alert; nothing is signalled.
+
+![Activity Monitor: permission alert](2026-10-26/014117-activity-monitor-permission-alert.png)
+
+### Activity Monitor: processes
+
+*01:41* — Sortable process list with search by name or ID and an owner filter.
+
+![Activity Monitor: processes](2026-10-26/014117-activity-monitor-processes.png)
+
 ### Activity Monitor: graphs
 
 *01:41* — CPU, memory and cache with Total System Power from hwmon; network and disk rates below.
 
 ![Activity Monitor: graphs](2026-10-26/014116-activity-monitor-graphs.png)
 
-### StyledEdit: selection keeps its colours
+### Alerts get their icons
 
-*01:31* — egui paints selected text in one colour; StyledEdit draws the selected glyphs again over the highlight in their own colours.
+*01:31* — The warning, stop, info and idea alert icons were missing from the set (every alert drew none); generated against the reference set.
 
-![StyledEdit: selection keeps its colours](2026-10-26/013135-stylededit-selection-keeps-its-colours.png)
+![Alerts get their icons](2026-10-26/013135-alerts-get-their-icons.png)
 
 ### StyledEdit in dark mode after a reload
 
@@ -3569,17 +3587,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![StyledEdit in dark mode after a reload](2026-10-26/013135-stylededit-in-dark-mode-after-a-reload.png)
 
+### StyledEdit: selection keeps its colours
+
+*01:31* — egui paints selected text in one colour; StyledEdit draws the selected glyphs again over the highlight in their own colours.
+
+![StyledEdit: selection keeps its colours](2026-10-26/013135-stylededit-selection-keeps-its-colours.png)
+
 ### StyledEdit: fonts, sizes and colours
 
 *01:31* — StyledEdit with a bold red word and a 24 pt Comfortaa word in the system font's line; styles live in the file's user.tabula.styles attribute, the text stays plain.
 
 ![StyledEdit: fonts, sizes and colours](2026-10-26/013135-stylededit-fonts-sizes-and-colours.png)
-
-### Alerts get their icons
-
-*01:31* — The warning, stop, info and idea alert icons were missing from the set (every alert drew none); generated against the reference set.
-
-![Alerts get their icons](2026-10-26/013135-alerts-get-their-icons.png)
 
 ### DeskCalc scientific (dark)
 
@@ -3593,17 +3611,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![DeskCalc (light)](2026-10-26/010211-deskcalc-light.png)
 
-### Screenshot (light)
-
-*00:53* — Haiku-style Screenshot app: preview, capture options, name/format/folder; restored after an in-place reload.
-
-![Screenshot (light)](2026-10-26/005304-screenshot-light.png)
-
 ### Screenshot: active window (dark)
 
 *00:53* — Active-window capture with the tab's shape kept; JPEG into a folder chosen with the new folder panel.
 
 ![Screenshot: active window (dark)](2026-10-26/005304-screenshot-active-window-dark.png)
+
+### Screenshot (light)
+
+*00:53* — Haiku-style Screenshot app: preview, capture options, name/format/folder; restored after an in-place reload.
+
+![Screenshot (light)](2026-10-26/005304-screenshot-light.png)
 
 ### Screen saver over the lock screen
 
@@ -3617,17 +3635,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Preferences: Screen Saver, Modules](2026-10-26/003101-preferences-screen-saver-modules.png)
 
-### Screen saver modules
-
-*00:31* — BeOS R5's modules redrawn: BuyNow, Flip, Icons, Lens, Lissart, Message, Spiral, Spots, StringTheme, SuperString (plus Blackness).
-
-![Screen saver modules](2026-10-26/003100-screen-saver-modules.png)
-
 ### Preferences: Screen Saver, Fade
 
 *00:31* — R5's Fade tab: run after, turn off screen, password lock, Fade now / Don't fade corners.
 
 ![Preferences: Screen Saver, Fade](2026-10-26/003100-preferences-screen-saver-fade.png)
+
+### Screen saver modules
+
+*00:31* — BeOS R5's modules redrawn: BuyNow, Flip, Icons, Lens, Lissart, Message, Spiral, Spots, StringTheme, SuperString (plus Blackness).
+
+![Screen saver modules](2026-10-26/003100-screen-saver-modules.png)
 
 ### Power: lock when the display turns off
 
@@ -3635,11 +3653,11 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Power: lock when the display turns off](2026-10-26/000701-power-lock-when-the-display-turns-off.png)
 
-### Lock screen
+### Deskbar: Lock Screen
 
-*00:07* — tabula-lock over ext-session-lock: clock, date, and a BeOS panel asking for the password or Touch ID (dark).
+*00:07* — Lock Screen in the Tabula menu; the off cup in the tray is now visible in dark mode.
 
-![Lock screen](2026-10-26/000701-lock-screen.png)
+![Deskbar: Lock Screen](2026-10-26/000701-deskbar-lock-screen.png)
 
 ### Lock screen: wrong password
 
@@ -3647,11 +3665,11 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Lock screen: wrong password](2026-10-26/000701-lock-screen-wrong-password.png)
 
-### Deskbar: Lock Screen
+### Lock screen
 
-*00:07* — Lock Screen in the Tabula menu; the off cup in the tray is now visible in dark mode.
+*00:07* — tabula-lock over ext-session-lock: clock, date, and a BeOS panel asking for the password or Touch ID (dark).
 
-![Deskbar: Lock Screen](2026-10-26/000701-deskbar-lock-screen.png)
+![Lock screen](2026-10-26/000701-lock-screen.png)
 
 ## 2026-10-25
 
@@ -3661,17 +3679,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Deskbar caffeinated cup](2026-10-25/234329-deskbar-caffeinated-cup.png)
 
-### Preferences ▸ Power
-
-*23:43* — Battery health and state, idle display-off and sleep times, caffeinated mode (light and dark).
-
-![Preferences ▸ Power](2026-10-25/234328-preferences-power.png)
-
 ### Display ▸ Brightness
 
 *23:43* — The built-in display's brightness slider (simulated backlight in a headless session).
 
 ![Display ▸ Brightness](2026-10-25/234328-display-brightness.png)
+
+### Preferences ▸ Power
+
+*23:43* — Battery health and state, idle display-off and sleep times, caffeinated mode (light and dark).
+
+![Preferences ▸ Power](2026-10-25/234328-preferences-power.png)
 
 ### Preferences ▸ Sound
 
@@ -3679,17 +3697,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Preferences ▸ Sound](2026-10-25/233013-preferences-sound.png)
 
-### Preferences panels (dark)
-
-*23:20* — Appearance, Keyboard, Touchpad, Backgrounds, Display and About in dark mode: one fixed-size window per panel with Defaults/Revert.
-
-![Preferences panels (dark)](2026-10-25/232029-preferences-panels-dark.png)
-
 ### Preferences launcher
 
 *23:20* — tabula-preferences with no argument: a grid of every panel.
 
 ![Preferences launcher](2026-10-25/232029-preferences-launcher.png)
+
+### Preferences panels (dark)
+
+*23:20* — Appearance, Keyboard, Touchpad, Backgrounds, Display and About in dark mode: one fixed-size window per panel with Defaults/Revert.
+
+![Preferences panels (dark)](2026-10-25/232029-preferences-panels-dark.png)
 
 ### Preferences panels (light)
 
@@ -3697,29 +3715,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Preferences panels (light)](2026-10-25/232028-preferences-panels-light.png)
 
-### Twitcher (light)
-
-*22:51* — ⌘Tab held: app_server draws the BeOS Twitcher strip with each running app's icon and the chosen app's name.
-
-![Twitcher (light)](2026-10-25/225144-twitcher-light.png)
-
 ### Twitcher (dark)
 
 *22:51* — The same in dark mode.
 
 ![Twitcher (dark)](2026-10-25/225144-twitcher-dark.png)
 
-### Viewer: PDF form in dark mode
+### Twitcher (light)
 
-*22:34* — The same form in dark: Draw tool active, ink mark and Text tool date beside the signature.
+*22:51* — ⌘Tab held: app_server draws the BeOS Twitcher strip with each running app's icon and the chosen app's name.
 
-![Viewer: PDF form in dark mode](2026-10-25/223446-viewer-pdf-form-in-dark-mode.png)
-
-### Viewer: PDF form filling (light)
-
-*22:34* — Text, comb, combo, list box, radio and check fields filled in place, with a placed signature.
-
-![Viewer: PDF form filling (light)](2026-10-25/223446-viewer-pdf-form-filling-light.png)
+![Twitcher (light)](2026-10-25/225144-twitcher-light.png)
 
 ### Quick Look pop-out to Viewer
 
@@ -3732,6 +3738,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 *22:34* — BFilePanel-style Save panel: path popup, Home, Name/Size/Modified list, Save as field.
 
 ![Kit FilePanel: Export Flattened PDF](2026-10-25/223446-kit-filepanel-export-flattened-pdf.png)
+
+### Viewer: PDF form in dark mode
+
+*22:34* — The same form in dark: Draw tool active, ink mark and Text tool date beside the signature.
+
+![Viewer: PDF form in dark mode](2026-10-25/223446-viewer-pdf-form-in-dark-mode.png)
+
+### Viewer: PDF form filling (light)
+
+*22:34* — Text, comb, combo, list box, radio and check fields filled in place, with a placed signature.
+
+![Viewer: PDF form filling (light)](2026-10-25/223446-viewer-pdf-form-filling-light.png)
 
 ### Quick Look: every format (dark)
 
@@ -3751,17 +3769,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Quick Look: images](2026-10-25/220049-quick-look-images.png)
 
-### Terminal (light)
-
-*21:36* — Tabula Light scheme: 16 ANSI colours tuned for contrast on paper white, SGR attributes and truecolor, CJK/Greek/symbol fallback fonts, box drawing drawn as geometry (rounded and heavy), block elements, a kitty-protocol inline image, and a compiler-style path link.
-
-![Terminal (light)](2026-10-25/213633-terminal-light.png)
-
 ### Terminal (dark)
 
 *21:36* — The same session in Tabula Dark (graphite, soft pastels). The scheme follows the desktop theme, and OSC 10/11 colour queries answer from it, so TUIs like Claude Code choose the matching theme.
 
 ![Terminal (dark)](2026-10-25/213633-terminal-dark.png)
+
+### Terminal (light)
+
+*21:36* — Tabula Light scheme: 16 ANSI colours tuned for contrast on paper white, SGR attributes and truecolor, CJK/Greek/symbol fallback fonts, box drawing drawn as geometry (rounded and heavy), block elements, a kitty-protocol inline image, and a compiler-style path link.
+
+![Terminal (light)](2026-10-25/213633-terminal-light.png)
 
 ### Tracker: live updates
 
@@ -3769,17 +3787,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Tracker: live updates](2026-10-25/213524-tracker-live-updates.png)
 
-### In-place reload: before
-
-*21:01* — Tracker (desktop + Home window, Home icon selected) and Deskbar under tabula-session, before rebuilding and running tabula-session reload.
-
-![In-place reload: before](2026-10-25/210132-in-place-reload-before.png)
-
 ### In-place reload: after an upgrade
 
 *21:01* — After tabula-session reload with new tabula-session, app_server and Tracker binaries: the session re-executed itself, restarted app_server, and Tracker re-executed with its saved state. Pixel-identical to the screenshot before.
 
 ![In-place reload: after an upgrade](2026-10-25/210132-in-place-reload-after-an-upgrade.png)
+
+### In-place reload: before
+
+*21:01* — Tracker (desktop + Home window, Home icon selected) and Deskbar under tabula-session, before rebuilding and running tabula-session reload.
+
+![In-place reload: before](2026-10-25/210132-in-place-reload-before.png)
 
 ### Tracker Status: background file operations
 
@@ -3793,17 +3811,17 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Tracker: Find searches contents with ripgrep](2026-10-25/203834-tracker-find-searches-contents-with-ripgrep.png)
 
-### Tracker: Find
-
-*20:29* — Find takes focus on open, closes with ⌘W, shows home-relative locations and a baseline-aligned status.
-
-![Tracker: Find](2026-10-25/202952-tracker-find.png)
-
 ### Menus: shortcut glyphs on the baseline
 
 *20:29* — ⌘, ⇧ and arrows come from a fallback font; each is now laid out separately so it shares the item's baseline. The Trash is titled Trash.
 
 ![Menus: shortcut glyphs on the baseline](2026-10-25/202952-menus-shortcut-glyphs-on-the-baseline.png)
+
+### Tracker: Find
+
+*20:29* — Find takes focus on open, closes with ⌘W, shows home-relative locations and a baseline-aligned status.
+
+![Tracker: Find](2026-10-25/202952-tracker-find.png)
 
 ### Tracker: column view, dark
 
@@ -3847,11 +3865,11 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Tracker and Get Info in dark mode](2026-10-25/195829-tracker-and-get-info-in-dark-mode.png)
 
-### Icon set before the style guide
+### First Tracker desktop
 
-*19:58* — Text-only prompts: about, bluetooth, screenshot, display and trash drift to flat or straight-on views.
+*19:58* — Volumes and Home beside the Deskbar, Trash in the corner. Labels were off-centre (centred galleys double-offset) and ~/Desktop items were missing.
 
-![Icon set before the style guide](2026-10-25/195828-icon-set-before-the-style-guide.png)
+![First Tracker desktop](2026-10-25/195828-first-tracker-desktop.png)
 
 ### Icon set after the style guide
 
@@ -3859,8 +3877,8 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Icon set after the style guide](2026-10-25/195828-icon-set-after-the-style-guide.png)
 
-### First Tracker desktop
+### Icon set before the style guide
 
-*19:58* — Volumes and Home beside the Deskbar, Trash in the corner. Labels were off-centre (centred galleys double-offset) and ~/Desktop items were missing.
+*19:58* — Text-only prompts: about, bluetooth, screenshot, display and trash drift to flat or straight-on views.
 
-![First Tracker desktop](2026-10-25/195828-first-tracker-desktop.png)
+![Icon set before the style guide](2026-10-25/195828-icon-set-before-the-style-guide.png)

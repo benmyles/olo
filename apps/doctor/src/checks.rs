@@ -92,13 +92,14 @@ const FOREIGN: &[(&str, &str)] = &[
 /// GNOME's services Olo has its own in place of: one running in an Olo
 /// session was started by something before Olo's took over (the start of
 /// the session, a program started before an upgrade) and isn't needed.
-/// GNOME Keyring only while Olo's keyring answers.
+/// GNOME Keyring only while Olo's keyring answers. (After a `|`: what
+/// follows its processes, as `by_program` says them.)
 const GNOME_SERVICES: &[(&str, &str)] = &[
-    ("dconf-service", "GNOME's dconf service (olo-dconf answers in its place)"),
-    ("xdg-desktop-portal-gnome", "GNOME's portal backend (olo-portal is the portals' backend)"),
-    ("xdg-desktop-portal-gtk", "GTK's portal backend (olo-portal is the portals' backend)"),
-    ("gnome-keyring-daemon", "GNOME Keyring (Olo's keyring answers in its place)"),
-    ("gvfsd", "gvfs (programs Olo starts use GIO's own files)"),
+    ("dconf-service", "GNOME's dconf service|, where olo-dconf answers"),
+    ("xdg-desktop-portal-gnome", "GNOME's portal backend|, where olo-portal is the backend"),
+    ("xdg-desktop-portal-gtk", "GTK's portal backend|, where olo-portal is the backend"),
+    ("gnome-keyring-daemon", "GNOME Keyring|, where Olo's keyring answers"),
+    ("gvfsd", "gvfs|, where programs Olo starts use GIO's own files"),
     ("gvfsd-fuse", "gvfs's FUSE folder"),
     ("gvfsd-metadata", "gvfs's metadata"),
     ("gvfs-udisks2-volume-monitor", "gvfs's disk monitor"),
@@ -169,6 +170,10 @@ pub struct Report {
     pub fine: Vec<Fine>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub undo: Vec<Undo>,
+    /// Found, but what the person said to ignore (ignored.rs): out of the
+    /// counts, Fix All, the tray and the notifications; still fixable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ignored: Vec<Finding>,
 }
 
 impl Report {
@@ -180,8 +185,25 @@ impl Report {
         self.findings.iter().filter(|f| f.fix.is_some())
     }
 
+    /// A finding, ignored or not.
     pub fn find(&self, id: &str) -> Option<&Finding> {
-        self.findings.iter().find(|f| f.id == id)
+        self.findings.iter().chain(&self.ignored).find(|f| f.id == id)
+    }
+
+    /// The findings whose ids are in `ids` moved to `ignored`.
+    pub fn set_aside(&mut self, ids: &std::collections::BTreeSet<String>) {
+        let (ignored, kept) = std::mem::take(&mut self.findings).into_iter().partition(|f| ids.contains(&f.id));
+        self.findings = kept;
+        self.ignored = ignored;
+    }
+
+    /// Finding `id` ignored (`on`) or back among the rest, as the window
+    /// shows it at once (ignored.rs keeps it).
+    pub fn move_ignored(&mut self, id: &str, on: bool) {
+        let (from, to) = if on { (&mut self.findings, &mut self.ignored) } else { (&mut self.ignored, &mut self.findings) };
+        if let Some(i) = from.iter().position(|f| f.id == id) {
+            to.push(from.remove(i));
+        }
     }
 
     /// What the button `id` does: a finding's fix, or an undo.
@@ -230,12 +252,31 @@ pub struct TempFiles {
     pub runtime: PathBuf,
 }
 
+/// The session's `TMPDIR`: what systemd's user manager has (`manager`,
+/// what everything started from now on gets); if it couldn't be asked
+/// (busy past its 10 s), what Olo's file sets for the session (`file`),
+/// and only then this program's own (`own`). Doctor's watcher starts at
+/// login, before any fix, so its own has none: whenever the manager was
+/// slow to answer, the tray said "Temporary files take memory" while the
+/// window, started after the fix, said all was well (Ben, 2026-11-07:
+/// "seems like some of the checks are flaky").
+fn session_tmpdir(manager: Option<Vec<(String, String)>>, file: Option<String>, own: Option<String>) -> Option<String> {
+    let found = match manager {
+        Some(env) => env.into_iter().find(|(k, _)| k == "TMPDIR").map(|(_, v)| v),
+        None => file.or(own),
+    };
+    found.filter(|d| !d.is_empty())
+}
+
 impl TempFiles {
     fn real() -> TempFiles {
-        let manager = olo_system::env::manager_environment().unwrap_or_default();
-        let tmpdir = manager.iter().find(|(k, _)| k == "TMPDIR").map(|(_, v)| v.clone()).or_else(|| std::env::var("TMPDIR").ok()).filter(|d| !d.is_empty());
         let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
         let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".config"));
+        let manager = olo_system::env::manager_environment();
+        if let Err(e) = &manager {
+            tracing::info!("doctor: systemd's user manager didn't say its environment ({e}): going by Olo's file");
+        }
+        let tmpdir = session_tmpdir(manager.ok(), olo_system::env::tmpdir_in_file(&config), std::env::var("TMPDIR").ok());
         let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".local/share"));
         let runtime = olo_xdg::runtime_dir();
         TempFiles {
@@ -305,6 +346,17 @@ fn home_of(uid: u32) -> Option<std::ffi::OsString> {
     })
 }
 
+/// Whether a process is an agent screen's (`OLO_SCREEN` in its
+/// environment): the screen's own session, on a bus of its own, which
+/// starts its services again as they exit and brings its programs up to
+/// date as it upgrades, so it isn't the person's session's to quit things
+/// in. (Three screens from before their portals were Olo's alone ran
+/// GTK's portal backend, started again at once: Ben, 2026-11-07, "i press
+/// fix all or quit them and it just comes back".)
+fn on_a_screen(fs: &Path, pid: i32) -> bool {
+    std::fs::read(fs.join("proc").join(pid.to_string()).join("environ")).is_ok_and(|e| e.split(|b| *b == 0).any(|v| v.starts_with(b"OLO_SCREEN=")))
+}
+
 /// A process's login session, from its cgroup.
 fn scope_of(cgroup: &str) -> Option<String> {
     cgroup.lines().find_map(|l| l.rsplit('/').find(|part| part.starts_with("session-") && part.ends_with(".scope")).map(str::to_owned))
@@ -319,11 +371,20 @@ fn processes(fs: &Path) -> Vec<Proc> {
         let Ok(meta) = dir.metadata() else { continue };
         let cmdline = std::fs::read(dir.join("cmdline")).unwrap_or_default();
         let first = cmdline.split(|b| *b == 0).next().unwrap_or(&[]);
-        let mut name = String::from_utf8_lossy(first).rsplit('/').next().unwrap_or("").to_owned();
+        let exe = std::fs::read_link(dir.join("exe")).ok().map(|p| p.to_string_lossy().into_owned());
+        let first = String::from_utf8_lossy(first);
+        // (Chrome writes its whole command line into its first word, with
+        // spaces: "…/chrome --type=gpu-process …". Its program is then its
+        // executable's, or the first word's up to a space.)
+        let first = if first.contains(' ') {
+            exe.as_deref().map(|e| e.trim_end_matches(" (deleted)").to_owned()).unwrap_or_else(|| first.split(' ').next().unwrap_or("").to_owned())
+        } else {
+            first.into_owned()
+        };
+        let mut name = first.rsplit('/').next().unwrap_or("").to_owned();
         if name.is_empty() {
             name = std::fs::read_to_string(dir.join("comm")).unwrap_or_default().trim().to_owned();
         }
-        let exe = std::fs::read_link(dir.join("exe")).ok().map(|p| p.to_string_lossy().into_owned());
         let scope = scope_of(&std::fs::read_to_string(dir.join("cgroup")).unwrap_or_default());
         v.push(Proc { pid, uid: meta.uid(), name, exe, scope });
     }
@@ -455,7 +516,15 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 /// Look this computer over, and say what was found for Deskbar's tray
 /// (`olo_protocol::doctor::DoctorFound`).
 pub fn look() -> Report {
-    let report = scan(&Roots::real());
+    let mut report = scan(&Roots::real());
+    report.set_aside(&crate::ignored::of(crate::app::Kind::Doctor));
+    tell_tray(&report);
+    report
+}
+
+/// What Deskbar's tray shows (its bag) from `report`: what's ignored is
+/// left out.
+pub fn tell_tray(report: &Report) {
     let issues: Vec<&Finding> = report.findings.iter().filter(|f| f.severity == Severity::Problem || f.fix.is_some()).collect();
     let found = olo_protocol::doctor::DoctorFound {
         issues: issues.iter().map(|f| f.title.clone()).collect(),
@@ -465,7 +534,6 @@ pub fn look() -> Report {
     if let Err(e) = found.save() {
         tracing::warn!("doctor: what was found not saved: {e}");
     }
-    report
 }
 
 pub fn scan(roots: &Roots) -> Report {
@@ -485,6 +553,7 @@ pub fn scan(roots: &Roots) -> Report {
     util_clamp(roots, &mut r);
     let gpus = pci_devices(&roots.fs);
     idle_gpu(roots, &gpus, &mut r);
+    gpu_stuck(roots, &gpus, &procs, &mut r);
     gpu_driver(roots, &gpus, &mut r);
     intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
@@ -498,6 +567,7 @@ pub fn scan(roots: &Roots) -> Report {
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     login_screen_handed_over(roots, &mut r);
+    own_login_screen(roots, &mut r);
     temp_files(roots, &mut r);
     file_manager(roots, &mut r);
     r
@@ -689,21 +759,52 @@ fn foreign(roots: &Roots, procs: &[Proc], r: &mut Report) {
     let mine: Vec<(&Proc, &str)> = if elsewhere {
         Vec::new()
     } else {
-        procs.iter().filter(|p| ours(p) && (p.scope.is_none() || p.scope == roots.scope)).filter_map(|p| FOREIGN.iter().find(|(n, _)| *n == p.name).map(|(_, what)| (p, *what))).collect()
+        procs
+            .iter()
+            .filter(|p| ours(p) && (p.scope.is_none() || p.scope == roots.scope))
+            .filter_map(|p| FOREIGN.iter().find(|(n, _)| *n == p.name).map(|(_, what)| (p, *what)))
+            .filter(|(p, _)| !on_a_screen(&roots.fs, p.pid))
+            .collect()
     };
     if mine.is_empty() {
         r.fine.push(Fine { title: "No other desktop's daemons run in this session".into(), detail: "Nothing fights Olo for the keys or the power settings.".into() });
         return;
     }
-    let names: Vec<String> = mine.iter().map(|(p, what)| format!("{what} ({}, process {})", p.name, p.pid)).collect();
+    let names = by_program(&mine);
     let steps = mine.iter().map(|(p, _)| Step::Signal { pid: p.pid, signal: libc::SIGTERM }).collect();
     r.findings.push(Finding {
         id: "foreign".into(),
         severity: Severity::Problem,
-        title: if mine.len() == 1 { "A program of another desktop runs in this session".into() } else { format!("{} programs of another desktop run in this session", mine.len()) },
+        title: if names.len() == 1 { "A program of another desktop runs in this session".into() } else { format!("{} programs of another desktop run in this session", names.len()) },
         detail: format!("{}. They answer to keys and power events meant for Olo, and some grab devices. Olo does all of this itself; they aren't needed here and are quit.", names.join("; ")),
         fix: Some(Fix { label: "Quit Them".into(), root: false, steps }),
     });
+}
+
+/// Programs found running, each said once with its processes (a portal
+/// backend D-Bus started six times is one program, not six): "GTK's
+/// portal backend (xdg-desktop-portal-gtk, processes 1, 2 and 3)", and
+/// what follows a `|` in its description after them (", where olo-portal
+/// is the backend").
+fn by_program(found: &[(&Proc, &str)]) -> Vec<String> {
+    let mut programs: Vec<(&str, &str, Vec<i32>)> = Vec::new();
+    for (p, what) in found {
+        match programs.iter_mut().find(|(name, ..)| *name == p.name) {
+            Some((.., pids)) => pids.push(p.pid),
+            None => programs.push((&p.name, what, vec![p.pid])),
+        }
+    }
+    programs
+        .into_iter()
+        .map(|(name, what, pids)| {
+            let (what, then) = what.split_once('|').unwrap_or((what, ""));
+            match pids.as_slice() {
+                [pid] => format!("{what} ({name}, process {pid}){then}"),
+                [rest @ .., last] => format!("{what} ({name}, processes {} and {last}){then}", rest.iter().map(i32::to_string).collect::<Vec<_>>().join(", ")),
+                [] => String::new(),
+            }
+        })
+        .collect()
 }
 
 /// Nothing of GNOME's needed: its services Olo has its own in place of
@@ -720,6 +821,7 @@ fn gnome_services(roots: &Roots, procs: &[Proc], r: &mut Report) {
         .filter(|p| ours(p) && (p.scope.is_none() || p.scope == roots.scope))
         .filter(|p| p.name != "gnome-keyring-daemon" || keyring_ours)
         .filter_map(|p| GNOME_SERVICES.iter().find(|(n, _)| *n == p.name).map(|(_, what)| (p, *what)))
+        .filter(|(p, _)| !on_a_screen(&roots.fs, p.pid))
         .collect();
     if found.is_empty() {
         // (GNOME's settings daemons are another desktop's: `foreign` says so.)
@@ -729,12 +831,12 @@ fn gnome_services(roots: &Roots, procs: &[Proc], r: &mut Report) {
         r.fine.push(Fine { title: "Nothing of GNOME's runs".into(), detail: "Olo answers for dconf, the portals and the keyring itself, and programs it starts use GIO's own files.".into() });
         return;
     }
-    let names: Vec<String> = found.iter().map(|(p, what)| format!("{what} ({}, process {})", p.name, p.pid)).collect();
+    let names = by_program(&found);
     let gvfs = found.iter().any(|(p, _)| p.name.starts_with("gvfs"));
     r.findings.push(Finding {
         id: "gnome:services".into(),
         severity: Severity::Advice,
-        title: if found.len() == 1 { "One of GNOME's services runs".into() } else { format!("{} of GNOME's services run", found.len()) },
+        title: if names.len() == 1 { "One of GNOME's services runs".into() } else { format!("{} of GNOME's services run", names.len()) },
         detail: format!(
             "{}. Olo has its own in their place; something started these before Olo's took over (the start of the session, or a program started before an upgrade), and they aren't needed. Quitting them is safe: what asks for dconf, a portal or the keyring reaches Olo's.{}",
             names.join("; "),
@@ -884,7 +986,9 @@ fn wifi(roots: &Roots, r: &mut Report) {
         // Not installed (a build tree): nothing to install it from.
         return;
     }
-    let state = (roots.units)("olo-wifi-heal.service").unwrap_or_default();
+    // (systemd not answering, busy: nothing said, not "stopped": what
+    // isn't known isn't a problem, and it flickered in the tray.)
+    let Ok(state) = (roots.units)("olo-wifi-heal.service") else { return };
     let installed = roots.fs.join(HEAL_BIN_PATH);
     let current = same_healer(&source, &installed)
         && read(&roots.fs.join(HEAL_UNIT_PATH)).as_deref() == Some(HEAL_UNIT.trim())
@@ -925,7 +1029,9 @@ fn wifi(roots: &Roots, r: &mut Report) {
 fn rtkit(roots: &Roots, r: &mut Report) {
     let unit = "rtkit-daemon.service";
     match (roots.units)(unit) {
-        Err(e) => r.findings.push(Finding { id: "rtkit".into(), severity: Severity::Advice, title: "systemd couldn't be asked about rtkit".into(), detail: format!("{e}. The Performance supervisor raises Olo's threads through rtkit."), fix: None }),
+        // (Not answering, busy: nothing said this look; it said "systemd
+        // couldn't be asked" and was gone at the next.)
+        Err(e) => tracing::info!("doctor: systemd didn't say how rtkit is: {e}"),
         Ok(s) if !s.loaded => r.findings.push(Finding {
             id: "rtkit".into(),
             severity: Severity::Advice,
@@ -1232,6 +1338,109 @@ fn idle_gpu(roots: &Roots, pcis: &[Pci], r: &mut Report) {
         ),
         fix: Some(Fix { label: "Let It Sleep".into(), root: true, steps }),
     });
+}
+
+/// NVIDIA's kernel modules, in the order they're unloaded (each before
+/// what it uses): its DRM driver first, `nvidia` itself last.
+const NVIDIA_MODULES: [&str; 5] = ["nvidia_drm", "nvidia_modeset", "nvidia_uvm", "nvidia_peermem", "nvidia"];
+/// The services that keep NVIDIA's GPUs open: NVIDIA's own and Olo's GPU
+/// follower (`olo-gpu-tune follow`, which holds NVML), stopped while its
+/// driver starts again and started after (those running or meant to:
+/// one a failed try left stopped is started again too).
+const NVIDIA_SERVICES: [&str; 3] = ["nvidia-powerd.service", "nvidia-persistenced.service", "olo-gpu-follow.service"];
+/// Olo's own that can't be quit to free a card: the session's.
+const SESSION_PROGRAMS: [&str; 3] = ["olo-app-server", "olo-session", "olo-wlproxy"];
+
+/// A graphics card whose power management failed: the kernel has it in
+/// an error state (`runtime_status` "error") and its driver doesn't
+/// answer until it starts again, as NVIDIA's after memory ran out
+/// (2026-11-07: NVML said "an internal driver error occurred"). NVIDIA's
+/// is started again without restarting the computer (Ben: "i don't want
+/// you to restart the machine just fix the card/driver or whatever"):
+/// what of the person's uses it quit, NVIDIA's services stopped, its
+/// modules unloaded (refused at once while anything still uses them),
+/// the card reset and found on the bus again (`Step::RestartPciDevice`:
+/// fresh power management), its driver loaded by udev as at start (the
+/// card's PCI alias names nvidia_drm), the services started again.
+fn gpu_stuck(roots: &Roots, pcis: &[Pci], procs: &[Proc], r: &mut Report) {
+    for p in pcis.iter().filter(|p| p.display() && read(&p.dir.join("power/runtime_status")).as_deref() == Some("error")) {
+        let maker = p.maker();
+        let id = format!("gpu:stuck:{}", p.address);
+        let title = format!("The {maker} graphics card stopped answering");
+        let broken = "Its power management failed (the kernel has it in an error state) and its driver doesn't answer, so nothing can use it: video it would decode, screen recordings it would encode, a display on its ports.";
+        if p.vendor != 0x10de || p.driver.as_deref() != Some("nvidia") {
+            r.findings.push(Finding { id, severity: Severity::Problem, title, detail: format!("{broken} Restarting the computer starts it again."), fix: None });
+            continue;
+        }
+        // Its device nodes: its DRM card and render node, and NVIDIA's own
+        // (/dev/nvidia0, nvidiactl, nvidia-uvm…).
+        let mut nodes: Vec<String> = std::fs::read_dir(p.dir.join("drm"))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with("card") || n.starts_with("renderD"))
+            .map(|n| format!("/dev/dri/{n}"))
+            .collect();
+        nodes.sort();
+        let uses = |link: &str| link.starts_with("/dev/nvidia") || nodes.iter().any(|n| n == link);
+        let holds = |pid: i32| {
+            std::fs::read_dir(roots.fs.join("proc").join(pid.to_string()).join("fd"))
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter_map(|f| std::fs::read_link(f.path()).ok())
+                .any(|l| uses(&l.to_string_lossy()))
+        };
+        let users: Vec<&Proc> = procs.iter().filter(|q| q.uid == roots.uid && holds(q.pid)).collect();
+        if users.iter().any(|q| SESSION_PROGRAMS.contains(&q.name.as_str())) {
+            r.findings.push(Finding {
+                id,
+                severity: Severity::Problem,
+                title,
+                detail: format!(
+                    "{broken} Olo can start it again without restarting the computer, but the session's display server has it open for a display on its ports: unplug that display, then Check Again."
+                ),
+                fix: None,
+            });
+            continue;
+        }
+        let services: Vec<&str> = NVIDIA_SERVICES.into_iter().filter(|u| (roots.units)(u).is_ok_and(|s| s.active || s.enabled)).collect();
+        let mut steps: Vec<Step> = users.iter().map(|q| Step::Signal { pid: q.pid, signal: libc::SIGTERM }).collect();
+        steps.push(Step::RestartGpu {
+            address: p.address.clone(),
+            modules: NVIDIA_MODULES.into_iter().filter(|m| roots.fs.join("sys/module").join(m).exists()).map(String::from).collect(),
+            services: services.iter().map(|u| (*u).to_owned()).collect(),
+            in_use_by: std::iter::once("/dev/nvidia*".to_owned()).chain(nodes.iter().cloned()).collect(),
+        });
+        // What it quits, each program once: "chrome (processes 1 and 2)".
+        let mut programs: Vec<(&str, Vec<i32>)> = Vec::new();
+        for q in &users {
+            match programs.iter_mut().find(|(n, _)| *n == q.name) {
+                Some((_, pids)) => pids.push(q.pid),
+                None => programs.push((&q.name, vec![q.pid])),
+            }
+        }
+        let named: Vec<String> = programs
+            .iter()
+            .map(|(n, pids)| match pids.as_slice() {
+                [pid] => format!("{n}, process {pid}"),
+                [rest @ .., last] => format!("{n}, processes {} and {last}", rest.iter().map(i32::to_string).collect::<Vec<_>>().join(", ")),
+                [] => String::new(),
+            })
+            .collect();
+        let quits = if named.is_empty() { String::new() } else { format!("it quits what uses it ({}: open them again after), ", named.join("; ")) };
+        let stops = if services.is_empty() { String::new() } else { format!(" ({} stopped meanwhile)", services.iter().map(|u| u.trim_end_matches(".service")).collect::<Vec<_>>().join(" and ")) };
+        r.findings.push(Finding {
+            id,
+            severity: Severity::Problem,
+            title,
+            detail: format!(
+                "{broken} The fix starts it again without restarting the computer: {quits}NVIDIA's driver is unloaded{stops}, the card reset and found on the bus again, and the driver loads as at start. If it still doesn't answer, restarting the computer does."
+            ),
+            fix: Some(Fix { label: "Start It Again".into(), root: true, steps }),
+        });
+    }
 }
 
 /// A graphics card no driver has, when one tried (nouveau loaded and
@@ -1795,6 +2004,7 @@ fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
         .filter(|p| p.uid == roots.uid && p.pid != me)
         .filter(|p| p.exe.as_deref().is_some_and(|e| e.ends_with(" (deleted)") && e.starts_with(&*bin)))
         .filter(|p| !NEVER_STOPPED.contains(&p.name.as_str()))
+        .filter(|p| !on_a_screen(&roots.fs, p.pid))
         .collect();
     if old.is_empty() {
         r.fine.push(Fine { title: "Every Olo program runs the installed version".into(), detail: String::new() });
@@ -1824,6 +2034,70 @@ fn login_screen_handed_over(roots: &Roots, r: &mut Report) {
             note.trim()
         ),
         fix: None,
+    });
+}
+
+/// Olo's own login screen (login_screen.rs): offered while another is
+/// the login screen (Ben, 2026-11-07: "the login screen should come up in
+/// olo doctor as something it can do for me"), its copies brought up to
+/// date once an upgrade has left them older, and, in use, a way back to
+/// the one it took the place of.
+fn own_login_screen(roots: &Roots, r: &mut Report) {
+    use crate::login_screen as ls;
+    // (Not installed: a build tree's, or Olo without its login screen.)
+    if !roots.bin.join("olo-login").is_file() || !roots.bin.join("olo-greeter").is_file() {
+        return;
+    }
+    // (An atomic Fedora's /usr is its image's: tools/setup.sh's way there.)
+    if roots.fs.join("run/ostree-booted").exists() {
+        return;
+    }
+    let share = roots.bin.parent().map(|p| p.join("share/olo")).unwrap_or_default();
+    let dm = ls::display_manager(&roots.fs);
+    if dm.as_deref() == Some(ls::SERVICE) {
+        let old = ls::stale(&roots.fs, &roots.bin);
+        if !old.is_empty() {
+            r.findings.push(Finding {
+                id: "login:own-older".into(),
+                severity: Severity::Advice,
+                title: "Olo's login screen runs an older version".into(),
+                detail: format!(
+                    "It runs copies of Olo's programs of its own ({}), which an upgrade doesn't replace. The fix copies the installed ones over them, for the next time it shows.",
+                    old.join(", ")
+                ),
+                fix: Some(Fix { label: "Update the Login Screen".into(), root: true, steps: ls::steps(&roots.bin, &share, None) }),
+            });
+            return;
+        }
+        let title = "Olo's own login screen greets you";
+        r.fine.push(Fine { title: title.into(), detail: "In GDM's place, running the installed version of Olo.".into() });
+        // The way back, to the login screen it took the place of.
+        let units = |u: &str| ["usr/lib/systemd/system", "etc/systemd/system"].iter().any(|d| roots.fs.join(d).join(u).exists());
+        if let Some((other, name)) = [("gdm.service", "GDM"), ("sddm.service", "SDDM")].into_iter().find(|(u, _)| units(u)) {
+            r.undo.push(Undo {
+                id: "login:own-undo".into(),
+                title: title.into(),
+                fix: Fix {
+                    label: format!("Go Back to {name}"),
+                    root: true,
+                    steps: vec![Step::Unit { name: ls::SERVICE.into(), action: crate::fix::UnitAction::Disable }, Step::Unit { name: other.into(), action: crate::fix::UnitAction::Enable }],
+                },
+            });
+        }
+        return;
+    }
+    let now = match dm.as_deref() {
+        Some("gdm.service") => "GNOME's (GDM)".to_owned(),
+        Some(u) => u.trim_end_matches(".service").to_owned(),
+        None => "none of Olo's".to_owned(),
+    };
+    r.findings.push(Finding {
+        id: "login:own".into(),
+        severity: Severity::Advice,
+        title: format!("The login screen is {now}, not Olo's own"),
+        detail: "Olo has a login screen of its own: the people on this computer and their pictures, the password, fingerprint and face unlock, in Olo's look; your password there also opens Olo's keyring. The fix makes it the login screen from the next start. The one it replaces stays installed, and Olo Doctor offers to go back to it."
+            .into(),
+        fix: Some(Fix { label: "Use Olo's Login Screen".into(), root: true, steps: ls::steps(&roots.bin, &share, dm.as_deref()) }),
     });
 }
 
@@ -2027,6 +2301,72 @@ mod tests {
         assert!(r.fine.iter().any(|f| f.title == "The Thunderbolt 5 ports' USB is kept awake"));
     }
 
+    /// What's ignored is out of the counts and Fix All, still found and
+    /// fixable by its id, and back among the rest when no longer ignored.
+    #[test]
+    fn ignored_findings_are_set_aside() {
+        let (_fs, roots) = machine("ignored");
+        let mut r = scan(&roots);
+        let before = (r.problems(), r.fixable().count(), r.findings.len());
+        let id = r.fixable().next().expect("a finding with a fix").id.clone();
+        let problem = r.find(&id).unwrap().severity == Severity::Problem;
+        r.set_aside(&[id.clone()].into_iter().collect());
+        assert!(r.findings.iter().all(|f| f.id != id) && r.ignored.iter().any(|f| f.id == id));
+        assert_eq!((r.problems(), r.fixable().count(), r.findings.len()), (before.0 - usize::from(problem), before.1 - 1, before.2 - 1));
+        assert!(r.find(&id).is_some() && r.action(&id).is_some(), "still found, still fixable");
+        r.move_ignored(&id, false);
+        assert_eq!((r.problems(), r.fixable().count(), r.findings.len()), before);
+        assert!(r.ignored.is_empty());
+    }
+
+    /// Olo's login screen offered over GDM; in use and current, fine with
+    /// a way back; in use with an older copy, its update offered.
+    #[test]
+    fn olo_s_login_screen_is_offered() {
+        let (fs, roots) = machine("own-login");
+        let w = |p: &Path, c: &str| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, c).unwrap();
+        };
+        // Not installed: nothing said.
+        assert!(scan(&roots).find("login:own").is_none());
+        for name in crate::login_screen::PROGRAMS {
+            w(&roots.bin.join(name), "program");
+        }
+        w(&fs.join("usr/lib/systemd/system/gdm.service"), "[Unit]\n");
+        std::fs::create_dir_all(fs.join("etc/systemd/system")).unwrap();
+        std::os::unix::fs::symlink("/usr/lib/systemd/system/gdm.service", fs.join("etc/systemd/system/display-manager.service")).unwrap();
+        let r = scan(&roots);
+        let f = r.find("login:own").expect("offered");
+        assert_eq!(f.title, "The login screen is GNOME's (GDM), not Olo's own");
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root);
+        assert!(fix.steps.iter().any(|s| matches!(s, Step::WriteFile { path, .. } if path == Path::new("/etc/systemd/system/olo-login.service"))));
+        assert!(fix.steps.iter().any(|s| matches!(s, Step::Unit { name, action: crate::fix::UnitAction::Disable } if name == "gdm.service")));
+        assert!(matches!(fix.steps.last(), Some(Step::Unit { name, action: crate::fix::UnitAction::Enable }) if name == "olo-login.service"));
+        assert_eq!(fix.steps.iter().filter(|s| matches!(s, Step::CopyFile { to, .. } if to.starts_with(crate::login_screen::LIBEXEC))).count(), 5);
+        // Olo's in use, its copies made after the programs: fine, and the
+        // way back to GDM.
+        std::fs::remove_file(fs.join("etc/systemd/system/display-manager.service")).unwrap();
+        std::os::unix::fs::symlink("/etc/systemd/system/olo-login.service", fs.join("etc/systemd/system/display-manager.service")).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        for name in crate::login_screen::PROGRAMS {
+            w(&fs.join("usr/local/libexec/olo").join(name), "copy");
+        }
+        let r = scan(&roots);
+        assert!(r.find("login:own").is_none() && r.find("login:own-older").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "Olo's own login screen greets you"));
+        let back = r.undo.iter().find(|u| u.id == "login:own-undo").expect("a way back");
+        assert_eq!(back.fix.label, "Go Back to GDM");
+        // An upgrade writes the programs again: the copies are older.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        w(&roots.bin.join("olo-greeter"), "newer");
+        let r = scan(&roots);
+        let f = r.find("login:own-older").expect("its update offered");
+        assert!(f.detail.contains("olo-greeter") && !f.detail.contains("olo-session"), "{}", f.detail);
+        assert_eq!(f.fix.as_ref().unwrap().label, "Update the Login Screen");
+    }
+
     #[test]
     fn a_login_screen_handed_over_is_said() {
         let (fs, roots) = machine("handed");
@@ -2048,13 +2388,19 @@ mod tests {
         // The user's services (no login's scope): dconf, gvfs, GNOME Keyring.
         w("proc/950/cmdline", "/usr/libexec/dconf-service\0");
         w("proc/951/cmdline", "/usr/libexec/gvfsd\0");
+        w("proc/954/cmdline", "/usr/libexec/gvfsd\0");
         w("proc/952/cmdline", "/usr/bin/gnome-keyring-daemon\0--start\0");
         w("proc/953/cmdline", "/usr/libexec/xdg-desktop-portal\0");
+        // An agent screen's GTK portal backend: its own session's, left.
+        w("proc/955/cmdline", "/usr/libexec/xdg-desktop-portal-gtk\0");
+        w("proc/955/environ", "OLO_SCREEN=claude-browser\0DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/olo-screens/claude-browser.bus\0");
         let f = scan(&roots).find("gnome:services").cloned().unwrap();
         // (GNOME Keyring only while Olo's keyring answers.)
         assert_eq!(f.title, "2 of GNOME's services run", "{}", f.detail);
-        assert!(f.detail.contains("dconf-service, process 950") && f.detail.contains("network folders"), "{}", f.detail);
-        assert_eq!(f.fix.unwrap().steps, [Step::Signal { pid: 950, signal: libc::SIGTERM }, Step::Signal { pid: 951, signal: libc::SIGTERM }]);
+        // (A program running twice is said once, with both processes.)
+        assert!(f.detail.contains("(dconf-service, process 950)") && f.detail.contains("(gvfsd, processes 951 and 954)") && f.detail.contains("network folders"), "{}", f.detail);
+        assert!(!f.detail.contains("xdg-desktop-portal-gtk"), "{}", f.detail);
+        assert_eq!(f.fix.unwrap().steps, [950, 951, 954].map(|pid| Step::Signal { pid, signal: libc::SIGTERM }));
         w(&format!("run/user/{}/olo-secrets.json", roots.uid), "{\"serving\": true}");
         assert_eq!(scan(&roots).find("gnome:services").unwrap().title, "3 of GNOME's services run");
     }
@@ -2471,6 +2817,100 @@ mod tests {
         assert!(r.find("gpu:idle").is_none() && r.find("sound:builtin").is_none());
         assert!(r.fine.iter().any(|f| f.title == "The NVIDIA graphics card sleeps when unused"));
         let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    /// NVIDIA's card with its power management failed: started again
+    /// without a restart, what uses it quit first, nvidia-powerd stopped
+    /// and started; none offered while the session's display server has
+    /// it open; nothing said once it answers again.
+    /// The session's TMPDIR: systemd's when it answers; else Olo's file,
+    /// never Doctor's own (the watcher's, from before the fix) over it.
+    #[test]
+    fn the_sessions_tmpdir() {
+        let set = || Some(vec![("TMPDIR".to_owned(), "/var/tmp".to_owned())]);
+        assert_eq!(session_tmpdir(set(), None, None).as_deref(), Some("/var/tmp"));
+        // (The manager says none: none, whatever this program has.)
+        assert_eq!(session_tmpdir(Some(vec![]), Some("/var/tmp".into()), Some("/var/tmp".into())), None);
+        // Not answering: the file's, then this program's own.
+        assert_eq!(session_tmpdir(None, Some("/var/tmp".into()), None).as_deref(), Some("/var/tmp"));
+        assert_eq!(session_tmpdir(None, None, Some("/srv/tmp".into())).as_deref(), Some("/srv/tmp"));
+        assert_eq!(session_tmpdir(None, None, None), None);
+        // The file as Doctor's fix writes it.
+        let dir = PathBuf::from(format!("/var/tmp/olo-tmpdir-file-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(dir.join("environment.d"));
+        std::fs::write(dir.join(olo_system::env::TMPDIR_FILE), "# Olo Doctor: …\nTMPDIR=/var/tmp\nTMP=/var/tmp\nTEMP=/var/tmp\n").unwrap();
+        assert_eq!(olo_system::env::tmpdir_in_file(&dir).as_deref(), Some("/var/tmp"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_stuck_nvidia_card_is_started_again() {
+        let (fs, roots) = machine("stuck-gpu");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let card = "sys/bus/pci/devices/0000:01:00.0";
+        w(&format!("{card}/class"), "0x030000\n");
+        w(&format!("{card}/vendor"), "0x10de\n");
+        w(&format!("{card}/power/runtime_status"), "error\n");
+        std::fs::create_dir_all(fs.join(format!("{card}/drm/card1"))).unwrap();
+        std::fs::create_dir_all(fs.join(format!("{card}/drm/renderD129"))).unwrap();
+        std::fs::create_dir_all(fs.join("sys/bus/pci/drivers/nvidia")).unwrap();
+        std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers/nvidia"), fs.join(format!("{card}/driver"))).unwrap();
+        for m in ["nvidia", "nvidia_drm", "nvidia_modeset", "nvidia_uvm"] {
+            std::fs::create_dir_all(fs.join("sys/module").join(m)).unwrap();
+        }
+        // Two of Chrome's processes on its render node, Activity Monitor
+        // on NVIDIA's own node, Deskbar on neither.
+        let open = |pid: u32, cmd: &str, node: &str| {
+            w(&format!("proc/{pid}/cmdline"), &format!("{cmd}\0"));
+            std::fs::create_dir_all(fs.join(format!("proc/{pid}/fd"))).unwrap();
+            std::os::unix::fs::symlink(node, fs.join(format!("proc/{pid}/fd/9"))).unwrap();
+        };
+        open(950, "/opt/chrome/chrome", "/dev/dri/renderD129");
+        // (Its command line rewritten into one word, as Chrome does.)
+        open(951, "/opt/chrome/chrome --type=gpu-process --user-data-dir=/tmp/x/profile", "/dev/dri/renderD129");
+        open(952, "/home/me/.local/bin/olo-activity", "/dev/nvidia0");
+        open(953, "/home/me/.local/bin/olo-tracker", "/dev/dri/renderD128");
+        // nvidia-powerd running; Olo's follower installed but stopped (a
+        // failed try): both stopped meanwhile, and started after.
+        let roots = Roots {
+            units: Box::new(|name: &str| -> Result<UnitState, String> {
+                Ok(UnitState { loaded: true, active: name == "nvidia-powerd.service", enabled: name != "nvidia-persistenced.service", path: None })
+            }),
+            ..roots
+        };
+        let f = scan(&roots).find("gpu:stuck:0000:01:00.0").cloned().expect("the stuck card");
+        assert_eq!((f.title.as_str(), f.severity), ("The NVIDIA graphics card stopped answering", Severity::Problem));
+        assert!(f.detail.contains("it quits what uses it (chrome, processes 950 and 951; olo-activity, process 952: open them again after)"), "{}", f.detail);
+        assert!(f.detail.contains("(nvidia-powerd and olo-gpu-follow stopped meanwhile)"), "{}", f.detail);
+        let fix = f.fix.expect("a fix");
+        assert_eq!((fix.label.as_str(), fix.root), ("Start It Again", true));
+        let quit = |pid| Step::Signal { pid, signal: libc::SIGTERM };
+        assert_eq!(
+            fix.steps,
+            vec![
+                quit(950),
+                quit(951),
+                quit(952),
+                Step::RestartGpu {
+                    address: "0000:01:00.0".into(),
+                    modules: ["nvidia_drm", "nvidia_modeset", "nvidia_uvm", "nvidia"].map(String::from).to_vec(),
+                    services: ["nvidia-powerd.service", "olo-gpu-follow.service"].map(String::from).to_vec(),
+                    in_use_by: ["/dev/nvidia*", "/dev/dri/card1", "/dev/dri/renderD129"].map(String::from).to_vec(),
+                },
+            ]
+        );
+        // The display server has it open (a display on its port): it
+        // can't be freed, so no fix, and what to do.
+        open(954, "/home/me/.local/bin/olo-app-server", "/dev/dri/card1");
+        let f = scan(&roots).find("gpu:stuck:0000:01:00.0").cloned().unwrap();
+        assert!(f.fix.is_none() && f.detail.contains("unplug that display"), "{}", f.detail);
+        // Answering again: nothing to say.
+        w(&format!("{card}/power/runtime_status"), "active\n");
+        assert!(scan(&roots).find("gpu:stuck:0000:01:00.0").is_none());
     }
 
     #[test]

@@ -17,6 +17,7 @@ mod bluetooth;
 mod complete;
 mod datetime;
 mod default_apps;
+mod deskbar;
 mod display;
 mod face_unlock;
 mod form;

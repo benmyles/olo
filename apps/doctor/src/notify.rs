@@ -108,7 +108,7 @@ fn open_suggestions() {
 
 /// Ask what Olo Suggestions would suggest, and tell of what's new.
 fn look_for_suggestions(notes: &Notifier) {
-    let report = crate::suggest::scan();
+    let report = crate::suggest::look();
     let mut told = read_told();
     let new = new_suggestions(&report.findings, &mut told);
     if new.is_empty() {

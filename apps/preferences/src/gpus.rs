@@ -87,6 +87,8 @@ struct Shared {
     applying: bool,
     /// What the last Apply said.
     said: Option<Result<String, String>>,
+    /// The GPU Ask It is asking now (its PCI address).
+    asking: Option<String>,
     /// The power mode's follower, as installed.
     follower: Follower,
     /// The power mode now (None: no daemon), and whether on battery.
@@ -103,9 +105,13 @@ struct Shared {
 #[derive(Clone)]
 struct Entry {
     gpu: Gpu,
-    /// What it allows (None: asleep, never asked).
+    /// What it allows (None: asleep, never asked, or it didn't answer).
     caps: Option<Caps>,
     asleep: bool,
+    /// Asked, what its driver said instead of answering.
+    unanswered: Option<String>,
+    /// The kernel has its power management in an error state.
+    power_failed: bool,
 }
 
 /// Read every GPU, what each allows and the tuning kept, on a thread
@@ -135,8 +141,14 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
         s.av1 = vec!["Intel Graphics".into()];
         s.decodes = Some(("Intel Graphics".into(), false));
         s.gpus = Some(vec![
-            Entry { gpu: gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "HDMI-A-1"]), caps: Some(xe), asleep: false },
-            Entry { gpu: gpu("0000:01:00.0", "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU", "nvidia", false, &["HDMI-A-2"]), caps: Some(nv), asleep: true },
+            Entry { gpu: gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "HDMI-A-1"]), caps: Some(xe), asleep: false, unanswered: None, power_failed: false },
+            Entry {
+                gpu: gpu("0000:01:00.0", "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU", "nvidia", false, &["HDMI-A-2"]),
+                caps: Some(nv),
+                asleep: true,
+                unanswered: None,
+                power_failed: false,
+            },
         ]);
         return;
     }
@@ -147,7 +159,8 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
                 .into_iter()
                 .map(|g| {
                     let wake = wake.as_deref() == Some(g.pci.as_str());
-                    Entry { caps: gpu_tuning::caps(&g, wake), asleep: gpu_tuning::asleep(&g), gpu: g }
+                    let (caps, unanswered) = gpu_tuning::caps_or_why(&g, wake);
+                    Entry { caps, unanswered, asleep: gpu_tuning::asleep(&g), power_failed: gpu_tuning::power_failed(&g), gpu: g }
                 })
                 .collect();
             let kept = Tuning::load();
@@ -177,6 +190,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
                 }
                 s.kept = kept;
                 s.gpus = Some(gpus);
+                s.asking = None;
             }
             proxy.send(Msg::Redraw);
             drop(hold);
@@ -538,12 +552,26 @@ fn apply_row(ui: &mut Ui, st: &mut State, follower: Follower) {
     );
 }
 
-/// Change GPU `pci`'s Custom settings.
-fn edit(ui: &Ui, shared: &Arc<Mutex<Shared>>, pci: &str, f: impl Fn(&mut GpuTune, f32) + 'static) -> impl Fn(f32, &mut Window, &mut olo_ui::gpui::App) + 'static {
+/// Change GPU `pci`'s Custom settings. With `switch` (where it is now,
+/// whether it's NVIDIA's, and the settings it runs at now, `from`), it
+/// isn't on Custom yet: it's made Custom there, from those.
+fn edit(
+    ui: &Ui,
+    shared: &Arc<Mutex<Shared>>,
+    pci: &str,
+    switch: Option<(When, bool, GpuTune)>,
+    f: impl Fn(&mut GpuTune, f32) + 'static,
+) -> impl Fn(f32, &mut Window, &mut olo_ui::gpui::App) + 'static {
     let (shared, pci) = (shared.clone(), pci.to_owned());
     ui.on_view(move |_, v: f32, _, cx: &mut Context<PanelView>| {
         let mut s = shared.lock().unwrap();
-        let mut t = s.edited.custom_of(&pci);
+        let mut t = match &switch {
+            Some((when, nvidia, from)) => {
+                s.edited.plan.set_gpu(*when, &pci, *nvidia, Some(Preset::Custom));
+                from.clone()
+            }
+            None => s.edited.custom_of(&pci),
+        };
         f(&mut t, v);
         s.edited.set_custom(t);
         s.said = None;
@@ -580,42 +608,103 @@ fn in_force(tune: &GpuTune, caps: &Caps) -> String {
 fn gpu_box(ui: &mut Ui, e: &Entry, edited: &Tuning, shared: &Arc<Mutex<Shared>>) {
     let g = &e.gpu;
     let pci = g.pci.clone();
-    let (tune, driver) = {
+    let nvidia = g.vendor == 0x10de;
+    let (tune, driver, mode, on_battery) = {
         let s = shared.lock().unwrap();
-        (s.kept.of(&pci), s.kept.driver.iter().find(|d| d.pci == pci).cloned())
+        (s.kept.of(&pci), s.kept.driver.iter().find(|d| d.pci == pci).cloned(), s.mode.unwrap_or(olo_system::power_profile::Mode::Balanced), s.on_battery)
     };
     let now = tune.preset;
+    let asking = shared.lock().unwrap().asking.as_deref() == Some(pci.as_str());
     ui.bbox(&g.name, |ui| {
-        let state = if e.asleep { "asleep: nothing uses it" } else { "awake" };
+        let state = if e.power_failed {
+            "its power management failed"
+        } else if e.asleep {
+            "asleep: nothing uses it"
+        } else {
+            "awake"
+        };
         ui.note(format!("{} driver, {state}; {}.", g.driver, drives(g)));
         let Some(caps) = e.caps.clone() else {
-            ui.note("What it can be set to isn't known yet: asking it wakes it for a moment.");
+            // (Asking, it says so; asked, what its driver said: Ask It
+            // came back to the same words, and looked to do nothing.)
+            let words = match (&e.unanswered, e.power_failed) {
+                _ if asking => "Asking it…".to_owned(),
+                (Some(why), true) => format!("What it can be set to isn't known: {why}. It stays so until the computer restarts, which starts its driver again."),
+                (Some(why), false) => format!("What it can be set to isn't known: {why}."),
+                (None, _) => "What it can be set to isn't known yet: asking it wakes it for a moment.".to_owned(),
+            };
+            ui.note(words);
             let (shared, proxy, pci) = (shared.clone(), olo_ui::proxy(ui.cx), pci.clone());
             let wake = ui.on_click_view(move |_, _, cx| {
+                shared.lock().unwrap().asking = Some(pci.clone());
                 read(shared.clone(), proxy.clone(), Some(pci.clone()), None);
                 cx.notify();
             });
-            ui.button("Ask It", wake);
+            let label = if e.unanswered.is_some() { "Ask Again" } else { "Ask It" };
+            ui.enabled_if(!asking, |ui| ui.button(label, wake));
             return;
         };
         if matches!(caps, Caps::None) {
             ui.note(format!("Nothing to tune for its driver ({}) yet.", g.driver));
             return;
         }
-        // (What the mode has it on, in numbers: the Custom settings below
-        // are Custom's alone, and don't move as the mode changes.)
-        ui.note(format!("On {} now: {}. Power Modes says what each mode puts it on.", now.name(), in_force(&tune, &caps)));
-        // (Its own heading: what a mode set to Custom puts it on.)
-        ui.label("Custom settings");
-        knobs(ui, &caps, &edited.custom_of(&pci), driver.as_ref(), shared, &pci);
+        // The settings show what it runs at now (Ben, 2026-11-07: "it
+        // says nvidia is on cooler and quieter but the slider hasn't
+        // changed?": they had been Custom's alone, under their own
+        // heading). Moving one makes it Custom where it is now (the mode,
+        // or on battery when that has a choice of its own), from these.
+        let when = situation(&edited.plan, mode, on_battery, &pci, nvidia);
+        let custom = edited.plan.gpu_now(mode, on_battery, &pci, nvidia) == Preset::Custom;
+        let place = match when {
+            When::Battery => "on battery".to_owned(),
+            When::Mode(m) => format!("in {}", m.label()),
+        };
+        if custom {
+            // (Made Custom here, not applied yet: it's still on its preset.)
+            let on = if now == Preset::Custom { format!("On Custom {place}") } else { format!("Custom {place} once applied (on {} until then)", now.name()) };
+            ui.note(format!("{on}: what's set below. Power Modes says what each mode puts it on."));
+            knobs(ui, &caps, &edited.custom_of(&pci), driver.as_ref(), shared, &pci, None);
+        } else {
+            ui.note(format!("On {} now: {}. Moving a setting makes it Custom {place}; Power Modes says what each mode puts it on.", now.name(), in_force(&tune, &caps)));
+            knobs(ui, &caps, &shown(&tune, &caps), driver.as_ref(), shared, &pci, Some((when, nvidia)));
+        }
     });
 }
 
-/// GPU `pci`'s Custom settings, `tune`: a knob not set shows what Custom
-/// would set it to, the driver's own (xe's limits as noted before it was
-/// first tuned, `driver`), never what the mode has it on now (it had
-/// xe's, so they moved with the mode and NVIDIA's didn't).
-fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, driver: Option<&gpu_tuning::DriverLimits>, shared: &Arc<Mutex<Shared>>, pci: &str) {
+/// What decides GPU `pci`'s preset now: being on battery, when the plan
+/// has a choice for it there, else the power mode.
+fn situation(plan: &gpu_tuning::Plan, mode: olo_system::power_profile::Mode, on_battery: bool, pci: &str, nvidia: bool) -> When {
+    if on_battery && plan.gpu(When::Battery, pci, nvidia).is_some() { When::Battery } else { When::Mode(mode) }
+}
+
+/// The settings GPU `caps` runs at now, under the tuning in force
+/// `tune`, as the knobs show them: xe's clocks and profile as its
+/// driver said, NVIDIA's as they were set (none: its driver's own).
+fn shown(tune: &GpuTune, caps: &Caps) -> GpuTune {
+    let mut t = GpuTune { pci: tune.pci.clone(), preset: Preset::Custom, ..Default::default() };
+    match caps {
+        Caps::Xe(x) => {
+            t.min_mhz = Some(x.min_now);
+            t.max_mhz = Some(x.max_now);
+            t.power_saving = Some(x.power_saving_now);
+        }
+        Caps::Nvidia(_) => {
+            t.max_gpu_mhz = tune.max_gpu_mhz;
+            t.power_limit_w = tune.power_limit_w;
+            t.persistent = tune.persistent;
+        }
+        Caps::None => {}
+    }
+    t
+}
+
+/// GPU `pci`'s settings, `tune`: on Custom, Custom's (a knob not set
+/// shows what Custom would set it to, the driver's own: xe's limits as
+/// noted before it was first tuned, `driver`); on a preset, what it runs
+/// at now (`shown`), and `switch` (where it is now, whether it's
+/// NVIDIA's) makes it Custom there as one is moved.
+fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, driver: Option<&gpu_tuning::DriverLimits>, shared: &Arc<Mutex<Shared>>, pci: &str, switch: Option<(When, bool)>) {
+    let switch = switch.map(|(w, nvidia)| (w, nvidia, tune.clone()));
     let mhz = |v: f32| format!("{v:.0} MHz");
     match caps {
         Caps::Xe(x) => {
@@ -626,13 +715,13 @@ fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, driver: Option<&gpu_tuning::D
             let min = tune.min_mhz.unwrap_or(own_min) as f32;
             let max = tune.max_mhz.unwrap_or(own_max) as f32;
             // (The other end kept as shown: it had taken the one moved.)
-            let on_min = edit(ui, shared, pci, move |t, v| {
+            let on_min = edit(ui, shared, pci, switch.clone(), move |t, v| {
                 let v = v.round() as u32;
                 t.min_mhz = Some(v);
                 t.max_mhz = Some(t.max_mhz.unwrap_or(own_max).max(v));
             });
             ui.add(Slider::new(format!("gpu-{pci}-min"), min, lo..=hi).step(50.0).label("Lowest clock").value_text(mhz(min)).on_change(on_min));
-            let on_max = edit(ui, shared, pci, move |t, v| {
+            let on_max = edit(ui, shared, pci, switch.clone(), move |t, v| {
                 let v = v.round() as u32;
                 t.max_mhz = Some(v);
                 t.min_mhz = Some(t.min_mhz.unwrap_or(own_min).min(v));
@@ -640,7 +729,7 @@ fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, driver: Option<&gpu_tuning::D
             ui.add(Slider::new(format!("gpu-{pci}-max"), max, lo..=hi).step(50.0).label("Highest clock").value_text(mhz(max)).on_change(on_max));
             if x.profiles {
                 let saving = tune.power_saving.unwrap_or(false);
-                let on = edit(ui, shared, pci, |t, v| t.power_saving = Some(v > 0.5));
+                let on = edit(ui, shared, pci, switch.clone(), |t, v| t.power_saving = Some(v > 0.5));
                 ui.add(CheckBox::new("Power-saving profile", saving).id(format!("gpu-{pci}-saving")).on_toggle(move |b, w, cx| on(if b { 1.0 } else { 0.0 }, w, cx)));
             }
         }
@@ -648,16 +737,16 @@ fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, driver: Option<&gpu_tuning::D
             match n.power {
                 Some((least, most, _, now)) => {
                     let w = tune.power_limit_w.unwrap_or(now) as f32;
-                    let on = edit(ui, shared, pci, |t, v| t.power_limit_w = Some(v.round() as u32));
+                    let on = edit(ui, shared, pci, switch.clone(), |t, v| t.power_limit_w = Some(v.round() as u32));
                     ui.add(Slider::new(format!("gpu-{pci}-power"), w, least as f32..=most as f32).step(1.0).label("Power limit").value_text(format!("{w:.0} W")).on_change(on));
                 }
                 None => ui.note("Its power limit is the computer's to set, as a laptop's is."),
             }
             let max = tune.max_gpu_mhz.unwrap_or(n.max_gpu_mhz) as f32;
-            let on = edit(ui, shared, pci, |t, v| t.max_gpu_mhz = Some(gpu_tuning::round15(v.round() as u32)));
+            let on = edit(ui, shared, pci, switch.clone(), |t, v| t.max_gpu_mhz = Some(gpu_tuning::round15(v.round() as u32)));
             ui.add(Slider::new(format!("gpu-{pci}-max"), max, n.min_gpu_mhz as f32..=n.max_gpu_mhz as f32).step(15.0).label("Highest clock").value_text(mhz(max)).on_change(on));
             let persistent = tune.persistent.unwrap_or(n.persistent_now.unwrap_or(false));
-            let on = edit(ui, shared, pci, |t, v| t.persistent = Some(v > 0.5));
+            let on = edit(ui, shared, pci, switch.clone(), |t, v| t.persistent = Some(v > 0.5));
             ui.add(CheckBox::new("Keep its driver ready", persistent).id(format!("gpu-{pci}-persistent")).on_toggle(move |b, w, cx| on(if b { 1.0 } else { 0.0 }, w, cx)));
             ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new("Its work starts sooner, but it never sleeps: more power, more warmth.").dim(true).wrap(true)));
         }
@@ -683,5 +772,27 @@ mod tests {
         assert_eq!(in_force(&fastest, &nvidia), "its clock as the driver has it, up to 3090 MHz");
         let xe = Caps::Xe(XeCaps { lowest: 400, efficient: 650, highest: 2450, min_now: 650, max_now: 1600, profiles: true, power_saving_now: true });
         assert_eq!(in_force(&GpuTune::default(), &xe), "650–1600 MHz, the power-saving profile");
+    }
+
+    /// On a preset, the settings show what it runs at now, and what
+    /// decides that (Ben, 2026-11-07: "it says nvidia is on cooler and
+    /// quieter but the slider hasn't changed?").
+    #[test]
+    fn the_settings_show_what_it_runs_at() {
+        use olo_system::power_profile::Mode;
+        let nvidia = Caps::Nvidia(NvidiaCaps { power: None, min_gpu_mhz: 180, max_gpu_mhz: 3090, persistent_now: Some(false) });
+        let cooler = gpu_tuning::preset("0000:01:00.0", Preset::Cooler, &nvidia);
+        assert_eq!(shown(&cooler, &nvidia).max_gpu_mhz, Some(2160));
+        // (Fastest: its driver's own, which the slider shows as its top.)
+        assert_eq!(shown(&gpu_tuning::preset("0000:01:00.0", Preset::Fastest, &nvidia), &nvidia).max_gpu_mhz, None);
+        let xe = Caps::Xe(XeCaps { lowest: 400, efficient: 650, highest: 2450, min_now: 1600, max_now: 2450, profiles: true, power_saving_now: false });
+        let t = shown(&GpuTune::default(), &xe);
+        assert_eq!((t.min_mhz, t.max_mhz, t.power_saving, t.preset), (Some(1600), Some(2450), Some(false), Preset::Custom));
+        // On battery NVIDIA's has a choice of its own (Cooler and
+        // Quieter), Intel's follows the mode; plugged in, both the mode.
+        let plan = gpu_tuning::Plan::default();
+        assert_eq!(situation(&plan, Mode::Performance, true, "0000:01:00.0", true), When::Battery);
+        assert_eq!(situation(&plan, Mode::Performance, true, "0000:00:02.0", false), When::Mode(Mode::Performance));
+        assert_eq!(situation(&plan, Mode::Balanced, false, "0000:01:00.0", true), When::Mode(Mode::Balanced));
     }
 }

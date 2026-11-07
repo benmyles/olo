@@ -126,14 +126,133 @@ pub fn valid_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= 40 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+/// Whether a process with this command line and environment is screen
+/// `name`'s session: an olo-session (`tabula-session` before the rename)
+/// started for it, as its environment says (`OLO_SCREEN`, given at
+/// `start` and kept across an upgrade's re-execution). Its command line
+/// isn't: a session re-executed itself bare after an upgrade, so a
+/// screen known by `--headless` there looked ended, `list` dropped it,
+/// and it ran on unknown (ten on 2026-11-07, each with its own display
+/// server).
+fn is_session_of(cmdline: &[u8], environ: &[u8], name: &str) -> bool {
+    let first = cmdline.split(|b| *b == 0).next().unwrap_or_default();
+    let session = first.ends_with(b"olo-session") || first.ends_with(b"tabula-session");
+    let wanted = format!("OLO_SCREEN={name}");
+    session && environ.split(|b| *b == 0).any(|v| v == wanted.as_bytes())
+}
+
+/// The screen a process is the session of, if it's a screen's session
+/// (`OLO_SCREEN`'s name).
+fn screen_of(pid: i32) -> Option<String> {
+    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+    let environ = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
+    let name = environ.split(|b| *b == 0).find_map(|v| v.strip_prefix(b"OLO_SCREEN=")).map(|n| String::from_utf8_lossy(n).into_owned())?;
+    is_session_of(&cmdline, &environ, &name).then_some(name)
+}
+
+/// When a process started, in clock ticks since boot (`/proc/PID/stat`'s
+/// 22nd field, after its name in parentheses, which may hold anything).
+fn started_ticks(stat: &str) -> Option<u64> {
+    stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()
+}
+
+/// How long ago process `pid` started.
+fn age(pid: i32) -> Option<Duration> {
+    let ticks = started_ticks(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
+    let uptime: f64 = std::fs::read_to_string("/proc/uptime").ok()?.split_whitespace().next()?.parse().ok()?;
+    // SAFETY: sysconf has no preconditions.
+    let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
+    Some(Duration::from_secs_f64((uptime - ticks as f64 / hz).max(0.0)))
+}
+
+fn parent(pid: i32) -> Option<i32> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    stat.rsplit_once(')')?.1.split_whitespace().nth(1)?.parse().ok()
+}
+
+/// Screens' sessions no listed screen is (`(pid, screen)`): forgotten
+/// by an olo-screen from before (every upgrade did), or left by one
+/// that ended while starting a screen. Those of screen `name` whatever
+/// their age; others once two minutes old, so a screen another agent is
+/// starting now isn't one. Never a session inside a screen's (a test
+/// session run there inherits its `OLO_SCREEN`).
+fn strays(name: Option<&str>) -> Vec<(i32, String)> {
+    let listed: Vec<i32> = list().iter().map(|s| s.pid).collect();
+    let in_a_screen = |pid: i32| {
+        let mut p = parent(pid);
+        for _ in 0..64 {
+            match p {
+                Some(q) if q > 1 => {
+                    if screen_of(q).is_some() {
+                        return true;
+                    }
+                    p = parent(q);
+                }
+                _ => return false,
+            }
+        }
+        false
+    };
+    let mut out = Vec::new();
+    for e in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+        let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() else { continue };
+        if listed.contains(&pid) || std::fs::read_to_string(format!("/proc/{pid}/comm")).map_or(true, |c| !c.trim().ends_with("-session")) {
+            continue;
+        }
+        let Some(screen) = screen_of(pid) else { continue };
+        let old = age(pid).is_some_and(|a| a > Duration::from_secs(120));
+        if (Some(screen.as_str()) == name || old) && !in_a_screen(pid) {
+            out.push((pid, screen));
+        }
+    }
+    out
+}
+
+/// End sessions `pids` (each a screen's, in a process group of its own):
+/// asked first, then, any still there after 5 s, their whole process
+/// group ended (app_server and what the session started with it), so
+/// none is left running unknown.
+fn end_sessions(pids: &[i32]) {
+    for &pid in pids {
+        stop_pid(pid);
+    }
+    let gone = |pid: i32| !std::path::Path::new(&format!("/proc/{pid}")).exists() || screen_of(pid).is_none();
+    let until = Instant::now() + Duration::from_secs(5);
+    while pids.iter().any(|&p| !gone(p)) && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    for &pid in pids.iter().filter(|&&p| !gone(p)) {
+        tracing::warn!(pid, "a screen's session didn't end when asked; ending its process group");
+        // SAFETY: plain kill(2), on the process group `start` made for it.
+        unsafe { libc::kill(-pid, libc::SIGKILL) };
+    }
+    let until = Instant::now() + Duration::from_secs(2);
+    while pids.iter().any(|&p| !gone(p)) && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// End the screens' sessions nobody lists any more (`strays`).
+fn end_strays(name: Option<&str>) {
+    let found = strays(name);
+    for (pid, screen) in &found {
+        tracing::info!(pid, screen, "a screen's session nothing lists; ending it");
+    }
+    end_sessions(&found.iter().map(|(p, _)| *p).collect::<Vec<_>>());
+}
+
 impl Screen {
-    /// Still running: its session is alive and is the one listed.
+    /// Its session is still running: the process listed is this
+    /// screen's session (`is_session_of`), whatever its command line
+    /// says now.
+    pub fn running(&self) -> bool {
+        screen_of(self.pid).as_deref() == Some(self.name.as_str())
+    }
+
+    /// Still running and reachable: its session alive and its socket
+    /// there.
     pub fn alive(&self) -> bool {
-        let cmdline = std::fs::read(format!("/proc/{}/cmdline", self.pid)).unwrap_or_default();
-        let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
-        // (`tabula-session` for a screen started before the rename.)
-        let session = args.first().is_some_and(|a| a.ends_with(b"olo-session") || a.ends_with(b"tabula-session"));
-        session && args.iter().any(|a| *a == b"--headless") && self.olo_socket.exists()
+        self.running() && self.olo_socket.exists()
     }
 
     fn client(&self) -> Result<Client, String> {
@@ -248,7 +367,9 @@ pub fn list() -> Vec<Screen> {
             continue;
         }
         let Some(screen) = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Screen>(&b).ok()) else { continue };
-        if screen.alive() {
+        // (Forgotten only once its session has ended: a socket missing a
+        // moment, or a command line that changed, isn't that.)
+        if screen.running() {
             screens.push(screen);
         } else {
             let _ = std::fs::remove_file(&path);
@@ -380,6 +501,8 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     if list().iter().any(|s| s.name == name) {
         return Err(format!("there's already a screen {name:?}"));
     }
+    // (One of this name nothing lists would be a second, unreachable.)
+    end_strays(Some(name));
     if !(320..=7680).contains(&opts.width) || !(240..=4320).contains(&opts.height) {
         return Err(format!("{}x{} isn't a size a screen can have", opts.width, opts.height));
     }
@@ -547,18 +670,20 @@ pub fn stop(name: &str) -> Result<(), String> {
     let screen = get(name)?;
     // The person's programs on it back to their display first.
     crate::moving::send_home(&screen);
-    stop_pid(screen.pid);
-    let until = Instant::now() + Duration::from_secs(5);
-    while screen.alive() && Instant::now() < until {
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    end_sessions(&[screen.pid]);
+    end_strays(Some(name));
     // Programs `run` started are in process groups of their own, tied to
     // the screen's display: they end when it goes (Wayland clients exit
     // when their compositor does).
+    if screen.running() {
+        // (Listed still, so it isn't forgotten while it runs: stopped again,
+        // or by the next start of its name.)
+        return Err(format!("screen {name} is still ending"));
+    }
     let _ = std::fs::remove_file(entry(name));
     let _ = std::fs::remove_file(dir().join(format!("{name}-settings.json")));
     let _ = std::fs::remove_file(control_file(&dir(), name));
-    if screen.alive() { Err(format!("screen {name} is still ending")) } else { Ok(()) }
+    Ok(())
 }
 
 // ---- Input -----------------------------------------------------------------
@@ -734,6 +859,29 @@ pub fn type_text(text: &str) -> Result<Vec<SyntheticEvent>, String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A screen's session is known by the `OLO_SCREEN` it was started
+    /// with, not its command line, which an upgrade's re-execution left
+    /// bare (every screen then looked ended and was forgotten).
+    #[test]
+    fn a_screens_session_is_known_by_its_environment() {
+        let env = b"HOME=/home/me\0OLO_SCREEN=claude-browser\0WAYLAND_DISPLAY=\0";
+        // Started, and re-executed bare after an upgrade: both its.
+        assert!(is_session_of(b"/home/me/.local/bin/olo-session\0--headless\01440x900\0", env, "claude-browser"));
+        assert!(is_session_of(b"/home/me/.local/bin/olo-session\0", env, "claude-browser"));
+        // Another screen's, the person's own session, another program.
+        assert!(!is_session_of(b"/home/me/.local/bin/olo-session\0", env, "claude"));
+        assert!(!is_session_of(b"/home/me/.local/bin/olo-session\0", b"HOME=/home/me\0", "claude-browser"));
+        assert!(!is_session_of(b"/usr/bin/bash\0", env, "claude-browser"));
+    }
+
+    /// When a process started, past a name with spaces and parentheses.
+    #[test]
+    fn a_process_start_from_its_stat() {
+        let stat = "4102 (olo (x) session) S 4061 4102 4102 0 -1 4194560 1 2 3 4 5 6 7 8 20 0 12 0 987654 1000 200 18446744073709551615";
+        assert_eq!(started_ticks(stat), Some(987654));
+    }
+
     use super::*;
 
     /// Chrome on a screen keeps a profile of the screen's own, so it

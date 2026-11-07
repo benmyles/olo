@@ -40,6 +40,17 @@ pub const DISK_TMP: &str = "/var/tmp";
 /// starts at each login), under the config folder.
 pub const TMPDIR_FILE: &str = "environment.d/60-olo-tmpdir.conf";
 
+/// The `TMPDIR` Olo's file (`TMPDIR_FILE`, under the config folder
+/// `config`) gives the session, if it's there: `TMPDIR=/var/tmp`, quotes
+/// and spaces round `=` allowed, as environment.d reads it.
+pub fn tmpdir_in_file(config: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(config.join(TMPDIR_FILE)).ok()?;
+    text.lines().filter(|l| !l.trim_start().starts_with('#')).find_map(|l| {
+        let (k, v) = l.split_once('=')?;
+        (k.trim() == "TMPDIR").then(|| v.trim().trim_matches('"').to_owned()).filter(|v| !v.is_empty())
+    })
+}
+
 /// Is `path` on a file system held in memory (tmpfs, ramfs)?
 pub fn in_memory(path: &std::path::Path) -> bool {
     let Ok(c) = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()) else { return false };

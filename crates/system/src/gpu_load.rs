@@ -1,4 +1,5 @@
-//! Every GPU the computer has, and how busy each is: Apple's AGX
+//! Every GPU the computer has, and how busy each is (Activity Monitor's
+//! GPU section and Deskbar's GPU widgets): Apple's AGX
 //! (Asahi's `agx_stats`), AMD's (`gpu_busy_percent`, VRAM), Intel's xe
 //! (each GT's idle residency, its clock) and NVIDIA's (NVML, its own
 //! library, in process: busy, memory, power, temperature, clock). A GPU
@@ -100,15 +101,15 @@ fn name_of(device: &Path, kind: &Kind, driver: &str) -> String {
         Kind::Agx => driver.to_owned(),
         _ => {
             let id = |f: &str| u16::from_str_radix(read(device.join(f)).trim().trim_start_matches("0x"), 16).unwrap_or(0);
-            olo_system::gpus::pci_name(id("vendor"), id("device")).map_or_else(|| format!("{maker} GPU"), |model| if model.starts_with(maker) { model } else { format!("{maker} {model}") })
+            crate::gpus::pci_name(id("vendor"), id("device")).map_or_else(|| format!("{maker} GPU"), |model| if model.starts_with(maker) { model } else { format!("{maker} {model}") })
         }
     }
 }
 
-/// NVIDIA's library, loaded once (None without NVIDIA's driver).
+/// NVIDIA's library, the process's one (`gpu_tuning`'s: started again
+/// at each ask until it starts once; None without NVIDIA's driver).
 pub fn nvml() -> Option<&'static nvml_wrapper::Nvml> {
-    static NVML: std::sync::OnceLock<Option<nvml_wrapper::Nvml>> = std::sync::OnceLock::new();
-    NVML.get_or_init(|| nvml_wrapper::Nvml::init().ok()).as_ref()
+    crate::gpu_tuning::nvml().ok()
 }
 
 /// Whether the GPU is asleep (runtime-suspended): asking it would wake it.

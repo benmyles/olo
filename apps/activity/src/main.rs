@@ -15,7 +15,8 @@
 
 mod actions;
 mod details;
-mod gpus;
+// (Its GPUs, shared with Deskbar's widgets.)
+use olo_system::gpu_load as gpus;
 mod helper;
 mod inspector;
 mod netdiag;

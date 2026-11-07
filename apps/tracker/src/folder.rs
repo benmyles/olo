@@ -244,18 +244,88 @@ impl FolderWin {
         self.at.checked_add_signed(by).is_some_and(|i| i < self.history.len())
     }
 
-    /// Back (`by` −1) or Forward (+1) through the folders it showed: in
-    /// this window, the folder it comes back out of selected.
+    /// Where it is: its folder, or in column view its deepest column's.
+    pub fn location(&self) -> PathBuf {
+        self.panes.last().map_or_else(|| self.path.clone(), |p| p.path.clone())
+    }
+
+    /// A move into another folder by the person (in column view, a column
+    /// opened or closed) kept in its history, the places after the one it
+    /// was at forgotten, as a browser's. (Ben, 2026-11-07: "in column mode
+    /// and go between columns/files the back/forward navigation doesn't
+    /// seem to work": only the folder it was opened from was kept.)
+    pub fn record_location(&mut self) {
+        const KEPT: usize = 100;
+        let here = self.location();
+        if self.history.get(self.at) == Some(&here) {
+            return;
+        }
+        self.history.truncate(self.at + 1);
+        self.history.push(here);
+        if self.history.len() > KEPT {
+            self.history.remove(0);
+        }
+        self.at = self.history.len() - 1;
+    }
+
+    /// Back (`by` −1) or Forward (+1) through the places it was: in this
+    /// window, the folder it comes back out of selected. In column view,
+    /// a place inside its folder is the columns opened down to it.
     pub fn go(&mut self, by: isize, cx: &mut Context<Self>) {
         let Some(to) = self.at.checked_add_signed(by).filter(|&i| i < self.history.len()) else { return };
-        let (from, path) = (self.path.clone(), self.history[to].clone());
+        let (from, path) = (self.location(), self.history[to].clone());
         self.at = to;
+        if self.view == ViewMode::Columns && path.starts_with(&self.path) {
+            self.show_in_columns(&path, &from);
+            cx.notify();
+            return;
+        }
         self.show_folder(path.clone(), cx);
         // Back out of a folder inside it: that folder selected.
         if let Ok(rest) = from.strip_prefix(&path)
             && let Some(first) = rest.components().next()
         {
             self.pending_select.push((path.clone(), vec![path.join(first)]));
+        }
+    }
+
+    /// Column view: the columns opened down to `dir` (inside its folder),
+    /// each folder on the way selected in the column before, nothing in
+    /// `dir`'s. Columns already showing the way stay; each other opens as
+    /// the one before it is listed (`pending_select`).
+    fn show_in_columns(&mut self, dir: &std::path::Path, from: &std::path::Path) {
+        let Ok(rest) = dir.strip_prefix(&self.path) else { return };
+        let mut way = vec![self.path.clone()];
+        for c in rest.components() {
+            let next = way[way.len() - 1].join(c);
+            way.push(next);
+        }
+        let kept = self.panes.iter().zip(way.iter().skip(1)).take_while(|(p, d)| p.path == **d).count();
+        self.panes.truncate(kept.min(way.len() - 1));
+        self.pending_select.clear();
+        for w in way.windows(2) {
+            self.pending_select.push((w[0].clone(), vec![w[1].clone()]));
+        }
+        // Nothing selected in `dir`'s own column, so no column after it:
+        // the folder come back out of, selected, would open again (a
+        // folder chosen in a column opens the next), as Finder's columns
+        // don't.
+        let _ = from;
+        match way.len() {
+            1 => self.list.selected.clear(),
+            n => {
+                if let Some(p) = self.panes.get_mut(n - 2) {
+                    p.list.selected.clear();
+                }
+            }
+        }
+        self.active = way.len() - 1;
+        // Columns listed already take their selection now (and open the
+        // next); the rest as their listings land.
+        let mut k = 0;
+        while k <= self.panes.len() {
+            self.select_pending(k, false);
+            k += 1;
         }
     }
 
@@ -1058,8 +1128,11 @@ impl FolderWin {
     /// The bar along the bottom: the count on the left, free space on the
     /// right (BeOS put the count beside the scroll bar). A scroll bar and
     /// its etched edge tall: the small text's line under the edge (as
-    /// tall as a bar, it ran a line past the window's bottom).
-    fn count_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    /// tall as a bar, it ran a line past the window's bottom). The edge
+    /// is two lines of device pixels, so what's under it is the scroll
+    /// bar's height at every scale (at 1.5× it was a pixel taller), and
+    /// it's that the text is centred in.
+    fn count_bar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let (entries, list) = self.current();
         let n = entries.len();
         let loading = self.loading && self.entries.is_empty() && self.error.is_none();
@@ -1075,11 +1148,13 @@ impl FolderWin {
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
-                style::fill_rect(window, b, style::c(p.panel_background));
+                let line = style::hairline(window);
                 style::hline(window, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.3));
-                style::hline(window, b.left(), b.right(), b.top() + style::hairline(window), style::c(p.shine));
+                style::hline(window, b.left(), b.right(), b.top() + line, style::c(p.shine));
                 // Below the two-line etched edge.
-                let cy = b.center().y + style::hairline(window);
+                let under = Bounds::from_corners(point(b.left(), b.top() + line * 2.0), b.bottom_right());
+                style::fill_rect(window, under, style::c(p.panel_background));
+                let cy = under.center().y;
                 let font = style::ui_font(FontWeight::NORMAL);
                 // In line with the list's first column (its icons) above.
                 let at = style::label(window, cx, b.left() + px(m::CELL_INSET), cy, Align::Left, count.clone(), style::SMALL_SIZE, font.clone(), style::c(p.panel_text));
@@ -1092,7 +1167,19 @@ impl FolderWin {
             },
         )
         .w_full()
-        .h(px(SCROLL_BAR + 2.0))
+        .h(px(Self::count_bar_height(window.scale_factor())))
+    }
+
+    /// The count bar's height in points at `scale`, whole device pixels:
+    /// its edge's two lines, and under them the device pixels the scroll
+    /// bar above it covers. That bar is `SCROLL_BAR` from its bottom, on a
+    /// pixel (this bar's top), so its top at a half pixel rounds down
+    /// onto the next: 17.5 pixels at 1.25× cover 17, 24.5 at 1.75× 24
+    /// (half rounded down). Measured at 1×, 1.25×, 1.5×, 1.75× and 2×:
+    /// 14, 17, 21, 24 and 28, the scroll bar's own.
+    fn count_bar_height(scale: f32) -> f32 {
+        let under = (SCROLL_BAR * scale - 0.5).ceil();
+        (under + 2.0 * style::line_pixels(scale)) / scale
     }
 
     /// The free space where the folder is (read again every few seconds,
@@ -1240,7 +1327,7 @@ impl Render for FolderWin {
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|f, _, _, cx| f.go(1, cx)))
             .child(bar)
             .child(div().flex_1().min_h_0().relative().flex().flex_col().child(body))
-            .child(self.count_bar(cx))
+            .child(self.count_bar(window, cx))
     }
 }
 

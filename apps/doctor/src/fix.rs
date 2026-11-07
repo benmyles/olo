@@ -152,6 +152,26 @@ pub enum Step {
         release: crate::releases::Release,
         to: PathBuf,
     },
+    /// Start a graphics card and its driver again without restarting the
+    /// computer: `services` that keep it open stopped (NVIDIA's own,
+    /// Olo's GPU follower), its driver's `modules` unloaded in order (as
+    /// `modprobe -r`, but never waiting on one in use: the kernel
+    /// refuses at once, `delete_module` with `O_NONBLOCK`; asked again
+    /// for a few seconds, then it fails saying what has `in_use_by` open:
+    /// device nodes, one ending in `*` a prefix), the card reset
+    /// (function-level, else its bus), taken off the bus and found again
+    /// (`remove`, its bridge's `rescan`: fresh power management, a failed
+    /// one staying failed until then), udev loading and binding its
+    /// driver as at start (up to 30 s), and the services started again.
+    /// Failing partway, nothing is left off: the card's driver is loaded
+    /// again (udev told the card was added, which loads it by its PCI
+    /// alias) and the services started.
+    RestartGpu {
+        address: String,
+        modules: Vec<String>,
+        services: Vec<String>,
+        in_use_by: Vec<String>,
+    },
 }
 
 impl Step {
@@ -177,6 +197,7 @@ impl Step {
                 format!("{verb} {name}")
             }
             Step::Signal { pid, .. } => format!("Stopping process {pid}"),
+            Step::RestartGpu { address, .. } => format!("Starting the graphics card at {address} and its driver again"),
             Step::AddShell { path } => format!("Listing {} in /etc/shells", path.display()),
             Step::AddKernelArgument { arg } => format!("Starting the kernel with {arg}"),
             Step::TryShell { path } => format!("Trying {}", path.display()),
@@ -266,6 +287,7 @@ impl Step {
                 // SAFETY: kill with a pid and signal number has no memory effects.
                 if unsafe { libc::kill(*pid, *signal) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) { Ok(()) } else { Err(failed(std::io::Error::last_os_error())) }
             }
+            Step::RestartGpu { address, modules, services, in_use_by } => restart_gpu(address, modules, services, in_use_by),
             Step::AddShell { path } => add_shell(path).map_err(failed),
             Step::AddKernelArgument { arg } => add_kernel_argument(Path::new("/"), arg).map_err(failed),
             Step::TryShell { path } => try_shell(path),
@@ -355,6 +377,110 @@ fn copy_tree(from: &Path, to: &Path, mode: u32) -> std::io::Result<()> {
 }
 
 /// A few names, and how many more ("kernel, linux-firmware and 4 more").
+/// `Step::RestartGpu`.
+fn restart_gpu(address: &str, modules: &[String], services: &[String], in_use_by: &[String]) -> Result<(), String> {
+    let mut said = Vec::new();
+    for s in services {
+        if let Err(e) = unit(s, &UnitAction::Stop) {
+            said.push(format!("stopping {s}: {e}"));
+        }
+    }
+    let done = unload_modules(modules, in_use_by).and_then(|()| restart_pci_device(address));
+    if done.is_err() {
+        // (What was unloaded, loaded again: the card as udev found it at
+        // start, its PCI alias naming the driver.)
+        let _ = std::fs::write(Path::new("/sys/bus/pci/devices").join(address).join("uevent"), "add");
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+    for s in services {
+        if let Err(e) = unit(s, &UnitAction::Start) {
+            said.push(format!("starting {s} again: {e}"));
+        }
+    }
+    match done {
+        Err(e) => Err(if said.is_empty() { e } else { format!("{e} ({})", said.join("; ")) }),
+        Ok(()) if !said.is_empty() => Err(format!("the card is back, but {}", said.join("; "))),
+        Ok(()) => Ok(()),
+    }
+}
+
+/// Unload `names`, in order (`Step::RestartGpu`).
+fn unload_modules(names: &[String], in_use_by: &[String]) -> Result<(), String> {
+    use std::time::{Duration, Instant};
+    for name in names {
+        if !Path::new("/sys/module").join(name).exists() {
+            continue;
+        }
+        let c = std::ffi::CString::new(name.as_str()).map_err(|e| e.to_string())?;
+        let until = Instant::now() + Duration::from_secs(8);
+        loop {
+            // SAFETY: a NUL-terminated name and a flag; nothing is handed
+            // to the kernel to keep.
+            if unsafe { libc::syscall(libc::SYS_delete_module, c.as_ptr(), libc::O_NONBLOCK) } == 0 {
+                break;
+            }
+            let e = std::io::Error::last_os_error();
+            match e.raw_os_error() {
+                Some(libc::ENOENT) => break,
+                Some(libc::EWOULDBLOCK | libc::EBUSY) if Instant::now() < until => std::thread::sleep(Duration::from_millis(200)),
+                _ => {
+                    let users = holders(in_use_by);
+                    return Err(if users.is_empty() { format!("{name} couldn't be unloaded ({e})") } else { format!("{name} is still in use, by {}", users.join(", ")) });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The processes with one of `nodes` open ("chrome (process 12)"), as
+/// root sees them.
+fn holders(nodes: &[String]) -> Vec<String> {
+    let matches = |link: &str| nodes.iter().any(|n| n.strip_suffix('*').map_or(link == n, |prefix| link.starts_with(prefix)));
+    let mut out = Vec::new();
+    for e in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+        let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() else { continue };
+        let open = std::fs::read_dir(e.path().join("fd")).into_iter().flatten().flatten().filter_map(|f| std::fs::read_link(f.path()).ok()).any(|l| matches(&l.to_string_lossy()));
+        if open {
+            let name = std::fs::read_to_string(e.path().join("comm")).unwrap_or_default();
+            out.push(format!("{} (process {pid})", name.trim()));
+        }
+    }
+    out
+}
+
+/// The card at `address` reset, off the bus and found again, its driver
+/// unloaded first (`Step::RestartGpu`).
+fn restart_pci_device(address: &str) -> Result<(), String> {
+    use std::time::{Duration, Instant};
+    let dev = Path::new("/sys/bus/pci/devices").join(address);
+    let real = std::fs::canonicalize(&dev).map_err(|e| format!("{address}: {e}"))?;
+    let bridge = real.parent().ok_or_else(|| format!("{address}: no bridge above it"))?.to_path_buf();
+    if dev.join("driver").exists() {
+        return Err(format!("{address} still has its driver"));
+    }
+    // (A card whose firmware stopped wants a reset; its driver resets it
+    // again as it starts, so one the kernel can't do isn't the end.)
+    let _ = std::fs::write(dev.join("reset"), "1");
+    std::fs::write(dev.join("remove"), "1").map_err(|e| format!("taking {address} off the bus: {e}"))?;
+    let until = Instant::now() + Duration::from_secs(5);
+    while dev.exists() && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    std::fs::write(bridge.join("rescan"), "1").map_err(|e| format!("looking for {address} on the bus again: {e}"))?;
+    let until = Instant::now() + Duration::from_secs(30);
+    while !dev.join("driver").exists() {
+        if Instant::now() >= until {
+            return Err(if dev.exists() { format!("{address} is back on the bus, but its driver didn't start") } else { format!("{address} wasn't found on the bus again") });
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    if std::fs::read_to_string(dev.join("power/runtime_status")).is_ok_and(|s| s.trim() == "error") {
+        return Err(format!("{address} is back, but its power management failed again"));
+    }
+    Ok(())
+}
+
 fn short_list(names: &[String]) -> String {
     match names.len() {
         0..=3 => names.join(", "),

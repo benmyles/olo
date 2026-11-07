@@ -83,6 +83,15 @@ const REAL_SHELL: &[&[&str]] = &[
     // reconnect to it by themselves; Terminal's agent_title.rs).
     &["olo-terminal", "--mcp-service"],
 ];
+/// Whether this version starts `program` (a name or a path) as one of a
+/// session's shell services: `SHELL`, `REAL_SHELL`, an agent screen's
+/// bus and its services, the login screen's greeter.
+fn runs(program: &str) -> bool {
+    let name = |p: &str| Path::new(p).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let program = name(program);
+    SHELL.iter().chain(REAL_SHELL).any(|a| a[0] == program) || own_bus::services("").iter().any(|a| name(&a[0]) == program) || ["olo-bus", "olo-greeter"].contains(&program.as_str())
+}
+
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
@@ -441,6 +450,25 @@ impl Session {
         s
     }
 
+    /// Stop the shell's children this version doesn't start (`SHELL`,
+    /// `REAL_SHELL`, an agent screen's bus and its services, the login
+    /// screen's greeter), by program: a session resumed after an upgrade
+    /// kept what the version before started and started it again each
+    /// time it ended. (Agent screens from before their portals were
+    /// Olo's alone kept GTK's portal backend running, so Olo Doctor's
+    /// Quit Them never held: Ben, 2026-11-07.)
+    fn retire_dropped(&mut self) {
+        let (keep, dropped): (Vec<Child>, Vec<Child>) = std::mem::take(&mut self.shell).into_iter().partition(|c| c.argv.first().is_none_or(|p| runs(p)));
+        self.shell = keep;
+        for c in dropped {
+            log(format!("{} (pid {}) isn't one of this version's services; stopping it", c.argv[0], c.pid));
+            if c.pid > 0 {
+                // SAFETY: a signal to our own child; nothing else.
+                unsafe { libc::kill(c.pid, libc::SIGTERM) };
+            }
+        }
+    }
+
     fn resume(mut r: Resume) -> Session {
         // Children a Tabula session started go by their new names.
         for c in std::iter::once(&mut r.server).chain(r.shell.iter_mut()).chain(r.proxy.iter_mut().map(|p| &mut p.child)) {
@@ -497,6 +525,9 @@ impl Session {
         }
         // A new proxy (this upgrade's) takes new programs from now on.
         s.renew_proxy_if_upgraded();
+        // A service this version no longer runs, stopped rather than
+        // started again whenever it ends.
+        s.retire_dropped();
         // A service left stopped after crashing again and again may be
         // fixed by this upgrade: started again.
         s.restart_stopped();
@@ -1004,6 +1035,22 @@ impl Session {
     /// Become the upgraded olo-session, keeping children and sockets
     /// (and then reload, if `reloading`, and nudge upgraded programs, if
     /// `nudge`).
+    /// The arguments this session was started with, as `start` reads
+    /// them: its backend's (`--headless 1440x900`, `--tty-udev`),
+    /// `--greeter`, and an agent screen's `--own-bus ADDRESS` (its bus
+    /// child's address).
+    fn start_args(&self) -> Vec<String> {
+        let mut args = self.backend.clone();
+        if self.greeter {
+            args.push("--greeter".into());
+        }
+        let bus = self.shell.iter().find(|c| c.argv.first().is_some_and(|p| Path::new(p).file_name().is_some_and(|n| n == "olo-bus")));
+        if let Some(address) = bus.and_then(|c| c.argv.get(1)) {
+            args.extend(["--own-bus".to_owned(), address.clone()]);
+        }
+        args
+    }
+
     fn exec_self(&mut self, reloading: bool, nudge: bool) {
         let mut fds = vec![self.wayland.as_raw_fd(), self.ipc.as_raw_fd(), self.lock.as_raw_fd()];
         let proxy = self.proxy.as_ref().map(|(direct, proxied, child)| Proxy {
@@ -1041,7 +1088,16 @@ impl Session {
         // Agent Screens recognizes its session by --headless, and must keep
         // following the same process when its binary is replaced.
         let mut cmd = Command::new(exe());
-        cmd.args(&self.backend);
+        // With the arguments it was started with, which the new self
+        // doesn't read (it resumes) but what reads its command line does:
+        // olo-screen knows a screen's session by its `--headless`, and
+        // re-executed bare after an upgrade every screen looked ended, so
+        // starting one again by name started another, the old one left
+        // running unknown (nine of them on 2026-11-07, each with its own
+        // display server). Made again from what it keeps (its backend, the
+        // greeter, a screen's bus), so a session upgraded before this has
+        // them back too.
+        cmd.args(self.start_args());
         olo_xdg::upgrade_env(&mut cmd);
         let e = cmd.env(RESUME_ENV, state).exec();
         log(format!("re-exec failed ({e}); carrying on"));
@@ -1420,5 +1476,21 @@ mod tmpdir_tests {
     fn reads_doctors_file() {
         let text = "# Olo Doctor: ...\n# Remove this file to undo.\nTMPDIR=/var/tmp\nTMP = /var/tmp\nTEMP=\"/var/tmp\"\nPATH=/nope\n";
         assert_eq!(super::tmpdir_vars(text), [("TMPDIR", "/var/tmp"), ("TMP", "/var/tmp"), ("TEMP", "/var/tmp")].map(|(k, v)| (k.to_owned(), v.to_owned())));
+    }
+}
+
+#[cfg(test)]
+mod retire_tests {
+    /// What a session resumed after an upgrade keeps running: this
+    /// version's services, by name or path, and not GTK's portal backend,
+    /// which agent screens ran before their portals were Olo's alone.
+    #[test]
+    fn this_versions_services() {
+        for p in ["olo-deskbar", "olo-tracker", "olo-doctor", "/home/me/.local/bin/olo-portal", "olo-notifications", "/usr/libexec/xdg-desktop-portal", "olo-bus", "olo-greeter"] {
+            assert!(super::runs(p), "{p}");
+        }
+        for p in ["/usr/libexec/xdg-desktop-portal-gtk", "xdg-desktop-portal-gnome", "tabula-deskbar"] {
+            assert!(!super::runs(p), "{p}");
+        }
     }
 }

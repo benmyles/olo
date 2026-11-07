@@ -37,7 +37,7 @@ RUNTIME = f"/run/user/{os.getuid()}"
 
 # Preferences' panels (Bluetooth stays out of test runs; AirPods needs
 # its fake device).
-PANELS = ["ai", "appearance", "backgrounds", "backup", "datetime", "default-apps", "display", "gpus", "integrations", "keyboard", "network", "notifications",
+PANELS = ["ai", "appearance", "backgrounds", "backup", "datetime", "default-apps", "deskbar", "display", "gpus", "integrations", "keyboard", "network", "notifications",
           "performance", "power", "screensaver", "security", "sound", "terminal", "themes", "touchid", "touchpad", "tracker", "windows", "workspaces", "about"]
 
 

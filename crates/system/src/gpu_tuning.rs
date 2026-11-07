@@ -373,9 +373,16 @@ fn xe_caps(device: &Path) -> Option<XeCaps> {
 /// still sleeps (fine-grained runtime D3: held, a 615 driver's laptop
 /// GPU suspended 25 s after its last use, video memory off), so holding
 /// it costs nothing idle. Never shut down early.
-fn nvml() -> Option<&'static nvml_wrapper::Nvml> {
-    static NVML: std::sync::OnceLock<Option<nvml_wrapper::Nvml>> = std::sync::OnceLock::new();
-    NVML.get_or_init(|| nvml_wrapper::Nvml::init().ok()).as_ref()
+/// NVIDIA's library, started once it starts. A start that failed isn't
+/// kept: the driver may answer later (loaded, or back from an error),
+/// and Preferences, open for days, asked it once and never again.
+pub(crate) fn nvml() -> Result<&'static nvml_wrapper::Nvml, String> {
+    static NVML: std::sync::OnceLock<nvml_wrapper::Nvml> = std::sync::OnceLock::new();
+    if let Some(n) = NVML.get() {
+        return Ok(n);
+    }
+    let n = nvml_wrapper::Nvml::init().map_err(|e| format!("NVIDIA's library didn't start ({e})"))?;
+    Ok(NVML.get_or_init(|| n))
 }
 
 /// Its PCI address as NVML has it ("00000000:01:00.0").
@@ -383,9 +390,10 @@ fn nvml_bus(pci: &str) -> String {
     format!("0000{pci}")
 }
 
-fn nvidia_caps(pci: &str) -> Option<NvidiaCaps> {
+/// What NVIDIA's GPU `pci` allows, or what its driver said instead.
+fn nvidia_caps(pci: &str) -> Result<NvidiaCaps, String> {
     use nvml_wrapper::enum_wrappers::device::Clock;
-    let d = nvml()?.device_by_pci_bus_id(nvml_bus(pci)).ok()?;
+    let d = nvml()?.device_by_pci_bus_id(nvml_bus(pci)).map_err(|e| format!("its driver didn't answer ({e})"))?;
     let power = (|| {
         let c = d.power_management_limit_constraints().ok()?;
         let w = |mw: u32| (mw + 500) / 1000;
@@ -394,7 +402,7 @@ fn nvidia_caps(pci: &str) -> Option<NvidiaCaps> {
         let now = d.power_management_limit().ok()?;
         Some((w(c.min_limit), w(c.max_limit), w(d.power_management_limit_default().ok()?), w(now)))
     })();
-    Some(NvidiaCaps { power, min_gpu_mhz: nvidia_rest_mhz(&d), max_gpu_mhz: d.max_clock_info(Clock::Graphics).unwrap_or(0), persistent_now: d.is_in_persistent_mode().ok() })
+    Ok(NvidiaCaps { power, min_gpu_mhz: nvidia_rest_mhz(&d), max_gpu_mhz: d.max_clock_info(Clock::Graphics).unwrap_or(0), persistent_now: d.is_in_persistent_mode().ok() })
 }
 
 /// An NVIDIA GPU's clock at rest (its lowest performance state's; the
@@ -413,20 +421,35 @@ pub fn asleep(gpu: &crate::gpus::Gpu) -> bool {
     read(gpu.sysfs.join("power/runtime_status")).trim() == "suspended"
 }
 
+/// Whether the kernel has a GPU's power management in an error state
+/// (`runtime_status` "error": its driver failed to wake or suspend it,
+/// as NVIDIA's did when memory ran out on 2026-11-07). It stays so, its
+/// driver not answering, until the computer starts again.
+pub fn power_failed(gpu: &crate::gpus::Gpu) -> bool {
+    read(gpu.sysfs.join("power/runtime_status")).trim() == "error"
+}
+
 /// What `gpu` allows. NVIDIA's only with `wake` or while it's awake
 /// (asking wakes it); else what was last read ([`Caps::load_cached`]).
 pub fn caps(gpu: &crate::gpus::Gpu, wake: bool) -> Option<Caps> {
+    caps_or_why(gpu, wake).0
+}
+
+/// [`caps`], and when NVIDIA's driver was asked and didn't answer, what
+/// it said ("its driver didn't answer (GPU is lost)"), for the person.
+pub fn caps_or_why(gpu: &crate::gpus::Gpu, wake: bool) -> (Option<Caps>, Option<String>) {
     match gpu.driver.as_str() {
-        "xe" => xe_caps(&gpu.sysfs).map(Caps::Xe),
-        "nvidia" if wake || !asleep(gpu) => {
-            let caps = nvidia_caps(&gpu.pci).map(Caps::Nvidia);
-            if let Some(c) = &caps {
+        "xe" => (xe_caps(&gpu.sysfs).map(Caps::Xe), None),
+        "nvidia" if wake || !asleep(gpu) => match nvidia_caps(&gpu.pci) {
+            Ok(c) => {
+                let c = Caps::Nvidia(c);
                 c.cache(&gpu.pci);
+                (Some(c), None)
             }
-            caps
-        }
-        "nvidia" => Caps::load_cached(&gpu.pci),
-        _ => Some(Caps::None),
+            Err(why) => (None, Some(why)),
+        },
+        "nvidia" => (Caps::load_cached(&gpu.pci), None),
+        _ => (Some(Caps::None), None),
     }
 }
 
@@ -549,7 +572,10 @@ fn apply_xe(device: &Path, tune: &GpuTune, driver: Option<&DriverLimits>) -> App
 
 fn apply_nvidia(pci: &str, tune: &GpuTune) -> Applied {
     use nvml_wrapper::enums::device::GpuLockedClocksSetting;
-    let Some(nvml) = nvml() else { return vec![Err("NVIDIA's library isn't there".into())] };
+    let nvml = match nvml() {
+        Ok(n) => n,
+        Err(e) => return vec![Err(e)],
+    };
     let mut d = match nvml.device_by_pci_bus_id(nvml_bus(pci)) {
         Ok(d) => d,
         Err(e) => return vec![Err(format!("{pci}: {e}"))],
@@ -698,7 +724,7 @@ mod tests {
     #[ignore]
     fn live_nvidia_detail() {
         use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureThreshold as T};
-        let Some(nvml) = nvml() else { return };
+        let Ok(nvml) = nvml() else { return };
         for g in crate::gpus::list().into_iter().filter(|g| g.driver == "nvidia") {
             let d = nvml.device_by_pci_bus_id(nvml_bus(&g.pci)).unwrap();
             eprintln!(
