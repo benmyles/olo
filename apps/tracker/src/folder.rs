@@ -1058,8 +1058,11 @@ impl FolderWin {
     /// The bar along the bottom: the count on the left, free space on the
     /// right (BeOS put the count beside the scroll bar). A scroll bar and
     /// its etched edge tall: the small text's line under the edge (as
-    /// tall as a bar, it ran a line past the window's bottom).
-    fn count_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    /// tall as a bar, it ran a line past the window's bottom). The edge
+    /// is two lines of device pixels, so what's under it is the scroll
+    /// bar's height at every scale (at 1.5× it was a pixel taller), and
+    /// it's that the text is centred in.
+    fn count_bar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let (entries, list) = self.current();
         let n = entries.len();
         let loading = self.loading && self.entries.is_empty() && self.error.is_none();
@@ -1075,11 +1078,13 @@ impl FolderWin {
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
-                style::fill_rect(window, b, style::c(p.panel_background));
+                let line = style::hairline(window);
                 style::hline(window, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.3));
-                style::hline(window, b.left(), b.right(), b.top() + style::hairline(window), style::c(p.shine));
+                style::hline(window, b.left(), b.right(), b.top() + line, style::c(p.shine));
                 // Below the two-line etched edge.
-                let cy = b.center().y + style::hairline(window);
+                let under = Bounds::from_corners(point(b.left(), b.top() + line * 2.0), b.bottom_right());
+                style::fill_rect(window, under, style::c(p.panel_background));
+                let cy = under.center().y;
                 let font = style::ui_font(FontWeight::NORMAL);
                 // In line with the list's first column (its icons) above.
                 let at = style::label(window, cx, b.left() + px(m::CELL_INSET), cy, Align::Left, count.clone(), style::SMALL_SIZE, font.clone(), style::c(p.panel_text));
@@ -1092,7 +1097,19 @@ impl FolderWin {
             },
         )
         .w_full()
-        .h(px(SCROLL_BAR + 2.0))
+        .h(px(Self::count_bar_height(window.scale_factor())))
+    }
+
+    /// The count bar's height in points at `scale`, whole device pixels:
+    /// its edge's two lines, and under them the device pixels the scroll
+    /// bar above it covers. That bar is `SCROLL_BAR` from its bottom, on a
+    /// pixel (this bar's top), so its top at a half pixel rounds down
+    /// onto the next: 17.5 pixels at 1.25× cover 17, 24.5 at 1.75× 24
+    /// (half rounded down). Measured at 1×, 1.25×, 1.5×, 1.75× and 2×:
+    /// 14, 17, 21, 24 and 28, the scroll bar's own.
+    fn count_bar_height(scale: f32) -> f32 {
+        let under = (SCROLL_BAR * scale - 0.5).ceil();
+        (under + 2.0 * style::line_pixels(scale)) / scale
     }
 
     /// The free space where the folder is (read again every few seconds,
@@ -1240,7 +1257,7 @@ impl Render for FolderWin {
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|f, _, _, cx| f.go(1, cx)))
             .child(bar)
             .child(div().flex_1().min_h_0().relative().flex().flex_col().child(body))
-            .child(self.count_bar(cx))
+            .child(self.count_bar(window, cx))
     }
 }
 
