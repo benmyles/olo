@@ -5077,4 +5077,3 @@ clipPath itself is never directly painted. Sources consulted:
 https://www.w3.org/TR/css-masking-1/#the-clip-path,
 https://www.w3.org/TR/SVG2/linking.html#processingURL-validity,
 https://www.w3.org/TR/SVG2/shapes.html#RectElement.
-
