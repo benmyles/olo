@@ -445,6 +445,9 @@ impl Browser {
                     self.snapshot_identity = (document, self.navigation);
                     self.document_snapshot = serde_json::json!({"url":self.history.current().url,"navigation":self.navigation,"document":document,"fallbacks":self.fallbacks}).to_string().into();
                 }
+                // A render's content, layers and tiles come before its Ready:
+                // one frame for them all, drawn at the Ready.
+                return;
             }
             worker::Reply::Batch(id, tiles) if id == self.id => {
                 self.merge_tiles(tiles);
@@ -455,6 +458,7 @@ impl Browser {
                 let kept: std::collections::HashSet<*const RenderImage> = layers.iter().flat_map(|l| l.tiles.iter().map(|(_, i)| Arc::as_ptr(i))).collect();
                 let old = std::mem::replace(&mut self.layers, layers);
                 self.recycle(old.into_iter().flat_map(|l| l.tiles.into_iter().map(|(_, image)| image)).filter(|i| !kept.contains(&Arc::as_ptr(i))).collect());
+                return;
             }
             worker::Reply::Layers(_, layers) => {
                 self.recycle(layers.into_iter().flat_map(|l| l.tiles.into_iter().map(|(_, image)| image)).collect());
