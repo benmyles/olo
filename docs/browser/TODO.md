@@ -89,12 +89,18 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   WebGL canvases read back asynchronously; 6–10 ms a render on
   stripe.com, coalesced to 10 a second), and nothing runs while nothing
   is due. Measurements after inline style changes patch the previous
-  styles in place (0.05–0.1 ms an element; JOURNAL 2026-11-07 evening).
-  Next: incremental layout (a text change redoes boxes and layout, ~10
-  ms, in measurements and in every live render), canvases composited on
-  the GPU without readback, numeric GL opcodes, a window resize
-  reaching the live page's scripts (innerWidth/innerHeight, `resize`,
-  measurements at the new size).
+  styles in place (0.05–0.1 ms an element; JOURNAL 2026-11-07 evening);
+  prepared texts are reused by index. Next, in order: incremental
+  layout (a relayout of stripe.com/pricing's 4800 boxes is 17 ms spread
+  evenly over per-box work, `layout profile:` under OLO_WEB_TIMING; only
+  laying out what changed, by reusing subtrees at formatting context
+  roots whose inputs are unchanged, cuts it); CSS gradients rasterised
+  once and blitted (3 ms a tile on stripe.com/pricing); a SIMD or GPU
+  transformed image blit (0.6 ms a tile for a skewed canvas); dynamic
+  `import()` fetching off the scripts' thread (21 graphs, 1.2 s of a
+  load, in turn); canvases composited on the GPU without readback;
+  numeric GL opcodes; a window resize reaching the live page's scripts
+  (innerWidth/innerHeight, `resize`, measurements at the new size).
 - [ ] Performance, the first priority: styling Stripe is 34 ms (was 115:
   pseudo-element buckets, ancestor Bloom filter, hashed keys, root/
   attribute/:is() buckets, sparse computed values, chained custom
@@ -107,6 +113,12 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   values (8 ms), then parallel
   styling (elements are independent given their parent), SIMD text
   shaping and rasterisation, GPU compositing of the scene.
+- [ ] `position: fixed` and `position: sticky` (painted as absolute and
+  relative): stripe.com's header leaves the viewport when the page
+  scrolls, where Chrome's stays (and every site's sticky header with
+  it). Both are scroll-dependent offsets: their subtrees painted over
+  the scrolled tiles at viewport coordinates each frame, hit-tested
+  there too.
 - [ ] Dark pages: pages render on a white canvas with the standard light
   system colours (as Chrome does; Olo's palette no longer colours the
   page). Next: honour a page's `color-scheme` and `prefers-color-scheme`,
