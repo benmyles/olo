@@ -1168,8 +1168,7 @@ fn gather(
             }
         }
         prefetch(ResourceKind::Stylesheet, &links);
-        let images: Vec<(Option<String>, String)> =
-            image_nodes.iter().filter_map(|&n| doc.attribute(n, "src").ok().flatten().filter(|s| !s.trim().is_empty()).map(|s| (base.clone(), s.to_owned()))).collect();
+        let images: Vec<(Option<String>, String)> = image_nodes.iter().filter_map(|&n| crate::srcset::choose(&doc, n, &media, cancel).map(|c| (base.clone(), c.url))).collect();
         prefetch(ResourceKind::Image, &images);
     }
     // The ordered small list avoids a second walk of all text/elements. Base
@@ -1178,29 +1177,35 @@ fn gather(
     sheets.extend(loaded_sheets);
     resource_issues += sheet_issues;
     let mut image_bindings = Vec::new();
+    // An image at a srcset density, once per image and density.
+    let mut dense: std::collections::HashMap<(usize, u64), Arc<crate::image::Image>> = Default::default();
     let mut image_unique = std::collections::HashSet::new();
     let mut image_bytes = 0usize;
     for node in image_nodes {
         if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
             return Err(paint::Error::Cancelled.into());
         }
-        if doc.attribute(node, "srcset")?.is_some() || doc.attribute(node, "sizes")?.is_some() {
-            resource_issues += 1;
-        }
-        let Some(src) = doc.attribute(node, "src")?.filter(|s| !s.trim().is_empty()) else {
+        // The source its <picture>, srcset and sizes choose for this
+        // display, at the density it was chosen for.
+        let Some(choice) = crate::srcset::choose(&doc, node, &media, cancel) else {
             resource_issues += 1;
             continue;
         };
-        match resource(ResourceKind::Image, base.as_deref(), src)? {
+        match resource(ResourceKind::Image, base.as_deref(), &choice.url)? {
             Some(Resource::Image(image)) => {
+                let bound = if (choice.density - 1.).abs() > 1e-9 && image.density() == 1. {
+                    dense.entry((Arc::as_ptr(&image) as usize, choice.density.to_bits())).or_insert_with(|| image.with_density(choice.density)).clone()
+                } else {
+                    image.clone()
+                };
                 if image_unique.contains(&Arc::as_ptr(&image)) {
-                    image_bindings.push((node, image));
+                    image_bindings.push((node, bound));
                 } else if image_bytes.saturating_add(image.payload_bytes()) > PAGE_IMAGE_LIMITS.bytes || image_bindings.len() >= PAGE_IMAGE_LIMITS.bindings {
                     resource_issues += 1;
                 } else {
                     image_unique.insert(Arc::as_ptr(&image));
                     image_bytes += image.payload_bytes();
-                    image_bindings.push((node, image));
+                    image_bindings.push((node, bound));
                 }
             }
             None => resource_issues += 1,

@@ -40,7 +40,8 @@ fn check(cancel: Option<&AtomicBool>) -> Result<(), Error> {
 pub struct Image {
     width: u32,
     height: u32,
-    rgba: Box<[u8]>,
+    /// Shared by the copies `with_density` makes.
+    rgba: Arc<[u8]>,
     /// Device pixels per CSS pixel of its natural size (an SVG rasterised
     /// for a scale is sharper than its CSS size).
     density: f64,
@@ -81,9 +82,18 @@ impl Image {
             return Err(Error::Invalid);
         }
         let opaque = all_opaque(&rgba);
-        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density, opaque, serial: serial(), live: false, shared: None }))
+        Ok(Arc::new(Self { width, height, rgba: rgba.into(), density, opaque, serial: serial(), live: false, shared: None }))
     }
     /// The natural size in CSS pixels.
+    /// The same pixels at another density (a `srcset` candidate chosen as
+    /// `2x` has half its pixel size as its natural size): nothing copied.
+    pub fn with_density(&self, density: f64) -> Arc<Self> {
+        let density = if density.is_finite() && density > 0. { density } else { 1. };
+        Arc::new(Self { width: self.width, height: self.height, rgba: self.rgba.clone(), density, opaque: self.opaque, serial: serial(), live: self.live, shared: self.shared })
+    }
+    pub fn density(&self) -> f64 {
+        self.density
+    }
     pub fn natural(&self) -> (f64, f64) {
         (f64::from(self.width) / self.density, f64::from(self.height) / self.density)
     }
@@ -140,7 +150,7 @@ impl Image {
         }
         check(cancel)?;
         let opaque = all_opaque(&rgba);
-        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density: 1., opaque, serial: serial(), live: false, shared: None }))
+        Ok(Arc::new(Self { width, height, rgba: rgba.into(), density: 1., opaque, serial: serial(), live: false, shared: None }))
     }
     pub fn width(&self) -> u32 {
         self.width
@@ -163,7 +173,7 @@ impl Image {
     /// An image whose pixels are in shared texture `key` of the window's
     /// renderer (see the field): a live surface, `width` × `height`.
     pub fn shared(width: u32, height: u32, key: u64, premultiplied: bool) -> Arc<Self> {
-        Arc::new(Self { width: width.max(1), height: height.max(1), rgba: Box::new([]), density: 1., opaque: false, serial: serial(), live: true, shared: Some((key, premultiplied)) })
+        Arc::new(Self { width: width.max(1), height: height.max(1), rgba: Arc::from(Vec::new()), density: 1., opaque: false, serial: serial(), live: true, shared: Some((key, premultiplied)) })
     }
     /// The shared texture its pixels are in, and whether premultiplied.
     pub fn shared_texture(&self) -> Option<(u64, bool)> {
