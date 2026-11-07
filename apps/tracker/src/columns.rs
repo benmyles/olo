@@ -212,6 +212,7 @@ impl FolderWin {
             }
         }
         let _ = plain_extra;
+        self.record_location();
         cx.notify();
         true
     }
@@ -355,6 +356,7 @@ impl FolderWin {
             }
             _ => {}
         }
+        self.record_location();
         cx.notify();
     }
 

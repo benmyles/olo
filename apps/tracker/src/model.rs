@@ -408,7 +408,7 @@ impl FolderWin {
 
     /// Select what waits for column `k`'s folder, now that it lists more;
     /// once `landed` (its listing is in), what still isn't there won't be.
-    fn select_pending(&mut self, k: usize, landed: bool) {
+    pub(crate) fn select_pending(&mut self, k: usize, landed: bool) {
         let dir = self.column_at(k).0.to_owned();
         let Some((_, paths)) = self.pending_select.iter().find(|(d, _)| *d == dir).cloned() else { return };
         let all = self.select_in(k, &paths);

@@ -10836,7 +10836,12 @@ Forward, ⌘[ and ⌘] on the Mac profile, Alt+← and → on Windows', and the
 mouse's back and forward buttons go through the folders a window showed
 in that window, as Haiku's Tracker navigates in one: `FolderWin::history`,
 the folder it was opened from first (`came_from`, `open_from`), the one
-it comes back out of selected), Get Info, Find,
+it comes back out of selected; in column view every place it was,
+its deepest column's folder, a column opened or closed by the person
+kept as a step (`record_location`), Back and Forward opening the columns
+down to it again with nothing selected in its own, as Finder's columns
+do: Ben, 2026-11-07, "in column mode and go between columns/files the
+back/forward navigation doesn't seem to work", none were kept), Get Info, Find,
 the file operations (ops.rs, on workers; Tracker Status after 400 ms),
 drops, pastes, Quick Look, the watcher's changes and an upgrade's saved
 state (the egui Tracker's, unchanged). Each window's view does the

@@ -244,18 +244,88 @@ impl FolderWin {
         self.at.checked_add_signed(by).is_some_and(|i| i < self.history.len())
     }
 
-    /// Back (`by` −1) or Forward (+1) through the folders it showed: in
-    /// this window, the folder it comes back out of selected.
+    /// Where it is: its folder, or in column view its deepest column's.
+    pub fn location(&self) -> PathBuf {
+        self.panes.last().map_or_else(|| self.path.clone(), |p| p.path.clone())
+    }
+
+    /// A move into another folder by the person (in column view, a column
+    /// opened or closed) kept in its history, the places after the one it
+    /// was at forgotten, as a browser's. (Ben, 2026-11-07: "in column mode
+    /// and go between columns/files the back/forward navigation doesn't
+    /// seem to work": only the folder it was opened from was kept.)
+    pub fn record_location(&mut self) {
+        const KEPT: usize = 100;
+        let here = self.location();
+        if self.history.get(self.at) == Some(&here) {
+            return;
+        }
+        self.history.truncate(self.at + 1);
+        self.history.push(here);
+        if self.history.len() > KEPT {
+            self.history.remove(0);
+        }
+        self.at = self.history.len() - 1;
+    }
+
+    /// Back (`by` −1) or Forward (+1) through the places it was: in this
+    /// window, the folder it comes back out of selected. In column view,
+    /// a place inside its folder is the columns opened down to it.
     pub fn go(&mut self, by: isize, cx: &mut Context<Self>) {
         let Some(to) = self.at.checked_add_signed(by).filter(|&i| i < self.history.len()) else { return };
-        let (from, path) = (self.path.clone(), self.history[to].clone());
+        let (from, path) = (self.location(), self.history[to].clone());
         self.at = to;
+        if self.view == ViewMode::Columns && path.starts_with(&self.path) {
+            self.show_in_columns(&path, &from);
+            cx.notify();
+            return;
+        }
         self.show_folder(path.clone(), cx);
         // Back out of a folder inside it: that folder selected.
         if let Ok(rest) = from.strip_prefix(&path)
             && let Some(first) = rest.components().next()
         {
             self.pending_select.push((path.clone(), vec![path.join(first)]));
+        }
+    }
+
+    /// Column view: the columns opened down to `dir` (inside its folder),
+    /// each folder on the way selected in the column before, nothing in
+    /// `dir`'s. Columns already showing the way stay; each other opens as
+    /// the one before it is listed (`pending_select`).
+    fn show_in_columns(&mut self, dir: &std::path::Path, from: &std::path::Path) {
+        let Ok(rest) = dir.strip_prefix(&self.path) else { return };
+        let mut way = vec![self.path.clone()];
+        for c in rest.components() {
+            let next = way[way.len() - 1].join(c);
+            way.push(next);
+        }
+        let kept = self.panes.iter().zip(way.iter().skip(1)).take_while(|(p, d)| p.path == **d).count();
+        self.panes.truncate(kept.min(way.len() - 1));
+        self.pending_select.clear();
+        for w in way.windows(2) {
+            self.pending_select.push((w[0].clone(), vec![w[1].clone()]));
+        }
+        // Nothing selected in `dir`'s own column, so no column after it:
+        // the folder come back out of, selected, would open again (a
+        // folder chosen in a column opens the next), as Finder's columns
+        // don't.
+        let _ = from;
+        match way.len() {
+            1 => self.list.selected.clear(),
+            n => {
+                if let Some(p) = self.panes.get_mut(n - 2) {
+                    p.list.selected.clear();
+                }
+            }
+        }
+        self.active = way.len() - 1;
+        // Columns listed already take their selection now (and open the
+        // next); the rest as their listings land.
+        let mut k = 0;
+        while k <= self.panes.len() {
+            self.select_pending(k, false);
+            k += 1;
         }
     }
 
