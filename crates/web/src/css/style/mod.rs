@@ -716,10 +716,9 @@ impl Style {
         if !(Arc::ptr_eq(&self.font, &other.font) || self.font.request == other.font.request && self.font.context == other.font.context) {
             return false;
         }
-        if !(Arc::ptr_eq(&self.customs, &other.customs) || self.customs.same_as(&other.customs)) {
-            // Custom properties feed any declaration; conservatively a layout change.
-            return false;
-        }
+        // Custom properties only feed values: what they changed shows in
+        // the values compared below (descendants using them are recomputed
+        // and compared on their own).
         let (mut a, mut b) = (self.values.iter().peekable(), other.values.iter().peekable());
         loop {
             match (a.peek(), b.peek()) {
@@ -769,6 +768,63 @@ impl Style {
                 || self.values.len() == other.values.len() && self.values.iter().zip(other.values.iter()).all(|(a, b)| a.property == b.property && a.value.same(&b.value)))
             && (Arc::ptr_eq(&self.font, &other.font) || self.font.request == other.font.request && self.font.context == other.font.context)
             && (Arc::ptr_eq(&self.customs, &other.customs) || self.customs.same_as(&other.customs))
+    }
+    /// Whether every value a child inherits is the same in `other` (so a
+    /// child's computed style cannot differ for this parent's change):
+    /// inherited properties, the font, custom properties and the axes.
+    pub fn inherited_same(&self, other: &Self) -> bool {
+        if !Arc::ptr_eq(&self.defaults, &other.defaults) || self.axes != other.axes {
+            return false;
+        }
+        if !(Arc::ptr_eq(&self.font, &other.font) || self.font.request == other.font.request && self.font.context == other.font.context) {
+            return false;
+        }
+        if !(Arc::ptr_eq(&self.customs, &other.customs) || self.customs.same_as(&other.customs)) {
+            return false;
+        }
+        if self.line_height != other.line_height {
+            return false;
+        }
+        let (mut a, mut b) = (self.values.iter().peekable(), other.values.iter().peekable());
+        loop {
+            match (a.peek(), b.peek()) {
+                (None, None) => return true,
+                (Some(x), Some(y)) if x.property == y.property => {
+                    if x.property.inherited() && !x.value.same(&y.value) {
+                        return false;
+                    }
+                    a.next();
+                    b.next();
+                }
+                (Some(x), Some(y)) => {
+                    // One side declares a property the other lacks: inherited
+                    // ones differ, others do not matter to children.
+                    if (x.property as u16) < (y.property as u16) {
+                        if x.property.inherited() {
+                            return false;
+                        }
+                        a.next();
+                    } else {
+                        if y.property.inherited() {
+                            return false;
+                        }
+                        b.next();
+                    }
+                }
+                (Some(x), None) => {
+                    if x.property.inherited() {
+                        return false;
+                    }
+                    a.next();
+                }
+                (None, Some(y)) => {
+                    if y.property.inherited() {
+                        return false;
+                    }
+                    b.next();
+                }
+            }
+        }
     }
     /// Share `other`'s values and font when equal to this style's by value:
     /// a style computed anew that paints the same keeps the same identity

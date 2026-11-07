@@ -186,6 +186,9 @@ struct State {
     canvases: HashMap<NodeId, canvas::Canvas>,
     /// The page's WebGL canvases, by element, drawn by the GPU.
     gl: HashMap<NodeId, webgl::Context>,
+    /// WebGL calls made and the time in them (for the live page's stats).
+    gl_calls: u64,
+    gl_seconds: f64,
     image_lookup: Option<ImageLookup>,
     /// Images the scripts loaded, by `img` element.
     images: HashMap<NodeId, Arc<olo_web::image::Image>>,
@@ -242,6 +245,8 @@ impl Realm {
             fetcher,
             canvases: HashMap::new(),
             gl: HashMap::new(),
+            gl_calls: 0,
+            gl_seconds: 0.,
             image_lookup: None,
             images: HashMap::new(),
             requests: Vec::new(),
@@ -279,6 +284,11 @@ impl Realm {
         let mut realm = Self { isolate, context, state };
         realm.run(PRELUDE, "prelude.js").map_err(|e| format!("prelude: {e}"))?;
         Ok(realm)
+    }
+    /// WebGL calls made and seconds spent in them since last taken.
+    pub fn take_gl_stats(&mut self) -> (u64, f64) {
+        let mut s = self.state.borrow_mut();
+        (std::mem::take(&mut s.gl_calls), std::mem::take(&mut s.gl_seconds))
     }
     /// Console lines logged since last taken (the live page's).
     pub fn take_console(&mut self) -> Vec<String> {
@@ -686,6 +696,8 @@ impl State {
             fetcher: None,
             canvases: HashMap::new(),
             gl: HashMap::new(),
+            gl_calls: 0,
+            gl_seconds: 0.,
             image_lookup: None,
             images: HashMap::new(),
             requests: Vec::new(),
@@ -2060,6 +2072,7 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
         }
         // One GL call: the canvas, the operation, its arguments (an array).
         "glOp" => {
+            let timing = Instant::now();
             if let Some(n) = node(scope, 0) {
                 let op = arg_string(scope, &args, 1);
                 let array = v8::Local::<v8::Array>::try_from(args.get(2)).ok();
@@ -2086,6 +2099,9 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
                     webgl::Out::Bytes(b) => rv.set(bytes_array(scope, b, ByteKind::U8)),
                 }
             }
+            let mut s = state.borrow_mut();
+            s.gl_calls += 1;
+            s.gl_seconds += timing.elapsed().as_secs_f64();
         }
         // One drawing call: the canvas, the operation, its arguments.
         "canvasOp" => {

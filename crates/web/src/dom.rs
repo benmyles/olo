@@ -278,6 +278,9 @@ pub struct Memory {
 pub enum Change {
     /// An element's attributes changed (its own matching inputs).
     Node(NodeId),
+    /// An element's `style` attribute changed: its declared values, never
+    /// what selectors match (unless one tests the attribute itself).
+    Style(NodeId),
     /// A text node's data changed (what its parent lays out).
     Text(NodeId),
     /// A node's child list changed: children inserted, removed or moved
@@ -814,7 +817,7 @@ impl Document {
                 self.free_text(old);
                 self.attributes.get_mut(attr).value = new;
                 let id = self.handle(at);
-                self.bump_with(Change::Node(id))?;
+                self.bump_with(if normalized.as_ref() == "style" { Change::Style(id) } else { Change::Node(id) })?;
                 return Ok(true);
             }
             last = Some(attr);
@@ -836,7 +839,7 @@ impl Document {
             *attributes = Some(attr);
         }
         let id = self.handle(at);
-        self.bump_with(Change::Node(id))?;
+        self.bump_with(if normalized.as_ref() == "style" { Change::Style(id) } else { Change::Node(id) })?;
         Ok(true)
     }
 

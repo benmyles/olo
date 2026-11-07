@@ -212,6 +212,10 @@ pub struct Job<'a> {
     /// Per styled entry: whether it is the same as in the previous tree,
     /// so its children may keep theirs.
     same: Vec<bool>,
+    /// Per style: whether what children inherit is the same as before (true
+    /// when `same`; also when the element changed only in what children
+    /// never inherit).
+    inherited_same: Vec<bool>,
     /// Elements whose subtree is still open (their entry's index), to set
     /// their `end` when the walk leaves them.
     open: Vec<(NodeId, usize)>,
@@ -309,6 +313,15 @@ impl<'a> Job<'a> {
                                 dirty_ancestors(*n, &mut nodes);
                             }
                         }
+                        // Inline style: declared values only; :has()
+                        // ancestors are touched only when an argument tests
+                        // the attribute.
+                        crate::dom::Change::Style(n) => {
+                            nodes.insert(*n);
+                            if uses_has && (has_keys.universal || has_keys.attributes.contains("style")) {
+                                dirty_ancestors(*n, &mut nodes);
+                            }
+                        }
                         crate::dom::Change::Children(n) => {
                             geometry_kept = false;
                             children.insert(*n);
@@ -342,6 +355,7 @@ impl<'a> Job<'a> {
                 Some(Incremental { tree, nodes, children, below, geometry_kept, why_not })
             }),
             same: Vec::new(),
+            inherited_same: Vec::new(),
             open: Vec::new(),
             tree: StyleTree {
                 document: document.id(),
@@ -701,13 +715,14 @@ impl<'a> Job<'a> {
         if let Some(inc) = &self.previous
             && !inc.nodes.contains(&node)
             && !parent_node.is_some_and(|p| inc.children.contains(&p))
-            && parent.is_none_or(|i| self.same[i])
+            && parent.is_none_or(|i| self.inherited_same[i])
             && let Some(i) = inc.tree.index(node)
         {
             let style = inc.tree.styles[i].style.clone();
             let index = self.tree.styles.len();
             self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None });
             self.same.push(true);
+            self.inherited_same.push(true);
             if self.root.is_none() {
                 self.root = Some(index);
             }
@@ -724,6 +739,7 @@ impl<'a> Job<'a> {
                     self.account.add(&style);
                     self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1), end: at + 1, pseudo: Some(pseudo) });
                     self.same.push(true);
+                    self.inherited_same.push(true);
                     self.tree.pseudos.insert((node, pseudo), at);
                     pseudos += 1;
                 }
@@ -756,6 +772,7 @@ impl<'a> Job<'a> {
                             pseudo: old.pseudo,
                         });
                         self.same.push(true);
+                        self.inherited_same.push(true);
                         match old.pseudo {
                             Some(p) => {
                                 self.tree.pseudos.insert((old.node, p), k as u32);
@@ -906,6 +923,7 @@ impl<'a> Job<'a> {
             }
         }
         self.same.push(same);
+        self.inherited_same.push(same || self.previous.as_ref().and_then(|inc| inc.tree.index(node)).is_some_and(|i| self.previous.as_ref().unwrap().tree.styles[i].style.inherited_same(&style)));
         self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None });
         if self.root.is_none() {
             self.root = Some(index);
@@ -1001,6 +1019,7 @@ impl<'a> Job<'a> {
                 }
                 self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1), end: at + 1, pseudo: Some(pseudo) });
                 self.same.push(false);
+                self.inherited_same.push(false);
                 self.tree.pseudos.insert((node, pseudo), at);
             }
         }

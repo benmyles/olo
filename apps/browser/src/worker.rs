@@ -454,9 +454,11 @@ fn render(
         if live.stats.4.elapsed() >= Duration::from_secs(2) && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
             let (advances, js, renders, render_ms, since) = live.stats;
             let report = live.realm.report();
+            let (gl_calls, gl_seconds) = live.realm.take_gl_stats();
             eprintln!(
-                "  live: in {:.1} s, {advances} advances ({js:.0} ms of scripts), {renders} renders ({render_ms:.0} ms); {} layouts for measurements so far",
+                "  live: in {:.1} s, {advances} advances ({js:.0} ms of scripts, {gl_calls} WebGL calls in {:.0} ms), {renders} renders ({render_ms:.0} ms); {} layouts for measurements so far",
                 since.elapsed().as_secs_f64(),
+                gl_seconds * 1000.,
                 report.layouts
             );
             live.stats = (0, 0., 0, 0., Instant::now());
