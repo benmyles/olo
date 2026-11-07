@@ -84,11 +84,14 @@ something nobody here has is in "Blocked", with what it waits for.
   every login on the start-up sound's stream (6a1a9223), and programs'
   "Show in folder" starting GNOME's Files while no Tracker answered
   (the session names Tracker for it; f9d45081, tried in the VM with
-  D-Bus's Tracker started first). Left for Ben: publishing the release
-  (`tools/release.sh`'s four files as a GitHub release of the public
-  repository: outward-facing, so his to say) and a download line in the
-  README; the repository has no LICENSE file (Setup's Licence page shows
-  `apps/installer/src/licence.txt`).
+  D-Bus's Tracker started first). Published (Ben, 2026-11-07: "mit is
+  fine", "release is fine too"): LICENSE (MIT), the release
+  v2026.11.07 (https://github.com/benmyles/olo/releases/tag/v2026.11.07,
+  `tools/release.sh`'s four files), and the README's install from it;
+  tried from GitHub in the VM (Setup downloaded with curl from
+  `releases/latest`, installed over the earlier one, restarted, logged
+  in). Run again over an install, Setup now chooses what it installed
+  before (2757548d), and its password dialog shows over it (8c9bf3cd).
   Left for Ben: publishing a release (a GitHub release of
   benmyles/olo with tools/release.sh's four files: Setup takes the
   newest one's archive; until then it needs `--bundle URL`), then a
