@@ -1,0 +1,2511 @@
+{
+  "scope": "New flex shorthand compilation/resolution cost over prebuilt components.\nSeven frozen release processes. Numeric flex cases visit all three assignments;\na pending shorthand group resolves once. Separate longhands are descriptive\ncontrols; no before implementation of the accepted shorthand exists. Excludes\nsyntax construction, cascade, style/layout, GUI, GPU and site acceptance.\n",
+  "cpu": 0,
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "binary_sha256": "3851e357a69e6119775664ed526231707caef73994a10875cc07fd2d347faf02",
+  "script": "#!/usr/bin/python3\n\"\"\"New flex shorthand compilation/resolution cost over prebuilt components.\nSeven frozen release processes. Numeric flex cases visit all three assignments;\na pending shorthand group resolves once. Separate longhands are descriptive\ncontrols; no before implementation of the accepted shorthand exists. Excludes\nsyntax construction, cascade, style/layout, GUI, GPU and site acceptance.\n\"\"\"\nimport hashlib,json,os,select,statistics,subprocess\nfrom pathlib import Path\nroot=Path('/var/tmp/olo-browser-stripe/flex-css/cost');binary=root/'properties-after'\nallowed=sorted(os.sched_getaffinity(0))\ndef frequency(cpu):\n p=Path(f'/sys/devices/system/cpu/cpu{cpu}/cpufreq/cpuinfo_max_freq')\n return int(p.read_text())if p.exists()else 0\ncpu=max(allowed,key=frequency);os.sched_setaffinity(0,{cpu})\ndef context():\n procs={}\n for p in Path('/proc').iterdir():\n  if p.name.isdigit():\n   try:\n    name=(p/'comm').read_text().strip()\n    if name in ('cargo','rustc'):procs[p.name]=name\n   except OSError:pass\n return dict(loadavg=os.getloadavg(),build_processes=procs)\nrows,discarded,waits=[],[],[]\nfor repeat in range(7):\n while True:\n  before=context();compilers=[p for p,n in before['build_processes'].items()if n=='rustc']\n  if compilers:\n   waits.append(before);fds=[]\n   try:\n    for pid in compilers:\n     try:fds.append(os.pidfd_open(int(pid)))\n     except ProcessLookupError:pass\n    if fds:select.select(fds,[],[],20)\n   finally:\n    for fd in fds:os.close(fd)\n   continue\n  rss=root/'properties.rss'\n  data=json.loads(subprocess.check_output(['/usr/bin/time','-f','%M','-o',str(rss),str(binary),'20000','flex'],text=True))\n  assert data['flex_mode'] and len(data['cases'])==17\n  observation=dict(repeat=repeat,before_context=before,after_context=context(),rss_kib=int(rss.read_text()),**data)\n  if 'rustc'in observation['after_context']['build_processes'].values():discarded.append(observation);continue\n  rows.append(observation);print(repeat,flush=True);break\nsummary=[]\nfor c in rows[0]['cases']:\n group=[x for r in rows for x in r['cases']if(x['property'],x['source'])==(c['property'],c['source'])]\n summary.append(dict(property=c['property'],source=c['source'],longhands=c['longhands'],**{k:statistics.median(x[k]for x in group)for k in ['compile_drop_us','first_compile_us','resolve_us','first_resolve_us']}))\nPath('docs/browser/measurements/2026-11-06-stripe-flex-shorthand-parse-cost.json').write_text(json.dumps(dict(scope=__doc__,cpu=cpu,allowed_cpus=allowed,binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),script=Path(__file__).read_text(),observations=rows,discarded=discarded,build_waits=waits,summary=summary),indent=2)+'\\n')\nprint(json.dumps(summary),flush=True)\n",
+  "observations": [
+    {
+      "repeat": 0,
+      "before_context": {
+        "loadavg": [
+          7.7138671875,
+          9.51611328125,
+          10.13671875
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          7.7138671875,
+          9.51611328125,
+          10.13671875
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "rss_kib": 3752,
+      "assignment_size": 40,
+      "assignments_size": 48,
+      "cases": [
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11213329999999999,
+          "first_compile_us": 4.566,
+          "first_resolve_us": 0.27,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.0036726,
+          "resolved_assignment_visits": 1,
+          "source": "320px"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.22615725000000003,
+          "first_compile_us": 1.969,
+          "first_resolve_us": 0.386,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.013880600000000002,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.3497531,
+          "first_compile_us": 2.113,
+          "first_resolve_us": 0.054,
+          "longhands": 4,
+          "property": "margin",
+          "resolve_us": 0.0038067,
+          "resolved_assignment_visits": 1,
+          "source": "1px 2px 3px 4px"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.49839544999999996,
+          "first_compile_us": 4.8420000000000005,
+          "first_resolve_us": 0.134,
+          "longhands": 4,
+          "property": "border-color",
+          "resolve_us": 0.0006359499999999999,
+          "resolved_assignment_visits": 1,
+          "source": "red blue rgb(0 255 0) transparent"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.08394879999999999,
+          "first_compile_us": 0.848,
+          "first_resolve_us": 0.034,
+          "longhands": 1,
+          "property": "display",
+          "resolve_us": 0.0007535,
+          "resolved_assignment_visits": 1,
+          "source": "inline flex"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.1165728,
+          "first_compile_us": 0.9169999999999999,
+          "first_resolve_us": 0.055,
+          "longhands": 1,
+          "property": "font-weight",
+          "resolve_us": 0.0035978,
+          "resolved_assignment_visits": 1,
+          "source": "650.5"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.26916409999999996,
+          "first_compile_us": 1.9929999999999999,
+          "first_resolve_us": 3.403,
+          "longhands": 4,
+          "property": "padding",
+          "resolve_us": 0.2308253,
+          "resolved_assignment_visits": 1,
+          "source": "var(--spacing)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.30854735,
+          "first_compile_us": 0.9820000000000001,
+          "first_resolve_us": 1.2610000000000001,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.22456295,
+          "resolved_assignment_visits": 1,
+          "source": "var(--missing, 50%)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.06899935,
+          "first_compile_us": 0.7899999999999999,
+          "first_resolve_us": 0.222,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.008139150000000001,
+          "resolved_assignment_visits": 3,
+          "source": "none"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.10848984999999998,
+          "first_compile_us": 1.4529999999999998,
+          "first_resolve_us": 0.098,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.013794400000000002,
+          "resolved_assignment_visits": 3,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.1537583,
+          "first_compile_us": 0.6619999999999999,
+          "first_resolve_us": 0.049999999999999996,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.007984050000000001,
+          "resolved_assignment_visits": 3,
+          "source": "0 0 auto"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.30919935,
+          "first_compile_us": 1.3900000000000001,
+          "first_resolve_us": 0.17800000000000002,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.019289050000000002,
+          "resolved_assignment_visits": 3,
+          "source": "2 1 calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.3969378,
+          "first_compile_us": 1.1280000000000001,
+          "first_resolve_us": 1.2449999999999999,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.36028925,
+          "resolved_assignment_visits": 3,
+          "source": "var(--missing, 1 2 3px)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.1127373,
+          "first_compile_us": 0.39999999999999997,
+          "first_resolve_us": 0.051,
+          "longhands": 1,
+          "property": "flex-grow",
+          "resolve_us": 0.0039375999999999994,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11315864999999999,
+          "first_compile_us": 0.211,
+          "first_resolve_us": 0.049999999999999996,
+          "longhands": 1,
+          "property": "flex-shrink",
+          "resolve_us": 0.0037671,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.14448315,
+          "first_compile_us": 0.49,
+          "first_resolve_us": 0.075,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.00552025,
+          "resolved_assignment_visits": 1,
+          "source": "0%"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.22114635,
+          "first_compile_us": 0.78,
+          "first_resolve_us": 0.27899999999999997,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.01135765,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        }
+      ],
+      "declaration_size": 56,
+      "flex_mode": true,
+      "method": "Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; flex visits all three numeric assignments or resolves their shared pending group once, other cases visit the first. Pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.",
+      "retained": [
+        {
+          "accounted_reserved_bytes": 56000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 117.925,
+          "property": "width",
+          "source": "320px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 216000,
+          "assignment_heap_bytes": 160000,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 386.347,
+          "property": "padding",
+          "source": "1px 2px 3px 4px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 448000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 232.973,
+          "property": "width",
+          "source": "var(--spacing)",
+          "unique_value_heap_bytes": 392000
+        }
+      ],
+      "rounds": 20000,
+      "scope": "Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence",
+      "value_size": 32
+    },
+    {
+      "repeat": 1,
+      "before_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "rss_kib": 3776,
+      "assignment_size": 40,
+      "assignments_size": 48,
+      "cases": [
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11480575000000001,
+          "first_compile_us": 4.346,
+          "first_resolve_us": 0.425,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.0039629999999999995,
+          "resolved_assignment_visits": 1,
+          "source": "320px"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.22841290000000003,
+          "first_compile_us": 2.6180000000000003,
+          "first_resolve_us": 0.824,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.011994600000000001,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.3496899,
+          "first_compile_us": 2.796,
+          "first_resolve_us": 0.09999999999999999,
+          "longhands": 4,
+          "property": "margin",
+          "resolve_us": 0.0038704,
+          "resolved_assignment_visits": 1,
+          "source": "1px 2px 3px 4px"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.51622935,
+          "first_compile_us": 4.49,
+          "first_resolve_us": 0.035,
+          "longhands": 4,
+          "property": "border-color",
+          "resolve_us": 0.00063465,
+          "resolved_assignment_visits": 1,
+          "source": "red blue rgb(0 255 0) transparent"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.0858714,
+          "first_compile_us": 0.884,
+          "first_resolve_us": 0.031,
+          "longhands": 1,
+          "property": "display",
+          "resolve_us": 0.0006458,
+          "resolved_assignment_visits": 1,
+          "source": "inline flex"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.1200972,
+          "first_compile_us": 0.7899999999999999,
+          "first_resolve_us": 0.056,
+          "longhands": 1,
+          "property": "font-weight",
+          "resolve_us": 0.004064599999999999,
+          "resolved_assignment_visits": 1,
+          "source": "650.5"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.26913875000000004,
+          "first_compile_us": 1.903,
+          "first_resolve_us": 3.586,
+          "longhands": 4,
+          "property": "padding",
+          "resolve_us": 0.22750370000000003,
+          "resolved_assignment_visits": 1,
+          "source": "var(--spacing)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.3106278,
+          "first_compile_us": 1.5030000000000001,
+          "first_resolve_us": 1.296,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.239339,
+          "resolved_assignment_visits": 1,
+          "source": "var(--missing, 50%)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.0694911,
+          "first_compile_us": 1.1480000000000001,
+          "first_resolve_us": 0.125,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.008081099999999999,
+          "resolved_assignment_visits": 3,
+          "source": "none"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.1196463,
+          "first_compile_us": 1.5290000000000001,
+          "first_resolve_us": 0.224,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.01448465,
+          "resolved_assignment_visits": 3,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.1736229,
+          "first_compile_us": 0.74,
+          "first_resolve_us": 0.07600000000000001,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.00811225,
+          "resolved_assignment_visits": 3,
+          "source": "0 0 auto"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.33316845,
+          "first_compile_us": 1.322,
+          "first_resolve_us": 0.184,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.020891649999999998,
+          "resolved_assignment_visits": 3,
+          "source": "2 1 calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.41503355000000003,
+          "first_compile_us": 1.5310000000000001,
+          "first_resolve_us": 1.764,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.3564229,
+          "resolved_assignment_visits": 3,
+          "source": "var(--missing, 1 2 3px)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11436955,
+          "first_compile_us": 0.784,
+          "first_resolve_us": 0.257,
+          "longhands": 1,
+          "property": "flex-grow",
+          "resolve_us": 0.00377155,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11892125,
+          "first_compile_us": 0.223,
+          "first_resolve_us": 0.165,
+          "longhands": 1,
+          "property": "flex-shrink",
+          "resolve_us": 0.0040088,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.14798465,
+          "first_compile_us": 0.493,
+          "first_resolve_us": 0.20800000000000002,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.0066248,
+          "resolved_assignment_visits": 1,
+          "source": "0%"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.23674085,
+          "first_compile_us": 0.9390000000000001,
+          "first_resolve_us": 0.162,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.0120968,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        }
+      ],
+      "declaration_size": 56,
+      "flex_mode": true,
+      "method": "Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; flex visits all three numeric assignments or resolves their shared pending group once, other cases visit the first. Pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.",
+      "retained": [
+        {
+          "accounted_reserved_bytes": 56000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 130.185,
+          "property": "width",
+          "source": "320px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 216000,
+          "assignment_heap_bytes": 160000,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 427.566,
+          "property": "padding",
+          "source": "1px 2px 3px 4px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 448000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 255.879,
+          "property": "width",
+          "source": "var(--spacing)",
+          "unique_value_heap_bytes": 392000
+        }
+      ],
+      "rounds": 20000,
+      "scope": "Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence",
+      "value_size": 32
+    },
+    {
+      "repeat": 2,
+      "before_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "rss_kib": 3676,
+      "assignment_size": 40,
+      "assignments_size": 48,
+      "cases": [
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11693245,
+          "first_compile_us": 6.58,
+          "first_resolve_us": 0.40900000000000003,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.00361625,
+          "resolved_assignment_visits": 1,
+          "source": "320px"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.22562620000000003,
+          "first_compile_us": 2.1799999999999997,
+          "first_resolve_us": 0.39999999999999997,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.013383599999999999,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.3719403,
+          "first_compile_us": 2.206,
+          "first_resolve_us": 0.044,
+          "longhands": 4,
+          "property": "margin",
+          "resolve_us": 0.0037812000000000006,
+          "resolved_assignment_visits": 1,
+          "source": "1px 2px 3px 4px"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.51319245,
+          "first_compile_us": 4.26,
+          "first_resolve_us": 0.034,
+          "longhands": 4,
+          "property": "border-color",
+          "resolve_us": 0.0006401,
+          "resolved_assignment_visits": 1,
+          "source": "red blue rgb(0 255 0) transparent"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.0825697,
+          "first_compile_us": 1.094,
+          "first_resolve_us": 0.026000000000000002,
+          "longhands": 1,
+          "property": "display",
+          "resolve_us": 0.00071545,
+          "resolved_assignment_visits": 1,
+          "source": "inline flex"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.12084895000000001,
+          "first_compile_us": 0.771,
+          "first_resolve_us": 0.049,
+          "longhands": 1,
+          "property": "font-weight",
+          "resolve_us": 0.0036036,
+          "resolved_assignment_visits": 1,
+          "source": "650.5"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.26292625,
+          "first_compile_us": 1.8390000000000002,
+          "first_resolve_us": 3.633,
+          "longhands": 4,
+          "property": "padding",
+          "resolve_us": 0.21687255,
+          "resolved_assignment_visits": 1,
+          "source": "var(--spacing)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.32723375,
+          "first_compile_us": 1.042,
+          "first_resolve_us": 1.363,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.22548055,
+          "resolved_assignment_visits": 1,
+          "source": "var(--missing, 50%)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.06658299999999999,
+          "first_compile_us": 0.62,
+          "first_resolve_us": 0.118,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.007963,
+          "resolved_assignment_visits": 3,
+          "source": "none"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.10805089999999998,
+          "first_compile_us": 1.242,
+          "first_resolve_us": 0.198,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.013998050000000001,
+          "resolved_assignment_visits": 3,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.15087345,
+          "first_compile_us": 0.595,
+          "first_resolve_us": 0.067,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0082139,
+          "resolved_assignment_visits": 3,
+          "source": "0 0 auto"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.30107154999999997,
+          "first_compile_us": 1.0470000000000002,
+          "first_resolve_us": 0.159,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.020655700000000003,
+          "resolved_assignment_visits": 3,
+          "source": "2 1 calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.4075962,
+          "first_compile_us": 1.325,
+          "first_resolve_us": 1.3960000000000001,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.34462024999999996,
+          "resolved_assignment_visits": 3,
+          "source": "var(--missing, 1 2 3px)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11883814999999999,
+          "first_compile_us": 0.802,
+          "first_resolve_us": 0.072,
+          "longhands": 1,
+          "property": "flex-grow",
+          "resolve_us": 0.0037743500000000005,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.12288310000000001,
+          "first_compile_us": 0.26399999999999996,
+          "first_resolve_us": 0.047,
+          "longhands": 1,
+          "property": "flex-shrink",
+          "resolve_us": 0.00376795,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.15182265,
+          "first_compile_us": 0.5519999999999999,
+          "first_resolve_us": 0.07600000000000001,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.00742365,
+          "resolved_assignment_visits": 1,
+          "source": "0%"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.24141655,
+          "first_compile_us": 0.7250000000000001,
+          "first_resolve_us": 0.385,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.013596699999999998,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        }
+      ],
+      "declaration_size": 56,
+      "flex_mode": true,
+      "method": "Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; flex visits all three numeric assignments or resolves their shared pending group once, other cases visit the first. Pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.",
+      "retained": [
+        {
+          "accounted_reserved_bytes": 56000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 128.26600000000002,
+          "property": "width",
+          "source": "320px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 216000,
+          "assignment_heap_bytes": 160000,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 410.572,
+          "property": "padding",
+          "source": "1px 2px 3px 4px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 448000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 236.911,
+          "property": "width",
+          "source": "var(--spacing)",
+          "unique_value_heap_bytes": 392000
+        }
+      ],
+      "rounds": 20000,
+      "scope": "Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence",
+      "value_size": 32
+    },
+    {
+      "repeat": 3,
+      "before_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "rss_kib": 3548,
+      "assignment_size": 40,
+      "assignments_size": 48,
+      "cases": [
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11992865000000001,
+          "first_compile_us": 6.558,
+          "first_resolve_us": 0.531,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.0036013999999999994,
+          "resolved_assignment_visits": 1,
+          "source": "320px"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.23440685000000003,
+          "first_compile_us": 2.682,
+          "first_resolve_us": 0.33099999999999996,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.01386195,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.37889924999999997,
+          "first_compile_us": 2.199,
+          "first_resolve_us": 0.074,
+          "longhands": 4,
+          "property": "margin",
+          "resolve_us": 0.00376755,
+          "resolved_assignment_visits": 1,
+          "source": "1px 2px 3px 4px"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.46310585,
+          "first_compile_us": 3.9349999999999996,
+          "first_resolve_us": 0.036,
+          "longhands": 4,
+          "property": "border-color",
+          "resolve_us": 0.00066705,
+          "resolved_assignment_visits": 1,
+          "source": "red blue rgb(0 255 0) transparent"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.0849991,
+          "first_compile_us": 0.82,
+          "first_resolve_us": 0.027,
+          "longhands": 1,
+          "property": "display",
+          "resolve_us": 0.00067545,
+          "resolved_assignment_visits": 1,
+          "source": "inline flex"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.12170485000000002,
+          "first_compile_us": 0.631,
+          "first_resolve_us": 0.049999999999999996,
+          "longhands": 1,
+          "property": "font-weight",
+          "resolve_us": 0.0036019999999999997,
+          "resolved_assignment_visits": 1,
+          "source": "650.5"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.26287039999999995,
+          "first_compile_us": 1.468,
+          "first_resolve_us": 2.979,
+          "longhands": 4,
+          "property": "padding",
+          "resolve_us": 0.2189545,
+          "resolved_assignment_visits": 1,
+          "source": "var(--spacing)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.3024101,
+          "first_compile_us": 1.1880000000000002,
+          "first_resolve_us": 1.051,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.24901975,
+          "resolved_assignment_visits": 1,
+          "source": "var(--missing, 50%)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.06640075000000001,
+          "first_compile_us": 0.607,
+          "first_resolve_us": 0.134,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0082264,
+          "resolved_assignment_visits": 3,
+          "source": "none"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.1064192,
+          "first_compile_us": 1.1400000000000001,
+          "first_resolve_us": 0.248,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.014411799999999999,
+          "resolved_assignment_visits": 3,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.15544635,
+          "first_compile_us": 0.692,
+          "first_resolve_us": 0.034,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.008016500000000001,
+          "resolved_assignment_visits": 3,
+          "source": "0 0 auto"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.3060894,
+          "first_compile_us": 1.321,
+          "first_resolve_us": 0.33799999999999997,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.021009349999999996,
+          "resolved_assignment_visits": 3,
+          "source": "2 1 calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.4042965,
+          "first_compile_us": 1.46,
+          "first_resolve_us": 1.6360000000000001,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.35167405,
+          "resolved_assignment_visits": 3,
+          "source": "var(--missing, 1 2 3px)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11955555,
+          "first_compile_us": 0.47,
+          "first_resolve_us": 0.16799999999999998,
+          "longhands": 1,
+          "property": "flex-grow",
+          "resolve_us": 0.00376905,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.12218920000000001,
+          "first_compile_us": 0.203,
+          "first_resolve_us": 0.049999999999999996,
+          "longhands": 1,
+          "property": "flex-shrink",
+          "resolve_us": 0.0037692,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.1517896,
+          "first_compile_us": 0.512,
+          "first_resolve_us": 0.155,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.00788145,
+          "resolved_assignment_visits": 1,
+          "source": "0%"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.23895025,
+          "first_compile_us": 0.795,
+          "first_resolve_us": 0.149,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.015052450000000002,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        }
+      ],
+      "declaration_size": 56,
+      "flex_mode": true,
+      "method": "Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; flex visits all three numeric assignments or resolves their shared pending group once, other cases visit the first. Pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.",
+      "retained": [
+        {
+          "accounted_reserved_bytes": 56000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 131.054,
+          "property": "width",
+          "source": "320px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 216000,
+          "assignment_heap_bytes": 160000,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 407.819,
+          "property": "padding",
+          "source": "1px 2px 3px 4px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 448000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 228.929,
+          "property": "width",
+          "source": "var(--spacing)",
+          "unique_value_heap_bytes": 392000
+        }
+      ],
+      "rounds": 20000,
+      "scope": "Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence",
+      "value_size": 32
+    },
+    {
+      "repeat": 4,
+      "before_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 3708,
+      "assignment_size": 40,
+      "assignments_size": 48,
+      "cases": [
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11398009999999999,
+          "first_compile_us": 8.96,
+          "first_resolve_us": 0.319,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.0037642,
+          "resolved_assignment_visits": 1,
+          "source": "320px"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.22072404999999998,
+          "first_compile_us": 2.634,
+          "first_resolve_us": 0.27399999999999997,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.013385400000000002,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.3495085,
+          "first_compile_us": 2.5100000000000002,
+          "first_resolve_us": 0.053,
+          "longhands": 4,
+          "property": "margin",
+          "resolve_us": 0.0037612,
+          "resolved_assignment_visits": 1,
+          "source": "1px 2px 3px 4px"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.46857825000000003,
+          "first_compile_us": 4.643000000000001,
+          "first_resolve_us": 0.028,
+          "longhands": 4,
+          "property": "border-color",
+          "resolve_us": 0.0006064,
+          "resolved_assignment_visits": 1,
+          "source": "red blue rgb(0 255 0) transparent"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.0851035,
+          "first_compile_us": 0.804,
+          "first_resolve_us": 0.037,
+          "longhands": 1,
+          "property": "display",
+          "resolve_us": 0.0006359,
+          "resolved_assignment_visits": 1,
+          "source": "inline flex"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11459100000000001,
+          "first_compile_us": 0.638,
+          "first_resolve_us": 0.059,
+          "longhands": 1,
+          "property": "font-weight",
+          "resolve_us": 0.0036013000000000004,
+          "resolved_assignment_visits": 1,
+          "source": "650.5"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.26065615000000003,
+          "first_compile_us": 1.681,
+          "first_resolve_us": 3.376,
+          "longhands": 4,
+          "property": "padding",
+          "resolve_us": 0.222375,
+          "resolved_assignment_visits": 1,
+          "source": "var(--spacing)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.30385065,
+          "first_compile_us": 1.028,
+          "first_resolve_us": 1.371,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.22720869999999999,
+          "resolved_assignment_visits": 1,
+          "source": "var(--missing, 50%)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.0673571,
+          "first_compile_us": 0.737,
+          "first_resolve_us": 0.134,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0078262,
+          "resolved_assignment_visits": 3,
+          "source": "none"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.1088503,
+          "first_compile_us": 1.08,
+          "first_resolve_us": 0.238,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.013790100000000001,
+          "resolved_assignment_visits": 3,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.14822135,
+          "first_compile_us": 0.69,
+          "first_resolve_us": 0.061000000000000006,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0076388,
+          "resolved_assignment_visits": 3,
+          "source": "0 0 auto"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.31042545,
+          "first_compile_us": 0.9099999999999999,
+          "first_resolve_us": 0.198,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0201113,
+          "resolved_assignment_visits": 3,
+          "source": "2 1 calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.4019420999999999,
+          "first_compile_us": 1.187,
+          "first_resolve_us": 1.625,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.34999325,
+          "resolved_assignment_visits": 3,
+          "source": "var(--missing, 1 2 3px)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11030335,
+          "first_compile_us": 0.606,
+          "first_resolve_us": 0.181,
+          "longhands": 1,
+          "property": "flex-grow",
+          "resolve_us": 0.0038127,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.1131069,
+          "first_compile_us": 0.201,
+          "first_resolve_us": 0.044,
+          "longhands": 1,
+          "property": "flex-shrink",
+          "resolve_us": 0.0037119999999999996,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.14273989999999998,
+          "first_compile_us": 0.547,
+          "first_resolve_us": 0.16799999999999998,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.00628375,
+          "resolved_assignment_visits": 1,
+          "source": "0%"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.22137020000000002,
+          "first_compile_us": 0.674,
+          "first_resolve_us": 0.123,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.012526,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        }
+      ],
+      "declaration_size": 56,
+      "flex_mode": true,
+      "method": "Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; flex visits all three numeric assignments or resolves their shared pending group once, other cases visit the first. Pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.",
+      "retained": [
+        {
+          "accounted_reserved_bytes": 56000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 128.754,
+          "property": "width",
+          "source": "320px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 216000,
+          "assignment_heap_bytes": 160000,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 399.09,
+          "property": "padding",
+          "source": "1px 2px 3px 4px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 448000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 221.166,
+          "property": "width",
+          "source": "var(--spacing)",
+          "unique_value_heap_bytes": 392000
+        }
+      ],
+      "rounds": 20000,
+      "scope": "Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence",
+      "value_size": 32
+    },
+    {
+      "repeat": 5,
+      "before_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 4008,
+      "assignment_size": 40,
+      "assignments_size": 48,
+      "cases": [
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11872605000000001,
+          "first_compile_us": 4.006,
+          "first_resolve_us": 0.29900000000000004,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.0038510000000000007,
+          "resolved_assignment_visits": 1,
+          "source": "320px"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.23236544999999997,
+          "first_compile_us": 2.569,
+          "first_resolve_us": 0.27099999999999996,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.011744200000000002,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.37236985,
+          "first_compile_us": 2.391,
+          "first_resolve_us": 0.039,
+          "longhands": 4,
+          "property": "margin",
+          "resolve_us": 0.0041433500000000005,
+          "resolved_assignment_visits": 1,
+          "source": "1px 2px 3px 4px"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.4834710499999999,
+          "first_compile_us": 4.232,
+          "first_resolve_us": 0.037,
+          "longhands": 4,
+          "property": "border-color",
+          "resolve_us": 0.000723,
+          "resolved_assignment_visits": 1,
+          "source": "red blue rgb(0 255 0) transparent"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.0812794,
+          "first_compile_us": 0.693,
+          "first_resolve_us": 0.026000000000000002,
+          "longhands": 1,
+          "property": "display",
+          "resolve_us": 0.00071615,
+          "resolved_assignment_visits": 1,
+          "source": "inline flex"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.12116795,
+          "first_compile_us": 0.522,
+          "first_resolve_us": 0.049,
+          "longhands": 1,
+          "property": "font-weight",
+          "resolve_us": 0.00376595,
+          "resolved_assignment_visits": 1,
+          "source": "650.5"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.25390185,
+          "first_compile_us": 1.88,
+          "first_resolve_us": 3.078,
+          "longhands": 4,
+          "property": "padding",
+          "resolve_us": 0.21999095000000002,
+          "resolved_assignment_visits": 1,
+          "source": "var(--spacing)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.2928267,
+          "first_compile_us": 1.113,
+          "first_resolve_us": 1.495,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.23785065,
+          "resolved_assignment_visits": 1,
+          "source": "var(--missing, 50%)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.0646085,
+          "first_compile_us": 0.759,
+          "first_resolve_us": 0.114,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0078435,
+          "resolved_assignment_visits": 3,
+          "source": "none"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.10623595,
+          "first_compile_us": 1.256,
+          "first_resolve_us": 0.188,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0141703,
+          "resolved_assignment_visits": 3,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.14987165,
+          "first_compile_us": 0.66,
+          "first_resolve_us": 0.158,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.007695100000000001,
+          "resolved_assignment_visits": 3,
+          "source": "0 0 auto"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.3001799,
+          "first_compile_us": 1.113,
+          "first_resolve_us": 0.13799999999999998,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.01981375,
+          "resolved_assignment_visits": 3,
+          "source": "2 1 calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.40554405,
+          "first_compile_us": 1.12,
+          "first_resolve_us": 1.866,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.3514508,
+          "resolved_assignment_visits": 3,
+          "source": "var(--missing, 1 2 3px)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.12006740000000002,
+          "first_compile_us": 0.6,
+          "first_resolve_us": 0.156,
+          "longhands": 1,
+          "property": "flex-grow",
+          "resolve_us": 0.0038636500000000006,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.12087039999999999,
+          "first_compile_us": 0.223,
+          "first_resolve_us": 0.032999999999999995,
+          "longhands": 1,
+          "property": "flex-shrink",
+          "resolve_us": 0.0037646499999999996,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.15015219999999999,
+          "first_compile_us": 0.36600000000000005,
+          "first_resolve_us": 0.102,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.00610605,
+          "resolved_assignment_visits": 1,
+          "source": "0%"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.23780185,
+          "first_compile_us": 0.871,
+          "first_resolve_us": 0.105,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.0119413,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        }
+      ],
+      "declaration_size": 56,
+      "flex_mode": true,
+      "method": "Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; flex visits all three numeric assignments or resolves their shared pending group once, other cases visit the first. Pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.",
+      "retained": [
+        {
+          "accounted_reserved_bytes": 56000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 130.66,
+          "property": "width",
+          "source": "320px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 216000,
+          "assignment_heap_bytes": 160000,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 402.164,
+          "property": "padding",
+          "source": "1px 2px 3px 4px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 448000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 235.868,
+          "property": "width",
+          "source": "var(--spacing)",
+          "unique_value_heap_bytes": 392000
+        }
+      ],
+      "rounds": 20000,
+      "scope": "Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence",
+      "value_size": 32
+    },
+    {
+      "repeat": 6,
+      "before_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          7.576171875,
+          9.45751953125,
+          10.1142578125
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 3496,
+      "assignment_size": 40,
+      "assignments_size": 48,
+      "cases": [
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.1118421,
+          "first_compile_us": 5.176,
+          "first_resolve_us": 0.28700000000000003,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.0037646999999999997,
+          "resolved_assignment_visits": 1,
+          "source": "320px"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.22832965,
+          "first_compile_us": 2.3489999999999998,
+          "first_resolve_us": 0.397,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.0114916,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.34011345,
+          "first_compile_us": 2.204,
+          "first_resolve_us": 0.062,
+          "longhands": 4,
+          "property": "margin",
+          "resolve_us": 0.00376795,
+          "resolved_assignment_visits": 1,
+          "source": "1px 2px 3px 4px"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 1.0084373000000002,
+          "first_compile_us": 4.878,
+          "first_resolve_us": 0.036,
+          "longhands": 4,
+          "property": "border-color",
+          "resolve_us": 0.000664,
+          "resolved_assignment_visits": 1,
+          "source": "red blue rgb(0 255 0) transparent"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.08294725,
+          "first_compile_us": 0.767,
+          "first_resolve_us": 0.032,
+          "longhands": 1,
+          "property": "display",
+          "resolve_us": 0.0006377500000000001,
+          "resolved_assignment_visits": 1,
+          "source": "inline flex"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11735395000000001,
+          "first_compile_us": 0.6080000000000001,
+          "first_resolve_us": 0.052000000000000005,
+          "longhands": 1,
+          "property": "font-weight",
+          "resolve_us": 0.00375665,
+          "resolved_assignment_visits": 1,
+          "source": "650.5"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.2575149,
+          "first_compile_us": 1.6640000000000001,
+          "first_resolve_us": 3.016,
+          "longhands": 4,
+          "property": "padding",
+          "resolve_us": 0.68031705,
+          "resolved_assignment_visits": 1,
+          "source": "var(--spacing)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.3110003,
+          "first_compile_us": 1.5939999999999999,
+          "first_resolve_us": 1.262,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.22548905,
+          "resolved_assignment_visits": 1,
+          "source": "var(--missing, 50%)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.06861405,
+          "first_compile_us": 0.713,
+          "first_resolve_us": 0.257,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0080419,
+          "resolved_assignment_visits": 3,
+          "source": "none"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.109096,
+          "first_compile_us": 1.252,
+          "first_resolve_us": 0.26399999999999996,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.01365825,
+          "resolved_assignment_visits": 3,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.1499097,
+          "first_compile_us": 0.627,
+          "first_resolve_us": 0.072,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.008225250000000002,
+          "resolved_assignment_visits": 3,
+          "source": "0 0 auto"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.31380739999999996,
+          "first_compile_us": 1.271,
+          "first_resolve_us": 0.317,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.02031695,
+          "resolved_assignment_visits": 3,
+          "source": "2 1 calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.40627815000000006,
+          "first_compile_us": 1.139,
+          "first_resolve_us": 1.19,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.35186415000000004,
+          "resolved_assignment_visits": 3,
+          "source": "var(--missing, 1 2 3px)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.116275,
+          "first_compile_us": 0.607,
+          "first_resolve_us": 0.081,
+          "longhands": 1,
+          "property": "flex-grow",
+          "resolve_us": 0.0037689499999999996,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11345445000000003,
+          "first_compile_us": 0.185,
+          "first_resolve_us": 0.037,
+          "longhands": 1,
+          "property": "flex-shrink",
+          "resolve_us": 0.0036024,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.1455826,
+          "first_compile_us": 0.362,
+          "first_resolve_us": 0.07300000000000001,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.0059371499999999995,
+          "resolved_assignment_visits": 1,
+          "source": "0%"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.2257359,
+          "first_compile_us": 0.603,
+          "first_resolve_us": 0.079,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.0118548,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        }
+      ],
+      "declaration_size": 56,
+      "flex_mode": true,
+      "method": "Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; flex visits all three numeric assignments or resolves their shared pending group once, other cases visit the first. Pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.",
+      "retained": [
+        {
+          "accounted_reserved_bytes": 56000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 128.208,
+          "property": "width",
+          "source": "320px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 216000,
+          "assignment_heap_bytes": 160000,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 397.72,
+          "property": "padding",
+          "source": "1px 2px 3px 4px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 448000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 228.946,
+          "property": "width",
+          "source": "var(--spacing)",
+          "unique_value_heap_bytes": 392000
+        }
+      ],
+      "rounds": 20000,
+      "scope": "Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence",
+      "value_size": 32
+    }
+  ],
+  "discarded": [
+    {
+      "repeat": 1,
+      "before_context": {
+        "loadavg": [
+          7.7138671875,
+          9.51611328125,
+          10.13671875
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          7.7138671875,
+          9.51611328125,
+          10.13671875
+        ],
+        "build_processes": {
+          "388149": "cargo",
+          "388355": "rustc"
+        }
+      },
+      "rss_kib": 3580,
+      "assignment_size": 40,
+      "assignments_size": 48,
+      "cases": [
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11042955000000002,
+          "first_compile_us": 4.088,
+          "first_resolve_us": 0.312,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.0039272,
+          "resolved_assignment_visits": 1,
+          "source": "320px"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.21883029999999998,
+          "first_compile_us": 2.42,
+          "first_resolve_us": 0.33,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.012426200000000002,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.34164320000000004,
+          "first_compile_us": 2.458,
+          "first_resolve_us": 0.057,
+          "longhands": 4,
+          "property": "margin",
+          "resolve_us": 0.0037546999999999997,
+          "resolved_assignment_visits": 1,
+          "source": "1px 2px 3px 4px"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.47722055,
+          "first_compile_us": 4.843999999999999,
+          "first_resolve_us": 0.04,
+          "longhands": 4,
+          "property": "border-color",
+          "resolve_us": 0.00071375,
+          "resolved_assignment_visits": 1,
+          "source": "red blue rgb(0 255 0) transparent"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.08277025,
+          "first_compile_us": 0.8059999999999999,
+          "first_resolve_us": 0.035,
+          "longhands": 1,
+          "property": "display",
+          "resolve_us": 0.00074905,
+          "resolved_assignment_visits": 1,
+          "source": "inline flex"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.1166221,
+          "first_compile_us": 0.597,
+          "first_resolve_us": 0.051,
+          "longhands": 1,
+          "property": "font-weight",
+          "resolve_us": 0.0040872999999999994,
+          "resolved_assignment_visits": 1,
+          "source": "650.5"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.2505304,
+          "first_compile_us": 1.8050000000000002,
+          "first_resolve_us": 3.274,
+          "longhands": 4,
+          "property": "padding",
+          "resolve_us": 0.2204849,
+          "resolved_assignment_visits": 1,
+          "source": "var(--spacing)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.29841504999999996,
+          "first_compile_us": 1.0759999999999998,
+          "first_resolve_us": 1.052,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.22978400000000002,
+          "resolved_assignment_visits": 1,
+          "source": "var(--missing, 50%)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.0674946,
+          "first_compile_us": 0.606,
+          "first_resolve_us": 0.10700000000000001,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0077046499999999995,
+          "resolved_assignment_visits": 3,
+          "source": "none"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.11545530000000001,
+          "first_compile_us": 1.057,
+          "first_resolve_us": 0.128,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.013656399999999999,
+          "resolved_assignment_visits": 3,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.16765945,
+          "first_compile_us": 0.748,
+          "first_resolve_us": 0.049999999999999996,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.00766555,
+          "resolved_assignment_visits": 3,
+          "source": "0 0 auto"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.3202047,
+          "first_compile_us": 1.0330000000000001,
+          "first_resolve_us": 0.217,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.01925075,
+          "resolved_assignment_visits": 3,
+          "source": "2 1 calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.3883324,
+          "first_compile_us": 1.139,
+          "first_resolve_us": 1.0950000000000002,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.3360112,
+          "resolved_assignment_visits": 3,
+          "source": "var(--missing, 1 2 3px)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.1123279,
+          "first_compile_us": 0.5619999999999999,
+          "first_resolve_us": 0.154,
+          "longhands": 1,
+          "property": "flex-grow",
+          "resolve_us": 0.0036854999999999995,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11386510000000001,
+          "first_compile_us": 0.189,
+          "first_resolve_us": 0.032,
+          "longhands": 1,
+          "property": "flex-shrink",
+          "resolve_us": 0.0036109000000000002,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.13872665,
+          "first_compile_us": 0.374,
+          "first_resolve_us": 0.087,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.0059253,
+          "resolved_assignment_visits": 1,
+          "source": "0%"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.2223981,
+          "first_compile_us": 0.7,
+          "first_resolve_us": 0.07600000000000001,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.01146235,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        }
+      ],
+      "declaration_size": 56,
+      "flex_mode": true,
+      "method": "Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; flex visits all three numeric assignments or resolves their shared pending group once, other cases visit the first. Pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.",
+      "retained": [
+        {
+          "accounted_reserved_bytes": 56000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 121.569,
+          "property": "width",
+          "source": "320px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 216000,
+          "assignment_heap_bytes": 160000,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 401.471,
+          "property": "padding",
+          "source": "1px 2px 3px 4px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 448000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 221.53099999999998,
+          "property": "width",
+          "source": "var(--spacing)",
+          "unique_value_heap_bytes": 392000
+        }
+      ],
+      "rounds": 20000,
+      "scope": "Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence",
+      "value_size": 32
+    },
+    {
+      "repeat": 1,
+      "before_context": {
+        "loadavg": [
+          7.7138671875,
+          9.51611328125,
+          10.13671875
+        ],
+        "build_processes": {
+          "388149": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          7.7138671875,
+          9.51611328125,
+          10.13671875
+        ],
+        "build_processes": {
+          "388149": "cargo",
+          "388363": "rustc"
+        }
+      },
+      "rss_kib": 3708,
+      "assignment_size": 40,
+      "assignments_size": 48,
+      "cases": [
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11257785,
+          "first_compile_us": 4.015,
+          "first_resolve_us": 0.447,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.0037778000000000004,
+          "resolved_assignment_visits": 1,
+          "source": "320px"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.21993965,
+          "first_compile_us": 2.834,
+          "first_resolve_us": 0.369,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.012814599999999999,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.33469499999999996,
+          "first_compile_us": 2.39,
+          "first_resolve_us": 0.06,
+          "longhands": 4,
+          "property": "margin",
+          "resolve_us": 0.0035991,
+          "resolved_assignment_visits": 1,
+          "source": "1px 2px 3px 4px"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.48592124999999997,
+          "first_compile_us": 4.264,
+          "first_resolve_us": 0.035,
+          "longhands": 4,
+          "property": "border-color",
+          "resolve_us": 0.00061565,
+          "resolved_assignment_visits": 1,
+          "source": "red blue rgb(0 255 0) transparent"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.0826942,
+          "first_compile_us": 0.941,
+          "first_resolve_us": 0.026000000000000002,
+          "longhands": 1,
+          "property": "display",
+          "resolve_us": 0.0007147999999999999,
+          "resolved_assignment_visits": 1,
+          "source": "inline flex"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11269065,
+          "first_compile_us": 0.5910000000000001,
+          "first_resolve_us": 0.056,
+          "longhands": 1,
+          "property": "font-weight",
+          "resolve_us": 0.0038434,
+          "resolved_assignment_visits": 1,
+          "source": "650.5"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.24939214999999998,
+          "first_compile_us": 1.401,
+          "first_resolve_us": 2.79,
+          "longhands": 4,
+          "property": "padding",
+          "resolve_us": 0.22315515,
+          "resolved_assignment_visits": 1,
+          "source": "var(--spacing)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.2902808,
+          "first_compile_us": 1.369,
+          "first_resolve_us": 1.0210000000000001,
+          "longhands": 1,
+          "property": "width",
+          "resolve_us": 0.22699234999999998,
+          "resolved_assignment_visits": 1,
+          "source": "var(--missing, 50%)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.06842390000000001,
+          "first_compile_us": 0.634,
+          "first_resolve_us": 0.114,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.007666,
+          "resolved_assignment_visits": 3,
+          "source": "none"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.1147788,
+          "first_compile_us": 1.144,
+          "first_resolve_us": 0.14600000000000002,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0142183,
+          "resolved_assignment_visits": 3,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.16989505,
+          "first_compile_us": 0.6759999999999999,
+          "first_resolve_us": 0.054,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.0076668000000000005,
+          "resolved_assignment_visits": 3,
+          "source": "0 0 auto"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.32205565,
+          "first_compile_us": 1.209,
+          "first_resolve_us": 0.187,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.019569899999999998,
+          "resolved_assignment_visits": 3,
+          "source": "2 1 calc(100% - 2em)"
+        },
+        {
+          "assignment_spilled": true,
+          "compile_drop_us": 0.40754284999999996,
+          "first_compile_us": 1.091,
+          "first_resolve_us": 1.1260000000000001,
+          "longhands": 3,
+          "property": "flex",
+          "resolve_us": 0.33633635,
+          "resolved_assignment_visits": 3,
+          "source": "var(--missing, 1 2 3px)"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11647915,
+          "first_compile_us": 0.655,
+          "first_resolve_us": 0.071,
+          "longhands": 1,
+          "property": "flex-grow",
+          "resolve_us": 0.0037884,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.11217135,
+          "first_compile_us": 0.198,
+          "first_resolve_us": 0.031,
+          "longhands": 1,
+          "property": "flex-shrink",
+          "resolve_us": 0.0037118499999999996,
+          "resolved_assignment_visits": 1,
+          "source": "1"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.14414985,
+          "first_compile_us": 0.466,
+          "first_resolve_us": 0.15,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.0057846,
+          "resolved_assignment_visits": 1,
+          "source": "0%"
+        },
+        {
+          "assignment_spilled": false,
+          "compile_drop_us": 0.23055169999999997,
+          "first_compile_us": 0.853,
+          "first_resolve_us": 0.17200000000000001,
+          "longhands": 1,
+          "property": "flex-basis",
+          "resolve_us": 0.0115258,
+          "resolved_assignment_visits": 1,
+          "source": "calc(100% - 2em)"
+        }
+      ],
+      "declaration_size": 56,
+      "flex_mode": true,
+      "method": "Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; flex visits all three numeric assignments or resolves their shared pending group once, other cases visit the first. Pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.",
+      "retained": [
+        {
+          "accounted_reserved_bytes": 56000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 128.958,
+          "property": "width",
+          "source": "320px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 216000,
+          "assignment_heap_bytes": 160000,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 407.703,
+          "property": "padding",
+          "source": "1px 2px 3px 4px",
+          "unique_value_heap_bytes": 0
+        },
+        {
+          "accounted_reserved_bytes": 448000,
+          "assignment_heap_bytes": 0,
+          "count": 1000,
+          "declaration_array_bytes": 56000,
+          "first_compile_1000_us": 231.18699999999998,
+          "property": "width",
+          "source": "var(--spacing)",
+          "unique_value_heap_bytes": 392000
+        }
+      ],
+      "rounds": 20000,
+      "scope": "Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence",
+      "value_size": 32
+    }
+  ],
+  "build_waits": [
+    {
+      "loadavg": [
+        7.3515625,
+        9.501953125,
+        10.13818359375
+      ],
+      "build_processes": {
+        "388149": "cargo",
+        "388163": "rustc",
+        "388182": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        8.12451171875,
+        9.62646484375,
+        10.17529296875
+      ],
+      "build_processes": {
+        "388149": "cargo",
+        "388163": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        7.7138671875,
+        9.51611328125,
+        10.13671875
+      ],
+      "build_processes": {
+        "388149": "cargo",
+        "388355": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        7.7138671875,
+        9.51611328125,
+        10.13671875
+      ],
+      "build_processes": {
+        "388149": "cargo",
+        "388355": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        7.7138671875,
+        9.51611328125,
+        10.13671875
+      ],
+      "build_processes": {
+        "388149": "cargo",
+        "388363": "rustc"
+      }
+    }
+  ],
+  "summary": [
+    {
+      "property": "width",
+      "source": "320px",
+      "longhands": 1,
+      "compile_drop_us": 0.11480575000000001,
+      "first_compile_us": 5.176,
+      "resolve_us": 0.0037642,
+      "first_resolve_us": 0.319
+    },
+    {
+      "property": "width",
+      "source": "calc(100% - 2em)",
+      "longhands": 1,
+      "compile_drop_us": 0.22832965,
+      "first_compile_us": 2.569,
+      "resolve_us": 0.013383599999999999,
+      "first_resolve_us": 0.386
+    },
+    {
+      "property": "margin",
+      "source": "1px 2px 3px 4px",
+      "longhands": 4,
+      "compile_drop_us": 0.3497531,
+      "first_compile_us": 2.206,
+      "resolve_us": 0.0037812000000000006,
+      "first_resolve_us": 0.054
+    },
+    {
+      "property": "border-color",
+      "source": "red blue rgb(0 255 0) transparent",
+      "longhands": 4,
+      "compile_drop_us": 0.49839544999999996,
+      "first_compile_us": 4.49,
+      "resolve_us": 0.0006401,
+      "first_resolve_us": 0.036
+    },
+    {
+      "property": "display",
+      "source": "inline flex",
+      "longhands": 1,
+      "compile_drop_us": 0.08394879999999999,
+      "first_compile_us": 0.82,
+      "resolve_us": 0.00067545,
+      "first_resolve_us": 0.031
+    },
+    {
+      "property": "font-weight",
+      "source": "650.5",
+      "longhands": 1,
+      "compile_drop_us": 0.1200972,
+      "first_compile_us": 0.638,
+      "resolve_us": 0.0036036,
+      "first_resolve_us": 0.052000000000000005
+    },
+    {
+      "property": "padding",
+      "source": "var(--spacing)",
+      "longhands": 4,
+      "compile_drop_us": 0.26287039999999995,
+      "first_compile_us": 1.8390000000000002,
+      "resolve_us": 0.222375,
+      "first_resolve_us": 3.376
+    },
+    {
+      "property": "width",
+      "source": "var(--missing, 50%)",
+      "longhands": 1,
+      "compile_drop_us": 0.30854735,
+      "first_compile_us": 1.113,
+      "resolve_us": 0.22720869999999999,
+      "first_resolve_us": 1.296
+    },
+    {
+      "property": "flex",
+      "source": "none",
+      "longhands": 3,
+      "compile_drop_us": 0.0673571,
+      "first_compile_us": 0.737,
+      "resolve_us": 0.0080419,
+      "first_resolve_us": 0.134
+    },
+    {
+      "property": "flex",
+      "source": "1",
+      "longhands": 3,
+      "compile_drop_us": 0.10848984999999998,
+      "first_compile_us": 1.252,
+      "resolve_us": 0.013998050000000001,
+      "first_resolve_us": 0.224
+    },
+    {
+      "property": "flex",
+      "source": "0 0 auto",
+      "longhands": 3,
+      "compile_drop_us": 0.15087345,
+      "first_compile_us": 0.6619999999999999,
+      "resolve_us": 0.008016500000000001,
+      "first_resolve_us": 0.067
+    },
+    {
+      "property": "flex",
+      "source": "2 1 calc(100% - 2em)",
+      "longhands": 3,
+      "compile_drop_us": 0.30919935,
+      "first_compile_us": 1.271,
+      "resolve_us": 0.02031695,
+      "first_resolve_us": 0.184
+    },
+    {
+      "property": "flex",
+      "source": "var(--missing, 1 2 3px)",
+      "longhands": 3,
+      "compile_drop_us": 0.40554405,
+      "first_compile_us": 1.187,
+      "resolve_us": 0.35167405,
+      "first_resolve_us": 1.625
+    },
+    {
+      "property": "flex-grow",
+      "source": "1",
+      "longhands": 1,
+      "compile_drop_us": 0.116275,
+      "first_compile_us": 0.606,
+      "resolve_us": 0.0037743500000000005,
+      "first_resolve_us": 0.156
+    },
+    {
+      "property": "flex-shrink",
+      "source": "1",
+      "longhands": 1,
+      "compile_drop_us": 0.11892125,
+      "first_compile_us": 0.211,
+      "resolve_us": 0.0037671,
+      "first_resolve_us": 0.047
+    },
+    {
+      "property": "flex-basis",
+      "source": "0%",
+      "longhands": 1,
+      "compile_drop_us": 0.14798465,
+      "first_compile_us": 0.493,
+      "resolve_us": 0.00628375,
+      "first_resolve_us": 0.102
+    },
+    {
+      "property": "flex-basis",
+      "source": "calc(100% - 2em)",
+      "longhands": 1,
+      "compile_drop_us": 0.23674085,
+      "first_compile_us": 0.78,
+      "resolve_us": 0.0120968,
+      "first_resolve_us": 0.149
+    }
+  ],
+  "implementation_scope": "Frozen declaration compiler after lexical factor gating; subsequent FlexBasis style deferral changes only css/style/compute.rs, not the measured declaration/numeric compilation functions. Ordinary pipeline measurements are repeated for the complete final change."
+}

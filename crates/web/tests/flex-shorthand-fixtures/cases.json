@@ -1,0 +1,298 @@
+[
+  {
+    "id": "case-0",
+    "value": "none"
+  },
+  {
+    "id": "case-1",
+    "value": "NONE"
+  },
+  {
+    "id": "case-2",
+    "value": "auto"
+  },
+  {
+    "id": "case-3",
+    "value": "initial"
+  },
+  {
+    "id": "case-4",
+    "value": "inherit"
+  },
+  {
+    "id": "case-5",
+    "value": "unset"
+  },
+  {
+    "id": "case-6",
+    "value": "revert"
+  },
+  {
+    "id": "case-7",
+    "value": "revert-layer"
+  },
+  {
+    "id": "case-8",
+    "value": "0"
+  },
+  {
+    "id": "case-9",
+    "value": "1"
+  },
+  {
+    "id": "case-10",
+    "value": "2"
+  },
+  {
+    "id": "case-11",
+    "value": "0 0"
+  },
+  {
+    "id": "case-12",
+    "value": "1 2"
+  },
+  {
+    "id": "case-13",
+    "value": "0 0 0"
+  },
+  {
+    "id": "case-14",
+    "value": "1 2 0"
+  },
+  {
+    "id": "case-15",
+    "value": "0px"
+  },
+  {
+    "id": "case-16",
+    "value": "13px"
+  },
+  {
+    "id": "case-17",
+    "value": "10%"
+  },
+  {
+    "id": "case-18",
+    "value": "content"
+  },
+  {
+    "id": "case-19",
+    "value": "min-content"
+  },
+  {
+    "id": "case-20",
+    "value": "max-content"
+  },
+  {
+    "id": "case-21",
+    "value": "fit-content"
+  },
+  {
+    "id": "case-22",
+    "value": "stretch"
+  },
+  {
+    "id": "case-23",
+    "value": "1 auto"
+  },
+  {
+    "id": "case-24",
+    "value": "auto 1"
+  },
+  {
+    "id": "case-25",
+    "value": "1 2 auto"
+  },
+  {
+    "id": "case-26",
+    "value": "auto 1 2"
+  },
+  {
+    "id": "case-27",
+    "value": "1 10px"
+  },
+  {
+    "id": "case-28",
+    "value": "10px 1"
+  },
+  {
+    "id": "case-29",
+    "value": "1 2 10px"
+  },
+  {
+    "id": "case-30",
+    "value": "10px 1 2"
+  },
+  {
+    "id": "case-31",
+    "value": "1 10px 2"
+  },
+  {
+    "id": "case-32",
+    "value": "0px 1 2"
+  },
+  {
+    "id": "case-33",
+    "value": "1 0px 2"
+  },
+  {
+    "id": "case-34",
+    "value": "2 0 0%"
+  },
+  {
+    "id": "case-35",
+    "value": "2 0%"
+  },
+  {
+    "id": "case-36",
+    "value": "0% 2"
+  },
+  {
+    "id": "case-37",
+    "value": "1 calc(2) 10px"
+  },
+  {
+    "id": "case-38",
+    "value": "calc(1) 2 10px"
+  },
+  {
+    "id": "case-39",
+    "value": "calc(1 + 2) calc(2) calc(10% + 4px)"
+  },
+  {
+    "id": "case-40",
+    "value": "calc(-1) 0 10px"
+  },
+  {
+    "id": "case-41",
+    "value": "1 calc(-1) 10px"
+  },
+  {
+    "id": "case-42",
+    "value": "1 calc(0)"
+  },
+  {
+    "id": "case-43",
+    "value": "calc(0)"
+  },
+  {
+    "id": "case-44",
+    "value": "1 2 calc(0)"
+  },
+  {
+    "id": "case-45",
+    "value": "1 2 calc(0px)"
+  },
+  {
+    "id": "case-46",
+    "value": "1 2 calc(10% + 4px)"
+  },
+  {
+    "id": "case-47",
+    "value": "1 2 min(10%, 42px)"
+  },
+  {
+    "id": "case-48",
+    "value": "1 2 clamp(3px, 10%, 42px)"
+  },
+  {
+    "id": "case-49",
+    "value": "1 2 2em"
+  },
+  {
+    "id": "case-50",
+    "value": "1 2 2rem"
+  },
+  {
+    "id": "case-51",
+    "value": "1 2 fit-content(20px)"
+  },
+  {
+    "id": "case-52",
+    "value": "1 2 anchor-size(width)"
+  },
+  {
+    "id": "case-53",
+    "value": "var(--f)"
+  },
+  {
+    "id": "case-54",
+    "value": "var(--missing, 2 3 7px)"
+  },
+  {
+    "id": "case-55",
+    "value": "var(--negative)"
+  },
+  {
+    "id": "case-56",
+    "value": "var(--cycle)"
+  },
+  {
+    "id": "case-57",
+    "value": "1 var(--basis)"
+  },
+  {
+    "id": "case-58",
+    "value": "1 2 var(--basis)"
+  },
+  {
+    "id": "case-59",
+    "value": "1 2 env(safe-area-inset-left, 9px)"
+  },
+  {
+    "id": "case-60",
+    "value": "-1"
+  },
+  {
+    "id": "case-61",
+    "value": "1 -1"
+  },
+  {
+    "id": "case-62",
+    "value": "1 2 -3px"
+  },
+  {
+    "id": "case-63",
+    "value": "-2px"
+  },
+  {
+    "id": "case-64",
+    "value": "1 2 none"
+  },
+  {
+    "id": "case-65",
+    "value": "none 1"
+  },
+  {
+    "id": "case-66",
+    "value": "auto auto"
+  },
+  {
+    "id": "case-67",
+    "value": "1 2 3 4"
+  },
+  {
+    "id": "case-68",
+    "value": "1 / 2"
+  },
+  {
+    "id": "case-69",
+    "value": "1,2"
+  },
+  {
+    "id": "case-70",
+    "value": ""
+  },
+  {
+    "id": "case-71",
+    "value": "1 /* gap */ 2 10px"
+  },
+  {
+    "id": "case-72",
+    "value": "2 0.00001 13.7px"
+  },
+  {
+    "id": "case-73",
+    "value": "1 0 0.0"
+  }
+]

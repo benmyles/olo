@@ -28,7 +28,8 @@ impl math::Context for NumericHost {
 }
 fn main() {
     let rounds = std::env::args().nth(1).map(|s| s.parse::<usize>().unwrap()).unwrap_or(20000);
-    let sources = [
+    let flex_mode = std::env::args().nth(2).as_deref() == Some("flex");
+    let mut sources = vec![
         ("width", "320px"),
         ("width", "calc(100% - 2em)"),
         ("margin", "1px 2px 3px 4px"),
@@ -38,6 +39,19 @@ fn main() {
         ("padding", "var(--spacing)"),
         ("width", "var(--missing, 50%)"),
     ];
+    if flex_mode {
+        sources.extend([
+            ("flex", "none"),
+            ("flex", "1"),
+            ("flex", "0 0 auto"),
+            ("flex", "2 1 calc(100% - 2em)"),
+            ("flex", "var(--missing, 1 2 3px)"),
+            ("flex-grow", "1"),
+            ("flex-shrink", "1"),
+            ("flex-basis", "0%"),
+            ("flex-basis", "calc(100% - 2em)"),
+        ]);
+    }
     let host = Host { spacing: variables::Value::compile(syntax("1px 2px").components(), variables::Limits::default(), None).unwrap() };
     let mut cases = Vec::new();
     for (name, source) in sources {
@@ -53,7 +67,7 @@ fn main() {
         let Declaration::Known { values, .. } = &value else { unreachable!() };
         let mut resolver = variables::Resolver::new(&host, variables::Limits::default(), None);
         let mut scratch = math::Scratch::default();
-        let resolve = |resolver: &mut variables::Resolver<'_, Host>, scratch: &mut math::Scratch| match &values[0].value {
+        let resolve_one = |value: &Value, resolver: &mut variables::Resolver<'_, Host>, scratch: &mut math::Scratch| match value {
             Value::Numeric(n) => {
                 black_box(n.resolve(&NumericHost, scratch, math::Limits::default(), None).unwrap());
             }
@@ -61,7 +75,22 @@ fn main() {
                 black_box(v.resolve(resolver, true, p::Limits::default(), None).unwrap());
             }
             _ => {
-                black_box(&values[0].value);
+                black_box(value);
+            }
+        };
+        let resolve = |resolver: &mut variables::Resolver<'_, Host>, scratch: &mut math::Scratch| {
+            if name == "flex" {
+                if matches!(values[0].value, Value::Pending(_)) {
+                    // All three assignments share this pending group; its
+                    // resolution already returns the complete expansion.
+                    resolve_one(&values[0].value, resolver, scratch);
+                } else {
+                    for a in values {
+                        resolve_one(&a.value, resolver, scratch);
+                    }
+                }
+            } else {
+                resolve_one(&values[0].value, resolver, scratch);
             }
         };
         let start = Instant::now();
@@ -72,7 +101,7 @@ fn main() {
             resolve(&mut resolver, &mut scratch);
         }
         let resolve_us = start.elapsed().as_secs_f64() * 1e6 / rounds as f64;
-        cases.push(json!({"property":name,"source":source,"compile_drop_us":compile_drop_us,"first_compile_us":first_compile_us,"resolve_us":resolve_us,"first_resolve_us":first_resolve_us,"longhands":values.len(),"assignment_spilled":values.spilled()}));
+        cases.push(json!({"property":name,"source":source,"compile_drop_us":compile_drop_us,"first_compile_us":first_compile_us,"resolve_us":resolve_us,"first_resolve_us":first_resolve_us,"longhands":values.len(),"resolved_assignment_visits":if name=="flex"{values.len()}else{1},"assignment_spilled":values.spilled()}));
     }
     let mut retained = Vec::new();
     for (name, source) in [("width", "320px"), ("padding", "1px 2px 3px 4px"), ("width", "var(--spacing)")] {
@@ -97,6 +126,6 @@ fn main() {
     }
     println!(
         "{}",
-        json!({"scope":"Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence","method":"Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.","rounds":rounds,"value_size":size_of::<Value>(),"assignment_size":size_of::<p::Assignment>(),"declaration_size":size_of::<Declaration>(),"assignments_size":size_of::<p::Assignments>(),"cases":cases,"retained":retained})
+        json!({"scope":"Prebuilt component declaration compilation and isolated numeric or cached substitution resolution, no cascade/style/layout/painting/browser/Chrome evidence","method":"Compile/drop mean over rounds; resolve mean with scratch and variable resolver retained; flex visits all three numeric assignments or resolves their shared pending group once, other cases visit the first. Pending resolution includes typed reparsing and assignment allocation, other variants are reference access controls. Retained batches hold 1000 independent declarations. Bytes exclude allocator metadata and original Syntax. Memory batch cases have independent scalar programs/one pending per declaration, so referenced heaps are unique.","rounds":rounds,"flex_mode":flex_mode,"value_size":size_of::<Value>(),"assignment_size":size_of::<p::Assignment>(),"declaration_size":size_of::<Declaration>(),"assignments_size":size_of::<p::Assignments>(),"cases":cases,"retained":retained})
     );
 }

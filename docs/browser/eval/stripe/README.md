@@ -57,6 +57,17 @@ geometry is not observed yet because formatting-tree construction stops first.
 There is still no useful native Stripe content.
 Do not suppress selector/value failures or replace the site with authored HTML.
 
+Recognizing the site's `flex` shorthand exposes carousel basis
+`clamp(240px, var(--case-study-carousel-card-fluid-width, 30.38cqi),
+var(--case-study-carousel-card-max-width, 384px))`. The next real retry stops at
+Cqi during styling; retaining FlexBasis with the existing box-length context
+then returns actual HTTPS startup to the flex formatting blocker. A normative
+regression covers the exact expression at three query widths and rejects
+inherited pending rebinding. Its geometry on Stripe is still not reached.
+Independent shorthand observations match365/370; five draft fit-content()
+syntax differences remain recorded nonpasses. This does not implement item
+layout or native CSSOM.
+
 ## Work queue
 
 - [x] Launch the real public site in isolated native and Chrome windows.

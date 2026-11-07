@@ -13,7 +13,9 @@ nonpass: CSS disabled state and environment substitution are implemented;
 horizontal box query-container lengths are implemented and the actual live page
 now reaches layout, where it stops at Unsupported("flex box formatting").
 Initial retained LTR text intrinsic widths now match300 independent Chrome
-min/max pairs. Initial definite single-line size distribution also matches320
+min/max pairs. Initial flex shorthand expansion is implemented (365/370 Chrome
+observations match;5 fit-content() reference gaps remain), and its carousel Cqi
+basis is retained for layout. Initial definite single-line distribution matches320
 Chrome lines (1,095 widths). Neither stage is wired into page flex sizing yet.
 Implement the required original flex item construction/layout next. Stripe's own container
 geometry remains unobserved until its formatting tree can be built.
@@ -77,7 +79,8 @@ geometry remains unobserved until its formatting tree can be built.
   namespace contexts are implemented below; full context behavior remains open.
 - [ ] Implement CSS property grammars, cascade, media queries and real
   element/style invalidation.
-- [x] Core typed declaration compilation: 92 longhands and 16 shorthands (including
+- [x] Core typed declaration compilation: initial92 longhands/16 shorthands;
+  current95/18 (including
   all over implemented resettable properties),
   dimensional/range rules, structured display values, shared pending shorthand
   substitution and invalid-at-computed-value unset; independent native ports
@@ -390,6 +393,18 @@ this is a harness correction, not a browser speedup.
   context (no rustc observed at sample boundaries). Scene construction does not
   query the new state index; cause/attribution remains unresolved. Preserve the
   dataset and confirm/profile before performance acceptance.
+- [ ] Profile flex-shorthand-checkpoint ordinary-path cost: pipeline100/1000
+  813.35→819.94 /8938.51→8652.91µs; scene188.84→209.25 /3316.88→3531.09µs,
+  identical geometry/pixels. Small pipeline~0.8% and scene~10.8%/~6.5%
+  regressions remain nonpasses (28 accepted, no observed compiler/Cargo context,
+  load9.69–10.55). Preserve the earlier dataset too. Retained scene construction
+  does not call the new declaration/style code; cause remains unresolved.
+  Separate near-identical instruction-counter diagnostics overlap compilation
+  and do not clear these findings.
+- [ ] Resolve the five flex shorthand fit-content() reference gaps (one case at
+  five DPRs): current shared draft sizing grammar accepts fit-content(20px),
+  Chrome157 rejects it; function used geometry remains unsupported.365/370
+  shorthand observations match; no native CSSOM/item layout acceptance yet.
 - [ ] Profile intrinsic-checkpoint ordinary-path cost: pipeline100/1000
   809.94→814.49 /9000.35→8886.89µs; scene186.14→190.19 /3265.09→3496.42µs
   with identical geometry/pixels. The new intrinsic operation is not called on

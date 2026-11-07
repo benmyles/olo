@@ -16,13 +16,17 @@ struct Snapshot {
     revision: Cell<u64>,
     scheme: color::Scheme,
     scale: f64,
+    environment: Option<Arc<olo_web::css::variables::Environment>>,
 }
 impl Default for Snapshot {
     fn default() -> Self {
-        Self { revision: Cell::new(1), scheme: color::Scheme::Light, scale: 1. }
+        Self { revision: Cell::new(1), scheme: color::Scheme::Light, scale: 1., environment: None }
     }
 }
 impl Host for Snapshot {
+    fn environment(&self) -> style::Result<Option<Arc<olo_web::css::variables::Environment>>> {
+        Ok(self.environment.clone())
+    }
     fn revision(&self) -> u64 {
         self.revision.get()
     }
@@ -512,4 +516,147 @@ fn orthogonal_box_context_skips_a_display_contents_inheritance_parent() {
     let (_, target) = tree.iter().find(|(n, _)| parsed.document.attribute(*n, "id").unwrap() == Some("target")).unwrap();
     assert_eq!(target.axes().writing_mode, style::WritingMode::VerticalRl);
     assert!(matches!(target.value(P::Display), Value::Display(style::Display::Box { outer: style::Outer::Inline, inner: style::Inner::FlowRoot, .. })));
+}
+
+#[test]
+fn flex_shorthand_matches_chrome_cases_and_preserves_the_size_function_gap() {
+    use sha2::{Digest, Sha256};
+    let cases: serde_json::Value = serde_json::from_str(include_str!("flex-shorthand-fixtures/cases.json")).unwrap();
+    let reference: serde_json::Value = serde_json::from_str(include_str!("flex-shorthand-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(include_bytes!("flex-shorthand-fixtures/cases.json"))), reference["cases_sha256"]);
+    fn declarations(defaults: &Arc<Defaults>, host: &Snapshot, source: &str, parent: Option<&Style>, root: Option<&Style>) -> style::Result<Style> {
+        let syntax = Syntax::parse(Arc::from(source), Default::default(), None).unwrap();
+        // Model the capture's CSSOM setter: rejected syntax retains the
+        // previous declaration. This harness does not implement CSSOM.
+        let declarations: Vec<_> = syntax.declarations(None).unwrap().iter().filter_map(|raw| Declaration::compile(raw, Default::default(), None).ok()).collect();
+        let mut builder = Builder::new(Default::default(), None);
+        for (i, declaration) in declarations.iter().enumerate() {
+            builder.add(declaration, Priority { declaration: i as u32, rule: i as u64 + 1, ..Default::default() }).unwrap();
+        }
+        let cascade = builder.finish(parent.is_some(), parent.map(|p| p as &dyn olo_web::css::cascade::Inherited)).unwrap();
+        Style::compute(defaults.clone(), &cascade, parent, root, host, Options { root: parent.is_none(), ..Default::default() }, Default::default(), None)
+    }
+    struct Basis(f64);
+    impl math::Context for Basis {
+        fn factor(&self, unit: math::RelativeUnit) -> math::Result<f64> {
+            if unit == math::RelativeUnit::Percentage { Ok(self.0 / 100.) } else { Err(math::Error::ContextUnavailable) }
+        }
+    }
+    let mut rows = Vec::new();
+    let mut failures = Vec::new();
+    for row in reference["rows"].as_array().unwrap() {
+        let case = cases.as_array().unwrap().iter().find(|c| c["id"] == row["id"]).unwrap();
+        let value = case["value"].as_str().unwrap();
+        let scale = row["scale"].as_f64().unwrap();
+        let host = Snapshot { scale, environment: Some(olo_web::css::variables::Environment::rectangular().unwrap()), ..Default::default() };
+        let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+        let parent = declarations(&defaults, &host, "font-size:20px;flex:3 4 17px", None, None).unwrap();
+        let syntax = Syntax::parse(Arc::from(value), Default::default(), None).unwrap();
+        let parsed = Declaration::parse("flex", syntax.components(), false, Default::default(), None);
+        let supports = parsed.is_ok();
+        // Empty CSSOM assignment removes the prior declaration, while other
+        // rejected assignments retain it. Both behaviors are capture inputs.
+        let fallback = if value.is_empty() { "" } else { "flex:7 8 13px;" };
+        let source = format!("font-size:20px;--f:1 2 10%;--negative:-1;--cycle:var(--cycle);--basis:calc(10% + 4px);{fallback}flex:{value};");
+        let result = match declarations(&defaults, &host, &source, Some(&parent), Some(&parent)) {
+            Err(e) => serde_json::json!({"id":row["id"],"scale":scale,"passed":false,"error":e.to_string(),"supports":supports}),
+            Ok(style) => {
+                let grow = scalar(&style, P::FlexGrow);
+                let shrink = scalar(&style, P::FlexShrink);
+                let expected_grow = row["grow"].as_str().unwrap().parse::<f64>().unwrap();
+                let expected_shrink = row["shrink"].as_str().unwrap().parse::<f64>().unwrap();
+                let expected_basis = row["basis"].as_str().unwrap();
+                let expected_keyword = ["auto", "content", "min-content", "max-content", "fit-content", "stretch"].contains(&expected_basis);
+                let mut widths = Vec::new();
+                let mut measurements_match = true;
+                let kind_match = match style.value(P::FlexBasis) {
+                    Value::Keyword(k) => expected_keyword && k.as_str() == expected_basis,
+                    Value::Numeric(n) => !expected_keyword && n.expression().dependencies().contains(math::RelativeUnit::Percentage) == expected_basis.contains('%'),
+                    _ => false,
+                };
+                for measurement in row["measurements"].as_array().unwrap() {
+                    let width = measurement["width"].as_f64().unwrap();
+                    let got = match style.value(P::FlexBasis) {
+                        Value::Numeric(n) => n.resolve(&Basis(width), &mut Default::default(), Default::default(), None).map(|v| (v * scale * 64.).trunc() / (scale * 64.)),
+                        Value::Keyword(K::Auto) => Ok(42.),
+                        Value::Keyword(K::Content | K::MinContent | K::MaxContent | K::FitContent) => Ok(0.),
+                        Value::Keyword(K::Stretch) => Ok(width),
+                        _ => Err(p::Error::Unsupported("fixture basis kind")),
+                    };
+                    let expected = measurement["child"].as_f64().unwrap();
+                    match got {
+                        Ok(v) => {
+                            measurements_match &= (v - expected).abs() < 0.0001;
+                            widths.push(serde_json::json!(v));
+                        }
+                        Err(e) => {
+                            measurements_match = false;
+                            widths.push(serde_json::json!(e.to_string()));
+                        }
+                    }
+                }
+                let passed = supports == row["supports"].as_bool().unwrap() && (grow - expected_grow).abs() < 0.0001 && (shrink - expected_shrink).abs() < 0.0001 && kind_match && measurements_match;
+                serde_json::json!({"id":row["id"],"scale":scale,"specified":value,"passed":passed,"supports":supports,"expected_supports":row["supports"],"grow":grow,"shrink":shrink,"basis":format!("{:?}",style.value(P::FlexBasis)),"widths":widths,"expected":row})
+            }
+        };
+        if !result["passed"].as_bool().unwrap() {
+            failures.push(result.clone());
+        }
+        rows.push(result);
+    }
+    if let Ok(path) = std::env::var("OLO_FLEX_SHORTHAND_REPORT") {
+        std::fs::write(path, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
+    }
+    assert_eq!(rows.len(), 370);
+    // Shared size grammar accepts the draft's fit-content() sizing function;
+    // Chrome157 rejects it. Keep its five observations as explicit nonpasses.
+    // Do not alter reference values or hide unexpected differences in totals.
+    assert_eq!(failures.len(), 5, "{}", serde_json::to_string_pretty(&failures).unwrap());
+    assert!(
+        failures.iter().all(|r| r["id"] == "case-51" && r["supports"] == true && r["expected_supports"] == false && r["basis"].as_str().is_some_and(|s| s.starts_with("FitContent("))),
+        "{}",
+        serde_json::to_string_pretty(&failures).unwrap()
+    );
+}
+
+#[test]
+fn carousel_flex_basis_retains_query_lengths_until_its_layout_context_exists() {
+    // Original Stripe stylesheet: the newly recognized shorthand exposes this
+    // carousel value. The style host deliberately has no query geometry yet.
+    let host = Snapshot::default();
+    let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+    let style = compute(
+        &defaults,
+        &host,
+        "--carousel-card-width:clamp(240px,var(--case-study-carousel-card-fluid-width,30.38cqi),var(--case-study-carousel-card-max-width,384px));flex:0 0 var(--carousel-card-width,auto)",
+        None,
+        None,
+        Options { root: true, ..Default::default() },
+    );
+    assert_eq!(scalar(&style, P::FlexGrow), 0.);
+    assert_eq!(scalar(&style, P::FlexShrink), 0.);
+    let Value::Numeric(basis) = style.value(P::FlexBasis) else { panic!() };
+    assert!(basis.expression().dependencies().contains(math::RelativeUnit::Cqi));
+    struct Query(f64);
+    impl math::Context for Query {
+        fn factor(&self, unit: math::RelativeUnit) -> math::Result<f64> {
+            if unit == math::RelativeUnit::Cqi { Ok(self.0 / 100.) } else { Err(math::Error::ContextUnavailable) }
+        }
+    }
+    for (width, expected) in [(200., 240.), (1000., 303.8), (2000., 384.)] {
+        assert!((basis.resolve(&Query(width), &mut Default::default(), Default::default(), None).unwrap() - expected).abs() < 1e-9);
+    }
+    // Copying a pending ancestor length into another element must not silently
+    // rebind its query container; that context remains explicitly unsupported.
+    let syntax = Syntax::parse(Arc::from("flex-basis:inherit"), Default::default(), None).unwrap();
+    let ds: Vec<_> = syntax.declarations(None).unwrap().iter().map(|d| Declaration::compile(d, Default::default(), None).unwrap()).collect();
+    let mut b = Builder::new(Default::default(), None);
+    b.add(&ds[0], Default::default()).unwrap();
+    let cascade = b.finish(true, Some(&style)).unwrap();
+    let inherited = Style::compute(defaults, &cascade, Some(&style), Some(&style), &host, Default::default(), Default::default(), None);
+    match inherited {
+        Err(style::Error::Unsupported("inherited container-dependent box length")) => {}
+        Err(e) => panic!("unexpected inherited error: {e}"),
+        Ok(s) => panic!("unexpected inherited basis: {:?}", s.value(P::FlexBasis)),
+    }
 }

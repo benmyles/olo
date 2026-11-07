@@ -61,6 +61,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             match s.expansion() {
                 Expansion::WideOnly => Err(Error::Invalid),
                 Expansion::WhiteSpace => white_space(&parts),
+                Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
                 Expansion::Quad | Expansion::Repeat => {
                     if parts.len() > properties.len() {
                         return Err(Error::Invalid);
@@ -168,7 +169,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
         _ => Err(Error::Invalid),
     }
 }
-fn component(grammar: Grammar, c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
+pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     check(cancelled)?;
     match grammar {
         Grammar::FontWidth => font::width(c, limits, cancelled),

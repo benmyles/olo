@@ -4441,3 +4441,54 @@ prior run. Owned screens stay stopped; no personal install/reload. Evidence:
 stripe-flex-line-main-sync.json. **Stripe0/30, corpus0/100 and0/3000; goal active.**
 Next formatting integration also needs the actual flex shorthand/alignment
 values used by Stripe; they must feed sizing rather than silently using defaults.
+
+
+### 2026-11-06 — Stripe flex shorthand and deferred carousel basis
+
+Added original ordered flex shorthand expansion into grow/shrink/basis, preserving
+omitted basis as0% (shared immutable numeric expression), explicit zero as0px,
+CSS-wide resets and the existing shared pending substitution. Registry remains
+95 longhands, now18 shorthands. Lexical factor gating avoids compiling lengths
+as numbers; operational errors remain errors. Before implementation, captured74
+original cases at five verified native DPRs.365/370 observations match; all five
+nonpasses are the same fit-content(20px) draft sizing function accepted by our
+shared size grammar and rejected by Chrome157. Reference bytes/tolerance remain
+unchanged; explicit gap manifest retains the failures. These tests compare typed
+expansion/cascade/computation and isolated numeric resolution, not native CSSOM
+or flex item geometry.
+
+A fresh owned PID/binary-verified real HTTPS Stripe run then exposed its actual
+carousel Cqi basis during computed styling. Retain FlexBasis container dependence
+with other box lengths until layout supplies its query context. An exact authored
+regression resolves the observed clamp at200/1000/2000px query widths to
+240/303.8/384px. Fresh real navigation now clears styling and again stops at
+Unsupported("flex box formatting"). Actual carousel geometry is not reached.
+Both Browser processes quit, exits/windows verified and owned screen stopped;
+no personal session install/reload. No new visible content acceptance is claimed.
+
+Final release web/Browser289 pass,2 ignored; all-feature web275 pass,1 ignored;
+strict all-target clippy4.58s, workspace8.15s after the final production edit,
+format/AST/diff checks pass. The initial fixture registry count, temporary Rust
+borrow and nonroot test style context failures were corrected in the test harness;
+all raw development observations remain. Existing original style identities pass.
+
+Frozen release declaration microbench: warm none/1/0 0 auto/calc/pending compile
+0.067/0.108/0.151/0.309/0.406µs, resolution of all three assignments
+0.008/0.014/0.008/0.020/0.352µs. Cold1 initialization1.252µs;7 accepted,
+2 compiler discards/5 waits and5 accepted Cargo contexts recorded, load7.58–7.71.
+This compiler is unchanged by the later style-only basis deferral. No whole-page
+speedup is inferred. Retained allocation claims are limited to existing controls.
+
+Preserve both ordinary-path datasets. Initial pipeline100/1000
+807.67→804.42 /8715.27→8702.24µs, scene189.00→189.28 /3591.13→3324.81µs.
+Final pipeline813.35→819.94 /8938.51→8652.91µs, scene188.84→209.25 /
+3316.88→3531.09µs, identical geometry/pixels. Small pipeline~0.8% and scene
+~10.8%/~6.5% regressions remain nonpasses. Final28 accepted samples have no
+observed compiler/Cargo context; load9.69–10.55. Scene's retained paint loop does
+not call the new declaration/style code, but cause remains unresolved. Diagnostic
+perf counters show almost identical executed instructions; foreign Cargo/rustcs
+overlap that separate diagnostic, which cannot explain or clear these regressions.
+Earlier performance/image/fuzz nonpasses remain open. Evidence:
+stripe-flex-shorthand-{checks,parse-cost,ordinary-cost,ordinary-cost-initial,
+perf-diagnostic}.json and original fixtures. **Stripe0/30, corpus0/100 and0/3000;
+goal active.** Next: connect original flex item construction/formatting to pages.

@@ -1,0 +1,18 @@
+{
+  "reference": "Chrome157.0.8103.38, a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+  "gaps": [
+    {
+      "case": "case-51",
+      "specified": "1 2 fit-content(20px)",
+      "native_dprs": [1, 1.25, 1.5, 1.75, 2],
+      "observations": 5,
+      "outcome": "nonpass",
+      "reason": "The existing shared size grammar accepts the CSS Sizing draft's fit-content() function through flex-basis. Chrome157 rejects this declaration and retains7 8 13px. Native used-basis function geometry remains unsupported; no compatibility pass is inferred from draft syntax acceptance.",
+      "sources": [
+        "https://drafts.csswg.org/css-flexbox-1/#flex-basis-property",
+        "https://drafts.csswg.org/css-sizing-3/#preferred-size-properties"
+      ]
+    }
+  ],
+  "policy": "Original reference observations remain unchanged. Any difference outside this explicit case fails. These five observations must remain nonpasses in reports; this manifest is not website acceptance. Complete compatible used-basis/feature policy remains open."
+}

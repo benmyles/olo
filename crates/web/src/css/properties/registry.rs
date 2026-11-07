@@ -23,6 +23,7 @@ pub(super) enum Grammar {
 pub(super) enum Expansion {
     WideOnly,
     WhiteSpace,
+    Flex,
     Quad,
     Repeat,
     Unordered,
@@ -278,6 +279,7 @@ shorthand_registry! {
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;
+    Flex, "flex", [FlexGrow,FlexShrink,FlexBasis], Flex;
     FlexFlow, "flex-flow", [FlexDirection,FlexWrap], Unordered;
     Gap, "gap", [RowGap,ColumnGap], Repeat;
     Inset, "inset", [Top,Right,Bottom,Left], Quad;

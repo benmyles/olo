@@ -747,8 +747,8 @@ mode capability follows from these native ports or microbenchmarks.
 connects the generic declaration parser to original typed grammars. The
 standalone `parse(decoded_name, Components, important, ...)` API takes an
 already-decoded CSS property name; it is not a CSSOM setProperty/string-name
-parser. Static ASCII case-insensitive binary lookup covers **89 longhands
-and 16 shorthands**, with canonical names, inherited flags and initial-value
+parser. Static ASCII case-insensitive binary lookup covers **95 longhands
+and 18 shorthands**, with canonical names, inherited flags and initial-value
 spellings. The registry intentionally exposes its implemented scope; fonts,
 background images/layers, border-image/radius, transforms, grid templates,
 alignment, animations, transitions, many shorthands and descriptors remain.
@@ -774,7 +774,7 @@ unbounded literal overflow is accepted and materialized to finite f64 bounds.
 Line-height numbers remain multipliers, distinct from length calculations;
 actual used line metrics are not computed here.
 
-The all shorthand expands over the 88 implemented resettable longhands,
+The all shorthand expands over the 94 implemented resettable longhands,
 excluding direction and custom properties. Unicode-bidi is not implemented.
 This does not imply complete property coverage. Quad/pair shorthands expand
 atomically in physical/logical order; flex-flow
@@ -784,6 +784,29 @@ assignments. CSS-wide keywords expand over every implemented member. Display
 retains outer/inner/list-item or internal table/ruby roles and recognizes
 legacy aliases. Blockification and coupled overflow computation belong to the
 style stage below; there is no box tree, layout or CSSOM serializer.
+
+The `flex` shorthand expands its contiguous grow/shrink number group and
+optional basis in either outer order. It supports none/auto, wide resets,
+negative literal rejection with computed numeric-function clamping, and pending
+substitution shared across all three members. Omitted grow/shrink defaults are
+inline scalar values; omitted basis preserves interoperable0% using one shared
+immutable literal program, distinct from explicit0px when a basis is indefinite.
+Literal non-number tokens bypass number parsing; resource errors are preserved
+while disambiguating functions. The existing ordinary box-length container
+retention now includes FlexBasis: Stripe's carousel shorthand exposes a clamp
+with30.38cqi, which must wait for layout. Pending inherited container lengths
+continue to reject rebinding to a child's container.
+
+Original `tests/flex-shorthand-fixtures`:74 cases ×5 actual native DPRs =370
+observations,365 matched and5 explicit nonpasses. The five are the shared draft
+size grammar's fit-content() function, rejected by the captured Chrome157.
+Expected values remain unchanged; the gap manifest is not a pass. The fixture
+adapter models rejected/empty CSSOM setter inputs but implements no CSSOM API.
+Production cascade/style and numeric basis resolution are tested; keyword
+identities/empty-element interpretations are not native flex item geometry.
+The exact observed carousel expression also has a normative deferred-context/
+resize/inheritance regression. A real HTTPS retry returns to the flex formatting
+blocker after styling; actual carousel geometry is still not reached.
 
 The existing variable scanner validates generic contents and var() arguments
 without copying tokens on an ordinary declaration. A pending shorthand holds
@@ -1599,7 +1622,7 @@ context, before bidi/shaping. Typed inherited `white-space-collapse` and
 `text-wrap-mode` longhands support the two-longhand `white-space` shorthand,
 legacy aliases, arbitrary ordering, defaults, CSS-wide resets and pending
 substitution. Discard and white-space-trim remain unsupported. The registry has
-95 longhands and 17 shorthands; this does not imply complete used-value/layout support.
+95 longhands and 18 shorthands; this does not imply complete used-value/layout support.
 
 `WhiteSpace::for_style` binds the prepared text settings to frozen computed
 styles. Hosts supply one Arc source and an exact partition of nonempty UTF-8

@@ -133,6 +133,7 @@ fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_
             let computed = if matches!(
                 property,
                 Property::Width
+                    | Property::FlexBasis
                     | Property::Height
                     | Property::MinWidth
                     | Property::MaxWidth

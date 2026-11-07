@@ -1,5 +1,6 @@
 //! Typed property declarations, before cascade and layout. Worker-only APIs.
 mod display;
+mod flex;
 mod font;
 mod numeric;
 mod parse;
