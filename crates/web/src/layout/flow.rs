@@ -519,6 +519,16 @@ impl Layout {
     pub fn cache(&self) -> &Arc<Cache> {
         &self.cache
     }
+    /// The styles changed in place, when nothing else holds this layout's
+    /// cache, tree or styles (else None, and a copy is the way): a patch
+    /// over a few elements without a new tree. The tree follows the
+    /// document's revision.
+    pub fn patch_styles<R>(&mut self, document: &crate::dom::Document, patch: impl FnOnce(&mut StyleTree) -> R) -> Option<R> {
+        let cache = Arc::get_mut(&mut self.cache)?;
+        let tree = Arc::get_mut(&mut cache.tree)?;
+        let styles = tree.styles_mut(document)?;
+        Some(patch(styles))
+    }
     pub fn geometry(&self, id: BoxId) -> Option<&Geometry> {
         self.geometry.get(id.index())
     }

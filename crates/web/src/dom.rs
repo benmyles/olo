@@ -288,8 +288,10 @@ pub enum Change {
     /// A text node's data changed (what its parent lays out).
     Text(NodeId),
     /// A node's child list changed: children inserted, removed or moved
-    /// (every child's sibling-dependent matching, and what the node holds).
-    Children(NodeId),
+    /// (every child's sibling-dependent matching, and what the node holds);
+    /// `elements` when an element was among them (text alone cannot
+    /// change what an ancestor's `:has()` finds, bar `:empty`).
+    Children { node: NodeId, elements: bool },
     /// A change the log does not describe: everything may have changed.
     Unknown,
 }
@@ -644,6 +646,23 @@ impl Document {
     pub fn parent(&self, id: NodeId) -> Result<Option<NodeId>> {
         Ok(self.nodes[index(self.resolve(id)?)].parent.map(|at| self.handle(at)))
     }
+    /// Whether the node is in the document (its ancestors reach the root).
+    pub fn is_connected(&self, id: NodeId) -> Result<bool> {
+        let mut at = self.resolve(id)?;
+        let root = self.resolve(self.root())?;
+        let mut steps = 0usize;
+        while at != root {
+            match self.nodes[index(at)].parent {
+                Some(p) => at = p,
+                None => return Ok(false),
+            }
+            steps += 1;
+            if steps > self.nodes.len() {
+                return Err(Error::Hierarchy);
+            }
+        }
+        Ok(true)
+    }
     pub fn first_child(&self, id: NodeId) -> Result<Option<NodeId>> {
         Ok(self.nodes[index(self.resolve(id)?)].first.map(|at| self.handle(at)))
     }
@@ -945,7 +964,8 @@ impl Document {
             return Ok(false);
         };
         let parent = self.handle(parent);
-        self.bump_with(Change::Children(parent))?;
+        let elements = matches!(self.nodes[index(at)].data, Data::Element { .. } | Data::Template { .. });
+        self.bump_with(Change::Children { node: parent, elements })?;
         self.unlink(at);
         Ok(true)
     }
@@ -1053,13 +1073,16 @@ impl Document {
             return Err(Error::Hierarchy);
         }
         let parent_id = self.handle(parent);
-        self.bump_with(Change::Children(parent_id))?;
+        let is_element = |s: &Self, n: NonZeroU32| matches!(s.nodes[index(n)].data, Data::Element { .. } | Data::Template { .. });
+        let elements = inserted.iter().any(|&n| is_element(self, n));
+        self.bump_with(Change::Children { node: parent_id, elements })?;
         for &child in inserted.as_ref() {
             if let Some(old) = self.nodes[index(child)].parent
                 && old != parent
             {
                 let old = self.handle(old);
-                self.changes.push((self.revision, Change::Children(old)));
+                let elements = is_element(self, child);
+                self.changes.push((self.revision, Change::Children { node: old, elements }));
             }
             self.unlink(child);
             let previous = if let Some(before) = before { self.nodes[index(before)].previous } else { self.nodes[index(parent)].last };
@@ -1221,7 +1244,8 @@ impl Document {
         match self.nodes[index(root)].parent {
             Some(parent) => {
                 let parent = self.handle(parent);
-                self.bump_with(Change::Children(parent))?;
+                let elements = matches!(self.nodes[index(root)].data, Data::Element { .. } | Data::Template { .. });
+                self.bump_with(Change::Children { node: parent, elements })?;
             }
             None => self.bump()?,
         }

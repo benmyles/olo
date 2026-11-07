@@ -670,7 +670,7 @@ fn render(
                 let light = document.light();
                 let mut measurer = measurer;
                 let timing = std::env::var_os("OLO_BROWSER_TIMING").is_some();
-                Box::new(move |doc: &olo_web::dom::Document, previous: Option<&page::Measured>| {
+                Box::new(move |doc: &olo_web::dom::Document, previous: Option<page::Measured>| {
                     let call = Instant::now();
                     // Stylesheets the scripts added since: the rules follow.
                     let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| -> page::Result<Option<page::Resource>> {
@@ -701,8 +701,9 @@ fn render(
                             if timing {
                                 let [a, b, c, d, e, f] = m.phases_ms();
                                 eprintln!(
-                                    "  layout for scripts: style {a:.0} ms, boxes {b:.0} ms, text {c:.0} ms, layout {d:.0} ms, index {e:.0} ms, all {f:.0} ms (call {:.0} ms)",
-                                    call.elapsed().as_secs_f64() * 1000.
+                                    "  layout for scripts: style {a:.1} ms, boxes {b:.1} ms, text {c:.1} ms, layout {d:.1} ms, index {e:.1} ms, all {f:.1} ms (call {:.1} ms): {}",
+                                    call.elapsed().as_secs_f64() * 1000.,
+                                    m.path()
                                 );
                             }
                             Some(m)

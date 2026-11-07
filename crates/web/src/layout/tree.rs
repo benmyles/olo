@@ -208,6 +208,14 @@ impl Tree {
     pub fn styles(&self) -> &Arc<StyleTree> {
         &self.styles
     }
+    /// The styles to change in place, when nothing else holds them, for
+    /// the document as it is now (see `with_styles`).
+    pub(super) fn styles_mut(&mut self, document: &Document) -> Option<&mut StyleTree> {
+        if self.document == document.id() {
+            self.revision = document.revision();
+        }
+        Arc::get_mut(&mut self.styles)
+    }
     pub fn validate(&self, document: &Document) -> Result<()> {
         if self.document != document.id() || self.revision != document.revision() { Err(Error::Stale) } else { Ok(()) }
     }

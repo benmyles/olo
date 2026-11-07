@@ -123,19 +123,24 @@ fn main() {
         out
     };
     let body = elements.iter().copied().find(|&n| doc.name(n).unwrap() == Some("body")).unwrap();
-    for (what, node) in [("a deep element", elements[elements.len() / 2]), ("the body", body)] {
+    // A class no selector reaches from is patched in place; one that
+    // descendant selectors use (`.section-container` on stripe.com) runs
+    // the incremental job over what they reach.
+    for (what, node, class) in
+        [("a deep element", elements[elements.len() / 2], "bench-toggled"), ("the body", body, "bench-toggled"), ("the body, a class selectors reach from", body, "section-container")]
+    {
         let was = doc.attribute(node, "class").unwrap().unwrap_or("").to_owned();
-        doc.set_attribute(node, "class", format!("{was} bench-toggled")).unwrap();
-        let m = measurer.measure(&doc, &host, &mut shaper, viewport, last.as_ref(), None).unwrap();
+        doc.set_attribute(node, "class", format!("{was} {class}")).unwrap();
+        let m = measurer.measure(&doc, &host, &mut shaper, viewport, last.take(), None).unwrap();
         let p = m.phases_ms();
-        println!("after a class toggle on {what}: style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms", p[0], p[1], p[2], p[3]);
+        println!("after a class toggle on {what}: style {:.2} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms ({})", p[0], p[1], p[2], p[3], m.path());
         last = Some(m);
     }
     // A transform set inline on a deep element: paint-only, so the layout
     // should stand (boxes, text and layout at 0).
     let node = elements.iter().copied().find(|&n| doc.attribute(n, "class").unwrap().is_some_and(|c| c.split(' ').any(|c| c == "logo-carousel__marquee"))).unwrap_or(elements[elements.len() / 3]);
     doc.set_attribute(node, "style", "transform: translateX(-89px)").unwrap();
-    let m = measurer.measure(&doc, &host, &mut shaper, viewport, last.as_ref(), None).unwrap();
+    let m = measurer.measure(&doc, &host, &mut shaper, viewport, last.take(), None).unwrap();
     let p = m.phases_ms();
-    println!("after a transform on a deep element: style {:.1} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms, all {:.1} ms", p[0], p[1], p[2], p[3], p[5]);
+    println!("after a transform on a deep element: style {:.2} ms, boxes {:.1} ms, text {:.1} ms, layout {:.1} ms, all {:.2} ms ({})", p[0], p[1], p[2], p[3], p[5], m.path());
 }

@@ -80,6 +80,23 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// States are supplied by the host's live element/control model. A missing
 /// state source is an error, not a silent false match. History privacy and
 /// visited-style restrictions must be enforced by the eventual host.
+impl State {
+    /// The attributes whose change can flip the state (a link's href, a
+    /// control's checked or disabled); none for interaction states.
+    pub fn reflected_attributes(self) -> &'static [&'static str] {
+        match self {
+            State::AnyLink | State::Link | State::Visited | State::LocalLink => &["href"],
+            State::Enabled | State::Disabled => &["disabled"],
+            State::Checked | State::Unchecked | State::Indeterminate | State::Default => &["checked", "selected", "type"],
+            State::Required | State::Optional => &["required"],
+            State::Valid | State::Invalid | State::UserValid | State::UserInvalid | State::InRange | State::OutOfRange => &["value", "min", "max", "pattern", "required", "type"],
+            State::ReadOnly | State::ReadWrite => &["readonly", "disabled", "contenteditable"],
+            State::PlaceholderShown => &["placeholder", "value"],
+            State::Target | State::Hover | State::Active | State::Focus | State::FocusWithin | State::FocusVisible | State::Defined => &[],
+            _ => &[],
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
     AnyLink,
@@ -277,68 +294,58 @@ impl Selectors {
     }
     /// What the `:has()` arguments test their subjects by, all together: a
     /// changed element with none of these keys cannot change any `:has()`
-    /// result, so its ancestors keep their styles.
+    /// result, so its ancestors keep their styles. Keys inside `:not()`
+    /// and `:is()` count (a class coming or going flips `:not(.x)` too);
+    /// states that reflect attributes (`:checked`, `:disabled`, `:link`)
+    /// count by those attributes; `:empty` makes text matter.
     pub fn has_keys(&self) -> HasKeys {
         let mut keys = HasKeys::default();
         for test in &self.tests {
             let Test::Logical { mode: Logical::Has, list } = test else { continue };
-            let links = &self.links[self.lists[*list as usize].links.start as usize..self.lists[*list as usize].links.end as usize];
-            for &i in links {
-                let complex = &self.complexes[i as usize];
-                // Every compound of the argument: any element on its path.
-                for step in &self.steps[complex.steps.start as usize..complex.steps.end as usize] {
-                    let tests = &self.tests[step.tests.start as usize..step.tests.end as usize];
-                    let mut keyed = false;
-                    for t in tests {
-                        match t {
-                            Test::Type { name, .. } if *name != ANY => {
-                                keys.tags.insert(self.symbols[*name as usize].to_ascii_lowercase());
-                                keyed = true;
-                            }
-                            Test::Id(n) => {
-                                keys.ids.insert(self.symbols[*n as usize].to_string());
-                                keyed = true;
-                            }
-                            Test::Class(n) => {
-                                keys.classes.insert(self.symbols[*n as usize].to_string());
-                                keyed = true;
-                            }
-                            Test::Attr { name, .. } => {
-                                keys.attributes.insert(self.symbols[*name as usize].to_ascii_lowercase());
-                                keyed = true;
-                            }
-                            _ => {}
+            keys.any = true;
+            self.has_keys_of_list(*list, &mut keys);
+        }
+        keys
+    }
+    fn has_keys_of_list(&self, list: u32, keys: &mut HasKeys) {
+        let links = &self.links[self.lists[list as usize].links.start as usize..self.lists[list as usize].links.end as usize];
+        for &i in links {
+            let complex = &self.complexes[i as usize];
+            // Every compound of the argument: any element on its path.
+            for step in &self.steps[complex.steps.start as usize..complex.steps.end as usize] {
+                let tests = &self.tests[step.tests.start as usize..step.tests.end as usize];
+                for t in tests {
+                    match t {
+                        Test::Type { name, .. } if *name != ANY => {
+                            keys.tags.insert(self.symbols[*name as usize].to_ascii_lowercase());
                         }
-                    }
-                    // A compound of states alone (`:has(:focus-visible)`)
-                    // follows interaction, not the document: no key.
-                    let states_only = !keyed && !tests.is_empty() && tests.iter().all(|t| matches!(t, Test::State(_)));
-                    // The relative selector's anchor is the subject itself, not a key.
-                    let anchor = tests.iter().all(|t| matches!(t, Test::Structural(Structural::Anchor)));
-                    if !keyed && !states_only && !anchor {
-                        keys.universal = true;
-                        if std::env::var_os("OLO_STYLE_TIMING").is_some() {
-                            let kinds: Vec<String> = tests
-                                .iter()
-                                .map(|t| match t {
-                                    Test::Structural(s) => format!("{s:?}"),
-                                    Test::State(s) => format!(":{s:?}"),
-                                    Test::Pseudo(p) => format!("::{p:?}"),
-                                    Test::Logical { mode, .. } => format!("{mode:?}()"),
-                                    Test::Nth(_) => "nth".into(),
-                                    Test::Lang { .. } => "lang".into(),
-                                    Test::Dir(_) => "dir".into(),
-                                    Test::Type { .. } => "*".into(),
-                                    _ => "?".into(),
-                                })
-                                .collect();
-                            eprintln!("  :has() argument without a key: {}", kinds.join("+"));
+                        Test::Id(n) => {
+                            keys.ids.insert(self.symbols[*n as usize].to_string());
                         }
+                        Test::Class(n) => {
+                            keys.classes.insert(self.symbols[*n as usize].to_string());
+                        }
+                        Test::Attr { name, .. } => {
+                            keys.attributes.insert(self.symbols[*name as usize].to_ascii_lowercase());
+                        }
+                        Test::Logical { list, .. } => self.has_keys_of_list(*list, keys),
+                        Test::Structural(Structural::Empty) => keys.empty = true,
+                        Test::State(state) => {
+                            for a in state.reflected_attributes() {
+                                keys.attributes.insert((*a).to_owned());
+                            }
+                        }
+                        Test::Lang { .. } => {
+                            keys.attributes.insert("lang".to_owned());
+                        }
+                        Test::Dir(_) => {
+                            keys.attributes.insert("dir".to_owned());
+                        }
+                        _ => {}
                     }
                 }
             }
         }
-        keys
     }
     /// The invalidation sets of every selector (see `Invalidation`).
     pub fn invalidation(&self) -> Invalidation {
@@ -502,15 +509,20 @@ fn check(cancelled: Option<&AtomicBool>) -> Result<()> {
 fn white(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\r' | '\n' | '\x0c')
 }
-/// The keys `:has()` arguments test by (see `Selectors::has_keys`).
+/// The keys `:has()` arguments test by (see `Selectors::has_keys`). An
+/// element coming or going can flip any argument (the tags say which
+/// elements, but a subtree removed is not there to ask), so a child list
+/// change with an element in it restyles the ancestors regardless.
 #[derive(Default, Debug, Clone)]
 pub struct HasKeys {
+    /// Any `:has()` at all.
+    pub any: bool,
     pub tags: std::collections::HashSet<String>,
     pub ids: std::collections::HashSet<String>,
     pub classes: std::collections::HashSet<String>,
     pub attributes: std::collections::HashSet<String>,
-    /// An argument compound with no key at all (`:has(> *)`, `:has(:hover)`).
-    pub universal: bool,
+    /// An argument tests `:empty`: text coming or going matters.
+    pub empty: bool,
 }
 /// The subjects a key's change can reach: elements with one of these tags,
 /// ids, classes or attribute names (or every element, when universal).
@@ -613,18 +625,32 @@ impl HasKeys {
     /// Whether a key that changed ("[attr", ".class", "#id") is one an
     /// argument tests: only then can an ancestor's :has() flip.
     pub fn has_key(&self, key: &str) -> bool {
-        self.universal
-            || key.strip_prefix('.').is_some_and(|c| self.classes.contains(c))
+        key.strip_prefix('.').is_some_and(|c| self.classes.contains(c))
             || key.strip_prefix('#').is_some_and(|i| self.ids.contains(i))
             || key.strip_prefix('[').is_some_and(|a| self.attributes.contains(a))
     }
+    /// Whether an attribute's change can flip an argument: the attribute
+    /// is tested, and (for one a state reflects by presence alone, like
+    /// a placeholder) it came or went.
+    pub fn attribute_flips(&self, name: &str, old: Option<&str>, new: Option<&str>) -> bool {
+        if !self.attributes.contains(name) {
+            return false;
+        }
+        match name {
+            "placeholder" => old.is_none_or(str::is_empty) != new.is_none_or(str::is_empty),
+            _ => true,
+        }
+    }
     pub fn is_empty(&self) -> bool {
-        !self.universal && self.tags.is_empty() && self.ids.is_empty() && self.classes.is_empty() && self.attributes.is_empty()
+        !self.any
     }
     /// Whether this element (by its tag, id, classes and attribute names)
     /// could take part in a `:has()` argument's match.
+    /// Whether an element whose attributes changed (which is unknown)
+    /// could take part in an argument: it carries a key, or an argument
+    /// tests an attribute it may have lost.
     pub fn touches(&self, doc: &crate::dom::Document, node: crate::dom::NodeId) -> bool {
-        if self.universal {
+        if !self.attributes.is_empty() {
             return true;
         }
         if let Ok(Some(name)) = doc.name(node)

@@ -81,7 +81,11 @@ pub struct RuleSet {
     has_keys: selectors::HasKeys,
     invalidation: selectors::Invalidation,
     uses_empty: bool,
+    /// Unique to this compilation: styles made with another rule set
+    /// (their recorded rule ids point into it) are not reused with this.
+    generation: u64,
 }
+static GENERATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 #[derive(Clone, Copy)]
 pub struct CompileLimits {
     pub rules: usize,
@@ -477,7 +481,8 @@ impl SheetBuilder {
         let has_keys = selectors.has_keys();
         let invalidation = selectors.invalidation();
         let uses_empty = selectors.uses_empty();
-        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues, has_keys, invalidation, uses_empty })
+        let generation = GENERATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues, has_keys, invalidation, uses_empty, generation })
     }
 }
 fn fold_arc(s: Arc<str>) -> Arc<str> {
@@ -511,6 +516,10 @@ impl RuleSet {
     }
     pub fn has_keys(&self) -> &selectors::HasKeys {
         &self.has_keys
+    }
+    /// See the field: the generation for styles' `JobOptions`.
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
     pub fn invalidation(&self) -> &selectors::Invalidation {
         &self.invalidation

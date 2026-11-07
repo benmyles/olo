@@ -9,7 +9,8 @@ mod memory;
 use super::{Syntax, cascade, color, math, properties as p, variables};
 pub use cascade::{Axes, Direction, TextOrientation, WritingMode};
 pub use font_pool::FontCacheStats;
-pub use job::{Job, JobLimits, JobOptions, Progress, Report, StyleKey, StyleTree};
+pub(crate) use job::attribute_keys;
+pub use job::{Job, JobLimits, JobOptions, Patched, Progress, Report, StyleKey, StyleTree};
 pub use memory::Memory;
 pub use p::{Display, Families, Family, GenericFamily, Inner, Internal, Keyword, Outer, Property};
 use std::sync::{

@@ -79,6 +79,7 @@ pub struct Report {
     /// Declarations dropped at computed-value time (see `Dependencies::fallbacks`).
     pub value_fallbacks: usize,
 }
+#[derive(Clone)]
 struct Styled {
     node: NodeId,
     style: Style,
@@ -95,6 +96,7 @@ struct Styled {
 }
 /// Completed styles for one immutable connected light document. No DOM,
 /// stylesheet, parent or state-source borrow survives completion.
+#[derive(Clone)]
 pub struct StyleTree {
     document: u64,
     revision: u64,
@@ -180,6 +182,29 @@ impl StyleTree {
     pub fn storage_payload_bytes(&self) -> usize {
         self.styles.capacity() * size_of::<Styled>() + self.slots.capacity() * size_of::<Option<NonZeroU32>>()
     }
+}
+/// The keys an attribute change touches: the attribute's name, and for
+/// id/class the values that came or went.
+pub(crate) fn attribute_keys(name: &str, old: Option<&str>, new: Option<&str>) -> Vec<String> {
+    let mut keys = vec![format!("[{name}")];
+    let (old, new) = (old.unwrap_or(""), new.unwrap_or(""));
+    if name == "class" {
+        let before: std::collections::HashSet<&str> = old.split_ascii_whitespace().collect();
+        let after: std::collections::HashSet<&str> = new.split_ascii_whitespace().collect();
+        keys.extend(before.symmetric_difference(&after).map(|c| format!(".{c}")));
+    } else if name == "id" && old != new {
+        keys.push(format!("#{old}"));
+        keys.push(format!("#{new}"));
+    }
+    keys
+}
+/// What patching a tree in place came to (see `Job::patch`).
+#[derive(Clone, Copy, Debug)]
+pub struct Patched {
+    /// Every difference is paint-only: a layout of the tree before serves.
+    pub geometry_kept: bool,
+    /// Elements whose style changed.
+    pub changed: usize,
 }
 /// Worker job: parent-before-child traversal, bounded steps and a readable
 /// completed prefix. The caller sends progress/results to the UI and checks
@@ -402,6 +427,29 @@ impl<'a> Job<'a> {
                     }
                 };
                 let mut geometry_kept = true;
+                if std::env::var_os("OLO_STYLE_TIMING").is_some() {
+                    let name = |n: NodeId| document.name(n).ok().flatten().unwrap_or("?").to_owned();
+                    let listed: Vec<String> = changes
+                        .iter()
+                        .take(12)
+                        .map(|(_, c)| match c {
+                            crate::dom::Change::Node(n) => format!("node <{}>", name(*n)),
+                            crate::dom::Change::Attribute { node: n, name: a, old, new } => {
+                                format!(
+                                    "<{}> {a}: {:?} -> {:?}",
+                                    name(*n),
+                                    old.as_deref().map(|s| s.chars().take(40).collect::<String>()),
+                                    new.as_deref().map(|s| s.chars().take(40).collect::<String>())
+                                )
+                            }
+                            crate::dom::Change::Style(n) => format!("<{}> style", name(*n)),
+                            crate::dom::Change::Text(n) => format!("text in <{}>", document.parent(*n).ok().flatten().map(name).unwrap_or_default()),
+                            crate::dom::Change::Children { node: n, elements } => format!("children of <{}>{}", name(*n), if *elements { " (elements)" } else { "" }),
+                            crate::dom::Change::Unknown => "unknown".to_owned(),
+                        })
+                        .collect();
+                    eprintln!("  changes ({}): {}", changes.len(), listed.join("; "));
+                }
                 for (_, change) in changes {
                     match change {
                         crate::dom::Change::Node(n) => {
@@ -415,23 +463,11 @@ impl<'a> Job<'a> {
                         }
                         crate::dom::Change::Attribute { node: n, name, old, new } => {
                             nodes.insert(*n);
-                            // The keys that changed: the attribute's name, and
-                            // for id/class the values that came or went.
-                            let mut keys = vec![format!("[{name}")];
-                            let (old, new) = (old.as_deref().unwrap_or(""), new.as_deref().unwrap_or(""));
-                            if &**name == "class" {
-                                let before: std::collections::HashSet<&str> = old.split_ascii_whitespace().collect();
-                                let after: std::collections::HashSet<&str> = new.split_ascii_whitespace().collect();
-                                keys.extend(before.symmetric_difference(&after).map(|c| format!(".{c}")));
-                            } else if &**name == "id" {
-                                if old != new {
-                                    keys.push(format!("#{old}"));
-                                    keys.push(format!("#{new}"));
-                                }
-                            }
+                            let keys = attribute_keys(name, old.as_deref(), new.as_deref());
                             // An ancestor's :has() can flip only when an
                             // argument tests one of the keys that changed.
-                            if uses_has && keys.iter().any(|k| has_keys.has_key(k)) {
+                            let flips = has_keys.attribute_flips(name, old.as_deref(), new.as_deref()) || keys.iter().skip(1).any(|k| has_keys.has_key(k));
+                            if uses_has && flips {
                                 dirty_ancestors(*n, &mut nodes);
                             }
                             invalidate(*n, keys, &mut nodes);
@@ -449,13 +485,15 @@ impl<'a> Job<'a> {
                             }
                             invalidate(*n, vec!["[style".to_owned()], &mut nodes);
                         }
-                        crate::dom::Change::Children(n) => {
+                        crate::dom::Change::Children { node: n, elements } => {
                             geometry_kept = false;
                             children.insert(*n);
-                            if uses_has {
+                            // Text alone (a counter's digits replaced) flips an
+                            // ancestor's :has() only through :empty.
+                            if uses_has && (*elements || has_keys.empty) {
                                 nodes.insert(*n);
                                 dirty_ancestors(*n, &mut nodes);
-                            } else if uses_empty {
+                            } else if uses_empty || uses_has {
                                 nodes.insert(*n);
                             }
                         }
@@ -463,6 +501,9 @@ impl<'a> Job<'a> {
                             geometry_kept = false;
                             if uses_empty && let Some(p) = document.parent(*n).ok().flatten() {
                                 nodes.insert(p);
+                                if has_keys.empty {
+                                    dirty_ancestors(p, &mut nodes);
+                                }
                             }
                         }
                         crate::dom::Change::Unknown => return None,
@@ -927,6 +968,287 @@ impl<'a> Job<'a> {
             return Ok((index, false));
         }
         let clock = self.timing.as_ref().map(|_| std::time::Instant::now());
+        let previous_matched = self.previous.as_ref().and_then(|inc| {
+            if !inc.style_only.contains(&node) || inc.nodes.contains(&node) || parent_node.is_some_and(|p| inc.children.contains(&p)) {
+                return None;
+            }
+            inc.tree.index(node).and_then(|i| inc.tree.styles[i].matched.clone())
+        });
+        let (style, matched) = self.compute_element(node, parent, parent_box, host, previous_matched)?;
+        let mark_compute = clock.map(|c| c.elapsed().as_secs_f64()).unwrap_or(0.);
+        let index = self.tree.styles.len();
+        self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
+        // Computed afresh: the same as before only if every value is; a
+        // difference beyond paint means geometry may have changed.
+        let mut style = style;
+        let same = self.previous.as_ref().and_then(|inc| inc.tree.index(node)).is_some_and(|i| self.previous.as_ref().unwrap().tree.styles[i].style.same_as(&style));
+        if let Some(inc) = self.previous.as_ref()
+            && let Some(i) = inc.tree.index(node)
+        {
+            // The same as before: the previous style itself (its identity
+            // tells painted tiles nothing changed). Different (custom
+            // properties, say) but painting the same: the previous values.
+            if same {
+                style = inc.tree.styles[i].style.clone();
+            } else {
+                style.share_with(&inc.tree.styles[i].style);
+            }
+            if !same && std::env::var_os("OLO_STYLE_DIFF").is_some() {
+                eprintln!(
+                    "style differs: <{} class={:?}> {}",
+                    self.document.name(node).map_err(Error::Dom)?.unwrap_or("?"),
+                    self.document.attribute(node, "class").map_err(Error::Dom)?.unwrap_or("").chars().take(50).collect::<String>(),
+                    inc.tree.styles[i].style.difference(&style)
+                );
+            }
+        }
+        if let Some(inc) = self.previous.as_mut()
+            && inc.geometry_kept
+            && !same
+        {
+            inc.geometry_kept = inc.tree.index(node).is_some_and(|i| inc.tree.styles[i].style.differs_only_in_paint(&style));
+            if !inc.geometry_kept {
+                inc.why_not = Some(match inc.tree.index(node) {
+                    Some(i) => format!("<{}> changed {}", self.document.name(node).map_err(Error::Dom)?.unwrap_or("?"), inc.tree.styles[i].style.difference(&style)),
+                    None => format!("<{}> is new", self.document.name(node).map_err(Error::Dom)?.unwrap_or("?")),
+                });
+            }
+        }
+        self.same.push(same);
+        // Children keep their styles when what they inherit is unchanged;
+        // the descendants whose selectors an attribute change can reach
+        // are in `nodes` already (the invalidation sets), so this holds
+        // for attribute changes too.
+        self.inherited_same.push(same || self.previous.as_ref().and_then(|inc| inc.tree.index(node)).is_some_and(|i| self.previous.as_ref().unwrap().tree.styles[i].style.inherited_same(&style)));
+        self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None, matched: Some(matched) });
+        if self.root.is_none() {
+            self.root = Some(index);
+        }
+        if self.tree.slots.len() <= node.slot() as usize {
+            self.tree.slots.resize(node.slot() as usize + 1, None);
+        }
+        self.tree.slots[node.slot() as usize] = NonZeroU32::new(index as u32 + 1);
+        self.account.add(&self.tree.styles[index].style);
+        if self.rules.has_pseudo_elements() {
+            let element = self.tree.styles[index].style.clone();
+            for (pseudo, style) in self.compute_pseudos(node, &element, host)? {
+                if self.tree.styles.len() >= self.limits.elements || self.tree.styles.len() >= u32::MAX as usize {
+                    return Err(Error::Limit);
+                }
+                self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
+                self.account.add(&style);
+                let at = self.tree.styles.len() as u32;
+                // A generated pseudo-element computed afresh: geometry stands
+                // only if it was there before and differs in paint alone.
+                if let Some(inc) = self.previous.as_mut()
+                    && inc.geometry_kept
+                {
+                    inc.geometry_kept = inc.tree.pseudos.get(&(node, pseudo)).is_some_and(|&p| inc.tree.styles[p as usize].style.differs_only_in_paint(&style));
+                }
+                self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1), end: at + 1, pseudo: Some(pseudo), matched: None });
+                self.same.push(false);
+                self.inherited_same.push(false);
+                self.tree.pseudos.insert((node, pseudo), at);
+            }
+        }
+        if let (Some(t), Some(c)) = (self.timing.as_mut(), clock) {
+            t.pseudo += c.elapsed().as_secs_f64() - mark_compute;
+        }
+        let retained = self
+            .account
+            .memory
+            .accounted_reserved_bytes
+            .saturating_add(self.tree.storage_payload_bytes())
+            .saturating_sub(self.tree.styles.len() * size_of::<Style>())
+            .saturating_add(self.account.scratch_bytes());
+        let retained = retained.saturating_add(self.fonts.stats().reserved_bytes);
+        if retained > self.limits.retained_bytes {
+            return Err(Error::Limit);
+        }
+        self.progress.styled += 1;
+        Ok((index, false))
+    }
+    /// The previous styles patched in place for a few elements whose own
+    /// declarations changed and nothing selectors see elsewhere (an inline
+    /// style set by a script, an attribute no selector reaches from): each
+    /// is cascaded from the rules it matched (matched again when
+    /// `rematch`) and computed anew, its pseudo-elements with it. The
+    /// whole tree is never visited or copied. None when the patch cannot
+    /// stand (a value children inherit changed, a pseudo-element came or
+    /// went, an element without its rules recorded): the tree is then
+    /// untouched, and a full job over it is the way.
+    pub fn patch<H: Host>(
+        document: &'a Document,
+        rules: &'a cascade::RuleSet,
+        defaults: Arc<Defaults>,
+        options: JobOptions<'a>,
+        limits: JobLimits,
+        cancelled: Option<&'a AtomicBool>,
+        tree: &mut StyleTree,
+        nodes: &[(NodeId, bool)],
+        mut host: impl FnMut(NodeId) -> H,
+    ) -> Result<Option<Patched>> {
+        if tree.document != document.id() || tree.generation != options.generation || tree.styles.is_empty() || tree.styles[0].pseudo.is_some() {
+            return Ok(None);
+        }
+        let mut job = Self::new(document, rules, defaults, JobOptions { previous: None, ..options }, limits, cancelled)?;
+        std::mem::swap(&mut job.tree, tree);
+        job.root = Some(0);
+        let result = job.patch_inner(nodes, &mut host);
+        std::mem::swap(&mut job.tree, tree);
+        result
+    }
+    fn patch_inner<H: Host>(&mut self, nodes: &[(NodeId, bool)], host: &mut impl FnMut(NodeId) -> H) -> Result<Option<Patched>> {
+        let mut undo: Vec<(usize, Style, Option<Arc<[(u32, selectors::Specificity)]>>)> = Vec::new();
+        let result = self.patch_in_place(nodes, host, &mut undo);
+        match result {
+            Ok(Ok(patched)) => {
+                self.tree.revision = self.document.revision();
+                self.tree.geometry_kept = patched.geometry_kept;
+                if let Some(t) = &self.timing {
+                    eprintln!(
+                        "style patch: {} of {} elements changed ({} written) in {:.2} ms; geometry {}",
+                        patched.changed,
+                        nodes.len(),
+                        undo.len(),
+                        t.started.elapsed().as_secs_f64() * 1000.,
+                        if patched.geometry_kept { "kept" } else { "changed" }
+                    );
+                }
+                Ok(Some(patched))
+            }
+            other => {
+                // As it was.
+                for (i, style, matched) in undo.into_iter().rev() {
+                    self.tree.styles[i].style = style;
+                    self.tree.styles[i].matched = matched;
+                }
+                match other {
+                    Ok(Err(why)) => {
+                        if self.timing.is_some() {
+                            eprintln!("style patch: not for {} elements: {why}", nodes.len());
+                        }
+                        Ok(None)
+                    }
+                    Err(e) => Err(e),
+                    Ok(Ok(_)) => unreachable!(),
+                }
+            }
+        }
+    }
+    /// The elements computed anew and written over, each with its
+    /// pseudo-elements, and the descendants of one that changed what they
+    /// inherit (a custom property, a colour) likewise, from the rules
+    /// they matched; `undo` holds what was overwritten. Err says why the
+    /// patch cannot stand.
+    fn patch_in_place<H: Host>(
+        &mut self,
+        nodes: &[(NodeId, bool)],
+        host: &mut impl FnMut(NodeId) -> H,
+        undo: &mut Vec<(usize, Style, Option<Arc<[(u32, selectors::Specificity)]>>)>,
+    ) -> Result<std::result::Result<Patched, String>> {
+        let name = |job: &Self, n: NodeId| job.document.name(n).ok().flatten().unwrap_or("?").to_owned();
+        let mut geometry_kept = true;
+        let mut changed = 0usize;
+        let mut done = std::collections::HashSet::new();
+        // The elements asked for, then the subtrees of those that changed
+        // what they inherit.
+        let mut queue: Vec<(usize, bool)> = Vec::new();
+        let mut asked = std::collections::HashMap::new();
+        for &(node, rematch) in nodes {
+            let Some(i) = self.tree.index(node) else { return Ok(Err(format!("<{}> has no style", name(self, node)))) };
+            if self.tree.styles[i].pseudo.is_some() {
+                return Ok(Err(format!("<{}> is a pseudo-element's", name(self, node))));
+            }
+            queue.push((i, rematch));
+            *asked.entry(i).or_insert(false) |= rematch;
+        }
+        queue.reverse();
+        while let Some((i, rematch)) = queue.pop() {
+            self.tick()?;
+            if !done.insert(i) {
+                continue;
+            }
+            let node = self.tree.styles[i].node;
+            let parent_node = self.document.parent(node).map_err(Error::Dom)?;
+            let parent = parent_node.and_then(|n| self.tree.index(n));
+            if parent_node.is_some_and(|p| self.document.node_type(p).map_err(Error::Dom).is_ok_and(|t| t == NodeType::Element)) && parent.is_none() {
+                return Ok(Err(format!("<{}>'s parent has no style", name(self, node))));
+            }
+            let parent_box = parent.and_then(|i| {
+                if matches!(self.tree.styles[i].style.value(Property::Display), Value::Display(Display::Contents)) { self.tree.styles[i].parent_box } else { NonZeroU32::new(i as u32 + 1) }
+            });
+            let previous_matched = if rematch { None } else { self.tree.styles[i].matched.clone() };
+            if !rematch && previous_matched.is_none() {
+                return Ok(Err(format!("<{}> has no rules recorded", name(self, node))));
+            }
+            let h = host(node);
+            let (mut style, matched) = self.compute_element(node, parent, parent_box, &h, previous_matched)?;
+            let old = &self.tree.styles[i].style;
+            let same = old.same_as(&style);
+            if same && !rematch {
+                continue;
+            }
+            let mut below = false;
+            if !same {
+                style.share_with(old);
+                below = !old.inherited_same(&style);
+                if geometry_kept && !old.differs_only_in_paint(&style) {
+                    geometry_kept = false;
+                }
+                changed += 1;
+            }
+            let pseudos = self.compute_pseudos(node, &style, &h)?;
+            // The pseudo-elements must be the ones there before.
+            for pseudo in [PseudoElement::Before, PseudoElement::After] {
+                if self.tree.pseudos.contains_key(&(node, pseudo)) != pseudos.iter().any(|(p, _)| *p == pseudo) {
+                    return Ok(Err(format!("<{}>'s {pseudo:?} came or went", name(self, node))));
+                }
+            }
+            if !same {
+                self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
+                let entry = &mut self.tree.styles[i];
+                undo.push((i, std::mem::replace(&mut entry.style, style), std::mem::replace(&mut entry.matched, Some(matched))));
+            }
+            for (p, s) in pseudos {
+                let at = self.tree.pseudos[&(node, p)] as usize;
+                let entry = &mut self.tree.styles[at];
+                if entry.style.same_as(&s) {
+                    continue;
+                }
+                if geometry_kept && !entry.style.differs_only_in_paint(&s) {
+                    geometry_kept = false;
+                }
+                self.tree.report.value_fallbacks += usize::from(s.dependencies().fallbacks);
+                undo.push((at, std::mem::replace(&mut entry.style, s), entry.matched.clone()));
+            }
+            if below {
+                // Its descendants, parents before children (the tree's
+                // order), from their recorded rules.
+                let end = self.tree.styles[i].end as usize;
+                let mut descendants = Vec::new();
+                for j in (i + 1..end).rev() {
+                    if self.tree.styles[j].pseudo.is_none() && !done.contains(&j) {
+                        descendants.push((j, asked.get(&j).copied().unwrap_or(false)));
+                    }
+                }
+                queue.extend(descendants);
+            }
+        }
+        Ok(Ok(Patched { geometry_kept, changed }))
+    }
+    /// An element's style computed: its hints and inline declarations, its
+    /// rules (the ones recorded before cascaded again when only its inline
+    /// style changed, else matched), and the computed values.
+    fn compute_element(
+        &mut self,
+        node: NodeId,
+        parent: Option<usize>,
+        parent_box: Option<NonZeroU32>,
+        host: &impl Host,
+        previous_matched: Option<Arc<[(u32, selectors::Specificity)]>>,
+    ) -> Result<(Style, Arc<[(u32, selectors::Specificity)]>)> {
+        let clock = self.timing.as_ref().map(|_| std::time::Instant::now());
         let mut hints = Vec::new();
         if self.document.namespace(node).map_err(Error::Dom)? == Some(crate::dom::Namespace::Html) {
             self.html_hints(node, &mut hints)?;
@@ -967,12 +1289,6 @@ impl<'a> Job<'a> {
         }
         // An element whose inline style changed and nothing selectors see:
         // its rules from before, cascaded with the new declarations.
-        let previous_matched = self.previous.as_ref().and_then(|inc| {
-            if !inc.style_only.contains(&node) || inc.nodes.contains(&node) || parent_node.is_some_and(|p| inc.children.contains(&p)) {
-                return None;
-            }
-            inc.tree.index(node).and_then(|i| inc.tree.styles[i].matched.clone())
-        });
         let (cascade, matched) = match previous_matched {
             Some(matched) => {
                 let cascade = self
@@ -1034,165 +1350,86 @@ impl<'a> Job<'a> {
         if let Some(t) = self.timing.as_mut() {
             t.computing += mark_compute - mark_match;
         }
-        let index = self.tree.styles.len();
-        self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
-        // Computed afresh: the same as before only if every value is; a
-        // difference beyond paint means geometry may have changed.
-        let mut style = style;
-        let same = self.previous.as_ref().and_then(|inc| inc.tree.index(node)).is_some_and(|i| self.previous.as_ref().unwrap().tree.styles[i].style.same_as(&style));
-        if let Some(inc) = self.previous.as_ref()
-            && let Some(i) = inc.tree.index(node)
-        {
-            // The same as before: the previous style itself (its identity
-            // tells painted tiles nothing changed). Different (custom
-            // properties, say) but painting the same: the previous values.
-            if same {
-                style = inc.tree.styles[i].style.clone();
-            } else {
-                style.share_with(&inc.tree.styles[i].style);
+        Ok((style, matched))
+    }
+    /// The element's `::before` and `::after` that generate content (CSS
+    /// Generated Content 3 §2): styled with the element as parent.
+    fn compute_pseudos(&mut self, node: NodeId, element: &Style, host: &impl Host) -> Result<Vec<(PseudoElement, Style)>> {
+        let mut out = Vec::new();
+        if !self.rules.has_pseudo_elements() {
+            return Ok(out);
+        }
+        let dom = if let Some(states) = self.options.states { selectors::DomTree::with_states(self.document, states) } else { selectors::DomTree::new(self.document) };
+        for pseudo in [PseudoElement::Before, PseudoElement::After] {
+            if !self.rules.has_pseudo(pseudo) {
+                continue;
             }
-            if !same && std::env::var_os("OLO_STYLE_DIFF").is_some() {
-                eprintln!(
-                    "style differs: <{} class={:?}> {}",
-                    self.document.name(node).map_err(Error::Dom)?.unwrap_or("?"),
-                    self.document.attribute(node, "class").map_err(Error::Dom)?.unwrap_or("").chars().take(50).collect::<String>(),
-                    inc.tree.styles[i].style.difference(&style)
-                );
-            }
-        }
-        if let Some(inc) = self.previous.as_mut()
-            && inc.geometry_kept
-            && !same
-        {
-            inc.geometry_kept = inc.tree.index(node).is_some_and(|i| inc.tree.styles[i].style.differs_only_in_paint(&style));
-            if !inc.geometry_kept {
-                inc.why_not = Some(match inc.tree.index(node) {
-                    Some(i) => format!("<{}> changed {}", self.document.name(node).map_err(Error::Dom)?.unwrap_or("?"), inc.tree.styles[i].style.difference(&style)),
-                    None => format!("<{}> is new", self.document.name(node).map_err(Error::Dom)?.unwrap_or("?")),
-                });
-            }
-        }
-        self.same.push(same);
-        // Children keep their styles when what they inherit is unchanged;
-        // the descendants whose selectors an attribute change can reach
-        // are in `nodes` already (the invalidation sets), so this holds
-        // for attribute changes too.
-        self.inherited_same.push(same || self.previous.as_ref().and_then(|inc| inc.tree.index(node)).is_some_and(|i| self.previous.as_ref().unwrap().tree.styles[i].style.inherited_same(&style)));
-        self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None, matched: Some(matched) });
-        if self.root.is_none() {
-            self.root = Some(index);
-        }
-        if self.tree.slots.len() <= node.slot() as usize {
-            self.tree.slots.resize(node.slot() as usize + 1, None);
-        }
-        self.tree.slots[node.slot() as usize] = NonZeroU32::new(index as u32 + 1);
-        self.account.add(&self.tree.styles[index].style);
-        // ::before and ::after that generate content (CSS Generated Content
-        // 3 §2): styled with the element as parent, kept beside its style.
-        if self.rules.has_pseudo_elements() {
-            for pseudo in [PseudoElement::Before, PseudoElement::After] {
-                if !self.rules.has_pseudo(pseudo) {
-                    continue;
-                }
-                self.tick()?;
-                let element = &self.tree.styles[index].style;
-                // Only a rule declaring `content` makes the pseudo-element
-                // exist: those few are tried first; most elements stop here.
-                let generates = self
-                    .rules
-                    .match_element_with_hints(
-                        &dom,
-                        node,
-                        selectors::MatchOptions { quirks: self.options.quirks, pseudo: Some(pseudo), content_only: true, ..Default::default() },
-                        None,
-                        None,
-                        Some(element as &dyn cascade::Inherited),
-                        self.limits.cascade,
-                        self.limits.matching,
-                        &mut self.scratch,
-                        Some(&self.ancestors),
-                        self.cancelled,
-                    )
-                    .map_err(Error::cascade)?
-                    .declared_properties()
-                    .any(|p| p == Property::Content);
-                if !generates {
-                    continue;
-                }
-                let cascade = self
-                    .rules
-                    .match_element_with_hints(
-                        &dom,
-                        node,
-                        selectors::MatchOptions { quirks: self.options.quirks, pseudo: Some(pseudo), ..Default::default() },
-                        None,
-                        None,
-                        Some(element as &dyn cascade::Inherited),
-                        self.limits.cascade,
-                        self.limits.matching,
-                        &mut self.scratch,
-                        Some(&self.ancestors),
-                        self.cancelled,
-                    )
-                    .map_err(Error::cascade)?;
-                if !cascade.declared_properties().any(|p| p == Property::Content) {
-                    continue;
-                }
-                let layout_parent = match element.value(Property::Display) {
-                    Value::Display(display) => Some(BoxParent { display: *display, axes: element.axes }),
-                    _ => None,
-                };
-                let root = self.root.map(|i| &self.tree.styles[i].style);
-                let style = Style::compute_reusing(
-                    self.defaults.clone(),
-                    &cascade,
-                    Some(element),
-                    root,
+            self.tick()?;
+            // Only a rule declaring `content` makes the pseudo-element
+            // exist: those few are tried first; most elements stop here.
+            let generates = self
+                .rules
+                .match_element_with_hints(
+                    &dom,
+                    node,
+                    selectors::MatchOptions { quirks: self.options.quirks, pseudo: Some(pseudo), content_only: true, ..Default::default() },
                     None,
-                    Some(&mut self.fonts),
-                    host,
-                    Options { root: false, layout_parent, ..Default::default() },
-                    self.limits.style,
+                    None,
+                    Some(element as &dyn cascade::Inherited),
+                    self.limits.cascade,
+                    self.limits.matching,
+                    &mut self.scratch,
+                    Some(&self.ancestors),
                     self.cancelled,
-                )?;
-                if !matches!(style.value(Property::Content), Value::Content(_)) || matches!(style.value(Property::Display), Value::Display(Display::None)) {
-                    continue;
-                }
-                if self.tree.styles.len() >= self.limits.elements || self.tree.styles.len() >= u32::MAX as usize {
-                    return Err(Error::Limit);
-                }
-                self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
-                self.account.add(&style);
-                let at = self.tree.styles.len() as u32;
-                // A generated pseudo-element computed afresh: geometry stands
-                // only if it was there before and differs in paint alone.
-                if let Some(inc) = self.previous.as_mut()
-                    && inc.geometry_kept
-                {
-                    inc.geometry_kept = inc.tree.pseudos.get(&(node, pseudo)).is_some_and(|&p| inc.tree.styles[p as usize].style.differs_only_in_paint(&style));
-                }
-                self.tree.styles.push(Styled { node, style, parent_box: NonZeroU32::new(index as u32 + 1), end: at + 1, pseudo: Some(pseudo), matched: None });
-                self.same.push(false);
-                self.inherited_same.push(false);
-                self.tree.pseudos.insert((node, pseudo), at);
+                )
+                .map_err(Error::cascade)?
+                .declared_properties()
+                .any(|p| p == Property::Content);
+            if !generates {
+                continue;
             }
+            let cascade = self
+                .rules
+                .match_element_with_hints(
+                    &dom,
+                    node,
+                    selectors::MatchOptions { quirks: self.options.quirks, pseudo: Some(pseudo), ..Default::default() },
+                    None,
+                    None,
+                    Some(element as &dyn cascade::Inherited),
+                    self.limits.cascade,
+                    self.limits.matching,
+                    &mut self.scratch,
+                    Some(&self.ancestors),
+                    self.cancelled,
+                )
+                .map_err(Error::cascade)?;
+            if !cascade.declared_properties().any(|p| p == Property::Content) {
+                continue;
+            }
+            let layout_parent = match element.value(Property::Display) {
+                Value::Display(display) => Some(BoxParent { display: *display, axes: element.axes }),
+                _ => None,
+            };
+            let root = self.root.map(|i| &self.tree.styles[i].style);
+            let style = Style::compute_reusing(
+                self.defaults.clone(),
+                &cascade,
+                Some(element),
+                root,
+                None,
+                Some(&mut self.fonts),
+                host,
+                Options { root: false, layout_parent, ..Default::default() },
+                self.limits.style,
+                self.cancelled,
+            )?;
+            if !matches!(style.value(Property::Content), Value::Content(_)) || matches!(style.value(Property::Display), Value::Display(Display::None)) {
+                continue;
+            }
+            out.push((pseudo, style));
         }
-        if let (Some(t), Some(c)) = (self.timing.as_mut(), clock) {
-            t.pseudo += c.elapsed().as_secs_f64() - mark_compute;
-        }
-        let retained = self
-            .account
-            .memory
-            .accounted_reserved_bytes
-            .saturating_add(self.tree.storage_payload_bytes())
-            .saturating_sub(self.tree.styles.len() * size_of::<Style>())
-            .saturating_add(self.account.scratch_bytes());
-        let retained = retained.saturating_add(self.fonts.stats().reserved_bytes);
-        if retained > self.limits.retained_bytes {
-            return Err(Error::Limit);
-        }
-        self.progress.styled += 1;
-        Ok((index, false))
+        Ok(out)
     }
     pub fn finish(mut self) -> Result<StyleTree> {
         // Every subtree still open ends at the end.

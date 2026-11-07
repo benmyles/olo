@@ -95,7 +95,7 @@ pub enum Loaded {
 pub use worker::{SharedFetcher, Waker};
 /// Lays out the document as it is now, for what scripts measure; the
 /// browser supplies one (olo_web::page::Measurer behind a host).
-pub type Measure = Box<dyn FnMut(&Document, Option<&olo_web::page::Measured>) -> Option<olo_web::page::Measured>>;
+pub type Measure = Box<dyn FnMut(&Document, Option<olo_web::page::Measured>) -> Option<olo_web::page::Measured>>;
 /// How often scripts may have the page laid out, and for how long, within
 /// one run (the page's scripts, or one advance of its clock): past these,
 /// measurements come from the last layout until the next run.
@@ -730,9 +730,9 @@ impl State {
         if stale && self.measure.is_some() && self.run_layouts < self.run_limits.0 && self.run_layout_seconds < self.run_limits.1 {
             let started = Instant::now();
             let measure = self.measure.as_mut()?;
-            if let Some(m) = measure(&self.document, self.measured.as_ref()) {
-                self.measured = Some(m);
-            }
+            // The previous measurement is consumed: patched in place when
+            // little changed, else seeding the next.
+            self.measured = measure(&self.document, self.measured.take());
             let took = started.elapsed().as_secs_f64();
             self.layout_seconds += took;
             self.run_layout_seconds += took;

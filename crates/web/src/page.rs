@@ -5,7 +5,7 @@ use crate::{
     css::{
         self,
         cascade::{Origin, SheetBuilder},
-        style::{self, Defaults, Host},
+        style::{self, Defaults, Host, StyleTree},
     },
     dom::{Document, NodeType},
     font::Scope,
@@ -129,6 +129,7 @@ impl Prepared {
             quirks: self.quirks,
             sheet_ids: self.sheet_ids.clone(),
             base: self.base.clone(),
+            checked: None,
         }
     }
     /// What the stylesheets declared that the engine dropped.
@@ -360,6 +361,8 @@ pub struct Measurer {
     quirks: bool,
     sheet_ids: Vec<(crate::dom::NodeId, u64)>,
     base: Option<String>,
+    /// The document and revision the sheets were last looked for at.
+    checked: Option<(u64, u64)>,
 }
 impl Measurer {
     /// Follow the document's stylesheets: when the style/link elements
@@ -367,7 +370,23 @@ impl Measurer {
     /// them, compile the rules and fonts again. Returns whether they did
     /// (then a host made for the old scope is stale).
     pub fn refresh(&mut self, doc: &Document, cancel: Option<&AtomicBool>, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<bool> {
+        // Since the last look, only inline styles and attributes no sheet
+        // follows changed: the sheets are as they were, without a walk.
+        if let Some((id, revision)) = self.checked
+            && id == doc.id()
+            && doc.changes_since(revision).is_some_and(|changes| {
+                changes.iter().all(|(_, c)| match c {
+                    crate::dom::Change::Style(_) => true,
+                    crate::dom::Change::Attribute { name, .. } => !matches!(&**name, "href" | "rel" | "media" | "type" | "disabled" | "integrity"),
+                    _ => false,
+                })
+            })
+        {
+            self.checked = Some((doc.id(), doc.revision()));
+            return Ok(false);
+        }
         let (ids, base, nodes) = sheet_identities(doc)?;
+        self.checked = Some((doc.id(), doc.revision()));
         if ids == self.sheet_ids {
             return Ok(false);
         }
@@ -389,8 +408,71 @@ impl Measurer {
     pub fn media(&self) -> css::media::Media {
         self.media
     }
-    /// Style and lay out `doc` as it is now.
-    pub fn measure(&self, doc: &Document, host: &impl Host, shaper: &mut shaping::Engine, viewport: layout::Viewport, previous: Option<&Measured>, cancel: Option<&AtomicBool>) -> Result<Measured> {
+    /// The changes since the previous measurement, when they are a few
+    /// elements' own declarations (inline styles, attributes no selector
+    /// reaches from or tests in a `:has()`): those elements, each with
+    /// whether its rules must be matched again. None when the changes
+    /// are anything else (or too many): the full incremental job's.
+    fn patchable(&self, doc: &Document, revision: u64) -> std::result::Result<Vec<(crate::dom::NodeId, bool)>, String> {
+        let name = |n: crate::dom::NodeId| doc.name(n).ok().flatten().unwrap_or("?").to_owned();
+        let changes = doc.changes_since(revision).ok_or_else(|| "the changes since are gone".to_owned())?;
+        if changes.is_empty() {
+            return Err("no changes".to_owned());
+        }
+        if changes.len() > 256 {
+            return Err(format!("{} changes", changes.len()));
+        }
+        let has_keys = self.rules.has_keys();
+        let invalidation = self.rules.invalidation();
+        let mut nodes: Vec<(crate::dom::NodeId, bool)> = Vec::new();
+        let mut add = |node, rematch: bool| match nodes.iter_mut().find(|(n, _)| *n == node) {
+            Some(entry) => entry.1 |= rematch,
+            None => nodes.push((node, rematch)),
+        };
+        for (_, change) in changes {
+            // A detached element (one a script is making) has no style to
+            // patch, and nothing in the document follows it.
+            if let crate::dom::Change::Style(n) | crate::dom::Change::Attribute { node: n, .. } = change
+                && !doc.is_connected(*n).unwrap_or(false)
+            {
+                continue;
+            }
+            match change {
+                crate::dom::Change::Style(n) => {
+                    if has_keys.attributes.contains("style") {
+                        return Err("a :has() tests [style]".to_owned());
+                    }
+                    let (down, beside) = invalidation.reach_of(std::iter::once("[style".to_owned()));
+                    if !down.is_empty() || !beside.is_empty() {
+                        return Err("a selector reaches from [style]".to_owned());
+                    }
+                    add(*n, false);
+                }
+                crate::dom::Change::Attribute { node, name: attribute, old, new } => {
+                    let keys = style::attribute_keys(attribute, old.as_deref(), new.as_deref());
+                    if has_keys.attribute_flips(attribute, old.as_deref(), new.as_deref()) || keys.iter().skip(1).any(|k| has_keys.has_key(k)) {
+                        return Err(format!("<{}> {attribute}: a :has() tests it", name(*node)));
+                    }
+                    let (down, beside) = invalidation.reach_of(keys.into_iter());
+                    if !down.is_empty() || !beside.is_empty() {
+                        return Err(format!("<{}> {attribute}: selectors reach from it", name(*node)));
+                    }
+                    add(*node, true);
+                }
+                crate::dom::Change::Node(n) => return Err(format!("<{}> attributes", name(*n))),
+                crate::dom::Change::Text(n) => return Err(format!("text in <{}>", doc.parent(*n).ok().flatten().map(name).unwrap_or_default())),
+                crate::dom::Change::Children { node, elements } => return Err(format!("children of <{}>{}", name(*node), if *elements { " (elements)" } else { "" })),
+                crate::dom::Change::Unknown => return Err("an unknown change".to_owned()),
+            }
+        }
+        Ok(nodes)
+    }
+    /// Style and lay out `doc` as it is now. The previous measurement is
+    /// consumed: when a few elements' own declarations changed and
+    /// nothing else, its styles are patched in place and its layout kept
+    /// (nothing visited, nothing copied); else its styles seed the
+    /// incremental job and its texts the preparation.
+    pub fn measure(&self, doc: &Document, host: &impl Host, shaper: &mut shaping::Engine, viewport: layout::Viewport, previous: Option<Measured>, cancel: Option<&AtomicBool>) -> Result<Measured> {
         if host.font_context() != self.scope.context() {
             return Err(style::Error::Stale.into());
         }
@@ -400,28 +482,61 @@ impl Measurer {
         // styles compare equal only against the same defaults.
         // (Another host, another scope: the previous styles and layout
         // hold fonts from the old one and are not reused.)
-        let previous = previous.filter(|m| m.defaults.is_current(host));
-        let defaults = match previous {
+        let mut previous = previous.filter(|m| m.defaults.is_current(host));
+        let defaults = match &previous {
             Some(m) => m.defaults.clone(),
             None => Defaults::new(host, Default::default(), cancel)?,
         };
         let snapshot = interaction::Snapshot::new(doc, Interaction::default(), cancel);
-        let previous_styles = previous.map(|m| m.layout.cache().tree().styles().as_ref());
-        let mut job = style::Job::new(
-            doc,
-            &self.rules,
-            defaults.clone(),
-            style::JobOptions { quirks: self.quirks, states: Some(&snapshot), previous: previous_styles, ..Default::default() },
-            Default::default(),
-            cancel,
-        )?;
-        while !job.step(256, |_| host)?.finished {}
-        let styles = Arc::new(job.finish()?);
-        phases[0] = started.elapsed().as_secs_f64() * 1000.;
-        let kept = previous.filter(|p| styles.geometry_kept() && p.viewport == viewport);
-        let layout = if let Some(p) = kept {
-            Arc::new(p.layout.with_styles(styles, doc, None))
+        let options = || style::JobOptions { quirks: self.quirks, states: Some(&snapshot), previous: None, generation: self.rules.generation() };
+        // A patch over the previous styles: in place when nothing else
+        // holds them, else over a copy.
+        let mut patched: Option<(style::Patched, Option<Arc<StyleTree>>)> = None;
+        let mut path = String::new();
+        if let Some(m) = previous.as_mut() {
+            match self.patchable(doc, m.layout.cache().tree().styles().document_revision()) {
+                Ok(nodes) => {
+                    let patch = |tree: &mut StyleTree| style::Job::patch(doc, &self.rules, defaults.clone(), options(), Default::default(), cancel, tree, &nodes, |_| host);
+                    patched = match Arc::get_mut(&mut m.layout).and_then(|l| l.patch_styles(doc, patch)) {
+                        Some(result) => {
+                            path = format!("patched in place, {} elements", nodes.len());
+                            result?.map(|p| (p, None))
+                        }
+                        None => {
+                            let mut tree = (**m.layout.cache().tree().styles()).clone();
+                            path = format!("patched a copy, {} elements", nodes.len());
+                            style::Job::patch(doc, &self.rules, defaults.clone(), options(), Default::default(), cancel, &mut tree, &nodes, |_| host)?.map(|p| (p, Some(Arc::new(tree))))
+                        }
+                    };
+                    if patched.is_none() {
+                        path = format!("full job: the patch over {} elements could not stand", nodes.len());
+                    }
+                }
+                Err(why) => path = format!("full job: {why}"),
+            }
         } else {
+            path = "full job: nothing before".to_owned();
+        }
+        let styles = match &patched {
+            Some((_, Some(copied))) => copied.clone(),
+            Some((_, None)) => previous.as_ref().map(|m| m.layout.cache().tree().styles().clone()).ok_or(style::Error::Stale)?,
+            None => {
+                let previous_styles = previous.as_ref().map(|m| m.layout.cache().tree().styles().as_ref());
+                let mut job = style::Job::new(doc, &self.rules, defaults.clone(), style::JobOptions { previous: previous_styles, ..options() }, Default::default(), cancel)?;
+                while !job.step(256, |_| host)?.finished {}
+                Arc::new(job.finish()?)
+            }
+        };
+        phases[0] = started.elapsed().as_secs_f64() * 1000.;
+        let kept = previous.as_ref().filter(|p| styles.geometry_kept() && p.viewport == viewport);
+        let layout = if let Some(p) = kept {
+            match &patched {
+                // Patched in place: the layout holds the patched styles.
+                Some((_, None)) => p.layout.clone(),
+                _ => Arc::new(p.layout.with_styles(styles, doc, None)),
+            }
+        } else {
+            let previous = previous.as_ref();
             let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
             // The images were bound to the document before the scripts changed
             // it; while they still fit, boxes take their sizes.
@@ -445,16 +560,23 @@ impl Measurer {
             Arc::new(job.finish()?)
         };
         phases[3] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1] - phases[2];
-        let mut index = std::collections::HashMap::with_capacity(layout.cache().tree().boxes().len());
-        for (id, b) in layout.cache().tree().iter() {
-            if b.marker || b.style_node.pseudo.is_some() {
-                continue;
+        // The index stands with the layout.
+        let index = match previous.as_mut().filter(|p| Arc::ptr_eq(&p.layout, &layout)) {
+            Some(p) => std::mem::take(&mut p.index),
+            None => {
+                let mut index = std::collections::HashMap::with_capacity(layout.cache().tree().boxes().len());
+                for (id, b) in layout.cache().tree().iter() {
+                    if b.marker || b.style_node.pseudo.is_some() {
+                        continue;
+                    }
+                    index.entry(b.node).or_insert(id);
+                }
+                index
             }
-            index.entry(b.node).or_insert(id);
-        }
+        };
         phases[4] = started.elapsed().as_secs_f64() * 1000. - phases[..4].iter().sum::<f64>();
         phases[5] = started.elapsed().as_secs_f64() * 1000.;
-        Ok(Measured { layout, index, revision: doc.revision(), viewport, phases, defaults })
+        Ok(Measured { layout, index, revision: doc.revision(), viewport, phases, defaults, path })
     }
 }
 /// One layout of the document, queried by node.
@@ -465,8 +587,13 @@ pub struct Measured {
     viewport: layout::Viewport,
     phases: [f64; 6],
     defaults: Arc<Defaults>,
+    /// How it was made (diagnostics): patched, or the full job and why.
+    path: String,
 }
 impl Measured {
+    pub fn path(&self) -> &str {
+        &self.path
+    }
     /// Milliseconds spent styling, building boxes, preparing text, laying
     /// out, indexing, and in all.
     pub fn phases_ms(&self) -> [f64; 6] {
@@ -1215,7 +1342,7 @@ fn render(
         None => Defaults::new(host, Default::default(), cancel)?,
     };
     let snapshot = interaction::Snapshot::new(doc, input, cancel);
-    let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), previous: previous_styles, ..Default::default() }, Default::default(), cancel)?;
+    let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), previous: previous_styles, generation: rules.generation() }, Default::default(), cancel)?;
     while !job.step(128, |_| host)?.finished {
         progress(Phase::Styles, job.progress().styled)
     }
