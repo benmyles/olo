@@ -923,13 +923,17 @@ fn near_level(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     let grid = |r: &Rect| grid_of(p, r);
     for (ra, la, ma, na, ta, sa) in &items {
         // Its nearest neighbour to the right, in the same row (and on
-        // the same grid).
+        // the same grid, in the same box: two boxes side by side each
+        // lay their rows out themselves, a slider's label in one beside
+        // a menu field in the other, so their rows are level only by
+        // chance, as a BBox's children were laid out in it in BeOS;
+        // the boxes' labels, outside them, are held level).
         let beside = items
             .iter()
             .filter(|(rb, ..)| {
                 let gap = rb.min.x - ra.max.x;
                 let overlap = ra.max.y.min(rb.max.y) - ra.min.y.max(rb.min.y);
-                (0.0..=160.0).contains(&gap) && overlap >= 0.4 * ra.height().min(rb.height()) && grid(ra) == grid(rb)
+                (0.0..=160.0).contains(&gap) && overlap >= 0.4 * ra.height().min(rb.height()) && grid(ra) == grid(rb) && box_of(p, ra) == box_of(p, rb)
             })
             .min_by(|a, b| a.0.min.x.total_cmp(&b.0.min.x));
         if let Some((rb, lb, mb, nb, tb, sb)) = beside {
@@ -962,15 +966,22 @@ fn near_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     // (A label of a character or three is centred in a cell: a date, a key.)
     let mut items: Vec<(Rect, f32, String)> = p.texts.iter().filter(|t| t.label.chars().count() > 3 && !centred(p, t)).map(|t| (t.rect, t.left, quote(t))).collect();
     items.extend(p.icons.iter().map(|i| i.rect).map(|r| (r, r.min.x, "an icon".to_owned())));
+    // Text set from its right starts on a device pixel, so its right
+    // edge is up to one off another's.
+    let right = SAME.max(1.0 / ppp + 0.01);
+    // One of a column set from the right (a list's sizes: "1 file, 199
+    // bytes" over "sealed"): another over or under it ends where it does
+    // and starts elsewhere, so where it starts is its length's doing, and
+    // lines up with nothing (Backup's "sealed" under Select None).
+    let from_right =
+        |r: &Rect, x: f32| items.iter().any(|(o, ox, _)| (o.max.x - r.max.x).abs() <= right && (ox - x).abs() > SAME && (-2.0..=48.0).contains(&(o.min.y - r.max.y).max(r.min.y - o.max.y)));
     for (ra, xa, na) in &items {
         for (rb, xb, nb) in &items {
             let below = rb.min.y - ra.max.y;
             let d = xb - xa;
             // Lined up on the right (a column of labels before their
             // fields, of sizes), or centred over each other (icons of two
-            // sizes). Text set from its right starts on a device pixel,
-            // so its right edge is up to one off another's.
-            let right = SAME.max(1.0 / ppp + 0.01);
+            // sizes).
             let other_way = (ra.max.x - rb.max.x).abs() <= right || (ra.center().x - rb.center().x).abs() <= SAME;
             // (On another grid, it lines up with the window's only by
             // chance. In another box, it lines up with that box's label
@@ -978,7 +989,15 @@ fn near_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
             // were laid out in the box in BeOS: a check box under a box
             // lines up with its frame by its mark, its label where the
             // mark puts it, a few points from the box's text.)
-            if (-2.0..=48.0).contains(&below) && d > SAME && d <= NEAR_EDGE && !other_way && grid_of(p, ra) == grid_of(p, rb) && box_of(p, ra) == box_of(p, rb) {
+            if (-2.0..=48.0).contains(&below)
+                && d > SAME
+                && d <= NEAR_EDGE
+                && !other_way
+                && grid_of(p, ra) == grid_of(p, rb)
+                && box_of(p, ra) == box_of(p, rb)
+                && !from_right(ra, *xa)
+                && !from_right(rb, *xb)
+            {
                 let text = format!("{na} (x {xa:.0}) and {nb} under it (x {xb:.0}) almost line up on the left: line them up");
                 push(out, finding(Level::Review, "near-edge", text, ra.union(*rb)));
             }

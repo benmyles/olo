@@ -3881,9 +3881,11 @@ recorded otherwise.
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off
-  level), `near-edge` (left edges almost lined up down a column, in
+  level, in one box: two boxes side by side lay their rows out each by
+  itself), `near-edge` (left edges almost lined up down a column, in
   one box: what a box holds lines up with its own label and inset, not
-  with what's outside it),
+  with what's outside it; not a column set from its right, whose left
+  edges are its lengths'),
   `off-centre` (text or an icon off-centre in the band it sits in; only
   bands no clip cuts, since a card at the foot of a scroll view is
   centred in the whole of it, not in what shows), `uneven-rows` (rows
