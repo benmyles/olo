@@ -49,7 +49,7 @@ pub struct Page {
     resource_issues: usize,
 }
 /// Initial normal-flow defaults, not the complete HTML rendering stylesheet.
-pub const UA: &str = "html,body,article,section,nav,aside,header,footer,main,div,p,blockquote,pre,h1,h2,h3,h4,h5,h6{display:block}head,title,base,link,meta,style,script,template,[hidden]{display:none}body{margin:8px}html{color:CanvasText}p,blockquote,pre{margin-top:1em;margin-bottom:1em}h1{font-size:2em;font-weight:bold;margin-top:.67em;margin-bottom:.67em}h2{font-size:1.5em;font-weight:bold;margin-top:.83em;margin-bottom:.83em}a{color:LinkText}pre{white-space:pre}";
+pub const UA: &str = "svg{overflow:hidden}html,body,article,section,nav,aside,header,footer,main,div,p,blockquote,pre,h1,h2,h3,h4,h5,h6{display:block}head,title,base,link,meta,style,script,template,[hidden]{display:none}body{margin:8px}html{color:CanvasText}p,blockquote,pre{margin-top:1em;margin-bottom:1em}h1{font-size:2em;font-weight:bold;margin-top:.67em;margin-bottom:.67em}h2{font-size:1.5em;font-weight:bold;margin-top:.83em;margin-bottom:.83em}a{color:LinkText}pre{white-space:pre}";
 #[allow(clippy::too_many_arguments)] // Explicit worker resources, viewport, cancellation and progress.
 pub fn load(
     source: Arc<str>,

@@ -100,6 +100,48 @@ impl Engine {
                     }
                     super::image::raster(self, &mut out, image, bounds, scale, region, mask.as_ref(), cancel)?;
                 }
+                Primitive::Vector { owner, vector } => {
+                    let tree = scene.layout.cache().tree();
+                    let vector = tree.vector(*vector).ok_or(Error::Invalid)?;
+                    let geometry = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
+                    let mut bounds = c.bounds;
+                    bounds.x += geometry.border_width.left + geometry.padding.left;
+                    bounds.y += geometry.border_width.top + geometry.padding.top;
+                    bounds.width = (bounds.width - geometry.border_width.left - geometry.border_width.right - geometry.padding.left - geometry.padding.right).max(0.);
+                    bounds.height = (bounds.height - geometry.border_width.top - geometry.border_width.bottom - geometry.padding.top - geometry.padding.bottom).max(0.);
+                    let Some([sx, sy, tx, ty]) = vector.transform(bounds.width, bounds.height) else {
+                        continue;
+                    };
+                    let Some(clip) = local(bounds) else {
+                        continue;
+                    };
+                    let clip = PathBuilder::from_rect(clip);
+                    let mut vector_mask = if let Some(mask) = &mask {
+                        mask.clone()
+                    } else {
+                        let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
+                        m.data_mut().fill(255);
+                        m
+                    };
+                    vector_mask.intersect_path(&clip, FillRule::Winding, false, Transform::identity());
+                    let transform = Transform::from_row(
+                        (sx * scale) as f32,
+                        0.,
+                        0.,
+                        (sy * scale) as f32,
+                        ((bounds.x + tx) * scale - f64::from(region.x)) as f32,
+                        ((bounds.y + ty) * scale - f64::from(region.y)) as f32,
+                    );
+                    if !transform.is_valid() {
+                        return Err(Error::Unsupported("SVG viewport transform precision"));
+                    }
+                    for shape in &vector.shapes {
+                        check(cancel)?;
+                        if let Some(path) = shape.path.geometry() {
+                            out.fill_path(path, &paint(shape.color), if shape.evenodd { FillRule::EvenOdd } else { FillRule::Winding }, transform, Some(&vector_mask));
+                        }
+                    }
+                }
                 Primitive::Fill { color } => {
                     if let Some(r) = local(c.bounds) {
                         out.fill_rect(r, &paint(*color), transform, mask.as_ref());

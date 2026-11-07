@@ -339,10 +339,15 @@ fn render(
     scene.query(visible, &mut hits, Some(&r.cancel))?;
     let mut labels = Vec::new();
     for id in hits {
-        let image = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
+        let vector = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Vector { .. });
+        let image = vector || matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
         let node = scene.node(id);
         let text = if image {
-            std::borrow::Cow::Borrowed(node.map(|n| page.document.attribute(n, "alt")).transpose()?.flatten().filter(|s| !s.is_empty()).unwrap_or("Image"))
+            std::borrow::Cow::Borrowed(node.map(|n| page.document.attribute(n, if vector { "aria-label" } else { "alt" })).transpose()?.flatten().filter(|s| !s.is_empty()).unwrap_or(if vector {
+                "Graphic"
+            } else {
+                "Image"
+            }))
         } else {
             let Some(text) = scene.text_content(id).filter(|s| !s.is_empty()) else { continue };
             text

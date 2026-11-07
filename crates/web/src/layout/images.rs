@@ -10,7 +10,7 @@ pub(super) fn used(
     s: &Style,
     width: f64,
     height: Option<f64>,
-    natural: (u32, u32),
+    natural: (f64, f64),
     block: bool,
     rtl: bool,
     queries: QueryBasis,
@@ -44,7 +44,7 @@ pub(super) fn used(
     let maxw = length(s, P::MaxWidth, Some(width), None, queries, scratch, cancel, scale)?.map(x).unwrap_or(f64::MAX).max(minw);
     let minh = y(length(s, P::MinHeight, height, Some(0.), queries, scratch, cancel, scale)?.unwrap());
     let maxh = length(s, P::MaxHeight, height, None, queries, scratch, cancel, scale)?.map(y).unwrap_or(f64::MAX).max(minh);
-    let ratio = f64::from(natural.0) / f64::from(natural.1);
+    let ratio = natural.0 / natural.1;
     let (mut w, mut h) = match (sw, sh) {
         (Some(w), Some(h)) => (w.clamp(minw, maxw), h.clamp(minh, maxh)),
         (Some(w), None) => {
@@ -57,7 +57,7 @@ pub(super) fn used(
         }
         (None, None) => {
             // CSS2 replaced-element intrinsic-ratio constraint table.
-            let (w, h) = (f64::from(natural.0), f64::from(natural.1));
+            let (w, h) = (natural.0, natural.1);
             if w < minw && h > maxh {
                 (minw, maxh)
             } else if w > maxw && h < minh {

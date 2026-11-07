@@ -14,22 +14,21 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest startup checkpoint
 
-Initial horizontal LTR row formatting now runs through the page pipeline, with
-320 definite reference lines and260 authored page comparisons at five native
-DPRs. Fresh owned PID/executable/hash-verified HTTPS navigation now clears the
-flex box-tree blocker and stops at **flow layout Unsupported("foreign box
-layout")**. Tree construction stops before any Stripe flex item geometry runs.
-There is still no useful native Stripe content and no accepted configuration.
-The foreign-content implementation is next; all historical failures below remain
-evidence, not the current error. No second website is selected.
+The fresh owned native HTTPS retry now gets past the initial SVG root and stops
+at **flow layout Unsupported("positioned/floating/clearance layout")**. There
+is still no useful native Stripe homepage and no accepted configuration.
+The retained first Stripe logo path renders in an isolated native component.
+Path-only SVG roots now participate in CSS sizing, inline/block layout and
+retained vector painting. Independent authored cases give110 matching rectangles,
+82 exact full pixel crops and28 explicit pixel nonpasses at five native DPRs.
+All15 component theme/scale UI reviews have zero findings. These are not site
+passes. Continue positioned layout and SVG fidelity work on Stripe only.
 
 The retained-source [foreign inventory](foreign-inventory.json) contains154 SVG
 roots,307 paths,135 rectangles,61 clip paths,13 linear gradients and4 filters.
 The first root is the60×25 Stripe logo; navigation chevrons follow. These are
-static source counts, not computed visibility, rendered geometry, fresh replay
-or proof of which foreign element triggered the native error. Next resolve that
-exact element and implement its native vector/style/intrinsic-size path; a
-placeholder or skipped foreign subtree cannot count as working Stripe.
+source counts, not proof that all shapes are visible or supported. Strokes,
+other shapes, transforms, paint servers, masks and filters remain open.
 
 ## Current evidence
 

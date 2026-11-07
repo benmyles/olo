@@ -19,6 +19,7 @@ impl Default for Options {
 #[derive(Clone, Debug)]
 pub enum Primitive {
     Image { owner: BoxId, image: u32 },
+    Vector { owner: BoxId, vector: u32 },
     Fill { color: [u8; 4] },
     Border { owner: BoxId, colors: [[u8; 4]; 4] },
     Text { owner: BoxId, fragment: u32, glyphs: Range<u32>, origin: Point, color: [u8; 4] },
@@ -43,7 +44,11 @@ impl Scene {
         &self.layout
     }
     pub fn node(&self, command: u32) -> Option<crate::dom::NodeId> {
-        if let Primitive::Image { owner, .. } = self.commands.get(command as usize)?.primitive { self.layout.cache().tree().get(owner).map(|b| b.node) } else { self.text_node(command) }
+        if let Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } = self.commands.get(command as usize)?.primitive {
+            self.layout.cache().tree().get(owner).map(|b| b.node)
+        } else {
+            self.text_node(command)
+        }
     }
     pub fn commands(&self) -> &[Command] {
         &self.commands
@@ -284,12 +289,19 @@ impl<'a> BuildJob<'a> {
         }
         Ok(())
     }
-    fn inline_image(&mut self, id: BoxId, image: u32, at: Point, group: u32, clip: u32) -> Result<()> {
+    fn inline_replaced(&mut self, id: BoxId, at: Point, group: u32, clip: u32) -> Result<()> {
         let layout = self.layout.clone();
         let s = layout.cache().tree().style(id).ok_or(Error::Invalid)?;
-        if !visible(s) {
-            return Ok(());
-        }
+        let primitive = match layout.cache().tree().get(id).ok_or(Error::Invalid)?.kind {
+            BoxKind::InlineImage { image } => {
+                if !visible(s) {
+                    return Ok(());
+                }
+                Primitive::Image { owner: id, image }
+            }
+            BoxKind::InlineVector { vector } => Primitive::Vector { owner: id, vector },
+            _ => return Err(Error::Invalid),
+        };
         if s.value(P::Opacity).scalar() != Some(1.)
             || !matches!(s.value(P::Isolation), Value::Keyword(K::Auto))
             || !matches!(s.value(P::ZIndex), Value::Keyword(K::Auto)) && s.value(P::ZIndex).scalar() != Some(0.)
@@ -298,8 +310,10 @@ impl<'a> BuildJob<'a> {
         }
         let g = *layout.geometry(id).ok_or(Error::Invalid)?;
         let outer = Rect { x: at.x + g.border_box.x, y: at.y + g.border_box.y, ..g.border_box };
-        self.decorate(id, s, g, outer, group, clip, true)?;
-        self.emit(group, true, outer, Primitive::Image { owner: id, image }, clip)
+        if visible(s) {
+            self.decorate(id, s, g, outer, group, clip, true)?;
+        }
+        self.emit(group, true, outer, primitive, clip)
     }
     fn text<const HAS_IMAGES: bool>(&mut self, id: BoxId, source: u32, at: Point, group: u32, clip: u32) -> Result<()> {
         // Layout is held outside self's mutable command builder borrow.
@@ -338,10 +352,12 @@ impl<'a> BuildJob<'a> {
             while let Some(id) = child {
                 let b = layout.cache().tree().get(id).ok_or(Error::Invalid)?;
                 child = b.next_sibling;
-                let BoxKind::InlineImage { image } = b.kind else { return Err(Error::Invalid) };
-                image_owners.push((b.node.slot(), id, image));
+                if !matches!(b.kind, BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. }) {
+                    return Err(Error::Invalid);
+                }
+                image_owners.push((b.node.slot(), id));
             }
-            image_owners.sort_unstable_by_key(|(node, _, _)| *node);
+            image_owners.sort_unstable_by_key(|(node, _)| *node);
         }
 
         for (li, line) in text.lines().iter().enumerate() {
@@ -356,8 +372,8 @@ impl<'a> BuildJob<'a> {
                 if HAS_IMAGES && f.glyphs.is_empty() && !image_owners.is_empty() {
                     let mapping = prepared.mapping_at_output(f.source.start).ok_or(Error::Invalid)?;
                     let node = source.spans.get(mapping.span as usize).ok_or(Error::Invalid)?.node;
-                    if let Ok(i) = image_owners.binary_search_by_key(&node.slot(), |(node, _, _)| *node) {
-                        self.inline_image(image_owners[i].1, image_owners[i].2, at, group, clip)?;
+                    if let Ok(i) = image_owners.binary_search_by_key(&node.slot(), |(node, _)| *node) {
+                        self.inline_replaced(image_owners[i].1, at, group, clip)?;
                     }
                 }
                 let run = text.run(f).ok_or(Error::Invalid)?;
@@ -495,7 +511,7 @@ impl<'a> BuildJob<'a> {
             let mut children_clip = clip;
             match b.kind {
                 BoxKind::Viewport => {}
-                BoxKind::Block { .. } | BoxKind::BlockImage { .. } => {
+                BoxKind::Block { .. } | BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } => {
                     let s = tree.style(id).ok_or(Error::Invalid)?;
                     if s.value(P::Opacity).scalar() != Some(1.)
                         || !matches!(s.value(P::ZIndex), Value::Keyword(K::Auto) | Value::Numeric(_))
@@ -513,6 +529,9 @@ impl<'a> BuildJob<'a> {
                         if let BoxKind::BlockImage { image } = b.kind {
                             self.emit(group, true, outer, Primitive::Image { owner: id, image }, clip)?;
                         }
+                    }
+                    if let BoxKind::BlockVector { vector } = b.kind {
+                        self.emit(group, true, outer, Primitive::Vector { owner: id, vector }, clip)?;
                     }
                     let x = !matches!(s.value(P::OverflowX), Value::Keyword(K::Visible));
                     let y = !matches!(s.value(P::OverflowY), Value::Keyword(K::Visible));
@@ -532,7 +551,7 @@ impl<'a> BuildJob<'a> {
                         self.clips.push(clip_rect);
                     }
                 }
-                BoxKind::InlineImage { .. } => {}
+                BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } => {}
                 BoxKind::InlineContent { source } => {
                     let at = Point { x: outer.x, y: outer.y };
                     if layout.text_layout(id).ok_or(Error::Invalid)?.text().object_count() == 0 {

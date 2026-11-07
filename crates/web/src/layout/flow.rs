@@ -2,7 +2,10 @@ use super::containers::QueryBasis;
 use super::used::Used;
 use super::*;
 use crate::{
-    css::math,
+    css::{
+        math,
+        style::{Keyword as K, Property as P, Value},
+    },
     font::Scope,
     text::{layout as inline, linebreak, prepare, shaping},
 };
@@ -548,15 +551,17 @@ impl<'a> Job<'a> {
         while let Some(child) = next {
             let b = self.cache.tree.get(child).ok_or(Error::Invalid)?;
             next = b.next_sibling;
-            let BoxKind::InlineImage { image } = b.kind else { return Err(Error::Invalid) };
+            if !matches!(b.kind, BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. }) {
+                return Err(Error::Invalid);
+            }
             check(self.cancel)?;
-            let pixels = self.cache.tree.image(image).ok_or(Error::Invalid)?;
+            let natural = self.cache.tree.natural(child)?;
             let s = self.cache.tree.style(child).ok_or(Error::Stale)?;
             let used = super::images::used(
                 s,
                 parent.used.width,
                 parent.used.height.map(|h| parent.used.height(h)),
-                (pixels.width(), pixels.height()),
+                natural,
                 false,
                 parent.used.rtl,
                 parent.queries,
@@ -571,7 +576,10 @@ impl<'a> Job<'a> {
             }
             let at = boundary(prepared.as_deref().ok_or(Error::Invalid)?, raw)?;
             let g = super::images::geometry(used);
-            objects.push(inline::Object { at, advance: g.border_box.width + used.margin.horizontal(), ascent: g.border_box.height + used.margin.vertical(), descent: 0. });
+            let height = g.border_box.height + used.margin.vertical();
+            let ascent =
+                if matches!(b.kind, BoxKind::InlineVector { .. }) && matches!(s.value(P::VerticalAlign), Value::Keyword(K::Middle)) { (height + style.font().metrics.ex) / 2. } else { height };
+            objects.push(inline::Object { at, advance: g.border_box.width + used.margin.horizontal(), ascent, descent: height - ascent });
             image_geometry.push((child, g, at));
         }
         if !objects.is_empty() {
@@ -643,29 +651,18 @@ impl<'a> Job<'a> {
                         self.place(child, r)?;
                         self.progress.boxes += 1
                     }
-                    BoxKind::BlockImage { image } => {
+                    BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } => {
                         let frame = self.stack.last().ok_or(Error::Invalid)?;
                         let parent = frame.used;
                         let queries = frame.queries;
                         let s = self.cache.tree.style(child).ok_or(Error::Invalid)?;
-                        let pixels = self.cache.tree.image(image).ok_or(Error::Invalid)?;
-                        let used = super::images::used(
-                            s,
-                            parent.width,
-                            parent.height.map(|h| parent.height(h)),
-                            (pixels.width(), pixels.height()),
-                            true,
-                            parent.rtl,
-                            queries,
-                            &mut self.scratch,
-                            self.cancel,
-                            self.scale,
-                        )?;
+                        let natural = self.cache.tree.natural(child)?;
+                        let used = super::images::used(s, parent.width, parent.height.map(|h| parent.height(h)), natural, true, parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
                         self.geometry[child.index()] = super::images::geometry(used);
                         self.place(child, Completed { before: Strut::new(used.margin.top), after: Strut::new(used.margin.bottom), through: false, relative_y: 0. })?;
                         self.progress.boxes += 1;
                     }
-                    BoxKind::InlineImage { .. } | BoxKind::Viewport => return Err(Error::Invalid),
+                    BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::Viewport => return Err(Error::Invalid),
                 }
             } else {
                 let f = self.stack.pop().ok_or(Error::Invalid)?;

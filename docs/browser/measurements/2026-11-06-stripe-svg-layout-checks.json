@@ -1,0 +1,622 @@
+{
+  "scope": "Initial path-only SVG page integration, no Stripe/site acceptance",
+  "native": {
+    "scope": "Fresh HTTPS Stripe navigation before demo navigation; still blocked, no website acceptance",
+    "pid": 610725,
+    "exe": "/var/tmp/olo-browser-stripe/svg-layout/browser-final",
+    "sha256": "4d0a3b537d8ee94b7fe150315d5b2b9d9d3289efaea841d0d9054b32510668cb",
+    "windows": [
+      {
+        "id": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "pid": 610725,
+        "workspace": 0,
+        "minimized": false,
+        "focused": true,
+        "kept": false,
+        "groupable": true,
+        "output": "HEADLESS-1",
+        "frame": {
+          "x": 48,
+          "y": 40,
+          "width": 1010,
+          "height": 731
+        },
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "least": [
+          650,
+          511
+        ],
+        "tab_frame": {
+          "x": 48,
+          "y": 40,
+          "width": 100,
+          "height": 21
+        },
+        "stack": 0,
+        "surface": 32
+      }
+    ],
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "https://stripe.com/",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 577.5,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "flow layout Unsupported(\"positioned/floating/clearance layout\")",
+            "x": 69.0,
+            "y": 733.5,
+            "width": 968.0,
+            "height": 16.5,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  "visual": {
+    "source_sha256": "cd26b9628ea0ba2a7b9ae9572f70c19a71b1114323d2ae834266c97b93cfc7b3",
+    "pid": 610725,
+    "rows": [
+      {
+        "theme": "light",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "image_sha256": "91bd555f8b0a5e263c620c39e5e09188cc8577fb95a92033672e66d9f55b5207"
+      },
+      {
+        "theme": "light",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "image_sha256": "3ad406b43d29ccafd1da235f855f73f725a90b96a045d9a7c048f2f201fd155c"
+      },
+      {
+        "theme": "light",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "image_sha256": "aedc788ebd2a13d3305f4079230dfdff71c9d322da4d13918092ea3b19b86e2d"
+      },
+      {
+        "theme": "light",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "image_sha256": "e322d4efa4d495fd83956eb781c73dd57a9ce7a474629e3a27ca426d2fbdffa8"
+      },
+      {
+        "theme": "light",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "image_sha256": "8995d3abbadaf4f3e485481a242f4e23ee92d352fb5cd2bf0619aa490b744af5"
+      },
+      {
+        "theme": "dark",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "image_sha256": "ecb0d291502cdb8c453d3d31a7e1e249b6985cae6d221120da62491a3be41619"
+      },
+      {
+        "theme": "dark",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "image_sha256": "7ca3a42e860dc8788f853884522427328c9fb0efcbc732efb8ad6e7577e17c20"
+      },
+      {
+        "theme": "dark",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "image_sha256": "f7d6f108c497d883f09b0c2a22f0029a80640832e78dd3a400cb5bd5514a37e4"
+      },
+      {
+        "theme": "dark",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "image_sha256": "d9861854367e13b611ae7eb0276e913a0600879eb57e646343e802551a81b8eb"
+      },
+      {
+        "theme": "dark",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "image_sha256": "b82fde8f8ad76c55c484d6ea09ffcb40e800343f3aa11d675fdab7456267ad7e"
+      },
+      {
+        "theme": "night",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "image_sha256": "ecb0d291502cdb8c453d3d31a7e1e249b6985cae6d221120da62491a3be41619"
+      },
+      {
+        "theme": "night",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "image_sha256": "7ca3a42e860dc8788f853884522427328c9fb0efcbc732efb8ad6e7577e17c20"
+      },
+      {
+        "theme": "night",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "image_sha256": "f7d6f108c497d883f09b0c2a22f0029a80640832e78dd3a400cb5bd5514a37e4"
+      },
+      {
+        "theme": "night",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "image_sha256": "d9861854367e13b611ae7eb0276e913a0600879eb57e646343e802551a81b8eb"
+      },
+      {
+        "theme": "night",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "image_sha256": "b82fde8f8ad76c55c484d6ea09ffcb40e800343f3aa11d675fdab7456267ad7e"
+      }
+    ]
+  },
+  "reference": {
+    "exact": 82,
+    "nonpasses": [
+      {
+        "different_pixels": 36,
+        "geometry_error": 0.0,
+        "id": "fractional",
+        "max_channel_error": 32,
+        "scale": 1.0
+      },
+      {
+        "different_pixels": 32,
+        "geometry_error": 0.0,
+        "id": "curve",
+        "max_channel_error": 43,
+        "scale": 1.0
+      },
+      {
+        "different_pixels": 12,
+        "geometry_error": 0.0,
+        "id": "meet",
+        "max_channel_error": 1,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 7,
+        "geometry_error": 0.0,
+        "id": "even-odd",
+        "max_channel_error": 1,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 12,
+        "geometry_error": 0.0,
+        "id": "inherited",
+        "max_channel_error": 1,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 12,
+        "geometry_error": 0.0,
+        "id": "current-color",
+        "max_channel_error": 1,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 12,
+        "geometry_error": 0.0,
+        "id": "hidden-parent",
+        "max_channel_error": 1,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 5,
+        "geometry_error": 0.0,
+        "id": "css-dimensions",
+        "max_channel_error": 32,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 68,
+        "geometry_error": 0.0,
+        "id": "fractional",
+        "max_channel_error": 39,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 12,
+        "geometry_error": 0.0,
+        "id": "percentage",
+        "max_channel_error": 1,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 50,
+        "geometry_error": 7.629394538355427e-07,
+        "id": "padding-border",
+        "max_channel_error": 47,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 43,
+        "geometry_error": 0.0,
+        "id": "curve",
+        "max_channel_error": 47,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 12,
+        "geometry_error": 0.0,
+        "id": "inline",
+        "max_channel_error": 1,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 12,
+        "geometry_error": 0.0,
+        "id": "block-middle",
+        "max_channel_error": 1,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 12,
+        "geometry_error": 0.0,
+        "id": "inline-middle",
+        "max_channel_error": 1,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 38,
+        "geometry_error": 0.0,
+        "id": "inline-middle-font",
+        "max_channel_error": 64,
+        "scale": 1.25
+      },
+      {
+        "different_pixels": 12,
+        "geometry_error": 0.0,
+        "id": "css-dimensions",
+        "max_channel_error": 1,
+        "scale": 1.5
+      },
+      {
+        "different_pixels": 54,
+        "geometry_error": 0.0,
+        "id": "fractional",
+        "max_channel_error": 16,
+        "scale": 1.5
+      },
+      {
+        "different_pixels": 6,
+        "geometry_error": 0.0,
+        "id": "padding-border",
+        "max_channel_error": 64,
+        "scale": 1.5
+      },
+      {
+        "different_pixels": 49,
+        "geometry_error": 0.0,
+        "id": "curve",
+        "max_channel_error": 50,
+        "scale": 1.5
+      },
+      {
+        "different_pixels": 30,
+        "geometry_error": 0.0,
+        "id": "inline-middle-font",
+        "max_channel_error": 127,
+        "scale": 1.5
+      },
+      {
+        "different_pixels": 111,
+        "geometry_error": 3.814697265625e-06,
+        "id": "css-dimensions",
+        "max_channel_error": 32,
+        "scale": 1.75
+      },
+      {
+        "different_pixels": 95,
+        "geometry_error": 1.9073486328125e-06,
+        "id": "fractional",
+        "max_channel_error": 24,
+        "scale": 1.75
+      },
+      {
+        "different_pixels": 117,
+        "geometry_error": 2.1798270140038767e-06,
+        "id": "padding-border",
+        "max_channel_error": 255,
+        "scale": 1.75
+      },
+      {
+        "different_pixels": 59,
+        "geometry_error": 0.0,
+        "id": "curve",
+        "max_channel_error": 60,
+        "scale": 1.75
+      },
+      {
+        "different_pixels": 36,
+        "geometry_error": 0.0,
+        "id": "inline-middle-font",
+        "max_channel_error": 63,
+        "scale": 1.75
+      },
+      {
+        "different_pixels": 81,
+        "geometry_error": 0.0,
+        "id": "fractional",
+        "max_channel_error": 32,
+        "scale": 2.0
+      },
+      {
+        "different_pixels": 64,
+        "geometry_error": 0.0,
+        "id": "curve",
+        "max_channel_error": 62,
+        "scale": 2.0
+      }
+    ],
+    "total": 110
+  },
+  "validation": {
+    "web_release_passed": 292,
+    "web_release_ignored": 1,
+    "clippy": "strict web and Browser passes,5.45s",
+    "workspace": "release workspace passes,17.74s",
+    "browser_release_passed": 13,
+    "browser_release_ignored": 1
+  },
+  "main": "82f7089aea496d5e986419fa013146765af9586e"
+}

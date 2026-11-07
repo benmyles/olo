@@ -243,33 +243,42 @@ impl<'a> Job<'a> {
     }
     fn svg_hints(&mut self, node: NodeId, hints: &mut Vec<p::Declaration>) -> Result<()> {
         let document = self.document;
+        let geometry = matches!(document.name(node).map_err(Error::Dom)?, Some("svg" | "rect" | "image" | "foreignObject" | "symbol" | "use"));
         let animation = matches!(document.name(node).map_err(Error::Dom)?, Some("animate" | "animateMotion" | "animateTransform" | "set"));
         for (name, source) in document.attributes(node).map_err(Error::Dom)? {
             self.tick()?;
-            if !matches!(
-                name,
-                "fill"
-                    | "fill-opacity"
-                    | "fill-rule"
-                    | "stroke"
-                    | "stroke-opacity"
-                    | "clip-rule"
-                    | "color"
-                    | "opacity"
-                    | "display"
-                    | "visibility"
-                    | "stop-color"
-                    | "stop-opacity"
-                    | "flood-color"
-                    | "flood-opacity"
-            ) || name == "fill" && animation
+            if !(geometry && matches!(name, "width" | "height"))
+                && !matches!(
+                    name,
+                    "fill"
+                        | "fill-opacity"
+                        | "fill-rule"
+                        | "stroke"
+                        | "stroke-opacity"
+                        | "clip-rule"
+                        | "color"
+                        | "opacity"
+                        | "display"
+                        | "visibility"
+                        | "stop-color"
+                        | "stop-opacity"
+                        | "flood-color"
+                        | "flood-opacity"
+                )
+                || name == "fill" && animation
             {
                 continue;
             }
             if source.len() > self.limits.inline_bytes || hints.len() >= self.limits.inline_declarations {
                 return Err(Error::Limit);
             }
-            let syntax = Syntax::parse(Arc::from(source), self.limits.css, self.cancelled).map_err(Error::css)?;
+            let mut syntax = Syntax::parse(Arc::from(source), self.limits.css, self.cancelled).map_err(Error::css)?;
+            if geometry && matches!(name, "width" | "height") {
+                let mut parts = syntax.components().filter(|c| c.kind() != crate::css::Kind::Whitespace);
+                if parts.next().is_some_and(|c| matches!(c.kind(), crate::css::Kind::Number | crate::css::Kind::Integer)) && parts.next().is_none() {
+                    syntax = Syntax::parse(Arc::from(format!("{}px", source.trim())), self.limits.css, self.cancelled).map_err(Error::css)?;
+                }
+            }
             match p::Declaration::parse(name, syntax.components(), false, self.limits.property, self.cancelled) {
                 Ok(declaration) => hints.push(declaration),
                 Err(p::Error::Invalid) => self.tree.report.presentation_invalid += 1,

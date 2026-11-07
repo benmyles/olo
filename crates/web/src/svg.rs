@@ -1,8 +1,9 @@
-//! Worker-side vector geometry for the original browser. CSS integration,
-//! SVG viewport layout, paint servers and scene integration are still pending.
-//! This module never rasterizes a path or retains a scale-dependent bitmap.
+//! Retained SVG path geometry and initial path-only viewport compilation.
+//! Stroke/paint-server/nested SVG and full intrinsic sizing remain incomplete.
+mod viewport;
 use std::sync::atomic::{AtomicBool, Ordering};
 use svgtypes::{PathParser, PathSegment as Segment};
+pub use viewport::{Shape, Viewport};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {

@@ -1,0 +1,202 @@
+{
+  "exact": 82,
+  "nonpasses": [
+    {
+      "different_pixels": 36,
+      "geometry_error": 0.0,
+      "id": "fractional",
+      "max_channel_error": 32,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 32,
+      "geometry_error": 0.0,
+      "id": "curve",
+      "max_channel_error": 43,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 12,
+      "geometry_error": 0.0,
+      "id": "meet",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 7,
+      "geometry_error": 0.0,
+      "id": "even-odd",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 12,
+      "geometry_error": 0.0,
+      "id": "inherited",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 12,
+      "geometry_error": 0.0,
+      "id": "current-color",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 12,
+      "geometry_error": 0.0,
+      "id": "hidden-parent",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 5,
+      "geometry_error": 0.0,
+      "id": "css-dimensions",
+      "max_channel_error": 32,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 68,
+      "geometry_error": 0.0,
+      "id": "fractional",
+      "max_channel_error": 39,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 12,
+      "geometry_error": 0.0,
+      "id": "percentage",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 50,
+      "geometry_error": 7.629394538355427e-07,
+      "id": "padding-border",
+      "max_channel_error": 47,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 43,
+      "geometry_error": 0.0,
+      "id": "curve",
+      "max_channel_error": 47,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 12,
+      "geometry_error": 0.0,
+      "id": "inline",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 12,
+      "geometry_error": 0.0,
+      "id": "block-middle",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 12,
+      "geometry_error": 0.0,
+      "id": "inline-middle",
+      "max_channel_error": 1,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 38,
+      "geometry_error": 0.0,
+      "id": "inline-middle-font",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 12,
+      "geometry_error": 0.0,
+      "id": "css-dimensions",
+      "max_channel_error": 1,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 54,
+      "geometry_error": 0.0,
+      "id": "fractional",
+      "max_channel_error": 16,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 6,
+      "geometry_error": 0.0,
+      "id": "padding-border",
+      "max_channel_error": 64,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 49,
+      "geometry_error": 0.0,
+      "id": "curve",
+      "max_channel_error": 50,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 30,
+      "geometry_error": 0.0,
+      "id": "inline-middle-font",
+      "max_channel_error": 127,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 111,
+      "geometry_error": 3.814697265625e-06,
+      "id": "css-dimensions",
+      "max_channel_error": 32,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 95,
+      "geometry_error": 1.9073486328125e-06,
+      "id": "fractional",
+      "max_channel_error": 24,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 117,
+      "geometry_error": 2.1798270140038767e-06,
+      "id": "padding-border",
+      "max_channel_error": 255,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 59,
+      "geometry_error": 0.0,
+      "id": "curve",
+      "max_channel_error": 60,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 36,
+      "geometry_error": 0.0,
+      "id": "inline-middle-font",
+      "max_channel_error": 63,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 81,
+      "geometry_error": 0.0,
+      "id": "fractional",
+      "max_channel_error": 32,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 64,
+      "geometry_error": 0.0,
+      "id": "curve",
+      "max_channel_error": 62,
+      "scale": 2.0
+    }
+  ],
+  "total": 110
+}

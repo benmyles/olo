@@ -1,0 +1,112 @@
+[
+  {
+    "id": "meet",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><path d='M0 0H10V10H0Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "none",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=blue preserveAspectRatio=none><path d='M0 0H10V10H0Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "min",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=green preserveAspectRatio=xMinYMin><path d='M0 0H10V10H0Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "max",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red preserveAspectRatio=xMaxYMax><path d='M0 0H10V10H0Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "slice",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=blue preserveAspectRatio=\"xMidYMid slice\"><path d='M0 0H5V10H0Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "even-odd",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red fill-rule=evenodd><path d='M0 0H10V10H0Z M2 2H8V8H2Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "nonzero",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><path d='M0 0H10V10H0Z M2 2H8V8H2Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "opacity",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red fill-opacity=.5><path d='M0 0H10V10H0Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "inherited",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><g fill=blue><path d='M0 0H10V10H0Z' /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "current-color",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=currentColor color=red><path color=blue d='M0 0H10V10H0Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "hidden-parent",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" visibility=hidden><path visibility=visible fill=green d='M0 0H10V10H0Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "css-dimensions",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=blue><path d='M0 0H10V10H0Z' /></svg>",
+    "css": "#probe{width:60px;height:30px}"
+  },
+  {
+    "id": "fractional",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><path d='M0 0H10V10H0Z' /></svg>",
+    "css": "#probe{width:31.5px;height:18.25px}"
+  },
+  {
+    "id": "percentage",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=blue><path d='M0 0H10V10H0Z' /></svg>",
+    "css": "#probe{width:50%}"
+  },
+  {
+    "id": "padding-border",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><path d='M0 0H10V10H0Z' /></svg>",
+    "css": "#probe{padding:3px;border:2px solid blue}"
+  },
+  {
+    "id": "clipping",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><path d='M-100-100H100V100H-100Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "curve",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=blue><path d='M0 10Q0 0 10 0L10 10Z' /></svg>",
+    "css": ""
+  },
+  {
+    "id": "inline",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><path d='M0 0H10V10H0Z' /></svg>",
+    "css": "#probe{display:inline}"
+  },
+  {
+    "id": "block-middle",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><path d='M0 0H10V10H0Z' /></svg>",
+    "css": "#probe{vertical-align:middle}"
+  },
+  {
+    "id": "inline-middle",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><path d='M0 0H10V10H0Z' /></svg>",
+    "css": "#probe{display:inline;vertical-align:middle}"
+  },
+  {
+    "id": "inline-middle-font",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><path d='M0 0H10V10H0Z' /></svg>",
+    "css": "body{font-size:20px;line-height:20px}#probe{display:inline;vertical-align:middle}"
+  },
+  {
+    "id": "inline-middle-small",
+    "html": "<svg id=probe width=40 height=20 viewBox=\"0 0 10 10\" fill=red><path d='M0 0H10V10H0Z' /></svg>",
+    "css": "body{font-size:20px;line-height:20px}#probe{display:inline;vertical-align:middle;width:10px;height:2px}"
+  }
+]

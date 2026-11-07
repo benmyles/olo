@@ -29,6 +29,8 @@ pub enum BoxKind {
     InlineContent { source: u32 },
     InlineImage { image: u32 },
     BlockImage { image: u32 },
+    InlineVector { vector: u32 },
+    BlockVector { vector: u32 },
 }
 #[derive(Clone, Debug)]
 pub struct BoxNode {
@@ -73,6 +75,7 @@ impl TextSource {
     }
 }
 pub struct Tree {
+    vectors: Box<[crate::svg::Viewport]>,
     images: Option<Arc<crate::image::Set>>,
     pub(super) boxes: Box<[BoxNode]>,
     pub(super) sources: Box<[TextSource]>,
@@ -84,6 +87,19 @@ pub struct Tree {
     text_bytes: usize,
 }
 impl Tree {
+    pub fn vector(&self, index: u32) -> Option<&crate::svg::Viewport> {
+        self.vectors.get(index as usize)
+    }
+    pub(super) fn natural(&self, id: BoxId) -> Result<(f64, f64)> {
+        match self.get(id).ok_or(Error::Invalid)?.kind {
+            BoxKind::InlineImage { image } | BoxKind::BlockImage { image } => {
+                let image = self.image(image).ok_or(Error::Invalid)?;
+                Ok((f64::from(image.width()), f64::from(image.height())))
+            }
+            BoxKind::InlineVector { vector } | BoxKind::BlockVector { vector } => Ok(self.vector(vector).ok_or(Error::Invalid)?.natural()),
+            _ => Err(Error::Invalid),
+        }
+    }
     pub fn images(&self) -> Option<&Arc<crate::image::Set>> {
         self.images.as_ref()
     }
@@ -127,7 +143,9 @@ impl Tree {
         if self.document != document.id() || self.revision != document.revision() { Err(Error::Stale) } else { Ok(()) }
     }
     pub fn storage_payload_bytes(&self) -> usize {
-        self.images.as_ref().map_or(0, |images| images.payload_bytes())
+        self.vectors.len() * size_of::<crate::svg::Viewport>()
+            + self.vectors.iter().map(|v| v.payload_bytes()).sum::<usize>()
+            + self.images.as_ref().map_or(0, |images| images.payload_bytes())
             + self.boxes.len() * size_of::<BoxNode>()
             + self.inlines.len() * size_of::<InlineBox>()
             + self.sources.len() * size_of::<Range<u32>>()
@@ -144,10 +162,22 @@ pub struct BuildLimits {
     pub paragraph_bytes: usize,
     pub spans: usize,
     pub inline_boxes: usize,
+    pub vector_bytes: usize,
+    pub vector_work: usize,
 }
 impl Default for BuildLimits {
     fn default() -> Self {
-        Self { nodes: 2_000_000, boxes: 1_000_000, depth: 1024, text_bytes: 16 * 1024 * 1024, paragraph_bytes: 65536, spans: 262144, inline_boxes: 262144 }
+        Self {
+            nodes: 2_000_000,
+            boxes: 1_000_000,
+            depth: 1024,
+            text_bytes: 16 * 1024 * 1024,
+            paragraph_bytes: 65536,
+            spans: 262144,
+            inline_boxes: 262144,
+            vector_bytes: 64 * 1024 * 1024,
+            vector_work: 4_000_000,
+        }
     }
 }
 #[derive(Clone, Copy, Debug, Default)]
@@ -179,6 +209,10 @@ struct OpenInline {
     index: usize,
 }
 pub struct BuildJob<'a> {
+    vectors: Vec<crate::svg::Viewport>,
+    vector_nodes: std::collections::HashMap<NodeId, u32>,
+    vector_bytes: usize,
+    vector_work: usize,
     images: Option<Arc<crate::image::Set>>,
     document: &'a Document,
     styles: Arc<StyleTree>,
@@ -204,6 +238,10 @@ impl<'a> BuildJob<'a> {
         let root = BoxId::new(0)?;
         Ok(Self {
             images: None,
+            vectors: Vec::new(),
+            vector_nodes: Default::default(),
+            vector_bytes: 0,
+            vector_work: 0,
             document,
             styles,
             limits,
@@ -268,8 +306,13 @@ impl<'a> BuildJob<'a> {
             if kind == ControlKind::Object {
                 check(self.cancel)?;
                 let span = p.spans.get(p.spans.partition_point(|s| s.range.end <= at)).filter(|s| s.range.start == at).ok_or(Error::Invalid)?;
-                let image = self.images.as_ref().and_then(|images| images.index(span.node)).ok_or(Error::Invalid)?;
-                self.add(span.node, span.style_node, BoxKind::InlineImage { image }, text_box)?;
+                let kind = if let Some(&vector) = self.vector_nodes.get(&span.node) {
+                    BoxKind::InlineVector { vector }
+                } else {
+                    let image = self.images.as_ref().and_then(|images| images.index(span.node)).ok_or(Error::Invalid)?;
+                    BoxKind::InlineImage { image }
+                };
+                self.add(span.node, span.style_node, kind, text_box)?;
             }
         }
         let start = u32::try_from(self.inlines.len()).map_err(|_| Error::Limit)?;
@@ -407,6 +450,42 @@ impl<'a> BuildJob<'a> {
                     {
                         return Err(Error::Unsupported("positioned/floating/clearance layout"));
                     }
+                    if self.document.namespace(node)? == Some(crate::dom::Namespace::Svg) && self.document.name(node)? == Some("svg") {
+                        if *display == Display::Contents {
+                            continue;
+                        }
+                        if matches!(*display, Display::Box { outer: Outer::Inline, .. }) && !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline | Keyword::Middle))
+                            || !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static))
+                        {
+                            return Err(Error::Unsupported("aligned/positioned SVG"));
+                        }
+                        let vector = u32::try_from(self.vectors.len()).map_err(|_| Error::Limit)?;
+                        let source = crate::svg::Viewport::load(
+                            self.document,
+                            &self.styles,
+                            node,
+                            self.limits.nodes.saturating_sub(self.progress.visited) + 1,
+                            self.limits.vector_work.saturating_sub(self.vector_work),
+                            self.cancel,
+                        )?;
+                        self.vector_bytes = self.vector_bytes.checked_add(source.payload_bytes()).ok_or(Error::Limit)?;
+                        if self.vector_bytes > self.limits.vector_bytes {
+                            return Err(Error::Limit);
+                        }
+                        self.vector_work += source.work;
+                        self.progress.visited += source.visited.saturating_sub(1);
+                        self.vectors.push(source);
+                        self.vector_nodes.insert(node, vector);
+                        match *display {
+                            Display::Box { outer: Outer::Inline, list_item: false, .. } => self.append(node, container, node, ControlKind::Object.carrier(), Some(ControlKind::Object))?,
+                            Display::Box { outer: Outer::Block, list_item: false, .. } => {
+                                self.flush()?;
+                                self.add(node, node, BoxKind::BlockVector { vector }, container)?;
+                            }
+                            _ => return Err(Error::Unsupported("SVG formatting context")),
+                        }
+                        continue;
+                    }
                     if let Some(namespace @ (crate::dom::Namespace::Svg | crate::dom::Namespace::MathMl)) = self.document.namespace(node)? {
                         return Err(Error::UnsupportedForeign(Box::new(ForeignElement { node, namespace, name: self.document.name(node)?.ok_or(Error::Invalid)?.into() })));
                     }
@@ -512,6 +591,7 @@ impl<'a> BuildJob<'a> {
         let text_bytes = self.sources.iter().map(|s| s.source.len()).sum();
         Ok(Arc::new(Tree {
             images: self.images,
+            vectors: self.vectors.into_boxed_slice(),
             text_bytes,
             document: self.document.id(),
             revision: self.document.revision(),

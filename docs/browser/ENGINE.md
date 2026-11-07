@@ -2416,3 +2416,36 @@ and element name, with the context boxed only on failure. It copies no attribute
 or text and retains no document. The fresh Stripe retry identifies an SVG root;
 viewport sizing, presentation geometry properties, retained scene integration,
 paint servers and scale-accurate vector pixels remain open.
+
+
+## Initial SVG roots in the page pipeline
+
+Path-only SVG roots now use retained `svg::Viewport` geometry in the box tree.
+Width/height presentation attributes feed the normal CSS cascade. Block and
+inline replaced geometry uses existing sizing; baseline and initial middle
+alignment work. SVG `viewBox` and preserveAspectRatio none/meet/slice transform
+original paths into the content viewport, with solid inherited/currentColor
+fills, fill opacity and winding/even-odd rules. Root visibility can be overridden
+by descendants. Scene commands retain root document identity and Browser exposes
+root aria-label as structured image metadata through its existing snapshot API.
+Nested path interaction and full SVG accessibility semantics remain open.
+
+Compilation runs on the page worker with cancellation per source node/path
+chunk; node/action/source limits and global occupied vector payload limits bound
+work. A root is one outer build action containing bounded inner work; the outer
+quota is not a strict per-node deadline for SVG. Geometry is retained across
+layout and tile paint, but currently rebuilt on restyle. Payload accounting
+excludes allocator capacity. Rasterization uses tiny-skia on the worker with
+per-viewport tile masks; GPU paths, per-shape tile indexing and mask reuse remain
+performance work. No SIMD/GPU speedup is claimed by this integration.
+
+This is deliberately incomplete: both-auto root sizes, visible overflow, nested
+SVG/other shape types, strokes, transforms, paint servers, masks/filters and
+group opacity return explicit unsupported errors where recognized. One-auto
+intrinsic sizing, indefinite percentage heights and mixed inline-font middle
+alignment need broader reference coverage. In particular no-viewBox auto sizing
+still uses the initial default-object fallback and is not a conformance claim.
+Malformed path/viewBox recovery is incomplete. `svg-page-fixtures` pins110
+independent Chrome rectangles and full crops:82 exact,28 raster nonpasses.
+`OLO_SVG_REQUIRE_COMPLETE=1` fails until all pass. Native logo/demo reviews at
+15 theme/scale combinations are component checks, not Stripe acceptance.

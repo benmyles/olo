@@ -4673,3 +4673,48 @@ proof are in svg-style-checks.json and scratch. Quit/awaited Browser; zero windo
 both Stripe screens stopped. No visual matrix/pixel acceptance is claimed for
 this style/diagnostic checkpoint. Stripe remains0/30; corpus0/100. Continue with
 SVG geometry presentation attributes, viewport/intrinsic sizing and scene paint.
+
+
+### 2026-11-06 — First retained SVG viewports in real page layout and paint
+
+Connected bounded SVG path compilation to inline/block box construction,
+presentation width/height sizing, viewBox/aspect transforms and vector scene
+paint. Original vectors survive layout and tile rendering; fills, fill opacity,
+even-odd rules, group inheritance and initial middle alignment work. Browser
+exposes root aria-label as structured image metadata. The retained Stripe logo
+now renders in a component demo. Both-auto sizing, many shapes, transforms,
+strokes, paint servers, filters and full intrinsic sizing remain incomplete.
+Compilation is worker-only/cancellable but one outer box-build action can compile
+one bounded root. Geometry is rebuilt on restyle; per-viewport tile mask
+allocation and per-shape tile indexing remain optimization work.
+
+22 independent original Chrome cases at five native scales produce110 matching
+rectangles (0.0001CSSpx tolerance),82 exact complete pixel crops and28 explicit
+nonpasses. The pinned gap report remains red for conformance; REQUIRE_COMPLETE
+fails until zero. Initial percentage captures with an unfixed body width were
+discarded. Expanding the fixed90 set to110 preserved all previous90 decoded
+images and rectangles. Native component screenshots inspected in light/dark/night
+at1/1.25/1.5/1.75/2; all15 live reviews have zero findings. Journal screenshot
+shows the retained Stripe logo plus authored vector shapes, not a working site.
+The native tree names the logo. Nested SVG link/action semantics remain untested.
+
+Fresh HTTPS navigation on final frozen Browser PID610725 now gets past the SVG
+root and stops at positioned/floating/clearance layout. Its executable hash and
+saved startup tree are retained with checks. No useful homepage content yet;
+Stripe0/30, corpus0/100. Next diagnose the positioned element and implement its
+layout, while keeping all28 SVG pixel gaps and older nonpasses open.
+
+Frozen default release comparison against76b5dbed,7 alternating pairs per
+workload on CPU0, with no observed compiler context: ordinary page100/1000
+834.717/9253.339→835.266/9207.552us; retained scene191.638/3594.582→188.229/
+3577.856us. Source/geometry/pixel hashes agree. This is ordinary-content control,
+not SVG paint throughput, network, JS or GPU/presentation acceptance. Native2×
+scroll9bursts per build: median report→first moving client mark9.032→8.906ms;
+hitches1→0. Both3s idle samples0CPU/0wakeups. RSS108404→108908KiB. A single
+before/after native pair does not establish a broad speedup or erase prior
+regressions. Reports are measurements/2026-11-06-stripe-svg-layout-*.json.
+
+Release web tests292pass/1ignored and Browser13pass/1ignored; strict web+Browser clippy5.45s and full
+release workspace17.74s pass. No personal-session installation or reload.
+Browsers closed and process exits awaited; zero native windows, both Stripe
+screens stopped. Fetched via gh again: origin/main82f7089a already merged.

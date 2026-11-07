@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Original browser SVG paths
+
+*17:33* — The native engine renders the retained Stripe logo and original vector examples. Component checks: 110 matching rectangles, 82 exact pixel captures and 28 recorded nonpasses at five scales; all 15 native theme/scale reviews have zero findings. The real Stripe homepage still stops at positioned layout; this is not website acceptance.
+
+![Original browser SVG paths](2026-11-06/173322-original-browser-svg-paths.png)
+
 ### Original browser flex page layout
 
 *16:35* — The original Rust formatter now resolves row item widths, measured text, cross alignment and stretch, reverse order and auto margins. Checked at five native scales in light, dark and night modes with structured agent content. Independent component geometry matches320 definite lines and260 page cases; this authored demo is not Stripe acceptance or native website darkening. Real Stripe now stops at foreign box layout.

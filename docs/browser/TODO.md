@@ -8,26 +8,16 @@ revalidate the merged workspace and push the integration with browser work.
 
 **Active website: [Stripe](eval/stripe/README.md), selected by the user.**
 Finish its real pages/journeys and all30 configurations before choosing another
-site. Component work follows observed Stripe blockers. The last verified real
-HTTPS retry now clears flex box-tree construction and stops at
-an identified SVG root (fresh HTTPS: document1/slot238). There is still no useful native Stripe
-content, and its own carousel/container geometry has not executed. Initial
-horizontal LTR single-line flex formatting is connected to the page pipeline:
-320 definite lines/1,095 positions and widths plus260 authored page observations
-(825 rectangles) match independent Chrome at five native DPRs. Text/auto/explicit
-bases, initial alignments, margins, cross stretch/percentage descendants and
-selected nested rows work; RTL/column/wrap/order/baseline, replaced and complex
-intrinsic contexts remain open. Shared immutable text intrinsic widths survive
-resize. The earlier shorthand365/370 result still has five fit-content() gaps.
-Initial worker-only SVG path compilation handles all307 retained Stripe paths
-without syntax errors, but is not connected to CSS/layout/paint. Arc scale
-accuracy and extreme-coordinate support remain open.
-Ten SVG paint longhands and initial SVG-only presentation attributes now reach
-the real computed-style pipeline;140 independent Chrome style observations match.
-Final ordinary pipeline2.1–2.4% and scene1.7–5.5% cost regressions remain open.
-Next connect SVG viewport sizing, geometry attributes and vector scene paint,
-then retry Stripe;
-do not choose another website.
+site. Component work follows observed Stripe blockers. The latest fresh HTTPS retry gets past the initial SVG root and stops at
+`flow layout Unsupported("positioned/floating/clearance layout")`. There is still
+no useful native Stripe homepage and no accepted configuration. Initial LTR row
+flex and path-only SVG roots now reach layout/paint. SVG's110 independent page
+rectangles match at five native DPRs;82 image crops match exactly and28 pixel
+nonpasses remain. Native component reviews pass all15 theme/scale combinations.
+SVG intrinsic sizing, strokes/paint servers/transforms, replaced flex items,
+arc scale accuracy and fractional raster fidelity remain incomplete. All older
+performance and conformance nonpasses remain open. Next investigate actual
+Stripe positioned elements and close SVG pixel gaps; do not choose another site.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
