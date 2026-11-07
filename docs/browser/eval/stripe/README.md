@@ -14,21 +14,21 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest startup checkpoint
 
-The latest fresh owned native HTTPS retry clears referenced rectangular SVG
-clipping and stops at **flow layout Unsupported("SVG group opacity")** during
-box construction. Process/executable hash/window evidence is retained in
-`../../measurements/2026-11-06-stripe-svg-clips-startup*.json`.
+The latest fresh owned native HTTPS process clears non-root SVG opacity and
+stops at **UnsupportedForeign Svg rect** (node slot317) during box construction.
+Process/executable hash/window evidence is retained in
+`../../measurements/2026-11-06-stripe-svg-opacity-startup*.json`.
 There is no useful native Stripe homepage and no accepted configuration;
 Stripe's actual absolute geometry has still not run.
 
-The clip component matches185 independent Chrome bounds and137/185 exact crops
-across37 cases/five native DPRs;48 fractional/rounded-edge pixel nonpasses remain.
-The strict pixel gate fails. Earlier path/overflow corpora retain38 nonpasses.
-Its15 native theme/scale reviews have no findings. These are component results,
-not site passes. Typed inset values match205 Chrome observations, but inset
-painting remains unconnected. Initial deferred absolute blocks match545 Chrome
-rectangles across125 authored pages. Continue with SVG group compositing,
-clipping fidelity and remaining positioned modes on Stripe only.
+The opacity component matches140 independent Chrome bounds and65/140 exact crops
+across28 cases/five native DPRs;75 pixel nonpasses remain. Earlier clipping
+retains185 matching bounds,137 exact crops and48 nonpasses; path/overflow retain
+38 nonpasses. Strict pixel gates fail. Its15 native theme/scale reviews have no
+findings. These are component results, not site passes. Typed inset values match
+205 Chrome observations, but inset painting remains unconnected. Initial deferred
+absolute blocks match545 Chrome rectangles across125 authored pages. Continue
+with visible SVG rectangle geometry/painting, full root stacking and fidelity.
 
 The retained-source [foreign inventory](foreign-inventory.json) contains154 SVG
 roots,307 paths,135 rectangles,61 clip paths,13 linear gradients and4 filters.

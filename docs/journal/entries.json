@@ -3682,5 +3682,11 @@
     "title": "Browser: referenced SVG rectangle clips",
     "caption": "Authored component only: local SVG rectangle and rounded-rectangle clips. All 15 theme/scale reviews pass; 48 of 185 Chrome pixel comparisons remain nonpasses. Live Stripe advances to SVG group opacity; no Stripe configuration accepted.",
     "image": "2026-11-06/193425-browser-referenced-svg-rectangle-clips.png"
+  },
+  {
+    "time": "2026-11-06T19:59:53",
+    "title": "Browser: SVG object and group opacity",
+    "caption": "Individual opacity blends overlapping objects separately; group opacity composites the children first. Authored component at 1.75x; 15 native theme/scale reviews pass. 65/140 Chrome crops exact,75 pixel nonpasses remain. Stripe now reaches visible SVG rect; no site accepted.",
+    "image": "2026-11-06/195953-browser-svg-object-and-group-opacity.png"
   }
 ]

@@ -2617,3 +2617,36 @@ clipped definitions, inset painting and group compositing remain incomplete.
 Fresh Stripe startup now reaches Unsupported("SVG group opacity"). No useful
 Stripe render/configuration is accepted. Release measurements and validation:
 measurements/2026-11-06-stripe-svg-clips-*.json.
+
+## Isolated SVG object and group effects
+
+Non-root SVG opacity now retains preorder ranges over the existing shape array,
+with subtree bounds cached during compilation. Nested group children composite
+before the group's alpha. Group alpha is quantized once to eight bits to match
+independent Chrome solid pixels; applying opacity to each child is not equivalent.
+Clip references now belong to these groups instead of every Shape, and clipping
+applies once when the isolated result is composited. This supersedes the initial
+per-shape ancestor-mask raster strategy described above.
+
+Worker scratch covers only each group's ink bounds intersected with its
+parent tile. Empty, transparent and off-tile groups skip allocation. Limits cap
+nesting, concurrent surface/mask/transformed-path bytes and aggregate tile pixel/
+clip work; the default scratch budget is16MiB. Ordinary SVGs allocate no layers.
+There is no URL parsing or numeric evaluation during raster. A2×2 group test
+proves16 surface bytes suffice, independent of viewport size; tile-origin,
+cancellation and byte/work limit tests pass.
+
+140 independent crops across28 cases/five native DPRs:65 exact and75 nonpasses.
+Remaining differences include fractional path edges, curves and clipping coverage;
+all140 bounds match. Older38 path/overflow and48 clipping pixel failures remain.
+Strict exact gate still fails. Root SVG opacity/decorations, full CSS stacking,
+non-path shapes, transforms, blending, masks/filters and hit testing remain open.
+Native component reviews pass15 theme/scale settings. Fresh Stripe clears opacity
+and stops at visible SVG rect. No site accepted. Release cost/latency evidence:
+measurements/2026-11-06-stripe-svg-opacity-*.json.
+
+Keep full group ink bounds during scan conversion: tighter clipping changes
+current tiny-skia curve subdivision. Remaining one-channel benchmark differences
+are explicit: first viewport atDPR1 goes55→57 differing pixels versus Chrome,
+max20 unchanged. Exact cropped-layer raster invariance and Chrome coverage still
+need work; this is not a complete analytic compositor.

@@ -1,0 +1,18 @@
+{
+  "scope": "Diagnostic benchmark first SVG viewport at DPR1 compared to independent Chrome; before reproducer hash matched frozen baseline. Does not accept pixels or establish general raster accuracy.",
+  "reference_sha256": "3ed976cc1336734206fbad4d44fce3224cc5c600d8c2bf6f936f9235eae1411c",
+  "rows": [
+    {
+      "variant": "before",
+      "different_pixels": 55,
+      "max_channel_error": 20,
+      "absolute_channel_error": 906
+    },
+    {
+      "variant": "after",
+      "different_pixels": 57,
+      "max_channel_error": 20,
+      "absolute_channel_error": 920
+    }
+  ]
+}

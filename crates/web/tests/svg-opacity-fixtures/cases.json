@@ -1,0 +1,142 @@
+[
+  {
+    "id": "group-half",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".5\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "objects-half",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" opacity=\".5\"/><path fill=\"blue\" d=\"M18 10H46V34H18Z\" opacity=\".5\"/></svg>",
+    "css": ""
+  },
+  {
+    "id": "group-ninety",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".9\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "object-tenth",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><path fill=\"#102030\" d=\"M0 0H60V40H0Z\" opacity=\".10\"/></svg>",
+    "css": ""
+  },
+  {
+    "id": "nested",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".4\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><g opacity=\".7\"><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /><path fill=\"lime\" d=\"M30 18H60V38H30Z\" /></g></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "nested-same-range",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".7\"><g opacity=\".3\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "sibling-restore",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".2\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /></g><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /><g opacity=\".8\"><path fill=\"lime\" d=\"M30 18H60V38H30Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "translucent-children",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".5\"><path fill=\"#ff000080\" d=\"M2 2H30V26H2Z\" /><path fill=\"#0000ff60\" d=\"M18 10H46V34H18Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "fill-opacity",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".5\" fill-opacity=\".5\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "zero-group",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\"0\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><g opacity=\".5\"><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></g><path fill=\"lime\" d=\"M30 18H60V38H30Z\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "empty-between",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".2\"></g><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><g opacity=\".3\"><g opacity=\".4\"></g></g><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /><g opacity=\".7\"></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "hidden-child",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".6\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><g visibility=\"hidden\"><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /><path fill=\"lime\" d=\"M30 18H60V38H30Z\" /></g></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "hidden-override",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".6\" visibility=\"hidden\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><g visibility=\"visible\"><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "display-none",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".4\" display=\"none\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g><path fill=\"lime\" d=\"M30 18H60V38H30Z\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "css-override",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g class=\"effect\" opacity=\".1\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></svg>",
+    "css": ".effect{opacity:.75}"
+  },
+  {
+    "id": "variables-math",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g class=\"effect\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></svg>",
+    "css": ".effect{--a:.4;opacity:calc(var(--a) + .1)}"
+  },
+  {
+    "id": "clamped",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\"-1\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /></g><g opacity=\"2\"><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "inherited-explicit",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".5\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><g style=\"opacity:inherit\"><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "all-reset",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".2\" style=\"all:initial\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "fractional-edges",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".5\"><path fill=\"red\" d=\"M1.3 2.7H39.4V28.1H1.3Z\" /><path fill=\"blue\" d=\"M20.2 9.8H55.7V35.4H20.2Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "curves",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".5\"><path fill=\"red\" d=\"M2 20C2 0 40 0 40 20C40 40 2 40 2 20Z\" /><path fill=\"blue\" d=\"M20 20C20 0 60 0 60 20C60 40 20 40 20 20Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "clip-group",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><defs><clipPath id=\"c\"><rect x=\"4.2\" y=\"3.6\" width=\"44.4\" height=\"27.2\" rx=\"5\" /></clipPath></defs><g clip-path=\"url(#c)\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /><path fill=\"lime\" d=\"M30 18H60V38H30Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "clip-and-opacity",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><defs><clipPath id=\"c\"><rect x=\"4.2\" y=\"3.6\" width=\"44.4\" height=\"27.2\" rx=\"5\" /></clipPath></defs><g opacity=\".5\" clip-path=\"url(#c)\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /><path fill=\"lime\" d=\"M30 18H60V38H30Z\" /></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "opacity-in-clip",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><defs><clipPath id=\"c\"><rect x=\"4.2\" y=\"3.6\" width=\"44.4\" height=\"27.2\" rx=\"5\" /></clipPath></defs><g clip-path=\"url(#c)\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><g opacity=\".5\"><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /><path fill=\"lime\" d=\"M30 18H60V38H30Z\" /></g></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "clip-in-opacity",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><defs><clipPath id=\"c\"><rect x=\"4.2\" y=\"3.6\" width=\"44.4\" height=\"27.2\" rx=\"5\" /></clipPath></defs><g opacity=\".5\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><g clip-path=\"url(#c)\"><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /><path fill=\"lime\" d=\"M30 18H60V38H30Z\" /></g></g></svg>",
+    "css": ""
+  },
+  {
+    "id": "empty-clip",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><defs><clipPath id=\"c\"/></defs><g opacity=\".5\" clip-path=\"url(#c)\"><path fill=\"red\" d=\"M2 2H30V26H2Z\" /><path fill=\"blue\" d=\"M18 10H46V34H18Z\" /></g><path fill=\"lime\" d=\"M30 18H60V38H30Z\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "outside-tile",
+    "html": "<svg id=\"probe\" width=64 height=40 viewBox=\"0 0 64 40\"><g opacity=\".5\"><path fill=\"red\" d=\"M1000 1000H1100V1100H1000Z\" /></g><path fill=\"red\" d=\"M2 2H30V26H2Z\" /></svg>",
+    "css": ""
+  },
+  {
+    "id": "clipped-benchmark-curve",
+    "css": "",
+    "html": "<svg id='probe' width=128 height=20 viewBox='0 0 128 20'><defs><clipPath id=c><rect x=4 y=2 width=90 height=12 /></clipPath></defs><g clip-path='url(#c)'><path fill='#6050ff' d='M-8 -4H136V24H-8Z'/><path fill='#00a48e' d='M8 16C8 0 64 0 64 16Z'/></g></svg>"
+  }
+]

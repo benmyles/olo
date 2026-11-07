@@ -9,14 +9,14 @@ revalidate the merged workspace and push the integration with browser work.
 **Active website: [Stripe](eval/stripe/README.md), selected by the user.**
 Finish its real pages/journeys and all30 configurations before choosing another
 site. Component work follows observed Stripe blockers. The latest fresh HTTPS
-retry passes referenced SVG rectangle clips and stops at
-`flow layout Unsupported("SVG group opacity")` during box construction.
-The new clip corpus has185 matching bounds,137 exact pixel crops and48 explicit
-pixel nonpasses; the older38 SVG pixel nonpasses remain. Native component
-reviews pass15 theme/scale combinations. Stripe's actual absolute geometry
-has not run, and no useful native homepage/configuration is accepted.
-Next implement SVG group compositing, keep clipping raster gaps open, connect
-inset painting and retry Stripe; do not choose another site.
+retry passes non-root SVG opacity and stops at UnsupportedForeign Svg rect
+(node slot317) during box construction. The new opacity corpus has140 matching
+bounds,65 exact crops and75 explicit pixel nonpasses. Earlier SVG corpora retain
+38 path/overflow and48 clip pixel nonpasses. Native component reviews pass15
+theme/scale combinations. Stripe's actual absolute geometry has not run, and no
+useful native homepage/configuration is accepted. Next implement visible SVG
+rectangle geometry/painting, keep opacity/clipping raster gaps open, complete
+root decoration/stacking and inset painting, then retry Stripe. No other site.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
@@ -526,8 +526,19 @@ this is a harness correction, not a browser speedup.
 - [ ] Close48 clipping pixel nonpasses; exact gate remains failing. Support root
   decoration clips, bbox units, non-rect shapes, recursive clips and transforms.
 - [ ] Complete variable-dependent inset() geometry/painting and SVG hit testing.
-- [ ] SVG group opacity/compositing: latest fresh Stripe startup blocker.
+- [x] Initial non-root SVG object/group opacity and isolated clipping: retained
+  ranges/bounds, cropped bounded worker surfaces, nested compositing, byte alpha.
+  140 Chrome bounds match;65 exact crops,75 explicit pixel nonpasses.
+- [ ] Optimize isolated clipped-layer raster:256×256 tile418/408→542/537us
+  for100/1000 SVG workloads (~30% slower); full ink bounds are needed with the
+  current scan converter. Investigate exact binary-clip fast paths and raster
+  coverage together, without hiding blend/edge regressions. Ordinary SVG retained
+  bytes improve8B/root; clipped vector bytes add40B/root, command bytes save8B/ref.
+- [ ] Close opacity/clip curve and fractional-edge nonpasses; clipped benchmark
+  first viewport differs57 pixels vs55 before, same max20 error atDPR1.
+- [ ] Complete root SVG opacity/decorations, blending and CSS stacking.
+- [ ] Visible SVG rectangles: latest fresh HTTPS startup blocker (slot317).
   Retry actual HTTPS after each supported component; keep failures explicit.
-- [ ] Investigate delayed process exit after quitting the live Stripe probe:
-  window closed immediately, process outlived10s wait, then exited after screen
-  stop. Local component/scroll probes exited within their waits.
+- [x] Clarify probe shutdown: Cmd+Q was not proof of process termination; explicit
+  documented menu quit exits promptly. Harnesses must invoke quit, await actual
+  window PID and verify fresh launch identity; forwarded launches aren't fresh.

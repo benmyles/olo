@@ -5154,3 +5154,91 @@ Component2cea6d3b pushed. Merged main ca0dcc77 via27bea606; combined
 workspace release passes in 1m 01s. Removed completed before binaries and
 owned Chrome profile; after binaries and raw evidence retained for the next
 component. Both owned screens stopped; goal active.
+
+### 2026-11-06 — SVG object/group compositing
+
+Previous goal turn made verified progress: rectangle clips committed/pushed,
+fresh live Stripe advances to SVG group opacity, main merged through27bea606,
+workspace built and checkpoint24ffb676 pushed. No blocking condition.
+
+Current implementation retains isolated effect ranges, cached subtree bounds
+and quantized group alpha. Scratch surfaces intersect group/clip bounds with
+the parent tile; nested groups composite before opacity, and clips apply at
+the group's result. Ordinary shapes no longer retain a clip index. Surface,
+mask/path scratch and aggregate pixel/clip work are explicitly bounded and
+cancellable. Root SVG opacity/decorations still reject explicitly pending full
+CSS stacking integration. Shapes other than paths remain incomplete.
+
+27 authored Chrome cases/five native DPRs135 crops captured. First capture
+attempt stopped before observations because cases omitted the probe ID; fixed
+before successful capture. Initial pixel comparison39 exact/96 nonpasses found
+whole-solid one-channel opacity errors; byte alpha quantization (computed once)
+raises exact crops to65, leaving70 fractional-edge/curve/clip nonpasses. Actual
+quantized nested/overlapping solid colors match. Ongoing clip-bound scratch
+reduction may change these counts; final report/strict gates not yet committed.
+Existing SVG tests and authored tile-origin/small-surface/quota/cancel checks
+pass. Final regressions, release costs, native reviews and live retry pending.
+Baseline frozen under /var/tmp/olo-browser-stripe/svg-opacity. Goal active,
+Stripe0/30 and corpus0/100; no other website selected. Main has advanced again;
+merge at the measured component checkpoint.
+
+Benchmark verification found changed clipped curve pixels and deliberately
+stopped before timing acceptance. First collector checked hashes before writing
+raw rows, so that aborted SVG timing run is unavailable; changed the collector
+to persist observations before checking. A diagnostic reproducer matched the
+frozen before hash exactly. Tight clip-bound surface cropping changed507 pixels
+(max20 channels) in256×256; retaining complete ink bounds reduced it to338
+one-channel differences. Kept ink bounds despite larger buffers. Empty clips
+still skip allocation. Expanded independent corpus to28/140 with this curve;
+DPR1 first-viewport comparison: before55 differing pixels, max20, absolute
+channel error906; after57/max20/error920. This small raster regression remains
+explicit, not claimed as a fidelity improvement. Source/geometry still match.
+Original ordinary cost collection preserved as exploratory (12/28 compiler
+contexts); final binary changes require new measured samples. Two comparison
+jobs are confirmed waiting in the shared kache runner behind an active olo-video
+test; do not restart or terminate them merely for elapsed observation time.
+
+Final reference expansion is140 crops:65 exact,75 nonpasses; the extra five
+are the benchmark curve at five DPRs. All prior opacity gaps stayed at or below
+the earlier observed errors; all185 old clip bounds and137 exact crops preserved.
+Shared queued comparisons completed normally once the external test ended.
+
+Native component reviews pass15 light/dark/night ×1/1.25/1.5/1.75/2 settings.
+Initial authored demonstration used unsupported font shorthand; changed it to
+supported equivalent longhands and repeated all15 reviews with no stylesheet
+issues. Inspected final screenshots across all five scales and all three modes.
+Cmd+Q did not terminate the earlier visual process; the subsequent launch was
+forwarded to it. Discarded that startup as fresh-process evidence. The explicit
+menu command `olo-screen invoke ... quit` exited promptly; used it to close/
+await the visual process, then launched and verified a distinct frozen process.
+Fresh HTTPS Stripe now clears opacity and stops at UnsupportedForeign Svg rect,
+node slot317. Process/executable hash/window captured. Explicit quit/await passes.
+This corrects the prior vague delayed-shutdown follow-up: harness keypress was
+not proof of quit. Use the documented menu API (as measure-native already does).
+
+Final CPU0 release measurements (seven alternating pairs; no compiler contexts
+in28 ordinary or35 SVG samples, clocks/load uncontrolled): ordinary100/1000
+pipeline867.144/9765.261→886.203/9918.159us; scene195.591/3568.794→190.411/3579.509us.
+Ordinary SVG pipeline1220.483/11536.644→1223.334/11856.513us;
+scene14.537/550.406→14.635/550.904us;
+raster310.011/304.460→307.647/303.080us; retained vector−8B/root in two-path case.
+Clipped SVG pipeline2679.143/25949.182→2693.036/25982.797us;
+scene45.606/844.095→45.589/831.988us;
+raster418.127/408.093→541.588/537.101us (~30% regression tracked, not explained
+away). Vector payload+40B/root, command payload−8B/reference. Correct group
+compositing now uses intermediate surfaces. Binary-clip specialization and
+coverage-correct tighter bounds remain optimization work.
+New nested-opacity workload after-only: pipeline1812.471/17965.360us,
+scene14.763/546.582us, raster494.762/492.233us; before unsupported.
+All completed final observations retained; clipped benchmark source/geometry
+match but pixels differ as diagnosed above. Final326 release tests pass,2 ignored;
+strict scoped clippy2.82s, workspace release9.61s, examples30.07s.
+
+Native ordinary1000-paragraph fixture RSS111668→108824KiB,
+3s idle zeroCPU/wakeups both. Median client-submission latency(ms):
+drag9.164→9.08, flick9.119→9.053,
+wheel0.72→0.281. Not presentation/optical latency.
+Screens stopped; explicit quit/await checks passed. Measured evidence under
+measurements/2026-11-06-stripe-svg-opacity-*.json. Screenshot journal added.
+No useful Stripe render/configuration accepted; Stripe0/30, corpus0/100.
+Next visible rect geometry/painting and existing raster/stacking gaps. Goal active.

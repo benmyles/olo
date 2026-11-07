@@ -1,0 +1,29 @@
+{
+  "scope": "Non-root SVG object/group compositing; no Stripe acceptance",
+  "release_tests": {
+    "passed": 326,
+    "ignored": 2
+  },
+  "strict_scoped_clippy_seconds": 2.82,
+  "workspace_release_seconds": 9.61,
+  "examples_release_seconds": 30.07,
+  "reference": {
+    "cases": 28,
+    "dprs": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "matching_bounds": 140,
+    "exact_crops": 65,
+    "pixel_nonpasses": 75,
+    "older_svg_nonpasses": 86,
+    "strict_pixel_gate": "fails as required on75 nonpasses"
+  },
+  "native_reviews": 15,
+  "native_review_findings": 0,
+  "main_at_measurement": "ca0dcc77086bd8b330fce55a06863304351ba22a",
+  "process_cleanup": "Documented quit command and actual window PID awaited before each fresh launch; both owned screens stopped"
+}

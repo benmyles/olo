@@ -1,0 +1,456 @@
+{
+  "exact": 65,
+  "failures": [
+    {
+      "different_pixels": 211,
+      "id": "fractional-edges",
+      "max_channel_error": 23,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 152,
+      "id": "curves",
+      "max_channel_error": 19,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 87,
+      "id": "clip-group",
+      "max_channel_error": 86,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 86,
+      "id": "clip-and-opacity",
+      "max_channel_error": 13,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 87,
+      "id": "opacity-in-clip",
+      "max_channel_error": 86,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 41,
+      "id": "clip-in-opacity",
+      "max_channel_error": 31,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 57,
+      "id": "clipped-benchmark-curve",
+      "max_channel_error": 20,
+      "scale": 1.0
+    },
+    {
+      "different_pixels": 7,
+      "id": "group-half",
+      "max_channel_error": 32,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 8,
+      "id": "objects-half",
+      "max_channel_error": 32,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 9,
+      "id": "group-ninety",
+      "max_channel_error": 57,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 9,
+      "id": "nested",
+      "max_channel_error": 25,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 9,
+      "id": "nested-same-range",
+      "max_channel_error": 14,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 119,
+      "id": "sibling-restore",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 8,
+      "id": "translucent-children",
+      "max_channel_error": 16,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 8,
+      "id": "fill-opacity",
+      "max_channel_error": 16,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 49,
+      "id": "zero-group",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 108,
+      "id": "empty-between",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 96,
+      "id": "hidden-child",
+      "max_channel_error": 38,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 96,
+      "id": "hidden-override",
+      "max_channel_error": 38,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 49,
+      "id": "display-none",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 108,
+      "id": "css-override",
+      "max_channel_error": 48,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 7,
+      "id": "variables-math",
+      "max_channel_error": 32,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 56,
+      "id": "clamped",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 8,
+      "id": "inherited-explicit",
+      "max_channel_error": 32,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 108,
+      "id": "all-reset",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 140,
+      "id": "fractional-edges",
+      "max_channel_error": 32,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 222,
+      "id": "curves",
+      "max_channel_error": 25,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 178,
+      "id": "clip-group",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 50,
+      "id": "clip-and-opacity",
+      "max_channel_error": 32,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 81,
+      "id": "opacity-in-clip",
+      "max_channel_error": 63,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 57,
+      "id": "clip-in-opacity",
+      "max_channel_error": 32,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 49,
+      "id": "empty-clip",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 56,
+      "id": "outside-tile",
+      "max_channel_error": 64,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 266,
+      "id": "clipped-benchmark-curve",
+      "max_channel_error": 44,
+      "scale": 1.25
+    },
+    {
+      "different_pixels": 318,
+      "id": "fractional-edges",
+      "max_channel_error": 23,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 256,
+      "id": "curves",
+      "max_channel_error": 29,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 131,
+      "id": "clip-group",
+      "max_channel_error": 70,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 131,
+      "id": "clip-and-opacity",
+      "max_channel_error": 17,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 131,
+      "id": "opacity-in-clip",
+      "max_channel_error": 69,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 63,
+      "id": "clip-in-opacity",
+      "max_channel_error": 35,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 84,
+      "id": "clipped-benchmark-curve",
+      "max_channel_error": 26,
+      "scale": 1.5
+    },
+    {
+      "different_pixels": 7,
+      "id": "group-half",
+      "max_channel_error": 32,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 8,
+      "id": "objects-half",
+      "max_channel_error": 32,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 8,
+      "id": "group-ninety",
+      "max_channel_error": 57,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 9,
+      "id": "nested",
+      "max_channel_error": 25,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 9,
+      "id": "nested-same-range",
+      "max_channel_error": 14,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 156,
+      "id": "sibling-restore",
+      "max_channel_error": 64,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 8,
+      "id": "translucent-children",
+      "max_channel_error": 16,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 8,
+      "id": "fill-opacity",
+      "max_channel_error": 16,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 58,
+      "id": "zero-group",
+      "max_channel_error": 64,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 127,
+      "id": "empty-between",
+      "max_channel_error": 64,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 134,
+      "id": "hidden-child",
+      "max_channel_error": 38,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 134,
+      "id": "hidden-override",
+      "max_channel_error": 38,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 58,
+      "id": "display-none",
+      "max_channel_error": 64,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 128,
+      "id": "css-override",
+      "max_channel_error": 48,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 7,
+      "id": "variables-math",
+      "max_channel_error": 32,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 69,
+      "id": "clamped",
+      "max_channel_error": 64,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 8,
+      "id": "inherited-explicit",
+      "max_channel_error": 32,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 127,
+      "id": "all-reset",
+      "max_channel_error": 64,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 368,
+      "id": "fractional-edges",
+      "max_channel_error": 14,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 302,
+      "id": "curves",
+      "max_channel_error": 38,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 227,
+      "id": "clip-group",
+      "max_channel_error": 85,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 154,
+      "id": "clip-and-opacity",
+      "max_channel_error": 32,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 160,
+      "id": "opacity-in-clip",
+      "max_channel_error": 85,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 79,
+      "id": "clip-in-opacity",
+      "max_channel_error": 32,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 58,
+      "id": "empty-clip",
+      "max_channel_error": 64,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 69,
+      "id": "outside-tile",
+      "max_channel_error": 64,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 366,
+      "id": "clipped-benchmark-curve",
+      "max_channel_error": 44,
+      "scale": 1.75
+    },
+    {
+      "different_pixels": 422,
+      "id": "fractional-edges",
+      "max_channel_error": 29,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 319,
+      "id": "curves",
+      "max_channel_error": 30,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 176,
+      "id": "clip-group",
+      "max_channel_error": 60,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 176,
+      "id": "clip-and-opacity",
+      "max_channel_error": 13,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 176,
+      "id": "opacity-in-clip",
+      "max_channel_error": 58,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 82,
+      "id": "clip-in-opacity",
+      "max_channel_error": 30,
+      "scale": 2.0
+    },
+    {
+      "different_pixels": 126,
+      "id": "clipped-benchmark-curve",
+      "max_channel_error": 21,
+      "scale": 2.0
+    }
+  ],
+  "total": 140
+}

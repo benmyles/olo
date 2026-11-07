@@ -11,12 +11,22 @@ pub struct Shape {
     pub path: Path,
     pub color: [u8; 4],
     pub evenodd: bool,
+}
+/// Preorder isolated effects over a contiguous range of retained shapes.
+/// Bounds are in SVG user space; raster surfaces cover only their tile intersection.
+pub struct Layer {
+    pub first: u32,
+    pub end: u32,
+    pub end_layer: u32,
+    pub opacity: f32,
     pub clip: u32,
+    pub bounds: Option<tiny_skia::Rect>,
 }
 pub struct Viewport {
     pub node: NodeId,
     pub shapes: Vec<Shape>,
     clips: Option<triomphe::ThinArc<(), clip::Clip>>,
+    layers: Option<triomphe::ThinArc<(), Layer>>,
     pub view_box: Option<[f64; 4]>,
     pub aspect: svgtypes::AspectRatio,
     /// CSS viewport clipping, independently per axis.
@@ -60,7 +70,7 @@ impl Viewport {
         if [P::Width, P::Height].into_iter().all(|p| matches!(root_style.value(p), Value::Keyword(K::Auto))) {
             return Err(Error::Unsupported("auto-sized SVG viewport"));
         }
-        let mut result = Self { node: root, shapes: Vec::new(), clips: None, view_box: None, aspect: Default::default(), clip, ink_bounds: None, visited: 0, work: 0 };
+        let mut result = Self { node: root, shapes: Vec::new(), clips: None, layers: None, view_box: None, aspect: Default::default(), clip, ink_bounds: None, visited: 0, work: 0 };
         if let Some(value) = doc.attribute(root, "viewBox")? {
             if value.len() > 1024 * 1024 {
                 return Err(Error::Limit);
@@ -83,7 +93,8 @@ impl Viewport {
         }
         let mut next = Some(root);
         let mut clips = Vec::new();
-        let mut inherited_clips = std::collections::HashMap::new();
+        let mut layers: Vec<Layer> = Vec::new();
+        let mut open: Vec<(NodeId, usize)> = Vec::new();
         let mut visited = 0;
         let mut bytes = 0usize;
         let mut work = 0usize;
@@ -107,7 +118,7 @@ impl Viewport {
                 // uses (paint servers, clip-path, use) still reject explicitly.
                 skip = matches!(s.value(P::Display), Value::Display(Display::None)) || matches!(name, "defs" | "clipPath" | "title" | "desc" | "metadata");
                 if !skip {
-                    let mut current_clip = if inherited_clips.is_empty() { clip::NO_CLIP } else { doc.parent(node)?.and_then(|p| inherited_clips.get(&p).copied()).unwrap_or(clip::NO_CLIP) };
+                    let mut own_clip = clip::NO_CLIP;
                     match s.value(P::ClipPath) {
                         Value::Keyword(K::None) => {}
                         Value::LocalUrl(url) => {
@@ -115,26 +126,27 @@ impl Viewport {
                                 if node == root {
                                     return Err(Error::Unsupported("SVG root clip decoration"));
                                 }
-                                let index = u32::try_from(clips.len()).map_err(|_| Error::Limit)?;
-                                clips.push(clip::Clip { parent: current_clip, definition });
-                                current_clip = index;
+                                own_clip = u32::try_from(clips.len()).map_err(|_| Error::Limit)?;
+                                clips.push(clip::Clip { definition });
                             }
                         }
                         _ => return Err(Error::Unsupported("SVG basic shape clip")),
                     }
-                    if current_clip != clip::NO_CLIP {
-                        inherited_clips.insert(node, current_clip);
-                        if inherited_clips.capacity().saturating_mul(size_of::<(NodeId, u32)>() + 1) > bytes_limit {
+                    let opacity = s.value(P::Opacity).scalar().ok_or(Error::Invalid)? as f32;
+                    if opacity != 1. || own_clip != clip::NO_CLIP {
+                        if node == root {
+                            return Err(Error::Unsupported("SVG root opacity decoration"));
+                        }
+                        if open.len() >= 128 || (layers.len() + 1).saturating_mul(size_of::<Layer>()) > bytes_limit {
                             return Err(Error::Limit);
                         }
+                        open.push((node, layers.len()));
+                        layers.push(Layer { first: result.shapes.len() as u32, end: 0, end_layer: 0, opacity: (opacity * 255.).round() / 255., clip: own_clip, bounds: None });
                     }
                     for (attr, diagnostic) in [("transform", "SVG transform"), ("mask", "SVG mask"), ("filter", "SVG filter")] {
                         if doc.attribute(node, attr)?.is_some() {
                             return Err(Error::Unsupported(diagnostic));
                         }
-                    }
-                    if s.value(P::Opacity).scalar() != Some(1.) {
-                        return Err(Error::Unsupported("SVG group opacity"));
                     }
                     match name {
                         "svg" if node == root => {}
@@ -170,8 +182,11 @@ impl Viewport {
                                 if let Some(geometry) = path.geometry() {
                                     let b = geometry.bounds();
                                     result.ink_bounds = Some(result.ink_bounds.map_or(Some(b), |old| old.join(&b)).ok_or(Error::Unsupported("SVG overflow bounds precision"))?);
+                                    if let Some(&(_, i)) = open.last() {
+                                        layers[i].bounds = Some(layers[i].bounds.map_or(Some(b), |old| old.join(&b)).ok_or(Error::Unsupported("SVG layer bounds precision"))?);
+                                    }
                                 }
-                                result.shapes.push(Shape { node, path, color, evenodd: matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd)), clip: current_clip });
+                                result.shapes.push(Shape { node, path, color, evenodd: matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd)) });
                             }
                         }
                         _ => return Err(Error::UnsupportedForeign(Box::new(crate::layout::ForeignElement { node, namespace: Namespace::Svg, name: name.into() }))),
@@ -184,6 +199,14 @@ impl Viewport {
             if next.is_none() {
                 let mut at = node;
                 loop {
+                    if open.last().is_some_and(|&(n, _)| n == at) {
+                        let (_, i) = open.pop().ok_or(Error::Invalid)?;
+                        layers[i].end = result.shapes.len() as u32;
+                        layers[i].end_layer = layers.len() as u32;
+                        if let (Some(b), Some(&(_, parent))) = (layers[i].bounds, open.last()) {
+                            layers[parent].bounds = Some(layers[parent].bounds.map_or(Some(b), |old| old.join(&b)).ok_or(Error::Unsupported("SVG layer bounds precision"))?);
+                        }
+                    }
                     if at == root {
                         break;
                     }
@@ -198,12 +221,21 @@ impl Viewport {
         if !clips.is_empty() {
             result.clips = Some(triomphe::ThinArc::from_header_and_iter((), clips.into_iter()));
         }
+        if !layers.is_empty() {
+            result.layers = Some(triomphe::ThinArc::from_header_and_iter((), layers.into_iter()));
+        }
         result.visited = visited;
         result.work = work;
         Ok(result)
     }
     pub fn payload_bytes(&self) -> usize {
-        self.clips.as_ref().map_or(0, |c| 2 * size_of::<usize>() + size_of_val(&c.slice)) + self.shapes.len() * size_of::<Shape>() + self.shapes.iter().map(|s| s.path.payload_bytes()).sum::<usize>()
+        self.layers.as_ref().map_or(0, |l| 2 * size_of::<usize>() + size_of_val(&l.slice))
+            + self.clips.as_ref().map_or(0, |c| 2 * size_of::<usize>() + size_of_val(&c.slice))
+            + self.shapes.len() * size_of::<Shape>()
+            + self.shapes.iter().map(|s| s.path.payload_bytes()).sum::<usize>()
+    }
+    pub(crate) fn layers(&self) -> &[Layer] {
+        self.layers.as_ref().map_or(&[], |l| &l.slice)
     }
     pub(crate) fn clip_nodes(&self) -> &[clip::Clip] {
         self.clips.as_ref().map_or(&[], |c| &c.slice)
@@ -233,7 +265,7 @@ impl Viewport {
                 paths.insert(key, path.clone());
                 path
             };
-            out.push(clip::Resolved { parent: c.parent, path });
+            out.push(clip::Resolved { path });
         }
         Ok(out)
     }

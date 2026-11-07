@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: SVG object and group opacity
+
+*19:59* — Individual opacity blends overlapping objects separately; group opacity composites the children first. Authored component at 1.75x; 15 native theme/scale reviews pass. 65/140 Chrome crops exact,75 pixel nonpasses remain. Stripe now reaches visible SVG rect; no site accepted.
+
+![Browser: SVG object and group opacity](2026-11-06/195953-browser-svg-object-and-group-opacity.png)
+
 ### Browser: referenced SVG rectangle clips
 
 *19:34* — Authored component only: local SVG rectangle and rounded-rectangle clips. All 15 theme/scale reviews pass; 48 of 185 Chrome pixel comparisons remain nonpasses. Live Stripe advances to SVG group opacity; no Stripe configuration accepted.

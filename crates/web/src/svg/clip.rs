@@ -19,7 +19,6 @@ use std::{
 
 pub const NO_CLIP: u32 = u32::MAX;
 pub struct Clip {
-    pub parent: u32,
     pub definition: Arc<Definition>,
 }
 pub struct Definition {
@@ -28,7 +27,6 @@ pub struct Definition {
 }
 /// All coordinates remain in SVG user space. None is a valid empty clip.
 pub struct Resolved {
-    pub parent: u32,
     pub path: Arc<Option<tiny_skia::Path>>,
 }
 pub fn resolved_bytes(clips: &[Resolved]) -> usize {

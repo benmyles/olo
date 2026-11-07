@@ -7,6 +7,7 @@ mod index;
 mod mipmap;
 mod raster;
 mod scene;
+mod vector;
 use crate::{css, dom, font, layout};
 pub use glyph::{CacheStats, Engine};
 pub use mipmap::ImageCacheStats;
@@ -68,6 +69,10 @@ pub struct Limits {
     pub path_bytes: usize,
     pub path_segments: usize,
     pub tile_pixels: usize,
+    /// Concurrent isolated surfaces, masks and transformed clip geometry.
+    pub layer_bytes: usize,
+    /// Layer pixel operations plus clip verbs across one tile.
+    pub layer_pixel_work: usize,
     pub image_mip_bytes: usize,
     pub image_mip_sources: usize,
 }
@@ -83,6 +88,8 @@ impl Default for Limits {
             path_bytes: 16 * 1024 * 1024,
             path_segments: 262144,
             tile_pixels: 512 * 512,
+            layer_bytes: 16 << 20,
+            layer_pixel_work: 64 << 20,
             image_mip_bytes: 32 << 20,
             image_mip_sources: 128,
         }

@@ -1,0 +1,3202 @@
+{
+  "scope": "SVG isolated opacity component,15 native reviews; not Stripe or pixel acceptance.",
+  "source_sha256": "870ae284f72058f46d403e3d8a6b9d80cb26d7205291c73c1212355031f133ff",
+  "pid": 971839,
+  "rows": [
+    {
+      "theme": "light",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 174.604,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.23001,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 285.76675,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 399.23,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.28275,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 555.32,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "light",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 175.404,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.63,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 286.173,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 397.83,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 441.889,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 553.92,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "light",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 174.604,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.23001,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 285.77716,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 398.89667,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.29315,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 554.9867,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "light",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 175.17543,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.51572,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 286.06586,
+            "width": 203.42857,
+            "height": 83.42859,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 398.51572,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.0104,
+            "width": 203.42857,
+            "height": 83.42856,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 554.6057,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "light",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 175.104,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.73001,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 285.78238,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 399.23,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.29837,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 555.82,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.672,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "dark",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 174.604,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.23001,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 285.76675,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 399.23,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.28275,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 555.32,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "dark",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 175.404,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.63,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 286.173,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 397.83,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 441.889,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 553.92,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "dark",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 174.604,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.23001,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 285.77716,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 398.89667,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.29315,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 554.9867,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "dark",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 175.17543,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.51572,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 286.06586,
+            "width": 203.42857,
+            "height": 83.42859,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 398.51572,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.0104,
+            "width": 203.42857,
+            "height": 83.42856,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 554.6057,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "dark",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 175.104,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.73001,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 285.78238,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 399.23,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.29837,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 555.82,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.672,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "night",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 174.604,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.23001,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 285.76675,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 399.23,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.28275,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 555.32,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "night",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.4,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.4,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.4,
+            "width": 1000.0,
+            "height": 577.6,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 175.404,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.63,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 286.173,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 397.83,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 441.889,
+            "width": 203.2,
+            "height": 83.19998,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 553.92,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "night",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 174.604,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.23001,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 285.77716,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 398.89667,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.29315,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 554.9867,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "night",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.28571,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.28571,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.2857,
+            "width": 1000.0,
+            "height": 577.7143,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 175.17543,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.51572,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 286.06586,
+            "width": 203.42857,
+            "height": 83.42859,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 398.51572,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.0104,
+            "width": 203.42857,
+            "height": 83.42856,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 554.6057,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.172,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "theme": "night",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "value": "{\"url\":\"file:///var/tmp/olo-browser-stripe/svg-opacity/visual.html\",\"navigation\":2,\"document\":2}",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG object and group opacity",
+            "x": 74.656,
+            "y": 175.104,
+            "width": 523.224,
+            "height": 36.035995,
+            "enabled": true
+          },
+          {
+            "id": 11,
+            "parent": 1,
+            "role": "Label",
+            "name": "Two overlapping objects, each half transparent:",
+            "x": 73.18,
+            "y": 242.73001,
+            "width": 399.258,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 12,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 285.78238,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 13,
+            "parent": 1,
+            "role": "Label",
+            "name": "The same objects composited as one half-transparent group:",
+            "x": 73.18,
+            "y": 399.23,
+            "width": 512.316,
+            "height": 18.089996,
+            "enabled": true
+          },
+          {
+            "id": 14,
+            "parent": 1,
+            "role": "Image",
+            "name": "Graphic",
+            "x": 105.0,
+            "y": 442.29837,
+            "width": 204.0,
+            "height": 84.0,
+            "enabled": true
+          },
+          {
+            "id": 15,
+            "parent": 1,
+            "role": "Label",
+            "name": "Component demonstration only.",
+            "x": 74.098,
+            "y": 555.82,
+            "width": 272.376,
+            "height": 18.0,
+            "enabled": true
+          },
+          {
+            "id": 16,
+            "parent": 1,
+            "role": "Label",
+            "name": "SVG opacity components",
+            "x": 69.0,
+            "y": 733.672,
+            "width": 139.884,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    }
+  ]
+}
