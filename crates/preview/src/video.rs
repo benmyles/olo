@@ -157,8 +157,7 @@ impl Pic {
     fn bytes(&self) -> usize {
         match self {
             Pic::H264(p) => p.y.len() + p.u.len() + p.v.len(),
-            // 16-bit samples, chroma subsampled (at most).
-            Pic::Planes(f) => f.width as usize * f.height as usize * 6,
+            Pic::Planes(f) => f.bytes(),
             Pic::Ready(Picture::Rgba(i)) => i.rgba.len(),
             Pic::Ready(Picture::Bgra { data, .. }) => data.len(),
             Pic::Ready(Picture::Deep { data, .. }) => data.len() * 2,
