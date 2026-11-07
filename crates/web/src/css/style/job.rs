@@ -4,6 +4,7 @@ use crate::{
     css::selectors,
     dom::{Document, NodeId, NodeType},
 };
+use smallvec::SmallVec;
 use std::num::NonZeroU32;
 
 #[derive(Clone, Copy, Default)]
@@ -171,6 +172,23 @@ pub struct Job<'a> {
     tree: StyleTree,
     account: memory::Account,
     fonts: font_pool::FontPool,
+    /// With OLO_STYLE_TIMING set: time in hints and inline parsing, matching,
+    /// computing, pseudo-elements, and the candidates and elements counted.
+    timing: Option<Timing>,
+    /// The keys of the element being styled's ancestors, kept as the walk
+    /// descends and climbs, for the matcher's fast reject.
+    ancestors: selectors::AncestorFilter,
+    /// The elements on the way down, with their keys, to take out again.
+    chain: Vec<(NodeId, SmallVec<[u64; 6]>)>,
+}
+#[derive(Default)]
+struct Timing {
+    hints: f64,
+    matching: f64,
+    computing: f64,
+    pseudo: f64,
+    candidates: usize,
+    elements: usize,
 }
 impl<'a> Job<'a> {
     pub fn new(document: &'a Document, rules: &'a cascade::RuleSet, defaults: Arc<Defaults>, options: JobOptions<'a>, limits: JobLimits, cancelled: Option<&'a AtomicBool>) -> Result<Self> {
@@ -191,6 +209,15 @@ impl<'a> Job<'a> {
             scratch: Default::default(),
             account: Default::default(),
             fonts: font_pool::FontPool::new(limits.font_cache_entries),
+            timing: std::env::var_os("OLO_STYLE_TIMING").map(|_| {
+                compute::TIMING.store(true, std::sync::atomic::Ordering::Relaxed);
+                for p in compute::PHASES.iter().chain(&compute::COUNTS) {
+                    p.store(0, std::sync::atomic::Ordering::Relaxed);
+                }
+                Timing::default()
+            }),
+            ancestors: Default::default(),
+            chain: Vec::new(),
             tree: StyleTree {
                 document: document.id(),
                 revision: document.revision(),
@@ -251,7 +278,29 @@ impl<'a> Job<'a> {
             }
             self.progress.visited += 1;
             if self.document.node_type(node).map_err(Error::Dom)? == NodeType::Element {
+                // The filter holds the ancestors: pop to this node's parent,
+                // style it, then push it for its children.
+                let parent = self.document.parent(node).map_err(Error::Dom)?;
+                while self.chain.last().is_some_and(|(n, _)| Some(*n) != parent) {
+                    let (_, hashes) = self.chain.pop().unwrap();
+                    for h in hashes {
+                        self.ancestors.remove(h);
+                    }
+                }
                 self.element(node, &host(node))?;
+                if !self.options.quirks {
+                    let mut hashes = SmallVec::new();
+                    let name = self.document.name(node).map_err(Error::Dom)?.unwrap_or("");
+                    let id = self.document.attribute(node, "id").map_err(Error::Dom)?;
+                    let classes = self.document.attribute(node, "class").map_err(Error::Dom)?.unwrap_or("");
+                    selectors::AncestorFilter::element_hashes(name, id, classes, &mut hashes);
+                    for &h in &hashes {
+                        self.ancestors.insert(h);
+                    }
+                    self.chain.push((node, hashes));
+                } else {
+                    self.chain.push((node, SmallVec::new()));
+                }
             }
             self.next = self.successor(node)?;
         }
@@ -480,6 +529,7 @@ impl<'a> Job<'a> {
         if self.tree.styles.len() >= self.limits.elements || self.tree.styles.len() >= u32::MAX as usize || node.slot() as usize >= self.limits.slots {
             return Err(Error::Limit);
         }
+        let clock = self.timing.as_ref().map(|_| std::time::Instant::now());
         let mut hints = Vec::new();
         if self.document.namespace(node).map_err(Error::Dom)? == Some(crate::dom::Namespace::Html) {
             self.html_hints(node, &mut hints)?;
@@ -517,6 +567,10 @@ impl<'a> Job<'a> {
             _ => unreachable!(),
         });
         let dom = if let Some(states) = self.options.states { selectors::DomTree::with_states(self.document, states) } else { selectors::DomTree::new(self.document) };
+        let mark_hints = clock.map(|c| c.elapsed().as_secs_f64()).unwrap_or(0.);
+        if let Some(t) = self.timing.as_mut() {
+            t.hints += mark_hints;
+        }
         let cascade = self
             .rules
             .match_element_with_hints(
@@ -529,9 +583,16 @@ impl<'a> Job<'a> {
                 self.limits.cascade,
                 self.limits.matching,
                 &mut self.scratch,
+                Some(&self.ancestors),
                 self.cancelled,
             )
             .map_err(Error::cascade)?;
+        let mark_match = clock.map(|c| c.elapsed().as_secs_f64()).unwrap_or(0.);
+        if let Some(t) = self.timing.as_mut() {
+            t.matching += mark_match - mark_hints;
+            t.candidates += self.scratch.candidate_count();
+            t.elements += 1;
+        }
         let style = Style::compute_reusing(
             self.defaults.clone(),
             &cascade,
@@ -555,6 +616,10 @@ impl<'a> Job<'a> {
         } else {
             style
         };
+        let mark_compute = clock.map(|c| c.elapsed().as_secs_f64()).unwrap_or(0.);
+        if let Some(t) = self.timing.as_mut() {
+            t.computing += mark_compute - mark_match;
+        }
         let index = self.tree.styles.len();
         self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
         self.tree.styles.push(Styled { node, style, parent_box });
@@ -570,8 +635,34 @@ impl<'a> Job<'a> {
         // 3 §2): styled with the element as parent, kept beside its style.
         if self.rules.has_pseudo_elements() {
             for pseudo in [PseudoElement::Before, PseudoElement::After] {
+                if !self.rules.has_pseudo(pseudo) {
+                    continue;
+                }
                 self.tick()?;
                 let element = &self.tree.styles[index].style;
+                // Only a rule declaring `content` makes the pseudo-element
+                // exist: those few are tried first; most elements stop here.
+                let generates = self
+                    .rules
+                    .match_element_with_hints(
+                        &dom,
+                        node,
+                        selectors::MatchOptions { quirks: self.options.quirks, pseudo: Some(pseudo), content_only: true, ..Default::default() },
+                        None,
+                        None,
+                        Some(element as &dyn cascade::Inherited),
+                        self.limits.cascade,
+                        self.limits.matching,
+                        &mut self.scratch,
+                        Some(&self.ancestors),
+                        self.cancelled,
+                    )
+                    .map_err(Error::cascade)?
+                    .declared_properties()
+                    .any(|p| p == Property::Content);
+                if !generates {
+                    continue;
+                }
                 let cascade = self
                     .rules
                     .match_element_with_hints(
@@ -584,6 +675,7 @@ impl<'a> Job<'a> {
                         self.limits.cascade,
                         self.limits.matching,
                         &mut self.scratch,
+                        Some(&self.ancestors),
                         self.cancelled,
                     )
                     .map_err(Error::cascade)?;
@@ -620,6 +712,9 @@ impl<'a> Job<'a> {
                 self.tree.pseudos.insert((node, pseudo), at);
             }
         }
+        if let (Some(t), Some(c)) = (self.timing.as_mut(), clock) {
+            t.pseudo += c.elapsed().as_secs_f64() - mark_compute;
+        }
         let retained = self
             .account
             .memory
@@ -635,6 +730,35 @@ impl<'a> Job<'a> {
         Ok(())
     }
     pub fn finish(self) -> Result<StyleTree> {
+        if let Some(t) = &self.timing {
+            eprintln!(
+                "style timing: {} elements, {} candidates ({:.1} per element; {} rejected, {} compounds, {} tests, {} steps): hints {:.1} ms, matching {:.1} ms, computing {:.1} ms, pseudo {:.1} ms; font cache {:?}",
+                t.elements,
+                t.candidates,
+                t.candidates as f64 / t.elements.max(1) as f64,
+                self.scratch.progress.rejected,
+                self.scratch.progress.compounds,
+                self.scratch.progress.tests,
+                self.scratch.progress.steps,
+                t.hints * 1000.,
+                t.matching * 1000.,
+                t.computing * 1000.,
+                t.pseudo * 1000.,
+                self.fonts.stats()
+            );
+            let ms: Vec<String> = compute::PHASES.iter().map(|p| format!("{:.1}", p.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e6)).collect();
+            eprintln!(
+                "  computing: resolver {} ms, fonts {} ms, declared {} ms, coupled {} ms, customs {} ms ({} elements merged {} inherited entries), reuse {} ms",
+                ms[0],
+                ms[1],
+                ms[2],
+                ms[3],
+                ms[4],
+                compute::COUNTS[0].load(std::sync::atomic::Ordering::Relaxed),
+                compute::COUNTS[1].load(std::sync::atomic::Ordering::Relaxed),
+                ms[5]
+            );
+        }
         if self.failed {
             Err(Error::Failed)
         } else {

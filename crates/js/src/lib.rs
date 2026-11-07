@@ -194,6 +194,28 @@ impl Realm {
         }
         Ok(())
     }
+    /// Evaluate an expression and return its value as text (objects as JSON).
+    pub fn eval(&mut self, source: &str) -> Result<String, String> {
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let result = (|| {
+            let code = v8::String::new(tc, source)?;
+            let resource = string(tc, "eval");
+            let origin = v8::ScriptOrigin::new(tc, resource, 0, 0, false, 0, None, false, false, false, None);
+            let script = v8::Script::compile(tc, code, Some(&origin))?;
+            script.run(tc)
+        })();
+        let Some(value) = result else { return Err(exception_text(tc, "eval")) };
+        if value.is_string() || value.is_number() || value.is_boolean() || value.is_null_or_undefined() {
+            return Ok(value.to_rust_string_lossy(tc));
+        }
+        match v8::json::stringify(tc, value) {
+            Some(json) => Ok(json.to_rust_string_lossy(tc)),
+            None => Ok(value.to_rust_string_lossy(tc)),
+        }
+    }
     /// Run the page's scripts in order, fire the document's lifecycle events
     /// and the timers due within the budget.
     pub fn run_page(&mut self, scripts: &[Script]) -> Report {

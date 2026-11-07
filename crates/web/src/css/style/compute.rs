@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 pub(super) struct Computed {
     pub values: Vec<Entry>,
     pub customs: Arc<Dictionary>,
@@ -238,31 +239,26 @@ fn customs(
     limits: Limits,
     cancelled: Option<&AtomicBool>,
 ) -> Result<Arc<Dictionary>> {
-    let inherited = parent.map_or(&[][..], |p| p.customs.values.as_ref());
-    if inherited.len() > limits.custom_properties {
+    let inherited = parent.map_or_else(|| defaults.empty_customs.clone(), |p| p.customs.clone());
+    if inherited.len > limits.custom_properties {
         return Err(Error::Limit);
     }
     let mut local = cascade.custom_names().peekable();
     if local.peek().is_none() {
-        return Ok(parent.map_or_else(|| defaults.empty_customs.clone(), |p| p.customs.clone()));
+        return Ok(inherited);
     }
-    let mut inherited = inherited.iter().peekable();
+    // What this element declares, over its parent's dictionary.
     let mut values = Vec::new();
-    while inherited.peek().is_some() || local.peek().is_some() {
+    for name in local {
         check(cancelled)?;
-        if values.len() >= limits.custom_properties || values.len() >= limits.work {
+        if inherited.len + values.len() >= limits.custom_properties || values.len() >= limits.work {
             return Err(Error::Limit);
         }
-        if inherited.peek().is_some_and(|a| local.peek().is_none_or(|b| a.name.as_ref() < *b)) {
-            values.push(inherited.next().unwrap().clone());
-        } else {
-            let name = local.next().unwrap();
-            if inherited.peek().is_some_and(|v| v.name.as_ref() == name) {
-                inherited.next();
-            }
-            values.push(Custom { name: Arc::from(name), value: resolver.custom(name).map_err(Error::cascade)? });
-        }
+        values.push(Custom { name: Arc::from(name), value: resolver.custom(name).map_err(Error::cascade)? });
     }
+    values.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+    COUNTS[0].fetch_add(1, Ordering::Relaxed);
+    COUNTS[1].fetch_add(values.len() as u64, Ordering::Relaxed);
     let mut bytes = values.len() * size_of::<Custom>() + size_of::<Dictionary>() + 2 * size_of::<usize>();
     let mut arenas = std::collections::HashSet::new();
     for value in &values {
@@ -277,9 +273,28 @@ fn customs(
             return Err(Error::Limit);
         }
     }
-    Ok(Arc::new(Dictionary { values: values.into_boxed_slice(), bytes }))
+    let len = inherited.len + values.len();
+    let parent = if inherited.values.is_empty() && inherited.parent.is_none() { None } else { Some(inherited) };
+    Ok(Arc::new(Dictionary { parent, values: values.into_boxed_slice(), bytes, len }))
 }
 #[allow(clippy::too_many_arguments)]
+/// Nanoseconds in each part of computing, summed when OLO_STYLE_TIMING
+/// is set (the style job prints them): resolver and axes, the font
+/// properties, the declared properties, custom properties, coupling.
+pub(super) static TIMING: AtomicBool = AtomicBool::new(false);
+pub(super) static PHASES: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
+/// Elements merging custom properties, and the inherited entries they copied.
+pub(super) static COUNTS: [AtomicU64; 2] = [const { AtomicU64::new(0) }; 2];
+fn stamp(on: bool) -> Option<std::time::Instant> {
+    on.then(std::time::Instant::now)
+}
+fn lap(clock: &mut Option<std::time::Instant>, phase: usize) {
+    if let Some(c) = clock {
+        let now = std::time::Instant::now();
+        PHASES[phase].fetch_add((now - *c).as_nanos() as u64, Ordering::Relaxed);
+        *c = now;
+    }
+}
 pub(super) fn values(
     defaults: &Defaults,
     cascade: &cascade::Cascade<'_>,
@@ -295,6 +310,7 @@ pub(super) fn values(
     if Property::ALL.len() > limits.properties {
         return Err(Error::Limit);
     }
+    let mut clock = stamp(TIMING.load(Ordering::Relaxed));
     let mut resolver = cascade.resolver_with_environment(defaults.environment.as_deref());
     let axes = resolver.axes(parent.map(|p| p.axes), options.allow_animation_tainted).map_err(Error::cascade)?;
     let mut declared = [false; Property::ALL.len()];
@@ -303,6 +319,7 @@ pub(super) fn values(
             declared[axes.physical(property) as usize] = true;
         }
     }
+    lap(&mut clock, 0);
     let use_baseline = !defaults.values.is_empty() && !cfg!(feature = "baseline-style-dense");
     let parent_font = parent.map_or(defaults.initial_font.as_ref(), |p| p.font.as_ref());
     let mut dependencies = Dependencies { layout_parent: options.layout_parent.is_some(), ..Default::default() };
@@ -397,9 +414,35 @@ pub(super) fn values(
         }
         _ => return Err(Error::Invalid),
     };
-    let mut values = Vec::with_capacity(Property::ALL.len());
+    lap(&mut clock, 1);
+    // Sparse computation: a style stores only what differs from the
+    // defaults, so an element's values are its parent's inherited entries
+    // (computed already) less what it declares, the font properties, and
+    // what it declares, computed. Nothing else is visited: an element's
+    // cost follows its declarations, not the property count.
+    let sparse = use_baseline;
+    let mut values = Vec::with_capacity(if sparse { 8 + parent.map_or(0, |p| p.values.len()) + cascade.declared_properties().count() } else { Property::ALL.len() });
     let mut work = 0usize;
+    let is_font = |p: Property| matches!(p, Property::FontSize | Property::FontWeight | Property::LineHeight | Property::FontFamily | Property::FontStyle | Property::FontWidth);
+    if sparse {
+        if let Some(parent) = parent {
+            dependencies.inherited = true;
+            for e in parent.values.iter() {
+                if e.property.inherited() && !declared[e.property as usize] && !is_font(e.property) {
+                    values.push(Entry { property: e.property, value: e.value.clone() });
+                }
+            }
+        }
+        dependencies.substitution |= defaults.dependencies.substitution;
+        dependencies.color.current_color |= defaults.dependencies.color.current_color;
+        dependencies.color.system_colors |= defaults.dependencies.color.system_colors;
+        dependencies.color.scheme |= defaults.dependencies.color.scheme;
+        dependencies.color.math = dependencies.color.math.union(defaults.dependencies.color.math);
+    }
     for &property in Property::ALL {
+        if sparse && !declared[property as usize] && !is_font(property) {
+            continue;
+        }
         check(cancelled)?;
         work += 1;
         if work > limits.work {
@@ -471,8 +514,14 @@ pub(super) fn values(
         }
         values.push(Entry { property, value });
     }
-    coupled::apply(&mut values, parent, axes, options)?;
+    if sparse {
+        values.sort_unstable_by_key(|e| e.property as u16);
+    }
+    lap(&mut clock, 2);
+    coupled::apply(&mut values, defaults, parent, axes, options)?;
+    lap(&mut clock, 3);
     let customs = customs(defaults, cascade, &mut resolver, parent, limits, cancelled)?;
+    lap(&mut clock, 4);
     dependencies.substitution |= resolver.pending_cached() != 0 || cascade.custom_names().next().is_some();
     let bytes = values.len() * size_of::<Entry>() + values.iter().map(|e| e.value.reserved_bytes()).sum::<usize>() + customs.bytes;
     if bytes > limits.retained_bytes {

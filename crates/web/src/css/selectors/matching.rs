@@ -124,6 +124,9 @@ pub struct MatchOptions<'a, N> {
     pub quirks: bool,
     pub scope: Option<N>,
     pub pseudo: Option<PseudoElement>,
+    /// With `pseudo`: only rules declaring `content` are candidates (a
+    /// cheap test of whether the pseudo-element exists at all).
+    pub content_only: bool,
     pub document_language: Option<&'a str>,
     /// Only a future private paint path may enable visited-state matching;
     /// DOM/agent queries must keep this false and never expose history.
@@ -131,7 +134,7 @@ pub struct MatchOptions<'a, N> {
 }
 impl<N> Default for MatchOptions<'_, N> {
     fn default() -> Self {
-        Self { html_document: true, quirks: false, scope: None, pseudo: None, document_language: None, visited_style: false }
+        Self { html_document: true, quirks: false, scope: None, pseudo: None, content_only: false, document_language: None, visited_style: false }
     }
 }
 #[derive(Clone, Copy, Debug, Default)]
@@ -139,6 +142,13 @@ pub struct MatchProgress {
     pub visited: usize,
     pub matched: usize,
     pub work: usize,
+    /// Compounds evaluated, tests evaluated, tree steps taken (parents and
+    /// siblings walked): where matching's time goes.
+    pub compounds: usize,
+    pub tests: usize,
+    pub steps: usize,
+    /// Branches rejected by the ancestor filter.
+    pub rejected: usize,
     pub peak_backtracking_frames: usize,
     pub index_entries: usize,
     pub index_capacity: usize,
@@ -162,7 +172,7 @@ struct Context<N> {
     pseudo: Option<PseudoElement>,
     depth: usize,
 }
-struct Machine<'a, T: Tree> {
+struct Machine<'a, 'k, T: Tree> {
     selectors: &'a Selectors,
     tree: &'a T,
     options: MatchOptions<'a, T::Node>,
@@ -173,11 +183,61 @@ struct Machine<'a, T: Tree> {
     indices: HashMap<(T::Node, u32), (u64, u64)>,
     pending_indices: usize,
     cache_indices: bool,
+    keys: &'k mut KeyCache<'a, T::Node>,
+    /// The element being matched and its name, looked up once for every
+    /// selector tested against it.
+    subject: Option<(T::Node, ElementName<'a>)>,
 }
+/// One element's matcher: every selector tested against the same subject,
+/// with the machine, its caches and the subject's name made once.
+pub struct Matcher<'a, 'k, T: Tree> {
+    machine: Machine<'a, 'k, T>,
+    node: T::Node,
+}
+impl<'a, T: Tree> Matcher<'a, '_, T> {
+    /// Whether the selector list `root` matches the subject: its highest
+    /// matching specificity, and the work this took.
+    pub fn matches(&mut self, root: u32, work_limit: usize) -> Result<(Option<Specificity>, MatchProgress)> {
+        self.machine.progress = MatchProgress::default();
+        self.machine.limits.work = work_limit;
+        self.machine.tick(1)?;
+        let result = self.machine.list(root, self.node, Context { anchor: None, pseudo: self.machine.options.pseudo, depth: 0 }, true)?;
+        Ok((result, self.machine.progress))
+    }
+}
+/// An element's id and class tokens, hashed, read from its attributes once.
+pub struct Keys<'a> {
+    id: Option<(u64, &'a str)>,
+    classes: SmallVec<[(u64, &'a str); 8]>,
+}
+/// The keys of the elements one match visits: the subject and the
+/// ancestors and siblings its candidates walk, each read once however
+/// many selectors test them. Made per element matched, dropped after.
+pub struct KeyCache<'a, N> {
+    nodes: SmallVec<[N; 16]>,
+    keys: SmallVec<[Keys<'a>; 16]>,
+    /// The subject's ancestors' keys, when the caller keeps them (the style
+    /// walk does): selectors needing an ancestor key not there are
+    /// rejected without a walk.
+    ancestors: Option<&'a AncestorFilter>,
+}
+impl<'a, N: Copy + PartialEq> Default for KeyCache<'a, N> {
+    fn default() -> Self {
+        Self { nodes: SmallVec::new(), keys: SmallVec::new(), ancestors: None }
+    }
+}
+impl<'a, N: Copy + PartialEq> KeyCache<'a, N> {
+    pub fn with_ancestors(ancestors: Option<&'a AncestorFilter>) -> Self {
+        Self { ancestors, ..Default::default() }
+    }
+}
+/// Past this many elements a match keeps no keys (a selector walking far).
+const KEYS: usize = 96;
 impl Selectors {
     /// Highest specificity among matching branches, or None. Tree/state
     /// errors are explicit failures, not false matches or ignored branches.
     pub fn matches<T: Tree>(&self, tree: &T, node: T::Node, options: MatchOptions<'_, T::Node>, limits: MatchLimits, cancelled: Option<&AtomicBool>) -> Result<Option<Specificity>> {
+        let mut keys = KeyCache::default();
         let mut machine = Machine {
             selectors: self,
             tree,
@@ -189,6 +249,8 @@ impl Selectors {
             indices: HashMap::new(),
             pending_indices: 0,
             cache_indices: false,
+            keys: &mut keys,
+            subject: None,
         };
         machine.tick(1)?;
         if let Some(scope) = options.scope {
@@ -202,15 +264,16 @@ impl Selectors {
     // Mirror only setup/validation; all matching logic stays in Machine.
     // The public path retains its original return ABI and pays no accounting
     // result/copy overhead. Release comparisons cover both paths.
-    pub(crate) fn matches_root_accounted<T: Tree>(
-        &self,
+    pub(crate) fn matches_root_accounted<'a, T: Tree>(
+        &'a self,
         root: u32,
-        tree: &T,
+        tree: &'a T,
         node: T::Node,
-        options: MatchOptions<'_, T::Node>,
+        options: MatchOptions<'a, T::Node>,
         limits: MatchLimits,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<(Option<Specificity>, usize)> {
+        cancelled: Option<&'a AtomicBool>,
+        keys: &mut KeyCache<'a, T::Node>,
+    ) -> Result<(Option<Specificity>, MatchProgress)> {
         let mut machine = Machine {
             selectors: self,
             tree,
@@ -222,16 +285,51 @@ impl Selectors {
             indices: HashMap::new(),
             pending_indices: 0,
             cache_indices: false,
+            keys,
+            subject: None,
         };
         machine.tick(1)?;
         if let Some(scope) = options.scope {
             tree.content(scope)?;
         }
         if !matches!(tree.content(node)?, Content::Element(_)) {
-            return Ok((None, machine.progress.work));
+            return Ok((None, machine.progress));
         }
         let result = machine.list(root, node, Context { anchor: None, pseudo: options.pseudo, depth: 0 }, true)?;
-        Ok((result, machine.progress.work))
+        Ok((result, machine.progress))
+    }
+    /// A matcher for one element, for testing many selector lists against it.
+    pub fn matcher<'a, 'k, T: Tree>(
+        &'a self,
+        tree: &'a T,
+        node: T::Node,
+        options: MatchOptions<'a, T::Node>,
+        limits: MatchLimits,
+        cancelled: Option<&'a AtomicBool>,
+        keys: &'k mut KeyCache<'a, T::Node>,
+    ) -> Result<Matcher<'a, 'k, T>> {
+        if options.visited_style {
+            return Err(Error::StateUnavailable);
+        }
+        let Content::Element(name) = tree.content(node)? else { return Err(Error::Invalid) };
+        if let Some(scope) = options.scope {
+            tree.content(scope)?;
+        }
+        let machine = Machine {
+            selectors: self,
+            tree,
+            options,
+            limits,
+            cancelled,
+            progress: MatchProgress::default(),
+            stack: SmallVec::new(),
+            indices: HashMap::new(),
+            pending_indices: 0,
+            cache_indices: false,
+            keys,
+            subject: Some((node, name)),
+        };
+        Ok(Matcher { machine, node })
     }
     /// Stream document-order results without building an unbounded result
     /// vector. Use include_root for an inclusive subtree scan; DOM element
@@ -247,6 +345,7 @@ impl Selectors {
         cancelled: Option<&AtomicBool>,
         mut sink: impl FnMut(T::Node, Specificity) -> Result<()>,
     ) -> Result<MatchProgress> {
+        let mut keys = KeyCache::default();
         let mut machine = Machine {
             selectors: self,
             tree,
@@ -258,6 +357,8 @@ impl Selectors {
             indices: HashMap::new(),
             pending_indices: 0,
             cache_indices: !cfg!(feature = "baseline-selector-nth"),
+            keys: &mut keys,
+            subject: None,
         };
         machine.tick(1)?;
         tree.content(root)?;
@@ -282,7 +383,7 @@ impl Selectors {
         Ok(machine.progress)
     }
 }
-impl<'a, T: Tree> Machine<'a, T> {
+impl<'a, T: Tree> Machine<'a, '_, T> {
     fn tick(&mut self, n: usize) -> Result<()> {
         check(self.cancelled)?;
         self.progress.work = self.progress.work.checked_add(n).ok_or(Error::MatchLimit)?;
@@ -325,6 +426,17 @@ impl<'a, T: Tree> Machine<'a, T> {
         if self.selectors.complexes[id as usize].pseudo != ctx.pseudo {
             return Ok(false);
         }
+        // Fast reject: the filter is the subject's ancestors', so only at
+        // the top level (ctx.depth 0, node the subject), not inside :is().
+        if ctx.depth == 0
+            && let Some(filter) = self.keys.ancestors
+        {
+            let needed = self.selectors.complexes[id as usize].ancestors.clone();
+            if !needed.is_empty() && !self.selectors.ancestor_hashes[needed.start as usize..needed.end as usize].iter().all(|&h| filter.may_contain(h)) {
+                self.progress.rejected += 1;
+                return Ok(false);
+            }
+        }
         if range.end - range.start == 1 {
             return self.compound(range.start, node, ctx);
         }
@@ -338,6 +450,7 @@ impl<'a, T: Tree> Machine<'a, T> {
         while self.stack.len() > base {
             self.tick(1)?;
             let frame = self.stack.pop().unwrap();
+            self.progress.steps += 1;
             let next = match frame.axis {
                 Axis::Single => None,
                 Axis::Parent => self.tree.parent(frame.node)?,
@@ -370,12 +483,16 @@ impl<'a, T: Tree> Machine<'a, T> {
     }
     fn compound(&mut self, step: u32, node: T::Node, ctx: Context<T::Node>) -> Result<bool> {
         self.tick(1)?;
+        self.progress.compounds += 1;
         let step = &self.selectors.steps[step as usize];
         let tests = step.tests.clone();
         let ns = step.namespace;
-        let element = match self.tree.content(node)? {
-            Content::Element(e) => e,
-            _ => return if step.featureless { self.featureless(tests, node, ctx) } else { Ok(false) },
+        let element = match self.subject {
+            Some((subject, name)) if subject == node => name,
+            _ => match self.tree.content(node)? {
+                Content::Element(e) => e,
+                _ => return if step.featureless { self.featureless(tests, node, ctx) } else { Ok(false) },
+            },
         };
         if !self.namespace(ns, element.namespace) {
             return Ok(false);
@@ -384,8 +501,17 @@ impl<'a, T: Tree> Machine<'a, T> {
         let mut pseudo = None;
         for at in tests {
             self.tick(1)?;
+            self.progress.tests += 1;
             let matches = match self.selectors.tests[at as usize] {
                 Test::Type { ns, name } => self.namespace(ns, element.namespace) && (name == ANY || name_equal(self.selectors.symbol(name), element.local_name, html)),
+                Test::Id(id) if !self.options.quirks => {
+                    let (hash, symbol) = (self.selectors.symbol_hashes[id as usize], self.selectors.symbol(id));
+                    self.keys(node)?.id.is_some_and(|(h, s)| h == hash && s == symbol)
+                }
+                Test::Class(class) if !self.options.quirks => {
+                    let (hash, symbol) = (self.selectors.symbol_hashes[class as usize], self.selectors.symbol(class));
+                    self.keys(node)?.classes.iter().any(|&(h, s)| h == hash && s == symbol)
+                }
                 Test::Id(id) => self.word_attribute(node, "id", self.selectors.symbol(id), false, self.options.quirks)?,
                 Test::Class(class) => self.word_attribute(node, "class", self.selectors.symbol(class), true, self.options.quirks)?,
                 Test::Attr { ns, name, value, failure, op, case } => self.attribute(node, ns, name, value, failure, op, case, html)?,
@@ -446,6 +572,36 @@ impl<'a, T: Tree> Machine<'a, T> {
             }
         }
         Ok(true)
+    }
+    /// The node's id and class tokens, read once per match.
+    fn keys(&mut self, node: T::Node) -> Result<&Keys<'a>> {
+        if let Some(i) = self.keys.nodes.iter().position(|&n| n == node) {
+            return Ok(&self.keys.keys[i]);
+        }
+        let mut keys = Keys { id: None, classes: SmallVec::new() };
+        for a in self.tree.attributes(node)? {
+            self.tick(1)?;
+            if !a.namespace.is_empty() {
+                continue;
+            }
+            if a.local_name == "class" {
+                self.tick(a.value.len())?;
+                for token in a.value.split(white).filter(|s| !s.is_empty()) {
+                    keys.classes.push((token_hash(token), token));
+                }
+            } else if a.local_name == "id" {
+                self.tick(a.value.len())?;
+                keys.id = Some((token_hash(a.value), a.value));
+            }
+        }
+        if self.keys.nodes.len() >= KEYS {
+            // Keep the subject (first) and the newest: drop the oldest other.
+            self.keys.nodes.remove(1);
+            self.keys.keys.remove(1);
+        }
+        self.keys.nodes.push(node);
+        self.keys.keys.push(keys);
+        Ok(self.keys.keys.last().unwrap())
     }
     fn word_attribute(&mut self, node: T::Node, name: &str, word: &str, split: bool, insensitive: bool) -> Result<bool> {
         for a in self.tree.attributes(node)? {

@@ -776,7 +776,7 @@ impl<'a> BuildJob<'a> {
                         self.note(if namespace == Some(crate::dom::Namespace::MathMl) { "MathML skipped" } else { "SVG element outside svg skipped" }, node);
                         continue;
                     }
-                    if !matches!(s.value(Property::ClipPath), Value::Keyword(Keyword::None)) {
+                    if !matches!(s.value(Property::ClipPath), Value::Keyword(Keyword::None) | Value::Inset(_)) {
                         self.note("clip-path on HTML ignored", node);
                     }
                     if let Some(name @ ("br" | "wbr")) = name {

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: stripe.com with JavaScript
+
+*02:15* — The browser now runs pages' scripts: V8 (the one C++ part) with a native DOM over the engine's document, the Web API surface in a prelude (events, timers on a virtual clock, fetch, storage, observers, custom elements, Web Animations' resting states, a 2D canvas stub), scripts that scripts insert (code splitting), and measurement: scripts read geometry and computed styles from a layout of the page as it is. Stripe's React app hydrates and mounts its lazily loaded graphics (the payment terminal, the checkout, the billing chart), as in Chrome. Styling got 3.4× faster on the way: pseudo-element rules indexed apart, an ancestor Bloom filter rejecting selectors before a walk, hashed id and class keys, root/attribute/:is() buckets, sparse computed values, custom-property dictionaries that chain to their parent instead of copying.
+
+![Browser: stripe.com with JavaScript](2026-11-07/021547-browser-stripe-com-with-javascript.png)
+
 ### Browser: Wikipedia's main page as Chrome lays it out
 
 *00:29* — System fonts with Chrome's family policy, SVG images, mask-image icons, floats and text decoration: the main page's header, tabs, columns and floated thumbnail match Chrome at 1000 × 700.

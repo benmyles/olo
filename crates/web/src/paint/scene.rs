@@ -892,6 +892,43 @@ impl<'a> BuildJob<'a> {
                         context = index;
                         group = (context, 0);
                     }
+                    // clip-path: inset(): the box and its subtree paint within
+                    // the reference box inset by the offsets (CSS Masking 1 §6).
+                    let clip = if let Value::Inset(inset) = s.value(P::ClipPath) {
+                        let reference = match inset.reference_box() {
+                            crate::css::properties::GeometryBox::Padding => Rect {
+                                x: outer.x + g.border_width.left,
+                                y: outer.y + g.border_width.top,
+                                width: (outer.width - g.border_width.horizontal()).max(0.),
+                                height: (outer.height - g.border_width.vertical()).max(0.),
+                            },
+                            crate::css::properties::GeometryBox::Content => g.content_box(),
+                            crate::css::properties::GeometryBox::Margin => Rect {
+                                x: outer.x - g.margin.left,
+                                y: outer.y - g.margin.top,
+                                width: (outer.width + g.margin.horizontal()).max(0.),
+                                height: (outer.height + g.margin.vertical()).max(0.),
+                            },
+                            _ => outer,
+                        };
+                        let [top, right, bottom, left] = inset.offsets();
+                        let (top, bottom) = (decoration::resolve_any(top, reference.height), decoration::resolve_any(bottom, reference.height));
+                        let (left, right) = (decoration::resolve_any(left, reference.width), decoration::resolve_any(right, reference.width));
+                        let rect = Rect { x: reference.x + left, y: reference.y + top, width: (reference.width - left - right).max(0.), height: (reference.height - top - bottom).max(0.) };
+                        let old = if clip == NONE { Rect { x: -1e30, y: -1e30, width: 2e30, height: 2e30 } } else { self.clips[clip as usize].rect };
+                        if self.clips.len() >= self.limits.commands {
+                            return Err(Error::Limit);
+                        }
+                        if inset.radii().is_some() {
+                            self.note("clip-path inset corners drawn square", id);
+                        }
+                        let index = self.clips.len() as u32;
+                        self.clips.push(Clip { rect: intersection(old, rect), radii: None, transform: children_transform });
+                        index
+                    } else {
+                        clip
+                    };
+                    children_clip = clip;
                     if visible(s) {
                         self.decorate(id, s, g, outer, group, clip, false)?;
                         if let BoxKind::BlockImage { image } = b.kind {

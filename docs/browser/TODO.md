@@ -52,8 +52,25 @@ Next, in impact order (each removes a fallback kind or a visible gap):
 - [ ] Text: word-break/overflow-wrap (583), text-decoration (28),
   text-transform, counters and quotes in `content`.
 - [ ] Form controls drawn with the kit's look; canvas/iframe placeholders.
-- [ ] JavaScript: V8 with DOM bindings, so the parts of Stripe scripts draw
-  appear (the GDP counter, menus).
+- [x] JavaScript: V8 with a native DOM (crates/js): the Web API surface in
+  a prelude, scripts that scripts insert, measurement from a layout of the
+  page as it is (getBoundingClientRect, offset*/client*/scroll*,
+  getComputedStyle), observers, custom elements, Web Animations' resting
+  states, MessageChannel, a 2D canvas stub. Stripe hydrates and mounts its
+  lazy graphics. Next: CSSOM (`insertRule`, `styleSheets`, CSS-in-JS in
+  production builds), modules (`import`), real canvas drawing, `fetch`
+  POST and headers, cookies from responses, events from the person
+  (clicks, keys, scroll) reaching scripts, `document.write` while
+  parsing, iframes.
+- [ ] Performance, the first priority: styling Stripe is 34 ms (was 115:
+  pseudo-element buckets, ancestor Bloom filter, hashed keys, root/
+  attribute/:is() buckets, sparse computed values, chained custom
+  properties). Next: incremental restyle and relayout for scripts'
+  measurements (64 full layouts per Stripe load at 45 ms each: only what
+  changed should be redone), matching's per-candidate floor (17 ms for
+  76k candidates), computing declared values (8 ms), then parallel
+  styling (elements are independent given their parent), SIMD text
+  shaping and rasterisation, GPU compositing of the scene.
 - [ ] Dark pages: pages render on a white canvas with the standard light
   system colours (as Chrome does; Olo's palette no longer colours the
   page). Next: honour a page's `color-scheme` and `prefers-color-scheme`,

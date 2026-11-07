@@ -54,7 +54,7 @@ pub struct Page {
     /// What the engine substituted while rendering this page: structured for
     /// agents and the eval, so a rendered page never passes as complete.
     pub fallbacks: layout::Fallbacks,
-    rules: css::cascade::RuleSet,
+    rules: Arc<css::cascade::RuleSet>,
     /// Every stylesheet in document order (the UA sheet first) with its URL,
     /// kept so a changed medium (viewport, scheme) can recompile the `@media` rules.
     sheets: Vec<(css::Syntax, Origin, Option<Arc<str>>)>,
@@ -72,7 +72,7 @@ pub struct Page {
 pub struct Prepared {
     document: Document,
     sheets: Vec<(css::Syntax, Origin, Option<Arc<str>>)>,
-    rules: css::cascade::RuleSet,
+    rules: Arc<css::cascade::RuleSet>,
     media: css::media::Media,
     media_dependent: bool,
     images: Option<Arc<crate::image::Set>>,
@@ -86,6 +86,14 @@ pub struct Prepared {
 impl Prepared {
     pub fn scope(&self) -> &Scope {
         &self.scope
+    }
+    pub fn document(&self) -> &Document {
+        &self.document
+    }
+    /// A measurer for this page as prepared: styles and lays it out on
+    /// demand (scripts' measurements, benchmarks).
+    pub fn measurer(&self) -> Measurer {
+        Measurer { rules: self.rules.clone(), media: self.media, images: self.images.clone(), scope: self.scope.clone(), quirks: self.quirks }
     }
     /// What the stylesheets declared that the engine dropped.
     pub fn issues(&self) -> &[css::cascade::Issue] {
@@ -232,7 +240,7 @@ pub fn prepare_scripted(
     let mut load = |kind: ResourceKind, base: Option<&str>, href: &str| memo.load(kind, base, href, cancel, &mut resource);
     if let Some(run) = scripts {
         let first = gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load)?;
-        let measurer = Measurer { rules: Arc::new(first.rules), media, images: first.images, scope: first.scope, quirks };
+        let measurer = Measurer { rules: first.rules, media, images: first.images, scope: first.scope, quirks };
         progress(Phase::Scripts, 0);
         doc = run(first.document, quirks, measurer)?;
     }
@@ -305,11 +313,14 @@ impl Measurer {
         if host.font_context() != self.scope.context() {
             return Err(style::Error::Stale.into());
         }
+        let started = std::time::Instant::now();
+        let mut phases = [0f64; 4];
         let defaults = Defaults::new(host, Default::default(), cancel)?;
         let snapshot = interaction::Snapshot::new(doc, Interaction::default(), cancel);
         let mut job = style::Job::new(doc, &self.rules, defaults, style::JobOptions { quirks: self.quirks, states: Some(&snapshot), ..Default::default() }, Default::default(), cancel)?;
         while !job.step(256, |_| host)?.finished {}
         let styles = Arc::new(job.finish()?);
+        phases[0] = started.elapsed().as_secs_f64() * 1000.;
         let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
         // The images were bound to the document before the scripts changed
         // it; while they still fit, boxes take their sizes.
@@ -320,12 +331,15 @@ impl Measurer {
         }
         while !job.step(256)?.finished {}
         let tree = job.finish()?;
+        phases[1] = started.elapsed().as_secs_f64() * 1000. - phases[0];
         let mut job = layout::PrepareJob::new(shaper, &self.scope, tree, Default::default(), cancel)?;
         while !job.step(4)?.finished {}
         let cache = job.finish()?;
+        phases[2] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1];
         let mut job = layout::Job::new(shaper, &self.scope, cache, viewport, Default::default(), cancel)?;
         while !job.step(256)?.finished {}
         let layout = Arc::new(job.finish()?);
+        phases[3] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1] - phases[2];
         let mut index = std::collections::HashMap::new();
         for (id, b) in layout.cache().tree().iter() {
             if b.marker || b.style_node.pseudo.is_some() {
@@ -333,7 +347,7 @@ impl Measurer {
             }
             index.entry(b.node).or_insert(id);
         }
-        Ok(Measured { layout, index, revision: doc.revision(), viewport })
+        Ok(Measured { layout, index, revision: doc.revision(), viewport, phases })
     }
 }
 /// One layout of the document, queried by node.
@@ -342,8 +356,14 @@ pub struct Measured {
     index: std::collections::HashMap<crate::dom::NodeId, layout::BoxId>,
     revision: u64,
     viewport: layout::Viewport,
+    phases: [f64; 4],
 }
 impl Measured {
+    /// Milliseconds spent styling, building boxes, preparing text and
+    /// laying out.
+    pub fn phases_ms(&self) -> [f64; 4] {
+        self.phases
+    }
     /// The document revision this was laid out from.
     pub fn revision(&self) -> u64 {
         self.revision
@@ -658,6 +678,7 @@ fn gather(
         }
     }
     let (rules, media_dependent, faces, background_urls) = compile(&sheets, media, cancel)?;
+    let rules = Arc::new(rules);
     // background-image files, from the sheets (relative to each sheet) and
     // inline styles (relative to the document), keyed by the URL as written.
     let mut backgrounds: std::collections::HashMap<Arc<str>, Arc<crate::image::Image>> = Default::default();
@@ -790,7 +811,7 @@ impl Page {
         let media = media_for(host, viewport);
         if self.media_dependent && media != self.media {
             let (rules, dependent, _, _) = compile(&self.sheets, media, cancel)?;
-            self.rules = rules;
+            self.rules = Arc::new(rules);
             self.media_dependent = dependent;
             self.interaction_mask = self.rules.state_mask();
             self.media = media;

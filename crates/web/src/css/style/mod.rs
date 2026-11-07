@@ -306,15 +306,40 @@ struct Custom {
     name: Arc<str>,
     value: variables::Computed,
 }
+/// An element's custom properties: what it declares, sorted by name, over
+/// its parent's dictionary, shared rather than copied (a root's hundreds
+/// of variables are then held once, not once per element declaring one).
 struct Dictionary {
+    parent: Option<Arc<Dictionary>>,
     values: Box<[Custom]>,
+    /// This dictionary's own bytes (its parent's are its parent's).
     bytes: usize,
+    /// How many names this and its parents hold together (an upper bound).
+    len: usize,
+}
+impl Dictionary {
+    fn get(&self, name: &str) -> Option<&variables::Computed> {
+        let mut d = self;
+        loop {
+            if let Ok(i) = d.values.binary_search_by(|v| v.name.as_ref().cmp(name)) {
+                return Some(&d.values[i].value);
+            }
+            d = d.parent.as_deref()?;
+        }
+    }
+    /// This dictionary and its parents, nearest first.
+    fn chain(&self) -> impl Iterator<Item = &Dictionary> {
+        std::iter::successors(Some(self), |d| d.parent.as_deref())
+    }
 }
 /// Typed initial declarations and their contextual computed baseline are
 /// compiled once per host generation, shared by all its element styles.
 pub struct Defaults {
     specified: Box<[p::Value]>,
     values: Box<[Entry]>,
+    /// What the defaults' specified values depend on, all together: every
+    /// style has some default, so every style has these.
+    dependencies: Dependencies,
     positions: [u8; Property::ALL.len()],
     initial_font: Arc<Font>,
     device_scale: f64,
@@ -347,6 +372,18 @@ impl Defaults {
         let p::Value::Families(families) = &specified[Property::FontFamily as usize] else { return Err(Error::Invalid) };
         let initial_font = Arc::new(Font::new(host, FontRequest { size, weight: 400., width: 100., slant: FontSlant::Normal, families: families.clone(), axes: Axes::default() })?);
         let mut defaults = Self {
+            dependencies: {
+                let mut d = Dependencies::default();
+                for v in &specified {
+                    let s = v.dependencies();
+                    d.substitution |= s.substitution;
+                    d.color.current_color |= s.color.current_color;
+                    d.color.system_colors |= s.color.system_colors;
+                    d.color.scheme |= s.color.scheme;
+                    d.color.math = d.color.math.union(s.color.math);
+                }
+                d
+            },
             specified: specified.into_boxed_slice(),
             values: Box::new([]),
             positions: [u8::MAX; Property::ALL.len()],
@@ -355,7 +392,7 @@ impl Defaults {
             revision,
             environment: host.environment()?,
             empty: Arc::from([]),
-            empty_customs: Arc::new(Dictionary { values: Box::new([]), bytes: 0 }),
+            empty_customs: Arc::new(Dictionary { parent: None, values: Box::new([]), bytes: 0, len: 0 }),
         };
         let cascade = cascade::Builder::new(Default::default(), cancelled).finish(false, None).map_err(Error::cascade)?;
         let computed = compute::values(&defaults, &cascade, None, None, None, host, Options::default(), limits, cancelled)?;
@@ -473,6 +510,7 @@ impl Style {
             return Err(Error::Invalid);
         }
         let mut computed = compute::values(&defaults, cascade, parent, root, fonts, host, options, limits, cancelled)?;
+        let clock = compute::TIMING.load(std::sync::atomic::Ordering::Relaxed).then(std::time::Instant::now);
         if !cfg!(feature = "baseline-style-dense") {
             computed.values.retain(|entry| !entry.value.same(defaults.value(entry.property)));
         }
@@ -489,6 +527,9 @@ impl Style {
         };
         if host.revision() != defaults.revision || host.font_context() != font_context || computed.font.context != font_context {
             return Err(Error::Stale);
+        }
+        if let Some(c) = clock {
+            compute::PHASES[5].fetch_add(c.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
         }
         check(cancelled)?;
         Ok(Self { defaults, values, customs: computed.customs, axes: computed.axes, font: computed.font, line_height: computed.line_height, dependencies: computed.dependencies, root: options.root })
@@ -567,7 +608,7 @@ impl Style {
         Arc::ptr_eq(&self.values, &other.values)
     }
     pub fn custom(&self, name: &str) -> Option<variables::Computed> {
-        self.customs.values.binary_search_by(|v| v.name.as_ref().cmp(name)).ok().map(|i| self.customs.values[i].value.clone())
+        self.customs.get(name).cloned()
     }
 }
 impl cascade::Inherited for Style {

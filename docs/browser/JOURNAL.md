@@ -5574,3 +5574,58 @@ welcome box, the two columns, the floated thumbnail with its text.
 Open on Wikipedia: list markers (bullets), the search box (a form
 control), `overflow-wrap`, the remaining 111 stylesheet issues (mostly
 `@media (prefers-color-scheme)`-dependent rules, `outline`, `filter`).
+
+## 2026-11-07, morning: JavaScript, and styling 3.4× faster
+
+![stripe.com with scripts: the lazily mounted graphics](../journal/2026-11-07/021547-browser-stripe-com-with-javascript.png)
+
+- **JavaScript.** A new crate, `crates/js` (olo-js): one V8 isolate and
+  context per page; the engine's document behind native functions
+  (`__olo.*`: tree reads and mutation, selectors, HTML serialisation and
+  fragment parsing, logging, synchronous fetch, geometry); a prelude
+  (`prelude.js`) building the DOM and Web API surface over them. Scripts
+  run after parsing, in document order then async ones; modules are
+  skipped and `nomodule` scripts run; scripts that scripts insert fetch
+  and run at once (webpack's chunk loader; Stripe's lazy graphics mount),
+  with `load`/`error` as tasks. Timers and `requestAnimationFrame` run on
+  a virtual clock that `Date` follows; `MessageChannel` delivers as tasks
+  (React's scheduler); IntersectionObserver reports real rects;
+  ResizeObserver reports sizes when first seen and when they change;
+  Web Animations finish with a forward fill written to inline style, so
+  the page paints its resting state; a 2D canvas context accepts every
+  call (nothing drawn yet); custom elements construct, connect and
+  disconnect. Named window access (`list` for `#list`) is a non-masking
+  interceptor on the global.
+- **Measurement.** `page::prepare_scripted` gathers the page's stylesheets,
+  images and fonts, hands the scripts a `Measurer`, and gathers again for
+  what they added (a memo keeps fetches single). A script that measures
+  after changing the document gets a fresh layout (style, boxes, text,
+  layout; no paint), queried by node for border and padding boxes, scroll
+  sizes, the document's size and resolved values as `getComputedStyle`
+  serialises them. Stripe's `data-status="measuring"` graphics went
+  `ready`.
+- **Engine, for Stripe's scripted state.** `mask-image` gradients paint
+  (the GDP counter's fade, which also bounds its absolutely positioned
+  incoming row); `clip-path: inset()` clips the box and its subtree (the
+  checkout's stacked values); an inline-block's baseline is its last line
+  box's (CSS 2.1 §10.8.1), not its bottom edge; attribute names keep
+  their case on SVG elements (`viewBox`); an SVG viewport's clip follows
+  an ancestor's transform (the logo marquee).
+- **Styling 3.4× faster** (style_bench on the saved Stripe page, 2499
+  elements, best of 3): 115 → 34 ms. Rules addressing pseudo-elements are
+  indexed apart, and only those declaring `content` are tried first (a
+  pseudo-element exists only when one matches): pseudo 25 → 2.7 ms. An
+  ancestor Bloom filter (tags, ids, classes, kept by the style walk)
+  rejects selectors whose ancestor compounds cannot match before any
+  walk: steps 697k → 110k. Id and class tests compare hashes first, from
+  a per-match key cache; one matcher per element; `:root`, attribute
+  and `:is()`-branch buckets: candidates 90 → 30 per element. Computed
+  values are sparse (the parent's inherited entries plus what is
+  declared, never all 153 properties) and custom-property dictionaries
+  chain to their parent instead of copying its hundreds of variables
+  (customs 9 → 2 ms).
+
+Measured on stripe.com live: 94 scripts run, 0 errors, 486 listeners,
+64 layouts for measurements in the 4 s budget, then the page. The
+measurement layouts are the next cost: they redo everything, and should
+redo only what changed.
