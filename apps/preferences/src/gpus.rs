@@ -276,7 +276,8 @@ fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String]) {
 }
 
 /// What plays video (the Viewer's and Quick Look's player): the most
-/// efficient there is (NVIDIA's GPU on mains power, else the processor),
+/// efficient there is (the built-in GPU where it decodes the video, else
+/// NVIDIA's, on battery too, else the processor),
 /// NVIDIA's GPU (NVDEC) where there's one, or the processor
 /// (`Settings::video`, read by olo-preview's player).
 fn playback(ui: &mut Ui, gpus: &[Entry], decodes: Option<(&str, bool)>) {
@@ -293,11 +294,11 @@ fn playback(ui: &mut Ui, gpus: &[Entry], decodes: Option<(&str, bool)>) {
     }
     choices.push(("cpu".into(), "The processor"));
     let menu = "The Viewer's View ▸ Decode With chooses for the video it shows.";
-    let rest = if nvidia.is_some() { ", NVIDIA's GPU for the rest on mains power (asleep on battery), else the processor" } else { ", else the processor" };
+    let rest = if nvidia.is_some() { ", NVIDIA's GPU for the rest (on battery too), else the processor" } else { ", else the processor" };
     let note = match decodes {
         Some((i, true)) => format!("Automatic: {i} for every video (H.264, HEVC, VP9, AV1), 4K at 60 frames a second with a quarter of a core. {menu}"),
         Some((i, false)) => format!("Automatic: {i} for AV1 and VP9 (Fedora's driver has no H.264 or HEVC: Olo Doctor installs the full one){rest}. {menu}"),
-        None if nvidia.is_some() => format!("NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor; on battery, Automatic leaves it asleep. {menu}"),
+        None if nvidia.is_some() => format!("NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor (Automatic wakes it on battery too). {menu}"),
         None => format!("Video is decoded on the processor. {menu}"),
     };
     ui.bbox("Video Playback", |ui| {

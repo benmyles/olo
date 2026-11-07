@@ -676,8 +676,9 @@ pub enum Device {
     Default,
     /// The built-in GPU where its driver decodes the video (Intel's:
     /// AV1 and VP9 with Fedora's driver, H.264 and HEVC too with the
-    /// full one), else NVIDIA's where there is one and the computer isn't
-    /// on battery (waking it costs power), else the processor.
+    /// full one), else NVIDIA's where there is one, on battery too (Ben,
+    /// 2026-11-06: its decoder with the GPU in its power-saving preset
+    /// costs less than the processor's cores), else the processor.
     Automatic,
     /// NVIDIA's GPU (NVDEC).
     Nvidia,
@@ -992,11 +993,11 @@ impl Decoder {
             // full one (Olo Doctor installs it).
             let va = Some(va_codec(codec)).filter(|c| planes && olo_vaapi::decode::available(*c));
             // Automatic: the built-in GPU where it decodes this (already
-            // awake, and the screen's), else NVIDIA's on mains power.
+            // awake, and the screen's), else NVIDIA's, on battery too.
             let (intel, nvidia) = match device {
                 Device::Nvidia => (false, true),
                 Device::Intel => (true, false),
-                Device::Automatic => (va.is_some(), va.is_none() && !olo_video::on_battery() && olo_video::nvdec::available()),
+                Device::Automatic => (va.is_some(), va.is_none() && olo_video::nvdec::available()),
                 Device::Processor | Device::Default => (false, false),
             };
             if intel && let Some(c) = va {
