@@ -82,6 +82,11 @@ pub struct Prepared {
     resource_issues: usize,
     quirks: bool,
     scope: Scope,
+    /// The `background-image` URLs the sheets name (relative to each sheet).
+    backgrounds: Vec<(Arc<str>, Option<Arc<str>>)>,
+    /// Whether the rules (and fonts) are an earlier preparation's: styles
+    /// computed against them then can be kept.
+    rules_reused: bool,
 }
 impl Prepared {
     pub fn scope(&self) -> &Scope {
@@ -215,7 +220,7 @@ pub fn prepare(
     progress: impl FnMut(Phase, usize),
     resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
 ) -> Result<Prepared> {
-    prepare_scripted(source, scope, media, fonts, cancel, progress, resource, None)
+    prepare_scripted(source, scope, media, fonts, cancel, progress, resource, |_, _| {}, None)
 }
 /// `prepare`, with the page's scripts run between parsing and loading its
 /// resources: `scripts` takes the parsed document (and whether it is in
@@ -231,6 +236,7 @@ pub fn prepare_scripted(
     cancel: Option<&AtomicBool>,
     mut progress: impl FnMut(Phase, usize),
     mut resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+    mut prefetch: impl FnMut(ResourceKind, &[(Option<String>, String)]),
     scripts: Option<&mut dyn FnMut(Document, bool, Measurer) -> Result<Document>>,
 ) -> Result<Prepared> {
     progress(Phase::Html, 0);
@@ -243,12 +249,31 @@ pub fn prepare_scripted(
     let mut memo = Memo { entries: Default::default(), active: scripts.is_some() };
     let mut load = |kind: ResourceKind, base: Option<&str>, href: &str| memo.load(kind, base, href, cancel, &mut resource);
     if let Some(run) = scripts {
-        let first = gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load)?;
-        let measurer = Measurer { rules: first.rules, media, images: first.images, scope: first.scope, quirks };
+        let mut first = gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load, &mut prefetch, None)?;
+        let measurer = Measurer { rules: first.rules.clone(), media, images: first.images.clone(), scope: first.scope.clone(), quirks };
         progress(Phase::Scripts, 0);
-        doc = run(first.document, quirks, measurer)?;
+        let first_doc = std::mem::replace(&mut first.document, Document::new(Arc::from(""), Default::default())?);
+        doc = run(first_doc, quirks, measurer)?;
+        let started = std::time::Instant::now();
+        let second = gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load, &mut prefetch, Some(&first))?;
+        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+            let differing = first.sheets.iter().zip(&second.sheets).filter(|(x, y)| x.1 != y.1 || x.2 != y.2 || x.0.source() != y.0.source()).count();
+            eprintln!(
+                "scripted gather: {:.0} ms; sheets {} before, {} after, {} differ; rules {}",
+                started.elapsed().as_secs_f64() * 1000.,
+                first.sheets.len(),
+                second.sheets.len(),
+                differing,
+                if second.rules_reused { "reused" } else { "recompiled" }
+            );
+        }
+        return Ok(second);
     }
-    gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load)
+    gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load, &mut prefetch, None)
+}
+/// Whether two sheet lists are the same sheets (origin, URL and text).
+fn same_sheets(a: &[(css::Syntax, Origin, Option<Arc<str>>)], b: &[(css::Syntax, Origin, Option<Arc<str>>)]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.1 == y.1 && x.2 == y.2 && x.0.source() == y.0.source())
 }
 /// What a resource request returned, for a second gathering pass.
 enum Memoed {
@@ -390,6 +415,9 @@ impl Measured {
     /// The document revision this was laid out from.
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+    pub fn layout(&self) -> &Arc<layout::Layout> {
+        &self.layout
     }
     pub fn viewport(&self) -> layout::Viewport {
         self.viewport
@@ -552,6 +580,8 @@ fn gather(
     cancel: Option<&AtomicBool>,
     mut progress: impl FnMut(Phase, usize),
     mut resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+    prefetch: &mut impl FnMut(ResourceKind, &[(Option<String>, String)]),
+    reuse: Option<&Prepared>,
 ) -> Result<Prepared> {
     progress(Phase::Styles, 0);
     let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None)];
@@ -618,6 +648,24 @@ fn gather(
             }
         }
         next = next_node(&doc, node)?;
+    }
+    // Everything the page links is fetched together before the loads
+    // below, which then find it fetched: stylesheets, images; later fonts
+    // and background images once the sheets say which.
+    {
+        let mut links = Vec::new();
+        for &node in &style_nodes {
+            if doc.name(node)? == Some("link")
+                && doc.attribute(node, "rel")?.is_some_and(|r| r.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("stylesheet")))
+                && let Some(href) = doc.attribute(node, "href")?
+            {
+                links.push((base.clone(), href.to_owned()));
+            }
+        }
+        prefetch(ResourceKind::Stylesheet, &links);
+        let images: Vec<(Option<String>, String)> =
+            image_nodes.iter().filter_map(|&n| doc.attribute(n, "src").ok().flatten().filter(|s| !s.trim().is_empty()).map(|s| (base.clone(), s.to_owned()))).collect();
+        prefetch(ResourceKind::Image, &images);
     }
     // The ordered small list avoids a second walk of all text/elements. Base
     // discovery is complete before any resource is fetched.
@@ -700,8 +748,34 @@ fn gather(
             _ => return Err(paint::Error::Invalid.into()),
         }
     }
-    let (rules, media_dependent, faces, background_urls) = compile(&sheets, media, cancel)?;
-    let rules = Arc::new(rules);
+    // The same sheets as an earlier preparation compile to the same rules,
+    // and load the same fonts: both are kept.
+    let reused = reuse.filter(|p| same_sheets(&p.sheets, &sheets));
+    let (rules, media_dependent, faces, background_urls) = match reused {
+        Some(p) => (p.rules.clone(), p.media_dependent, Vec::new(), p.backgrounds.clone()),
+        None => {
+            let (rules, media_dependent, faces, background_urls) = compile(&sheets, media, cancel)?;
+            (Arc::new(rules), media_dependent, faces, background_urls)
+        }
+    };
+    let rules_reused = reused.is_some();
+    {
+        let backgrounds: Vec<(Option<String>, String)> = background_urls.iter().take(BACKGROUND_IMAGES).map(|(u, b)| (b.as_deref().or(base.as_deref()).map(str::to_owned), u.to_string())).collect();
+        prefetch(ResourceKind::Image, &backgrounds);
+        if fonts {
+            let font_urls: Vec<(Option<String>, String)> = faces
+                .iter()
+                .take(FONT_FACES)
+                .filter_map(|face| {
+                    face.sources
+                        .iter()
+                        .find(|s| s.decodable())
+                        .and_then(|s| if let css::fonts::Source::Url { url, .. } = s { Some((face.base.as_deref().or(base.as_deref()).map(str::to_owned), url.to_string())) } else { None })
+                })
+                .collect();
+            prefetch(ResourceKind::Font, &font_urls);
+        }
+    }
     // background-image files, from the sheets (relative to each sheet) and
     // inline styles (relative to the document), keyed by the URL as written.
     let mut backgrounds: std::collections::HashMap<Arc<str>, Arc<crate::image::Image>> = Default::default();
@@ -774,8 +848,12 @@ fn gather(
         }
         resource_issues += faces.len().saturating_sub(FONT_FACES);
     }
-    let scope = if loaded.is_empty() { scope.clone() } else { scope.with_faces(loaded, cancel)? };
-    Ok(Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope })
+    let scope = match reused {
+        Some(p) => p.scope.clone(),
+        None if loaded.is_empty() => scope.clone(),
+        None => scope.with_faces(loaded, cancel)?,
+    };
+    Ok(Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope, backgrounds: background_urls, rules_reused })
 }
 /// Style, lay out and paint a prepared document for a host made for its scope.
 pub fn finish(
@@ -785,15 +863,31 @@ pub fn finish(
     painter: &mut paint::Engine,
     viewport: layout::Viewport,
     cancel: Option<&AtomicBool>,
+    progress: impl FnMut(Phase, usize),
+) -> Result<Page> {
+    finish_with(prepared, host, shaper, painter, viewport, cancel, None, progress)
+}
+/// `finish`, keeping what a layout of the same document under the same
+/// rules (a script measurement's) already computed: styles, prepared texts.
+#[allow(clippy::too_many_arguments)]
+pub fn finish_with(
+    prepared: Prepared,
+    host: &impl Host,
+    shaper: &mut shaping::Engine,
+    painter: &mut paint::Engine,
+    viewport: layout::Viewport,
+    cancel: Option<&AtomicBool>,
+    previous: Option<&layout::Layout>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<Page> {
-    let Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope } = prepared;
+    let Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope, rules_reused, .. } = prepared;
     if host.font_context() != scope.context() {
         return Err(style::Error::Stale.into());
     }
     let interaction_mask = rules.state_mask();
+    let previous = if rules_reused { previous } else { None };
     let (scene, stylesheet_issues, fallbacks) =
-        render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, &scope, shaper, painter, viewport, cancel, None, &mut progress)?;
+        render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, &scope, shaper, painter, viewport, cancel, previous, &mut progress)?;
     Ok(Page {
         images,
         document: doc,

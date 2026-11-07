@@ -355,6 +355,7 @@ fn render(
         // Scripts run against the parsed document before its resources load;
         // what they add is then fetched and styled like the rest.
         let mut live_slot: Option<Live> = None;
+        let mut layout_slot: Option<Arc<layout::Layout>> = None;
         let mut run_scripts = |doc: olo_web::dom::Document, quirks: bool, measurer: page::Measurer| -> page::Result<olo_web::dom::Document> {
             let Some(document) = &document else {
                 return Ok(doc);
@@ -446,6 +447,7 @@ fn render(
             }
             // The realm lives on: its timers keep running on the page's clock.
             let doc = realm.snapshot();
+            layout_slot = realm.last_measured();
             live_slot = Some(Live { realm, started: scripted_at, next_due_ms: Some(0.), rendered: doc.revision(), last_render: Instant::now() });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
@@ -554,6 +556,11 @@ fn render(
                     }
                 }
             },
+            |kind, items| {
+                if let Some(document) = &document {
+                    loader.prefetch(document, kind, items, &r.cancel);
+                }
+            },
             match pass {
                 Pass::Scripted if JAVASCRIPT => Some(&mut run_scripts),
                 // Parsed as with scripting on (noscript content hidden), nothing run.
@@ -563,7 +570,7 @@ fn render(
         )?;
         // The host is made for the page's own fonts (its web faces included).
         let host = PageHost::new(prepared.scope(), &r.key);
-        let page = page::finish(prepared, &host, shaper, painter, viewport, Some(&r.cancel), &mut report)?;
+        let page = page::finish_with(prepared, &host, shaper, painter, viewport, Some(&r.cancel), layout_slot.as_deref(), &mut report)?;
         let origin = document.as_ref().map(|d| d.url.clone()).unwrap_or(url::Url::parse("about:engine")?);
         let base = page.base_href.as_deref().and_then(|href| origin.join(href).ok()).unwrap_or_else(|| origin.clone());
         eprintln!("Browser: {} page ready {:.0} ms after the request", if pass == Pass::Scripted { "scripted" } else { "static" }, loaded_at.elapsed().as_secs_f64() * 1000.);

@@ -230,6 +230,11 @@ impl Realm {
         let after = self.state.borrow().document.revision();
         Advanced { next_due_ms, changed: after != before }
     }
+    /// The last layout made for the scripts' measurements, if any: a render
+    /// of the same document keeps its styles and texts.
+    pub fn last_measured(&self) -> Option<Arc<olo_web::layout::Layout>> {
+        self.state.borrow().measured.as_ref().map(|m| m.layout().clone())
+    }
     /// The document as it is now, copied, for rendering while the scripts
     /// keep theirs.
     pub fn snapshot(&self) -> Document {

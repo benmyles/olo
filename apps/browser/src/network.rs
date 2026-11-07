@@ -232,9 +232,82 @@ impl Loader {
         Ok(fetched)
     }
     #[allow(clippy::too_many_arguments)]
-    fn fetch_uncached(&self, mut url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, progress: &mut impl FnMut(usize), kind: Kind, allow_file: bool) -> page::Result<Resource> {
+    fn fetch_uncached(&self, url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, progress: &mut impl FnMut(usize), kind: Kind, allow_file: bool) -> page::Result<Resource> {
         self.runtime.block_on(async {
+            let work = get(&self.client, url, initiator.cloned(), limit, cancel.flag.clone(), progress, kind, allow_file);
+            tokio::select! { biased; _ = cancel.signal.cancelled() => Err("Cancelled".into()), result = work => result }
+        })
+    }
+    /// Start fetching these subresources together (12 at a time) into the
+    /// session cache, so the loads that follow find them there: the
+    /// preload scanner's work, after the parse. Failures are left to the
+    /// load itself to report.
+    pub fn prefetch(&self, document: &Resource, kind: page::ResourceKind, items: &[(Option<String>, String)], cancel: &Cancel) {
+        let kind = match kind {
+            page::ResourceKind::Stylesheet => Kind::Stylesheet,
+            page::ResourceKind::Image => Kind::Image,
+            page::ResourceKind::Font => Kind::Font,
+        };
+        let limit = match kind {
+            Kind::Stylesheet => CSS_LIMIT,
+            Kind::Image => IMAGE_LIMIT,
+            _ => FONT_LIMIT,
+        };
+        let mut urls = Vec::new();
+        {
+            let cache = self.cache.lock().unwrap();
+            for (base, href) in items {
+                let Ok(url) = base.as_deref().and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href) else { continue };
+                if !matches!(url.scheme(), "http" | "https") || cache.entries.contains_key(url.as_str()) || urls.contains(&url) || check_url(&url, Some(&document.url)).is_err() {
+                    continue;
+                }
+                urls.push(url);
+            }
+        }
+        if urls.is_empty() {
+            return;
+        }
+        let initiator = document.url.clone();
+        let flag = cancel.flag.clone();
+        self.runtime.block_on(async {
+            let semaphore = Arc::new(tokio::sync::Semaphore::new(12));
+            let mut tasks = tokio::task::JoinSet::new();
+            for url in urls {
+                let client = self.client.clone();
+                let initiator = initiator.clone();
+                let flag = flag.clone();
+                let semaphore = semaphore.clone();
+                tasks.spawn(async move {
+                    let Ok(_permit) = semaphore.acquire().await else { return None };
+                    get(&client, url.clone(), Some(initiator), limit, flag, &mut |_| {}, kind, false).await.ok().map(|r| (url, r))
+                });
+            }
             let work = async {
+                while let Some(result) = tasks.join_next().await {
+                    if let Ok(Some((requested, fetched))) = result
+                        && fetched.status.is_some_and(|s| (200..300).contains(&s))
+                    {
+                        let mut cache = self.cache.lock().unwrap();
+                        if cache.bytes + fetched.bytes.len() > SESSION_CACHE_BYTES {
+                            cache.entries.clear();
+                            cache.bytes = 0;
+                        }
+                        cache.bytes += fetched.bytes.len();
+                        cache.entries.insert(requested.to_string(), Arc::new(CachedResponse { url: fetched.url, bytes: fetched.bytes, mime: fetched.mime, status: fetched.status.unwrap_or(200) }));
+                    }
+                }
+            };
+            tokio::select! { biased; _ = cancel.signal.cancelled() => {}, _ = work => {} }
+        });
+    }
+}
+/// One GET (redirects followed, 20 at most), or a local file read.
+#[allow(clippy::too_many_arguments)]
+async fn get(client: &Client, mut url: Url, initiator: Option<Url>, limit: usize, cancel: Arc<AtomicBool>, progress: &mut impl FnMut(usize), kind: Kind, allow_file: bool) -> page::Result<Resource> {
+    let initiator = initiator.as_ref();
+    {
+        {
+            {
                 for _ in 0..=20 {
                     check_url(&url, initiator)?;
                     if url.scheme() == "file" && !allow_file {
@@ -271,8 +344,7 @@ impl Loader {
                         );
                         return Ok(Resource { url, bytes, mime, status: None, document_encoding: None });
                     }
-                    let mut response = self
-                        .client
+                    let mut response = client
                         .get(url.clone())
                         .header(
                             header::ACCEPT,
@@ -308,9 +380,8 @@ impl Loader {
                     return Ok(Resource { url, bytes, mime, status: Some(status.as_u16()), document_encoding: None });
                 }
                 Err("Too many HTTP redirects".into())
-            };
-            tokio::select! { biased; _ = cancel.signal.cancelled() => Err("Cancelled".into()), result = work => result }
-        })
+            }
+        }
     }
 }
 fn append(bytes: &mut Vec<u8>, chunk: &[u8], limit: usize) -> page::Result<()> {
