@@ -47,10 +47,10 @@ impl Engine {
         if !valid(rect) {
             return Err(Error::Invalid);
         }
-        let mut out = Pixmap::new(region.width, region.height).ok_or(Error::Limit)?;
-        out.fill(tiny_skia::Color::from_rgba8(scene.base[0], scene.base[1], scene.base[2], 255));
+        let mut base = Pixmap::new(region.width, region.height).ok_or(Error::Limit)?;
+        base.fill(tiny_skia::Color::from_rgba8(scene.base[0], scene.base[1], scene.base[2], 255));
         if scene.canvas[3] != 0 {
-            out.fill_rect(tiny_skia::Rect::from_xywh(0., 0., region.width as f32, region.height as f32).ok_or(Error::Invalid)?, &paint(scene.canvas), Transform::identity(), None);
+            base.fill_rect(tiny_skia::Rect::from_xywh(0., 0., region.width as f32, region.height as f32).ok_or(Error::Invalid)?, &paint(scene.canvas), Transform::identity(), None);
         }
         // Subtract the tile origin in f64 before converting to raster coordinates.
         // Global f32 coordinates discard subpixels in long documents.
@@ -70,9 +70,51 @@ impl Engine {
         let mut last_clip = u32::MAX;
         let mut mask: Option<Mask> = None;
         let mut layer_work = 0usize;
+        // Opacity groups composite through layers: one tile-sized surface per
+        // open group, entered and left as the commands' groups change.
+        let mut layers: Vec<(u32, Pixmap)> = Vec::new();
+        let chain = |group: u32| -> Vec<u32> {
+            let mut path = Vec::new();
+            let mut at = group;
+            while at != u32::MAX && path.len() < 64 {
+                path.push(at);
+                at = scene.groups[at as usize].parent;
+            }
+            path.reverse();
+            path
+        };
+        let layer_bytes = (region.width as usize) * (region.height as usize) * 4;
         for id in hits {
             check(cancel)?;
             let c = &scene.commands[id as usize];
+            if layers.last().map_or(u32::MAX, |l| l.0) != c.group {
+                let wanted = chain(c.group);
+                // Leave groups no longer open, compositing each onto its parent.
+                while let Some(&(open, _)) = layers.last() {
+                    if wanted.contains(&open) {
+                        break;
+                    }
+                    let (group, layer) = layers.pop().unwrap();
+                    let opacity = scene.groups[group as usize].opacity;
+                    let target: &mut Pixmap = match layers.last_mut() {
+                        Some(l) => &mut l.1,
+                        None => &mut base,
+                    };
+                    target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, ..Default::default() }, Transform::identity(), None);
+                }
+                for &group in &wanted {
+                    if !layers.iter().any(|l| l.0 == group) {
+                        if (layers.len() + 1) * layer_bytes > self.limits().layer_bytes {
+                            return Err(Error::Limit);
+                        }
+                        layers.push((group, Pixmap::new(region.width, region.height).ok_or(Error::Limit)?));
+                    }
+                }
+            }
+            let out: &mut Pixmap = match layers.last_mut() {
+                Some(l) => &mut l.1,
+                None => &mut base,
+            };
             if c.clip != last_clip {
                 mask = if c.clip == u32::MAX {
                     None
@@ -103,7 +145,7 @@ impl Engine {
                     if bounds.width == 0. || bounds.height == 0. {
                         continue;
                     }
-                    super::image::raster(self, &mut out, image, bounds, scale, region, mask.as_ref(), cancel)?;
+                    super::image::raster(self, out, image, bounds, scale, region, mask.as_ref(), cancel)?;
                 }
                 Primitive::Vector { owner, vector, origin } => {
                     let tree = scene.layout.cache().tree();
@@ -149,7 +191,7 @@ impl Engine {
                     if !transform.is_valid() {
                         return Err(Error::Unsupported("SVG viewport transform precision"));
                     }
-                    super::vector::raster(&mut out, vector, used_geometry, resolved_clips.map(Vec::as_slice).unwrap_or(&[]), transform, vector_mask, self.limits(), &mut layer_work, cancel)?;
+                    super::vector::raster(out, vector, used_geometry, resolved_clips.map(Vec::as_slice).unwrap_or(&[]), transform, vector_mask, self.limits(), &mut layer_work, cancel)?;
                 }
                 Primitive::Fill { color } => {
                     if let Some(r) = local(c.bounds) {
@@ -160,13 +202,13 @@ impl Engine {
                     let tree = scene.layout.cache().tree();
                     let s = tree.style(*owner).ok_or(Error::Invalid)?;
                     let g = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
-                    super::decoration::raster(&mut out, s, g, *outer, scale, region, mask.as_ref(), self.limits(), cancel)?;
+                    super::decoration::raster(out, s, g, *outer, scale, region, mask.as_ref(), self.limits(), cancel)?;
                 }
                 Primitive::Border { owner, colors } => {
                     let b = scene.layout.geometry(*owner).ok_or(Error::Invalid)?.border_width;
                     let o = c.bounds;
                     let inner = Rect { x: o.x + b.left, y: o.y + b.top, width: (o.width - b.left - b.right).max(0.), height: (o.height - b.top - b.bottom).max(0.) };
-                    super::border::raster(&mut out, o, inner, *colors, scale, region, mask.as_ref(), cancel)?;
+                    super::border::raster(out, o, inner, *colors, scale, region, mask.as_ref(), cancel)?;
                 }
                 Primitive::Text { owner, fragment, glyphs, origin, color, .. } => {
                     let text = scene.layout.text_layout(*owner).ok_or(Error::Invalid)?;
@@ -192,6 +234,14 @@ impl Engine {
                 }
             }
         }
-        Ok(Tile { region, pixmap: out })
+        while let Some((group, layer)) = layers.pop() {
+            let opacity = scene.groups[group as usize].opacity;
+            let target: &mut Pixmap = match layers.last_mut() {
+                Some(l) => &mut l.1,
+                None => &mut base,
+            };
+            target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, ..Default::default() }, Transform::identity(), None);
+        }
+        Ok(Tile { region, pixmap: base })
     }
 }

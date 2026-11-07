@@ -112,8 +112,7 @@ pub struct Options {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Ignored(u8);
 impl Ignored {
-    const NAMES: [&'static str; 5] =
-        ["vertical text laid out horizontally", "word-break/overflow-wrap ignored", "letter-spacing/word-spacing ignored", "text-align: justify as start", "text spacing context unavailable"];
+    const NAMES: [&'static str; 5] = ["vertical text laid out horizontally", "word-break/overflow-wrap ignored", "", "text-align: justify as start", "text spacing context unavailable"];
     fn set(&mut self, i: usize) {
         self.0 |= 1 << i;
     }
@@ -152,8 +151,8 @@ impl Options {
             }
         }
         for property in [P::LetterSpacing, P::WordSpacing] {
+            // Applied to glyph advances when the paragraph is shaped.
             match style.used_text_spacing(property, style.font().request.size, Default::default(), cancel) {
-                Ok(spacing) if spacing != 0. => ignored.set(2),
                 Ok(_) => {}
                 Err(crate::css::style::Error::Cancelled) => return Err(Error::Cancelled),
                 Err(_) => ignored.set(4),

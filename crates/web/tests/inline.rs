@@ -435,7 +435,7 @@ fn computed_styles_bind_scope_direction_whitespace_and_line_metrics() {
     for (declarations, unsupported) in [
         ("text-align:center;text-align-last:right", false),
         ("direction:rtl", false),
-        ("letter-spacing:1px", true),
+        ("letter-spacing:1px", false),
         ("word-break:break-all", true),
         ("writing-mode:vertical-rl", true),
         ("text-align:justify", true),
@@ -501,4 +501,32 @@ fn text_builder_validates_provenance_and_caps_before_publication() {
     assert!(matches!(layout::TextJob::new(&mut e, p.clone(), s.clone(), b.clone(), Default::default(), Some(&cancelled)), Err(layout::Error::Cancelled)));
     let j = layout::TextJob::new(&mut e, p, s, b, Default::default(), None).unwrap();
     assert!(matches!(j.finish(), Err(layout::Error::Incomplete)));
+}
+#[test]
+fn letter_and_word_spacing_widen_shaped_advances() {
+    use olo_web::layout;
+    let s = scope();
+    let host = native_host::NativeHost(s.clone());
+    let mut shaper = Engine::default();
+    let mut painter = olo_web::paint::Engine::default();
+    let width = |css: &str, shaper: &mut Engine, painter: &mut olo_web::paint::Engine| {
+        let page = olo_web::page::load(
+            Arc::from(format!("<!doctype html><style>body{{margin:0}}p{{font-family:'Noto Sans';font-size:20px;{css}}}span{{display:inline-block}}</style><p><span>ab cd</span></p>")),
+            &host,
+            &s,
+            shaper,
+            painter,
+            layout::Viewport { width: 800., height: 600., scale: 1. },
+            None,
+            |_, _| {},
+        )
+        .unwrap();
+        let tree = page.scene.layout().cache().tree();
+        let id = tree.iter().find(|(_, b)| page.document.name(b.node).ok().flatten() == Some("span")).unwrap().0;
+        page.scene.layout().bounds(id).unwrap().width
+    };
+    let plain = width("", &mut shaper, &mut painter);
+    // Five glyphs, each 2px wider; the space 3px wider still.
+    assert_eq!(width("letter-spacing:2px", &mut shaper, &mut painter), plain + 10.);
+    assert_eq!(width("word-spacing:3px", &mut shaper, &mut painter), plain + 3.);
 }

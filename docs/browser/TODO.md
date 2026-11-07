@@ -11,7 +11,7 @@ Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it
 substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is
 chosen by what is visibly wrong against Chrome and by the fallback counts,
-not by the first refusal. Stripe's homepage currently renders with 759
+not by the first refusal. Stripe's homepage currently renders with 593
 fallbacks; no configuration is accepted yet.
 
 Next, in impact order (each removes a fallback kind or a visible gap):
@@ -28,7 +28,10 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   first paint), system font discovery (the catalog holds Noto Sans only).
 - [ ] Styled inline runs: a paragraph shaped from several fonts/sizes
   (46 inlines flattened into their paragraph's typography).
-- [ ] Flex wrapping (8), vertical-align (23 images), opacity groups (45).
+- [x] Tables (auto layout, spans, border-spacing), the HTML UA stylesheet,
+  presentational hints, legacy centring; letter-spacing; opacity groups.
+- [ ] Flex wrapping (8), vertical-align (23 images), list markers, floats
+  (Wikipedia: 21), table captions/column groups/rowspan, collapsed borders.
 - [x] Paint: gradients, border-radius, box-shadow, rounded overflow clips.
 - [ ] Paint: `url()` background images, `background-clip: text`, inset
   shadows, transforms, opacity groups, dashed/dotted borders, inline

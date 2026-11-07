@@ -5397,3 +5397,31 @@ shadows are recorded fallbacks for now. The style property limit rose to
 
 Stripe: rounded buttons and the header's shadow (journal screenshot);
 stylesheet issues fell from 1,770 to 1,185.
+
+## 2026-11-06 (late): tables, the UA sheet, hints, letter-spacing, opacity
+
+Hacker News made the next gaps obvious. Tables lay out (columns from the
+cells' min/max-content contributions through the grid track sizer, column
+spans sharing their excess, `border-spacing`, shrink-to-fit width,
+vertical-align in cells, cells filling their row), the user-agent
+stylesheet now covers HTML's rendering section, and presentational
+attributes apply (width/height, bgcolor, body text, font color/size,
+align, valign, nowrap, cellpadding from the enclosing table, cellspacing,
+hr size). `<center>` and `align=` map to the legacy `-webkit-center`
+family, which centres blocks (a shrink-to-fit table) and text but resets
+to `start` on table parts, as browsers do; cells' own `align` stays.
+
+`letter-spacing` and `word-spacing` add to the shaped glyph advances
+(word-spacing to spaces) and are part of the shared-text identity.
+`opacity` paints a box and its descendants through a tile-sized layer
+composited at the group's alpha, nested groups multiplying.
+
+A paragraph with no spans (only an empty inline) no longer fails the
+white-space agreement with its container, which Stripe hit after the
+UA change. `crates/web/examples/page_dump.rs` loads a saved page with
+its local stylesheets and prints the error, the fallbacks and the boxes.
+
+Stripe: 593 fallbacks, led by word-break/overflow-wrap (485) and
+flattened inline typography (46). Below the fold, a horizontal carousel
+overlaps (transforms, overflow), the stats numbers stay faded (opacity
+animations driven by scripts), and icon boxes are empty.

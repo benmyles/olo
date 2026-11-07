@@ -505,3 +505,21 @@ fn rounded_corners_gradients_and_shadows_paint_from_style() {
     assert_eq!(pixel(&t, 25, 12), [0, 0, 255, 255], "top border mid side");
     assert_eq!(pixel(&t, 25, 25), [255; 4], "interior");
 }
+
+#[test]
+fn opacity_composites_a_box_and_its_content_as_one_layer() {
+    let mut p = paint::Engine::default();
+    // Half-transparent red over white: pink. Its black text inside the group
+    // does not darken the red beneath it more than the group's opacity allows.
+    let s = scene("<div id=a>A</div>", "div{width:60px;height:40px;background:red;opacity:0.5;color:black}", &mut p);
+    let t = render(&mut p, &s);
+    let pink = pixel(&t, 55, 35);
+    assert!(pink[0] == 255 && (126..=129).contains(&pink[1]) && (126..=129).contains(&pink[2]), "{pink:?}");
+    // Nested groups multiply.
+    let s = scene("<div><div id=b></div></div>", "div{width:60px;height:40px;background:red;opacity:0.5}#b{background:blue;opacity:0.5;margin:0}", &mut p);
+    let t = render(&mut p, &s);
+    let px = pixel(&t, 30, 20);
+    // Outer layer: blue at 0.5 over red → (128,0,128); at 0.5 over white → (191,128,191).
+    assert!((190..=192).contains(&px[0]) && (126..=129).contains(&px[1]) && (190..=192).contains(&px[2]), "{px:?}");
+    assert!(s.commands().len() >= 2);
+}

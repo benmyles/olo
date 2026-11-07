@@ -65,7 +65,27 @@ fn shape_text(
         s = s.with_inline_objects(positions)?;
     }
     while !s.step(128)?.finished {}
-    let s = Arc::new(s.finish()?);
+    let mut paragraph = s.finish()?;
+    // letter-spacing adds to every glyph's advance, word-spacing to spaces'
+    // (CSS Text 3 §8), in each run's font units.
+    let size = style.font().request.size;
+    let letter = style.used_text_spacing(P::LetterSpacing, size, Default::default(), cancel).unwrap_or(0.);
+    let word = style.used_text_spacing(P::WordSpacing, size, Default::default(), cancel).unwrap_or(0.);
+    if (letter != 0. || word != 0.) && size > 0. {
+        for run in paragraph.runs.iter_mut() {
+            let unit = f64::from(run.font.units_per_em()) / size;
+            let letter_units = (letter * unit).round() as i32;
+            let word_units = (word * unit).round() as i32;
+            let source = run.source.clone();
+            let mut glyphs = run.glyphs.to_vec();
+            for g in &mut glyphs {
+                let space = source.as_bytes().get(g.cluster as usize).is_some_and(|b| matches!(b, b' ' | b'\t'));
+                g.x_advance = g.x_advance.saturating_add(letter_units).saturating_add(if space { word_units } else { 0 });
+            }
+            run.glyphs = glyphs.into_boxed_slice();
+        }
+    }
+    let s = Arc::new(paragraph);
     let mut b = linebreak::Job::new(prepared.text().clone(), Default::default(), cancel)?;
     while !b.step(4096)?.finished {}
     let b = Arc::new(b.finish()?);
@@ -211,6 +231,10 @@ impl<'a> PrepareJob<'a> {
             if !controls.is_empty() {
                 controls.hash(&mut hash);
             }
+            // Spacing shapes into the glyph advances, so it is part of the identity.
+            let size = style.font().request.size;
+            style.used_text_spacing(crate::css::style::Property::LetterSpacing, size, Default::default(), self.cancel).unwrap_or(0.).to_bits().hash(&mut hash);
+            style.used_text_spacing(crate::css::style::Property::WordSpacing, size, Default::default(), self.cancel).unwrap_or(0.).to_bits().hash(&mut hash);
             (Arc::as_ptr(style.font()) as usize, source.source.clone(), hash.finish())
         });
         if let Some(text) = key.as_ref().and_then(|key| self.shared.get(key))

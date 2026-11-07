@@ -53,6 +53,15 @@ pub struct Command {
     pub bounds: Rect,
     pub primitive: Primitive,
     pub(super) clip: u32,
+    /// The innermost opacity group this command paints inside, or NONE.
+    pub(super) group: u32,
+}
+/// A box painted as a whole at an opacity (CSS Color 4 §2.2): its commands
+/// are contiguous in paint order and composite through one layer.
+#[derive(Clone, Copy, Debug)]
+pub struct Group {
+    pub parent: u32,
+    pub opacity: f32,
 }
 /// A clip for descendants of an overflow-clipping box: its padding box,
 /// rounded when the box has corner radii.
@@ -65,6 +74,7 @@ pub struct Scene {
     pub(super) layout: Arc<layout::Layout>,
     pub(super) commands: Box<[Command]>,
     pub(super) clips: Box<[Clip]>,
+    pub(super) groups: Box<[Group]>,
     pub(super) vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     pub(super) vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     pub(super) index: index::Index,
@@ -211,6 +221,7 @@ struct State {
     origin: Point,
     context: u32,
     clip: u32,
+    group: u32,
 }
 /// One CSS stacking context (CSS 2.2 Appendix E): the root, positioned boxes
 /// (z-index: auto ones painted as if they were contexts), opacity groups and
@@ -243,6 +254,8 @@ pub struct BuildJob<'a> {
     states: Vec<State>,
     draft: Vec<Draft>,
     clips: Vec<Clip>,
+    groups: Vec<Group>,
+    current_group: u32,
     vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
@@ -301,6 +314,8 @@ impl<'a> BuildJob<'a> {
             states: Vec::new(),
             draft: Vec::new(),
             clips: Vec::new(),
+            groups: Vec::new(),
+            current_group: NONE,
             vector_geometry: Default::default(),
             vector_clips: Default::default(),
             vector_clip_bytes: 0,
@@ -334,7 +349,7 @@ impl<'a> BuildJob<'a> {
             return Err(Error::Limit);
         }
         self.extent = union(self.extent, if clip == NONE { bounds } else { intersection(bounds, self.clips[clip as usize].rect) });
-        self.draft.push(Draft { context, slot, text, command: Command { bounds, primitive, clip } });
+        self.draft.push(Draft { context, slot, text, command: Command { bounds, primitive, clip, group: self.current_group } });
         Ok(())
     }
     #[allow(clippy::too_many_arguments)]
@@ -635,12 +650,14 @@ impl<'a> BuildJob<'a> {
                 break;
             };
             self.next += 1;
-            let (parent, mut context, mut clip) = if let Some(parent) = b.parent {
+            let (parent, mut context, mut clip, parent_group) = if let Some(parent) = b.parent {
                 let p = &self.states[parent.index()];
-                (p.origin, p.context, p.clip)
+                (p.origin, p.context, p.clip, p.group)
             } else {
-                (Point::default(), 0, NONE)
+                (Point::default(), 0, NONE, NONE)
             };
+            self.current_group = parent_group;
+            let mut children_group = parent_group;
             // In-flow content paints in slot 2 of its context; a box that
             // starts a context paints its own decoration in slot 0 of the new one.
             let mut group = (context, 2);
@@ -670,9 +687,15 @@ impl<'a> BuildJob<'a> {
                 BoxKind::Viewport => {}
                 BoxKind::Block { .. } | BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. } => {
                     let s = tree.style(id).ok_or(Error::Invalid)?;
-                    let opacity = s.value(P::Opacity).scalar().unwrap_or(1.);
-                    if opacity != 1. {
-                        self.fallbacks.note("opacity painted opaque", Some(b.node));
+                    let opacity = s.value(P::Opacity).scalar().unwrap_or(1.).clamp(0., 1.);
+                    if opacity < 1. {
+                        if self.groups.len() >= self.limits.commands {
+                            return Err(Error::Limit);
+                        }
+                        let index = self.groups.len() as u32;
+                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32 });
+                        self.current_group = index;
+                        children_group = index;
                     }
                     let positioned = !matches!(s.value(P::Position), Value::Keyword(K::Static));
                     let z = match s.value(P::ZIndex) {
@@ -736,7 +759,7 @@ impl<'a> BuildJob<'a> {
                     }
                 }
             }
-            self.states.push(State { origin, context, clip: children_clip });
+            self.states.push(State { origin, context, clip: children_clip, group: children_group });
             self.progress.boxes += 1;
             self.progress.commands = self.draft.len();
         }
@@ -774,6 +797,7 @@ impl<'a> BuildJob<'a> {
             layout: self.layout,
             commands,
             clips: self.clips.into_boxed_slice(),
+            groups: self.groups.into_boxed_slice(),
             vector_geometry: self.vector_geometry,
             vector_clips: self.vector_clips,
             index,
