@@ -29,6 +29,9 @@ pub struct Key {
 }
 // Keep aligned tile ends and viewport additions inside signed device coordinates.
 const MAX_VIEWPORT: u32 = 32768;
+/// Whether pages' scripts run (`OLO_BROWSER_NO_JS=1` turns them off, for
+/// comparing a page with and without).
+const JAVASCRIPT: bool = true;
 pub fn max_scroll(key: &Key, extent: f64) -> i32 {
     ((extent * key.scale - f64::from(key.height)).ceil().max(0.) as i32).min(i32::MAX - MAX_VIEWPORT as i32 - 256)
 }
@@ -124,7 +127,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                 eprintln!("Browser fonts: {mapped} system font files mapped");
                 let policy = olo_web::font::system::chrome_policy()?;
                 let scope = FontSet::new(builder.finish(None)?, policy, Default::default())?.scope("en")?;
-                let loader = crate::network::Loader::new()?;
+                let loader = Arc::new(crate::network::Loader::new()?);
                 let mut shaper = shaping::Engine::default();
                 let mut painter = paint::Engine::default();
                 let mut cached: Option<Cached> = None;
@@ -173,7 +176,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
 #[allow(clippy::too_many_arguments)] // Persistent worker resources and explicit request/output channel.
 fn render(
     r: &Request,
-    loader: &crate::network::Loader,
+    loader: &Arc<crate::network::Loader>,
     scope: &Scope,
     shaper: &mut shaping::Engine,
     painter: &mut paint::Engine,
@@ -220,6 +223,7 @@ fn render(
                         "{}… {n}",
                         match p {
                             page::Phase::Html => "Parsing",
+                            page::Phase::Scripts => "Running scripts",
                             page::Phase::Styles => "Styling",
                             page::Phase::Boxes => "Building boxes",
                             page::Phase::Text => "Preparing text",
@@ -230,76 +234,150 @@ fn render(
                 ));
             }
         };
-        let prepared = page::prepare(source, scope, media, true, Some(&r.cancel), &mut report, |kind, base, href| {
+        // Scripts run against the parsed document before its resources load;
+        // what they add is then fetched and styled like the rest.
+        let mut run_scripts = |doc: olo_web::dom::Document, quirks: bool| -> page::Result<olo_web::dom::Document> {
             let Some(document) = &document else {
-                return Ok(None);
+                return Ok(doc);
             };
-            if kind == page::ResourceKind::Font {
-                let mut url = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href)?;
-                url.set_fragment(None);
+            let page_url = document.url.to_string();
+            let scripts: Vec<olo_js::Script> = olo_js::page_scripts(&doc, &page_url)
+                .into_iter()
+                .filter_map(|(source, name)| match source {
+                    olo_js::Source::Inline(text) => Some(olo_js::Script { source: text, name }),
+                    olo_js::Source::External(u) => {
+                        proxy.send(Reply::Status(r.id, "Loading script…".into()));
+                        let url = url::Url::parse(&u).ok()?;
+                        match loader.script(document, url, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "script")) {
+                            Ok(text) => Some(olo_js::Script { source: Arc::from(text), name: u }),
+                            Err(error) => {
+                                eprintln!("Browser script {u}: {error}");
+                                None
+                            }
+                        }
+                    }
+                })
+                .collect();
+            if scripts.is_empty() {
+                return Ok(doc);
+            }
+            proxy.send(Reply::Status(r.id, format!("Running {} scripts…", scripts.len())));
+            let config = olo_js::Config { url: page_url, viewport: (f64::from(r.key.width) / r.key.scale, f64::from(r.key.height) / r.key.scale), scale: r.key.scale, quirks, ..Default::default() };
+            let fetch_document = document.url.clone();
+            let fetcher: olo_js::Fetcher = {
+                let cancel = r.cancel.clone();
+                let loader = loader.clone();
+                Box::new(move |url: &str, method: &str, _body: &str| {
+                    if method != "GET" {
+                        return Err(format!("{method} requests are not supported yet"));
+                    }
+                    let url = url::Url::parse(url).map_err(|e| e.to_string())?;
+                    let (status, content_type, body, final_url) = loader.text(&fetch_document, url, &cancel).map_err(|e| e.to_string())?;
+                    Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url })
+                })
+            };
+            let started = Instant::now();
+            let mut realm = olo_js::Realm::new(doc, config, Some(fetcher)).map_err(|e| page::Error::from(e.as_str()))?;
+            let report = realm.run_page(&scripts);
+            let (doc, _) = realm.finish();
+            eprintln!(
+                "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, revision {} -> {}, {:.0} ms",
+                report.scripts,
+                report.errors.len(),
+                report.console.len(),
+                report.timers,
+                report.listeners,
+                report.revision_before,
+                report.revision_after,
+                started.elapsed().as_secs_f64() * 1000.
+            );
+            for line in report.console.iter().take(50) {
+                eprintln!("  console: {line}");
+            }
+            for error in report.errors.iter().take(50) {
+                eprintln!("  error: {error}");
+            }
+            Ok(doc)
+        };
+        let prepared = page::prepare_scripted(
+            source,
+            scope,
+            media,
+            true,
+            Some(&r.cancel),
+            &mut report,
+            |kind, base, href| {
+                let Some(document) = &document else {
+                    return Ok(None);
+                };
+                if kind == page::ResourceKind::Font {
+                    let mut url = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href)?;
+                    url.set_fragment(None);
+                    resources += 1;
+                    if resources > 1024 {
+                        return Err("Page exceeds the development resource request limit".into());
+                    }
+                    proxy.send(Reply::Status(r.id, "Loading font…".into()));
+                    return match loader.font(document, url, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "font")) {
+                        Ok(bytes) => Ok(Some(page::Resource::Font(bytes))),
+                        Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
+                        Err(error) => {
+                            eprintln!("Browser font: {error}");
+                            Ok(None)
+                        }
+                    };
+                }
+                if kind == page::ResourceKind::Image {
+                    let mut url = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href)?;
+                    url.set_fragment(None);
+                    if let Some(image) = images.get(&url) {
+                        return Ok(image.as_ref().map(|image| page::Resource::Image(image.clone())));
+                    }
+                    resources += 1;
+                    if resources > 1024 {
+                        return Err("Page exceeds the development resource request limit".into());
+                    }
+                    proxy.send(Reply::Status(r.id, "Loading image…".into()));
+                    let host = PageHost::new(scope, &r.key);
+                    let svg = |bytes: &[u8]| olo_web::svg_image::rasterize(bytes, &host, scope, r.key.scale, Some(&r.cancel)).map_err(|e| format!("SVG image: {e}").into());
+                    return match loader.image(
+                        document,
+                        url.clone(),
+                        (64usize << 20).saturating_sub(image_bytes),
+                        &r.cancel,
+                        crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "image"),
+                        &svg,
+                    ) {
+                        Ok(image) => {
+                            image_bytes += image.payload_bytes();
+                            images.insert(url, Some(image.clone()));
+                            Ok(Some(page::Resource::Image(image)))
+                        }
+                        Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
+                        Err(error) => {
+                            eprintln!("Browser image: {error}");
+                            images.insert(url, None);
+                            Ok(None)
+                        }
+                    };
+                }
                 resources += 1;
                 if resources > 1024 {
                     return Err("Page exceeds the development resource request limit".into());
                 }
-                proxy.send(Reply::Status(r.id, "Loading font…".into()));
-                return match loader.font(document, url, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "font")) {
-                    Ok(bytes) => Ok(Some(page::Resource::Font(bytes))),
+                proxy.send(Reply::Status(r.id, "Loading stylesheet…".into()));
+                let absolute = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href).ok().map(|u| Arc::<str>::from(u.as_str()));
+                match loader.stylesheet(document, base, href, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "stylesheet")) {
+                    Ok(sheet) => Ok(Some(page::Resource::Stylesheet(sheet, absolute))),
                     Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
                     Err(error) => {
-                        eprintln!("Browser font: {error}");
+                        eprintln!("Browser stylesheet: {error}");
                         Ok(None)
                     }
-                };
-            }
-            if kind == page::ResourceKind::Image {
-                let mut url = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href)?;
-                url.set_fragment(None);
-                if let Some(image) = images.get(&url) {
-                    return Ok(image.as_ref().map(|image| page::Resource::Image(image.clone())));
                 }
-                resources += 1;
-                if resources > 1024 {
-                    return Err("Page exceeds the development resource request limit".into());
-                }
-                proxy.send(Reply::Status(r.id, "Loading image…".into()));
-                let host = PageHost::new(scope, &r.key);
-                let svg = |bytes: &[u8]| olo_web::svg_image::rasterize(bytes, &host, scope, r.key.scale, Some(&r.cancel)).map_err(|e| format!("SVG image: {e}").into());
-                return match loader.image(
-                    document,
-                    url.clone(),
-                    (64usize << 20).saturating_sub(image_bytes),
-                    &r.cancel,
-                    crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "image"),
-                    &svg,
-                ) {
-                    Ok(image) => {
-                        image_bytes += image.payload_bytes();
-                        images.insert(url, Some(image.clone()));
-                        Ok(Some(page::Resource::Image(image)))
-                    }
-                    Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
-                    Err(error) => {
-                        eprintln!("Browser image: {error}");
-                        images.insert(url, None);
-                        Ok(None)
-                    }
-                };
-            }
-            resources += 1;
-            if resources > 1024 {
-                return Err("Page exceeds the development resource request limit".into());
-            }
-            proxy.send(Reply::Status(r.id, "Loading stylesheet…".into()));
-            let absolute = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href).ok().map(|u| Arc::<str>::from(u.as_str()));
-            match loader.stylesheet(document, base, href, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "stylesheet")) {
-                Ok(sheet) => Ok(Some(page::Resource::Stylesheet(sheet, absolute))),
-                Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
-                Err(error) => {
-                    eprintln!("Browser stylesheet: {error}");
-                    Ok(None)
-                }
-            }
-        })?;
+            },
+            if JAVASCRIPT { Some(&mut run_scripts) } else { None },
+        )?;
         // The host is made for the page's own fonts (its web faces included).
         let host = PageHost::new(prepared.scope(), &r.key);
         let page = page::finish(prepared, &host, shaper, painter, viewport, Some(&r.cancel), &mut report)?;
@@ -475,7 +553,7 @@ fn render(
                 short.push('…');
             }
             if page.scripts > 0 || page.stylesheet_issues > 0 {
-                short.push_str(&format!(" · {} inert scripts · {} stylesheet issues", page.scripts, page.stylesheet_issues));
+                short.push_str(&format!(" · {} scripts · {} stylesheet issues", page.scripts, page.stylesheet_issues));
             }
             if !page.fallbacks.is_empty() {
                 short.push_str(&format!(" · {} fallbacks", page.fallbacks.total()));

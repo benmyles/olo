@@ -18,7 +18,11 @@ enum Kind {
     Stylesheet,
     Image,
     Font,
+    Script,
+    /// A script's own request (`fetch`, `XMLHttpRequest`).
+    Fetch,
 }
+const SCRIPT_LIMIT: usize = 16 * 1024 * 1024;
 const IMAGE_LIMIT: usize = 16 * 1024 * 1024;
 const FONT_LIMIT: usize = 32 * 1024 * 1024;
 const CSS_LIMIT: usize = 4 * 1024 * 1024;
@@ -82,6 +86,26 @@ impl Loader {
         }
         let encoding = resource.mime.as_ref().and_then(|m| m.get_param("charset")).map(|p| p.as_str());
         Ok(css::Syntax::parse_bytes(&resource.bytes, css::ByteOptions { protocol_encoding: encoding, environment_encoding: Some(document.encoding()) }, Default::default(), Some(cancel))?.syntax)
+    }
+    /// A classic script's source text, decoded by its charset, else the
+    /// document's encoding, as browsers do.
+    pub fn script(&self, document: &Resource, url: Url, cancel: &Cancel, progress: impl FnMut(usize)) -> page::Result<String> {
+        let resource = self.fetch(url, Some(&document.url), SCRIPT_LIMIT, cancel, progress, Kind::Script)?;
+        if resource.status.is_some_and(|s| !(200..300).contains(&s)) {
+            return Err("Script returned an unsuccessful HTTP status".into());
+        }
+        let charset = resource.mime.as_ref().and_then(|m| m.get_param("charset")).and_then(|p| encoding_rs::Encoding::for_label(p.as_str().as_bytes()));
+        let encoding = encoding_rs::Encoding::for_bom(&resource.bytes).map(|b| b.0).or(charset).unwrap_or_else(|| document.encoding());
+        let (text, _, _) = encoding.decode(&resource.bytes);
+        Ok(text.into_owned())
+    }
+    /// A script's own GET: status, media type and the body as text.
+    pub fn text(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, String, String)> {
+        let resource = self.fetch(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Fetch)?;
+        let charset = resource.mime.as_ref().and_then(|m| m.get_param("charset")).and_then(|p| encoding_rs::Encoding::for_label(p.as_str().as_bytes()));
+        let encoding = encoding_rs::Encoding::for_bom(&resource.bytes).map(|b| b.0).or(charset).unwrap_or(encoding_rs::UTF_8);
+        let (text, _, _) = encoding.decode(&resource.bytes);
+        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), text.into_owned(), resource.url.to_string()))
     }
     /// An image: a raster format decoded here, or an SVG handed to `svg`
     /// (the engine rasterises it).
@@ -200,6 +224,8 @@ impl Loader {
                                 Kind::Document => "text/html",
                                 Kind::Stylesheet => "text/css",
                                 Kind::Image | Kind::Font => "application/octet-stream",
+                                Kind::Script => "text/javascript",
+                                Kind::Fetch => "text/plain",
                             }
                             .parse()?,
                         );
@@ -215,6 +241,8 @@ impl Loader {
                                 Kind::Stylesheet => "text/css,*/*;q=0.1",
                                 Kind::Image => "image/png,image/jpeg,image/webp,image/gif,image/svg+xml,*/*;q=0.1",
                                 Kind::Font => "font/woff2,font/woff,font/ttf,font/otf,*/*;q=0.1",
+                                Kind::Script => "*/*",
+                                Kind::Fetch => "*/*",
                             },
                         )
                         .send()

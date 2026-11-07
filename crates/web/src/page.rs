@@ -19,6 +19,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
     Html,
+    /// The page's scripts running (the browser's, not the engine's).
+    Scripts,
     Styles,
     Boxes,
     Text,
@@ -198,12 +200,34 @@ pub fn prepare(
     media: css::media::Media,
     fonts: bool,
     cancel: Option<&AtomicBool>,
+    progress: impl FnMut(Phase, usize),
+    resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+) -> Result<Prepared> {
+    prepare_scripted(source, scope, media, fonts, cancel, progress, resource, None)
+}
+/// `prepare`, with the page's scripts run between parsing and loading its
+/// resources: `scripts` takes the parsed document (and whether it is in
+/// quirks mode) and returns it as the scripts left it, so what they added
+/// (stylesheets, images, classes) is loaded and styled like the rest. With
+/// `None`, `<noscript>` content renders, as in a browser without scripting.
+#[allow(clippy::too_many_arguments)] // The page's inputs, each distinct.
+pub fn prepare_scripted(
+    source: Arc<str>,
+    scope: &Scope,
+    media: css::media::Media,
+    fonts: bool,
+    cancel: Option<&AtomicBool>,
     mut progress: impl FnMut(Phase, usize),
     mut resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+    scripts: Option<&mut dyn FnMut(Document, bool) -> Result<Document>>,
 ) -> Result<Prepared> {
     progress(Phase::Html, 0);
-    let parsed = html::parse(source, html::ParseOptions { scripting: false, ..Default::default() }, cancel)?;
-    let doc = parsed.document;
+    let parsed = html::parse(source, html::ParseOptions { scripting: scripts.is_some(), ..Default::default() }, cancel)?;
+    let mut doc = parsed.document;
+    if let Some(run) = scripts {
+        progress(Phase::Scripts, 0);
+        doc = run(doc, parsed.quirks == html::QuirksMode::Quirks)?;
+    }
     progress(Phase::Styles, 0);
     let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None)];
     let mut next = Some(doc.root());

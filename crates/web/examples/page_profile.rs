@@ -20,7 +20,7 @@ use std::{
 
 fn phase(p: page::Phase) -> usize {
     match p {
-        page::Phase::Html => 0,
+        page::Phase::Html | page::Phase::Scripts => 0,
         page::Phase::Styles => 1,
         page::Phase::Boxes => 2,
         page::Phase::Text => 3,

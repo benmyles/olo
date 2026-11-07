@@ -1,0 +1,50 @@
+<!doctype html>
+<html><head><title>JS test</title>
+<script>
+console.log('head script', document.readyState, typeof document.body);
+var ready = false;
+document.addEventListener('DOMContentLoaded', function () { ready = true; console.log('DOMContentLoaded', document.readyState); });
+window.addEventListener('load', () => console.log('load', document.readyState, document.title));
+</script>
+</head>
+<body class="a b">
+<div id="root"><p class="x">one</p><p class="x">two</p></div>
+<ul id="list"></ul>
+<script>
+const root = document.getElementById('root');
+console.log('root', root.tagName, root.children.length, root.querySelectorAll('.x').length, root.firstElementChild.textContent);
+root.classList.add('ready'); document.body.classList.toggle('a');
+const li = document.createElement('li'); li.textContent = 'item'; li.dataset.index = 3; li.style.color = 'red'; li.setAttribute('data-k', 'v');
+document.querySelector('#list').appendChild(li);
+list.insertAdjacentHTML('beforeend', '<li class="h">html <b>bold</b></li>');
+console.log('list', list.innerHTML, li.dataset.index, li.style.color, li.matches('li[data-k]'), li.closest('ul') === list);
+console.log('instanceof', li instanceof HTMLElement, li instanceof Node, document instanceof Document, document.body.parentNode === document.documentElement, root.parentNode.parentNode === document);
+let count = 0; setTimeout(() => { count++; console.log('timeout', count, performance.now() >= 10); }, 10);
+const iv = setInterval(() => { count++; if (count > 3) { clearInterval(iv); console.log('interval done', count); } }, 5);
+requestAnimationFrame((t) => console.log('raf', typeof t));
+Promise.resolve().then(() => console.log('microtask', ready));
+const ev = new CustomEvent('ping', { bubbles: true, detail: 42 }); let got = null;
+document.addEventListener('ping', (e) => { got = e.detail + ':' + e.target.id; }); root.dispatchEvent(ev); console.log('event', got);
+console.log('url', location.href.slice(0, 7), new URL('/a/b?c=1#d', 'https://x.test/p/q').href, new URLSearchParams('a=1&b=2').get('b'));
+console.log('text', JSON.stringify(document.body.textContent.replace(/\s+/g, ' ').trim().slice(0, 20)));
+root.innerHTML = '<span>replaced</span><!-- c -->';
+console.log('replaced', root.childNodes.length, root.firstChild.nodeName, root.lastChild.nodeType, root.outerHTML);
+localStorage.setItem('k', 'v'); console.log('storage', localStorage.getItem('k'), localStorage.k, localStorage.length);
+console.log('matchMedia', matchMedia('(min-width: 600px)').matches, innerWidth, devicePixelRatio, navigator.userAgent.includes('Chrome'));
+try { new HTMLElement(); } catch (e) { console.log('ctor', e.constructor.name); }
+const tpl = document.createElement('template'); tpl.innerHTML = '<p>t</p>'; console.log('template', tpl.content ? 'has content' : 'no content');
+class MyEl extends HTMLElement { connectedCallback() { this.textContent = 'custom!'; } }
+customElements.define('my-el', MyEl); document.body.appendChild(document.createElement('my-el'));
+console.log('custom', document.querySelector('my-el').textContent);
+fetch('data:text/plain,hi').then(r => r.text()).then(t => console.log('fetch', t)).catch(e => console.log('fetch failed', e.message));
+</script>
+</body></html>
+<script>
+class Two extends HTMLElement { constructor() { super(); this.made = true; } connectedCallback() { this.textContent = 'two:' + this.made; } disconnectedCallback() { console.log('two disconnected'); } }
+customElements.define('two-el', Two);
+const t2 = document.createElement('two-el'); console.log('two before', t2.made, t2 instanceof Two, t2 instanceof HTMLElement, t2.textContent);
+document.body.appendChild(t2); console.log('two after', t2.textContent); t2.remove();
+document.body.innerHTML += '<two-el id="x"></two-el>'; console.log('two html', document.getElementById('x').textContent, x.made);
+const tpl2 = document.createElement('template'); tpl2.innerHTML = '<p>t</p>'; console.log('template', tpl2.content && tpl2.content.nodeType, tpl2.content && tpl2.content.firstChild.nodeName);
+console.log('instanceof2', document.body instanceof HTMLElement, document.body instanceof HTMLBodyElement, document.body.constructor.name, Object.getPrototypeOf(HTMLDivElement.prototype) === HTMLElement.prototype);
+</script>

@@ -1,0 +1,12 @@
+[package]
+name = "olo-js"
+description = "Olo's browser scripting: V8 with DOM bindings over the Olo web engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-web = { path = "../web" }
+# JavaScript: V8 (C++), the one non-Rust part of the browser, as the mandate allows.
+v8 = "152"
+url = "2"
