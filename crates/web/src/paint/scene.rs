@@ -82,6 +82,15 @@ pub(super) fn extent(c: &Command, transforms: &[[f64; 6]]) -> Rect {
 pub struct Group {
     pub parent: u32,
     pub opacity: f32,
+    /// A `mask-image` the group composites through (CSS Masking 1 §7).
+    pub mask: Option<MaskRef>,
+}
+/// The box whose mask images, over its border box, mask a group.
+#[derive(Clone, Copy, Debug)]
+pub struct MaskRef {
+    pub owner: BoxId,
+    pub outer: Rect,
+    pub transform: u32,
 }
 /// A clip for descendants of an overflow-clipping box: its padding box,
 /// rounded when the box has corner radii.
@@ -831,12 +840,36 @@ impl<'a> BuildJob<'a> {
                         children_transform = transformed;
                     }
                     let opacity = s.value(P::Opacity).scalar().unwrap_or(1.).clamp(0., 1.);
-                    if opacity < 1. {
+                    // mask-image: the box and its content composite through
+                    // the mask's alpha, as one group.
+                    let mask = match s.value(P::MaskImage) {
+                        Value::Images(list) => {
+                            let urls = list.0.iter().flatten().filter_map(|i| if let crate::css::properties::Image::Url(u) = i { Some(u) } else { None });
+                            let mut loaded = false;
+                            let mut missing = false;
+                            for url in urls {
+                                if tree.background(url).is_some() {
+                                    loaded = true;
+                                } else {
+                                    missing = true;
+                                }
+                            }
+                            if list.0.iter().flatten().any(|i| !matches!(i, crate::css::properties::Image::Url(_))) {
+                                self.note("mask-image gradient ignored", id);
+                            }
+                            if missing {
+                                self.note("mask-image not loaded", id);
+                            }
+                            loaded.then_some(MaskRef { owner: id, outer, transform: self.current_transform })
+                        }
+                        _ => None,
+                    };
+                    if opacity < 1. || mask.is_some() {
                         if self.groups.len() >= self.limits.commands {
                             return Err(Error::Limit);
                         }
                         let index = self.groups.len() as u32;
-                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32 });
+                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask });
                         self.current_group = index;
                         children_group = index;
                     }
@@ -852,7 +885,7 @@ impl<'a> BuildJob<'a> {
                         matches!(p.value(P::Display), Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flex | crate::css::properties::Inner::Grid, .. }))
                     });
                     let z = if positioned || item { z } else { None };
-                    if positioned || z.is_some() || opacity < 1. || isolated || transformed != parent_transform {
+                    if positioned || z.is_some() || opacity < 1. || isolated || transformed != parent_transform || mask.is_some() {
                         if self.contexts.len() >= self.limits.commands {
                             return Err(Error::Limit);
                         }

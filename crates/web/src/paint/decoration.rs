@@ -387,7 +387,7 @@ pub(super) fn raster(
                 let Some(image) = image else { continue };
                 if let Image::Url(url) = image {
                     if let Some(bitmap) = tree.background(url) {
-                        image_layer(out, s, layer, bitmap, origin_box, clip_path, scale, region, mask, transform, engine, cancel)?;
+                        image_layer(out, s, (P::BackgroundSize, P::BackgroundPosition, P::BackgroundRepeat), layer, bitmap, origin_box, clip_path, scale, region, mask, transform, engine, cancel)?;
                     }
                     continue;
                 }
@@ -439,6 +439,7 @@ pub(super) fn raster(
 fn image_layer(
     out: &mut Pixmap,
     s: &Style,
+    (size_property, position_property, repeat_property): (P, P, P),
     layer: usize,
     image: &std::sync::Arc<crate::image::Image>,
     area: Rect,
@@ -457,7 +458,7 @@ fn image_layer(
     }
     let ratio = natural_w / natural_h;
     let nth = |n: usize| if n == 0 { 0 } else { layer % n };
-    let (w, h) = match s.value(P::BackgroundSize) {
+    let (w, h) = match s.value(size_property) {
         Value::Sizes(sizes) if !sizes.0.is_empty() => match &sizes.0[nth(sizes.0.len())] {
             Size::Auto => (natural_w, natural_h),
             Size::Cover => {
@@ -485,14 +486,14 @@ fn image_layer(
         return Ok(());
     }
     // Percentages of background-position are of the free space.
-    let (x, y) = match s.value(P::BackgroundPosition) {
+    let (x, y) = match s.value(position_property) {
         Value::Positions(p) if !p.0.is_empty() => {
             let (px, py) = &p.0[nth(p.0.len())];
             (resolve_any(px, area.width - w), resolve_any(py, area.height - h))
         }
         _ => (0., 0.),
     };
-    let (rx, ry) = match s.value(P::BackgroundRepeat) {
+    let (rx, ry) = match s.value(repeat_property) {
         Value::Repeats(r) if !r.0.is_empty() => r.0[nth(r.0.len())],
         _ => (RepeatAxis::Repeat, RepeatAxis::Repeat),
     };
@@ -529,6 +530,33 @@ fn image_layer(
     };
     m.intersect_path(&PathBuilder::from_rect(band), FillRule::Winding, true, transform);
     out.fill_path(clip_path, &paint, FillRule::Winding, transform, Some(&m));
+    Ok(())
+}
+/// The box's `mask-image` layers drawn into `out` (a transparent surface
+/// the size of the tile): their alpha is the mask (CSS Masking 1 §7),
+/// each sized, placed and tiled like a background over the border box.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn mask_layers(
+    out: &mut Pixmap,
+    s: &Style,
+    outer: Rect,
+    scale: f64,
+    region: DeviceRect,
+    transform: Transform,
+    engine: &mut Engine,
+    tree: &crate::layout::Tree,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
+    let Value::Images(images) = s.value(P::MaskImage) else { return Ok(()) };
+    let Some(clip_path) = path(outer, &[[0.; 2]; 4], scale, region) else { return Ok(()) };
+    for (layer, image) in images.0.iter().enumerate().rev() {
+        check(cancel)?;
+        if let Some(Image::Url(url)) = image
+            && let Some(bitmap) = tree.background(url)
+        {
+            image_layer(out, s, (P::MaskSize, P::MaskPosition, P::MaskRepeat), layer, bitmap, outer, &clip_path, scale, region, None, transform, engine, cancel)?;
+        }
+    }
     Ok(())
 }
 /// How far a box's outer shadows extend past its border box, per side.

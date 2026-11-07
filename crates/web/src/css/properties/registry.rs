@@ -60,6 +60,7 @@ macro_rules! keyword_registry {
 keyword_registry! {
     Absolute => "absolute",
     All => "all",
+    Alpha => "alpha",
     Anywhere => "anywhere",
     Auto => "auto",
     AutoPhrase => "auto-phrase",
@@ -91,6 +92,8 @@ keyword_registry! {
     End => "end",
     Evenodd => "evenodd",
     LineThrough => "line-through",
+    Luminance => "luminance",
+    MatchSource => "match-source",
     Nonzero => "nonzero",
     Fill => "fill",
     FitContent => "fit-content",
@@ -295,6 +298,11 @@ property_registry! {
     MarginLeft, "margin-left", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "0", false;
     MarginRight, "margin-right", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "0", false;
     MarginTop, "margin-top", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "0", false;
+    MaskImage, "mask-image", Grammar::Images, "none", false;
+    MaskMode, "mask-mode", Grammar::Keywords(&[Keyword::MatchSource,Keyword::Alpha,Keyword::Luminance]), "match-source", false;
+    MaskPosition, "mask-position", Grammar::Positions, "0% 0%", false;
+    MaskRepeat, "mask-repeat", Grammar::Repeats, "repeat", false;
+    MaskSize, "mask-size", Grammar::Sizes, "auto", false;
     MaxBlockSize, "max-block-size", Grammar::Size(SizeKind::Maximum), "none", false;
     MaxHeight, "max-height", Grammar::Size(SizeKind::Maximum), "none", false;
     MaxInlineSize, "max-inline-size", Grammar::Size(SizeKind::Maximum), "none", false;
@@ -369,8 +377,9 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
+    WebkitMask, "-webkit-mask", [MaskImage,MaskPosition,MaskSize,MaskRepeat], Background;
     WebkitTextDecoration, "-webkit-text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor], TextDecoration;
-    All, "all", [AlignContent,AlignItems,AlignSelf,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextOrientation,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [AlignContent,AlignItems,AlignSelf,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextOrientation,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
     // Logical border shorthands map to physical sides for horizontal-tb,
@@ -404,6 +413,7 @@ shorthand_registry! {
     Margin, "margin", [MarginTop,MarginRight,MarginBottom,MarginLeft], Quad;
     MarginBlock, "margin-block", [MarginBlockStart,MarginBlockEnd], Repeat;
     MarginInline, "margin-inline", [MarginInlineStart,MarginInlineEnd], Repeat;
+    Mask, "mask", [MaskImage,MaskPosition,MaskSize,MaskRepeat], Background;
     Overflow, "overflow", [OverflowX,OverflowY], Repeat;
     Padding, "padding", [PaddingTop,PaddingRight,PaddingBottom,PaddingLeft], Quad;
     PaddingBlock, "padding-block", [PaddingBlockStart,PaddingBlockEnd], Repeat;
@@ -430,6 +440,13 @@ impl Name {
         }
         if name.eq_ignore_ascii_case("grid-column-gap") {
             return Some(Self::Longhand(Property::ColumnGap));
+        }
+        if let Some(rest) = name.strip_prefix("-webkit-mask-").or_else(|| name.strip_prefix("-WEBKIT-MASK-"))
+            && let Some(p) = [("image", Property::MaskImage), ("mode", Property::MaskMode), ("position", Property::MaskPosition), ("repeat", Property::MaskRepeat), ("size", Property::MaskSize)]
+                .into_iter()
+                .find(|(s, _)| rest.eq_ignore_ascii_case(s))
+        {
+            return Some(Self::Longhand(p.1));
         }
         if let Ok(i) = Property::ALL.binary_search_by(|p| ascii_cmp(p.as_str(), name)) {
             return Some(Self::Longhand(Property::ALL[i]));

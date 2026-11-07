@@ -110,11 +110,12 @@ impl Engine {
                     }
                     let (group, layer) = layers.pop().unwrap();
                     let opacity = scene.groups[group as usize].opacity;
+                    let group_mask = self.group_mask(scene, group, scale, region, cancel)?;
                     let target: &mut Pixmap = match layers.last_mut() {
                         Some(l) => &mut l.1,
                         None => &mut base,
                     };
-                    target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, ..Default::default() }, Transform::identity(), None);
+                    target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, ..Default::default() }, Transform::identity(), group_mask.as_ref());
                 }
                 for &group in &wanted {
                     if !layers.iter().any(|l| l.0 == group) {
@@ -266,12 +267,30 @@ impl Engine {
         }
         while let Some((group, layer)) = layers.pop() {
             let opacity = scene.groups[group as usize].opacity;
+            let group_mask = self.group_mask(scene, group, scale, region, cancel)?;
             let target: &mut Pixmap = match layers.last_mut() {
                 Some(l) => &mut l.1,
                 None => &mut base,
             };
-            target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, ..Default::default() }, Transform::identity(), None);
+            target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, ..Default::default() }, Transform::identity(), group_mask.as_ref());
         }
         Ok(Tile { region, pixmap: base })
+    }
+    /// A group's mask over this tile: its owner's mask images drawn on a
+    /// transparent surface, taken as alpha.
+    fn group_mask(&mut self, scene: &Scene, group: u32, scale: f64, region: DeviceRect, cancel: Option<&AtomicBool>) -> Result<Option<Mask>> {
+        let Some(m) = scene.groups[group as usize].mask else { return Ok(None) };
+        let tree = scene.layout.cache().tree();
+        let s = tree.style(m.owner).ok_or(Error::Invalid)?;
+        let mut surface = Pixmap::new(region.width, region.height).ok_or(Error::Limit)?;
+        let transform = if m.transform == u32::MAX {
+            Transform::identity()
+        } else {
+            let a = scene.transforms[m.transform as usize];
+            let (rx, ry) = (f64::from(region.x), f64::from(region.y));
+            Transform::from_row(a[0] as f32, a[1] as f32, a[2] as f32, a[3] as f32, (a[0] * rx + a[2] * ry + scale * a[4] - rx) as f32, (a[1] * rx + a[3] * ry + scale * a[5] - ry) as f32)
+        };
+        super::decoration::mask_layers(&mut surface, s, m.outer, scale, region, transform, self, tree, cancel)?;
+        Ok(Some(Mask::from_pixmap(surface.as_ref(), tiny_skia::MaskType::Alpha)))
     }
 }

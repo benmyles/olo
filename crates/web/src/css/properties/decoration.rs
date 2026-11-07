@@ -698,10 +698,10 @@ pub(super) fn parse_background(parts: &[Component<'_>], properties: &[Property],
     for &property in properties {
         let value = match property {
             Property::BackgroundColor => color.clone().map_or(Value::Wide(variables::Wide::Initial), Value::Color),
-            Property::BackgroundImage => image_value.clone(),
-            Property::BackgroundPosition => Value::Positions(Positions(positions.clone().into())),
-            Property::BackgroundSize => Value::Sizes(Sizes(sizes.clone().into())),
-            Property::BackgroundRepeat => Value::Repeats(Repeats(repeats.clone().into())),
+            Property::BackgroundImage | Property::MaskImage => image_value.clone(),
+            Property::BackgroundPosition | Property::MaskPosition => Value::Positions(Positions(positions.clone().into())),
+            Property::BackgroundSize | Property::MaskSize => Value::Sizes(Sizes(sizes.clone().into())),
+            Property::BackgroundRepeat | Property::MaskRepeat => Value::Repeats(Repeats(repeats.clone().into())),
             Property::BackgroundClip => clip.map_or(Value::Wide(variables::Wide::Initial), Value::Keyword),
             _ => Value::Wide(variables::Wide::Initial),
         };

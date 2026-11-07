@@ -16,9 +16,17 @@ pub use raster::{DeviceRect, Tile};
 pub use scene::{BuildJob, Command, Options, Primitive, Progress, Scene};
 /// Draw a loaded SVG viewport into a surface through `transform` (its user
 /// units to device pixels), for rasterising an SVG as an image.
-pub fn raster_vector(out: &mut tiny_skia::Pixmap, vector: &crate::svg::Viewport, transform: tiny_skia::Transform, limits: Limits, cancel: Option<&AtomicBool>) -> Result<()> {
+pub(crate) fn raster_vector(
+    out: &mut tiny_skia::Pixmap,
+    vector: &crate::svg::Viewport,
+    used: Option<&crate::svg::used::Geometry>,
+    clips: &[crate::svg::clip::Resolved],
+    transform: tiny_skia::Transform,
+    limits: Limits,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
     let mut work = 0usize;
-    vector::raster(out, vector, None, &[], transform, None, limits, &mut work, cancel)
+    vector::raster(out, vector, used, clips, transform, None, limits, &mut work, cancel)
 }
 use std::sync::atomic::{AtomicBool, Ordering};
 #[derive(Debug)]

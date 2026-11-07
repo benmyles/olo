@@ -61,7 +61,19 @@ pub fn rasterize(source: &[u8], host: &impl Host, scope: &Scope, scale: f64, can
     let mut pixmap = tiny_skia::Pixmap::new(pw, ph).ok_or(paint::Error::Limit)?;
     if let Some([sx, sy, tx, ty]) = vector.transform(w, h) {
         let t = tiny_skia::Transform::from_row((sx * scale) as f32, 0., 0., (sy * scale) as f32, (tx * scale) as f32, (ty * scale) as f32);
-        paint::raster_vector(&mut pixmap, &vector, t, Default::default(), cancel)?;
+        // CSS-sized geometry (rect x/y/width/height) and clip paths resolve
+        // against the viewport, as the page painter does for inline SVG.
+        let limits = paint::Limits::default();
+        let viewport = vector.view_box.map_or([w, h], |v| [v[2], v[3]]);
+        let used = if vector.rectangles != 0 { Some(svg::used::Geometry::resolve(&vector, viewport, limits.path_segments, limits.path_bytes, cancel)?) } else { None };
+        let clips = if vector.clip_nodes().is_empty() {
+            Vec::new()
+        } else {
+            let mut viewports = std::collections::HashMap::new();
+            viewports.insert(vector.node, viewport);
+            vector.resolve_clips(&viewports, limits.path_segments, limits.path_bytes, cancel)?
+        };
+        paint::raster_vector(&mut pixmap, &vector, used.as_ref(), &clips, t, limits, cancel)?;
     }
     Image::from_premultiplied(pw, ph, pixmap.take(), scale, Default::default(), cancel).map_err(|_| paint::Error::Limit)
 }
