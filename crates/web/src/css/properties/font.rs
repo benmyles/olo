@@ -70,7 +70,7 @@ impl Families {
                 })
                 .sum::<usize>()
     }
-    pub(crate) fn parse(values: Components<'_>, cancelled: Option<&AtomicBool>) -> Result<Self> {
+    pub(crate) fn parse<'a>(values: impl Iterator<Item = Component<'a>>, cancelled: Option<&AtomicBool>) -> Result<Self> {
         let mut input = values.filter(|c| c.kind() != Kind::Whitespace).peekable();
         let mut result = Vec::new();
         loop {
@@ -129,14 +129,21 @@ impl Families {
                 _ => return Err(Error::Invalid),
             }
         }
+        Ok(Self::from_families(result))
+    }
+    fn from_families(result: Vec<Family>) -> Self {
         #[cfg(feature = "baseline-font-family-fat")]
         {
-            Ok(Self(Arc::from(result)))
+            Self(Arc::from(result))
         }
         #[cfg(not(feature = "baseline-font-family-fat"))]
         {
-            Ok(Self(triomphe::ThinArc::from_header_and_iter((), result.into_iter())))
+            Self(triomphe::ThinArc::from_header_and_iter((), result.into_iter()))
         }
+    }
+    /// The UI font (a system font keyword's).
+    pub(crate) fn system_ui() -> Self {
+        Self::from_families(vec![Family::Generic(GenericFamily::SystemUi), Family::Generic(GenericFamily::SansSerif)])
     }
 }
 fn reserved(s: &str) -> bool {
@@ -236,4 +243,135 @@ pub(super) fn parse_features(parts: &[Component<'_>]) -> Result<Value> {
         return Err(Error::Invalid);
     }
     Ok(Value::Features(Features(out.into())))
+}
+/// The `font` shorthand (CSS Fonts 4 §3.1): `[ <style> || <variant> ||
+/// <weight> || <width> ]? <size> [ / <line-height> ]? <family>`, every
+/// longhand it covers assigned (the ones left out to their initial
+/// values); or a system font keyword, drawn as the UI font.
+pub(super) fn parse_shorthand(values: Components<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Assignments> {
+    let parts: Vec<Component<'_>> = values.filter(|c| c.kind() != Kind::Whitespace).collect();
+    if parts.is_empty() {
+        return Err(Error::Invalid);
+    }
+    let normal = || Value::Keyword(Keyword::Normal);
+    // font-width's normal is 100% (see `width`).
+    let normal_width = || Value::Numeric(Numeric::scalar(100., math::Dimension::Percentage, Range::Nonnegative));
+    let mut style = None;
+    let mut weight = None;
+    let mut font_width = None;
+    let mut normals = 0usize;
+    let mut size = None;
+    let mut line_height = None;
+    let mut family = None;
+    // A system font: the UI font at its size.
+    if let [c] = parts.as_slice()
+        && c.kind() == Kind::Ident
+        && let Some(name) = c.text()
+        && ["caption", "icon", "menu", "message-box", "small-caption", "status-bar"].iter().any(|k| name.eq_ignore_ascii_case(k))
+    {
+        let mut out = Assignments::new();
+        out.push(Assignment { property: Property::FontStyle, value: normal() });
+        out.push(Assignment { property: Property::FontWeight, value: normal() });
+        out.push(Assignment { property: Property::FontWidth, value: normal_width() });
+        out.push(Assignment {
+            property: Property::FontSize,
+            value: Value::Numeric(Numeric::scalar(if name.eq_ignore_ascii_case("small-caption") { 11. } else { 13.333_333 }, math::Dimension::Length, Range::Nonnegative)),
+        });
+        out.push(Assignment { property: Property::LineHeight, value: normal() });
+        out.push(Assignment { property: Property::FontFamily, value: Value::Families(Families::system_ui()) });
+        out.push(Assignment { property: Property::FontFeatureSettings, value: normal() });
+        return Ok(out);
+    }
+    let mut i = 0usize;
+    // Up to four leading style, variant, weight and width values, in any
+    // order; `normal` stands for any of them.
+    while i < parts.len() && i < 4 {
+        check(cancelled)?;
+        let c = parts[i];
+        if c.kind() == Kind::Ident {
+            let text = c.text().unwrap_or("");
+            if text.eq_ignore_ascii_case("normal") {
+                normals += 1;
+                i += 1;
+                continue;
+            }
+            if text.eq_ignore_ascii_case("small-caps") {
+                // font-variant: accepted, not drawn.
+                i += 1;
+                continue;
+            }
+            if style.is_none()
+                && let Ok(v) = style_of(&parts[i..], limits, cancelled)
+            {
+                style = Some(v.0);
+                i += v.1;
+                continue;
+            }
+            if weight.is_none()
+                && ["bold", "bolder", "lighter"].iter().any(|k| text.eq_ignore_ascii_case(k))
+                && let Ok(v) = super::parse::component(Property::FontWeight.grammar(), c, limits, cancelled)
+            {
+                weight = Some(v);
+                i += 1;
+                continue;
+            }
+            if font_width.is_none()
+                && let Ok(v) = width(c, limits, cancelled)
+            {
+                font_width = Some(v);
+                i += 1;
+                continue;
+            }
+            break;
+        }
+        if matches!(c.kind(), Kind::Number | Kind::Integer)
+            && weight.is_none()
+            && let Ok(v) = super::parse::component(Property::FontWeight.grammar(), c, limits, cancelled)
+        {
+            weight = Some(v);
+            i += 1;
+            continue;
+        }
+        break;
+    }
+    if normals + usize::from(style.is_some()) + usize::from(weight.is_some()) + usize::from(font_width.is_some()) > 4 {
+        return Err(Error::Invalid);
+    }
+    // The size, then an optional / line-height, then the family list.
+    let c = *parts.get(i).ok_or(Error::Invalid)?;
+    size = Some(super::parse::component(Property::FontSize.grammar(), c, limits, cancelled)?);
+    i += 1;
+    if parts.get(i).is_some_and(|c| c.kind() == Kind::Delim && c.character() == Some('/')) {
+        let c = *parts.get(i + 1).ok_or(Error::Invalid)?;
+        line_height = Some(super::parse::component(Property::LineHeight.grammar(), c, limits, cancelled)?);
+        i += 2;
+    }
+    if i >= parts.len() {
+        return Err(Error::Invalid);
+    }
+    family = Some(Families::parse(parts[i..].iter().copied(), cancelled)?);
+    let mut out = Assignments::new();
+    out.push(Assignment { property: Property::FontStyle, value: style.unwrap_or_else(normal) });
+    out.push(Assignment { property: Property::FontWeight, value: weight.unwrap_or_else(normal) });
+    out.push(Assignment { property: Property::FontWidth, value: font_width.unwrap_or_else(normal_width) });
+    out.push(Assignment { property: Property::FontSize, value: size.ok_or(Error::Invalid)? });
+    out.push(Assignment { property: Property::LineHeight, value: line_height.unwrap_or_else(normal) });
+    out.push(Assignment { property: Property::FontFamily, value: Value::Families(family.ok_or(Error::Invalid)?) });
+    out.push(Assignment { property: Property::FontFeatureSettings, value: normal() });
+    Ok(out)
+}
+/// A font-style at the start of `parts`: the value and how many parts it took.
+fn style_of(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<(Value, usize)> {
+    let first = parts.first().ok_or(Error::Invalid)?;
+    let text = first.text().ok_or(Error::Invalid)?;
+    if text.eq_ignore_ascii_case("oblique")
+        && parts.get(1).is_some_and(|c| matches!(c.kind(), Kind::Dimension | Kind::IntegerDimension))
+        && let Ok(v) = style(&parts[..2], limits, cancelled)
+    {
+        return Ok((v, 2));
+    }
+    if ["italic", "oblique"].iter().any(|k| text.eq_ignore_ascii_case(k)) {
+        return style(&parts[..1], limits, cancelled).map(|v| (v, 1));
+    }
+    Err(Error::Invalid)
 }

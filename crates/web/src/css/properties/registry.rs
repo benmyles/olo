@@ -48,6 +48,7 @@ pub(super) enum Expansion {
     TextWrap,
     TextDecoration,
     ListStyle,
+    Font,
 }
 macro_rules! keyword_registry {
     ($($id:ident => $name:literal),* $(,)?) => {
@@ -417,6 +418,9 @@ shorthand_registry! {
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;
     Flex, "flex", [FlexGrow,FlexShrink,FlexBasis], Flex;
     FlexFlow, "flex-flow", [FlexDirection,FlexWrap], Unordered;
+    // font resets its longhands and the feature settings (font-variant,
+    // font-kerning and the rest are not implemented).
+    Font, "font", [FontStyle,FontWeight,FontWidth,FontSize,LineHeight,FontFamily,FontFeatureSettings], Font;
     Gap, "gap", [RowGap,ColumnGap], Repeat;
     Grid, "grid", [GridTemplateRows,GridTemplateColumns,GridAutoRows,GridAutoColumns,GridAutoFlow], Grid;
     GridArea, "grid-area", [GridRowStart,GridColumnStart,GridRowEnd,GridColumnEnd], Grid;

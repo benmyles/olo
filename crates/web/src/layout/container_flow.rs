@@ -142,10 +142,14 @@ impl Job<'_> {
             },
         })
     }
-    /// The explicit tracks of one axis, auto-repeats expanded to what fits.
-    fn tracks(&mut self, value: &Value, available: Option<f64>, gap: f64, queries: QueryBasis) -> Result<Vec<Track>> {
-        let Value::Tracks(Tracks(entries)) = value else { return Ok(Vec::new()) };
+    /// The explicit tracks of one axis, auto-repeats expanded to what fits
+    /// (one per item when nothing about the repeated tracks is definite,
+    /// as `minmax(0, 1fr)`: as many as can be filled); with the range of
+    /// an `auto-fit` repeat, whose empty tracks collapse after placement.
+    fn tracks(&mut self, value: &Value, available: Option<f64>, gap: f64, queries: QueryBasis, items: usize) -> Result<(Vec<Track>, Option<(usize, usize)>)> {
+        let Value::Tracks(Tracks(entries)) = value else { return Ok((Vec::new(), None)) };
         let mut out = Vec::new();
+        let mut fit = None;
         for entry in entries.iter() {
             check(self.cancel)?;
             match entry {
@@ -175,21 +179,23 @@ impl Job<'_> {
                             let room = w - fixed_elsewhere - gap * others as f64;
                             ((room + gap) / (definite + gap * body.len() as f64)).floor().max(1.) as usize
                         }
-                        _ => 1,
+                        Some(_) => items.div_ceil(body.len().max(1)),
+                        None => 1,
                     };
                     let copies = copies.min(10_000 / body.len().max(1)).max(1);
-                    let _ = kind; // auto-fit's collapse of empty tracks happens after placement.
+                    if matches!(kind, AutoRepeat::Fit) {
+                        fit = Some((out.len(), out.len() + copies * body.len()));
+                    }
                     for _ in 0..copies {
                         out.extend(body.iter().copied());
                     }
-                    let _ = AutoRepeat::Fit;
                 }
             }
             if out.len() > 10_000 {
                 return Err(Error::Limit);
             }
         }
-        Ok(out)
+        Ok((out, fit))
     }
     /// The rows of a table box, through its row groups, each with its cells.
     fn table_rows(&self, table: BoxId) -> Result<Vec<(BoxId, Vec<BoxId>)>> {
@@ -405,8 +411,8 @@ impl Job<'_> {
             }
             Kind::Row { columns, spacing }
         } else if grid {
-            let mut columns = self.tracks(style.value(P::GridTemplateColumns), Some(width), column_gap, queries)?;
-            let explicit_rows = self.tracks(style.value(P::GridTemplateRows), height, row_gap, queries)?;
+            let (mut columns, fit_columns) = self.tracks(style.value(P::GridTemplateColumns), Some(width), column_gap, queries, items.len())?;
+            let (explicit_rows, _) = self.tracks(style.value(P::GridTemplateRows), height, row_gap, queries, items.len())?;
             let auto_columns = self.auto_tracks(style.value(P::GridAutoColumns), Some(width), queries)?;
             let auto_rows = self.auto_tracks(style.value(P::GridAutoRows), height, queries)?;
             let flow_column = matches!(keyword(style, P::GridAutoFlow), K::Column | K::ColumnDense);
@@ -424,7 +430,35 @@ impl Job<'_> {
                 }
             }
             let (column_count, row_count) = place(&mut items, explicit_columns, explicit_rows.len(), self.cancel)?;
-            while columns.len() < column_count {
+            // auto-fit: repeated tracks no item occupies collapse away, their
+            // gaps with them (CSS Grid 2 §7.2.3.2).
+            if let Some((first, last)) = fit_columns {
+                let mut occupied = vec![false; columns.len()];
+                for item in &items {
+                    for c in item.cell.columns.0..item.cell.columns.1.min(columns.len()) {
+                        occupied[c] = true;
+                    }
+                }
+                let mut map = Vec::with_capacity(columns.len() + 1);
+                let mut kept = Vec::with_capacity(columns.len());
+                for (i, track) in columns.iter().enumerate() {
+                    map.push(kept.len());
+                    if !(first..last).contains(&i) || occupied[i] {
+                        kept.push(*track);
+                    }
+                }
+                map.push(kept.len());
+                if kept.len() < columns.len() {
+                    for item in &mut items {
+                        let (a, z) = item.cell.columns;
+                        let a = map[a.min(columns.len())];
+                        let z = map[z.min(columns.len())].max(a + 1);
+                        item.cell.columns = (a, z);
+                    }
+                    columns = kept;
+                }
+            }
+            while columns.len() < column_count.min(columns.len().max(column_count)) {
                 let i = columns.len() - explicit_columns;
                 columns.push(auto_columns[i % auto_columns.len()]);
             }
@@ -493,7 +527,7 @@ impl Job<'_> {
         Ok(())
     }
     fn auto_tracks(&mut self, value: &Value, available: Option<f64>, queries: QueryBasis) -> Result<Vec<Track>> {
-        let tracks = self.tracks(value, available, 0., queries)?;
+        let (tracks, _) = self.tracks(value, available, 0., queries, 1)?;
         Ok(if tracks.is_empty() { vec![Track { min: Bound::Auto, max: Bound::Auto }] } else { tracks })
     }
     fn container_item(&self, id: BoxId) -> Option<(usize, usize)> {

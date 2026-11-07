@@ -90,6 +90,19 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
         };
     }
     if let Name::Shorthand(shorthand) = name
+        && matches!(shorthand.expansion(), Expansion::Font)
+    {
+        let mut parts = values.clone().filter(|c| c.kind() != Kind::Whitespace);
+        if let Some(c) = parts.next()
+            && parts.next().is_none()
+            && c.kind() == Kind::Ident
+            && let Some(wide) = wide(c.text().unwrap())
+        {
+            return Ok(name.wide(wide));
+        }
+        return font::parse_shorthand(values, limits, cancelled);
+    }
+    if let Name::Shorthand(shorthand) = name
         && matches!(shorthand.expansion(), Expansion::Grid)
     {
         let mut parts = values.clone().filter(|c| c.kind() != Kind::Whitespace);
@@ -139,7 +152,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 Expansion::TextDecoration => text_decoration(&parts, limits, cancelled),
                 Expansion::ListStyle => list_style(&parts, limits, cancelled),
                 Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
-                Expansion::Grid | Expansion::Radius | Expansion::Background => unreachable!("these shorthands parse before part collection"),
+                Expansion::Grid | Expansion::Radius | Expansion::Background | Expansion::Font => unreachable!("these shorthands parse before part collection"),
                 Expansion::Border => border(&parts, properties, limits, cancelled),
                 Expansion::Quad | Expansion::Repeat => {
                     if parts.len() > properties.len() {
