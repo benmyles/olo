@@ -44,6 +44,13 @@ pub struct Image {
     /// Device pixels per CSS pixel of its natural size (an SVG rasterised
     /// for a scale is sharper than its CSS size).
     density: f64,
+    /// Every pixel is opaque: drawn at 1:1, rows are copied, not blended.
+    opaque: bool,
+}
+/// Whether every alpha byte is 255 (vectorised: 16 bytes a step).
+fn all_opaque(rgba: &[u8]) -> bool {
+    let (chunks, rest) = rgba.as_chunks::<16>();
+    chunks.iter().all(|c| c[3] & c[7] & c[11] & c[15] == 255) && rest.chunks_exact(4).all(|p| p[3] == 255)
 }
 impl Image {
     /// Premultiplied RGBA8 as rasterised, `density` pixels per CSS pixel.
@@ -57,7 +64,8 @@ impl Image {
         if width == 0 || height == 0 || rgba.len() != bytes || !(density.is_finite() && density > 0.) {
             return Err(Error::Invalid);
         }
-        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density }))
+        let opaque = all_opaque(&rgba);
+        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density, opaque }))
     }
     /// The natural size in CSS pixels.
     pub fn natural(&self) -> (f64, f64) {
@@ -115,13 +123,18 @@ impl Image {
             }
         }
         check(cancel)?;
-        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density: 1. }))
+        let opaque = all_opaque(&rgba);
+        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density: 1., opaque }))
     }
     pub fn width(&self) -> u32 {
         self.width
     }
     pub fn height(&self) -> u32 {
         self.height
+    }
+    /// Whether every pixel is opaque.
+    pub fn opaque(&self) -> bool {
+        self.opaque
     }
     pub fn rgba(&self) -> &[u8] {
         &self.rgba

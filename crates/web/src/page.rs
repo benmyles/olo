@@ -1373,6 +1373,10 @@ fn render(
     let kept = previous.filter(|p| styles.geometry_kept() && p.device_scale() == viewport.scale && same_bindings(p));
     let layout = if let Some(p) = kept {
         fallbacks.merge(&p.cache().fallbacks());
+        if let Some(t) = timing {
+            stamps[1] = t.elapsed().as_secs_f64() * 1000.;
+            stamps[2] = stamps[1];
+        }
         Arc::new(p.with_styles(styles, doc, images.cloned()))
     } else {
         progress(Phase::Boxes, 0);

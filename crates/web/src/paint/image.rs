@@ -31,6 +31,21 @@ fn tap(at: f64, origin: f64, extent: f64, pixels: u32) -> Tap {
     Tap { a, b: (a + 1).min(pixels as usize - 1), f: ((source - a as f64) * 256.).round() / 256. }
 }
 #[allow(clippy::too_many_arguments)]
+thread_local! {
+    /// OLO_TILE_PROFILE: images drawn per path (copied, blended, masked,
+    /// sampled, transformed), each a count and milliseconds.
+    pub(super) static PROFILE: std::cell::Cell<[(u32, f64); 5]> = const { std::cell::Cell::new([(0, 0.); 5]) };
+}
+fn profiled(path: usize, started: Option<std::time::Instant>) {
+    if let Some(t) = started {
+        PROFILE.with(|p| {
+            let mut v = p.get();
+            v[path].0 += 1;
+            v[path].1 += t.elapsed().as_secs_f64() * 1000.;
+            p.set(v);
+        });
+    }
+}
 pub(super) fn raster(
     engine: &mut Engine,
     out: &mut Pixmap,
@@ -62,8 +77,20 @@ pub(super) fn raster(
     }
     // Drawn at its own size on whole device pixels (a canvas, an icon at
     // 1:1): rows copied and composited, no sampling.
+    let started = std::env::var_os("OLO_TILE_PROFILE").map(|_| std::time::Instant::now());
     if width == f64::from(image.width()) && height == f64::from(image.height()) {
-        return direct(out, image.rgba(), image.width() as usize, Frame { left, top, width, height, x0, y0, x1, y1 }, region, mask, cancel);
+        let result = direct(out, image.rgba(), image.width() as usize, image.opaque(), Frame { left, top, width, height, x0, y0, x1, y1 }, region, mask, cancel);
+        profiled(
+            if mask.is_some() {
+                2
+            } else if image.opaque() {
+                0
+            } else {
+                1
+            },
+            started,
+        );
+        return result;
     }
     // Source-pixel mipmaps, with the sharpening bias used by the reference
     // backend. This is a filtering policy, not a promise of GPU LOD bit identity.
@@ -95,7 +122,9 @@ pub(super) fn raster(
     let upper = upper_level.as_ref().map_or_else(|| Plane::from(image.as_ref()), |p| p.plane());
     let lower = lower_level.as_ref().map(|p| p.plane());
     let frame = Frame { left, top, width, height, x0, y0, x1, y1 };
-    if let Some(lower) = lower { draw::<true>(out, upper, lower, weight, frame, region, mask, cancel) } else { draw::<false>(out, upper, upper, 0., frame, region, mask, cancel) }
+    let result = if let Some(lower) = lower { draw::<true>(out, upper, lower, weight, frame, region, mask, cancel) } else { draw::<false>(out, upper, upper, 0., frame, region, mask, cancel) };
+    profiled(3, started);
+    result
 }
 struct Frame {
     left: f64,
@@ -152,8 +181,10 @@ fn draw<const BLEND: bool>(out: &mut Pixmap, upper: Plane<'_>, lower: Plane<'_>,
     }
     Ok(())
 }
-/// Premultiplied source pixels over the tile, one to one.
-fn direct(out: &mut Pixmap, rgba: &[u8], stride_px: usize, frame: Frame, region: DeviceRect, mask: Option<&Mask>, cancel: Option<&AtomicBool>) -> Result<()> {
+/// Premultiplied source pixels over the tile, one to one: opaque rows
+/// unmasked are copied; others composited, the mask's coverage applied.
+#[allow(clippy::too_many_arguments)]
+fn direct(out: &mut Pixmap, rgba: &[u8], stride_px: usize, opaque: bool, frame: Frame, region: DeviceRect, mask: Option<&Mask>, cancel: Option<&AtomicBool>) -> Result<()> {
     let Frame { left, top, x0, y0, x1, y1, .. } = frame;
     let out_stride = region.width as usize * 4;
     let data = out.data_mut();
@@ -166,6 +197,25 @@ fn direct(out: &mut Pixmap, rgba: &[u8], stride_px: usize, frame: Frame, region:
         let src_row = (gy - top as i64) as usize * stride_px * 4;
         let src = &rgba[src_row + src_x0 * 4..src_row + (src_x0 + columns) * 4];
         let dst = &mut data[row * out_stride + col0 * 4..row * out_stride + (col0 + columns) * 4];
+        if mask.is_none() {
+            if opaque {
+                dst.copy_from_slice(src);
+            } else {
+                for (d, s) in dst.as_chunks_mut::<4>().0.iter_mut().zip(src.as_chunks::<4>().0) {
+                    let sa = u32::from(s[3]);
+                    if sa == 255 {
+                        *d = *s;
+                    } else if sa != 0 {
+                        let inverse = 255 - sa;
+                        d[0] = (u32::from(s[0]) + (u32::from(d[0]) * inverse + 127) / 255).min(255) as u8;
+                        d[1] = (u32::from(s[1]) + (u32::from(d[1]) * inverse + 127) / 255).min(255) as u8;
+                        d[2] = (u32::from(s[2]) + (u32::from(d[2]) * inverse + 127) / 255).min(255) as u8;
+                        d[3] = (sa + (u32::from(d[3]) * inverse + 127) / 255).min(255) as u8;
+                    }
+                }
+            }
+            continue;
+        }
         let mask_row = mask.map(|m| &m.data()[row * region.width as usize + col0..row * region.width as usize + col0 + columns]);
         for (i, (d, s)) in dst.as_chunks_mut::<4>().0.iter_mut().zip(src.as_chunks::<4>().0).enumerate() {
             let m = mask_row.map_or(255, |m| u32::from(m[i]));
@@ -210,6 +260,23 @@ fn channel(p: Plane<'_>, x: &Tap, y: &Tap, c: usize) -> f64 {
 /// path, but resampled: transformed pixels have no device grid to snap to.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn transformed(
+    engine: &mut Engine,
+    out: &mut Pixmap,
+    image: &Arc<crate::image::Image>,
+    bounds: Rect,
+    scale: f64,
+    region: DeviceRect,
+    transform: Transform,
+    mask: Option<&Mask>,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
+    let started = std::env::var_os("OLO_TILE_PROFILE").map(|_| std::time::Instant::now());
+    let result = transformed_inner(engine, out, image, bounds, scale, region, transform, mask, cancel);
+    profiled(4, started);
+    result
+}
+#[allow(clippy::too_many_arguments)]
+fn transformed_inner(
     engine: &mut Engine,
     out: &mut Pixmap,
     image: &Arc<crate::image::Image>,

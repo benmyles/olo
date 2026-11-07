@@ -298,12 +298,16 @@ impl Engine {
             let names = ["image", "vector", "fill", "border", "decoration", "text"];
             let parts: Vec<String> = (0..6).filter(|&k| counts[k] > 0).map(|k| format!("{} {}×{:.2}", names[k], counts[k], spent[k])).collect();
             let d = super::decoration::PROFILE.with(|p| p.replace([0.; 8]));
+            let i = super::image::PROFILE.with(|p| p.replace([(0, 0.); 5]));
+            let image_paths: Vec<String> =
+                ["copied", "blended", "masked", "sampled", "transformed"].iter().zip(i).filter(|(_, (n, _))| *n > 0).map(|(name, (n, ms))| format!("{name} {n}×{ms:.2}")).collect();
             eprintln!(
-                "  tile {},{}: {:.1} ms: {} (decoration: shadows {:.2} [inside {:.2}, cached ×{:.0}, fallback ×{:.0}], colour {:.2}, images {:.2}, gradients {:.2}, borders {:.2})",
+                "  tile {},{}: {:.1} ms: {} (images: {}; decoration: shadows {:.2} [inside {:.2}, cached ×{:.0}, fallback ×{:.0}], colour {:.2}, images {:.2}, gradients {:.2}, borders {:.2})",
                 region.x,
                 region.y,
                 t.elapsed().as_secs_f64() * 1000.,
                 parts.join(", "),
+                image_paths.join(", "),
                 d[0],
                 d[5],
                 d[6] * 1000.,

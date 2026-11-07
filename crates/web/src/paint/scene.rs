@@ -394,6 +394,9 @@ struct State {
     clip: u32,
     group: u32,
     transform: u32,
+    /// Under `opacity: 0`: nothing of it paints (its boxes are walked for
+    /// their states and nothing else).
+    hidden: bool,
 }
 /// One CSS stacking context (CSS 2.2 Appendix E): the root, positioned boxes
 /// (z-index: auto ones painted as if they were contexts), opacity groups and
@@ -929,12 +932,17 @@ impl<'a> BuildJob<'a> {
                 break;
             };
             self.next += 1;
-            let (parent, mut context, mut clip, parent_group, parent_transform) = if let Some(parent) = b.parent {
+            let (parent, mut context, mut clip, parent_group, parent_transform, parent_hidden) = if let Some(parent) = b.parent {
                 let p = &self.states[parent.index()];
-                (p.origin, p.context, p.clip, p.group, p.transform)
+                (p.origin, p.context, p.clip, p.group, p.transform, p.hidden)
             } else {
-                (Point::default(), 0, NONE, NONE, NONE)
+                (Point::default(), 0, NONE, NONE, NONE, false)
             };
+            if parent_hidden {
+                self.states.push(State { origin: parent, context, clip, group: parent_group, transform: parent_transform, hidden: true });
+                self.progress.boxes += 1;
+                continue;
+            }
             self.current_group = parent_group;
             let mut children_group = parent_group;
             self.current_transform = parent_transform;
@@ -971,10 +979,26 @@ impl<'a> BuildJob<'a> {
                     // and is a stacking context (CSS Transforms 1 §3).
                     let transformed = self.transform_of(s, outer, parent_transform)?;
                     if transformed != parent_transform {
+                        // OLO_TRANSFORM_DEBUG: which boxes paint through a matrix.
+                        if std::env::var_os("OLO_TRANSFORM_DEBUG").is_some() {
+                            eprintln!(
+                                "  transform on <{} class={:?}>: {:?}",
+                                self.doc.name(b.node).ok().flatten().unwrap_or("?"),
+                                self.doc.attribute(b.node, "class").ok().flatten().unwrap_or("").chars().take(60).collect::<String>(),
+                                self.transforms[transformed as usize]
+                            );
+                        }
                         self.current_transform = transformed;
                         children_transform = transformed;
                     }
                     let opacity = s.value(P::Opacity).scalar().unwrap_or(1.).clamp(0., 1.);
+                    // Fully transparent: nothing of it or its content paints
+                    // (a fallback picture under a canvas that drew, say).
+                    if opacity == 0. {
+                        self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform, hidden: true });
+                        self.progress.boxes += 1;
+                        continue;
+                    }
                     // mask-image: the box and its content composite through
                     // the mask's alpha, as one group.
                     let mask = match s.value(P::MaskImage) {
@@ -1105,7 +1129,7 @@ impl<'a> BuildJob<'a> {
                     }
                 }
             }
-            self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform });
+            self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform, hidden: false });
             self.progress.boxes += 1;
             self.progress.commands = self.draft.len();
         }
