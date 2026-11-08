@@ -837,6 +837,55 @@ fn closed_details_show_their_summary_alone() {
 }
 
 #[test]
+fn text_rewritten_in_place_is_the_tree_built_anew() {
+    // A text node's new data and an inline element's text children
+    // replaced (GitHub's typed demo line): the tree patched in place is the
+    // one a fresh build makes, spans and inline boxes moved along.
+    let css = format!("{BASE}b{{padding:0 2px}}");
+    let build = |doc: &olo_web::dom::Document| {
+        let syntax = Syntax::parse(Arc::from(css.as_str()), Default::default(), None).unwrap();
+        let mut builder = SheetBuilder::new(Default::default());
+        builder.add_sheet(&syntax, Origin::Author, None).unwrap();
+        let rules = builder.finish(None).unwrap();
+        let s = scope();
+        let native = native_host::NativeHost(s.clone());
+        let defaults = Defaults::new(&native, Default::default(), None).unwrap();
+        let mut job = style::Job::new(doc, &rules, defaults, Default::default(), Default::default(), None).unwrap();
+        while !job.step(64, |_| &native).unwrap().finished {}
+        let styles = Arc::new(job.finish().unwrap());
+        let mut j = layout::BuildJob::new(doc, styles, Default::default(), None).unwrap();
+        while !j.step(64).unwrap().finished {}
+        j.finish().unwrap()
+    };
+    let mut doc = html::parse(Arc::from("<!doctype html><html><body><p>One <b id=b>bold</b> and <span id=s>typed</span> then <i>tail</i></p><p>Second</p></body></html>"), Default::default(), None)
+        .unwrap()
+        .document;
+    let before = build(&doc);
+    let find = |doc: &olo_web::dom::Document, id: &str| {
+        let mut stack = vec![doc.root()];
+        while let Some(n) = stack.pop() {
+            if doc.attribute(n, "id").ok().flatten() == Some(id) {
+                return n;
+            }
+            stack.extend(doc.children(n).unwrap());
+        }
+        panic!("no #{id}")
+    };
+    let (b, span) = (find(&doc, "b"), find(&doc, "s"));
+    let bold = doc.children(b).unwrap().next().unwrap();
+    doc.set_value(bold, "much bolder").unwrap();
+    let old = doc.children(span).unwrap().next().unwrap();
+    doc.detach(old).unwrap();
+    for t in ["typed ", "on and on"] {
+        let text = doc.create_text(t).unwrap();
+        doc.append_child(span, text).unwrap();
+    }
+    let patched = before.with_text(&doc, &[bold], &[span]).expect("rewritten in place");
+    let fresh = build(&doc);
+    assert_eq!(patched.differs_from(&fresh), None);
+}
+
+#[test]
 fn grid_areas_and_named_lines_place_items() {
     // MDN's layout: items placed by `grid-area` names (in source order the
     // other way round), the areas' edges named lines, line names from a
