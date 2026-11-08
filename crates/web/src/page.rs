@@ -2260,6 +2260,11 @@ fn render_once(
             }
         }
     }
+    // Whether the restyle so far left the geometry as it was: the animation
+    // patch below says so of its own change only (BBC's menu section,
+    // children added in a whole restyle, then a chevron's transition,
+    // kept the old layout and stayed shut).
+    let restyle_kept_geometry = styles.geometry_kept();
     // A first render (no styles before): its animations from its own styles.
     if previous_styles.is_none() && !rules.keyframes().is_empty() {
         (animation_values, animation_nodes) = timeline.sample(rules.keyframes(), styled_elements(doc, &styles), cancel);
@@ -2322,7 +2327,7 @@ fn render_once(
             _ => false,
         }
     };
-    let kept = previous.filter(|p| styles.geometry_kept() && !relayout && p.device_scale() == viewport.scale && same_bindings(p));
+    let kept = previous.filter(|p| restyle_kept_geometry && styles.geometry_kept() && !relayout && p.device_scale() == viewport.scale && same_bindings(p));
     let kept_layout = kept.is_some();
     // What changed since the previous layout (and what the patch restyled),
     // for taking the rest from it: only when laid out again.

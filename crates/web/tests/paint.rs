@@ -1271,3 +1271,59 @@ fn a_transitioned_property_eases_to_its_new_value_and_says_so() {
     page.rerender(page.document.clone(), Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     assert!((opacity(&page) - 0.5).abs() < 0.02, "{}", opacity(&page));
 }
+
+#[test]
+fn a_transition_patched_over_a_whole_restyle_keeps_its_new_geometry() {
+    // BBC's menu: a section opened (its rule written into a <style> by
+    // its CSS-in-JS, a whole restyle) while its chevron starts turning
+    // (a transition, patched after): the old layout was kept, shut.
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    let mut page = olo_web::page::load(
+        Arc::from("<!doctype html><style id=s>body{margin:0}#d{width:10px;height:10px;transition:transform 1s}#d.on{transform:rotate(180deg)}</style><div id=d></div><div id=c></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let find = |page: &olo_web::page::Page, id: &str| {
+        let mut stack = vec![page.document.root()];
+        while let Some(n) = stack.pop() {
+            if page.document.attribute(n, "id").ok().flatten() == Some(id) {
+                return n;
+            }
+            stack.extend(page.document.children(n).unwrap());
+        }
+        panic!("no #{id}")
+    };
+    let (d, c, s) = (find(&page, "d"), find(&page, "c"), find(&page, "s"));
+    page.set_time(1000.);
+    let mut doc = page.document.clone();
+    doc.set_attribute(d, "class", "on").unwrap();
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    assert!(page.animating(), "the transition runs");
+    // While it turns: the section's rule comes, and its children.
+    page.set_time(1100.);
+    let mut doc = page.document.clone();
+    let text = doc.children(s).unwrap().next().unwrap();
+    doc.set_value(text, "body{margin:0}#d{width:10px;height:10px;transition:transform 1s}#d.on{transform:rotate(180deg)}.open div{height:15px}").unwrap();
+    doc.set_attribute(c, "class", "open").unwrap();
+    for _ in 0..2 {
+        let child = doc.create_element("div", olo_web::dom::Namespace::Html).unwrap();
+        doc.append_child(c, child).unwrap();
+    }
+    assert!(page.refresh(&doc, None, &mut |_, _, _| Ok(None)).unwrap(), "the rules are made again");
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    let l = page.scene.layout();
+    let (id, _) = l.cache().tree().iter().find(|(_, b)| b.node == c).unwrap();
+    assert_eq!(l.bounds(id).unwrap().height, 30.);
+}
