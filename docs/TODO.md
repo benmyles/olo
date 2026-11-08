@@ -24,21 +24,19 @@ something nobody here has is in "Blocked", with what it waits for.
   pixel, timers not hooked up), wake for each, then make the poll a long
   safety net (seconds) or none; measure idle before and after.
 
-- **Voice Processing's delay down from 40 ms** (Ben, 2026-11-07, of
-  "Cleaning up the microphone's sound: 40 ms behind": "we need that to
-  be way more optimized so that it is not introducing any kind of
-  noticeable lag"). Its processing is 0.4-0.6 ms a 10 ms frame; the 40
-  ms is how far behind the sound is: DeepFilterNet3's STFT (10 ms) and
-  its two frames of look-ahead (20 ms), and the frame the source keeps
-  ahead (10 ms) because the capture and the source run in different
-  cycles. Take the processing into the graph's own cycle (one node, the
-  microphone in and the cleaned sound out in the same quantum: a filter,
-  not two streams) so nothing is kept ahead (30 ms); and a "least
-  delay" choice for when it matters most (hearing yourself, music):
-  noise suppression without look-ahead (DeepFilterNet3's low-latency
-  model chopped voices when measured, so another, measured the same
-  way), 10 ms or under in all. Measure each against today's chain with
-  Try It and the chain tests before choosing.
+- **Voice Processing's delay, the rest** (Ben, 2026-11-07: "we need that
+  to be way more optimized so that it is not introducing any kind of
+  noticeable lag"). Done: 51 ms really (said 40) → 40, said as it is
+  (the buffering 21.33 → 10.0 ms, measured: tools/dev/voice-latency).
+  Left: (1) the cycle a source fed by another stream is behind (10 ms):
+  one node with the microphone in and the cleaned sound out (pw_filter,
+  linked to the microphone by Olo itself), no quality cost; (2) the
+  noise suppressor's 30 ms: DeepFilterNet3's look-ahead. Measured
+  against RNNoise (tests/least_delay.rs): 10 ms, a tenth of the CPU,
+  but room noise down 8-11 dB where DeepFilterNet3 takes 26-30, the
+  voice kept as well: Ben to choose (a least-delay choice, or not).
+  The least-delay test's "after another voice" lag search locks on the
+  quiet voice: fix before judging that case.
 
 - **Slash commands in the command palette** (Ben, 2026-11-07, Super+Space:
   "support `/ws` for web search so if i do `/ws when was beos released?`

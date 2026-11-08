@@ -11,3 +11,7 @@ deep_filter = { path = "../../vendor/deep_filter", default-features = false, fea
 ndarray = "0.17"
 realfft = "3"
 olo-protocol.workspace = true
+
+[dev-dependencies]
+# Compared against DeepFilterNet3 for a least-delay choice (tests/least_delay.rs).
+nnnoiseless = "0.5"
