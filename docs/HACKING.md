@@ -6273,7 +6273,7 @@ and any wait for the main thread, which draws too), typically, at the
 99th percentile and the longest; whether the filter and the person's
 palm model are in use (its training date and test numbers); and the
 main thread's nice, realtime or not and `uclamp.min`. Noting a report
-is 21 ns (`note_cost`); the minute's figures, 33 µs, are made when
+is 21 ns (`note_cost`; 15 on a performance core); the minute's figures, 44–68 µs on the ThinkPad (one computation, cold; 33 when first measured, 2026-11-03, the code the same), are made when
 asked. A 99th percentile over 4 ms (half a 120 Hz frame) is shown red:
 touches waiting on frames being drawn.
 

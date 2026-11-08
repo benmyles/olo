@@ -5,6 +5,36 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Olo after Setup on a fresh Fedora, in use
+
+*08:41* — Tracker on Home, StyledEdit, Olo Doctor (two suggestions, no other desktop's daemons) and Preferences switched to dark.
+
+![Olo after Setup on a fresh Fedora, in use](2026-11-08/084127-olo-after-setup-on-a-fresh-fedora-in-use.png)
+
+### Olo's login screen after Setup, its steps now shared with Doctor
+
+*08:41* — After the restart: the login-screen stage Setup and Olo Doctor share since 3a040276 (olo_doctor::login_screen), tried on a stock Fedora for the first time since that move.
+
+![Olo's login screen after Setup, its steps now shared with Doctor](2026-11-08/084126-olo-s-login-screen-after-setup-its-steps-now-sha.png)
+
+### Olo Setup: Olo Is Installed
+
+*08:41* — Olo 2026.11.08-66af29d4 installed, with its dedication. Retaken, as above.
+
+![Olo Setup: Olo Is Installed](2026-11-08/084126-olo-setup-olo-is-installed.png)
+
+### Olo Setup: Installing
+
+*08:41* — Step 3 of 8: the release downloaded (947 MB) and checked; the stages so far below. Retaken, as above.
+
+![Olo Setup: Installing](2026-11-08/084125-olo-setup-installing.png)
+
+### Olo Setup: Choose What to Install
+
+*08:41* — On a fresh Fedora 45 in a VM, Olo's login screen and boot splash chosen. Retaken: the 2026-11-07 picture of this page had only its top left corner (a 1× shot cropped as if 2×).
+
+![Olo Setup: Choose What to Install](2026-11-08/084124-olo-setup-choose-what-to-install.png)
+
 ### Auto-tiling: Main and Stack, and a layout picker
 
 *05:01* — Auto-tiling has a second layout, Main and Stack (as dwm's): a new window is the main one on the left, the others stack on the right, each as tall. Chosen from Deskbar's windowing mode menu (Auto-Tiling Layout) or Preferences ▸ Windows. Every tile changing size now lands in the same frame (one round).
@@ -144,24 +174,6 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 *00:39* — Restarted from Setup's last page: Olo's own login screen in GDM's place, Olo Desktop chosen.
 
 ![Olo's login screen after Setup, on a fresh Fedora 45](2026-11-07/003931-olo-s-login-screen-after-setup-on-a-fresh-fedora.png)
-
-### Olo Setup: Olo Is Installed
-
-*00:39* — The last page, with its dedication: Olo is a work of love, dedicated to Sir Samwise, the bestest English Labrador that ever walked the earth.
-
-![Olo Setup: Olo Is Installed](2026-11-07/003931-olo-setup-olo-is-installed.png)
-
-### Olo Setup: Installing
-
-*00:39* — A BeOS status bar, the stage over it and how far through at its right; the stages and notes below.
-
-![Olo Setup: Installing](2026-11-07/003930-olo-setup-installing.png)
-
-### Olo Setup: Choose What to Install
-
-*00:39* — Olo Desktop always; Olo's login screen, its boot splash and RPM Fusion offered, each with what it does.
-
-![Olo Setup: Choose What to Install](2026-11-07/003930-olo-setup-choose-what-to-install.png)
 
 ### Olo Setup: Welcome, full screen on a stock Fedora 45
 

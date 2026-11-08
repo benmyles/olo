@@ -36,10 +36,28 @@ wm-sweep (510 steps), plymouth-check at 1×, 1.5× and 2×,
 voice-latency (0.0 ms added, no dropouts), the Slack status check, and
 the layout lint with review at 1×, 1.5× and 2× (40 windows, 0 errors, 0
 to look at). upgrade-check found a Terminal tab coming back out of its
-repository's group: fixed (Done). The tests left ignored are this
-machine's live ones (they write its settings, keyring or backlight,
-prompt, play sound or wake a sensor), timings, and ones needing sample
-files not here.)
+repository's group: fixed (Done). Then the ignored tests, by hand:
+every timing, against HACKING's figures (one out of date, corrected);
+the keyring tests on private keyrings; recording in a PipeWire
+sandbox; the read-only live ones; Doctor's and xdg's; the encoders and
+4K60 clips (the Viewer played each to its end on Intel's GPU, nothing
+dropped or late); the reference streams on Intel's and NVIDIA's
+decoders; face recognition on NASA's portraits; Chromium's and
+libheif's samples; a GTK app's tree read and typed into on an agent
+screen; and the installer check from scratch in a VM. Found and fixed
+(Done): threads rtkit made realtime seen as not (a0dad3dc), MP4s with
+a pasp before their avcC not opening (66af29d4), the MacBook palm
+model's tests judging a ThinkPad run (138f0c16), two keyring tests
+(4b4ed710), the Opus file test's track (f9536320), the seek tests
+hanging on a decoder's error. Not run, and why: those that change
+this machine's settings (the mic's mute, no output, the input's
+volume, a monitor's brightness, dconf), wake its fingerprint reader,
+presence sensor or cameras, count toward PAM's lockout, or play
+sound; the real Claude Code and Codex, and Google Drive (Ben's
+accounts); the MacBook's palm captures, an AirPods capture and the
+ffmpeg-made clips (not here); make_default_model (it rewrites the
+shipped model) and make_4k60_y4m (vpxenc); with_gcr (a handshake by
+hand).)
 
 - **Telegram's video stickers: their see-through parts on real ones**
   (2026-11-08; Done has the work): WebM stickers play, their alpha the
@@ -351,7 +369,16 @@ files not here.)
   Updated as v2026.11.07.2 (a1e08944: the day's later fixes), tried from
   GitHub in the VM over the first: Setup found it, updated it and the
   login screen's own copies, restarted, logged in, nothing of GNOME's
-  running.
+  running. Run again from scratch 2026-11-08 (the login-screen stage
+  had moved into olo_doctor::login_screen since, 3a040276, untried on a
+  stock Fedora): a fresh Fedora 45 Workstation (5.2 minutes), the
+  release 2026.11.08-66af29d4 served to it, Setup from GNOME's
+  terminal, the login screen and boot splash chosen, one password,
+  all eight steps, Olo's login screen after the restart, logged in,
+  Tracker, StyledEdit, Olo Doctor (two suggestions, nothing wrong, no
+  other desktop's daemons) and Preferences in dark. Three of the
+  2026-11-07 journal pictures were broken (1× shots cropped as if 2×):
+  retaken.
   Left for Ben: publishing a release (a GitHub release of
   benmyles/olo with tools/release.sh's four files: Setup takes the
   newest one's archive; until then it needs `--bundle URL`), then a
@@ -2386,6 +2413,20 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**What the ignored tests found, run for the waiting entries**~~
+  (2026-11-08). *Done* (same day): olo-system's `is_realtime` read
+  rtkit's SCHED_RR|SCHED_RESET_ON_FORK as not realtime, so the
+  supervisor asked rtkit again for olo-voice's already realtime sound
+  (87 notes since 2026-11-01) and app_server's touch health said its
+  thread wasn't (a0dad3dc); the mp4 crate wouldn't open an H.264 MP4
+  with its `pasp` or `colr` before its avcC, vendored and fixed with
+  hev1 and vp09 alike (66af29d4); the MacBook palm model's capture
+  tests (and make_default_model) took a ThinkPad run too (138f0c16);
+  olo-secrets' takeover test still named the private keyring's old
+  /tmp folder, and keyring_prompt's left a keyring behind (4b4ed710);
+  the Opus file test took a picture stream for its sound (f9536320);
+  the seek tests' helper hung when the decoder failed (66af29d4).
 
 - ~~**A Terminal tab came back from an upgrade out of its repository's
   group**~~ (found 2026-11-08 by upgrade-check, re-run for the waiting
