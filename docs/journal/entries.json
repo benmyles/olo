@@ -3868,5 +3868,11 @@
   "title": "Browser: bbc.com (left Olo, right Chrome)",
   "caption": "The BBC showed raw markup (noscript under scripting), grey boxes in one column (grid items now held to max-width, percentage images compressible, spanning items size only flexible tracks) and no hydration (CSSOM insertRule for styled-components, currentScript for Turbopack). Now as Chrome, bar the ad.",
   "image": "2026-11-07/153610-browser-bbc-com-left-olo-right-chrome.png"
+ },
+ {
+  "time": "2026-11-07T17:19:46",
+  "title": "Browser: GitHub's menu opens as in Chrome",
+  "caption": "Chrome (left) and Olo (right) at 1000 \u00d7 700 after the menu button and Products: the fixed panel takes the viewport, the rows centre their labels, Sign up sits at the bottom, labels trim to their cap height (text-box) and section names are upper case (text-transform).",
+  "image": "2026-11-07/171946-browser-github-s-menu-opens-as-in-chrome.png"
  }
 ]

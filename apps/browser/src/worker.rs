@@ -828,6 +828,12 @@ fn render(
             c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&cancel), |_, _| {})?;
             // CSS animations still running: the next frame renders again.
             live.render_again |= c.page.animating();
+            // Their events reach the page's scripts.
+            let events = c.page.take_animation_events();
+            if !events.is_empty() {
+                let events: Vec<(olo_web::dom::NodeId, &str, &str, f64)> = events.iter().map(|(n, k, name, t)| (*n, *k, &**name, *t)).collect();
+                live.realm.animation_events(&events);
+            }
             if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
                 eprintln!(
                     "  live render: revision {} -> {} in {:.0} ms (snapshot {snapshot_ms:.1}, canvases {canvases_ms:.1}, rerender {:.1})",
@@ -979,6 +985,7 @@ fn render(
                 viewport: (f64::from(r.key.width) / r.key.scale, f64::from(r.key.height) / r.key.scale),
                 scale: r.key.scale,
                 quirks,
+                dark: r.key.palette.is_dark(),
                 budget_ms: 50.,
                 ..Default::default()
             };

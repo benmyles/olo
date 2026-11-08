@@ -33,6 +33,8 @@ pub(super) enum Grammar {
     Ratio,
     Content,
     Animation(super::animation::Field),
+    /// `text-box-edge`: an over edge and an under edge, as one keyword.
+    TextBoxEdge,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Expansion {
@@ -47,6 +49,7 @@ pub(super) enum Expansion {
     Radius,
     Background,
     TextWrap,
+    TextBox,
     TextDecoration,
     ListStyle,
     Font,
@@ -73,6 +76,19 @@ keyword_registry! {
     Paused => "paused",
     Reverse => "reverse",
     Running => "running",
+    TrimStart => "trim-start",
+    TrimEnd => "trim-end",
+    TrimBoth => "trim-both",
+    Cap => "cap text",
+    Ex => "ex text",
+    TextAlphabetic => "text alphabetic",
+    CapAlphabetic => "cap alphabetic",
+    ExAlphabetic => "ex alphabetic",
+    Capitalize => "capitalize",
+    Uppercase => "uppercase",
+    Lowercase => "lowercase",
+    FullWidth => "full-width",
+    FullSizeKana => "full-size-kana",
     Anywhere => "anywhere",
     Auto => "auto",
     AutoPhrase => "auto-phrase",
@@ -376,12 +392,15 @@ property_registry! {
     StrokeOpacity, "stroke-opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", true;
     TextAlign, "text-align", Grammar::Keywords(&[Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify,Keyword::MatchParent,Keyword::JustifyAll,Keyword::WebkitCenter,Keyword::WebkitLeft,Keyword::WebkitRight]), "start", true;
     TextAlignLast, "text-align-last", Grammar::Keywords(&[Keyword::Auto,Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify]), "auto", true;
+    TextBoxEdge, "text-box-edge", Grammar::TextBoxEdge, "auto", true;
+    TextBoxTrim, "text-box-trim", Grammar::Keywords(&[Keyword::None,Keyword::TrimStart,Keyword::TrimEnd,Keyword::TrimBoth]), "none", false;
     TextDecorationColor, "text-decoration-color", Grammar::Color(&[]), "currentcolor", false;
     // Decorations propagate to in-flow descendants (CSS Text Decoration 3
     // §2.1); inheriting the line approximates that.
     TextDecorationLine, "text-decoration-line", Grammar::Keywords(&[Keyword::None,Keyword::Underline,Keyword::Overline,Keyword::LineThrough]), "none", true;
     TextDecorationStyle, "text-decoration-style", Grammar::Keywords(&[Keyword::Solid,Keyword::Double,Keyword::Dotted,Keyword::Dashed,Keyword::Wavy]), "solid", false;
     TextOrientation, "text-orientation", Grammar::Keywords(&[Keyword::Mixed,Keyword::Upright,Keyword::Sideways]), "mixed", true;
+    TextTransform, "text-transform", Grammar::Keywords(&[Keyword::None,Keyword::Capitalize,Keyword::Uppercase,Keyword::Lowercase,Keyword::FullWidth,Keyword::FullSizeKana]), "none", true;
     TextWrapMode, "text-wrap-mode", Grammar::Keywords(&[Keyword::Wrap,Keyword::Nowrap]), "wrap", true;
     TextWrapStyle, "text-wrap-style", Grammar::Keywords(&[Keyword::Auto,Keyword::Balance,Keyword::Stable,Keyword::Pretty]), "auto", true;
     Top, "top", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
@@ -415,7 +434,7 @@ shorthand_registry! {
     // and the not-yet-implemented unicode-bidi are excluded by definition.
     WebkitMask, "-webkit-mask", [MaskImage,MaskPosition,MaskSize,MaskRepeat], Background;
     WebkitTextDecoration, "-webkit-text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor], TextDecoration;
-    All, "all", [AlignContent,AlignItems,AlignSelf,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextOrientation,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextBoxEdge,TextBoxTrim,TextOrientation,TextTransform,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Animation, "animation", [AnimationName,AnimationDuration,AnimationTimingFunction,AnimationDelay,AnimationIterationCount,AnimationDirection,AnimationFillMode,AnimationPlayState], Animation;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
@@ -463,6 +482,7 @@ shorthand_registry! {
     PlaceContent, "place-content", [AlignContent,JustifyContent], Repeat;
     PlaceItems, "place-items", [AlignItems,JustifyItems], Repeat;
     PlaceSelf, "place-self", [AlignSelf,JustifySelf], Repeat;
+    TextBox, "text-box", [TextBoxTrim,TextBoxEdge], TextBox;
     TextDecoration, "text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor], TextDecoration;
     TextWrap, "text-wrap", [TextWrapMode,TextWrapStyle], TextWrap;
     WhiteSpace, "white-space", [WhiteSpaceCollapse,TextWrapMode], WhiteSpace;

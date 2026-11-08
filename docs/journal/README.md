@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: GitHub's menu opens as in Chrome
+
+*17:19* — Chrome (left) and Olo (right) at 1000 × 700 after the menu button and Products: the fixed panel takes the viewport, the rows centre their labels, Sign up sits at the bottom, labels trim to their cap height (text-box) and section names are upper case (text-transform).
+
+![Browser: GitHub's menu opens as in Chrome](2026-11-07/171946-browser-github-s-menu-opens-as-in-chrome.png)
+
 ### Browser: bbc.com (left Olo, right Chrome)
 
 *15:36* — The BBC showed raw markup (noscript under scripting), grey boxes in one column (grid items now held to max-width, percentage images compressible, spanning items size only flexible tracks) and no hydration (CSSOM insertRule for styled-components, currentScript for Turbopack). Now as Chrome, bar the ad.

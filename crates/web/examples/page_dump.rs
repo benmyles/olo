@@ -214,6 +214,22 @@ fn main() {
                     );
                 }
             }
+            // --hit-bench: hit tests over a grid of the first screen, as
+            // pointer moves make them.
+            if args.iter().any(|a| a == "--hit-bench") {
+                let started = std::time::Instant::now();
+                let mut n = 0usize;
+                let mut found = 0usize;
+                for _ in 0..20 {
+                    for y in (0..700).step_by(7) {
+                        for x in (0..width as i32).step_by(10) {
+                            n += 1;
+                            found += page.scene.hit_test(f64::from(x) + 0.5, f64::from(y) + 0.5, 0., 700., &[]).is_some() as usize;
+                        }
+                    }
+                }
+                println!("hit bench: {n} hit tests in {:.1} ms ({:.2} µs each, {found} found)", started.elapsed().as_secs_f64() * 1000., started.elapsed().as_secs_f64() * 1e6 / n as f64);
+            }
             if let Some((x, y)) = at {
                 for (i, c) in page.scene.commands().iter().enumerate() {
                     let b = c.bounds;

@@ -6159,3 +6159,39 @@ visual journal).
 - **Found on the way.** Lifecycle calls into the page were outside the
   watchdog; image load events on GitHub's lazy images started a timer
   loop (lazy images now get none; see TODO).
+
+## 2026-11-07, night: GitHub's menu, clicked through
+
+Scrolling and clicking through pages as a person would, starting with
+GitHub's menu at 1000 × 700 against Chrome (picture in the visual
+journal).
+
+- **The panel.** The menu button toggled `aria-expanded` but no panel
+  showed: a `position: fixed; height: 100%` box took its positioned
+  header (52 px) as its containing block. Fixed boxes now take the
+  viewport, unless a transformed ancestor holds them.
+- **Hover opened submenus.** `matchMedia` was a regex that answered any
+  query naming `hover: hover` true, so `(hover: hover) and (pointer:
+  fine) and (min-width: 1012px)` matched at 1000 px. It now asks the
+  engine's media evaluation, as the page's sheets do, and returns a real
+  `MediaQueryList`.
+- **Clicks on the rows missed.** Hit testing found painted commands only:
+  a background-less button across a bordered row got clicks only on its
+  label. A hit on a box's background or border now goes to the innermost
+  box there, as in Chrome (0.21 to 0.32 µs a hit test).
+- **Layout.** A flex container's bare text ignored `align-items`
+  (labels sat at the top). Column flex boxes now honour auto margins,
+  and a column container given its height by its parent's flexing or a
+  grid's stretch lays its items out again in it (Sign up at the bottom,
+  cards' buttons at their feet). GitHub's layout: 8.55 ms median before
+  and 8.95 after under load, both 5.0–5.1 at best.
+- **Text.** `text-transform` (same-length characters, so DOM offsets
+  stay exact; `ß` keeps its form) and `text-box` / `text-box-trim` /
+  `text-box-edge` (Primer trims labels to cap height: rows 75 px apart
+  became 62, as Chrome). `getComputedStyle` reports a number
+  `line-height` in px and the font family list. Text and layout times
+  on GitHub unchanged (2.9 ms and 4.3 ms medians).
+- **Found on the way.** The UA sheet named three unparsed properties
+  (counted as page issues) and `all` missed the animation longhands;
+  both fixed. Open: scroll containers don't scroll (the menu's panel
+  scrolls the page under it).

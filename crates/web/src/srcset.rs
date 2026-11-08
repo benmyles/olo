@@ -7,7 +7,7 @@ use crate::{
     css::{self, media::Media},
     dom::{Document, NodeId},
 };
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::atomic::AtomicBool;
 
 /// One candidate: its URL as written and its density (device pixels per
 /// CSS pixel it gives at its natural size).
@@ -187,10 +187,7 @@ fn length_px(text: &str, media: &Media) -> Option<f64> {
 }
 /// Whether a media query list holds on `media`.
 fn matches(query: &str, media: &Media, cancel: Option<&AtomicBool>) -> bool {
-    match css::Syntax::parse(Arc::from(query), Default::default(), cancel) {
-        Ok(syntax) => css::media::evaluate(syntax.components(), media, cancel),
-        Err(_) => false,
-    }
+    css::media::matches(query, media, cancel)
 }
 /// The image types the engine decodes.
 fn supported_type(kind: &str) -> bool {
@@ -200,6 +197,7 @@ fn supported_type(kind: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     fn pick_in(html: &str, width: f64, height: f64, scale: f64) -> Option<Choice> {
         let doc = crate::html::parse(Arc::from(html), Default::default(), None).unwrap().document;
         let mut stack = vec![doc.root()];

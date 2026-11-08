@@ -252,7 +252,7 @@ impl Scene {
         let end =
             if run.direction == Direction::RightToLeft { stop.checked_sub(1).map_or(run.range.end, |i| run.glyphs[i].cluster) } else { run.glyphs.get(stop).map_or(run.range.end, |g| g.cluster) };
         let last = prepared.mapping_at_output(end.saturating_sub(1))?;
-        let input_end = if last.kind == crate::text::prepare::MappingKind::Copy { last.input.start + (end - last.output.start) } else { last.input.end };
+        let input_end = if last.kind != crate::text::prepare::MappingKind::Removed { last.input.start + (end - last.output.start) } else { last.input.end };
         let span = source.spans.get(mapping.span as usize)?;
         if tree.controls(source_id).binary_search_by_key(&span.range.start, |c| c.offset).is_ok() {
             return None;
@@ -292,8 +292,8 @@ impl Scene {
         let prepared = text.text().prepared();
         let a = prepared.mapping_at_output(start)?;
         let b = prepared.mapping_at_output(end - 1)?;
-        let raw_start = if a.kind == crate::text::prepare::MappingKind::Copy { a.input.start + start - a.output.start } else { a.input.start };
-        let raw_end = if b.kind == crate::text::prepare::MappingKind::Copy { b.input.start + end - b.output.start } else { b.input.end };
+        let raw_start = if a.kind != crate::text::prepare::MappingKind::Removed { a.input.start + start - a.output.start } else { a.input.start };
+        let raw_end = if b.kind != crate::text::prepare::MappingKind::Removed { b.input.start + end - b.output.start } else { b.input.end };
         let lo = controls.partition_point(|c| c.offset < raw_start);
         let hi = controls.partition_point(|c| c.offset < raw_end);
         if lo == hi {
@@ -694,15 +694,69 @@ impl Scene {
                     }
                 }
                 let Some(node) = self.node(id) else { continue };
-                if let Some(style) = tree.styles().snapshot(node)
-                    && (matches!(style.value(P::PointerEvents), Value::Keyword(K::None)) || matches!(style.value(P::Visibility), Value::Keyword(K::Hidden)))
-                {
+                let ignored = |node| {
+                    tree.styles()
+                        .snapshot(node)
+                        .is_some_and(|style| matches!(style.value(P::PointerEvents), Value::Keyword(K::None)) || matches!(style.value(P::Visibility), Value::Keyword(K::Hidden)))
+                };
+                if ignored(node) {
                     continue;
+                }
+                // A box hit through its background or border: a box in it
+                // that paints nothing there (a transparent button over its
+                // row) is still what is under the point, as in Chrome.
+                if let Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } = c.primitive
+                    && c.transform == NONE
+                    && let Some(inner) = self.deepest_box(owner, x, py)
+                    && let Some(b) = tree.get(inner)
+                    && !ignored(b.node)
+                {
+                    return Some(b.node);
                 }
                 return Some(node);
             }
         }
         None
+    }
+    /// The innermost in-flow box under `owner` whose border box holds the
+    /// point (layout coordinates), later siblings winning (painted above);
+    /// None when no box inside it does. Only boxes holding the point are
+    /// entered, so a hit costs the depth times the siblings on the way.
+    /// Positioned, transformed and clipped-away boxes are left to their own
+    /// paint.
+    fn deepest_box(&self, owner: BoxId, x: f64, y: f64) -> Option<BoxId> {
+        let layout = &self.layout;
+        let tree = layout.cache().tree();
+        let start = layout.bounds(owner)?;
+        let mut origin = (start.x - layout.geometry(owner)?.border_box.x, start.y - layout.geometry(owner)?.border_box.y);
+        let (mut at, mut found) = (owner, None);
+        for _ in 0..4096 {
+            let g = layout.geometry(at)?;
+            let content = g.content_box();
+            let inner = (origin.0 + content.x, origin.1 + content.y);
+            let mut next = None;
+            let mut child = tree.get(at)?.first_child;
+            while let Some(id) = child {
+                let b = tree.get(id)?;
+                child = b.next_sibling;
+                if b.absolute || b.marker || matches!(b.kind, BoxKind::Viewport) {
+                    continue;
+                }
+                if tree.style(id).is_some_and(|s| matches!(s.value(P::Transform), Value::Transforms(_)) || !matches!(s.value(P::Position), Value::Keyword(K::Static | K::Relative))) {
+                    continue;
+                }
+                let r = layout.geometry(id)?.border_box;
+                let (rx, ry) = (inner.0 + r.x, inner.1 + r.y);
+                if x >= rx && y >= ry && x < rx + r.width && y < ry + r.height {
+                    next = Some(id);
+                }
+            }
+            let Some(id) = next else { break };
+            found = Some(id);
+            origin = inner;
+            at = id;
+        }
+        found
     }
     /// The page's own commands over `region` (every page stratum), in
     /// paint order: not the fixed or sticky layers'.
@@ -1183,8 +1237,8 @@ impl<'a> BuildJob<'a> {
                         run.glyphs.get(stop).map_or(run.range.end, |g| g.cluster)
                     };
                     let project_end = prepared.mapping_at_output(end.saturating_sub(1)).ok_or(Error::Invalid)?;
-                    let input_end = if project_end.kind == crate::text::prepare::MappingKind::Copy { project_end.input.start + (end - project_end.output.start) } else { project_end.input.end };
-                    let input_start = if mapping.kind == crate::text::prepare::MappingKind::Copy { mapping.input.start + (g.cluster - mapping.output.start) } else { mapping.input.start };
+                    let input_end = if project_end.kind != crate::text::prepare::MappingKind::Removed { project_end.input.start + (end - project_end.output.start) } else { project_end.input.end };
+                    let input_start = if mapping.kind != crate::text::prepare::MappingKind::Removed { mapping.input.start + (g.cluster - mapping.output.start) } else { mapping.input.start };
                     let semantic_control = !controls.is_empty() && controls.binary_search_by_key(&span.range.start, |c| c.offset).is_ok();
                     if semantic_control && input_end <= span.range.end {
                         if let Some((start, origin, color, bounds, _, deco)) = segment.take() {

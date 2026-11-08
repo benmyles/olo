@@ -87,6 +87,7 @@ fn compare(value: &Value, expected: &Json, property: &str) -> Check {
         Value::FitContent(_) => Err(unsupported("intrinsic size computation host")),
         Value::Pending(_) => Err(unsupported("substitution element host")),
         Value::Wide(_) => Err(unsupported("cascade/inheritance host")),
+        Value::Animation(_) => Err(unsupported("animation timeline host")),
     }
 }
 // Independent canonical references: Rust's decimal parser and fixed CSS px

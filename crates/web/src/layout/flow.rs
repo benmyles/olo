@@ -37,7 +37,7 @@ fn boundary(prepared: &prepare::Prepared, at: u32) -> Result<u32> {
         return Ok(prepared.text().len() as u32);
     }
     let m = prepared.mapping_at_source(at).ok_or(Error::Invalid)?;
-    Ok(if m.kind == prepare::MappingKind::Copy { m.output.start + at - m.input.start } else { m.output.start })
+    Ok(if m.kind != prepare::MappingKind::Removed { m.output.start + at - m.input.start } else { m.output.start })
 }
 fn shaping_breaks(prepared: &prepare::Prepared, source: &[u32]) -> Result<Box<[u32]>> {
     let mut out = source.iter().map(|at| boundary(prepared, *at)).collect::<Result<Vec<_>>>()?;
@@ -425,8 +425,15 @@ impl<'a> PrepareJob<'a> {
         for what in inline::Options::for_style(style, self.scope, 0., self.cancel)?.ignored.names() {
             self.fallbacks.note(what, container_node);
         }
+        // Each span's text-transform (none anywhere: empty, the common case).
+        let mut transforms: Box<[prepare::Transform]> =
+            source.spans.iter().map(|span| self.tree.styles.snapshot(span.style_node).map_or_else(|| prepare::Transform::for_style(style), prepare::Transform::for_style)).collect();
+        if transforms.iter().all(|t| *t == prepare::Transform::None) {
+            transforms = Box::default();
+        }
         let key = (self.limits.cached_texts > 0).then(|| {
             let mut hash = DefaultHasher::new();
+            transforms.hash(&mut hash);
             for span in &source.spans {
                 span.range.hash(&mut hash)
             }
@@ -473,6 +480,7 @@ impl<'a> PrepareJob<'a> {
             && text.paragraph().analysis.paragraphs().all(|(_, level)| (level % 2 != 0) == (style.axes().direction == crate::css::style::Direction::Rtl))
             && text.paragraph().shaping_breaks() == expected_breaks(text)?.as_ref()
             && text.prepared().controls() == controls.as_ref()
+            && text.prepared().transforms() == transforms.as_ref()
         {
             self.progress.reused_texts += 1;
             return Ok(text.clone());
@@ -495,7 +503,9 @@ impl<'a> PrepareJob<'a> {
             eprintln!("  text prepared again: source {index} {:?}: {why}", source.source.chars().take(40).collect::<String>());
         }
         let spans: Arc<[prepare::Span]> = source.spans.iter().map(|s| prepare::Span { range: s.range.clone(), whitespace }).collect();
-        let mut p = prepare::Job::new(source.source.clone(), spans, prepare::Limits { text_bytes: self.limits.text.text_bytes, ..Default::default() }, self.cancel)?.with_controls(controls)?;
+        let mut p = prepare::Job::new(source.source.clone(), spans, prepare::Limits { text_bytes: self.limits.text.text_bytes, ..Default::default() }, self.cancel)?
+            .with_controls(controls)?
+            .with_transforms(transforms)?;
         while !p.step(4096)?.finished {}
         let p = Arc::new(p.finish()?);
         let boundaries = shaping_breaks(&p, &raw_breaks)?;
@@ -972,6 +982,9 @@ pub struct Job<'a> {
     stack: Vec<Frame>,
     flex: Vec<flex_flow::Frame<'a>>,
     containers: Vec<container_flow::Container>,
+    /// Finished column flex containers whose height their content decided,
+    /// by box: laid out again if a parent flexes or stretches them.
+    columns: HashMap<BoxId, container_flow::Column>,
     tables: Vec<container_flow::Table>,
     absolute: Vec<absolute_flow::Deferred>,
     absolute_at: usize,
@@ -985,6 +998,8 @@ pub struct Job<'a> {
     fallbacks: Fallbacks,
     failed: bool,
     scale: f64,
+    /// The initial containing block's size (the viewport's), CSS px on the device grid.
+    pub(super) initial: [f64; 2],
 }
 impl<'a> Job<'a> {
     pub fn new(engine: &'a mut shaping::Engine, scope: &'a Scope, cache: Arc<Cache>, viewport: Viewport, limits: Limits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
@@ -1053,6 +1068,7 @@ impl<'a> Job<'a> {
             }],
             flex: Vec::new(),
             containers: Vec::new(),
+            columns: HashMap::new(),
             tables: Vec::new(),
             absolute: Default::default(),
             absolute_at: 0,
@@ -1064,6 +1080,7 @@ impl<'a> Job<'a> {
             fallbacks: Fallbacks::default(),
             failed: false,
             scale: viewport.scale,
+            initial: [used::grid(viewport.width, viewport.scale), used::grid(viewport.height, viewport.scale)],
         })
     }
     pub fn progress(&self) -> Progress {
@@ -1653,6 +1670,32 @@ impl<'a> Job<'a> {
                     low = mid;
                 }
             }
+        }
+        // text-box-trim on the block holding this text: its first line's
+        // over edge and its last line's under edge, at the edge metric.
+        let word = |p| if let Value::Keyword(k) = style.value(p) { *k } else { K::None };
+        let trim = word(P::TextBoxTrim);
+        if trim != K::None
+            && let (Some(first), Some(last)) = (l.lines().first(), l.lines().last())
+        {
+            let m = style.font().metrics;
+            // The `text` edges: the first available font's ascent and
+            // descent, on the device grid as the line's strut has them.
+            let font = self.scope.metrics(&style.font().request, self.cancel).map_err(|_| Error::Invalid)?;
+            let grid = |v: f64| (v * self.scale).round() / self.scale;
+            let edge = word(P::TextBoxEdge);
+            let over = match edge {
+                K::Cap | K::CapAlphabetic => first.ascent - m.cap,
+                K::Ex | K::ExAlphabetic => first.ascent - m.ex,
+                _ => first.ascent - grid(font.ascent),
+            };
+            let under = match edge {
+                K::TextAlphabetic | K::CapAlphabetic | K::ExAlphabetic => last.descent,
+                _ => last.descent - grid(-font.descent),
+            };
+            let start = if matches!(trim, K::TrimStart | K::TrimBoth) { over.max(0.) } else { 0. };
+            let end = if matches!(trim, K::TrimEnd | K::TrimBoth) { under.max(0.) } else { 0. };
+            l.trim(start, end);
         }
         self.progress.lines += l.lines().len();
         self.progress.texts += 1;

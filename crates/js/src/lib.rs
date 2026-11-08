@@ -42,6 +42,8 @@ pub struct Config {
     pub user_agent: String,
     pub language: String,
     pub quirks: bool,
+    /// Whether the page is shown dark (`prefers-color-scheme`).
+    pub dark: bool,
     /// Virtual milliseconds of timers to run after the scripts and load.
     pub budget_ms: f64,
     /// Wall-clock seconds the whole run may take.
@@ -54,7 +56,7 @@ pub struct Config {
 pub const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Olo/0.1";
 impl Default for Config {
     fn default() -> Self {
-        Self { url: "about:blank".into(), viewport: (1000., 700.), scale: 1., user_agent: USER_AGENT.into(), language: "en-US".into(), quirks: false, budget_ms: 3000., wall_seconds: 8. }
+        Self { url: "about:blank".into(), viewport: (1000., 700.), scale: 1., user_agent: USER_AGENT.into(), language: "en-US".into(), quirks: false, dark: false, budget_ms: 3000., wall_seconds: 8. }
     }
 }
 /// A fetched resource for `fetch` and `XMLHttpRequest`.
@@ -911,6 +913,22 @@ impl Realm {
             }
         }
     }
+    /// CSS animation events for the page's elements (animationstart,
+    /// animationend), dispatched as AnimationEvents.
+    pub fn animation_events(&mut self, events: &[(NodeId, &str, &str, f64)]) {
+        let state = self.state.clone();
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        let global = context.global(scope);
+        let Some(name) = v8::String::new(scope, "__olo_animationEvent") else { return };
+        let Some(f) = global.get(scope, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
+        for (node, kind, animation, elapsed) in events {
+            let Some(target) = wrap(scope, &state, *node) else { continue };
+            let args: [v8::Local<v8::Value>; 4] = [target.into(), string(scope, kind).into(), string(scope, animation).into(), v8::Number::new(scope, *elapsed).into()];
+            f.call(scope, global.into(), &args);
+        }
+    }
     /// `document.currentScript`: this element, or null.
     fn set_current_script(&mut self, node: Option<NodeId>) {
         let state = self.state.clone();
@@ -1568,6 +1586,7 @@ const NATIVES: &[&str] = &[
     "workerTerminate",
     "imageSize",
     "imageSource",
+    "matchMedia",
     "imagePixels",
     "glCreate",
     "glOp",
@@ -2459,6 +2478,17 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     rv.set(string(scope, &choice.url).into());
                 }
             }
+        }
+        // Whether a media query list holds for this page, by the engine's
+        // own media evaluation (what its sheets' @media see).
+        "matchMedia" => {
+            let query = arg_string(scope, &args, 0);
+            let holds = {
+                let s = state.borrow();
+                let media = olo_web::css::media::Media { scripting: true, ..olo_web::css::media::Media::screen(s.config.viewport.0, s.config.viewport.1, s.config.scale, s.config.dark) };
+                olo_web::css::media::matches(&query, &media, None)
+            };
+            rv.set(v8::Boolean::new(scope, holds).into());
         }
         "imageSize" => {
             if let Some(n) = node(scope, 0) {

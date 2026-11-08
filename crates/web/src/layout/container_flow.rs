@@ -67,6 +67,17 @@ pub(super) struct Container {
     min_height: f64,
     max_height: f64,
 }
+/// A finished column flex container's items, kept while its height may
+/// still change.
+pub(super) struct Column {
+    items: Vec<Item>,
+    row_gap: f64,
+    width: f64,
+    reverse: bool,
+    justify: K,
+    min_height: f64,
+    max_height: f64,
+}
 impl Container {
     /// The height tracks are aligned in: the used height, or `min-height`
     /// when it exceeds the content's `natural` height; None when the
@@ -573,6 +584,93 @@ impl Job<'_> {
     /// (against `area`, by its box-sizing): a stretched or percentage-wide
     /// item is held to them as any block is (the BBC's page grid, 100%
     /// wide with a max-width, filled its whole area).
+    /// Lay out a column flex container's items in `used_height` (None:
+    /// their content decides); returns the content height. Items given a
+    /// new height that are column containers themselves follow it.
+    fn column_flex(&mut self, column: &Column, used_height: Option<f64>) -> Result<f64> {
+        let scale = self.scale;
+        let mut resized = Vec::new();
+        let n = column.items.len();
+        let gaps = column.row_gap * n.saturating_sub(1) as f64;
+        // Hypothetical main sizes: a numeric basis replaces the content height.
+        let mut sizes: Vec<f64> = column.items.iter().map(|i| i.basis.map_or(i.outer_height, |b| b + i.used.padding.vertical() + i.used.border.vertical() + i.used.margin.vertical())).collect();
+        let height = Container::definite_height(used_height, column.min_height, column.max_height, sizes.iter().sum::<f64>() + gaps);
+        if let Some(h) = height {
+            let free = h - sizes.iter().sum::<f64>() - gaps;
+            if free > 0. {
+                let total: f64 = column.items.iter().map(|i| i.grow).sum();
+                if total > 0. {
+                    for (s, i) in sizes.iter_mut().zip(&column.items) {
+                        *s += free * i.grow / total;
+                    }
+                }
+            } else if free < 0. {
+                let total: f64 = column.items.iter().zip(&sizes).map(|(i, s)| i.shrink * s).sum();
+                if total > 0. {
+                    for (s, i) in sizes.iter_mut().zip(&column.items) {
+                        let scaled = i.shrink * *s;
+                        *s = (*s + free * scaled / total).max(i.used.padding.vertical() + i.used.border.vertical() + i.used.margin.vertical());
+                    }
+                }
+            }
+        }
+        let total = sizes.iter().sum::<f64>() + gaps;
+        let free = height.map_or(0., |h| h - total);
+        let grown = column.items.iter().any(|i| i.grow > 0.) && free > 0.;
+        // Auto margins take the free space before justify-content
+        // does (CSS Flexbox 8.1), on the main axis as on the cross.
+        let tree = &self.cache.tree;
+        let auto = |id: BoxId, p: P| tree.style(id).is_some_and(|s| matches!(tree.get(id).map(|b| &b.kind), Some(BoxKind::Block { .. })) && matches!(s.value(p), Value::Keyword(K::Auto)));
+        let autos: Vec<[bool; 4]> = column.items.iter().map(|i| [auto(i.id, P::MarginTop), auto(i.id, P::MarginBottom), auto(i.id, P::MarginLeft), auto(i.id, P::MarginRight)]).collect();
+        let auto_count = autos.iter().map(|a| a[0] as usize + a[1] as usize).sum::<usize>();
+        let share = if !grown && free > 0. && auto_count > 0 { free / auto_count as f64 } else { 0. };
+        let (offset, between) = if grown || share > 0. { (0., 0.) } else { distribute(column.justify, free, n) };
+        // Order-modified document order (CSS Flexbox 5.4), reversed
+        // for column-reverse.
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by_key(|&i| column.items[i].order);
+        if column.reverse {
+            order.reverse();
+        }
+        let mut y = offset;
+        for (k, &i) in order.iter().enumerate() {
+            let item = &column.items[i];
+            let g = &mut self.geometry[item.id.index()];
+            let outer_w = g.border_box.width + item.used.margin.horizontal();
+            let [top, bottom, left, right] = autos[i];
+            let dx = match (left, right, item.align) {
+                (true, true, _) | (false, false, K::Center) => (column.width - outer_w) / 2.,
+                (true, false, _) | (false, false, K::End | K::FlexEnd) => column.width - outer_w,
+                _ => 0.,
+            };
+            y += if top { share } else { 0. };
+            g.border_box.x = used::grid(item.used.margin.left + dx.max(0.), scale) + item.used.relative.x;
+            g.border_box.y = used::grid(y + item.used.margin.top, scale) + item.used.relative.y;
+            y += if bottom { share } else { 0. };
+            let inner = sizes[i] - item.used.margin.vertical();
+            if (inner - g.border_box.height).abs() > 1e-9 && (item.basis.is_some() || height.is_some()) {
+                g.border_box.height = used::grid(inner.max(0.), scale);
+                let content = g.border_box.height - item.used.padding.vertical() - item.used.border.vertical();
+                resized.push((item.id, content));
+            }
+            g.margin = item.used.margin;
+            y += sizes[i] + column.row_gap + if k + 1 < n { between } else { 0. };
+        }
+        for (child, content) in resized {
+            self.refit_column(child, content)?;
+        }
+        Ok(total.max(0.))
+    }
+    /// A finished column container given `content` height by its parent:
+    /// its items laid out again in it.
+    pub(super) fn refit_column(&mut self, id: BoxId, content: f64) -> Result<()> {
+        check(self.cancel)?;
+        if let Some(column) = self.columns.remove(&id) {
+            self.column_flex(&column, Some(content))?;
+            self.columns.insert(id, column);
+        }
+        Ok(())
+    }
     fn clamp_width(&mut self, s: &crate::css::style::Style, u: &Used, area: f64, queries: QueryBasis) -> Result<f64> {
         let decoration = u.padding.horizontal() + u.border.horizontal();
         let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
@@ -676,6 +774,7 @@ impl Job<'_> {
                     y += h + container.row_gap + if i + 1 < row_sizes.len() { row_offset.1 } else { 0. };
                 }
                 row_starts.push(y);
+                let mut stretched = Vec::new();
                 for item in &container.items {
                     let (a, z) = item.cell.columns;
                     let (r, q) = item.cell.rows;
@@ -699,68 +798,26 @@ impl Job<'_> {
                     g.border_box.y = used::grid(row_starts[r] + item.used.margin.top + dy.max(0.), scale) + item.used.relative.y;
                     if stretch_height && area_h - item.used.margin.vertical() > g.border_box.height {
                         g.border_box.height = used::grid(area_h - item.used.margin.vertical(), scale);
+                        stretched.push((item.id, g.border_box.height - item.used.padding.vertical() - item.used.border.vertical()));
                     }
                     g.margin = item.used.margin;
+                }
+                // Stretched column containers lay their items out again.
+                for (child, content) in stretched {
+                    self.refit_column(child, content)?;
                 }
                 total_rows.max(0.)
             }
             Kind::ColumnFlex { reverse, justify } => {
-                let n = container.items.len();
-                let gaps = container.row_gap * n.saturating_sub(1) as f64;
-                // Hypothetical main sizes: a numeric basis replaces the content height.
-                let mut sizes: Vec<f64> =
-                    container.items.iter().map(|i| i.basis.map_or(i.outer_height, |b| b + i.used.padding.vertical() + i.used.border.vertical() + i.used.margin.vertical())).collect();
-                let height = definite_height(sizes.iter().sum::<f64>() + gaps);
-                if let Some(h) = height {
-                    let free = h - sizes.iter().sum::<f64>() - gaps;
-                    if free > 0. {
-                        let total: f64 = container.items.iter().map(|i| i.grow).sum();
-                        if total > 0. {
-                            for (s, i) in sizes.iter_mut().zip(&container.items) {
-                                *s += free * i.grow / total;
-                            }
-                        }
-                    } else if free < 0. {
-                        let total: f64 = container.items.iter().zip(&sizes).map(|(i, s)| i.shrink * s).sum();
-                        if total > 0. {
-                            for (s, i) in sizes.iter_mut().zip(&container.items) {
-                                let scaled = i.shrink * *s;
-                                *s = (*s + free * scaled / total).max(i.used.padding.vertical() + i.used.border.vertical() + i.used.margin.vertical());
-                            }
-                        }
-                    }
+                let column = Column { items: container.items, row_gap: container.row_gap, width: container.width, reverse, justify, min_height, max_height };
+                let total = self.column_flex(&column, used_height)?;
+                // A container whose height its content decides can be given
+                // another by its parent's flexing or stretching: kept, so
+                // its items are laid out again in that height.
+                if used_height.is_none() {
+                    self.columns.insert(id, column);
                 }
-                let total = sizes.iter().sum::<f64>() + gaps;
-                let free = height.map_or(0., |h| h - total);
-                let grown = container.items.iter().any(|i| i.grow > 0.) && free > 0.;
-                let (offset, between) = if grown { (0., 0.) } else { distribute(justify, free, n) };
-                // Order-modified document order (CSS Flexbox 5.4), reversed
-                // for column-reverse.
-                let mut order: Vec<usize> = (0..n).collect();
-                order.sort_by_key(|&i| container.items[i].order);
-                if reverse {
-                    order.reverse();
-                }
-                let mut y = offset;
-                for (k, &i) in order.iter().enumerate() {
-                    let item = &container.items[i];
-                    let g = &mut self.geometry[item.id.index()];
-                    let outer_w = g.border_box.width + item.used.margin.horizontal();
-                    let dx = match item.align {
-                        K::Center => (container.width - outer_w) / 2.,
-                        K::End | K::FlexEnd => container.width - outer_w,
-                        _ => 0.,
-                    };
-                    g.border_box.x = used::grid(item.used.margin.left + dx.max(0.), scale) + item.used.relative.x;
-                    g.border_box.y = used::grid(y + item.used.margin.top, scale) + item.used.relative.y;
-                    let inner = sizes[i] - item.used.margin.vertical();
-                    if (inner - g.border_box.height).abs() > 1e-9 && (item.basis.is_some() || height.is_some()) {
-                        g.border_box.height = used::grid(inner.max(0.), scale);
-                    }
-                    g.margin = item.used.margin;
-                    y += sizes[i] + container.row_gap + if k + 1 < n { between } else { 0. };
-                }
-                total.max(0.)
+                total
             }
         };
         Ok(Some(content_height))

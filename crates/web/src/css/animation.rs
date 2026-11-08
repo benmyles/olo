@@ -354,6 +354,17 @@ pub struct Timeline {
     applied: Vec<crate::dom::NodeId>,
     /// Some animation still changes: the page wants its next frame.
     pub running: bool,
+    /// Which events each animation has had: 1 started, 2 ended.
+    phases: HashMap<(crate::dom::NodeId, Arc<str>, usize), u8>,
+    /// Events since the last `take_events`: element, type, name, elapsed s.
+    events: Vec<(crate::dom::NodeId, &'static str, Arc<str>, f64)>,
+}
+impl Timeline {
+    /// The animation events since the last call (animationstart,
+    /// animationend), for the page's scripts.
+    pub fn take_events(&mut self) -> Vec<(crate::dom::NodeId, &'static str, Arc<str>, f64)> {
+        std::mem::take(&mut self.events)
+    }
 }
 impl Timeline {
     /// The animated declarations for the elements `styled` lists (each with
@@ -378,9 +389,23 @@ impl Timeline {
                 let Some(frames) = library.get(&spec.name) else { continue };
                 let key = (node, spec.name.clone(), i);
                 let start = *self.starts.entry(key.clone()).or_insert(self.now_ms);
-                seen.insert(key);
+                seen.insert(key.clone());
                 let elapsed = (self.now_ms - start).max(0.) / 1000.;
                 self.running |= running(&spec, elapsed);
+                // Its events: start once the delay is over, end once it is done.
+                let phase = self.phases.entry(key.clone()).or_insert(0);
+                if *phase < 1 && elapsed >= spec.delay {
+                    *phase = 1;
+                    self.events.push((node, "animationstart", spec.name.clone(), (-spec.delay).max(0.)));
+                }
+                let active = spec.duration * spec.count;
+                if *phase < 2 && active.is_finite() && elapsed >= spec.delay + active {
+                    if *phase < 1 {
+                        self.events.push((node, "animationstart", spec.name.clone(), 0.));
+                    }
+                    *phase = 2;
+                    self.events.push((node, "animationend", spec.name.clone(), active));
+                }
                 let Some((_, p)) = progress(&spec, elapsed) else { continue };
                 for (name, value) in sample(frames, p, spec.easing) {
                     let text: Arc<str> = Arc::from(format!("{name}:{value}"));
@@ -393,6 +418,7 @@ impl Timeline {
             }
         }
         self.starts.retain(|k, _| seen.contains(k));
+        self.phases.retain(|k, _| seen.contains(k));
         let mut touched: Vec<crate::dom::NodeId> = out.keys().copied().collect();
         for n in std::mem::take(&mut self.applied) {
             if !out.contains_key(&n) {

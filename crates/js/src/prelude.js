@@ -120,7 +120,9 @@
     if (target instanceof Node) {
       let p = N.parent(target);
       while (p) { path.push(p); p = N.parent(p); }
-      if (path[path.length - 1] === documentNode) path.push(global);
+      // The document's parent is the window, bar for load events (DOM §4.6:
+      // an image's or script's load never reaches window listeners).
+      if (path[path.length - 1] === documentNode && event.type !== 'load') path.push(global);
     }
     event._path = path;
     for (let i = path.length - 1; i > 0 && !event._stop; i--) callAt(path[i], event, 1);
@@ -280,8 +282,23 @@
     fireOn(el, 'load');
     return ok;
   };
+  // A <link> a script inserts (a stylesheet, a preload) loads: its load
+  // event a task later (webpack's CSS chunks wait for it; the engine
+  // fetches the sheet itself).
+  const linksLoaded = new WeakSet();
+  const loadLinks = (node) => {
+    const links = N.nodeName(node) === 'LINK' ? [node] : N.query(node, 'link', true);
+    for (const el of links) {
+      if (linksLoaded.has(el)) continue;
+      const rel = (N.attr(el, 'rel') || '').toLowerCase();
+      if (!/(^|\s)(stylesheet|preload|modulepreload|prefetch)(\s|$)/.test(rel) || !N.attr(el, 'href')) continue;
+      linksLoaded.add(el);
+      fireOn(el, 'load');
+    }
+  };
   const runScriptsIn = (node) => {
     if (N.nodeType(node) !== 1 || !N.isConnected(node)) return;
+    loadLinks(node);
     if (N.nodeName(node) === 'SCRIPT') { runScriptElement(node); return; }
     for (const el of N.query(node, 'script', true)) runScriptElement(el);
   };
@@ -291,6 +308,7 @@
   N.remove = (node) => { disconnected(node); nativeRemove(node); };
   N.setInnerHTML = (node, markup) => { if (definitions.size) for (const c of N.childNodes(node)) disconnected(c); nativeSetInnerHTML(node, markup); if (definitions.size) for (const c of N.childNodes(node)) connected(c); if (markup.indexOf('<script') !== -1 && N.nodeType(node) === 1) for (const el of N.query(node, 'script', true)) started.add(el); };
   for (const el of N.query(N.docRoot(), 'script', true)) started.add(el);
+  for (const el of N.query(N.docRoot(), 'link', true)) linksLoaded.add(el);
   define(Node.prototype, {
     append(...args) { for (const n of nodesFrom(args)) N.append(this, n); },
     prepend(...args) { const first = N.firstChild(this); for (const n of nodesFrom(args)) { if (first) N.insertBefore(this, n, first); else N.append(this, n); } },
@@ -603,7 +621,8 @@
     doctype: { get() { for (const c of N.childNodes(documentNode)) if (N.nodeType(c) === 10) return c; return null; } },
     cookie: { get() { return [...cookies.entries()].map(([k, v]) => k + '=' + v).join('; '); }, set(v) { const s = String(v); const m = s.match(/^\s*([^=;]+)=([^;]*)/); if (m) { if (/max-age=0|expires=Thu, 01 Jan 1970/i.test(s)) cookies.delete(m[1].trim()); else cookies.set(m[1].trim(), m[2]); } } },
     forms: { get() { return collectionOf(N.query(documentNode, 'form', true)); } }, images: { get() { return collectionOf(N.query(documentNode, 'img', true)); } }, links: { get() { return collectionOf(N.query(documentNode, 'a[href],area[href]', true)); } }, scripts: { get() { return collectionOf(N.query(documentNode, 'script', true)); } }, anchors: { get() { return collectionOf(N.query(documentNode, 'a[name]', true)); } }, embeds: { get() { return collectionOf([]); } }, plugins: { get() { return collectionOf([]); } }, all: { get() { return collectionOf(N.query(documentNode, '*', true)); } },
-    styleSheets: { get() { return listOf(N.query(documentNode, 'style,link[rel~=stylesheet]', true).map(sheetOf).filter(Boolean)); } }, adoptedStyleSheets: { get() { return []; }, set() {} },
+    styleSheets: { get() { return listOf(N.query(documentNode, 'style:not([data-olo-adopted]),link[rel~=stylesheet]', true).map(sheetOf).filter(Boolean)); } },
+    adoptedStyleSheets: { get() { return adopted; }, set(v) { adopted = Array.from(v || []); syncAdopted(); } },
     fonts: { get() { return { ready: Promise.resolve(), status: 'loaded', load: () => Promise.resolve([]), check: () => true, addEventListener() {}, removeEventListener() {}, forEach() {}, size: 0, add() {}, delete() {}, clear() {} }; } },
     implementation: { get() { return { hasFeature: () => true, createHTMLDocument: (title) => createHTMLDocument(title), createDocument: () => N.createFragment(), createDocumentType: () => null }; } },
     timeline: { get() { return { currentTime: performanceNow() }; } },
@@ -646,7 +665,7 @@
     querySelector(sel) { return N.query(this, String(sel), false); }, querySelectorAll(sel) { return listOf(N.query(this, String(sel), true)); },
     getElementById(id) { return N.query(this, '#' + CSS.escape(String(id)), false); },
     innerHTML: { get() { return N.innerHTML(this); }, set(v) { N.setInnerHTML(this, String(v)); } },
-    adoptedStyleSheets: { get() { return []; }, set() {} }, styleSheets: { get() { return []; } },
+    styleSheets: { get() { return []; } }, adoptedStyleSheets: { get() { return this._adopted || (this._adopted = []); }, set(v) { this._adopted = Array.from(v || []); } },
   });
   class Range {
     constructor() { this.startContainer = documentNode; this.endContainer = documentNode; this.startOffset = 0; this.endOffset = 0; this.collapsed = true; this.commonAncestorContainer = documentNode; }
@@ -782,8 +801,16 @@
     decl.getPropertyValue = (name) => { name = propName(name); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(name)] !== undefined ? defaults[camel(name)] : ''; };
     return new Proxy(decl, { get(target, key) { if (typeof key !== 'string') return undefined; if (key in target) return target[key]; const name = kebab(key); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(key)] !== undefined ? defaults[camel(key)] : ''; }, set() { return true; } });
   };
-  global.matchMedia = (query) => { const q = String(query); let matches = false; const m = q.match(/\((min|max)-width:\s*([\d.]+)px\)/); if (m) matches = m[1] === 'min' ? vw >= Number(m[2]) : vw <= Number(m[2]); if (/prefers-color-scheme:\s*dark/.test(q)) matches = false; if (/prefers-color-scheme:\s*light/.test(q)) matches = true; if (/prefers-reduced-motion:\s*no-preference/.test(q)) matches = true; if (/hover:\s*hover/.test(q) || /pointer:\s*fine/.test(q)) matches = true; if (/\(min-resolution:\s*([\d.]+)(dppx|x)\)/.test(q)) matches = dpr >= Number(q.match(/\(min-resolution:\s*([\d.]+)/)[1]); if (/orientation:\s*landscape/.test(q)) matches = vw >= vh; if (/orientation:\s*portrait/.test(q)) matches = vw < vh; if (/^\s*(all|screen)\s*$/.test(q)) matches = true; if (/print/.test(q)) matches = false; const mql = { media: q, matches, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; } }; return mql; };
-  global.MediaQueryList = class MediaQueryList {};
+  // matchMedia answers by the engine's media evaluation, the same as the
+  // page's sheets. The viewport is fixed for a realm (a resize renders a
+  // new one), so a list never changes; its listeners are kept all the same.
+  class MediaQueryList extends EventTargetCtor {
+    constructor(media) { super(); this.media = media; this.matches = N.matchMedia(media); this.onchange = null; }
+    addListener(f) { if (typeof f === 'function') this.addEventListener('change', f); }
+    removeListener(f) { this.removeEventListener('change', f); }
+  }
+  global.MediaQueryList = MediaQueryList;
+  global.matchMedia = (query) => new MediaQueryList(String(query));
   // Timers on a virtual clock: __olo_tick(now) runs what is due and returns the next due time.
   let now = 0, nextTimer = 1;
   const timers = new Map();
@@ -1008,6 +1035,13 @@
     define(Object.getPrototypeOf(documentNode), common.concat(['readystatechange', 'visibilitychange', 'fullscreenchange', 'pointerlockchange']));
     define(global, common.concat(windowOnly));
   }
+  global.__olo_animationEvent = (el, type, name, elapsed) => {
+    const Ctor = global.AnimationEvent || Event;
+    const ev = new Ctor(type, { bubbles: true, cancelable: false, composed: true });
+    try { Object.defineProperty(ev, 'animationName', { value: name }); Object.defineProperty(ev, 'elapsedTime', { value: elapsed }); Object.defineProperty(ev, 'pseudoElement', { value: '' }); } catch (e) {}
+    ev.isTrusted = true;
+    dispatch(el, ev);
+  };
   global.__olo_input = (json, target) => {
     const i = JSON.parse(json);
     scrollXY[0] = 0;
@@ -1294,8 +1328,29 @@
   let sheetFlush = false;
   const flushSheets = () => {
     sheetFlush = false;
-    for (const sheet of dirtySheets) { if (sheet.ownerNode && N.nodeName(sheet.ownerNode) === 'STYLE') { const text = sheet._rules.join('\n'); sheet._text = text; N.setTextContent(sheet.ownerNode, text); } }
+    let adoptedChanged = false;
+    for (const sheet of dirtySheets) {
+      if (sheet.ownerNode && N.nodeName(sheet.ownerNode) === 'STYLE') { const text = sheet._rules.join('\n'); sheet._text = text; N.setTextContent(sheet.ownerNode, text); }
+      else if (!sheet.ownerNode && adopted.includes(sheet)) adoptedChanged = true;
+    }
     dirtySheets.clear();
+    if (adoptedChanged) syncAdopted();
+  };
+  // document.adoptedStyleSheets: constructed sheets the document is styled
+  // with, after its own; their rules go into one hidden <style> at the end
+  // of the head, which the engine styles from.
+  let adopted = [], adoptedElement = null;
+  const syncAdopted = () => {
+    const text = adopted.map((sheet) => sheet._current().join('\n')).join('\n');
+    if (!adoptedElement || !N.isConnected(adoptedElement)) {
+      if (!text) return;
+      const head = N.query(documentNode, 'head', false) || N.query(documentNode, 'html', false);
+      if (!head) return;
+      adoptedElement = N.createElement('style', '');
+      N.setAttr(adoptedElement, 'data-olo-adopted', '');
+      nativeAppend(head, adoptedElement);
+    }
+    N.setTextContent(adoptedElement, text);
   };
   global.CSSStyleSheet = class CSSStyleSheet {
     constructor(options, owner) { this.ownerNode = owner || null; this._text = owner ? N.textContent(owner) : ''; this._rules = splitRules(this._text); this.disabled = false; this.media = { mediaText: (options && options.media) || '' }; this.ownerRule = null; this.parentStyleSheet = null; this.title = null; }

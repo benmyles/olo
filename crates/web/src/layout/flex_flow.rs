@@ -242,7 +242,13 @@ fn item(
             bfc: true,
             rtl: false,
         };
-        return Ok((Item { id, used, autos: 0, align: K::FlexStart, stretch: false, order: 0 }, flex::Item { base: widths.max_content, minimum: widths.min_content, ..Default::default() }));
+        // An anonymous item's align-self is auto: the container's
+        // align-items places it (stretching text changes nothing seen).
+        let align = match align {
+            K::Stretch | K::Normal | K::Baseline => K::FlexStart,
+            other => other,
+        };
+        return Ok((Item { id, used, autos: 0, align, stretch: false, order: 0 }, flex::Item { base: widths.max_content, minimum: widths.min_content, ..Default::default() }));
     }
     let s = tree.style(id).ok_or(Error::Stale)?;
     if keyword(s, P::Visibility)? == K::Collapse {

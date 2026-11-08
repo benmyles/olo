@@ -26,8 +26,9 @@ GitHub's homepage, open (seen against Chrome at 1000 × 700):
   stays stacked (83 rules dropped).
 - [x] Flex `order`, row and column (its header's menu button sat left).
 - [ ] CSS animations and transitions: `animation`, `@keyframes` (207
-  rules), `transition` are not parsed; also `outline`, `text-transform`,
-  `text-overflow`, `appearance`, `filter`, `backdrop-filter`.
+  rules), `transition` are not parsed; also `outline`,
+  `text-overflow`, `appearance`, `filter`, `backdrop-filter`
+  (`text-transform` and `text-box` done).
 - [ ] Load cost: its first 12 s cost Olo about 2.4 CPU s and Chrome about
   1.3-1.9 (scripts 1.2 s, the scripts' first full style 45 ms each time
   the sheets change, WebGL's EGL start 135 ms on the page thread).
@@ -47,9 +48,18 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
 - [ ] GitHub's "More ways" cards stay pinned (sticky, stacked) while the
   page scrolls in Chrome; in Olo they scroll by.
 - [ ] `background-clip: text` (apple.com's gradient subhead).
-- [ ] Lazy images: `loading=lazy` ones never fire load (a browser loads
-  them when scrolled to); one of GitHub's below the fold, given a load
-  event, started a timer loop under Olo (78,000 listeners): find why.
+- [x] Lazy images' timer loop: web-vitals' capturing window `load`
+  listener got every image's load event (load events don't reach the
+  window now). Open: `loading=lazy` images still never load.
+- [ ] Scroll containers (`overflow: auto | scroll`): the wheel scrolls the
+  page under them (GitHub's open menu), no scrollbar, `scrollTop` and
+  `scroll` events on them. Needs a scroll offset per box, its content
+  painted moved and clipped (a moved layer, like sticky), wheel routing to
+  the innermost box that can scroll that way, and the agent tree showing it.
+- [x] GitHub's menu: opens, rows clickable, Products expands, as Chrome
+  (JOURNAL 2026-11-07, night). Open: its panel scrolling (above).
+- [ ] Forms: the hero's email field shows its label over its placeholder
+  (Chrome floats the label); POST submission; checkbox drawing.
 
 Next, in impact order (each removes a fallback kind or a visible gap):
 

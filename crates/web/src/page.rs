@@ -237,7 +237,7 @@ pub const UA: &str = concat!(
     // buttons in 13.33px Arial, fields white with an inset border, buttons
     // grey with an outset one, text areas monospace; one line where a
     // field is, its text vertically centred by the field's layout.
-    "input,textarea,select,button{display:inline-block;font:13.3333px Arial,sans-serif;letter-spacing:normal;word-spacing:normal;text-transform:none;text-indent:0;text-shadow:none;text-align:start;color:#000;box-sizing:content-box}",
+    "input,textarea,select,button{display:inline-block;font:13.3333px Arial,sans-serif;letter-spacing:normal;word-spacing:normal;text-align:start;color:#000;box-sizing:content-box}",
     "input{padding:1px 2px;border:2px inset #767676;background-color:#fff;width:177px;white-space:pre;overflow:clip}",
     "input::placeholder,textarea::placeholder{color:#757575}",
     "textarea{padding:2px;border:1px solid #767676;background-color:#fff;font-family:monospace;width:195px;height:36px;white-space:pre-wrap;overflow:auto}",
@@ -765,7 +765,7 @@ impl Measured {
     /// properties scripts read: keywords, lengths in px, colours, display,
     /// and the box's used sizes and edges.
     pub fn computed(&self, node: crate::dom::NodeId, name: &str) -> Option<String> {
-        use css::properties::{Display, Inner, Keyword as K, Name, Outer, Property as P};
+        use css::properties::{Keyword as K, Name, Property as P};
         use css::style::Value;
         let tree = self.layout.cache().tree();
         let style = tree.styles().snapshot(node)?;
@@ -806,13 +806,25 @@ impl Measured {
         if let Some(v) = used {
             return Some(px(v));
         }
+        computed_value(style, p)
+    }
+}
+/// A property's computed value as getComputedStyle serialises it, from the
+/// style alone (no box sizes): keywords, lengths in px, colours, families
+/// and display.
+pub fn computed_value(style: &css::style::Style, p: css::properties::Property) -> Option<String> {
+    use css::properties::{Display, Inner, Outer, Property as P};
+    use css::style::Value;
+    let px = |v: f64| format!("{}px", trim(v));
+    {
         Some(match style.value(p) {
             Value::Keyword(k) => k.as_str().to_owned(),
             value @ Value::Numeric(_) => {
                 let v = value.scalar()?;
                 match p {
                     P::Opacity | P::ZIndex | P::FlexGrow | P::FlexShrink | P::Order | P::FontWeight | P::FillOpacity | P::StrokeOpacity | P::StopOpacity | P::FloodOpacity => trim(v),
-                    P::LineHeight => px(v),
+                    // A number (1.5) resolves against the font size, as Chrome reports it.
+                    P::LineHeight => px(style.line_height()),
                     _ => px(v),
                 }
             }
@@ -820,6 +832,17 @@ impl Measured {
                 let c = style.used_color(p).ok()?.srgb8_clipped();
                 if c[3] == 255 { format!("rgb({}, {}, {})", c[0], c[1], c[2]) } else { format!("rgba({}, {}, {}, {})", c[0], c[1], c[2], trim(f64::from(c[3]) / 255.)) }
             }
+            // Families as Chrome spells them: names with spaces quoted.
+            Value::Families(f) => f
+                .as_slice()
+                .iter()
+                .map(|f| match f {
+                    css::properties::Family::Generic(g) => g.as_str().to_owned(),
+                    css::properties::Family::Named(n) if n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') && !n.starts_with(|c: char| c.is_ascii_digit()) => n.to_string(),
+                    css::properties::Family::Named(n) => format!("\"{}\"", n.replace('\\', "\\\\").replace('"', "\\\"")),
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
             Value::Display(d) => match d {
                 Display::None => "none".into(),
                 Display::Contents => "contents".into(),
@@ -1418,6 +1441,11 @@ impl Page {
     pub fn animating(&self) -> bool {
         self.timeline.running
     }
+    /// The CSS animation events since the last call: element, type
+    /// (animationstart, animationend), name, elapsed seconds.
+    pub fn take_animation_events(&mut self) -> Vec<(crate::dom::NodeId, &'static str, Arc<str>, f64)> {
+        self.timeline.take_events()
+    }
     /// Follow a later revision's stylesheets (see `Measurer::refresh`):
     /// returns whether the rules were made again.
     pub fn refresh(&mut self, doc: &Document, cancel: Option<&AtomicBool>, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<bool> {
@@ -1937,6 +1965,10 @@ fn render(
     // A first render (no styles before): its animations from its own styles.
     if previous_styles.is_none() && !rules.keyframes().is_empty() {
         (animation_values, animation_nodes) = timeline.sample(rules.keyframes(), styled_elements(doc, &styles), cancel);
+    } else if !rules.keyframes().is_empty() && !unchanged {
+        // The document changed: an animation it started shows from the
+        // next frame (sampled from these styles).
+        timeline.running = true;
     }
     // The animated elements styled with their values now (the patch above
     // left those the document did not change as they were).

@@ -282,3 +282,33 @@ fn semantic_control_metadata_rejects_malformed_late_overlapping_and_over_quota_i
     cancel.store(true, Ordering::Relaxed);
     assert!(matches!(job.with_controls(controls()), Err(Error::Cancelled)));
 }
+#[test]
+fn text_transform_keeps_byte_lengths_and_word_starts_as_chrome() {
+    let run = |parts: &[(&str, prep::Transform)]| {
+        let source: String = parts.iter().map(|p| p.0).collect();
+        let mut at = 0u32;
+        let spans: Arc<[Span]> = parts
+            .iter()
+            .map(|p| {
+                let s = Span { range: at..at + p.0.len() as u32, whitespace: WhiteSpace::default() };
+                at += p.0.len() as u32;
+                s
+            })
+            .collect();
+        let mut job = prep::Job::new(Arc::from(source.as_str()), spans, Default::default(), None).unwrap().with_transforms(parts.iter().map(|p| p.1).collect()).unwrap();
+        while !job.step(3).unwrap().finished {}
+        let p = job.finish().unwrap();
+        invariants(&p);
+        assert_eq!(p.text().len(), source.len());
+        p.text().to_string()
+    };
+    use prep::Transform as T;
+    // ß has no one-character upper case of its length: kept.
+    assert_eq!(run(&[("Build & ship straße", T::Uppercase)]), "BUILD & SHIP STRAßE");
+    // Words start after spaces, hyphens, dots and brackets, not after an
+    // apostrophe, an underscore or a digit (Chrome's "3rd", "A_b").
+    assert_eq!(run(&[("hello wörld don't stop-now (yes) émile a_b 3rd x.y", T::Capitalize)]), "Hello Wörld Don't Stop-Now (Yes) Émile A_b 3rd X.Y");
+    // Per span, and across span edges.
+    assert_eq!(run(&[("MiXeD ", T::Lowercase), ("KEEP", T::None), (" Case", T::Lowercase)]), "mixed KEEP case");
+    assert_eq!(run(&[("a", T::Capitalize), ("bc d", T::Capitalize)]), "Abc D");
+}

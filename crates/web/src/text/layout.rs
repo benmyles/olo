@@ -620,6 +620,18 @@ pub struct Layout {
     objects: Option<Box<objects::LayoutObjects>>,
 }
 impl Layout {
+    /// `text-box-trim` (CSS Inline 3 §5.1): the first line box starts
+    /// `start` lower down its ascent (it moves up by that much) and the
+    /// last ends `end` above its descent's bottom; the layout is that much
+    /// shorter.
+    pub fn trim(&mut self, start: f64, end: f64) {
+        if let Some(first) = self.lines.first_mut() {
+            first.gap -= start;
+        }
+        if let Some(last) = self.lines.last_mut() {
+            last.descent -= end;
+        }
+    }
     pub fn object_fragments(&self) -> &[ObjectFragment] {
         self.objects.as_ref().map_or(&[], |o| &o.placed)
     }

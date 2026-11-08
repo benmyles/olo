@@ -55,6 +55,14 @@ impl Truth {
     }
 }
 /// A media query list is true when any of its queries is; an empty list is.
+/// Whether a media query list, as written, holds on `media` (a list that
+/// can't be read holds nowhere).
+pub fn matches(query: &str, media: &Media, cancelled: Option<&AtomicBool>) -> bool {
+    match super::Syntax::parse(std::sync::Arc::from(query), Default::default(), cancelled) {
+        Ok(syntax) => evaluate(syntax.components(), media, cancelled),
+        Err(_) => false,
+    }
+}
 pub fn evaluate(list: Components<'_>, media: &Media, cancelled: Option<&AtomicBool>) -> bool {
     let items: Vec<_> = list.filter(|c| c.kind() != Kind::Whitespace).collect();
     if items.is_empty() {

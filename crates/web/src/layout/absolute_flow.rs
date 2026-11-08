@@ -109,8 +109,16 @@ impl Job<'_> {
         let parent = node.parent.ok_or(Error::Invalid)?;
         let mut cb = parent;
         let mut depth = 0;
-        // A list item's marker is positioned by its item, whatever its position.
-        while !node.marker && cb != tree.root() && matches!(tree.style(cb).ok_or(Error::Stale)?.value(P::Position), Value::Keyword(K::Static)) {
+        // A fixed box's containing block is the viewport, unless an ancestor
+        // with a transform holds it; an absolute box's is its nearest
+        // positioned ancestor. A list item's marker is positioned by its
+        // item, whatever its position.
+        let s = tree.style(d.id).ok_or(Error::Stale)?;
+        let fixed = !node.marker && matches!(s.value(P::Position), Value::Keyword(K::Fixed));
+        let holds = |style: &Style| {
+            if fixed { matches!(style.value(P::Transform), Value::Transforms(_)) } else { !matches!(style.value(P::Position), Value::Keyword(K::Static)) }
+        };
+        while !node.marker && cb != tree.root() && !holds(tree.style(cb).ok_or(Error::Stale)?) {
             check(self.cancel)?;
             depth += 1;
             if depth > self.limits.depth {
@@ -118,12 +126,16 @@ impl Job<'_> {
             }
             cb = tree.get(cb).ok_or(Error::Invalid)?.parent.ok_or(Error::Invalid)?;
         }
-        let cg = self.geometry[cb.index()];
-        let content = self.global_content(cb)?;
+        let mut cg = self.geometry[cb.index()];
+        let mut content = self.global_content(cb)?;
+        if cb == tree.root() {
+            // The initial containing block: the viewport at the scroll origin.
+            cg.padding = Edges::default();
+            content = Rect { x: 0., y: 0., width: self.initial[0], height: self.initial[1] };
+        }
         let parent_content = self.global_content(parent)?;
         let width = content.width + cg.padding.horizontal();
         let height = content.height + cg.padding.vertical();
-        let s = tree.style(d.id).ok_or(Error::Stale)?;
         let rtl = tree.style(cb).is_some_and(|s| s.axes().direction == Direction::Rtl);
         // Static positions relative to the containing block's padding box.
         let static_x = parent_content.x + d.static_position.x - (content.x - cg.padding.left);

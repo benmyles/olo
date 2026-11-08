@@ -194,3 +194,38 @@ reader.read().then(({ done, value }) => {
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] false hello", "[log] hi!"]);
 }
+#[test]
+fn an_elements_load_event_never_reaches_the_window() {
+    let (report, _) = run(r#"<img id=i src=x.png><script>
+addEventListener('load', (e) => console.log('window saw', e.target === window ? 'window' : e.target.tagName), true);
+document.addEventListener('load', (e) => console.log('document saw', e.target.tagName), true);
+</script>"#);
+    assert_eq!(report.errors, Vec::<String>::new());
+    // The image's error and the window's own load; the document captures
+    // nothing of the window's load, the window nothing of the image's.
+    assert_eq!(report.console, ["[log] window saw window"]);
+}
+#[test]
+fn match_media_answers_whole_queries_as_the_sheets_do() {
+    // GitHub opens its menus on hover only for `(hover: hover) and
+    // (pointer: fine) and (min-width: 1012px)`: false at 1000px wide.
+    let (report, _) = run(
+        "<script>for (const q of ['(hover: hover) and (pointer: fine) and (min-width: 1012px)', '(min-width: 768px) and (hover: hover)', 'screen and (max-width: 999px)', '(prefers-color-scheme: dark)', '(prefers-reduced-motion: reduce)', '(min-resolution: 1dppx)', 'not all and (min-width: 2000px)', '(orientation: landscape)', 'print']) console.log(q + ' ' + matchMedia(q).matches); const m = matchMedia('(min-width: 1px)'); let n = 0; m.addListener(() => n++); m.addEventListener('change', () => n++); console.log(m instanceof MediaQueryList, m.media, n)</script>",
+    );
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(
+        report.console,
+        [
+            "[log] (hover: hover) and (pointer: fine) and (min-width: 1012px) false",
+            "[log] (min-width: 768px) and (hover: hover) true",
+            "[log] screen and (max-width: 999px) false",
+            "[log] (prefers-color-scheme: dark) false",
+            "[log] (prefers-reduced-motion: reduce) false",
+            "[log] (min-resolution: 1dppx) true",
+            "[log] not all and (min-width: 2000px) true",
+            "[log] (orientation: landscape) true",
+            "[log] print false",
+            "[log] true (min-width: 1px) 0",
+        ]
+    );
+}

@@ -53,6 +53,48 @@ impl WhiteSpace {
         Ok(Self { collapse, wrap })
     }
 }
+/// `text-transform` (CSS Text 3 §2.1), applied character by character
+/// where the changed character keeps its UTF-8 length, so the prepared
+/// text still maps byte for byte onto the DOM's (`MappingKind::Replace`):
+/// `ß` keeps its form under `uppercase`, and `full-width` is not applied.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Transform {
+    #[default]
+    None,
+    Uppercase,
+    Lowercase,
+    Capitalize,
+}
+impl Transform {
+    pub fn for_style(style: &Style) -> Self {
+        match style.value(Property::TextTransform) {
+            Value::Keyword(Keyword::Uppercase) => Self::Uppercase,
+            Value::Keyword(Keyword::Lowercase) => Self::Lowercase,
+            Value::Keyword(Keyword::Capitalize) => Self::Capitalize,
+            _ => Self::None,
+        }
+    }
+    /// `c` transformed, at the start of a word or not; None when it stays.
+    fn apply(self, c: char, word_start: bool) -> Option<char> {
+        let single = |mut it: &mut dyn Iterator<Item = char>| {
+            let first = it.next()?;
+            (it.next().is_none() && first != c && first.len_utf8() == c.len_utf8()).then_some(first)
+        };
+        match self {
+            Self::None => None,
+            Self::Uppercase => single(&mut c.to_uppercase()),
+            Self::Lowercase => single(&mut c.to_lowercase()),
+            // Title case is upper case for the scripts that have both.
+            Self::Capitalize if word_start => single(&mut c.to_uppercase()),
+            Self::Capitalize => None,
+        }
+    }
+}
+/// Whether `c` continues a word for `capitalize`: letters, digits, marks
+/// and apostrophes (`don't` is one word).
+fn in_word(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '\'' | '\u{2019}' | '_') || ('\u{300}'..='\u{36f}').contains(&c)
+}
 /// Semantic controls in a formatting source, never inserted into the DOM.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ControlKind {
@@ -178,8 +220,13 @@ pub struct Prepared {
     spans: Arc<[Span]>,
     mappings: Box<[EncodedMapping]>,
     controls: Option<triomphe::ThinArc<(), Control>>,
+    transforms: Box<[Transform]>,
 }
 impl Prepared {
+    /// Each span's `text-transform` (empty: none).
+    pub fn transforms(&self) -> &[Transform] {
+        &self.transforms
+    }
     pub fn source(&self) -> &Arc<str> {
         &self.source
     }
@@ -272,6 +319,10 @@ pub struct Job<'a> {
     progress: Progress,
     failed: bool,
     controls: Box<[Control]>,
+    /// Each span's `text-transform` (empty: none anywhere).
+    transforms: Box<[Transform]>,
+    /// The next character starts a word (for `capitalize`).
+    word_start: bool,
 }
 impl<'a> Job<'a> {
     pub fn new(source: Arc<str>, spans: Arc<[Span]>, limits: Limits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
@@ -314,7 +365,18 @@ impl<'a> Job<'a> {
             progress: Progress::default(),
             failed: false,
             controls: Box::default(),
+            transforms: Box::default(),
+            word_start: true,
         })
+    }
+    /// Each span's `text-transform`, one per span (or none at all).
+    pub fn with_transforms(mut self, transforms: Box<[Transform]>) -> Result<Self> {
+        check(self.cancel)?;
+        if self.failed || self.progress.finished || self.progress.scanned_bytes != 0 || (!transforms.is_empty() && transforms.len() != self.spans.len()) {
+            return Err(Error::Invalid);
+        }
+        self.transforms = if transforms.iter().all(|t| *t == Transform::None) { Box::default() } else { transforms };
+        Ok(self)
     }
     /// Host-provided semantic controls in the formatting source. Forced breaks
     /// survive every collapsing mode; optional controls retain an explicit point.
@@ -411,11 +473,13 @@ impl<'a> Job<'a> {
                 while self.at >= self.spans[self.span].range.end as usize {
                     self.span += 1;
                 }
-                if !cfg!(feature = "baseline-text-prepare") {
+                let transform = self.transforms.get(self.span).copied().unwrap_or_default();
+                if !cfg!(feature = "baseline-text-prepare") && transform == Transform::None {
                     let stop = self.spans[self.span].range.end as usize;
                     let count = printable_prefix(&self.source.as_bytes()[self.at..stop.min(self.at.saturating_add(budget))]);
                     if count != 0 {
                         self.emit(self.at + count, MappingKind::Copy, None)?;
+                        self.word_start = !in_word(self.source.as_bytes()[self.at + count - 1] as char);
                         self.at += count;
                         budget -= count;
                         self.progress.scanned_bytes += count;
@@ -475,8 +539,14 @@ impl<'a> Job<'a> {
                         self.after_break = false;
                         self.previous_space = false;
                     }
-                    (MappingKind::Copy, None)
+                    match transform.apply(c, self.word_start) {
+                        Some(t) => (MappingKind::Replace, Some(t)),
+                        None => (MappingKind::Copy, None),
+                    }
                 };
+                if !bidi_control(c) {
+                    self.word_start = !in_word(c);
+                }
                 self.emit(end, kind, replacement)?;
                 self.at = end;
                 budget = budget.saturating_sub(c.len_utf8());
@@ -531,6 +601,6 @@ impl<'a> Job<'a> {
         }
         let text = self.output.map_or_else(|| self.source.clone(), Arc::from);
         let controls = (!self.controls.is_empty()).then(|| triomphe::ThinArc::from_header_and_iter((), self.controls.into_vec().into_iter()));
-        Ok(Prepared { source: self.source, text, spans: self.spans, mappings: self.mappings.into_boxed_slice(), controls })
+        Ok(Prepared { source: self.source, text, spans: self.spans, mappings: self.mappings.into_boxed_slice(), controls, transforms: self.transforms })
     }
 }

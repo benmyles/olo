@@ -174,6 +174,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 Expansion::WideOnly => Err(Error::Invalid),
                 Expansion::WhiteSpace => white_space(&parts),
                 Expansion::TextWrap => text_wrap(&parts),
+                Expansion::TextBox => text_box(&parts),
                 Expansion::TextDecoration => text_decoration(&parts, limits, cancelled),
                 Expansion::ListStyle => list_style(&parts, limits, cancelled),
                 Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
@@ -408,6 +409,54 @@ fn text_decoration(parts: &[Component<'_>], limits: Limits, cancelled: Option<&A
     ])
 }
 /// `text-wrap: <'text-wrap-mode'> || <'text-wrap-style'>` (CSS Text 4 §5.1).
+/// `text-box-edge` (CSS Inline 3 §5.2): `auto`, `text`, or an over edge
+/// (`text`, `cap`, `ex`) and an under edge (`text`, `alphabetic`).
+/// Ideographic edges are not supported.
+fn text_box_edge(parts: &[Component<'_>]) -> Result<Value> {
+    let idents: Vec<&str> = parts.iter().map(|c| if c.kind() == Kind::Ident { c.text().ok_or(Error::Invalid) } else { Err(Error::Invalid) }).collect::<Result<_>>()?;
+    let lower: Vec<String> = idents.iter().map(|s| s.to_ascii_lowercase()).collect();
+    let words: Vec<&str> = lower.iter().map(String::as_str).collect();
+    let k = match words.as_slice() {
+        ["auto"] => Keyword::Auto,
+        // One value names both edges, so only the edges both sides have.
+        ["text"] | ["text", "text"] => Keyword::Text,
+        ["cap", "text"] => Keyword::Cap,
+        ["ex", "text"] => Keyword::Ex,
+        ["text", "alphabetic"] => Keyword::TextAlphabetic,
+        ["cap", "alphabetic"] => Keyword::CapAlphabetic,
+        ["ex", "alphabetic"] => Keyword::ExAlphabetic,
+        [..] if words.iter().any(|w| w.starts_with("ideographic")) => return Err(Error::Unsupported("ideographic text-box edges")),
+        _ => return Err(Error::Invalid),
+    };
+    Ok(Value::Keyword(k))
+}
+/// `text-box: normal | <'text-box-trim'> || <'text-box-edge'>`: an edge
+/// alone trims both ends.
+fn text_box(parts: &[Component<'_>]) -> Result<Assignments> {
+    let ident = |c: &Component<'_>, s: &str| c.kind() == Kind::Ident && c.text().is_some_and(|t| t.eq_ignore_ascii_case(s));
+    let (trim, edge) = if let [c] = parts
+        && ident(c, "normal")
+    {
+        (Keyword::None, Value::Keyword(Keyword::Auto))
+    } else {
+        let at = parts.iter().position(|c| ["trim-start", "trim-end", "trim-both"].iter().any(|s| ident(c, s)));
+        let trim = match at.map(|i| parts[i].text().unwrap_or_default().to_ascii_lowercase()) {
+            Some(t) if t == "trim-start" => Keyword::TrimStart,
+            Some(t) if t == "trim-end" => Keyword::TrimEnd,
+            _ => Keyword::TrimBoth,
+        };
+        // The trim keyword comes before or after the edge, not inside it.
+        let rest: Vec<Component<'_>> = match at {
+            Some(0) => parts[1..].to_vec(),
+            Some(i) if i + 1 == parts.len() => parts[..i].to_vec(),
+            Some(_) => return Err(Error::Invalid),
+            None => parts.to_vec(),
+        };
+        let edge = if rest.is_empty() { Value::Keyword(Keyword::Auto) } else { text_box_edge(&rest)? };
+        (trim, edge)
+    };
+    Ok(smallvec::smallvec![Assignment { property: Property::TextBoxTrim, value: Value::Keyword(trim) }, Assignment { property: Property::TextBoxEdge, value: edge }])
+}
 fn text_wrap(parts: &[Component<'_>]) -> Result<Assignments> {
     if parts.is_empty() || parts.len() > 2 {
         return Err(Error::Invalid);
@@ -482,6 +531,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
         return Err(Error::Unsupported("SVG paint server/context paint"));
     }
     match grammar {
+        Grammar::TextBoxEdge => text_box_edge(parts),
         Grammar::ClipPath => super::clip::parse(parts, limits, cancelled),
         Grammar::FontStyle => font::style(parts, limits, cancelled),
         Grammar::Keywords(_) if property == Property::TextAlign && parts.len() == 1 && parts[0].kind() == Kind::Ident && parts[0].text().unwrap().eq_ignore_ascii_case("-webkit-match-parent") => {
@@ -546,6 +596,7 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
     check(cancelled)?;
     match grammar {
         Grammar::Animation(field) => super::animation::parse_list(field, &[c]),
+        Grammar::TextBoxEdge => text_box_edge(&[c]),
         Grammar::ClipPath => super::clip::parse(&[c], limits, cancelled),
         Grammar::FontWidth => font::width(c, limits, cancelled),
         Grammar::Overflow => {

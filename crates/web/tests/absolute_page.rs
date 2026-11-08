@@ -102,3 +102,101 @@ fn independent_absolute_page_rectangles() {
         }
     }
 }
+#[test]
+fn fixed_boxes_take_the_viewport_unless_a_transform_holds_them() {
+    // GitHub's menu panel: `position: fixed; height: 100%` inside a short
+    // positioned header is the viewport's height, at the viewport's top.
+    let p = load(
+        ".h{position:relative;height:52px}#m{position:fixed;top:0;width:100%;height:100%}#n{position:fixed;top:0;width:50%}#t{transform:translateX(0);position:static;margin-top:10px;width:100px;height:40px}#k{position:fixed;top:0;height:100%;width:10px}</style><div class=h><div id=m></div></div><div class=h><div id=n><div style='height:30px'></div></div></div><div id=t><div id=k></div></div>",
+        1.,
+    );
+    assert_eq!(rect(&p, "m"), layout::Rect { x: 0., y: 0., width: 400., height: 300. });
+    assert_eq!(rect(&p, "n"), layout::Rect { x: 0., y: 0., width: 200., height: 30. });
+    // A transformed ancestor is its containing block.
+    let t = rect(&p, "t");
+    assert_eq!(rect(&p, "k"), layout::Rect { x: 0., y: t.y, width: 10., height: 40. });
+}
+#[test]
+fn a_flex_containers_bare_text_follows_its_align_items() {
+    // GitHub's menu buttons: `display:flex; align-items:center` with the
+    // label as bare text beside an icon.
+    let p = load(
+        "#f{display:flex;align-items:center;justify-content:space-between;height:60px;line-height:20px}#i{width:10px;height:10px}#e{display:flex;align-items:flex-end;height:60px;line-height:20px}</style><div id=f>Label<div id=i></div></div><div id=e>Low</div>",
+        1.,
+    );
+    let l = p.scene.layout();
+    let text_of = |name: &str| {
+        let tree = l.cache().tree();
+        let (id, _) = tree.iter().find(|(_, b)| matches!(b.kind, layout::BoxKind::InlineContent { .. }) && p.document.attribute(b.node, "id").unwrap() == Some(name)).unwrap();
+        l.bounds(id).unwrap()
+    };
+    assert_eq!(text_of("f").y, 20.);
+    assert_eq!(rect(&p, "i").y, 25.);
+    assert_eq!(text_of("e").y, 60. + 40.);
+}
+#[test]
+fn column_flex_auto_margins_follow_a_height_given_by_the_parent() {
+    // GitHub's menu: a grown column wrapper whose last item has
+    // `margin-top: auto` sits at the wrapper's bottom; a grid's stretched
+    // column card puts its auto-margin button at the card's bottom.
+    let p = load(
+        "#m{display:flex;flex-direction:column;height:300px}#h{height:50px;flex-shrink:0}#w{display:flex;flex-direction:column;flex-grow:1}#n{height:100px;flex-shrink:0}#c{margin-top:auto;height:40px;flex-shrink:0;width:50px;margin-left:auto;margin-right:auto}#g{display:grid;grid-template-columns:1fr 1fr}.card{display:flex;flex-direction:column}.b{margin-top:auto;height:20px}</style><div id=m><div id=h></div><div id=w><div id=n></div><div id=c></div></div></div><div id=g><div class=card><div style='height:50px'></div><div class=b id=b1></div></div><div class=card><div style='height:150px'></div><div class=b id=b2></div></div></div>",
+        1.,
+    );
+    assert_eq!(rect(&p, "w"), layout::Rect { x: 0., y: 50., width: 400., height: 250. });
+    assert_eq!(rect(&p, "c"), layout::Rect { x: 175., y: 260., width: 50., height: 40. });
+    assert_eq!(rect(&p, "b1").y, 300. + 150.);
+    assert_eq!(rect(&p, "b2").y, 300. + 150.);
+}
+#[test]
+fn a_transparent_box_over_a_painted_one_takes_the_hit() {
+    // GitHub's menu rows: a background-less button across a bordered row
+    // is what a click anywhere on the row reaches, not only its label.
+    let p = load(
+        "#row{background-color:#eee;border-bottom:1px solid gray;padding:5px}#b{display:flex;height:40px;width:300px}#t{position:absolute;left:350px;top:0;width:20px;height:20px}</style><div id=row><div id=b>Label</div><div id=t></div></div>",
+        1.,
+    );
+    let id = |node: Option<olo_web::dom::NodeId>| node.and_then(|n| p.document.attribute(n, "id").unwrap().map(str::to_owned));
+    assert_eq!(id(p.scene.hit_test(250., 25., 0., 300., &[])), Some("b".into()));
+    assert_eq!(id(p.scene.hit_test(320., 25., 0., 300., &[])), Some("row".into()));
+    // Positioned boxes are not entered from their parent's background.
+    assert_eq!(id(p.scene.hit_test(355., 10., 0., 300., &[])), Some("row".into()));
+}
+#[test]
+fn text_box_trims_the_first_and_last_lines_to_their_edges() {
+    let p = load(
+        "div{font-size:20px;line-height:40px}#a{text-box:trim-both cap alphabetic}#b{text-box:trim-start cap}#c{text-box-trim:trim-end;text-box-edge:text alphabetic}#d{text-box:trim-both text}#e{text-box:normal}</style><div id=a>Hx</div><div id=b>Hx</div><div id=c>Hx<br>Hx</div><div id=d>Hx</div><div id=e>Hx</div><div id=f>Hx</div>",
+        1.,
+    );
+    let h = |id: &str| rect(&p, id).height;
+    let full = h("f");
+    assert_eq!(full, 40.);
+    // Cap height to baseline: shorter than the font's ascent.
+    assert!(h("a") > 0. && h("a") < 20., "{}", h("a"));
+    // `cap` alone is no edge (one value must suit both sides): ignored, as Chrome does.
+    assert_eq!(h("b"), full);
+    // The last line ends at its baseline: its descent and half-leading go.
+    assert!(h("c") < 2. * full && h("c") > full + 20., "{}", h("c"));
+    // `text`: the font's ascent and descent, without the half-leading.
+    assert!(h("d") < full && h("d") >= 20., "{}", h("d"));
+    assert_eq!(h("e"), full);
+    let computed = |id: &str, property| {
+        let tree = p.scene.layout().cache().tree();
+        let (box_id, _) = tree.iter().find(|(_, b)| matches!(b.kind, layout::BoxKind::Block { .. }) && p.document.attribute(b.node, "id").unwrap() == Some(id)).unwrap();
+        page::computed_value(tree.style(box_id).unwrap(), property)
+    };
+    use olo_web::css::properties::Property as P;
+    assert_eq!(computed("a", P::TextBoxTrim).as_deref(), Some("trim-both"));
+    assert_eq!(computed("a", P::TextBoxEdge).as_deref(), Some("cap alphabetic"));
+    assert_eq!(computed("b", P::TextBoxEdge).as_deref(), Some("auto"));
+}
+#[test]
+fn computed_line_height_and_font_family_read_as_chrome_reports_them() {
+    let p = load("#a{font:16px/1.5 'Olo Inline plain',\"My Font\",sans-serif}</style><div id=a>x</div>", 1.);
+    let tree = p.scene.layout().cache().tree();
+    let (box_id, _) = tree.iter().find(|(_, b)| matches!(b.kind, layout::BoxKind::Block { .. }) && p.document.attribute(b.node, "id").unwrap() == Some("a")).unwrap();
+    let style = tree.style(box_id).unwrap();
+    use olo_web::css::properties::Property as P;
+    assert_eq!(page::computed_value(style, P::LineHeight).as_deref(), Some("24px"));
+    assert_eq!(page::computed_value(style, P::FontFamily).as_deref(), Some("\"Olo Inline plain\", \"My Font\", sans-serif"));
+}

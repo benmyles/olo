@@ -76,8 +76,22 @@ impl StateSource for Snapshot<'_> {
             State::Target => self.input.target == Some(node),
             State::Disabled => self.disabled(node)? == Some(true),
             State::Enabled => self.disabled(node)? == Some(false),
-            // States the engine does not track yet (:checked, :invalid, …)
-            // do not match, as in a document where nothing has that state.
+            // A checkbox or radio ticked now, an option selected.
+            State::Checked => match self.doc.name(node)? {
+                Some("input") => {
+                    let kind = self.doc.attribute(node, "type")?.unwrap_or("").trim().to_ascii_lowercase();
+                    (kind == "checkbox" || kind == "radio") && self.doc.control_checked(node)?
+                }
+                Some("option") => self.doc.attribute(node, "selected")?.is_some(),
+                _ => false,
+            },
+            // A field with a placeholder and nothing in it.
+            State::PlaceholderShown => matches!(self.doc.name(node)?, Some("input" | "textarea")) && self.doc.attribute(node, "placeholder")?.is_some() && self.doc.control_value(node)?.is_empty(),
+            // Elements are defined, bar custom elements (their registry is
+            // the scripts'; an undefined one is what `:not(:defined)` finds).
+            State::Defined => !self.doc.name(node)?.is_some_and(|n| n.contains('-')),
+            // States the engine does not track yet (:invalid, …) do not
+            // match, as in a document where nothing has that state.
             _ => false,
         })
     }
