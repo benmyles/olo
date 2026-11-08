@@ -31,9 +31,6 @@ pub enum Msg {
 const EVERY: &[(u32, &str)] = &[(15, "15 minutes"), (30, "30 minutes"), (60, "Hour"), (120, "2 hours"), (360, "6 hours"), (720, "12 hours"), (1440, "Day")];
 /// Speed limits offered, KB/s (0: none).
 const SPEEDS: &[u64] = &[0, 256, 512, 1000, 2000, 5000, 10_000, 25_000];
-/// The key's item in Passwords.
-pub const KEY_TITLE: &str = "DiskBackup Key";
-
 pub struct Disk {
     pub settings: Settings,
     pub state: State,
@@ -215,28 +212,13 @@ fn tilde(path: &std::path::Path) -> String {
 fn keep_in_passwords() -> Result<(), String> {
     let key = target::key()?;
     let request = olo_keychain::Request::KeepSecret {
-        title: KEY_TITLE.into(),
+        title: target::KEY_TITLE.into(),
         secret: key.to_hex(),
         note: "The key to DiskBackup's backups: without it they can't be read. DiskBackup keeps a copy in this computer's keyring; on another computer, it reads it from here.".into(),
     };
-    let mut started = false;
-    loop {
-        match olo_keychain::call(&request) {
-            Ok(olo_keychain::Response::Saved { .. }) => return Ok(()),
-            Ok(olo_keychain::Response::Error { ref message }) => return Err(message.clone()),
-            Ok(other) => return Err(format!("Passwords answered {other:?}")),
-            Err(olo_keychain::CallError::NotRunning) if !started => {
-                started = true;
-                let _ = olo_xdg::spawn_detached("olo-passwords");
-                for _ in 0..50 {
-                    std::thread::sleep(std::time::Duration::from_millis(200));
-                    if olo_keychain::socket_path().exists() {
-                        break;
-                    }
-                }
-            }
-            Err(e) => return Err(e.to_string()),
-        }
+    match target::passwords(&request)? {
+        olo_keychain::Response::Saved { .. } => Ok(()),
+        ref other => Err(format!("Passwords answered {other:?}")),
     }
 }
 

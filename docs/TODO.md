@@ -61,8 +61,9 @@ something nobody here has is in "Blocked", with what it waits for.
   "DiskBackup"; the app's window (status, target and setup, the key kept
   in Passwords, folders, leave-out groups named by what they leave out,
   patterns, schedule, speed limits); restoring (a snapshot browser, put
-  back where it was, Replace or Keep Both, or elsewhere). Next: setting
-  up on another computer (the key read back from Passwords);
+  back where it was, Replace or Keep Both, or elsewhere); setting up on
+  another computer (a backup there whose key this one hasn't: the keys
+  Passwords keeps tried). Next:
   DiskBackup's own icon (Preferences ▸ Backup's for now); keeping (forget by `Keep`, then prune what only
   forgotten snapshots used); Google Drive (needs an OAuth client of
   Ben's: a Google Cloud project's "Desktop app" credentials); Deskbar,

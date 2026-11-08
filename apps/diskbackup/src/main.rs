@@ -192,7 +192,14 @@ pub(crate) fn set_up_folder(path: &str) -> Result<(), String> {
             Repo::init(store, key.clone(), Some(target::cache())).map_err(|e| e.to_string())?;
             key
         }
-        Err(olo_diskbackup::Error::WrongKey) => return Err(format!("there's a backup in {} already, and this computer's key doesn't open it", dir.display())),
+        // Another computer's (or this one's, set up again): its key from
+        // Passwords, which keeps every one DiskBackup made.
+        Err(olo_diskbackup::Error::WrongKey) => {
+            let keys = target::keys_in_passwords().map_err(|e| format!("there's a backup in {} already: its key is needed, and Passwords couldn't give it ({e})", dir.display()))?;
+            keys.into_iter()
+                .find_map(|k| Repo::open(store.clone(), k, None).ok().map(|r| r.key().clone()))
+                .ok_or_else(|| format!("there's a backup in {} already, and none of the keys in Passwords (“{}”) opens it", dir.display(), target::KEY_TITLE))?
+        }
         Err(e) => return Err(e.to_string()),
     };
     target::keep_key(&key)?;
