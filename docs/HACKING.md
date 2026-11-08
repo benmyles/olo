@@ -5504,7 +5504,30 @@ has a smaller one.
 
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
 Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
-`{"type":"auto_tiling"}` still work, as the mode. While it is on, each display of the workspace has a
+`{"type":"auto_tiling"}` still work, as the mode. It has two layouts
+(`TilingSettings::layout`, everywhere it's on: Deskbar's windowing mode
+menu ▸ Auto-Tiling Layout, Preferences ▸ Windows, `{"type":
+"set_tiling_layout","layout":"main_and_stack"}`): Halves, below, and
+Main and Stack, as dwm's: one main window on the left (`MAIN_RATIO`,
+55% of the width, till its edge is dragged; least sizes win, as in
+Halves), the rest stacked on the right each as tall. It's the same tree,
+built in that shape from its tiles in reading order (`main_and_stack`)
+when the layout is chosen (`AutoTiler::built_as`) and whenever the
+number of tiles changes, a new window (not one going back into a place
+kept for it) first, the main one, the old main window at the top of the
+stack; between those the tree is the person's (edges dragged, tiles
+swapped, Tile All), kept as it is. Laying out, in either, sends every
+window changing size its size in one round (`auto_apply`: a collected
+round, as an edge drag's last, `rounds.rs`), so they land in the same
+frame, each held till the others have drawn or 50 ms pass; a drag's
+last round collecting already, they join it. Tried in a tsession: four
+apps opened in Main and Stack (the newest main; Telegram's least width
+holding the main edge at 624 rather than 55%); Tile All (three columns)
+then Main and Stack chosen again rebuilt it (the leftmost main at 691
+points, the other two 388 tall each); Halves chosen kept the tree as it
+was; a window opening shrank the two beside it in one round, shown 2.6
+ms later; app_server idle the same in both layouts (1.7–1.8% of a core,
+60 wakeups a second, the apps' carets and clock). While it is on, each display of the workspace has a
 tree of splits (`autotile::Node`, in `AutoTiler::trees` by workspace and
 connector), and every window there is a leaf of it, a window group one
 leaf. A new window fills an empty place if there is one, else splits

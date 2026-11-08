@@ -699,13 +699,18 @@ impl Deskbar {
             .item("Windows Preferences…", "pref:windows")
     }
 
-    /// The windowing modes (`mode:` and its id), `mode` checked.
+    /// The windowing modes (`mode:` and its id), `mode` checked, and
+    /// auto-tiling's layouts (`layout:` and its id; every display's).
     fn modes_menu(&self, mode: WindowingMode) -> Menu {
         let mut menu = Menu::new("Windowing Mode");
         for m in WindowingMode::ALL {
             menu = menu.item(m.title(), format!("mode:{}", m.id())).checked(m == mode);
         }
-        menu
+        let mut layouts = Menu::new("Auto-Tiling Layout");
+        for l in olo_protocol::TilingLayout::ALL {
+            layouts = layouts.item(l.title(), format!("layout:{}", l.id())).checked(l == self.tiling.layout);
+        }
+        menu.submenu(layouts)
     }
 
     /// Go to one of `display`'s workspaces, or move the focused window to
@@ -1022,6 +1027,14 @@ impl Deskbar {
             Some(("mode", id)) => {
                 if let Some(mode) = WindowingMode::from_id(id) {
                     self.set_mode(self.menu_output.clone(), self.menu_workspace, mode);
+                }
+            }
+            // (At once here too, so the menu shows it before the settings
+            // come back.)
+            Some(("layout", id)) => {
+                if let Some(layout) = olo_protocol::TilingLayout::from_id(id) {
+                    self.tiling.layout = layout;
+                    request(Request::SetTilingLayout { layout });
                 }
             }
             Some(("workspace", n)) => {

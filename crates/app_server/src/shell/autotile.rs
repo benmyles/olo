@@ -25,6 +25,20 @@
 //! turned the other way, else every way of cutting the room searched;
 //! else the one that overlaps least.
 //!
+//! Two layouts (`TilingSettings::layout`): Halves, as above, and Main and
+//! Stack, as dwm's: one main window on the left (`MAIN_RATIO` of the
+//! width till its edge is dragged), the rest stacked on the right, each as
+//! tall. It's the same tree, built in that shape from its tiles in reading
+//! order ([`main_and_stack`]) when the layout is chosen and whenever the
+//! number of tiles changes; a new window (not one going back into a place
+//! kept for it) comes first, the main one. Between those the tree is the
+//! person's: edges dragged, tiles swapped, a tiling command, kept as they
+//! are.
+//!
+//! Laying out sends every window changing size its size in one round
+//! (`rounds.rs`, as an edge drag's): they draw it and land together, in the
+//! same frame, not each as it gets there.
+//!
 //! The commands work on the tree: Tile Left (and the other halves,
 //! quarters and thirds) gives the window that part with the rest tiled
 //! around it; Zoom Vertically and Horizontally make it a full column or
@@ -588,6 +602,55 @@ pub(super) fn overflow(node: &Node, room: (f32, f32), min: &dyn Fn(u64) -> (f32,
     (m[0].min.0 - room.0).max(0.0) + (m[0].min.1 - room.1).max(0.0)
 }
 
+/// Main and Stack's main window's share of the width, till its edge is
+/// dragged (dwm's `mfact`).
+pub const MAIN_RATIO: f32 = 0.55;
+
+/// Main and Stack's tree for `leaves` (reading order: the first the main
+/// window), its main window `ratio` of the width, the rest each as tall.
+pub fn main_and_stack(mut leaves: Vec<Node>, ratio: f32) -> Option<Node> {
+    if leaves.is_empty() {
+        return None;
+    }
+    let main = leaves.remove(0);
+    if leaves.is_empty() {
+        return Some(main);
+    }
+    fn stack(mut tiles: Vec<Node>) -> Node {
+        let n = tiles.len();
+        let first = tiles.remove(0);
+        if tiles.is_empty() {
+            return first;
+        }
+        Node::split(Cut::Rows, 1.0 / n as f32, first, stack(tiles))
+    }
+    Some(Node::split(Cut::Columns, ratio.clamp(0.1, 0.9), main, stack(leaves)))
+}
+
+/// Its main window's share, if `node` is Main and Stack's shape (one
+/// tile is: then the default).
+pub fn main_ratio(node: &Node) -> Option<f32> {
+    fn stacked(n: &Node) -> bool {
+        match n {
+            Node::Split { cut: Cut::Rows, a, b, .. } => !matches!(**a, Node::Split { .. }) && stacked(b),
+            Node::Split { .. } => false,
+            _ => true,
+        }
+    }
+    match node {
+        Node::Split { cut: Cut::Columns, ratio, a, b } if !matches!(**a, Node::Split { .. }) && stacked(b) => Some(*ratio),
+        Node::Split { .. } => None,
+        _ => Some(MAIN_RATIO),
+    }
+}
+
+/// Every leaf (windows and kept places), in reading order.
+fn leaves(node: &Node) -> Vec<Node> {
+    let mut out = Vec::new();
+    node.each_leaf(&mut |n| out.push(n.clone()));
+    out
+}
+
 /// The way to cut a tile of `size` in two for a window with `adding` as
 /// its least size beside one with `having`: across its longer side,
 /// unless only the other way leaves them both room.
@@ -877,6 +940,9 @@ enum Undo {
 #[derive(Debug)]
 pub struct AutoTiler {
     trees: HashMap<(u32, String), Node>,
+    /// The layout each tree was last built in: chosen anew, it's built in
+    /// that one (Main and Stack's shape), once.
+    built_as: HashMap<(u32, String), olo_protocol::TilingLayout>,
     /// Each tree as last laid out with all its windows there
     /// ([`as_laid_out`]): what a restart keeps, though windows are
     /// closing as it comes (an upgrade re-executes their apps).
@@ -922,6 +988,7 @@ impl Default for AutoTiler {
     fn default() -> Self {
         AutoTiler {
             trees: HashMap::new(),
+            built_as: HashMap::new(),
             laid: HashMap::new(),
             kept_for: HashMap::new(),
             awaiting: std::collections::HashSet::new(),
@@ -1378,6 +1445,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let now = Instant::now();
         let mut tree = self.auto.trees.remove(&key);
         let before = tree.as_ref().map(|t| t.to_string());
+        let tiles_before = tree.as_ref().map_or(0, |t| leaves(t).len());
         let units = self.auto_units(output, tree.as_ref());
         if tree.is_none() && !units.is_empty() {
             tree = self.auto_adopt(output, area, &units);
@@ -1491,6 +1559,20 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             }
         }
+        // Main and Stack: built in its shape when it's just been chosen, or
+        // as the number of tiles changes (the stack each as tall again);
+        // otherwise as the person left it.
+        let layout = self.settings.tiling.layout;
+        if let Some(t) = tree.as_mut()
+            && layout == olo_protocol::TilingLayout::MainAndStack
+            && (self.auto.built_as.get(&key) != Some(&layout) || leaves(t).len() != tiles_before)
+        {
+            let ratio = main_ratio(t).unwrap_or(MAIN_RATIO);
+            if let Some(built) = main_and_stack(leaves(t), ratio) {
+                *t = built;
+            }
+        }
+        self.auto.built_as.insert(key.clone(), layout);
         // Tiles too small for their windows' least sizes, where another
         // arrangement has room for them all (or overlaps less): that one.
         if let Some(t) = tree.as_mut() {
@@ -1614,6 +1696,17 @@ impl<B: Backend + 'static> AnvilState<B> {
             t.replace_nth(&|n| *n == Node::hole(), nth, Node::Window(id));
             return;
         }
+        // Main and Stack: the new window is the main one, the rest stacked
+        // beside it in their order.
+        if self.settings.tiling.layout == olo_protocol::TilingLayout::MainAndStack {
+            let ratio = main_ratio(t).unwrap_or(MAIN_RATIO);
+            let mut all = leaves(t);
+            all.insert(0, Node::Window(id));
+            if let Some(built) = main_and_stack(all, ratio) {
+                *t = built;
+            }
+            return;
+        }
         let tiles: Vec<(u64, Part)> = laid.iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, *p)) } else { None }).collect();
         // (In pixels: a tile's longer side is across the screen's shape.)
         let px = |(w, h): (f32, f32)| (w * area.size.w as f32, h * area.size.h as f32);
@@ -1649,6 +1742,20 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// their tiles where they were till the drag ends: laid out, they were
     /// asked back there each turn, against the drag).
     fn auto_apply(&mut self, output: &Output, tree: &Node, units: &[WindowElement]) {
+        // Every window changing size in one round (unless a drag's last
+        // round is being made, which they join): they land together.
+        let own_round = self.round_collecting.is_none();
+        if own_round {
+            self.round_collecting = Some(Vec::new());
+        }
+        self.auto_apply_tiles(output, tree, units);
+        if own_round {
+            let windows = self.round_collecting.take().unwrap_or_default();
+            self.round_last(windows);
+        }
+    }
+
+    fn auto_apply_tiles(&mut self, output: &Output, tree: &Node, units: &[WindowElement]) {
         let Some(area) = self.tile_area(output) else { return };
         let gap = self.tile_gap();
         let mins = self.auto_mins(units, area);
@@ -2290,6 +2397,29 @@ mod tests {
             let (pb, pr) = (crate::shell::tiling::part(area, b, 6), crate::shell::tiling::part(area, right, 6));
             assert_eq!(pr.loc.x - (pb.loc.x + pb.size.w), 6, "{k}");
         }
+    }
+
+    /// Main and Stack: the first tile the main one at its share, the rest
+    /// stacked beside it each as tall; what is and isn't that shape.
+    #[test]
+    fn main_and_stack_shape() {
+        assert_eq!(main_and_stack(Vec::new(), 0.5), None);
+        assert_eq!(main_and_stack(vec![w(1)], 0.5), Some(w(1)));
+        let t = main_and_stack(vec![w(1), w(2), w(3), w(4)], 0.6).unwrap();
+        assert_eq!(t.windows(), [1, 2, 3, 4]);
+        assert_eq!(main_ratio(&t), Some(0.6));
+        let laid = layout(&t, &|_| (0.0, 0.0), Inset::of(Rectangle::new((0, 0).into(), (1200, 900).into()), 0));
+        let part = |id: u64| laid.iter().find(|(n, _)| **n == Node::Window(id)).map(|(_, p)| *p).unwrap();
+        assert!((part(1).2 - 0.6).abs() < 1e-4 && (part(1).3 - 1.0).abs() < 1e-4, "{:?}", part(1));
+        for id in 2..=4 {
+            let p = part(id);
+            assert!((p.0 - 0.6).abs() < 1e-4 && (p.2 - 0.4).abs() < 1e-4 && (p.3 - 1.0 / 3.0).abs() < 1e-3, "{id}: {p:?}");
+        }
+        // Not the shape: rows at the top, or a split for a main window.
+        assert_eq!(main_ratio(&Node::split(Cut::Rows, 0.5, w(1), w(2))), None);
+        assert_eq!(main_ratio(&Node::split(Cut::Columns, 0.5, Node::split(Cut::Rows, 0.5, w(1), w(2)), w(3))), None);
+        assert_eq!(main_ratio(&Node::split(Cut::Columns, 0.5, w(1), Node::split(Cut::Columns, 0.5, w(2), w(3)))), None);
+        assert_eq!(main_ratio(&w(1)), Some(MAIN_RATIO));
     }
 
     /// A tree kept across a restart comes back the same shape and ratios,

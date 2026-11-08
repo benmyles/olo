@@ -1998,7 +1998,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if olo_xdg::themes::set(&settings.appearance.icon_theme) {
             crate::twitcher::theme_changed();
         }
-        if settings.tiling.default_mode != self.settings.tiling.default_mode {
+        if settings.tiling.default_mode != self.settings.tiling.default_mode || settings.tiling.layout != self.settings.tiling.layout {
             self.auto.changed();
         }
         // Group Windows on again for an app: its windows taken out by hand

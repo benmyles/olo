@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Auto-tiling: Main and Stack, and a layout picker
+
+*05:01* — Auto-tiling has a second layout, Main and Stack (as dwm's): a new window is the main one on the left, the others stack on the right, each as tall. Chosen from Deskbar's windowing mode menu (Auto-Tiling Layout) or Preferences ▸ Windows. Every tile changing size now lands in the same frame (one round).
+
+![Auto-tiling: Main and Stack, and a layout picker](2026-11-08/050141-auto-tiling-main-and-stack-and-a-layout-picker.png)
+
 ### Telegram: animated stickers play
 
 *04:25* — Lottie stickers (Telegram's .tgs) now play: once as they come into view, and again while the pointer is over them, each frame drawn at the sticker's own device size on a worker (velato, vendored with its panics on real files fixed, drawn by vello_cpu). The demo's is Olo's own beating heart, caught mid-beat with its ring.

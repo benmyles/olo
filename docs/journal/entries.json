@@ -3658,5 +3658,11 @@
   "title": "Telegram: animated stickers play",
   "caption": "Lottie stickers (Telegram's .tgs) now play: once as they come into view, and again while the pointer is over them, each frame drawn at the sticker's own device size on a worker (velato, vendored with its panics on real files fixed, drawn by vello_cpu). The demo's is Olo's own beating heart, caught mid-beat with its ring.",
   "image": "2026-11-08/042517-telegram-animated-stickers-play.png"
+ },
+ {
+  "time": "2026-11-08T05:01:41",
+  "title": "Auto-tiling: Main and Stack, and a layout picker",
+  "caption": "Auto-tiling has a second layout, Main and Stack (as dwm's): a new window is the main one on the left, the others stack on the right, each as tall. Chosen from Deskbar's windowing mode menu (Auto-Tiling Layout) or Preferences \u25b8 Windows. Every tile changing size now lands in the same frame (one round).",
+  "image": "2026-11-08/050141-auto-tiling-main-and-stack-and-a-layout-picker.png"
  }
 ]

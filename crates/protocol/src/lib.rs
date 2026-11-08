@@ -33,7 +33,7 @@ pub mod touchpad;
 pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use sharing::SharingState;
-pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingSettings, WindowingMode};
+pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingLayout, TilingSettings, WindowingMode};
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
 
@@ -420,6 +420,13 @@ pub enum Request {
         workspace: Option<u32>,
         #[serde(default)]
         output: Option<String>,
+    },
+    /// How auto-tiling lays windows out (`TilingSettings::layout`),
+    /// everywhere it's on: each display's tiles are laid out again in it
+    /// (Main and Stack: in reading order, the first the main window).
+    /// Saved; answered `Reply::Ok`.
+    SetTilingLayout {
+        layout: TilingLayout,
     },
     /// Whether auto-tiling is on for each display on a workspace (each
     /// display's showing unless given).

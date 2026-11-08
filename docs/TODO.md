@@ -20,9 +20,6 @@ something nobody here has is in "Blocked", with what it waits for.
 Leftovers found in finished entries (2026-11-08 audit: each checked
 against the code, still not there):
 
-- **Auto-tiling: master and stack, one transaction, a layout picker**
-  (its "Not yet", done 2026-10-28): a master-and-stack layout as dwm's,
-  every tile resized in one transaction, and a picker of layouts.
 - **Window menu: tile with…** (the window menu's other "Not yet"):
   tile a window beside one chosen from a list.
 - **Shortcuts for programs that aren't Olo's** (the shortcut profiles'
@@ -2348,6 +2345,12 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Auto-tiling: master and stack, one transaction, a layout
+  picker**~~ (its "Not yet", 2026-10-28). *Done* (2026-11-08): Main and
+  Stack (dwm's: a new window the main one, the rest stacked each as
+  tall), chosen from Deskbar's windowing mode menu or Preferences ▸
+  Windows; every tile changing size sent in one round, landing together.
 
 - ~~**Telegram: video stickers move**~~ (the rest of its "Not yet",
   2026-10-29). *Done* (2026-11-08): WebM stickers (VP9 with its alpha

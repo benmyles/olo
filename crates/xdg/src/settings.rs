@@ -309,6 +309,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "tracker", tab: "", group: "New Windows Open In", name: "Icon View", role: "RadioButton" },
     Setting { panel: "tracker", tab: "", group: "New Windows Open In", name: "Mini Icon View", role: "RadioButton" },
     Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "Default mode", role: "ComboBox" },
+    Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "Auto-tiling layout", role: "ComboBox" },
     Setting { panel: "windows", tab: "", group: "Space Around Arranged Windows", name: "Space at the edges", role: "Slider" },
     Setting { panel: "windows", tab: "", group: "Space Around Arranged Windows", name: "Space between windows", role: "Slider" },
     Setting { panel: "workspaces", tab: "", group: "", name: "Workspaces", role: "Slider" },

@@ -523,6 +523,15 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.set_windowing_mode(mode, workspace, o);
                 Reply::WindowingMode { workspace: ws, displays: self.windowing_mode_infos(workspace) }
             }
+            Request::SetTilingLayout { layout } => {
+                if self.settings.tiling.layout != layout {
+                    info!(layout = layout.id(), "tiling layout");
+                    self.settings.tiling.layout = layout;
+                    self.settings_changed();
+                    self.auto.changed();
+                }
+                Reply::Ok
+            }
             Request::AutoTiling { workspace } => Reply::AutoTiling { workspace: workspace.unwrap_or_else(|| self.workspace()), displays: self.auto_tiling_infos(workspace) },
             Request::SetAutoTiling { on, workspace, output } => {
                 let o = match output {
