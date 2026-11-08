@@ -6209,3 +6209,14 @@ journal).
   now, and a point over nothing painted finds the innermost box there.
   0.23 to 0.56 µs a hit test (200,000 over GitHub's first screen),
   every point now finding its box where a sixth found nothing.
+- **Container queries.** GitHub's sign-up form stayed stacked: its 13
+  `@container` rules were dropped. They are kept now, each rule with its
+  condition, and decided as an element matches: the nearest container
+  of its name (`container-name` is a property now; it had been accepted
+  and ignored) that can answer, with the size the last layout gave it.
+  A render whose containers come out another width restyles what those
+  hold (the incremental job, everything else kept) and lays out again;
+  the page keeps the sizes for its next render. GitHub at 1000 px: style
+  73 ms before (two renders) and 99 after, layout 6 and 10, the form now
+  as Chrome's. Its `::placeholder { opacity: 0 }` hides the placeholder
+  under the label now too.

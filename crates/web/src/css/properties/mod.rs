@@ -254,7 +254,6 @@ const INERT: &[&str] = &[
     "anchor-scope",
     "backface-visibility",
     "contain-intrinsic-size",
-    "container-name",
     "cursor",
     "forced-color-adjust",
     "overscroll-behavior",

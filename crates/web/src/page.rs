@@ -47,6 +47,8 @@ pub struct Page {
     rendered_interaction: Interaction,
     /// Elements whose `transform` has animated: painted as moved layers.
     animated: std::collections::HashSet<crate::dom::NodeId>,
+    /// Query containers' sizes as the last layout had them (`@container`).
+    containers: std::collections::HashMap<crate::dom::NodeId, [f64; 2]>,
     /// Its CSS animations: started when, at which moment (see
     /// `set_time`), still changing.
     timeline: css::animation::Timeline,
@@ -552,7 +554,7 @@ impl Measurer {
             None => Defaults::new(host, Default::default(), cancel)?,
         };
         let snapshot = interaction::Snapshot::new(doc, Interaction::default(), cancel);
-        let options = || style::JobOptions { quirks: self.quirks, states: Some(&snapshot), previous: None, generation: self.rules.generation(), animated: None };
+        let options = || style::JobOptions { quirks: self.quirks, states: Some(&snapshot), previous: None, generation: self.rules.generation(), animated: None, containers: None, resized: &[] };
         // A patch over the previous styles: in place when nothing else
         // holds them, else over a copy.
         let mut patched: Option<(style::Patched, Option<Arc<StyleTree>>)> = None;
@@ -1387,6 +1389,7 @@ pub fn finish_with(
     }
     let previous = previous.filter(|p| rules_reused || p.cache().tree().styles().generation() == rules.generation());
     let mut timeline = css::animation::Timeline::default();
+    let mut containers = std::collections::HashMap::new();
     let (scene, stylesheet_issues, fallbacks) = render(
         &doc,
         images.as_ref(),
@@ -1404,12 +1407,14 @@ pub fn finish_with(
         None,
         &mut Default::default(),
         &mut timeline,
+        &mut containers,
         &mut progress,
     )?;
     Ok(Page {
         images,
         rendered_interaction: Interaction::default(),
         animated: Default::default(),
+        containers,
         timeline,
         document: doc,
         scene,
@@ -1558,6 +1563,7 @@ impl Page {
             patchable_scene,
             &mut self.animated,
             &mut self.timeline,
+            &mut self.containers,
             &mut progress,
         )?;
         self.rendered_interaction = self.interaction;
@@ -1632,6 +1638,7 @@ impl Page {
             None,
             &mut self.animated,
             &mut self.timeline,
+            &mut self.containers,
             &mut progress,
         )?;
         self.rendered_interaction = self.interaction;
@@ -1893,6 +1900,31 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
     }
     Ok(Patchable { nodes, relayout })
 }
+/// Query containers' content-box sizes in a layout (CSS px), by element.
+fn container_sizes(layout: &layout::Layout) -> std::collections::HashMap<crate::dom::NodeId, [f64; 2]> {
+    use css::properties::{Keyword as K, Property as P};
+    let tree = layout.cache().tree();
+    let mut sizes = std::collections::HashMap::new();
+    for (id, b) in tree.iter() {
+        if !matches!(b.kind, layout::BoxKind::Block { .. }) || sizes.contains_key(&b.node) {
+            continue;
+        }
+        if let Some(s) = tree.style(id)
+            && let css::style::Value::Keyword(kind @ (K::InlineSize | K::Size)) = s.value(P::ContainerType)
+            && let Some(g) = layout.geometry(id)
+        {
+            // An inline-size container answers only its width: its height
+            // (its content's) changes nothing its queries can see.
+            let c = g.content_box();
+            sizes.insert(b.node, [c.width, if *kind == K::Size { c.height } else { 0. }]);
+        }
+    }
+    sizes
+}
+/// `render_once`, again when a query container's size came out other than
+/// the styles were matched with (`@container` rules then hold elsewhere):
+/// styled and laid out once more with the sizes this layout gave, at most
+/// twice (a size that flips what holds settles on the second).
 #[allow(clippy::too_many_arguments)]
 fn render(
     doc: &Document,
@@ -1911,6 +1943,71 @@ fn render(
     previous_scene: Option<&Arc<paint::Scene>>,
     animated: &mut std::collections::HashSet<crate::dom::NodeId>,
     timeline: &mut css::animation::Timeline,
+    containers: &mut std::collections::HashMap<crate::dom::NodeId, [f64; 2]>,
+    mut progress: impl FnMut(Phase, usize),
+) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
+    let mut result =
+        render_once(doc, images, rules, quirks, resource_issues, input, host, scope, shaper, painter, viewport, cancel, previous, previous_scene, animated, timeline, containers, &[], &mut progress)?;
+    if !rules.has_containers() {
+        return Ok(result);
+    }
+    for _ in 0..2 {
+        let sizes = container_sizes(result.0.layout());
+        if sizes == *containers {
+            break;
+        }
+        // What the containers whose size changed hold is matched again; the
+        // rest of this pass's styles and boxes are kept.
+        let resized: Vec<crate::dom::NodeId> = sizes.iter().filter(|(n, s)| containers.get(n) != Some(s)).map(|(n, _)| *n).collect();
+        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+            eprintln!("render: {} of {} query containers sized anew: what they hold styled again", resized.len(), sizes.len());
+        }
+        *containers = sizes;
+        let first = result.0.clone();
+        result = render_once(
+            doc,
+            images,
+            rules,
+            quirks,
+            resource_issues,
+            input,
+            host,
+            scope,
+            shaper,
+            painter,
+            viewport,
+            cancel,
+            Some(first.layout()),
+            None,
+            animated,
+            timeline,
+            containers,
+            &resized,
+            &mut progress,
+        )?;
+    }
+    Ok(result)
+}
+#[allow(clippy::too_many_arguments)]
+fn render_once(
+    doc: &Document,
+    images: Option<&Arc<crate::image::Set>>,
+    rules: &css::cascade::RuleSet,
+    quirks: bool,
+    resource_issues: usize,
+    input: Interaction,
+    host: &impl Host,
+    scope: &Scope,
+    shaper: &mut shaping::Engine,
+    painter: &mut paint::Engine,
+    viewport: layout::Viewport,
+    cancel: Option<&AtomicBool>,
+    previous: Option<&layout::Layout>,
+    previous_scene: Option<&Arc<paint::Scene>>,
+    animated: &mut std::collections::HashSet<crate::dom::NodeId>,
+    timeline: &mut css::animation::Timeline,
+    containers: &std::collections::HashMap<crate::dom::NodeId, [f64; 2]>,
+    resized: &[crate::dom::NodeId],
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
     // The previous layout's styles stand in only while they were computed
@@ -1956,7 +2053,7 @@ fn render(
         let copying = std::time::Instant::now();
         let mut tree = p.clone();
         let copied_ms = copying.elapsed().as_secs_f64() * 1000.;
-        let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation(), animated: Some(&animation_values) };
+        let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation(), animated: Some(&animation_values), containers: Some(containers), resized };
         if let Some(result) = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)? {
             patched = Some(result);
             styles = Some(Arc::new(tree));
@@ -1972,7 +2069,15 @@ fn render(
                 doc,
                 rules,
                 defaults.clone(),
-                style::JobOptions { quirks, states: Some(&snapshot), previous: previous_styles, generation: rules.generation(), animated: Some(&animation_values) },
+                style::JobOptions {
+                    quirks,
+                    states: Some(&snapshot),
+                    previous: previous_styles,
+                    generation: rules.generation(),
+                    animated: Some(&animation_values),
+                    containers: Some(containers),
+                    resized,
+                },
                 Default::default(),
                 cancel,
             )?;
@@ -1997,7 +2102,7 @@ fn render(
         // Matched again (a few elements): their pseudo-elements' rules are
         // not among the ones recorded for them.
         let nodes: Vec<(crate::dom::NodeId, bool)> = animation_nodes.iter().map(|&n| (n, true)).collect();
-        let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation(), animated: Some(&animation_values) };
+        let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation(), animated: Some(&animation_values), containers: Some(containers), resized };
         if let Some(result) = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)? {
             styles = Arc::new(tree);
             patched = match patched {

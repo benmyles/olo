@@ -80,6 +80,13 @@ pub fn evaluate(list: Components<'_>, media: &Media, cancelled: Option<&AtomicBo
     }
     result
 }
+/// A `<container-condition>` (CSS Conditional 5 §2.1) over a container
+/// whose size is `media`'s width and height: true only when it holds (an
+/// unknown feature, or one the container can't answer, holds nowhere).
+pub fn evaluate_condition(list: Components<'_>, media: &Media) -> bool {
+    let items: Vec<_> = list.filter(|c| c.kind() != Kind::Whitespace).collect();
+    !items.is_empty() && condition(&items, media, true) == Truth::True
+}
 type Item<'a> = super::Component<'a>;
 fn ident<'a>(c: &Item<'a>) -> Option<&'a str> {
     (c.kind() == Kind::Ident).then(|| c.text()).flatten()
@@ -259,8 +266,8 @@ enum Feature {
 /// The current value of a numeric feature.
 fn numeric(name: &str, media: &Media) -> (Feature, f64) {
     match name.to_ascii_lowercase().as_str() {
-        "width" | "device-width" => (Feature::Width, media.width),
-        "height" | "device-height" => (Feature::Height, media.height),
+        "width" | "device-width" | "inline-size" => (Feature::Width, media.width),
+        "height" | "device-height" | "block-size" => (Feature::Height, media.height),
         "aspect-ratio" | "device-aspect-ratio" => (Feature::AspectRatio, if media.height > 0. { media.width / media.height } else { 0. }),
         "resolution" => (Feature::Resolution, media.scale),
         "color" | "color-index" => (Feature::Color, 8.),
@@ -289,9 +296,8 @@ fn value(feature: Feature, items: &[Item<'_>], media: &Media) -> Option<f64> {
 fn boolean_feature(name: &str, media: &Media) -> Truth {
     let lower = name.to_ascii_lowercase();
     match lower.as_str() {
-        "color" | "color-index" | "width" | "height" | "aspect-ratio" | "resolution" | "hover" | "any-hover" | "pointer" | "any-pointer" | "grid" | "device-width" | "device-height" => {
-            Truth::of(!matches!(lower.as_str(), "grid"))
-        }
+        "color" | "color-index" | "width" | "height" | "inline-size" | "block-size" | "aspect-ratio" | "resolution" | "hover" | "any-hover" | "pointer" | "any-pointer" | "grid" | "device-width"
+        | "device-height" => Truth::of(!matches!(lower.as_str(), "grid")),
         "monochrome" | "prefers-reduced-motion" | "prefers-reduced-transparency" | "prefers-contrast" | "forced-colors" | "inverted-colors" => Truth::False,
         "orientation" | "prefers-color-scheme" | "display-mode" | "update" | "overflow-block" | "overflow-inline" | "color-gamut" | "dynamic-range" | "video-dynamic-range" => Truth::True,
         "scripting" => Truth::of(media.scripting),

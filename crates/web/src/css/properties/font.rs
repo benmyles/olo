@@ -145,6 +145,10 @@ impl Families {
         }
     }
     /// The UI font (a system font keyword's).
+    /// A list of plain names (`container-name`'s idents).
+    pub(crate) fn names(names: Vec<Arc<str>>) -> Self {
+        Self::from_families(names.into_iter().map(Family::Named).collect())
+    }
     pub(crate) fn system_ui() -> Self {
         Self::from_families(vec![Family::Generic(GenericFamily::SystemUi), Family::Generic(GenericFamily::SansSerif)])
     }

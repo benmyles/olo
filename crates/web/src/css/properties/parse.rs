@@ -186,14 +186,15 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                     if names.is_empty() || names.iter().any(|c| c.kind() != Kind::Ident) {
                         return Err(Error::Invalid);
                     }
+                    let name = container_name(names)?;
                     let kind = match slash {
                         Some(i) => match &parts[i + 1..] {
-                            [c] => component(properties[0].grammar(), *c, limits, cancelled)?,
+                            [c] => component(properties[1].grammar(), *c, limits, cancelled)?,
                             _ => return Err(Error::Invalid),
                         },
                         None => Value::Keyword(Keyword::Normal),
                     };
-                    Ok(smallvec::smallvec![Assignment { property: properties[0], value: kind }])
+                    Ok(smallvec::smallvec![Assignment { property: properties[0], value: name }, Assignment { property: properties[1], value: kind }])
                 }
                 Expansion::Grid | Expansion::Radius | Expansion::Background | Expansion::Font | Expansion::Animation => unreachable!("these shorthands parse before part collection"),
                 Expansion::Border => border(&parts, properties, limits, cancelled),
@@ -430,6 +431,27 @@ fn text_box_edge(parts: &[Component<'_>]) -> Result<Value> {
     };
     Ok(Value::Keyword(k))
 }
+/// `container-name: none | <custom-ident>+` (not `and`, `or`, `not`).
+fn container_name(parts: &[Component<'_>]) -> Result<Value> {
+    if let [c] = parts
+        && c.kind() == Kind::Ident
+        && c.text().is_some_and(|t| t.eq_ignore_ascii_case("none"))
+    {
+        return Ok(Value::Keyword(Keyword::None));
+    }
+    let mut names = Vec::new();
+    for c in parts {
+        let name = if c.kind() == Kind::Ident { c.text().ok_or(Error::Invalid)? } else { return Err(Error::Invalid) };
+        if ["and", "or", "not", "none", "default"].iter().any(|w| name.eq_ignore_ascii_case(w)) {
+            return Err(Error::Invalid);
+        }
+        names.push(std::sync::Arc::from(name));
+    }
+    if names.is_empty() {
+        return Err(Error::Invalid);
+    }
+    Ok(Value::Families(super::font::Families::names(names)))
+}
 /// `text-box: normal | <'text-box-trim'> || <'text-box-edge'>`: an edge
 /// alone trims both ends.
 fn text_box(parts: &[Component<'_>]) -> Result<Assignments> {
@@ -532,6 +554,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
     }
     match grammar {
         Grammar::TextBoxEdge => text_box_edge(parts),
+        Grammar::ContainerName => container_name(parts),
         Grammar::ClipPath => super::clip::parse(parts, limits, cancelled),
         Grammar::FontStyle => font::style(parts, limits, cancelled),
         Grammar::Keywords(_) if property == Property::TextAlign && parts.len() == 1 && parts[0].kind() == Kind::Ident && parts[0].text().unwrap().eq_ignore_ascii_case("-webkit-match-parent") => {
@@ -597,6 +620,7 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
     match grammar {
         Grammar::Animation(field) => super::animation::parse_list(field, &[c]),
         Grammar::TextBoxEdge => text_box_edge(&[c]),
+        Grammar::ContainerName => container_name(&[c]),
         Grammar::ClipPath => super::clip::parse(&[c], limits, cancelled),
         Grammar::FontWidth => font::width(c, limits, cancelled),
         Grammar::Overflow => {

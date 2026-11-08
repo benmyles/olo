@@ -35,6 +35,8 @@ pub(super) enum Grammar {
     Animation(super::animation::Field),
     /// `text-box-edge`: an over edge and an under edge, as one keyword.
     TextBoxEdge,
+    /// `container-name`: `none` or names (kept as a list of names).
+    ContainerName,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Expansion {
@@ -296,6 +298,7 @@ property_registry! {
     ClipRule, "clip-rule", Grammar::Keywords(&[Keyword::Nonzero,Keyword::Evenodd]), "nonzero", true;
     Color, "color", Grammar::Color(&[]), "canvastext", true;
     ColumnGap, "column-gap", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Normal]), "normal", false;
+    ContainerName, "container-name", Grammar::ContainerName, "none", false;
     ContainerType, "container-type", Grammar::Keywords(&[Keyword::Normal,Keyword::InlineSize,Keyword::Size]), "normal", false;
     Content, "content", Grammar::Content, "normal", false;
     Direction, "direction", Grammar::Keywords(&[Keyword::Ltr,Keyword::Rtl]), "ltr", true;
@@ -434,7 +437,7 @@ shorthand_registry! {
     // and the not-yet-implemented unicode-bidi are excluded by definition.
     WebkitMask, "-webkit-mask", [MaskImage,MaskPosition,MaskSize,MaskRepeat], Background;
     WebkitTextDecoration, "-webkit-text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor], TextDecoration;
-    All, "all", [AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextBoxEdge,TextBoxTrim,TextOrientation,TextTransform,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerName,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextBoxEdge,TextBoxTrim,TextOrientation,TextTransform,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Animation, "animation", [AnimationName,AnimationDuration,AnimationTimingFunction,AnimationDelay,AnimationIterationCount,AnimationDirection,AnimationFillMode,AnimationPlayState], Animation;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
@@ -454,7 +457,7 @@ shorthand_registry! {
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
     BorderTop, "border-top", [BorderTopWidth,BorderTopStyle,BorderTopColor], Border;
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;
-    Container, "container", [ContainerType], Container;
+    Container, "container", [ContainerName,ContainerType], Container;
     Flex, "flex", [FlexGrow,FlexShrink,FlexBasis], Flex;
     FlexFlow, "flex-flow", [FlexDirection,FlexWrap], Unordered;
     // font resets its longhands and the feature settings (font-variant,

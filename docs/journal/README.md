@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: GitHub's sign-up form by container queries
+
+*17:58* — Chrome (left) and Olo (right) at 1000 × 700: the e-mail field and its button on one line (@container rules), the label alone in the field (::placeholder opacity 0). Olo's heading is mid-way through its typing animation; the mascot under the buttons is still missing in Olo.
+
+![Browser: GitHub's sign-up form by container queries](2026-11-07/175822-browser-github-s-sign-up-form-by-container-queri.png)
+
 ### Browser: GitHub's menu opens as in Chrome
 
 *17:19* — Chrome (left) and Olo (right) at 1000 × 700 after the menu button and Products: the fixed panel takes the viewport, the rows centre their labels, Sign up sits at the bottom, labels trim to their cap height (text-box) and section names are upper case (text-transform).

@@ -43,8 +43,14 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   `getComputedStyle` of animated values, `animation-composition`.
 - [ ] Video (`<video>`): GitHub's hero product film is an MP4 with no
   poster (an empty box); needs a native H.264 decoder.
-- [ ] Container queries (`@container`) — the `container` shorthand and
-  units work now.
+- [x] Container queries (`@container [name] <condition>`, nested,
+  `container-name`, range syntax, `inline-size`/`block-size`): GitHub's
+  sign-up form on one line, as Chrome. Decided as elements match, against
+  the nearest container of that name with the sizes the last layout gave;
+  a pass whose containers come out another width restyles what they hold
+  (incremental) and lays out again. Open: `style()` and `scroll-state()`
+  queries, the scripts' measurements (they don't apply them), container
+  units against the container (they read the viewport).
 - [ ] GitHub's "More ways" cards stay pinned (sticky, stacked) while the
   page scrolls in Chrome; in Olo they scroll by.
 - [ ] `background-clip: text` (apple.com's gradient subhead).
@@ -62,8 +68,9 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   children (they read unscrolled), keyboard scrolling of a box.
 - [x] GitHub's menu: opens, rows clickable, Products expands, its panel
   scrolls, as Chrome (JOURNAL 2026-11-07, night).
-- [ ] Forms: the hero's email field shows its label over its placeholder
-  (Chrome floats the label); POST submission; checkbox drawing.
+- [ ] Forms: POST submission; checkbox drawing. (The hero's email field
+  showed its label over its placeholder: `::placeholder { opacity: 0 }`
+  now hides it.)
 
 Next, in impact order (each removes a fallback kind or a visible gap):
 

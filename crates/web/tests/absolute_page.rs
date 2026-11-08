@@ -230,3 +230,21 @@ fn scroll_containers_move_what_they_hold_within_their_padding_box() {
     // The fixed box stays where the viewport has it.
     assert_eq!(id(p.scene.hit_test(305., 5., 0., 300., &[])), Some("f".into()));
 }
+#[test]
+fn container_queries_ask_the_nearest_container_of_their_name() {
+    let p = load(
+        ".c{container-type:inline-size;width:200px}.n{container:signup/inline-size;width:300px}.x{height:1px}
+        @container (width > 150px){.a{height:2px}}
+        @container (width < 150px){.b{height:3px}}
+        @container signup (width >= 17.5rem){.s{height:4px}}
+        @container other (width > 1px){.o{height:5px}}
+        @container (min-width: 250px){@container (max-width: 350px){.nest{height:6px}}}
+        </style><div class=c><div class='x a' id=a></div><div class='x b' id=b></div><div class='x s' id=s1></div></div><div class=n><div class=c><div class='x s' id=s2></div></div><div class='x o' id=o></div><div class='x nest' id=nest></div></div><div class='x a' id=out></div>",
+        1.,
+    );
+    let h = |id: &str| rect(&p, id).height;
+    // Unnamed queries ask the nearest container; named ones skip past
+    // others to theirs; a name no container has holds nowhere; nested
+    // conditions must all hold; outside any container nothing holds.
+    assert_eq!([h("a"), h("b"), h("s1"), h("s2"), h("o"), h("nest"), h("out")], [2., 1., 1., 4., 1., 6., 1.]);
+}

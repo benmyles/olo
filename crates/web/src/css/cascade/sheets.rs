@@ -20,6 +20,30 @@ struct Rule {
     origin: Origin,
     layer: u32,
     order: u64,
+    /// The `@container` condition it is under (index into `containers`),
+    /// or NO_CONTAINER.
+    container: u32,
+}
+const NO_CONTAINER: u32 = u32::MAX;
+/// An `@container` rule's condition (CSS Conditional 5 §2): the name of
+/// the container it asks (any container when none), its query, and the
+/// `@container` it is itself inside (all must hold).
+pub struct ContainerCondition {
+    pub name: Option<Arc<str>>,
+    pub query: crate::css::Syntax,
+    pub parent: u32,
+    /// Whether the query reads the block axis (a `size` container only answers it).
+    pub block_axis: bool,
+}
+/// A container an element's queries may ask: the element, its names,
+/// whether it answers block-axis queries (`container-type: size`), and its
+/// content box's size (CSS px) as the last layout had it, if known.
+#[derive(Clone, Debug)]
+pub struct ContainerFrame {
+    pub node: crate::dom::NodeId,
+    pub names: Vec<Arc<str>>,
+    pub size_axis: bool,
+    pub size: Option<[f64; 2]>,
 }
 struct Layer {
     children: Vec<u32>,
@@ -86,6 +110,7 @@ pub struct RuleSet {
     /// Unique to this compilation: styles made with another rule set
     /// (their recorded rule ids point into it) are not reused with this.
     generation: u64,
+    containers: Vec<ContainerCondition>,
 }
 static GENERATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 #[derive(Clone, Copy)]
@@ -124,6 +149,9 @@ pub struct SheetBuilder {
     /// The URL of the sheet being added, for its `@font-face` sources.
     base: Option<Arc<str>>,
     failed: bool,
+    containers: Vec<ContainerCondition>,
+    /// The `@container` condition the rules being read are under.
+    container: u32,
 }
 impl SheetBuilder {
     pub fn new(limits: CompileLimits) -> Self {
@@ -143,6 +171,8 @@ impl SheetBuilder {
             backgrounds: Vec::new(),
             base: None,
             failed: false,
+            containers: Vec::new(),
+            container: NO_CONTAINER,
         }
     }
     fn issue(&mut self, issue: Issue) -> Result<()> {
@@ -370,7 +400,7 @@ impl SheetBuilder {
                         return Err(Error::Limit);
                     }
                     let order = self.rules.len() as u64;
-                    self.rules.push(Rule { selector, declarations: declarations.into_boxed_slice(), origin, layer: parent, order });
+                    self.rules.push(Rule { selector, declarations: declarations.into_boxed_slice(), origin, layer: parent, order, container: self.container });
                 }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("layer")) => {
                     let empty = rule.value().all(|c| c.kind() == Kind::Whitespace);
@@ -398,6 +428,38 @@ impl SheetBuilder {
                     {
                         self.walk(syntax, rule.block_contents(cancelled).map_err(syntax_error)?, origin, parent, depth + 1, options, cancelled)?;
                     }
+                }
+                // `@container [<name>] <condition>`: its rules hold where the
+                // element's container meets it, decided as elements match.
+                StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("container")) => {
+                    let parts: Vec<_> = rule.value().filter(|c| c.kind() != Kind::Whitespace).collect();
+                    let named = parts.first().is_some_and(|c| c.kind() == Kind::Ident && !c.text().is_some_and(|t| t.eq_ignore_ascii_case("not")));
+                    let name = if named { parts[0].text().map(Arc::from) } else { None };
+                    let rest = &parts[usize::from(named)..];
+                    let (Some(first), Some(last)) = (rest.first(), rest.last()) else {
+                        self.issue(Issue::Invalid)?;
+                        continue;
+                    };
+                    let text = &syntax.source()[first.span().start as usize..last.span().end as usize];
+                    let lower = text.to_ascii_lowercase();
+                    if lower.contains("style(") || lower.contains("scroll-state(") {
+                        self.issue(Issue::AtRule(Arc::from("container style()")))?;
+                        continue;
+                    }
+                    let Ok(query) = crate::css::Syntax::parse(Arc::from(text), Default::default(), cancelled) else {
+                        self.issue(Issue::Invalid)?;
+                        continue;
+                    };
+                    if self.containers.len() >= 65536 || rule.block().is_none() {
+                        self.issue(Issue::Invalid)?;
+                        continue;
+                    }
+                    let block_axis = ["height", "block-size", "aspect-ratio", "orientation"].iter().any(|f| lower.contains(f));
+                    self.containers.push(ContainerCondition { name, query, parent: self.container, block_axis });
+                    let outer = std::mem::replace(&mut self.container, self.containers.len() as u32 - 1);
+                    let walked = self.walk(syntax, rule.block_contents(cancelled).map_err(syntax_error)?, origin, parent, depth + 1, options, cancelled);
+                    self.container = outer;
+                    walked?;
                 }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("supports")) => {
                     if crate::css::media::supports(rule.value(), self.limits.properties, cancelled) && rule.block().is_some() {
@@ -494,7 +556,7 @@ impl SheetBuilder {
         let invalidation = selectors.invalidation();
         let uses_empty = selectors.uses_empty();
         let generation = GENERATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues, has_keys, invalidation, uses_empty, keyframes: self.keyframes, generation })
+        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues, has_keys, invalidation, uses_empty, keyframes: self.keyframes, generation, containers: self.containers })
     }
 }
 fn fold_arc(s: Arc<str>) -> Arc<str> {
@@ -508,6 +570,11 @@ pub struct MatchScratch {
     seen: Vec<u32>,
     generation: u32,
     candidates: Vec<u32>,
+    /// The containers around the element being matched, nearest first
+    /// (set by the caller when the rules have `@container` conditions).
+    pub containers: Vec<ContainerFrame>,
+    /// Container conditions decided, by condition and container.
+    decided: HashMap<(u32, crate::dom::NodeId), bool>,
     /// Summed over every match made with this scratch.
     pub progress: selectors::MatchProgress,
 }
@@ -517,6 +584,40 @@ impl MatchScratch {
     }
 }
 impl RuleSet {
+    /// Whether any rule is under an `@container` condition (then callers
+    /// give `MatchScratch::containers` and lay out again when a
+    /// container's size changes what holds).
+    pub fn has_containers(&self) -> bool {
+        !self.containers.is_empty()
+    }
+    /// Whether condition `id` (and those it is inside) holds for an element
+    /// with `frames` around it: each asks the nearest container with its
+    /// name (any, when unnamed) that can answer it; one with no known size,
+    /// or none at all, holds nowhere.
+    fn container_holds(&self, id: u32, frames: &[ContainerFrame], decided: &mut HashMap<(u32, crate::dom::NodeId), bool>) -> bool {
+        let mut at = id;
+        let mut steps = 0;
+        while at != NO_CONTAINER {
+            steps += 1;
+            let Some(c) = self.containers.get(at as usize) else { return false };
+            if steps > 64 {
+                return false;
+            }
+            let Some(frame) = frames.iter().find(|f| (!c.block_axis || f.size_axis) && c.name.as_ref().is_none_or(|n| f.names.iter().any(|m| m == n))) else { return false };
+            let holds = *decided.entry((at, frame.node)).or_insert_with(|| match frame.size {
+                Some([w, h]) => {
+                    let media = crate::css::media::Media { width: w, height: h, ..crate::css::media::Media::screen(w, h, 1., false) };
+                    crate::css::media::evaluate_condition(c.query.components(), &media)
+                }
+                None => false,
+            });
+            if !holds {
+                return false;
+            }
+            at = c.parent;
+        }
+        true
+    }
     /// The `@keyframes` rules, by name.
     pub fn keyframes(&self) -> &crate::css::animation::Library {
         &self.keyframes
@@ -760,6 +861,7 @@ impl RuleSet {
             scratch.progress.steps += progress.steps;
             scratch.progress.rejected += progress.rejected;
             work = work.checked_add(progress.work).ok_or(Error::Limit)?;
+            let matched = matched.filter(|_| rule.container == NO_CONTAINER || self.container_holds(rule.container, &scratch.containers, &mut scratch.decided));
             if let Some(specificity) = matched {
                 if let Some(r) = record.as_deref_mut() {
                     r.push((id, specificity));

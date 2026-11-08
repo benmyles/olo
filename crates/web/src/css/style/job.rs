@@ -23,6 +23,13 @@ pub struct JobOptions<'a> {
     /// animations sampled now): applied after its inline style, so they
     /// win over normal author declarations and lose to important ones.
     pub animated: Option<&'a std::collections::HashMap<NodeId, Vec<p::Declaration>>>,
+    /// Query containers' content-box sizes (CSS px) as the last layout had
+    /// them, for `@container` rules; a container not in it answers nothing.
+    pub containers: Option<&'a std::collections::HashMap<NodeId, [f64; 2]>>,
+    /// Query containers whose size changed since `previous` was styled:
+    /// what they hold is matched again (their `@container` rules), the rest
+    /// kept as `previous` has it.
+    pub resized: &'a [NodeId],
 }
 #[derive(Clone, Copy, Debug)]
 pub struct JobLimits {
@@ -529,6 +536,19 @@ impl<'a> Job<'a> {
                             }
                         }
                         crate::dom::Change::Unknown => return None,
+                    }
+                }
+                if !options.resized.is_empty() {
+                    geometry_kept = false;
+                    let mut stack: Vec<NodeId> = options.resized.to_vec();
+                    while let Some(n) = stack.pop() {
+                        let Ok(children) = document.children(n) else { continue };
+                        for c in children {
+                            if document.node_type(c).ok() == Some(crate::dom::NodeType::Element) {
+                                nodes.insert(c);
+                                stack.push(c);
+                            }
+                        }
                     }
                 }
                 let why_not = (!geometry_kept).then(|| "the document's structure or text changed".to_owned());
@@ -1294,6 +1314,35 @@ impl<'a> Job<'a> {
     /// An element's style computed: its hints and inline declarations, its
     /// rules (the ones recorded before cascaded again when only its inline
     /// style changed, else matched), and the computed values.
+    /// The query containers around `node`, nearest first, for its
+    /// `@container` rules: its ancestors with a `container-type`.
+    fn containers_around(&mut self, node: NodeId) -> Result<()> {
+        self.scratch.containers.clear();
+        if !self.rules.has_containers() {
+            return Ok(());
+        }
+        let mut at = self.document.parent(node).map_err(Error::Dom)?;
+        let mut depth = 0;
+        while let Some(n) = at {
+            depth += 1;
+            if depth > self.limits.depth {
+                return Err(Error::Limit);
+            }
+            if let Some(i) = self.tree.index(n) {
+                let style = &self.tree.styles[i].style;
+                if let Value::Keyword(kind @ (Keyword::InlineSize | Keyword::Size)) = style.value(Property::ContainerType) {
+                    let names = match style.value(Property::ContainerName) {
+                        Value::Families(f) => f.as_slice().iter().filter_map(|f| if let p::Family::Named(n) = f { Some(n.clone()) } else { None }).collect(),
+                        _ => Vec::new(),
+                    };
+                    let size = self.options.containers.and_then(|c| c.get(&n)).copied();
+                    self.scratch.containers.push(cascade::ContainerFrame { node: n, names, size_axis: *kind == Keyword::Size, size });
+                }
+            }
+            at = self.document.parent(n).map_err(Error::Dom)?;
+        }
+        Ok(())
+    }
     fn compute_element(
         &mut self,
         node: NodeId,
@@ -1303,6 +1352,7 @@ impl<'a> Job<'a> {
         previous_matched: Option<Arc<[(u32, selectors::Specificity)]>>,
     ) -> Result<(Style, Arc<[(u32, selectors::Specificity)]>)> {
         let clock = self.timing.as_ref().map(|_| std::time::Instant::now());
+        self.containers_around(node)?;
         let mut hints = Vec::new();
         if self.document.namespace(node).map_err(Error::Dom)? == Some(crate::dom::Namespace::Html) {
             self.html_hints(node, &mut hints)?;

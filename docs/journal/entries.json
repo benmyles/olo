@@ -3874,5 +3874,11 @@
   "title": "Browser: GitHub's menu opens as in Chrome",
   "caption": "Chrome (left) and Olo (right) at 1000 \u00d7 700 after the menu button and Products: the fixed panel takes the viewport, the rows centre their labels, Sign up sits at the bottom, labels trim to their cap height (text-box) and section names are upper case (text-transform).",
   "image": "2026-11-07/171946-browser-github-s-menu-opens-as-in-chrome.png"
+ },
+ {
+  "time": "2026-11-07T17:58:22",
+  "title": "Browser: GitHub's sign-up form by container queries",
+  "caption": "Chrome (left) and Olo (right) at 1000 \u00d7 700: the e-mail field and its button on one line (@container rules), the label alone in the field (::placeholder opacity 0). Olo's heading is mid-way through its typing animation; the mascot under the buttons is still missing in Olo.",
+  "image": "2026-11-07/175822-browser-github-s-sign-up-form-by-container-queri.png"
  }
 ]
