@@ -570,7 +570,90 @@ pub fn scan(roots: &Roots) -> Report {
     own_login_screen(roots, &mut r);
     temp_files(roots, &mut r);
     file_manager(roots, &mut r);
+    diskbackup(roots, &mut r);
     r
+}
+
+/// DiskBackup, as its settings and its service's state say: not set up
+/// (said, no button: it's the person's to choose where backups go),
+/// its service not running (Start It), paused (Resume Backups), nothing
+/// finished for days (Back Up Now), its key only on this computer (Keep
+/// Key in Passwords: without it, the backups can't be read elsewhere);
+/// else when it last backed up, as fine.
+fn diskbackup(roots: &Roots, r: &mut Report) {
+    use olo_protocol::diskbackup::{Settings, State, Target};
+    if roots.temp.config.as_os_str().is_empty() {
+        return;
+    }
+    let settings: Settings = read(&roots.temp.config.join("olo/diskbackup.json")).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    if settings.target == Target::None {
+        r.findings.push(Finding {
+            id: "diskbackup:not-set-up".into(),
+            severity: Severity::Advice,
+            title: "Nothing is backed up".into(),
+            detail: "DiskBackup isn't set up. Open DiskBackup and choose where backups go (a disk of its own, or a folder on one): from then on your home folder is backed up every hour, at the computer's idle priority, encrypted, its key kept in Passwords.".into(),
+            fix: None,
+        });
+        return;
+    }
+    let state: State = read(&roots.temp.runtime.join("olo-diskbackup.json")).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let running = state.pid != 0 && roots.fs.join(format!("proc/{}", state.pid)).exists();
+    let start = |label: &str, argv: &[&str]| Some(Fix { label: label.into(), root: false, steps: vec![Step::StartProgram { argv: argv.iter().map(|a| a.to_string()).collect() }] });
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    if !running {
+        r.findings.push(Finding {
+            id: "diskbackup:not-running".into(),
+            severity: Severity::Problem,
+            title: "DiskBackup isn't running".into(),
+            detail: format!("Its service (olo-diskbackup --service) starts with your session and isn't running: nothing is backed up to {} until it does.", settings.target.describe()),
+            fix: start("Start It", &["olo-diskbackup", "--service"]),
+        });
+    } else if !settings.enabled {
+        r.findings.push(Finding {
+            id: "diskbackup:paused".into(),
+            severity: Severity::Advice,
+            title: "Backups are paused".into(),
+            detail: format!("DiskBackup is set up to back up to {}, but turned off: what changes now isn't backed up.", settings.target.describe()),
+            fix: start("Resume Backups", &["olo-diskbackup", "--set", "enabled=on"]),
+        });
+    } else {
+        // Nothing whole for three days, or three of its intervals.
+        let overdue = (3 * 86_400).max(3 * 60 * settings.every_minutes as i64);
+        let since = state.last_ok.map(|t| now - t);
+        if since.is_none_or(|s| s > overdue) && state.doing == olo_protocol::diskbackup::Doing::Idle {
+            let when = match since {
+                Some(s) => format!("for {} days", s / 86_400),
+                None => "yet".into(),
+            };
+            let why = state.last.as_ref().and_then(|l| l.error.clone()).map(|e| format!(" The last didn't finish: {e}.")).unwrap_or_default();
+            r.findings.push(Finding {
+                id: "diskbackup:overdue".into(),
+                severity: Severity::Problem,
+                title: format!("Nothing backed up {when}"),
+                detail: format!("DiskBackup backs up to {} every {} minutes, and nothing has finished {when}.{why}", settings.target.describe(), settings.every_minutes),
+                fix: start("Back Up Now", &["olo-diskbackup", "--now"]),
+            });
+        } else if let Some(s) = since {
+            let ago = match s {
+                ..120 => "a minute ago".to_owned(),
+                120..3600 => format!("{} minutes ago", s / 60),
+                3600..7200 => "an hour ago".to_owned(),
+                7200..86_400 => format!("{} hours ago", s / 3600),
+                86_400..172_800 => "a day ago".to_owned(),
+                _ => format!("{} days ago", s / 86_400),
+            };
+            r.fine.push(Fine { title: "Your files are backed up".into(), detail: format!("DiskBackup last backed up to {} {ago}.", settings.target.describe()) });
+        }
+    }
+    if !settings.key_in_passwords {
+        r.findings.push(Finding {
+            id: "diskbackup:key".into(),
+            severity: Severity::Advice,
+            title: "DiskBackup's key is only on this computer".into(),
+            detail: "The backups are encrypted with a key kept in this computer's keyring alone: if this computer is lost, they can't be read. Keep it in Passwords too (and so in 1Password), and any computer can restore them.".into(),
+            fix: start("Keep Key in Passwords", &["olo-diskbackup", "--keep-key"]),
+        });
+    }
 }
 
 /// The D-Bus name other programs ask to show a file in its folder
@@ -2230,6 +2313,44 @@ mod tests {
         (fs, roots)
     }
 
+    /// DiskBackup: not set up, said without a button; set up, its service
+    /// gone (Start It); running but paused (Resume); nothing for days
+    /// (Back Up Now, the reason said); fine, and its key kept elsewhere.
+    #[test]
+    fn diskbackup_checks() {
+        let (fs, mut roots) = machine("diskbackup");
+        roots.temp.config = fs.join("home/me/.config");
+        roots.temp.runtime = fs.join("run/user/1000");
+        let w = |p: &Path, c: &str| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, c).unwrap();
+        };
+        let (settings, state) = (roots.temp.config.join("olo/diskbackup.json"), roots.temp.runtime.join("olo-diskbackup.json"));
+        let ids = |r: &Report| -> Vec<String> { r.findings.iter().chain(&r.ignored).filter(|f| f.id.starts_with("diskbackup:")).map(|f| f.id.clone()).collect() };
+        assert_eq!(ids(&scan(&roots)), ["diskbackup:not-set-up"]);
+        assert!(scan(&roots).find("diskbackup:not-set-up").unwrap().fix.is_none());
+        w(&settings, r#"{"enabled":true,"target":{"kind":"folder","path":"/mnt/backup"},"every_minutes":60}"#);
+        let r = scan(&roots);
+        assert_eq!(ids(&r), ["diskbackup:not-running", "diskbackup:key"]);
+        assert_eq!(r.find("diskbackup:not-running").unwrap().fix.as_ref().unwrap().steps, [Step::StartProgram { argv: vec!["olo-diskbackup".into(), "--service".into()] }]);
+        // Running (process 902 is), nothing whole for 5 days, the last failed.
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        w(&state, &format!(r#"{{"pid":902,"doing":"idle","last":{{"time":{},"error":"/mnt/backup isn't there"}},"last_ok":{}}}"#, now - 600, now - 5 * 86_400));
+        let r = scan(&roots);
+        let f = r.find("diskbackup:overdue").expect("overdue");
+        assert_eq!(f.title, "Nothing backed up for 5 days");
+        assert!(f.detail.contains("isn't there"), "{}", f.detail);
+        // Paused: said, not overdue.
+        w(&settings, r#"{"enabled":false,"target":{"kind":"folder","path":"/mnt/backup"},"key_in_passwords":true}"#);
+        assert_eq!(ids(&scan(&roots)), ["diskbackup:paused"]);
+        // Backed up an hour ago, the key kept: fine.
+        w(&settings, r#"{"enabled":true,"target":{"kind":"folder","path":"/mnt/backup"},"key_in_passwords":true}"#);
+        w(&state, &format!(r#"{{"pid":902,"doing":"idle","last_ok":{}}}"#, now - 3700));
+        let r = scan(&roots);
+        assert!(ids(&r).is_empty(), "{:?}", ids(&r));
+        assert!(r.fine.iter().any(|f| f.title == "Your files are backed up" && f.detail.ends_with("/mnt/backup an hour ago.")), "{:?}", r.fine);
+    }
+
     /// Programs' secrets in one login keyring: olo-secrets still having two
     /// found (its fix starts it again), its mending said, and GNOME
     /// Keyring's own two said when it answers.
@@ -2415,7 +2536,22 @@ mod tests {
         assert_eq!(r.find("foreign").unwrap().title, "A program of another desktop runs in this session");
         assert_eq!(
             ids,
-            ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "voice-realtime", "airpods-listening", "uclamp", "stale", "login", "tmp:memory"],
+            [
+                "remapper:keyd",
+                "foreign",
+                "rule:input",
+                "autosuspend:3-1.3",
+                "rule:displays",
+                "wifi-heal",
+                "rtkit",
+                "voice-realtime",
+                "airpods-listening",
+                "uclamp",
+                "stale",
+                "login",
+                "tmp:memory",
+                "diskbackup:not-set-up"
+            ],
             "{r:#?}"
         );
         let voice = r.find("voice-realtime").unwrap();

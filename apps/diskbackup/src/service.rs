@@ -139,6 +139,12 @@ struct Opened {
 }
 
 pub fn run() -> ExitCode {
+    // One at a time (Doctor's Start It, olo-session's, by hand).
+    let st = State::load();
+    if st.pid != 0 && st.pid != std::process::id() && std::fs::read_to_string(format!("/proc/{}/comm", st.pid)).is_ok_and(|c| c.trim() == "olo-diskbackup") {
+        tracing::info!("diskbackup: the service is running already (process {})", st.pid);
+        return ExitCode::SUCCESS;
+    }
     gentle();
     let (tx, rx) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));

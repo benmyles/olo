@@ -8382,6 +8382,15 @@ with a fix, by id), `olo-doctor --fix all|ID…` (what the buttons do: root
 steps through the helper and pkexec, or, under sudo, run there with the
 scan made for the sudo user). What it looks for:
 
+- **DiskBackup** (`diskbackup`, from its settings and its service's
+  state file): not set up ("Nothing is backed up": said, no button,
+  since where backups go is the person's to choose); its service not
+  running (a problem: Start It); paused (Resume Backups); nothing whole
+  for three days or three of its intervals (a problem, the last's reason
+  said: Back Up Now); its key only in this computer's keyring (Keep Key
+  in Passwords); else when it last backed up, as fine. Each fix is
+  DiskBackup's own command line (`Step::StartProgram`: one of Olo's
+  programs, `olo-…`, started as the person, never as root).
 - **Input remappers** (keyd, xremap, Input Remapper, evremap, kmonad,
   Interception Tools): they grab the keyboards, and any mouse whose motion
   node has keys (a Logitech G309), and type through a virtual device, so
@@ -12440,14 +12449,16 @@ the backup is tidied with the only lock (another computer using it: next
 time), `Doing::Pruning` in the state, then `State::tidied` (snapshots let
 go of since, bytes freed) and `State::size` (what the backups take there,
 grown by each backup since). A failed backup or tidy opens the backup
-again next time. Settings: `~/.config/olo/diskbackup.json`
+again next time. One service at a time: another started while one runs
+(Doctor's Start It, by hand) says so and exits. Settings: `~/.config/olo/diskbackup.json`
 (`olo_protocol::diskbackup::Settings`: target, paths, exclude groups and
 patterns, every, keep, speed limits, battery, one file system). The key:
 in the login keyring (`olo_system::secrets::DISKBACKUP_KEY`, which the
 settings backup carries too), where the service finds it with no one
 there; Passwords keeps it as well (the app, next). Command line:
 `--status [--json]`, `--now`, `--stop`, `--set-up-folder PATH`,
-`--snapshots`, `--restore SNAPSHOT PATH [TO]` (a shared lock, waiting
+`--keep-key` (the key kept in Passwords, as Keep Key in Passwords does:
+Olo Doctor's fix), `--snapshots`, `--restore SNAPSHOT PATH [TO]` (a shared lock, waiting
 for a tidy under way), `--tidy` (asked of the service if it runs, else
 done there), `--set KEY=VALUE…` (enabled, battery, every, upload,
 download, paths, exclude, groups, hourly, daily, weekly, monthly),

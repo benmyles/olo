@@ -70,10 +70,12 @@ something nobody here has is in "Blocked", with what it waits for.
   five minutes; the app's Keep box); Deskbar's item (what it's doing in
   a glyph, its menu: Back Up Now or Stop, Pause, Restore Files…);
   Tracker's ticks (files backed up as they are now) and Older Versions…
-  (DiskBackup's Versions window: Keep Both or Replace). Next: Google
+  (DiskBackup's Versions window: Keep Both or Replace); Olo Doctor's
+  checks (not set up, not running, paused, nothing for days, the key
+  only here: each with DiskBackup's own fix). Next: Google
   Drive (needs an OAuth client of Ben's: a Google Cloud project's
   "Desktop app" credentials; the store's list with sizes, ranges,
-  resumable uploads, rate limits); Doctor; DiskBackup's own icon
+  resumable uploads, rate limits); DiskBackup's own icon
   (Preferences ▸ Backup's for now); following changes (fanotify) rather
   than walking (an unchanged walk of 100,000 files is 0.4 s, so not yet
   pressing); a repair for a damaged index (made again from the packs'

@@ -18,6 +18,9 @@
 //! - `--snapshots`: every snapshot there.
 //! - `--restore SNAPSHOT PATH [TO]`: put `PATH` back as it was in
 //!   `SNAPSHOT` (`latest`, or the start of its id), where it was or `TO`.
+//! - `--keep-key`: the key kept in Passwords (started if it isn't
+//!   running; unlocked if it asks), as the app's Keep Key in Passwords
+//!   does (Olo Doctor's fix).
 //! - `--tidy`: now, not waiting for the service's daily one: this
 //!   computer's snapshots past keeping forgotten, and the space only they
 //!   used freed (with the backup to itself: not while one runs). Asked of
@@ -65,6 +68,13 @@ fn main() -> ExitCode {
                 _ => Err("--restore SNAPSHOT PATH [TO]".into()),
             },
             Some("--tidy") => tidy(),
+        Some("--keep-key") => app::keep_in_passwords().and_then(|()| {
+            let mut s = Settings::load();
+            s.key_in_passwords = true;
+            s.save().map_err(|e| e.to_string())?;
+            println!("DiskBackup's key is kept in Passwords (“{}”).", target::KEY_TITLE);
+            Ok(())
+        }),
             Some("--set") => set(&args[1..]),
             Some("--groups") => {
                 for g in olo_diskbackup::exclude::GROUPS {
@@ -81,7 +91,7 @@ fn main() -> ExitCode {
             Some(path) => versions_cli(path),
             None => Err("--versions PATH".into()),
         },
-            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --snapshots | --restore SNAPSHOT PATH [TO] | --marks DIR | --versions PATH | --tidy | --set KEY=VALUE… | --groups"
+            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --snapshots | --restore SNAPSHOT PATH [TO] | --marks DIR | --versions PATH | --keep-key | --tidy | --set KEY=VALUE… | --groups"
                 .into()),
         };
     match r {

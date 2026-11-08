@@ -269,7 +269,7 @@ fn tilde(path: &std::path::Path) -> String {
 
 /// The key, from the keyring, kept in Passwords (started if it isn't
 /// running; it asks to be unlocked if it's locked). Blocks.
-fn keep_in_passwords() -> Result<(), String> {
+pub(crate) fn keep_in_passwords() -> Result<(), String> {
     let key = target::key()?;
     let request = olo_keychain::Request::KeepSecret {
         title: target::KEY_TITLE.into(),
