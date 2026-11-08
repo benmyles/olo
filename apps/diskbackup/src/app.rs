@@ -23,6 +23,8 @@ pub enum Msg {
     Changed,
     /// Something done in the background: what to say (an error if Err).
     Note(Result<String, String>),
+    /// For the Restore window.
+    Restore(crate::restore::Done),
 }
 
 /// What a backup takes "every": minutes, and what it's called.
@@ -40,6 +42,8 @@ pub struct Disk {
     /// Setting up, or keeping the key: a worker is on it.
     busy: bool,
     win: Option<WindowHandle<Frame>>,
+    /// The Restore window, while it's open.
+    restore: Option<(WindowHandle<Frame>, Entity<crate::restore::RestoreWindow>)>,
     proxy: Proxy,
     _watch: Option<olo_ui::watch::Watch>,
 }
@@ -48,7 +52,7 @@ impl Disk {
     pub fn new(proxy: Proxy) -> Disk {
         let changed = proxy.clone();
         let watch = olo_ui::watch::watch([State::path(), Settings::path()], move |_| changed.send(Msg::Changed));
-        Disk { settings: Settings::load(), state: State::load(), note: None, busy: false, win: None, proxy, _watch: watch }
+        Disk { settings: Settings::load(), state: State::load(), note: None, busy: false, win: None, restore: None, proxy, _watch: watch }
     }
 
     pub fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
@@ -60,6 +64,12 @@ impl Disk {
             Msg::Changed => {
                 self.settings = Settings::load();
                 self.state = State::load();
+            }
+            Msg::Restore(d) => {
+                if let Some((_, w)) = &self.restore {
+                    w.update(cx, |w, cx| w.message(d, cx));
+                }
+                return;
             }
             Msg::Note(r) => {
                 self.busy = false;
@@ -118,9 +128,27 @@ impl Disk {
                 });
             }
             "keep-key" => self.keep_key(cx),
+            "restore" => self.open_restore(cx),
             "quit" => cx.quit(),
             _ => {}
         }
+    }
+
+    /// The Restore window (or brought to the front).
+    fn open_restore(&mut self, cx: &mut Context<Self>) {
+        if let Some((w, _)) = &self.restore
+            && olo_ui::raise(Some(*w), cx)
+        {
+            return;
+        }
+        let (proxy, me) = (self.proxy.clone(), cx.entity());
+        cx.defer(move |cx| {
+            let view = cx.new(|cx| crate::restore::RestoreWindow::new(proxy, cx));
+            let shown = view.clone();
+            if let Some(h) = olo_ui::open_window(cx, crate::restore::options(), move |_, _| shown) {
+                me.update(cx, |d, _| d.restore = Some((h, view)));
+            }
+        });
     }
 
     /// Ask the service (on a worker: it's quick, but nothing waits).
@@ -351,6 +379,7 @@ impl Render for MainWindow {
         } else {
             Button::new("Back Up Now").enabled(set_up && st.pid != 0).on_click(cmd("back-up-now"))
         });
+        let buttons = buttons.child(Button::new("Restore…").enabled(set_up).on_click(cmd("restore")));
         status = status.child(buttons);
 
         // ---- where backups go.
@@ -482,6 +511,9 @@ impl Render for MainWindow {
                     .enabled(set_up && !running)
                     .item("Stop", "stop")
                     .enabled(running)
+                    .item("Restore…", "restore")
+                    .key("r")
+                    .enabled(set_up)
                     .separator()
                     .item("Close", "close")
                     .key("w")

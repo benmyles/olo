@@ -12398,6 +12398,19 @@ limits). Every change is written to the settings, which the service
 follows at once. The keychain's `Secrets` reads an Olo program's secrets
 back by title (another computer's setup, next).
 
+**Restore** (`restore.rs`; File ▸ Restore…, ⌘R, or Restore… beside Back
+Up Now): the snapshots newest first; the chosen one's folders browsed as
+they were then (Name, Size, Modified; Return or a double-click goes in, Up
+goes out; the home folder first); what's selected put back where it was
+(asked first if something's there now: Replace, or Keep Both, the restored
+one named with its date, "todo (from 7 Nov 2026 20.14).txt") or into a
+folder chosen (Restore To…). Opening the backup, reading a folder and
+putting back each run on a worker; putting back says its progress every
+quarter second and stops at Stop (what was restored so far stays).
+Checked headless: a file changed between two snapshots, the older one's
+version restored with Keep Both beside the current one, both as they
+should be.
+
 Measured (release, one thread, this machine, 2026-11-07;
 `tests/round_trip.rs`'s `throughput`): data/ (988 MB, 12,160 files,
 pictures mostly) first backed up in 7.5 s (132 MB/s), 947 MB stored; again

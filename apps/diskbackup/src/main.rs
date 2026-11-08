@@ -17,6 +17,7 @@
 //!   (comma-separated ids; `--groups` lists them).
 
 mod app;
+mod restore;
 mod service;
 mod target;
 
@@ -24,7 +25,7 @@ const APP_ID: &str = "olo.diskbackup";
 
 use std::{path::PathBuf, process::ExitCode, sync::atomic::AtomicBool};
 
-use olo_diskbackup::{Key, Progress, Repo, restore};
+use olo_diskbackup::{Key, Progress, Repo};
 use olo_protocol::diskbackup::{Doing, Reply, Request, Settings, State, Target};
 
 fn main() -> ExitCode {
@@ -219,7 +220,7 @@ fn restore_cli(snap: &str, path: &str, to: Option<&String>) -> Result<(), String
     let path = target::expand(path).canonicalize().unwrap_or_else(|_| target::expand(path));
     let to = to.map(|t| target::expand(t)).unwrap_or_else(|| path.clone());
     let (cancel, progress) = (AtomicBool::new(false), Progress::default());
-    restore(&repo, &s.tree, &path, &to, &cancel, &progress).map_err(|e| e.to_string())?;
+    olo_diskbackup::restore(&repo, &s.tree, &path, &to, &cancel, &progress).map_err(|e| e.to_string())?;
     println!("Put back {} as {} ({} files).", path.display(), to.display(), progress.files.load(std::sync::atomic::Ordering::Relaxed));
     Ok(())
 }
