@@ -143,6 +143,8 @@ impl Tree for DomTree<'_> {
             // Definedness is the document's too (scripts' `:not(:defined)`:
             // Shoelace's autoloader finds the elements to load so).
             None if state == State::Defined && pseudo.is_none() => Ok(self.document.is_defined(node)?),
+            // A dialog shown modally is the document's state too.
+            None if state == State::Modal && pseudo.is_none() => Ok(self.document.is_modal(node)?),
             None if matches!(state, State::AnyLink | State::Link) && pseudo.is_none() => {
                 Ok(self.document.namespace(node)? == Some(dom::Namespace::Html) && matches!(self.document.name(node)?, Some("a" | "area")) && self.document.attribute(node, "href")?.is_some())
             }

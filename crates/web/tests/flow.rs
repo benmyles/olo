@@ -818,6 +818,25 @@ fn a_table_of_plain_children_and_a_caption_is_as_wide_as_they_are() {
 }
 
 #[test]
+fn closed_details_show_their_summary_alone() {
+    // MDN's Baseline panel: a closed <details> whose content has its own
+    // display shows its first summary only; an open one shows everything.
+    let s = scope();
+    let mut e = Engine::default();
+    let (d, t) = tree(
+        "<details id=c><summary id=s>Sum</summary><div id=x class=extra>Hidden</div>text</details><details id=o open><summary>Sum</summary><div id=y class=extra>Shown</div></details>",
+        "body{margin:0}details,summary,.extra{display:block}.extra{height:50px}",
+        &s,
+        1,
+    );
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    assert_eq!(rect(&d, &l, "c").height, 20., "the summary's line alone");
+    assert!(l.cache().tree().iter().all(|(_, b)| d.attribute(b.node, "id").ok().flatten() != Some("x")));
+    assert_eq!(rect(&d, &l, "y").height, 50.);
+}
+
+#[test]
 fn grid_areas_and_named_lines_place_items() {
     // MDN's layout: items placed by `grid-area` names (in source order the
     // other way round), the areas' edges named lines, line names from a

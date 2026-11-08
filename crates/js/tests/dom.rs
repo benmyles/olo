@@ -597,3 +597,25 @@ r.text().then((t) => console.log('form', type.startsWith('multipart/form-data; b
         ]
     );
 }
+#[test]
+fn dialogs_open_close_and_summaries_toggle_their_details() {
+    let (report, doc) = run("<dialog id=d><button id=b>OK</button></dialog><details id=x><summary id=s>More</summary><p>Hidden</p></details><script>
+        const d = document.getElementById('d');
+        console.log('closed', d.open);
+        d.showModal();
+        console.log('modal', d.open, d.matches(':modal'), document.activeElement && document.activeElement.id);
+        d.close('done');
+        console.log('closed again', d.open, d.matches(':modal'), d.returnValue);
+        d.show();
+        console.log('shown', d.open, d.matches(':modal'));
+        const x = document.getElementById('x');
+        document.getElementById('s').click();
+        console.log('details', x.open);
+        document.getElementById('s').click();
+        console.log('details', x.open);
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] closed false", "[log] modal true true b", "[log] closed again false false done", "[log] shown true false", "[log] details true", "[log] details false"]);
+    let d = find(&doc, "d");
+    assert!(doc.attribute(d, "open").unwrap().is_some());
+}

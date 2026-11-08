@@ -108,6 +108,7 @@ impl State {
             State::Valid | State::Invalid | State::UserValid | State::UserInvalid | State::InRange | State::OutOfRange => &["value", "min", "max", "pattern", "required", "type"],
             State::ReadOnly | State::ReadWrite => &["readonly", "disabled", "contenteditable"],
             State::PlaceholderShown => &["placeholder", "value"],
+            State::Modal => &["open"],
             State::Target | State::Hover | State::Active | State::Focus | State::FocusWithin | State::FocusVisible | State::Defined => &[],
             _ => &[],
         }
