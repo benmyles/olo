@@ -78,6 +78,29 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **The power button: Preferences ▸ Keyboard ▸ Power Button** (Ben,
+  2026-11-08: "under prefs -> keyboard please add an option for
+  choosing what the power button on the built in keyboard does when
+  pressed and when held down for n seconds ... by default, a single
+  press should do nothing. a 3s hold down should restart gracefully
+  with a warning/confirmation. a 10s hold down should shutdown
+  immediately."). Done (ec89e3b3): a tab of its own, a press and each
+  hold from Nothing, Lock the Screen, Log Out, and Restart and Shut
+  Down asking first, not asking, or immediately; app_server takes the
+  key from logind and does it; asking first is Deskbar's alert;
+  immediately is Olo's helper unit, installed by Doctor's power-now
+  fix (HACKING's "The power button"). Tested on a headless session
+  with a synthetic power key (a press nothing, 3 s the Restart alert,
+  10 s Shut Down Immediately, said and not done), the layout lint and
+  review at every scale. Left (Ben): upgrade (until then a press still
+  shuts the computer down: logind's own `HandlePowerKey=poweroff`);
+  then Preferences ▸ Keyboard ▸ Power Button ▸ Install the Helper…
+  (or `olo-doctor --fix power-now`; it asks for the password), and try
+  a press, a 3 s hold (the alert; Cancel), and whether the ThinkPad's
+  firmware cuts the power before 10 s (said to be about 5 s on
+  ThinkPads: if so, 10 s never reaches Olo, and a shorter hold there,
+  or holding through the firmware's, is the choice).
+
 - **Telegram's video stickers: their see-through parts on real ones**
   (2026-11-08; Done has the work): WebM stickers play, their alpha the
   second stream's luma as it is (0–255, as libvpx's decoders take it).
