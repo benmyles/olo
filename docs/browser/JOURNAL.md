@@ -6943,3 +6943,19 @@ the Guardian and old Reddit, looking for pages that fail outright:
   0.71 → 0.28 ms a frame at 120 Hz. `OLO_TILE_CHECK` makes every reused
   signature again and compares: 292,233 the same across GitHub, apple.com,
   Stripe and BBC.
+- **Texts restyled in place are shaped again.** A script's inline style
+  change is patched into the previous measurement's styles in place, so
+  the preparation that compared old styles with new compared the new with
+  themselves and kept texts shaped in the old font: a wrong layout, or
+  "flow layout Text(Stale)" and a full restyle from nothing, 9 times in
+  50 wheels on Wikipedia. The patched elements now go with it
+  (`PrepareJob::with_restyled`). Wikipedia's scripts' layouts while
+  scrolling: 28 in 1,303 ms → 16 in 111 ms. Against Chrome: load 1.80 vs
+  2.30 CPU s, scrolling 18.5% vs 18.0% (was 24%), 246 vs 393 MB.
+- **A frame looks only at the styles and pictures it changed.** GitHub's
+  animations make a new style tree each frame; the scan of every style
+  for pictures named later (19% of the page thread while scrolling) now
+  looks only at the chunks a tree doesn't share with the last one, and a
+  picture set's background identity is worked out once. GitHub against
+  Chrome, each alone: load 9.41 vs 9.34 CPU s, idle 27% vs 35%,
+  scrolling 56% vs 60%: no longer behind while idle or scrolling.

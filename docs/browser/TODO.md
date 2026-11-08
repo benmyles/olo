@@ -35,17 +35,13 @@ GitHub's homepage, open (seen against Chrome at 1000 × 700):
 
 Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 
-- [ ] GitHub against Chrome (JOURNAL 2026-11-08, night): load 10.8 vs 8.5
-  CPU s, scrolling 72% vs 56%. As it scrolls, its scripts measure and it
-  renders several times a frame. A restyle that leaves the boxes as they
-  were (classes, styles; no box-deciding property) keeps the box tree now
-  (JOURNAL 2026-11-08, night); GitHub's are child-list changes (its
-  animated demo panel inserting elements), which still rebuild the whole
-  tree (2-4.5 ms): typed text is rewritten in place now; element
-  insertions still rebuild. Per frame while scrolling (120 Hz, as
-  Chrome's): its animation's style patch 0.6-4 ms, tile signatures about
-  1.3 ms even when only a transform changed (only the tiles a transformed
-  element touches need looking at).
+- [ ] GitHub against Chrome (each alone, 1000 × 700): load 9.41 vs 9.34
+  CPU s, idle 27% vs 35%, scrolling 56% vs 60% (2026-11-08: a frame no
+  longer scans every style for pictures nor hashes every background).
+  Load is where it trails: element insertions (its animated demo panel)
+  still rebuild the whole box tree (2-4.5 ms); typed text is rewritten
+  in place. Per frame (120 Hz, as Chrome's) its animation's style patch
+  is 0.3-0.7 ms for 9 elements, most of the page thread now.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.
