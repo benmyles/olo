@@ -323,7 +323,7 @@
   // fetched asynchronously (side by side), compiled as it arrives (V8
   // reads its imports), the next ones fetched; running it then needs no
   // network. import() comes here too.
-  const moduleText = (url) => (/^(data|blob):/.test(url) ? Promise.resolve().then(() => global.__olo_fetchInline(url)) : global.__olo_fetchStart(url, 'GET', '', '')).then((r) => {
+  const moduleText = (url) => (/^(data|blob):/.test(url) ? Promise.resolve().then(() => global.__olo_fetchInline(url)) : global.__olo_fetchStart(url, 'GET', '', 'x-olo-destination: script')).then((r) => {
     if (r.status && (r.status < 200 || r.status >= 300)) throw new TypeError('Failed to fetch module ' + url + ': HTTP ' + r.status);
     return typeof r.body === 'string' ? r.body : new TextDecoder().decode(r.body);
   });

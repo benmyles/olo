@@ -12,6 +12,10 @@
 #![forbid(unsafe_op_in_unsafe_fn)]
 pub mod canvas;
 pub mod clone;
+/// The headers a module's fetch carries (never sent): the host fetches it
+/// as a script (cached, joining the fetch started for it with the page),
+/// not as a script's fetch().
+pub const SCRIPT_DESTINATION: &str = "x-olo-destination: script";
 mod crypto;
 pub mod html;
 mod modules;

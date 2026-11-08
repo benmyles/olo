@@ -597,7 +597,9 @@ impl Loads {
                         this.loader.image(&this.document, url, 64 << 20, &this.cancel, |_| {}, &svg).map(olo_js::Loaded::Image).map_err(|e| e.to_string())
                     }
                     olo_js::RequestKind::Text { method, body, headers } => {
-                        let fetched = if method == "GET" && headers.is_empty() {
+                        let fetched = if method == "GET" && headers == olo_js::SCRIPT_DESTINATION {
+                            this.loader.script_response(&this.document.url, url, &this.cancel)
+                        } else if method == "GET" && headers.is_empty() {
                             this.loader.bytes(&this.document.url, url, &this.cancel)
                         } else {
                             this.loader.request(&this.document.url, url, method, headers, body, &this.cancel)
@@ -625,7 +627,9 @@ impl Loads {
         let this = self.clone();
         Arc::new(move |url: &str, method: &str, body: &[u8], headers: &str| {
             let url = url::Url::parse(url).map_err(|e| e.to_string())?;
-            let fetched = if method == "GET" && headers.is_empty() {
+            let fetched = if method == "GET" && headers == olo_js::SCRIPT_DESTINATION {
+                this.loader.script_response(&this.document.url, url, &this.cancel)
+            } else if method == "GET" && headers.is_empty() {
                 this.loader.bytes(&this.document.url, url, &this.cancel)
             } else {
                 this.loader.request(&this.document.url, url, method, headers, body, &this.cancel)
@@ -1507,6 +1511,10 @@ fn render(
                 let loader = loader.clone();
                 Box::new(move |url: &str, method: &str, body: &[u8], headers: &str| {
                     let url = url::Url::parse(url).map_err(|e| e.to_string())?;
+                    if method == "GET" && headers == olo_js::SCRIPT_DESTINATION {
+                        let (status, content_type, body, final_url) = loader.script_response(&fetch_document, url, &cancel).map_err(|e| e.to_string())?;
+                        return Ok(olo_js::Fetched { status, content_type, body, url: final_url });
+                    }
                     if method == "GET" && headers.is_empty() {
                         let (status, content_type, body, final_url) = loader.text(&fetch_document, url, &cancel).map_err(|e| e.to_string())?;
                         return Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url });

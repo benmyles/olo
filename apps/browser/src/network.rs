@@ -239,6 +239,12 @@ impl Loader {
         let (text, _, _) = encoding.decode(&resource.bytes);
         Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), text.into_owned(), resource.url.to_string()))
     }
+    /// A module script's GET (`olo_js::SCRIPT_DESTINATION`): as a script, so
+    /// cached and joined with the fetch started for it with the page.
+    pub fn script_response(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
+        let resource = self.fetch(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Script)?;
+        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string()))
+    }
     /// A script's request with its method, headers (`name: value` lines)
     /// and body (fetch(), XMLHttpRequest): status, content type, bytes,
     /// final URL. Not cached.
