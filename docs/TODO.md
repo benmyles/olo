@@ -55,7 +55,10 @@ volume, a monitor's brightness, dconf), wake its fingerprint reader,
 presence sensor or cameras, count toward PAM's lockout, or play
 sound; the real Claude Code and Codex, and Google Drive (Ben's
 accounts); the MacBook's palm captures, an AirPods capture and the
-ffmpeg-made clips (not here); make_default_model (it rewrites the
+ffmpeg-made clips (not here: where Olo's own encoders made a stand-in,
+the tests ran on it, the encoder-switch recording played across its
+switch, a 300-picture HEVC clip decoded whole, B-frames in Chromium's
+bear; the clips' own lengths and sizes they assert didn't hold); make_default_model (it rewrites the
 shipped model) and make_4k60_y4m (vpxenc); with_gcr (a handshake by
 hand).)
 

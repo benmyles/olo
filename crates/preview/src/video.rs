@@ -1906,7 +1906,8 @@ mod tests {
             let mut sh = m.lock().unwrap();
             pts.extend(sh.queue.drain(..).map(|f| f.pts));
             cv.notify_all();
-            if sh.eof && sh.queue.is_empty() {
+            // (A worker that ended without eof failed: said below.)
+            if (sh.eof || worker.is_finished()) && sh.queue.is_empty() {
                 sh.stop = true;
                 break;
             }
@@ -1914,7 +1915,9 @@ mod tests {
             drop(sh);
         }
         cv.notify_all();
-        worker.join().unwrap().unwrap();
+        if let Err(e) = worker.join().unwrap() {
+            panic!("{}: {e}", path.display());
+        }
         assert!(pts.windows(2).all(|w| w[1] > w[0]), "{}: in order {pts:?}", path.display());
         pts
     }
@@ -1978,7 +1981,7 @@ mod tests {
                 let mut sh = m.lock().unwrap();
                 n += sh.queue.drain(..).count();
                 cv.notify_all();
-                if sh.eof && sh.queue.is_empty() {
+                if (sh.eof || worker.is_finished()) && sh.queue.is_empty() {
                     sh.stop = true;
                     break;
                 }
