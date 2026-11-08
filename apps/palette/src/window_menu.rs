@@ -64,6 +64,9 @@ pub struct Facts {
     pub beside: Vec<(u64, String)>,
     /// In a group with other windows (their tabs side by side).
     pub grouped: bool,
+    /// Its app's other windows it can go in with (Move to Window: one for
+    /// each group, not its own, where it shows), by title.
+    pub windows: Vec<(u64, String)>,
     /// Auto-tiling, or Focus, is its display's mode, and whether it
     /// floats over the tiles (or Focus's window) there.
     pub auto: bool,
@@ -149,6 +152,17 @@ pub fn learn(ask: Ask, proxy: Proxy) {
                 (o.id, label)
             })
             .collect();
+        // Its app's other windows, one for each group but its own.
+        let mut seen = std::collections::HashSet::new();
+        let app_windows = windows
+            .iter()
+            .filter(|o| o.id != w.id && !w.app_id.is_empty() && o.app_id == w.app_id && w.groupable && o.groupable && !o.minimized)
+            // (Where it shows: a group is on one display's workspace.)
+            .filter(|o| o.output == w.output && o.workspace == w.workspace)
+            .filter(|o| w.group.is_none() || o.group != w.group)
+            .filter(|o| o.group.is_none_or(|g| seen.insert(g)))
+            .map(|o| (o.id, if o.title.is_empty() { o.app_id.clone() } else { o.title.chars().take(60).collect() }))
+            .collect();
         let path = match (w.pid, w.surface) {
             (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_ui::commands::path(pid as u32, surface),
             _ => None,
@@ -173,6 +187,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             on_top,
             beside,
             grouped,
+            windows: app_windows,
             auto,
             focus,
             floating,
@@ -317,6 +332,14 @@ pub fn build(f: &Facts) -> Menu {
         // As ⌘-dragging its tab out of the group does.
         m = m.item("Remove from Group", "ungroup");
     }
+    // A tab into another window of its app (its group), as every tabbed
+    // app's tabs go (`Menu::move_to_window`); its whole group, if in one.
+    if !f.windows.is_empty() {
+        m = m.submenu(Menu::move_to_window("Move to Window", f.windows.iter().map(|(id, title)| (title.clone(), format!("window-to:{id}")))));
+        if f.grouped {
+            m = m.submenu(Menu::move_to_window("Move Group to Window", f.windows.iter().map(|(id, title)| (title.clone(), format!("group-to:{id}")))));
+        }
+    }
     m = m.item("Always on Top", "on-top").checked(f.on_top);
     m = m.item("Send to Back", "send-to-back").separator();
     // The app's own Close and Quit, as its keys press them.
@@ -370,6 +393,19 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
         Request::RunShortcut { id: id.to_owned(), window: Some(window) }
     } else if let Some(with) = command.strip_prefix("tile-with:").and_then(|w| w.parse().ok()) {
         Request::TileWith { id: window, with }
+    } else if let Some(with) = command.strip_prefix("window-to:").and_then(|w| w.parse().ok()) {
+        Request::GroupWindow { id: window, with, index: None }
+    } else if let Some(with) = command.strip_prefix("group-to:").and_then(|w| w.parse::<u64>().ok()) {
+        // Each of its group's windows, in their order, into `with`'s.
+        let _ = std::thread::Builder::new().name("window-menu-do".into()).spawn(move || {
+            let Ok(mut c) = Client::connect() else { return };
+            let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows) else { return };
+            let Some(group) = windows.iter().find(|w| w.id == window).and_then(|w| w.group) else { return };
+            for w in windows.iter().filter(|w| w.group == Some(group)) {
+                let _ = c.request(&Request::GroupWindow { id: w.id, with, index: None });
+            }
+        });
+        return;
     } else if let Some(rest) = command.strip_prefix("workspace:") {
         let (n, output) = match rest.split_once(':') {
             Some((n, o)) => (n, Some(o.to_owned())),
@@ -499,6 +535,7 @@ mod tests {
             on_top: false,
             beside: vec![(9, "StyledEdit — Untitled 1".into())],
             grouped: true,
+            windows: vec![(12, "Notes 2".into())],
             auto: false,
             focus: false,
             floating: false,
@@ -536,6 +573,8 @@ mod tests {
                 || c.starts_with("workspace:")
                 || olo_ui::moving::screen_command(c).is_some()
                 || c.strip_prefix("tile-with:").is_some_and(|id| id.parse::<u64>().is_ok())
+                || c.strip_prefix("window-to:").is_some_and(|id| id.parse::<u64>().is_ok())
+                || c.strip_prefix("group-to:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || ["send-to-back", "on-top", "close", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }
@@ -550,6 +589,12 @@ mod tests {
         let mut alone = Vec::new();
         commands(&build(&Facts { grouped: false, ..facts.clone() }), &mut alone);
         assert!(!alone.contains(&"ungroup".to_owned()));
+        // Into another of its app's windows; its group too, if in one.
+        assert!(all.contains(&"window-to:12".to_owned()) && all.contains(&"group-to:12".to_owned()));
+        assert!(alone.contains(&"window-to:12".to_owned()) && !alone.contains(&"group-to:12".to_owned()));
+        let mut only = Vec::new();
+        commands(&build(&Facts { windows: Vec::new(), ..facts.clone() }), &mut only);
+        assert!(!only.iter().any(|c| c.starts_with("window-to:") || c.starts_with("group-to:")), "no other windows: no Move to Window");
         // Open in Tracker only for a window that shows a file or folder.
         assert!(!all.contains(&tracker::COMMAND.to_owned()));
         let mut doc = Vec::new();

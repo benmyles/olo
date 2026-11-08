@@ -915,6 +915,26 @@ icon back on the grid. Terminal types dropped files as their
 shell-quoted paths (and text as if pasted), bracketed when the program
 asked for it: drag an image into Claude Code there.
 
+### Move to Window: every tabbed app's tabs (`Menu::move_to_window`)
+
+A pattern every app with tabs keeps (Ben, 2026-11-08: "a pattern and
+works for all tabbed olo apps: if that app has multiple windows open i
+should be able to right click on the tab or tab group and choose move
+to window -> <window name>. if that leaves no more tabs in the origin
+window then that window should close"). A tab's menu, and a tab group's,
+has Move to Window ▸ (a group's: Move Group to Window ▸) built by
+`Menu::move_to_window(title, others)`: the app's other windows by their
+titles, in natural order, each with the command that moves it there, or
+"No Other Windows", greyed. Moved there, the tab (a group's tabs, still a
+group) goes in after the window's own tabs and shows; the window it left
+closes if that was its last tab. The app's menu bar has the same under
+its Tabs menu, for the tab showing. Terminal's tabs and tab groups
+(`tab-to:SHELL:TARGET`, `group-to:GROUP:TARGET`, `move_group_to`) and a
+window's own tab (the window menu: into another of its app's windows'
+group where it shows, `GroupWindow`; a grouped window's whole group
+too) use it. An app with tabs of its own uses it on its tabs' and
+groups' menus.
+
 ### Ad-hoc popup menus (`menu::context_menu`, `menu::popup`)
 
 A context menu is `menu::context_menu(window, cx, menu, position,
@@ -5928,7 +5948,9 @@ that group's tabs and frame light up in the focus blue
 (`put_in_group`, showing only its tab for up to `DOCKING` while it draws
 at the group's size). Back over its own group, it goes back in. A plain
 drag still moves the whole group. The window menu (the palette's) has
-Remove from Group. Dialogs, fixed-size panels and fullscreen windows
+Remove from Group, and Move to Window ▸ (its app's other windows where
+it shows, a group's once: into its group) and, in a group, Move Group to
+Window ▸ (every window of its group, `GroupWindow` each). Dialogs, fixed-size panels and fullscreen windows
 never group (`groupable`). Agents do the same with `GroupWindow { id,
 with, index }` (into `with`'s group, or a new one with it), `UngroupWindow
 { id }` and `MoveTab { id, index }`; `WindowInfo` says `group` (a number
@@ -9935,13 +9957,17 @@ with Remove from Group, or drag it: among a group's tabs it joins,
 past its group's edge it leaves (the kit's `dropped_into`). A new tab
 from a grouped one joins its group. Drag a group's chip to move the
 whole group; click it for its menu (Rename Group…, New Tab in Group,
-Save Group, Move Group to New Window, Ungroup, Close Group, Show All
+Save Group, Move Group to New Window, Move Group to Window ▸ (the kit's
+Move to Window; the group, still a group, at the end of that window's
+tabs, the window it left closing if that was all of it:
+`group-to:GROUP:TARGET`, `move_group_to`), Ungroup, Close Group, Show All
 Tabs, its repository's worktrees); Tabs ▸ Group has the same for the
 group of the tab showing (`group_command`; commands carry the group's
 index or the tab's shell). A tab or a group dragged out of the strip
 and let go becomes a window under the pointer; a tab's menu also has
 Move to New Window and Move to Window ▸ (Terminal's other windows,
-named by one of their shells: `tab-to:SHELL:TARGET`). The window's
+named by one of their shells: `tab-to:SHELL:TARGET`; the window it
+left closes with its last tab). The window's
 title is "group — tab" for the tab showing, set the moment a program
 retitles its tab (`retitle`: Claude Code's status glyph in it), not at
 the next frame. A tab in a git repository is in that repository's group

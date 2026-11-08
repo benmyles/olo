@@ -1272,6 +1272,8 @@ impl Terminal {
         let Some(m) = self.metrics else { return };
         let Some(layout) = self.lay_out(id, window, &m) else { return };
         let least = least_pane(self.settings.side_tabs, &m);
+        // (For a group's menu: the windows its tabs could go to.)
+        let others = self.other_windows(id);
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         let row = match divider {
             Divider::Row(r) | Divider::Pane(r, _) => r,
@@ -1280,7 +1282,7 @@ impl Terminal {
             let group = layout.rows.get(row).and_then(|row| row.tabs.first()).and_then(|&i| t.tabs[i].group);
             let changed = t.sizes_changed();
             let menu = match group {
-                Some(g) => crate::group_menu(g, t),
+                Some(g) => crate::group_menu(g, t, crate::group_to_window_menu(Some(g), others)),
                 None => Menu::new("").item("Tile All Tabs", "tile-tabs").checked(t.tiled),
             };
             let menu = menu.item("Reset Pane Sizes", "tile-reset-heights").enabled(changed);
@@ -1358,6 +1360,8 @@ impl Terminal {
     }
 
     fn strip_did(&mut self, id: WindowId, action: StripAction, side: bool, window: &mut Window, cx: &mut Cx) {
+        // (For a group's menu: the windows its tabs could go to.)
+        let others = if matches!(action, StripAction::Group(..)) { self.other_windows(id) } else { Vec::new() };
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         match action {
             StripAction::Select(i) => {
@@ -1398,7 +1402,7 @@ impl Terminal {
             }
             StripAction::Group(g, pos) => {
                 let tiling_rows = t.tiled && t.tabs.len() > 1 && t.tile_rows().len() > 1;
-                let mut menu = crate::group_menu(g, t);
+                let mut menu = crate::group_menu(g, t, crate::group_to_window_menu(Some(g), others));
                 if tiling_rows {
                     menu = menu.item("Reset Pane Sizes", "tile-reset-heights").enabled(t.sizes_changed());
                 }

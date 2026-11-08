@@ -3718,5 +3718,11 @@
   "title": "Night Mode: shift gradually",
   "caption": "Preferences \u25b8 Appearance \u25b8 Night Mode can warm gradually: scheduled, it shifts from neutral to its warmth over 1 minute to 3 hours from its start, in steps too small to see, and is back to neutral at its end as before (no shift out).",
   "image": "2026-11-08/122912-night-mode-shift-gradually.png"
+ },
+ {
+  "time": "2026-11-08T12:44:14",
+  "title": "Move to Window, for every tab",
+  "caption": "A tab's menu, and a tab group's, has Move to Window \u25b8 with the app's other windows by title: the kit's Menu::move_to_window. Terminal's tabs and tab groups move there (a group stays a group), and the window they leave closes if nothing's left; a window's own tab (here StyledEdit's) joins the other window's group.",
+  "image": "2026-11-08/124414-move-to-window-for-every-tab.png"
  }
 ]

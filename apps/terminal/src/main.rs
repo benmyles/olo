@@ -65,7 +65,16 @@ const DEFAULT_TEXT_SIZE: f32 = 12.0;
 const STRIP: f32 = widgets::STRIP_HEIGHT;
 /// A group's menu (its chip's, in the strip, and its row's divider in
 /// Tile All Tabs).
-pub(crate) fn group_menu(g: usize, t: &TermWin) -> Menu {
+/// Move Group to Window ▸ for group `g` (none: greyed), to `others`
+/// (`Terminal::other_windows`).
+pub(crate) fn group_to_window_menu(g: Option<usize>, others: Vec<(String, u64)>) -> Menu {
+    match g {
+        Some(g) => Menu::move_to_window("Move Group to Window", others.into_iter().map(|(title, target)| (title, format!("group-to:{g}:{target}")))),
+        None => Menu::new("Move Group to Window").item("No Group", "none").enabled(false),
+    }
+}
+
+pub(crate) fn group_menu(g: usize, t: &TermWin, to_window: Menu) -> Menu {
     Menu::new("")
         .item("Rename Group…", format!("group-rename:{g}"))
         .item("New Tab in Group", format!("group-new-tab:{g}"))
@@ -73,6 +82,7 @@ pub(crate) fn group_menu(g: usize, t: &TermWin) -> Menu {
         .item("Save Group", format!("group-save:{g}"))
         .item("Move Group to New Window", format!("group-window:{g}"))
         .enabled(t.tabs.iter().any(|x| x.group != Some(g)))
+        .submenu(to_window)
         .separator()
         .item("Ungroup", format!("group-ungroup:{g}"))
         .item("Close Group", format!("group-close:{g}"))
@@ -1282,24 +1292,72 @@ impl Terminal {
 
     /// A tab's Move to Window menu: Terminal's other windows, by title.
     fn move_to_window_menu(&self, win: WindowId, shell: u64, own: bool) -> Menu {
-        let mut menu = Menu::new(if own { "Move to Window" } else { "Move Tab to Window" });
-        let mut others: Vec<(&String, u64)> = self
-            .windows
+        Menu::move_to_window(if own { "Move to Window" } else { "Move Tab to Window" }, self.other_windows(win).into_iter().map(|(title, target)| (title, format!("tab-to:{shell}:{target}"))))
+    }
+
+    /// Move Group to Window ▸, for group `g` of `win` (none: greyed).
+    fn move_group_menu(&self, win: WindowId, g: Option<usize>) -> Menu {
+        group_to_window_menu(g, self.other_windows(win))
+    }
+
+    /// The other Terminal windows, by title, each by its first tab's shell
+    /// (what `tab-to` and `group-to` name it by).
+    fn other_windows(&self, win: WindowId) -> Vec<(String, u64)> {
+        self.windows
             .iter()
             .filter(|(id, _)| **id != win)
             .filter_map(|(_, w)| match w {
-                Win::Term(t) => t.tabs.first().map(|x| (&t.shown_title, x.session.id)),
+                // (A new window, not titled yet: its tab's, else Terminal.)
+                Win::Term(t) => t.tabs.first().map(|x| {
+                    let title = [&t.shown_title, &t.tab().title].into_iter().find(|s| !s.trim().is_empty()).cloned().unwrap_or_else(|| "Terminal".to_owned());
+                    (title, x.session.id)
+                }),
                 _ => None,
             })
-            .collect();
-        others.sort();
-        for (title, target) in &others {
-            menu = menu.item(title.as_str(), format!("tab-to:{shell}:{target}"));
+            .collect()
+    }
+
+    /// Group `g` of `win`, still a group, to the end of the window with
+    /// tab `target`, the tab it showed (or its first) showing there;
+    /// `win` goes if they were all it had.
+    fn move_group_to(&mut self, cx: &mut Cx, win: WindowId, g: usize, target: u64) {
+        let Some(to) = self.find_shell(target).map(|(w, _)| w).filter(|&w| w != win) else { return };
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+        let Some(group) = t.groups.get(g).cloned() else { return };
+        let shown = t.tab().session.id;
+        let tabs = if t.tabs.iter().all(|x| x.group == Some(g)) {
+            // Its window goes, its shells with the tabs.
+            let Some(Win::Term(t)) = self.windows.remove(&win) else { return };
+            cx.close_window(win);
+            t.tabs
+        } else {
+            let mut tabs = Vec::new();
+            while let Some(i) = t.tabs.iter().position(|x| x.group == Some(g)) {
+                tabs.push(t.take(i));
+            }
+            t.tidy();
+            cx.redraw(win);
+            tabs
+        };
+        let Some(Win::Term(t)) = self.windows.get_mut(&to) else { return };
+        if t.focused {
+            t.tab().report_focus(false);
         }
-        if others.is_empty() {
-            menu = menu.item("No Other Windows", "none").enabled(false);
+        let (at, into) = (t.tabs.len(), t.groups.len());
+        t.groups.push(group);
+        for mut tab in tabs {
+            tab.group = Some(into);
+            tab.rang = false;
+            t.tabs.push(tab);
         }
-        menu
+        t.active = t.position(shown).filter(|&i| i >= at).unwrap_or(at);
+        if t.focused {
+            t.tab().report_focus(true);
+        }
+        t.tidy();
+        self.auto_group(cx, to);
+        cx.redraw(to);
+        cx.activate(to);
     }
 
     /// Group `g` of `win` into a window of its own, its tabs in it
@@ -1497,6 +1555,11 @@ impl Terminal {
             "tab-to" => {
                 if let Some((shell, target)) = arg.split_once(':').and_then(|(a, b)| Some((number(a)?, number(b)?))) {
                     self.move_tab_to(cx, win, shell, target);
+                }
+            }
+            "group-to" => {
+                if let Some((g, target)) = arg.split_once(':').and_then(|(a, b)| Some((number(a)?, number(b)?))) {
+                    self.move_group_to(cx, win, g as usize, target);
                 }
             }
             _ => return false,
@@ -2105,6 +2168,7 @@ impl Terminal {
             .enabled(in_group.is_some())
             .item("Move Group to New Window", of("group-window"))
             .enabled(in_group.is_some() && !alone)
+            .submenu(self.move_group_menu(window, in_group))
             .item("Ungroup", of("group-ungroup"))
             .enabled(in_group.is_some())
             .item("Close Group", of("group-close"))

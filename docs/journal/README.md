@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Move to Window, for every tab
+
+*12:44* — A tab's menu, and a tab group's, has Move to Window ▸ with the app's other windows by title: the kit's Menu::move_to_window. Terminal's tabs and tab groups move there (a group stays a group), and the window they leave closes if nothing's left; a window's own tab (here StyledEdit's) joins the other window's group.
+
+![Move to Window, for every tab](2026-11-08/124414-move-to-window-for-every-tab.png)
+
 ### Night Mode: shift gradually
 
 *12:29* — Preferences ▸ Appearance ▸ Night Mode can warm gradually: scheduled, it shifts from neutral to its warmth over 1 minute to 3 hours from its start, in steps too small to see, and is back to neutral at its end as before (no shift out).
