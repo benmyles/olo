@@ -591,7 +591,7 @@ fn diskbackup(roots: &Roots, r: &mut Report) {
             id: "diskbackup:not-set-up".into(),
             severity: Severity::Advice,
             title: "Nothing is backed up".into(),
-            detail: "DiskBackup isn't set up. Open DiskBackup and choose where backups go (a disk of its own, or a folder on one): from then on your home folder is backed up every hour, at the computer's idle priority, encrypted, its key kept in Passwords.".into(),
+            detail: "DiskBackup isn't set up. Open DiskBackup and choose where backups go (a disk of its own, or your Google Drive): from then on your home folder is backed up every hour, at the computer's idle priority, encrypted, its key kept in Passwords.".into(),
             fix: None,
         });
         return;

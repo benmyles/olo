@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### DiskBackup: Back Up to Google Drive, walked through
+
+*22:34* — Google asks each person to make their own sign-in for an app like DiskBackup, so DiskBackup walks them through it: six steps in Google Cloud, each with Open for its page, then the client's file (or its ID and secret) and Sign In with Google. A client kept in Passwords skips the steps on another computer.
+
+![DiskBackup: Back Up to Google Drive, walked through](2026-11-07/223440-diskbackup-back-up-to-google-drive-walked-throug.png)
+
 ### Tracker's list view: one edge at its foot
 
 *21:54* — The count bar under the list view no longer draws its etched edge: the list's own sunken frame (its focus ring inside) edges it, and the two had stacked four lines in three points (tsession review: crowded lines, at 1× and 2×). Light and dark, 2× and 1×.

@@ -73,10 +73,11 @@ something nobody here has is in "Blocked", with what it waits for.
   (DiskBackup's Versions window: Keep Both or Replace); Olo Doctor's
   checks (not set up, not running, paused, nothing for days, the key
   only here: each with DiskBackup's own fix); its own icon (a drive, a
-  cloud with a tick before it), in every theme. Next: Google
-  Drive (needs an OAuth client of Ben's: a Google Cloud project's
-  "Desktop app" credentials; the store's list with sizes, ranges,
-  resumable uploads, rate limits); following changes (fanotify) rather
+  cloud with a tick before it), in every theme; Google Drive (each
+  person's own Desktop app OAuth client, the app walking them through
+  making it; resumable uploads, backoff, speed limits; tested against a
+  Google of our own, not yet against Google itself). Next: trying it
+  against Google for real (Ben's project); following changes (fanotify) rather
   than walking (an unchanged walk of 100,000 files is 0.4 s, so not yet
   pressing); a repair for a damaged index (made again from the packs'
   own lists).

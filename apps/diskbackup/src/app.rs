@@ -27,6 +27,8 @@ pub enum Msg {
     Restore(crate::restore::Done),
     /// For the Versions window of that file.
     Versions(PathBuf, crate::versions::Done),
+    /// For the Google Drive setup window.
+    Drive(crate::drive_setup::Done),
 }
 
 /// What a backup takes "every": minutes, and what it's called.
@@ -51,6 +53,8 @@ pub struct Disk {
     restore: Option<(WindowHandle<Frame>, Entity<crate::restore::RestoreWindow>)>,
     /// Versions windows, a file each.
     versions: Vec<(WindowHandle<Frame>, Entity<crate::versions::VersionsWindow>)>,
+    /// The Google Drive setup window, while it's open.
+    drive: Option<(WindowHandle<Frame>, Entity<crate::drive_setup::DriveSetup>)>,
     proxy: Proxy,
     _watch: Option<olo_ui::watch::Watch>,
 }
@@ -59,7 +63,7 @@ impl Disk {
     pub fn new(proxy: Proxy) -> Disk {
         let changed = proxy.clone();
         let watch = olo_ui::watch::watch([State::path(), Settings::path()], move |_| changed.send(Msg::Changed));
-        Disk { settings: Settings::load(), state: State::load(), note: None, busy: false, win: None, restore: None, versions: Vec::new(), proxy, _watch: watch }
+        Disk { settings: Settings::load(), state: State::load(), note: None, busy: false, win: None, restore: None, versions: Vec::new(), drive: None, proxy, _watch: watch }
     }
 
     pub fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
@@ -82,6 +86,18 @@ impl Disk {
             Msg::Restore(d) => {
                 if let Some((_, w)) = &self.restore {
                     w.update(cx, |w, cx| w.message(d, cx));
+                }
+                return;
+            }
+            Msg::Drive(d) => {
+                let set_up = matches!(&d, crate::drive_setup::Done::SetUp(Ok(_)));
+                if let Some((_, w)) = &self.drive {
+                    w.clone().update(cx, |w, cx| w.message(d, cx));
+                }
+                if set_up {
+                    self.settings = Settings::load();
+                    self.note = None;
+                    cx.notify();
                 }
                 return;
             }
@@ -119,6 +135,23 @@ impl Disk {
             },
             _ => self.open(cx),
         }
+    }
+
+    /// The Google Drive setup window (or brought to the front).
+    pub fn open_drive(&mut self, cx: &mut Context<Self>) {
+        if let Some((w, _)) = &self.drive
+            && olo_ui::raise(Some(*w), cx)
+        {
+            return;
+        }
+        let (proxy, me) = (self.proxy.clone(), cx.entity());
+        cx.defer(move |cx| {
+            let view = cx.new(|cx| crate::drive_setup::DriveSetup::new(proxy, cx));
+            let shown = view.clone();
+            if let Some(h) = olo_ui::open_window(cx, crate::drive_setup::options(), move |_, _| shown) {
+                me.update(cx, |d, _| d.drive = Some((h, view)));
+            }
+        });
     }
 
     /// `path`'s Versions window (or brought to the front).
@@ -174,6 +207,7 @@ impl Disk {
                     });
                 });
             }
+            "google-drive" => self.open_drive(cx),
             "add-folder" => {
                 let me = cx.entity();
                 cx.defer(move |cx| {
@@ -444,14 +478,15 @@ impl Render for MainWindow {
         // ---- where backups go.
         let mut target = BBox::new("Back Up To");
         target = target.child(line(if set_up { s.target.describe() } else { "Nowhere yet.".into() }, false));
-        target = target.child(dim("A disk of its own (or a folder on one) keeps your backups apart from this one. Google Drive comes next.".into()));
+        target = target.child(dim("A disk of its own (or a folder on one) keeps your backups apart from this one; your Google Drive keeps them anywhere.".into()));
         target = target.child(
             div()
                 .flex()
                 .flex_row()
                 .gap(px(m::SPACING))
                 .pt(px(m::TIGHT))
-                .child(Button::new(if set_up { "Choose Another Folder…" } else { "Choose a Folder…" }).enabled(!d.busy).on_click(cmd("choose-folder"))),
+                .child(Button::new(if set_up { "Choose Another Folder…" } else { "Choose a Folder…" }).enabled(!d.busy).on_click(cmd("choose-folder")))
+                .child(Button::new("Google Drive…").enabled(!d.busy).on_click(cmd("google-drive"))),
         );
 
         // ---- when, and how fast.

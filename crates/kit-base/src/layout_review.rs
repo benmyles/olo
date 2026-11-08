@@ -585,6 +585,13 @@ fn crowded_lines(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
             if framing(a, b) || framing(b, a) {
                 continue;
             }
+            // (A button's edge and its default ring round it, however wide
+            // the button: the kit's, drawn so.)
+            let ring = LINE_ROOM + 1.0;
+            let ringed = p.controls.iter().any(|c| c.role == "Button" && c.rect.expand(ring).contains_rect(*a) && c.rect.expand(ring).contains_rect(*b));
+            if ringed {
+                continue;
+            }
             if overlap >= 0.5 * shorter && gap > touching && gap < LINE_ROOM {
                 let text = format!(
                     "two lines {gap:.1} pt apart (at {:.0},{:.0} and {:.0},{:.0}): an edge almost on another's; give it room (`metrics::BOX_INSET`, `WINDOW_INSET`)",

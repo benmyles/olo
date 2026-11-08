@@ -12391,10 +12391,36 @@ in layers; done so far, **the engine** (crates/diskbackup):
 - **Restoring** (`restore.rs`): a file or folder of any snapshot put back
   anywhere, as it was (contents, permissions, modified times, links),
   each file written aside and renamed into place; `find` for browsing.
-- **Stores** (`store.rs`): `Store` (put whole, get, get a range, list,
-  delete); objects are written once under names of their content, so a
-  slow or eventually consistent store never shows half of one.
-  `LocalStore` (a folder) now; Google Drive next.
+- **Stores** (`store.rs`): `Store` (put whole, get, get a range, list
+  with sizes, delete); objects are written once under names of their
+  content, so a slow or eventually consistent store never shows half of
+  one. `LocalStore` (a folder) and `drive::Drive`.
+- **Google Drive** (`drive.rs`): the repository's objects as files of
+  one folder in My Drive ("Olo DiskBackup", found or made), named as the
+  repository names them (a Drive name may hold a slash), through Drive's
+  v3 API (ureq, rustls with the system's roots). Under 5 MiB in one
+  multipart request; above, resumably in 8 MiB pieces, a piece that fails
+  asked where it got to (`bytes */N`, its 308's Range) and gone on from
+  there (no redirect followed: a 308 followed is lost). Google's 429, a
+  rate limit's 403 and 5xx tried again up to 8 times, waiting 1 s to a
+  minute, doubling, a little at random; a 401 fetches the token again.
+  Every body paced by the speed limits as it's sent or read, 64 KiB at a
+  time (`Paced`, with its length: never chunked). Each file's id kept
+  from listings (a listing of a folder: `name contains 'index/'`, Drive's
+  prefix match), found by name if need be. Tested against a Google of
+  our own (`tests/support/google.rs`: a 429, a token run out, listings
+  two a page, an upload's first piece cut part way): put, replace, get,
+  ranges, list, delete, then a whole repository backed up (a 20 MiB file
+  resumably), restored from another `Repo`, and tidied.
+- **Signing in** (`oauth.rs`): each person's own OAuth client (a
+  "Desktop app" in a Google Cloud project of theirs: `Client`, from its
+  downloaded JSON or its ID and secret), Google's installed-app flow: the
+  consent page in the browser, the answer to `http://127.0.0.1:PORT` (a
+  port of its own each time), PKCE S256 and a state; the scopes
+  `drive.file` (only the files DiskBackup makes: non-sensitive, so no
+  review by Google) and `openid email` (whose Drive, said); the refresh
+  token kept. An External app left in Testing is signed out after 7 days
+  by Google: the setup has it published.
 - **`config`**: the format and chunking, sealed: opening it is how a key
   is known to be the right one (`Error::WrongKey`). The key, 32 random
   bytes (`Key::to_hex`), is kept by Olo Passwords, not in the store.
@@ -12509,6 +12535,34 @@ one back, asked Keep Both (beside it, named with when it was modified)
 or Replace, with a shared lock and its progress; it lists again when a
 backup finishes. Checked headless: a file changed loses its tick, gets
 it back after Back Up Now; its older version restored beside it.
+
+**Google Drive's setup** (`drive_setup.rs`; Back Up To ▸ Google Drive…;
+Ben, 2026-11-07: "we should have each user setup their own desktop app
+… have the app walk the user through how to do it"): Google asks each
+person to make their own sign-in for an app like this, so the window
+walks them through it, a numbered step at a time, each with Open for its
+page (Google Cloud's: make a project; turn on the Drive API; set up its
+sign-in, Audience External; add the `drive.file` scope; publish it, or
+Google signs it out every 7 days; make a Desktop app client and
+download its JSON); then the client given (Choose File… for the JSON, or
+its ID and secret typed: the secret a password field) and Sign In with
+Google: the browser to the consent page (Copy Address if it didn't
+open), the answer taken, the folder found or made, the backup there
+opened (this computer's key, the keys Passwords keeps) or made, the
+sign-in kept in the login keyring (`olo_system::secrets::DISKBACKUP_GOOGLE`)
+and the client in Passwords ("DiskBackup Google Client"): on another
+computer, Sign In with the One in Passwords skips the steps. As a tab of
+DiskBackup's frame it's as wide as that (640 points at least).
+`--set-up-drive [CLIENT_FILE | ID SECRET]` does the same from the
+command line (none: the client Passwords keeps), the consent page's
+address printed. For tests, `OLO_DISKBACKUP_GOOGLE_API` is a Google of
+our own (no browser opened; the window writes the address to
+`$OLO_DISKBACKUP_DIR/sign-in.url`) and `OLO_DISKBACKUP_GOOGLE` the
+sign-in; `tests/set_up_drive.rs` runs `--set-up-drive`, plays the
+browser, then the service backs up to it (`serve_google`, ignored,
+serves the fake for trying the window by hand). The layout review no
+longer counts a button's default ring as crowded lines, however wide the
+button (`layout_review::crowded_lines`).
 
 **Restore** (`restore.rs`; File ▸ Restore…, ⌘R, or Restore… beside Back
 Up Now): the snapshots newest first; the chosen one's folders browsed as

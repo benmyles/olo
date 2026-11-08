@@ -35,9 +35,11 @@
 pub mod backup;
 pub mod chunker;
 pub mod crypto;
+pub mod drive;
 pub mod exclude;
 pub mod keep;
 pub mod lock;
+pub mod oauth;
 pub mod prune;
 pub mod repo;
 pub mod restore;
