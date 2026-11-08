@@ -2263,11 +2263,11 @@ people.
   fingers made into clicks and every touch made low, which they never
   showed), and it runs untrained: 93.3% of palms kept back caught, no
   finger lost; each run by one made from the other only 86.0%/8.3% and
-  91.2%/0% (docs/TOUCHPAD.md). Next: run `make_default_model` again with
-  each run Ben keeps (the next one has low palms, thumbs and his shirt);
-  and the person's training learning from every run of theirs kept, not
-  only today's (one run on its own overfits that sitting: run 1 judged
-  by a model of run 2 loses 8.3% of its fingers).
+  91.2%/0% (docs/TOUCHPAD.md). Left (blocked on Ben's next runs): run
+  `make_default_model` again with each run Ben keeps (the next one has
+  low palms, thumbs and his shirt). Done (2026-11-08): the person's
+  training learns from their newest runs kept, today's and up to seven
+  earlier (`olo_palm::kept_runs`), not only today's.
 
 - **Olo's own login and boot** (Ben, 2026-11-01, for after the GPUI
   refactor is complete): replace GDM with an Olo-native display
@@ -5968,7 +5968,8 @@ people.
      HACKING.
      *Begun* (olo-ui, HACKING "The GPUI kit"): run, windows, the theme,
      style primitives on device pixels, the agent tree and socket,
-     frame stats, TextField, menus as popups, floating, upgrades. Next:
+     frame stats, TextField, menus as popups, floating, upgrades. Then
+     (all since done, as below):
      the layout review for GPUI frames (`{"review":true}`), icons (the
      pre-scaled set, a texture pixel to a device pixel), the widgets
      (buttons, check boxes, radios, menu fields, sliders, BBox, string

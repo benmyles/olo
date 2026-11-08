@@ -76,6 +76,10 @@ enum Zone {
     Low,
 }
 
+/// How many runs (today's among them) the person's training learns from:
+/// the newest, so training stays a matter of seconds.
+const RUNS_LEARNT_FROM: usize = 8;
+
 impl Zone {
     fn holds(self, x: f32, y: f32) -> bool {
         match self {
@@ -793,7 +797,8 @@ impl TrainerWindow {
         cx.stop_propagation();
     }
 
-    /// Refine Olo's model on the touches that counted, off the UI thread
+    /// Refine Olo's model on the touches that counted (today's and the
+    /// newest earlier runs on this kind of pad), off the UI thread
     /// with progress; keep it (in the settings, and on) if it does at
     /// least as well as Olo's own on the touches kept back.
     fn train(&mut self, cx: &mut Context<Self>) {
@@ -804,16 +809,21 @@ impl TrainerWindow {
         let kind = self.kind();
         // (No size on the pad: the size rule says nothing.)
         let (palm_size, proxy) = (if kind.sized() { self.palm_size } else { u32::MAX }, olo_ui::proxy(cx));
-        // Kept on disk too (~/.local/state/olo/palm), for Olo's own model
-        // for this kind of pad to be tuned on real hands later.
-        let kept = samples.clone();
-        // (state_dir is Olo's own already: it was olo/olo/palm.)
-        std::thread::spawn(move || match olo_palm::keep_samples(&olo_xdg::state_dir().join("palm"), kind, &kept) {
-            Ok(p) => tracing::info!("palm trainer: samples kept in {}", p.display()),
-            Err(e) => tracing::warn!("palm trainer: samples not kept: {e}"),
-        });
         let task = cx.background_spawn(async move {
-            olo_palm::train(kind, &samples, palm_size, |p| {
+            // The earlier runs on this kind of pad learnt from too, not
+            // today's alone (one sitting's hands overfit it); then today's
+            // kept on disk with them (~/.local/state/olo/palm; until
+            // 2026-11-03, olo/olo/palm), for the next training and for Olo's
+            // own model to be tuned on real hands.
+            let dir = olo_xdg::state_dir().join("palm");
+            let (earlier, mut all) = olo_palm::kept_runs(&[dir.clone(), olo_xdg::state_dir().join("olo").join("palm")], kind, RUNS_LEARNT_FROM - 1);
+            match olo_palm::keep_samples(&dir, kind, &samples) {
+                Ok(p) => tracing::info!("palm trainer: samples kept in {}", p.display()),
+                Err(e) => tracing::warn!("palm trainer: samples not kept: {e}"),
+            }
+            all.extend(samples.iter().cloned());
+            tracing::info!(earlier, contacts = all.len(), "palm trainer: learning from today's run and the earlier ones");
+            olo_palm::train(kind, &all, palm_size, |p| {
                 *progress.lock().unwrap() = p;
                 proxy.send(Msg::Redraw);
             })
