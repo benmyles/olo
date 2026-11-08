@@ -19,6 +19,10 @@ use std::{
 /// browser supplies one.
 /// (url, method, body, headers as `name: value` lines).
 pub type SharedFetcher = Arc<dyn Fn(&str, &str, &[u8], &str) -> Result<Fetched, String> + Send + Sync>;
+/// Starts a worker's fetch() without a thread waiting on it (the browser's
+/// network runtime does the I/O): (url, method, body, headers), and what
+/// to call with what came.
+pub type FetchStarter = Arc<dyn Fn(String, String, Vec<u8>, String, Box<dyn FnOnce(Result<Fetched, String>) + Send>) + Send + Sync>;
 /// Called from a worker's thread when it posted something, so the page's
 /// loop runs soon.
 pub type Waker = Arc<dyn Fn() + Send + Sync>;
@@ -46,7 +50,7 @@ pub struct Handle {
 impl Handle {
     /// Start a worker for the script at `url` (or `source`, for a blob
     /// URL's script), fetching through `fetcher`.
-    pub fn spawn(url: String, source: Option<String>, fetcher: SharedFetcher, waker: Option<Waker>, user_agent: String) -> Result<Self, String> {
+    pub fn spawn(url: String, source: Option<String>, fetcher: SharedFetcher, starter: Option<FetchStarter>, waker: Option<Waker>, user_agent: String) -> Result<Self, String> {
         let (to_tx, to_rx) = mpsc::channel();
         let (from_tx, from_rx) = mpsc::channel();
         let isolate = Arc::new(Mutex::new(None));
@@ -55,7 +59,7 @@ impl Handle {
         let to_self = to_tx.clone();
         std::thread::Builder::new()
             .name(format!("worker-{name}"))
-            .spawn(move || run(url, source, fetcher, waker, user_agent, to_rx, to_self, from_tx, slot))
+            .spawn(move || run(url, source, fetcher, starter, waker, user_agent, to_rx, to_self, from_tx, slot))
             .map_err(|e| format!("worker thread: {e}"))?;
         Ok(Self { tx: to_tx, rx: from_rx, isolate })
     }
@@ -82,6 +86,7 @@ struct State {
     url: String,
     user_agent: String,
     fetcher: SharedFetcher,
+    starter: Option<FetchStarter>,
     waker: Option<Waker>,
     tx: Sender<FromWorker>,
     /// The worker's own inbox: fetches answer through it.
@@ -98,6 +103,7 @@ fn run(
     url: String,
     source: Option<String>,
     fetcher: SharedFetcher,
+    starter: Option<FetchStarter>,
     waker: Option<Waker>,
     user_agent: String,
     rx: Receiver<ToWorker>,
@@ -106,7 +112,8 @@ fn run(
     slot: Arc<Mutex<Option<v8::IsolateHandle>>>,
 ) {
     crate::runtime();
-    let state: Shared = Rc::new(RefCell::new(State { url: url.clone(), user_agent, fetcher: fetcher.clone(), waker, tx: tx.clone(), to_self, next_fetch: 0, started: Instant::now(), closed: false }));
+    let state: Shared =
+        Rc::new(RefCell::new(State { url: url.clone(), user_agent, fetcher: fetcher.clone(), starter, waker, tx: tx.clone(), to_self, next_fetch: 0, started: Instant::now(), closed: false }));
     // The script first: a worker that cannot load reports an error.
     let source = match source {
         Some(s) => s,
@@ -326,19 +333,25 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
                 }
             }
         }
-        // fetchStart(url, method, body, headers): fetched on a thread of its
-        // own (the worker's event loop goes on); its number, answered as
+        // fetchStart(url, method, body, headers): started on the browser's
+        // network runtime (else fetched on a thread of its own), the
+        // worker's event loop going on; its number, answered as
         // ToWorker::Fetched.
         "fetchStart" => {
             let url = arg_string(scope, &args, 0);
             let method = arg_string(scope, &args, 1);
             let body = crate::arg_body(scope, &args, 2);
             let headers = if args.length() > 3 && args.get(3).is_string() { arg_string(scope, &args, 3) } else { String::new() };
-            let (fetcher, to_self, id) = {
+            let (fetcher, starter, to_self, id) = {
                 let mut s = state.borrow_mut();
                 s.next_fetch = s.next_fetch.wrapping_add(1);
-                (s.fetcher.clone(), s.to_self.clone(), s.next_fetch)
+                (s.fetcher.clone(), s.starter.clone(), s.to_self.clone(), s.next_fetch)
             };
+            if let Some(start) = starter {
+                start(url, if method.is_empty() { "GET".into() } else { method }, body, headers, Box::new(move |result| drop(to_self.send(ToWorker::Fetched(id, result)))));
+                rv.set(v8::Integer::new(scope, id as i32).into());
+                return;
+            }
             let spawned = std::thread::Builder::new().name("worker-fetch".into()).spawn(move || {
                 let result = fetcher(&url, if method.is_empty() { "GET" } else { &method }, &body, &headers);
                 let _ = to_self.send(ToWorker::Fetched(id, result));

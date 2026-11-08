@@ -295,6 +295,9 @@ impl Loader {
     /// and body (fetch(), XMLHttpRequest): status, content type, bytes,
     /// final URL. Not cached.
     pub fn request(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
+        self.runtime.block_on(self.request_async(initiator, url, method, headers, body, cancel))
+    }
+    async fn request_async(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
         let outgoing = Outgoing::new(method, headers, body)?;
         if olo_web::env_on!("OLO_FETCH_DEBUG") {
             eprintln!(
@@ -305,14 +308,42 @@ impl Loader {
             );
         }
         let mut progress = |_| {};
-        let resource = self.runtime.block_on(async {
+        let resource = {
             let work = get(&self.client, url, Some(initiator.clone()), SCRIPT_LIMIT, cancel.flag.clone(), &mut progress, Kind::Fetch, false, Some(&outgoing));
             tokio::select! { biased; _ = cancel.signal.cancelled() => Err("Cancelled".into()), result = work => result }
-        })?;
+        }?;
         if olo_web::env_on!("OLO_FETCH_DEBUG") && resource.status.is_some_and(|s| s >= 400) {
             eprintln!("  answered {:?}: {}", resource.status, String::from_utf8_lossy(&resource.bytes[..resource.bytes.len().min(600)]));
         }
         Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string()))
+    }
+    /// A live page's script's load (fetch(), XMLHttpRequest, a module):
+    /// status, content type, bytes, final URL, without a thread waiting on
+    /// it (run it with `spawn`).
+    pub async fn script_load(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
+        let respond = |r: Resource| (r.status.unwrap_or(200), r.mime.as_ref().map(ToString::to_string).unwrap_or_default(), r.bytes, r.url.to_string());
+        if method == "GET" && headers == olo_js::SCRIPT_DESTINATION {
+            self.fetch_async(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Script).await.map(respond)
+        } else if method == "GET" && headers.is_empty() {
+            self.fetch_async(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Fetch).await.map(respond)
+        } else {
+            self.request_async(initiator, url, method, headers, body, cancel).await
+        }
+    }
+    /// A picture a live page's script asked for: decoded already (fetched
+    /// ahead), else its bytes, for `decode_image` on the CPU pool.
+    pub async fn image_source(&self, document: &Url, url: Url, cancel: &Cancel) -> page::Result<ImageSource> {
+        if url.scheme() != "data"
+            && let Some(Decoded::Image(image)) = self.decoded_now(&url)
+        {
+            return Ok(ImageSource::Decoded(image));
+        }
+        Ok(ImageSource::Bytes(self.fetch_async(url, Some(document), IMAGE_LIMIT, cancel, |_| {}, Kind::Image).await?.bytes))
+    }
+    /// Run this on the network runtime (a load's I/O; its processing goes
+    /// to the CPU pool).
+    pub fn spawn(&self, work: impl std::future::Future<Output = ()> + Send + 'static) {
+        self.runtime.spawn(work);
     }
     /// A fetch() for scripts: status, content type, bytes, final URL.
     pub fn bytes(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
@@ -373,16 +404,26 @@ impl Loader {
             let resource = self.fetch(url, Some(&document.url), IMAGE_LIMIT, cancel, &mut progress, Kind::Image)?;
             resource.bytes
         };
-        if looks_like_svg(&bytes) {
-            return svg(&bytes);
-        }
-        let mut limits = olo_images::raster::Limits::default();
-        limits.surface_bytes = limits.surface_bytes.min(remaining as u64);
-        limits.pixels = limits.pixels.min((remaining / 4) as u64);
-        let raster = olo_images::raster::decode(&bytes, limits, Some(cancel))?;
-        let (w, h) = raster.pixels.dimensions();
-        Ok(olo_web::image::Image::from_rgba(w, h, raster.pixels.into_raw(), Default::default(), Some(cancel))?)
+        decode_image(&bytes, remaining, cancel, svg)
     }
+}
+/// A picture a script asked for: decoded ahead, or its bytes to decode.
+pub enum ImageSource {
+    Decoded(Arc<olo_web::image::Image>),
+    Bytes(Vec<u8>),
+}
+/// A picture's bytes decoded within `remaining` bytes of pixels (an SVG
+/// handed to `svg`).
+pub fn decode_image(bytes: &[u8], remaining: usize, cancel: &AtomicBool, svg: &dyn Fn(&[u8]) -> page::Result<Arc<olo_web::image::Image>>) -> page::Result<Arc<olo_web::image::Image>> {
+    if looks_like_svg(bytes) {
+        return svg(bytes);
+    }
+    let mut limits = olo_images::raster::Limits::default();
+    limits.surface_bytes = limits.surface_bytes.min(remaining as u64);
+    limits.pixels = limits.pixels.min((remaining / 4) as u64);
+    let raster = olo_images::raster::decode(bytes, limits, Some(cancel))?;
+    let (w, h) = raster.pixels.dimensions();
+    Ok(olo_web::image::Image::from_rgba(w, h, raster.pixels.into_raw(), Default::default(), Some(cancel))?)
 }
 /// An SVG document by its first bytes: XML or an `svg` root, possibly after
 /// a byte-order mark, comments or a doctype.
@@ -436,7 +477,14 @@ impl Loader {
         }
         Ok(Arc::from(resource.bytes))
     }
-    fn fetch(&self, url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, mut progress: impl FnMut(usize), kind: Kind) -> page::Result<Resource> {
+    /// A resource, waited for (on a thread that must have it: a page's
+    /// preparation, a script's own synchronous request).
+    fn fetch(&self, url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, progress: impl FnMut(usize), kind: Kind) -> page::Result<Resource> {
+        self.runtime.block_on(self.fetch_async(url, initiator, limit, cancel, progress, kind))
+    }
+    /// A resource: as the session cache has it, or joining its fetch
+    /// started ahead, or fetched; kept in the cache when it can be.
+    async fn fetch_async(&self, url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, mut progress: impl FnMut(usize), kind: Kind) -> page::Result<Resource> {
         // A data: URL (a script's, a module's, fetch()'s, a style sheet's):
         // its own bytes and media type, decoded where it is.
         if url.scheme() == "data" {
@@ -470,10 +518,10 @@ impl Loader {
             && let Some(initiator) = initiator
         {
             check_url(&url, Some(initiator))?;
-            let got = self.runtime.block_on(async {
+            let got = {
                 let work = cell.get_or_init(|| fetch_once(self.client.clone(), url.clone(), initiator.clone(), limit, cancel.flag.clone(), kind));
                 tokio::select! { biased; _ = cancel.signal.cancelled() => None, response = work => Some(response.clone()) }
-            });
+            };
             self.inflight.lock().unwrap().remove(url.as_str());
             match got {
                 None => return Err("Cancelled".into()),
@@ -487,7 +535,10 @@ impl Loader {
             }
         }
         let requested = url.clone();
-        let fetched = self.fetch_uncached(url, initiator, limit, cancel, &mut progress, kind, allow_file)?;
+        let fetched = {
+            let work = get(&self.client, url, initiator.cloned(), limit, cancel.flag.clone(), &mut progress, kind, allow_file, None);
+            tokio::select! { biased; _ = cancel.signal.cancelled() => Err("Cancelled".into()), result = work => result }
+        }?;
         if cacheable && fetched.status.is_some_and(|s| (200..300).contains(&s)) {
             let mut cache = self.cache.lock().unwrap();
             if cache.bytes + fetched.bytes.len() > SESSION_CACHE_BYTES {
@@ -500,13 +551,6 @@ impl Loader {
                 .insert(requested.to_string(), Arc::new(CachedResponse { url: fetched.url.clone(), bytes: fetched.bytes.clone(), mime: fetched.mime.clone(), status: fetched.status.unwrap_or(200) }));
         }
         Ok(fetched)
-    }
-    #[allow(clippy::too_many_arguments)]
-    fn fetch_uncached(&self, url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, progress: &mut impl FnMut(usize), kind: Kind, allow_file: bool) -> page::Result<Resource> {
-        self.runtime.block_on(async {
-            let work = get(&self.client, url, initiator.cloned(), limit, cancel.flag.clone(), progress, kind, allow_file, None);
-            tokio::select! { biased; _ = cancel.signal.cancelled() => Err("Cancelled".into()), result = work => result }
-        })
     }
     /// Start fetching these subresources together (12 at a time) into the
     /// session cache, so the loads that follow find them there: the
@@ -652,6 +696,14 @@ impl Loader {
             result = d.ready.wait_timeout(result, Duration::from_millis(50)).unwrap().0;
         }
         result.take()
+    }
+    /// A picture decoded ahead when its decoding is done (taken), without
+    /// waiting for one under way.
+    fn decoded_now(&self, url: &Url) -> Option<Decoded> {
+        let mut decoding = self.decoding.lock().unwrap();
+        let taken = decoding.get(url.as_str())?.result.lock().unwrap().take()?;
+        decoding.remove(url.as_str());
+        Some(taken)
     }
     /// Whether a style sheet or font is here to load without waiting (in the
     /// cache, or its fetch done, whatever came of it). If not, its fetch is

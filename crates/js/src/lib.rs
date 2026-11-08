@@ -144,7 +144,7 @@ pub enum Loaded {
     Image(Arc<olo_web::image::Image>),
     Text(Fetched),
 }
-pub use worker::{SharedFetcher, Waker};
+pub use worker::{FetchStarter, SharedFetcher, Waker};
 /// Lays out the document as it is now, for what scripts measure; the
 /// browser supplies one (olo_web::page::Measurer behind a host).
 pub type Measure = Box<dyn FnMut(&Document, Option<olo_web::page::Measured>) -> Option<olo_web::page::Measured>>;
@@ -294,6 +294,7 @@ struct State {
     workers: HashMap<u32, worker::Handle>,
     next_worker: u32,
     worker_fetcher: Option<SharedFetcher>,
+    worker_starter: Option<FetchStarter>,
     waker: Option<Waker>,
     measure: Option<Measure>,
     /// The last layout, good while the document's revision is its own.
@@ -458,6 +459,7 @@ impl Realm {
             workers: HashMap::new(),
             next_worker: 1,
             worker_fetcher: None,
+            worker_starter: None,
             waker: None,
             measure,
             measured: None,
@@ -520,6 +522,12 @@ impl Realm {
         s.worker_fetcher = fetcher;
         s.waker = waker;
         drop(s);
+        self
+    }
+    /// Workers' fetch() started through this, without a thread waiting on
+    /// each (else each is fetched on a thread of its own).
+    pub fn with_worker_fetches(self, starter: Option<FetchStarter>) -> Self {
+        self.state.borrow_mut().worker_starter = starter;
         self
     }
     /// The requests scripts made since last taken; the browser fetches
@@ -1284,6 +1292,7 @@ impl State {
             workers: HashMap::new(),
             next_worker: 1,
             worker_fetcher: None,
+            worker_starter: None,
             waker: None,
             measure: None,
             measured: None,
@@ -2726,9 +2735,9 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             };
             let id = s.next_worker;
             s.next_worker += 1;
-            let waker = s.waker.clone();
+            let (waker, starter) = (s.waker.clone(), s.worker_starter.clone());
             let user_agent = s.config.user_agent.clone();
-            match worker::Handle::spawn(url, source, fetcher, waker, user_agent) {
+            match worker::Handle::spawn(url, source, fetcher, starter, waker, user_agent) {
                 Ok(handle) => {
                     s.workers.insert(id, handle);
                     rv.set(v8::Number::new(scope, f64::from(id)).into());

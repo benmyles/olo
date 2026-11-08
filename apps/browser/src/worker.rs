@@ -587,39 +587,45 @@ impl Loads {
             if timing {
                 eprintln!("  requested: {}", request.url);
             }
+            // Its I/O on the network runtime (no thread waits on it), a
+            // picture's decoding on the CPU pool, the page told after.
             let this = self.clone();
-            let spawned = std::thread::Builder::new().name("browser-load".into()).spawn(move || {
+            self.loader.spawn(async move {
                 let started = Instant::now();
-                let result = url::Url::parse(&request.url).map_err(|e| e.to_string()).and_then(|url| match &request.kind {
-                    olo_js::RequestKind::Image => {
-                        let host = PageHost::new(&this.scope, &this.key);
-                        let svg = |bytes: &[u8]| olo_web::svg_image::rasterize(bytes, &host, &this.scope, this.key.scale, Some(&this.cancel)).map_err(|e| format!("SVG image: {e}").into());
-                        this.loader.image(&this.document, url, 64 << 20, &this.cancel, |_| {}, &svg).map(olo_js::Loaded::Image).map_err(|e| e.to_string())
+                let (id, kind, requested) = (request.id, request.kind, request.url);
+                let parsed = url::Url::parse(&requested);
+                let report = move |this: &Loads, result: Result<olo_js::Loaded, String>| {
+                    if timing {
+                        let ms = started.elapsed().as_secs_f64() * 1000.;
+                        match &result {
+                            Ok(olo_js::Loaded::Image(i)) => eprintln!("  loaded: {requested} ({}x{}, {ms:.0} ms)", i.width(), i.height()),
+                            Ok(olo_js::Loaded::Text(f)) => eprintln!("  loaded: {requested} ({} bytes, HTTP {}, {ms:.0} ms)", f.body.len(), f.status),
+                            Err(e) => eprintln!("  load failed: {requested} ({e})"),
+                        }
                     }
+                    let _ = this.tx.send(Message::Loaded(id, result));
+                };
+                let url = match parsed {
+                    Ok(url) => url,
+                    Err(e) => return report(&this, Err(e.to_string())),
+                };
+                match &kind {
+                    olo_js::RequestKind::Image => match this.loader.image_source(&this.document.url, url, &this.cancel).await {
+                        Ok(crate::network::ImageSource::Decoded(image)) => report(&this, Ok(olo_js::Loaded::Image(image))),
+                        Ok(crate::network::ImageSource::Bytes(bytes)) => rayon::spawn(move || {
+                            let host = PageHost::new(&this.scope, &this.key);
+                            let svg = |bytes: &[u8]| olo_web::svg_image::rasterize(bytes, &host, &this.scope, this.key.scale, Some(&this.cancel)).map_err(|e| format!("SVG image: {e}").into());
+                            let decoded = crate::network::decode_image(&bytes, 64 << 20, &this.cancel, &svg).map(olo_js::Loaded::Image).map_err(|e| e.to_string());
+                            report(&this, decoded);
+                        }),
+                        Err(e) => report(&this, Err(e.to_string())),
+                    },
                     olo_js::RequestKind::Text { method, body, headers } => {
-                        let fetched = if method == "GET" && headers == olo_js::SCRIPT_DESTINATION {
-                            this.loader.script_response(&this.document.url, url, &this.cancel)
-                        } else if method == "GET" && headers.is_empty() {
-                            this.loader.bytes(&this.document.url, url, &this.cancel)
-                        } else {
-                            this.loader.request(&this.document.url, url, method, headers, body, &this.cancel)
-                        };
-                        fetched.map(|(status, content_type, body, url)| olo_js::Loaded::Text(olo_js::Fetched { status, content_type, body, url })).map_err(|e| e.to_string())
-                    }
-                });
-                if timing {
-                    let ms = started.elapsed().as_secs_f64() * 1000.;
-                    match &result {
-                        Ok(olo_js::Loaded::Image(i)) => eprintln!("  loaded: {} ({}x{}, {ms:.0} ms)", request.url, i.width(), i.height()),
-                        Ok(olo_js::Loaded::Text(f)) => eprintln!("  loaded: {} ({} bytes, HTTP {}, {ms:.0} ms)", request.url, f.body.len(), f.status),
-                        Err(e) => eprintln!("  load failed: {} ({e})", request.url),
+                        let fetched = this.loader.script_load(&this.document.url, url, method, headers, body, &this.cancel).await;
+                        report(&this, fetched.map(|(status, content_type, body, url)| olo_js::Loaded::Text(olo_js::Fetched { status, content_type, body, url })).map_err(|e| e.to_string()));
                     }
                 }
-                let _ = this.tx.send(Message::Loaded(request.id, result));
             });
-            if let Err(e) = spawned {
-                let _ = self.tx.send(Message::Loaded(request.id, Err(format!("load thread: {e}"))));
-            }
         }
     }
     /// What workers fetch with, on their threads.
@@ -635,6 +641,21 @@ impl Loads {
                 this.loader.request(&this.document.url, url, method, headers, body, &this.cancel)
             };
             fetched.map(|(status, content_type, body, url)| olo_js::Fetched { status, content_type, body, url }).map_err(|e| e.to_string())
+        })
+    }
+    /// What workers start their fetch() with: on the network runtime, no
+    /// thread waiting on each.
+    fn worker_fetch_starter(&self) -> olo_js::FetchStarter {
+        let (loader, document, cancel) = (self.loader.clone(), self.document.url.clone(), self.cancel.clone());
+        Arc::new(move |url: String, method: String, body: Vec<u8>, headers: String, done: Box<dyn FnOnce(Result<olo_js::Fetched, String>) + Send>| {
+            let (task, document, cancel) = (loader.clone(), document.clone(), cancel.clone());
+            loader.spawn(async move {
+                let result = match url::Url::parse(&url) {
+                    Ok(url) => task.script_load(&document, url, &method, &headers, &body, &cancel).await.map_err(|e| e.to_string()),
+                    Err(e) => Err(e.to_string()),
+                };
+                done(result.map(|(status, content_type, body, url)| olo_js::Fetched { status, content_type, body, url }));
+            });
         })
     }
     fn waker(&self) -> olo_js::Waker {
@@ -1600,7 +1621,8 @@ fn render(
                 .map_err(|e| page::Error::from(e.as_str()))?
                 .with_image_lookup(Some(image_lookup))
                 .with_cookies(Some(crate::cookies::script_access()))
-                .with_workers(Some(loads.worker_fetcher()), Some(loads.waker()));
+                .with_workers(Some(loads.worker_fetcher()), Some(loads.waker()))
+                .with_worker_fetches(Some(loads.worker_fetch_starter()));
             // OLO_BROWSER_EVAL_FIRST=FILE: its expression run before the
             // page's scripts (to patch what they will call, for debugging).
             if let Some(js) = std::env::var("OLO_BROWSER_EVAL_FIRST").ok().and_then(|f| std::fs::read_to_string(f).ok()) {
