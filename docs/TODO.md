@@ -88,9 +88,13 @@ something nobody here has is in "Blocked", with what it waits for.
   lists, in tidying and before a backup). Left for Ben: go through Back
   Up To ▸ Google Drive… with a Google account of his (the steps' wording
   is from Google's current docs, not yet tried on the console itself),
-  and choose where his own backups go. Later: following changes (fanotify) rather
-  than walking (an unchanged walk of 100,000 files is 0.4 s, so not yet
-  pressing). A damaged index file is passed over and healed by itself
+  and choose where his own backups go. Following changes rather than
+  walking: decided against (2026-11-08). fanotify's whole-file-system
+  marks need root (CAP_SYS_ADMIN), and the service runs as the person;
+  inotify needs a watch per folder (about 100,000 for a home, about a
+  kilobyte of kernel memory each, past the default limit). An unchanged
+  walk of 100,000 files takes 0.4 s at idle priority once an hour. A
+  damaged index file is passed over and healed by itself
   (its packs read back from their own lists, named again, the file let
   go of when tidying).
 
@@ -1837,7 +1841,7 @@ something nobody here has is in "Blocked", with what it waits for.
     no pinches, so neither the screen's nor a touchpad's reached an Olo
     app), and Viewer zooms on it (tried headless: a picture zoomed about
     the fingers). Left: try it on the panel; the pen's pressure in
-    Olo's apps.
+    Olo's apps (blocked, see Blocked).
   - The panel: Samsung's ATNA panels are OLED (`OLED_PANELS`), so no
     stripes. VRR: Preferences ▸ Display ▸ "Variable refresh rate" for a
     display that has it, off by default (tried headless, simulated).
@@ -1902,7 +1906,7 @@ something nobody here has is in "Blocked", with what it waits for.
     follows its brightness unless set (80–600 cd/m²), and the
     brightness keys move it in HDR. Ben: "hdr looked good", SDR "about
     the same brightness now". Left: a real HDR grading (phone footage,
-    Ben's) looked at.
+    Ben's) looked at (blocked, see Blocked).
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole
@@ -1915,9 +1919,9 @@ something nobody here has is in "Blocked", with what it waits for.
     right-hand port (TC#4) it works. Lenovo's UCSI also says every
     partner is a DFP, so the kernel's `typec_displayport` refuses each
     (error -71); harmless here, the EC routes DisplayPort itself.
-    Left: tell the person when a display on USB-C gets no picture,
-    and why; free the Studio Display's second tunnel if the kernel
-    ever lets us.
+    Left (blocked, see Blocked): tell the person when a display on
+    USB-C gets no picture, and why; free the Studio Display's second
+    tunnel if the kernel ever lets us.
   - The touch filter never ran on the ThinkPad: libinput has no
     `BTN_MISC`, and the plugin unloaded at the first key pressed
     (fixed, with the test harness strict about evdev names).
@@ -2094,6 +2098,22 @@ Each waits for what its entry's "Left" says: Ben at the machine (a
 password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
 people.
+
+- **The ThinkPad's leftovers that are work, not a try** (from its entry
+  above; each blocked on the hardware in hand or Ben's say):
+  - Saying when a display on USB-C gets no picture, and why: the Dell on
+    the left port, plugged in, to see what the kernel shows then (its
+    DP-alt is refused with -71 by Lenovo's UCSI, so nothing in
+    `/sys/class/typec` says a display is there; the guess needs the
+    real thing to check against).
+  - Freeing the Studio Display's second tunnel: the kernel's Thunderbolt
+    driver tunnels both its streams and offers no way to give one back.
+  - The pen's pressure in Olo's apps: the Wacom pen is there (app_server
+    serves tablet-v2; GPUI doesn't bind it yet, so in Olo's apps the pen
+    only points). No Olo app draws freehand yet: which should take
+    pressure (a markup tool in the Viewer or Screenshot?) is Ben's call,
+    and trying it needs the pen in hand.
+  - A real HDR grading looked at: Ben's phone footage.
 
 - **A USB 2 device in a Thunderbolt 5 port isn't seen** (found
   2026-11-04 with Ben's YubiKey): in the USB-C port on the Barlow Ridge
