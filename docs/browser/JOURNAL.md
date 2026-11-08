@@ -6318,3 +6318,23 @@ journal).
   (the Music, Fitness+ and Arcade logos were 300 px wide), and **a moved
   layer clipped on one axis** shows: its ±1e30 clip wrapped to 0 tall in
   device pixels, blanking the entertainment carousel.
+- **apple.com's nav and search, used.** Its menus didn't open on hover:
+  the hit test gave up on a box under a background when that box took
+  no pointer events (the nav took the hover), looked at an element's
+  pointer-events for its pseudo-element (body::before's scrim over the
+  nav), and let a `pointer-events: none` SVG pass the point to the open
+  flyout's background under it rather than the link it is in. They open,
+  switch and close as in Chrome. Its search button went to /us/search:
+  the window followed links itself on mouse-up; a page whose scripts run
+  now hears the click first, and its realm follows the link unless they
+  cancel it. Agents see the nav's links by their aria-label (they were
+  each "Graphic").
+- **CSS transitions.** The search field takes the focus on the panel's
+  `transitionend`, which never came: transitions weren't implemented.
+  A restyled element whose transitioned property's computed value
+  changed now eases from the value it showed to its new one, with the
+  events; the menus fade and grow. Then its suggestions: a POST, which
+  script requests couldn't make; they go with their method, headers and
+  body now. And an infinite spinner in the hidden bag menu kept the page
+  rendering 120 times a second: an animation that shows nothing asks for
+  no frames (0.0% of a core idle again).

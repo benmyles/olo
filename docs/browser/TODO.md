@@ -38,7 +38,9 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
 - [x] CSS animations (`@keyframes`, `animation`): apple.com's ribbon, the
   headings GitHub fades in. Values interpolate from their text (calc,
   sRGB, functions argument by argument); `var()` values switch at the
-  midpoint. Open: transitions (`transition`), animations on pages
+  midpoint. Transitions too (`transition`, events; JOURNAL 2026-11-07,
+  late night). Open: transitions of shorthands' parts named by the
+  shorthand alone, `transition-behavior: allow-discrete`, animations on pages
   without scripts (no live clock: they stay at their start),
   `getComputedStyle` of animated values, `animation-composition`.
 - [x] Video (`<video>`): played by Olo's own player (`olo_preview::video`:
@@ -149,8 +151,8 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   fetched level by level on threads, `import.meta.url`, dynamic
   `import()`), events from the person. Next: import maps and JSON
   modules, dynamic `import()` fetching off the thread, CSSOM
-  (`insertRule`, `styleSheets`, CSS-in-JS in production builds), `fetch`
-  POST and headers, cookies from responses, `document.write` while
+  (`insertRule`, `styleSheets`, CSS-in-JS in production builds),
+  cookies (none are sent or kept), streaming request bodies, `document.write` while
   parsing, iframes, OffscreenCanvas, ResizeObserver with real sizes.
   IntersectionObserver follows the scroll and the layout (JOURNAL
   2026-11-08); createHTMLDocument makes a document (jQuery needs one).

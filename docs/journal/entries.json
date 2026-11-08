@@ -3898,5 +3898,11 @@
   "title": "Browser: apple.com's carousel and lazy pictures",
   "caption": "Olo on apple.com: the entertainment carousel (blank before: a one-axis clip wrapped to 0 tall), the Fitness+, Arcade and Music logos at their size, the Music artwork from its noscript sources.",
   "image": "2026-11-07/205112-browser-apple-com-s-carousel-and-lazy-pictures.png"
+ },
+ {
+  "time": "2026-11-07T21:32:07",
+  "title": "Browser: apple.com's search, used",
+  "caption": "The search panel opened by its button (the page now cancels the link), its field focused on transitionend (CSS transitions), suggestions from its POST as you type.",
+  "image": "2026-11-07/213207-browser-apple-com-s-search-used.png"
  }
 ]
