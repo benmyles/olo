@@ -48,8 +48,8 @@ pub use backup::{Options, Progress, backup};
 pub use crypto::{Id, Key};
 pub use lock::Lock;
 pub use prune::{Pruned, prune};
-pub use repo::{Repo, Snapshot, Summary};
-pub use restore::restore;
+pub use repo::{Repo, Snapshot, Summary, TreeReader, Trees};
+pub use restore::{Version, restore, versions};
 pub use store::{Limit, LocalStore, Store, Throttled};
 pub use tree::{Kind, Node, Tree};
 

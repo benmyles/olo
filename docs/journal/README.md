@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Tracker: DiskBackup's ticks and Older Versions
+
+*21:40* — Files whose current version is backed up wear a green tick, in every view and on the desktop (a changed file loses it until the next backup). A file's Older Versions… opens DiskBackup's Versions window: each version kept, the one there now said; Restore keeps both or replaces.
+
+![Tracker: DiskBackup's ticks and Older Versions](2026-11-07/214008-tracker-diskbackup-s-ticks-and-older-versions.png)
+
 ### DiskBackup in Deskbar's tray
 
 *21:10* — A drive in a circular arrow: idle, backing up (green), not backing up (dim: off, on battery), the last didn't finish (red dot), nothing for days (amber). Its menu, read as it opens: what it's doing, the last and next, Stop or Back Up Now, Pause, Restore Files…, DiskBackup…. Light and dark at 2×.

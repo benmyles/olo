@@ -448,7 +448,12 @@ impl Desktop {
                 if let Some(open_with) = crate::folder::open_with_menu(&self.selected_entries()) {
                     m = m.submenu(open_with);
                 }
-                m.item("Get Info", "info").key("i").separator().item("Move to Trash", "trash").key("t").enabled(!self.movable().is_empty())
+                m = m.item("Get Info", "info").key("i");
+                if crate::backups::on() {
+                    let file = self.selected.len() <= 1 && self.item(i).is_some_and(|it| !it.entry.is_dir);
+                    m = m.item("Older Versions…", "older-versions").enabled(file);
+                }
+                m.separator().item("Move to Trash", "trash").key("t").enabled(!self.movable().is_empty())
             }
             None => Menu::new("")
                 .item("New Window", "new")
@@ -693,8 +698,11 @@ impl Render for Desktop {
                     spring_to = drop_on.filter(|&i| drawn[i].0.is_dir).map(|i| drawn[i].0.path.clone());
                 }
                 for (i, l) in layouts.iter().enumerate() {
-                    let (_, icon, sel) = &drawn[i];
+                    let (e, icon, sel) = &drawn[i];
                     items::paint_item(window, cx, l, icon, *sel || drop_on == Some(i), true, editing != Some(i), &p);
+                    if crate::backups::backed_up(cx, &e.path) {
+                        items::paint_mark(window, cx, l.icon, &l.name, &p);
+                    }
                 }
                 if let Some(start) = band {
                     let now = window.mouse_position();

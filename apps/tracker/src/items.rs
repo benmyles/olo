@@ -256,6 +256,26 @@ pub fn paint_item(window: &mut Window, cx: &mut App, l: &ItemLayout, icon: &str,
     }
 }
 
+/// DiskBackup's tick (`backups`): its current version is backed up. A
+/// green disc at the icon's lower right, edged a shade darker, a white
+/// tick in it; said to agents as "Backed up: NAME".
+pub fn paint_mark(window: &mut Window, cx: &mut App, icon: Bounds<Pixels>, name: &str, p: &Palette) {
+    let d = (f32::from(icon.size.width) * 0.42).round().clamp(8.0, 14.0);
+    let at = point(icon.right() - px(d / 2.0 - 1.0), icon.bottom() - px(d / 2.0 - 1.0));
+    let disc = style::snap_centred(window, at, d, d);
+    let green = style::c(p.success);
+    window.paint_quad(gpui::quad(disc, px(d / 2.0), green, style::hairline(window), style::shade(p, p.success, 0.75), gpui::BorderStyle::Solid));
+    let (l, t) = (f32::from(disc.left()), f32::from(disc.top()));
+    let mut tick = gpui::PathBuilder::stroke(px((d * 0.15).max(1.3)));
+    tick.move_to(point(px(l + 0.28 * d), px(t + 0.53 * d)));
+    tick.line_to(point(px(l + 0.44 * d), px(t + 0.69 * d)));
+    tick.line_to(point(px(l + 0.73 * d), px(t + 0.35 * d)));
+    if let Ok(path) = tick.build() {
+        window.paint_path(path, gpui::white());
+    }
+    agent::record(window, cx, agent::Node { role: "Image", name: Some(format!("Backed up: {name}").into()), bounds: disc, ..Default::default() });
+}
+
 /// How far along a download is, as a bar across the foot of its icon
 /// (as Finder shows one).
 pub fn paint_progress(window: &mut Window, icon: Bounds<Pixels>, done: f32, p: &Palette) {

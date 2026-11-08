@@ -68,14 +68,20 @@ something nobody here has is in "Blocked", with what it waits for.
   deleted or copied from, locks so two computers or a restore never
   collide, trees in packs the cache keeps, the index checkpointed every
   five minutes; the app's Keep box); Deskbar's item (what it's doing in
-a glyph, its menu: Back Up Now or Stop, Pause, Restore Files…). Next:
-Google Drive (needs an OAuth
-  client of Ben's: a Google Cloud project's "Desktop app" credentials;
-  the store's list with sizes, ranges, resumable uploads, rate limits);
-  Tracker, Doctor; DiskBackup's own icon (Preferences ▸
-  Backup's for now); following changes (fanotify) rather than walking
-  (an unchanged walk of 100,000 files is 0.4 s, so not yet pressing); a
-  repair for a damaged index (made again from the packs' own lists).
+  a glyph, its menu: Back Up Now or Stop, Pause, Restore Files…);
+  Tracker's ticks (files backed up as they are now) and Older Versions…
+  (DiskBackup's Versions window: Keep Both or Replace). Next: Google
+  Drive (needs an OAuth client of Ben's: a Google Cloud project's
+  "Desktop app" credentials; the store's list with sizes, ranges,
+  resumable uploads, rate limits); Doctor; DiskBackup's own icon
+  (Preferences ▸ Backup's for now); following changes (fanotify) rather
+  than walking (an unchanged walk of 100,000 files is 0.4 s, so not yet
+  pressing); a repair for a damaged index (made again from the packs'
+  own lists).
+- **Tracker's list view: its focus ring crowds the status bar** (found
+  2026-11-07 by `tsession review` at 1× and 2×, there before DiskBackup's
+  ticks: "two lines 2.0 pt apart" at the list's foot, its blue ring a
+  hairline gap above the status bar's top edge): give it room.
 
 ## Not started (highest priority first)
 

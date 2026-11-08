@@ -56,7 +56,7 @@ pub struct RestoreWindow {
 }
 
 /// "Today 14:05", "Tue 14:05", "7 Nov 2026 14:05".
-fn when(t: i64) -> String {
+pub(crate) fn when(t: i64) -> String {
     use chrono::{Local, TimeZone};
     let Some(at) = Local.timestamp_opt(t, 0).single() else { return String::new() };
     let today = Local::now().date_naive();
@@ -69,7 +69,21 @@ fn when(t: i64) -> String {
     }
 }
 
-fn size(b: u64) -> String {
+/// `when`, in a sentence: "today at 14:05", "yesterday at 14:05", "on
+/// Tue at 14:05", "on 7 Nov 2026 at 14:05".
+pub(crate) fn when_said(t: i64) -> String {
+    use chrono::{Local, TimeZone};
+    let Some(at) = Local.timestamp_opt(t, 0).single() else { return String::new() };
+    let time = at.format("%H:%M");
+    match (Local::now().date_naive() - at.date_naive()).num_days() {
+        0 => format!("today at {time}"),
+        1 => format!("yesterday at {time}"),
+        2..=6 => format!("on {} at {time}", at.format("%a")),
+        _ => format!("on {} at {time}", at.format("%-d %b %Y")),
+    }
+}
+
+pub(crate) fn size(b: u64) -> String {
     match b {
         0..1000 => format!("{b} bytes"),
         1000..1_000_000 => format!("{} KB", b.div_ceil(1000)),
@@ -84,7 +98,7 @@ fn name_of(n: &Node) -> String {
 
 /// `name` as "name (from 7 Nov 2026 14.05).ext", beside what's there now
 /// (a date, not "Today": it stays true).
-fn beside(name: &str, time: i64) -> String {
+pub(crate) fn beside(name: &str, time: i64) -> String {
     use chrono::{Local, TimeZone};
     let stamp = Local.timestamp_opt(time, 0).single().map(|t| t.format("%-d %b %Y %H.%M").to_string()).unwrap_or_default();
     match name.rsplit_once('.') {
@@ -252,7 +266,7 @@ impl RestoreWindow {
             [one] => format!("“{}” is there now.", name_of(one)),
             many => format!("{} of these are there now.", many.len()),
         };
-        let message = format!("{what} Replace with the version from {}, or keep both (the restored one named with its time)?", when(snap.time));
+        let message = format!("{what} Replace with the version backed up {}, or keep both (the restored one named with its time)?", when_said(snap.time));
         let me = cx.entity();
         alert::open_alert(cx, "Restore", "warning", &message, &["Cancel", "Keep Both", "Replace"], move |choice, cx| match choice {
             Some(1) => me.update(cx, |w, cx| w.run(both.clone(), cx)),

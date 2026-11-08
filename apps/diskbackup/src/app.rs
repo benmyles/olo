@@ -25,6 +25,8 @@ pub enum Msg {
     Note(Result<String, String>),
     /// For the Restore window.
     Restore(crate::restore::Done),
+    /// For the Versions window of that file.
+    Versions(PathBuf, crate::versions::Done),
 }
 
 /// What a backup takes "every": minutes, and what it's called.
@@ -47,6 +49,8 @@ pub struct Disk {
     win: Option<WindowHandle<Frame>>,
     /// The Restore window, while it's open.
     restore: Option<(WindowHandle<Frame>, Entity<crate::restore::RestoreWindow>)>,
+    /// Versions windows, a file each.
+    versions: Vec<(WindowHandle<Frame>, Entity<crate::versions::VersionsWindow>)>,
     proxy: Proxy,
     _watch: Option<olo_ui::watch::Watch>,
 }
@@ -55,23 +59,35 @@ impl Disk {
     pub fn new(proxy: Proxy) -> Disk {
         let changed = proxy.clone();
         let watch = olo_ui::watch::watch([State::path(), Settings::path()], move |_| changed.send(Msg::Changed));
-        Disk { settings: Settings::load(), state: State::load(), note: None, busy: false, win: None, restore: None, proxy, _watch: watch }
+        Disk { settings: Settings::load(), state: State::load(), note: None, busy: false, win: None, restore: None, versions: Vec::new(), proxy, _watch: watch }
     }
 
     pub fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
         if let Some(launch) = message.downcast_ref::<olo_ui::instance::Launch>() {
-            // (`--restore-window`: Deskbar's Restore Files….)
-            return if launch.args.iter().any(|a| a == "--restore-window") { self.open_restore(cx) } else { self.open(cx) };
+            return self.launched(&launch.args, launch.cwd.as_deref(), cx);
         }
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::Changed => {
                 self.settings = Settings::load();
+                let was = self.state.last_ok;
                 self.state = State::load();
+                // A backup finished: the Versions windows list again.
+                if self.state.last_ok != was {
+                    for (_, w) in &self.versions {
+                        w.update(cx, |w, cx| w.reload(cx));
+                    }
+                }
             }
             Msg::Restore(d) => {
                 if let Some((_, w)) = &self.restore {
                     w.update(cx, |w, cx| w.message(d, cx));
+                }
+                return;
+            }
+            Msg::Versions(path, d) => {
+                if let Some((_, w)) = self.versions.iter().find(|(_, w)| w.read(cx).path == path) {
+                    w.clone().update(cx, |w, cx| w.message(d, cx));
                 }
                 return;
             }
@@ -85,6 +101,43 @@ impl Disk {
             }
         }
         cx.notify();
+    }
+
+    /// What a launch asks (its arguments): `--restore-window` (Deskbar's
+    /// Restore Files…), `--versions-window PATH` (Tracker's Older
+    /// Versions…), else the window.
+    pub fn launched(&mut self, args: &[String], cwd: Option<&std::path::Path>, cx: &mut Context<Self>) {
+        match args.first().map(String::as_str) {
+            Some("--restore-window") => self.open_restore(cx),
+            Some("--versions-window") => match args.get(1) {
+                Some(p) => {
+                    let p = target::expand(p);
+                    let p = if p.is_relative() { cwd.map(|c| c.join(&p)).unwrap_or(p) } else { p };
+                    self.open_versions(p, cx)
+                }
+                None => self.open(cx),
+            },
+            _ => self.open(cx),
+        }
+    }
+
+    /// `path`'s Versions window (or brought to the front).
+    pub fn open_versions(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.versions.retain(|(h, _)| h.update(cx, |_, _, _| ()).is_ok());
+        if let Some((h, _)) = self.versions.iter().find(|(_, w)| w.read(cx).path == path)
+            && olo_ui::raise(Some(*h), cx)
+        {
+            return;
+        }
+        let (proxy, me) = (self.proxy.clone(), cx.entity());
+        cx.defer(move |cx| {
+            let options = crate::versions::options(&path);
+            let view = cx.new(|cx| crate::versions::VersionsWindow::new(proxy, path, cx));
+            let shown = view.clone();
+            if let Some(h) = olo_ui::open_window(cx, options, move |_, _| shown) {
+                me.update(cx, |d, _| d.versions.push((h, view)));
+            }
+        });
     }
 
     pub fn open(&mut self, cx: &mut Context<Self>) {
@@ -243,7 +296,7 @@ fn clock(t: i64) -> String {
     }
 }
 
-fn size(b: u64) -> String {
+pub(crate) fn size(b: u64) -> String {
     match b {
         0..1_000_000 => format!("{} KB", b.div_ceil(1000)),
         1_000_000..1_000_000_000 => format!("{:.1} MB", b as f64 / 1e6),
@@ -459,7 +512,7 @@ impl Render for MainWindow {
             .child(keep_menu("daily", "Daily for:", DAILY, k.daily, |s, n| s.keep.daily = n))
             .child(keep_menu("weekly", "Weekly for:", WEEKLY, k.weekly, |s, n| s.keep.weekly = n))
             .child(keep_menu("monthly", "Monthly for:", MONTHLY, k.monthly, |s, n| s.keep.monthly = n))
-            .child(dim("The last backup of each hour, day, week and month is kept that long; the rest go, and the space only they took is freed once a day.".into()));
+            .child(dim("Every backup from the last hour is kept, then the last of each hour, day, week and month that long; the rest go, and the space only they took is freed once a day.".into()));
 
         // ---- the key.
         let mut key = BBox::new("Key");

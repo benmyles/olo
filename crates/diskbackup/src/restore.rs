@@ -11,13 +11,13 @@ use crate::{
     Error, Result,
     backup::Progress,
     crypto::Id,
-    repo::Repo,
+    repo::{Repo, Snapshot, Trees},
     tree::{Kind, Node},
 };
 
 /// The node at `path` (absolute, as it was backed up) in the snapshot whose
 /// tree is `root`; `/` is the root's own.
-pub fn find(repo: &Repo, root: &Id, path: &Path) -> Result<Option<Node>> {
+pub fn find(repo: &impl Trees, root: &Id, path: &Path) -> Result<Option<Node>> {
     let mut node = Node { name: b"/".to_vec(), kind: Kind::Dir, mode: 0o755, mtime: 0, ctime: 0, ino: 0, size: 0, content: Vec::new(), subtree: Some(*root), target: None };
     for c in path.components() {
         let Component::Normal(name) = c else { continue };
@@ -29,6 +29,38 @@ pub fn find(repo: &Repo, root: &Id, path: &Path) -> Result<Option<Node>> {
         }
     }
     Ok(Some(node))
+}
+
+/// One version of a file: what it held, as the newest snapshot holding it
+/// kept it, and when it was first kept.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Version {
+    /// The newest snapshot holding it, and its time.
+    pub snapshot: Id,
+    pub time: i64,
+    /// The oldest snapshot's time holding it.
+    pub first: i64,
+    pub node: Node,
+}
+
+/// The versions of `path` the snapshots kept (`snapshots` any order),
+/// newest first: one for each content it had (a file's chunks, a link's
+/// target), however many snapshots kept it.
+pub fn versions(repo: &impl Trees, snapshots: &[(Id, Snapshot)], path: &Path) -> Result<Vec<Version>> {
+    let mut by_time: Vec<&(Id, Snapshot)> = snapshots.iter().collect();
+    by_time.sort_by_key(|(_, s)| std::cmp::Reverse(s.time));
+    let mut out: Vec<Version> = Vec::new();
+    for (id, s) in by_time {
+        let Some(node) = find(repo, &s.tree, path)? else { continue };
+        if node.kind == Kind::Dir {
+            continue;
+        }
+        match out.iter_mut().find(|v| v.node.kind == node.kind && v.node.content == node.content && v.node.target == node.target) {
+            Some(v) => v.first = v.first.min(s.time),
+            None => out.push(Version { snapshot: *id, time: s.time, first: s.time, node }),
+        }
+    }
+    Ok(out)
 }
 
 /// Put `path` of the snapshot whose tree is `root` back as `target` (which

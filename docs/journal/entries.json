@@ -3574,5 +3574,11 @@
   "title": "DiskBackup in Deskbar's tray",
   "caption": "A drive in a circular arrow: idle, backing up (green), not backing up (dim: off, on battery), the last didn't finish (red dot), nothing for days (amber). Its menu, read as it opens: what it's doing, the last and next, Stop or Back Up Now, Pause, Restore Files\u2026, DiskBackup\u2026. Light and dark at 2\u00d7.",
   "image": "2026-11-07/211021-diskbackup-in-deskbar-s-tray.png"
+ },
+ {
+  "time": "2026-11-07T21:40:08",
+  "title": "Tracker: DiskBackup's ticks and Older Versions",
+  "caption": "Files whose current version is backed up wear a green tick, in every view and on the desktop (a changed file loses it until the next backup). A file's Older Versions\u2026 opens DiskBackup's Versions window: each version kept, the one there now said; Restore keeps both or replaces.",
+  "image": "2026-11-07/214008-tracker-diskbackup-s-ticks-and-older-versions.png"
  }
 ]

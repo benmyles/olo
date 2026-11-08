@@ -3,6 +3,7 @@
 //! On Olo's GPUI: the [`Tracker`] keeps the windows and does what opens
 //! windows or touches files; each window's view does the rest.
 
+mod backups;
 mod columns;
 mod desktop;
 mod filemanager;
@@ -73,6 +74,11 @@ pub enum Msg {
     Settings(olo_protocol::TrackerSettings),
     /// A thumbnail is ready.
     Thumb,
+    /// DiskBackup's service said which of a folder's files are backed up
+    /// as they are now (None: it couldn't).
+    Marks(PathBuf, Option<std::collections::HashSet<String>>),
+    /// DiskBackup went on or off, or finished a backup (on, its last).
+    Backup(bool, Option<i64>),
 }
 
 /// What Paste takes from the clipboard, best first: files (as file
@@ -666,6 +672,11 @@ impl Tracker {
                         self.open_info(e, cx);
                     }
                 }
+                "older-versions" => {
+                    if let Some(e) = d.read(cx).selected_entries().first() {
+                        backups::older_versions(&e.path);
+                    }
+                }
                 _ => {}
             },
         }
@@ -720,6 +731,11 @@ impl Tracker {
             "terminal-selected" => {
                 for e in entries.iter().filter(|e| e.is_dir) {
                     fs::open_in_terminal(&e.path);
+                }
+            }
+            "older-versions" => {
+                if let Some(e) = entries.iter().find(|e| !e.is_dir) {
+                    backups::older_versions(&e.path);
                 }
             }
             "info" => {
@@ -939,11 +955,25 @@ impl Tracker {
                 _ => {}
             }
         }
-        if want != self.watched
-            && let Some(w) = &mut self.watcher
-        {
+        if want != self.watched {
             self.watched = want.clone();
-            w.set(want);
+            if let Some(w) = &mut self.watcher {
+                w.set(want);
+            }
+            // (DiskBackup's marks for the folders shown now.)
+            let proxy = olo_ui::proxy(cx);
+            backups::shown(cx, &self.watched, &proxy);
+        }
+    }
+
+    /// The windows showing folder `dir` drawn again (its marks changed).
+    fn redraw_showing(&self, dir: Option<&Path>, cx: &mut Context<Self>) {
+        for s in &self.windows {
+            match &s.win {
+                Win::Folder(f) if dir.is_none_or(|d| f.read(cx).watched().any(|w| w == d)) => f.update(cx, |_, cx| cx.notify()),
+                Win::Desktop(d) if dir.is_none_or(|dir| desktop::watched().iter().any(|w| w == dir)) => d.update(cx, |_, cx| cx.notify()),
+                _ => {}
+            }
         }
     }
 
@@ -1470,6 +1500,18 @@ impl Tracker {
             }
             Msg::JobDone(id, outcome) => self.job_done(id, outcome, cx),
             Msg::Changed(changes) => self.changed(changes, cx),
+            Msg::Marks(dir, names) => {
+                let proxy = olo_ui::proxy(cx);
+                if backups::answered(cx, dir.clone(), names, &proxy) {
+                    self.redraw_showing(Some(&dir), cx);
+                }
+            }
+            Msg::Backup(on, last_ok) => {
+                let proxy = olo_ui::proxy(cx);
+                if backups::followed(cx, &self.watched, &proxy, on, last_ok) {
+                    self.redraw_showing(None, cx);
+                }
+            }
             Msg::Edited(path, event) => {
                 let Some(q) = self.quicklook.clone() else { return };
                 if q.update(cx, |q, cx| q.edited(&path, event, cx)) {
@@ -1494,6 +1536,18 @@ impl Tracker {
 
     /// Changes seen on disk, to the windows showing them.
     fn changed(&mut self, changes: Vec<watch::Change>, cx: &mut Context<Self>) {
+        // (DiskBackup's marks of a folder changed: asked again.)
+        let dirs: BTreeSet<&Path> = changes
+            .iter()
+            .filter_map(|c| match c {
+                watch::Change::Item { dir, .. } | watch::Change::Rescan(dir) => Some(dir.as_path()),
+                watch::Change::Mounts => None,
+            })
+            .collect();
+        let proxy = olo_ui::proxy(cx);
+        for dir in dirs {
+            backups::changed(cx, dir, &proxy);
+        }
         // An item's new state on disk (None: gone), by its folder's changes.
         let now = |path: &Path| {
             changes.iter().find_map(|c| match c {
@@ -1666,6 +1720,24 @@ fn main() {
         });
         let messages = app.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |t, cx| t.message(message, cx)));
+        // DiskBackup, followed: its ticks (`backups`). Its state file is
+        // written every 2 s while it backs up: looked at on the watch's
+        // thread, the UI told only when it went on or off or finished one.
+        let proxy = olo_ui::proxy(cx);
+        let was = std::sync::Mutex::new(backups::state());
+        let (on, last_ok) = backups::state();
+        let backup_watch = olo_ui::watch::watch([olo_protocol::diskbackup::State::path(), olo_protocol::diskbackup::Settings::path()], move |_| {
+            let now = backups::state();
+            if let Ok(mut was) = was.lock()
+                && *was != now
+            {
+                *was = now;
+                proxy.send(Msg::Backup(now.0, now.1));
+            }
+        });
+        // (Tracker's for as long as it runs.)
+        std::mem::forget(backup_watch);
+        olo_ui::proxy(cx).send(Msg::Backup(on, last_ok));
         let saving = app.clone();
         olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state(cx));
         let moving = app.clone();

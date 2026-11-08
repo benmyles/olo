@@ -539,6 +539,9 @@ impl FolderWin {
                         );
                         let icon = Bounds { origin: point(r.left() + px(m::CELL_INSET), r.center().y - px(items::MINI / 2.0)), size: size(px(items::MINI), px(items::MINI)) };
                         icons::paint(window, icon, items::icon_of(e));
+                        if crate::backups::backed_up(cx, &e.path) {
+                            items::paint_mark(window, cx, icon, e.label(), &p);
+                        }
                         let x = icon.right() + px(m::MARK_GAP);
                         let right = r.right() - px(if e.is_dir { DISCLOSURE_ROOM } else { m::CELL_INSET });
                         if editing != Some(*i) {

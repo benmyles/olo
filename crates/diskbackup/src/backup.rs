@@ -278,6 +278,20 @@ impl Walk<'_, '_> {
     }
 }
 
+/// `path` is as `kept` (a snapshot's node of it) says it was: its size,
+/// times and inode (so its content too, as a backup takes it).
+pub fn unchanged_since(kept: &Node, path: &Path) -> bool {
+    let Ok(md) = std::fs::symlink_metadata(path) else { return false };
+    let kind = if md.is_dir() {
+        Kind::Dir
+    } else if md.file_type().is_symlink() {
+        Kind::Symlink
+    } else {
+        Kind::File
+    };
+    node(&kept.name, &md, kind).unchanged(kept)
+}
+
 /// Opened for reading without changing its access time (where we may).
 fn open_gently(p: &Path) -> std::io::Result<std::fs::File> {
     use std::os::unix::fs::OpenOptionsExt;

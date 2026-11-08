@@ -410,12 +410,14 @@ impl Repo {
     }
 
     fn unseal(&self, id: &Id, sealed: &[u8], flags: u8) -> Result<Vec<u8>> {
-        let body = self.key.open(sealed).ok_or_else(|| Error::Damaged(format!("blob {id:?} doesn't open")))?;
-        let plain = if flags & COMPRESSED != 0 { zstd::stream::decode_all(&body[..])? } else { body };
-        if self.key.id(&plain) != *id {
-            return Err(Error::Damaged(format!("blob {id:?} isn't what it was")));
-        }
-        Ok(plain)
+        unseal(&self.key, id, sealed, flags)
+    }
+
+    /// A reader of its trees that needs nothing of it after (for another
+    /// thread, while this one backs up): where each tree is, as now.
+    pub fn tree_reader(&self) -> TreeReader {
+        let trees = self.index.iter().filter(|(_, l)| l.flags & TREE != 0).map(|(id, l)| (*id, (self.packs[l.pack as usize], l.offset, l.len, l.flags))).collect();
+        TreeReader { key: self.key.clone(), store: self.store.clone(), cache: self.cache.clone(), trees, seen: Default::default() }
     }
 
     /// A pack being filled, up: its blobs then its sealed list of them (a
@@ -526,6 +528,72 @@ impl Repo {
     /// A tree, by id.
     pub fn tree(&self, id: &Id) -> Result<crate::Tree> {
         crate::Tree::decode(&self.get(id)?)
+    }
+}
+
+/// A blob opened: unsealed, decompressed, checked against its id.
+fn unseal(key: &Key, id: &Id, sealed: &[u8], flags: u8) -> Result<Vec<u8>> {
+    let body = key.open(sealed).ok_or_else(|| Error::Damaged(format!("blob {id:?} doesn't open")))?;
+    let plain = if flags & COMPRESSED != 0 { zstd::stream::decode_all(&body[..])? } else { body };
+    if key.id(&plain) != *id {
+        return Err(Error::Damaged(format!("blob {id:?} isn't what it was")));
+    }
+    Ok(plain)
+}
+
+/// What reads trees: a repository, or a [`TreeReader`] of one.
+pub trait Trees {
+    fn tree(&self, id: &Id) -> Result<crate::Tree>;
+}
+
+impl Trees for Repo {
+    fn tree(&self, id: &Id) -> Result<crate::Tree> {
+        Repo::tree(self, id)
+    }
+}
+
+/// A repository's trees, read from the cache's tree packs (the store's
+/// if the cache hasn't one), as they were when it was made
+/// ([`Repo::tree_reader`]); the last few hundred read kept.
+pub struct TreeReader {
+    key: Key,
+    store: Arc<dyn Store>,
+    cache: Option<PathBuf>,
+    /// Each tree's pack, place, length and flags.
+    trees: HashMap<Id, (Id, u32, u32, u8)>,
+    seen: std::sync::Mutex<HashMap<Id, Arc<crate::Tree>>>,
+}
+
+impl TreeReader {
+    /// The tree `id`, shared.
+    pub fn get(&self, id: &Id) -> Result<Arc<crate::Tree>> {
+        if let Some(t) = self.seen.lock().ok().and_then(|s| s.get(id).cloned()) {
+            return Ok(t);
+        }
+        let &(pack, offset, len, flags) = self.trees.get(id).ok_or_else(|| Error::Damaged(format!("no tree {id:?}")))?;
+        let name = pack_name(&pack);
+        let local = self.cache.as_ref().map(|c| c.join(&name)).and_then(|p| std::fs::File::open(p).ok()).and_then(|f| {
+            let mut out = vec![0u8; len as usize];
+            std::os::unix::fs::FileExt::read_exact_at(&f, &mut out, offset as u64).ok().map(|()| out)
+        });
+        let plain = match local.map(|sealed| unseal(&self.key, id, &sealed, flags)) {
+            Some(Ok(plain)) => plain,
+            _ => unseal(&self.key, id, &self.store.get_range(&name, offset as u64, len as u64)?, flags)?,
+        };
+        let tree = Arc::new(crate::Tree::decode(&plain)?);
+        if let Ok(mut seen) = self.seen.lock() {
+            if seen.len() >= 512 {
+                seen.clear();
+            }
+            seen.insert(*id, tree.clone());
+        }
+        Ok(tree)
+    }
+}
+
+impl Trees for TreeReader {
+    fn tree(&self, id: &Id) -> Result<crate::Tree> {
+        Ok((*self.get(id)?).clone())
     }
 }
 

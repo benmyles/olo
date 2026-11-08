@@ -10971,6 +10971,23 @@ private bus as DBUS_SESSION_BUS_ADDRESS).
 
 ## Tracker (apps/tracker)
 
+**DiskBackup's ticks** (`backups.rs`; Ben, 2026-11-07: "a green tick next
+to files if the most recent version is backed up … if you right click a
+file in tracker it should show older versions that you can restore"): a
+file whose current version this computer's newest snapshot holds wears a
+tick (`items::paint_mark`: a green disc at its icon's lower right, a
+white tick in it; said to agents as "Backed up: NAME"), in every view
+and on the desktop; folders don't (it would take walking them). Each
+folder shown is asked of DiskBackup's service (`Request::Marks`) on a
+thread of its own when it's first shown, when it changes, and when a
+backup finishes (one at a time a folder, asked again if it changed
+meanwhile); DiskBackup's state file, written every 2 s while it backs
+up, is looked at on the watch's thread, the UI told only when it went on
+or off or finished one (measured during a 3 GB backup: 0 frames, 0.0%
+of a core, its watch thread 1 wakeup/s). A file's menu has Older
+Versions… (while DiskBackup is set up), which opens DiskBackup's window
+of its versions (`olo-diskbackup --versions-window PATH`).
+
 On Olo's GPUI. The `Tracker` entity (main.rs) keeps the windows (each
 known by its view's entity id) and does what opens windows or touches
 files: opening folders (a folder's window on this workspace is brought
@@ -12382,10 +12399,11 @@ in layers; done so far, **the engine** (crates/diskbackup):
   went 20 minutes without refreshing (it slept) takes its lock as lost
   (`Error::LockLost`) and writes nothing more: what it wrote may have been
   tidied away meanwhile; the service opens the backup again and goes on.
-- **Keeping** (`keep.rs`): the newest snapshot of each of the last so
-  many hours, days, ISO weeks and months (local time; Settings' `keep`,
-  24/14/8/24 by default), and always the newest; each computer forgets
-  only its own (another's are its to keep).
+- **Keeping** (`keep.rs`): every snapshot from the last hour (a backup a
+  few minutes old isn't let go of when Back Up Now makes another), then
+  the newest of each of the last so many hours, days, ISO weeks and
+  months (local time; Settings' `keep`, 24/14/8/24 by default); each
+  computer forgets only its own (another's are its to keep).
 - **Tidying** (`prune.rs`): what every snapshot left uses (its trees,
   read once each from the cache, and their chunks); a pack nothing in it
   is used goes; one 30% unused, or one of eight or more small ones (a
@@ -12461,6 +12479,25 @@ there and the last tidy that did something; Show in Deskbar puts DiskBackup's
 item in Deskbar's tray (see Deskbar: its glyph, its menu). Every change is written to the settings, which the service
 follows at once. The keychain's `Secrets` reads an Olo program's secrets
 back by title (another computer's setup, next).
+
+**Tracker's ticks and versions**: the service answers on its socket from
+a reader of this computer's snapshots' trees (`Repo::tree_reader`: where
+each tree is, read from the cache's tree packs, the last 512 kept),
+made again after it opens the backup (at start, not only at the first
+backup), after each backup and after each tidy, so it never waits for
+one to finish: `Request::Marks { dir }` (which of the folder's files
+the newest snapshot holds as they are now: `backup::unchanged_since`,
+by size, times and inode; 0.08 ms here), `Request::Versions { path }`
+(`restore::versions`: one for each content the file had, newest first,
+the newest and oldest snapshot keeping it, whether it's what's there
+now; 0.06 ms). `--marks DIR` and `--versions PATH` ask them from the
+command line. The **Versions window** (`versions.rs`;
+`--versions-window PATH`, Tracker's Older Versions…): Modified, Size,
+Backed Up, the one there now said; Restore (or Return) puts the chosen
+one back, asked Keep Both (beside it, named with when it was modified)
+or Replace, with a shared lock and its progress; it lists again when a
+backup finishes. Checked headless: a file changed loses its tick, gets
+it back after Back Up Now; its older version restored beside it.
 
 **Restore** (`restore.rs`; File ▸ Restore…, ⌘R, or Restore… beside Back
 Up Now): the snapshots newest first; the chosen one's folders browsed as

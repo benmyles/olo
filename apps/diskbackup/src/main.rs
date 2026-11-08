@@ -4,6 +4,11 @@
 //!   backups go, what, when, how fast, the key.
 //! - `--restore-window`: the app's Restore window (Deskbar's Restore
 //!   Files…).
+//! - `--versions-window PATH`: the app's window of `PATH`'s versions, to
+//!   put one back (Tracker's Older Versions…).
+//! - `--marks DIR`: which of `DIR`'s files are backed up as they are now
+//!   (Tracker's ticks; asked of the service).
+//! - `--versions PATH`: the versions of `PATH` the backups kept.
 //! - `--service`: run the service (olo-session does, in a real session).
 //! - `--status [--json]`: what it's doing, has done, and its settings.
 //! - `--now`, `--stop`: back up now; stop what's under way.
@@ -27,6 +32,7 @@ mod app;
 mod restore;
 mod service;
 mod target;
+mod versions;
 
 const APP_ID: &str = "olo.diskbackup";
 
@@ -66,8 +72,16 @@ fn main() -> ExitCode {
                 }
                 Ok(())
             }
-            None | Some("--restore-window") => return app_main(),
-            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --snapshots | --restore SNAPSHOT PATH [TO] | --tidy | --set KEY=VALUE… | --groups"
+            None | Some("--restore-window") | Some("--versions-window") => return app_main(),
+        Some("--marks") => match args.get(1) {
+            Some(dir) => marks_cli(dir),
+            None => Err("--marks DIR".into()),
+        },
+        Some("--versions") => match args.get(1) {
+            Some(path) => versions_cli(path),
+            None => Err("--versions PATH".into()),
+        },
+            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --snapshots | --restore SNAPSHOT PATH [TO] | --marks DIR | --versions PATH | --tidy | --set KEY=VALUE… | --groups"
                 .into()),
         };
     match r {
@@ -169,8 +183,8 @@ fn app_main() -> ExitCode {
         let proxy = olo_ui::proxy(cx);
         olo_ui::instance::listen(APP_ID, proxy.clone());
         let disk = cx.new(|_| app::Disk::new(proxy));
-        let restore = args.iter().any(|a| a == "--restore-window");
-        disk.update(cx, |d, cx| if restore { d.open_restore(cx) } else { d.open(cx) });
+        let cwd = std::env::current_dir().ok();
+        disk.update(cx, |d, cx| d.launched(&args, cwd.as_deref(), cx));
         let messages = disk.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
         // (Back as it was after an upgrade: its window.)
@@ -180,16 +194,7 @@ fn app_main() -> ExitCode {
 }
 
 pub(crate) fn ask(r: Request) -> Result<(), String> {
-    use std::io::{BufRead, Write};
-    let mut s = std::os::unix::net::UnixStream::connect(olo_protocol::diskbackup::socket()).map_err(|_| "the service isn't running".to_string())?;
-    s.write_all(format!("{}\n", serde_json::to_string(&r).unwrap_or_default()).as_bytes()).map_err(|e| e.to_string())?;
-    let mut line = String::new();
-    std::io::BufReader::new(&s).read_line(&mut line).map_err(|e| e.to_string())?;
-    match serde_json::from_str::<Reply>(&line) {
-        Ok(Reply::Ok) => Ok(()),
-        Ok(Reply::Error { message }) => Err(message),
-        Err(e) => Err(e.to_string()),
-    }
+    olo_protocol::diskbackup::call(&r).map(|_| ())
 }
 
 /// The repository as the settings say, opened.
@@ -256,6 +261,47 @@ fn restore_cli(snap: &str, path: &str, to: Option<&String>) -> Result<(), String
     let _lock = target::lock_to_read(&repo, &cancel, |why| said.call_once(|| eprintln!("Waiting: {why}…"))).map_err(|e| e.to_string())?;
     olo_diskbackup::restore(&repo, &s.tree, &path, &to, &cancel, &progress).map_err(|e| e.to_string())?;
     println!("Put back {} as {} ({} files).", path.display(), to.display(), progress.files.load(std::sync::atomic::Ordering::Relaxed));
+    Ok(())
+}
+
+/// An absolute path for `p` (`~` the home folder; relative: here).
+fn absolute(p: &str) -> String {
+    let p = target::expand(p);
+    std::path::absolute(&p).unwrap_or(p).display().to_string()
+}
+
+fn marks_cli(dir: &str) -> Result<(), String> {
+    match olo_protocol::diskbackup::call(&Request::Marks { dir: absolute(dir) })? {
+        Reply::Marks { covered: false, .. } => println!("Not in the backups."),
+        Reply::Marks { backed_up, time, .. } => {
+            println!("Backed up as they are now (snapshot {}):", when(time));
+            for name in backed_up {
+                println!("  {name}");
+            }
+        }
+        r => return Err(format!("the service answered {r:?}")),
+    }
+    Ok(())
+}
+
+fn versions_cli(path: &str) -> Result<(), String> {
+    match olo_protocol::diskbackup::call(&Request::Versions { path: absolute(path) })? {
+        Reply::Versions { versions } if versions.is_empty() => println!("No versions kept."),
+        Reply::Versions { versions } => {
+            for v in versions {
+                println!(
+                    "{}  {}  modified {}, kept {} to {}{}",
+                    &v.snapshot[..12],
+                    mb(v.size),
+                    when(v.mtime / 1_000_000_000),
+                    when(v.first),
+                    when(v.time),
+                    if v.current { "  (what's there now)" } else { "" }
+                );
+            }
+        }
+        r => return Err(format!("the service answered {r:?}")),
+    }
     Ok(())
 }
 
