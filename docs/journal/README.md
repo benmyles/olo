@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Night Mode: shift gradually
+
+*12:29* — Preferences ▸ Appearance ▸ Night Mode can warm gradually: scheduled, it shifts from neutral to its warmth over 1 minute to 3 hours from its start, in steps too small to see, and is back to neutral at its end as before (no shift out).
+
+![Night Mode: shift gradually](2026-11-08/122912-night-mode-shift-gradually.png)
+
 ### Deskbar: Group All Windows, as the windows are
 
 *12:05* — Deskbar's menu for an app says what its windows are, not a setting: Group All Windows when they aren't all in one group (here one was taken out by hand), Ungroup All Windows when they are. Group All puts every one back in; Ungroup All takes each out in a cascade, every tab showing. Before, Group Windows was ticked whenever the app's grouping was on, even with windows out of the group.

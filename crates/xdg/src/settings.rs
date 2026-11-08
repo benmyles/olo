@@ -32,6 +32,8 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "appearance", tab: "", group: "Night Mode", name: "Off", role: "RadioButton" },
     Setting { panel: "appearance", tab: "", group: "Night Mode", name: "On", role: "RadioButton" },
     Setting { panel: "appearance", tab: "", group: "Night Mode", name: "Scheduled", role: "RadioButton" },
+    Setting { panel: "appearance", tab: "", group: "Night Mode", name: "Shift gradually, starting at From", role: "CheckBox" },
+    Setting { panel: "appearance", tab: "", group: "Night Mode", name: "Shift over", role: "Slider" },
     Setting { panel: "appearance", tab: "", group: "Night Mode", name: "Warmth", role: "Slider" },
     Setting { panel: "appearance", tab: "", group: "", name: "Window title size", role: "Slider" },
     Setting { panel: "appearance", tab: "", group: "", name: "Longest window title", role: "Slider" },

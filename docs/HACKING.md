@@ -7121,6 +7121,29 @@ identity back when it exits (the matrix outlives it). At start-up the
 gains are set at once, so a reload keeps the warmth without a flash. Headless logs each step ("white point") for
 tests.
 
+**Gradually** (Ben, 2026-11-08: "an extra checkbox option for having it
+gradually shift over n minutes (between 1 and 180) … starting at the
+from time so that it will get to the target warmth at from + n minutes
+(if from + n minutes is > to time then it still just goes back to
+normal at the to time no gradual shift out just in)"): Preferences ▸
+Appearance ▸ Night Mode's "Shift gradually, starting at From" and "Shift
+over" (`NightLight::gradual`, `gradual_minutes`, 30 by default),
+scheduled nights only. `NightLight::shifting` says how far in a night
+is (seconds since From, to the nanosecond: a minute's shift steps ten
+times a second), while under its minutes and inside its window; at To
+it's neutral as ever (the 1.5 s fade), shifted all the way or not.
+`night::shifted` eases in and out along a straight line in mireds (a
+million over the temperature, as the eye judges warmth), and
+`shift_every` spaces its steps so none moves a channel by more than
+`SHIFT_STEP` (1/1024, under a 10-bit signal's step): about 600, each
+100 ms over a minute or 18 s over three hours, each set at once (no
+fade) by a calloop timer that exists only while the night shifts. Tried
+live, headless, one minute to 3600 K: 686 steps 94 ms apart, the
+biggest 0.00098, blue only falling, ending exactly at 3600 K, none
+after; app_server 137 ms of CPU over the minute (each step about
+0.2 ms, the headless log included); idle with night light on the same
+before and after (9.4–11 ms and 61 wakeups in 30 s).
+
 ## Screenshots (app_server screenshot.rs, apps/screenshot)
 
 `Request::Screenshot { path, output, window, border, pointer, format }` (only

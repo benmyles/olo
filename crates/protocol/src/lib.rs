@@ -2143,6 +2143,11 @@ pub struct NightLight {
     pub end: String,
     /// Kelvin; 6500 is neutral.
     pub temperature: u32,
+    /// Scheduled, it warms gradually from `start`, reaching `temperature`
+    /// `gradual_minutes` later (1 to 180); at `end` it's back to neutral
+    /// as ever, there or not (no shift out).
+    pub gradual: bool,
+    pub gradual_minutes: u32,
 }
 
 impl Default for Appearance {
@@ -2209,7 +2214,7 @@ impl LookInfo {
 
 impl Default for NightLight {
     fn default() -> Self {
-        NightLight { mode: NightLightMode::Off, start: "20:00".into(), end: "07:00".into(), temperature: 3600 }
+        NightLight { mode: NightLightMode::Off, start: "20:00".into(), end: "07:00".into(), temperature: 3600, gradual: false, gradual_minutes: 30 }
     }
 }
 
@@ -2221,6 +2226,19 @@ impl NightLight {
             return false;
         };
         if start <= end { minutes >= start && minutes < end } else { minutes >= start || minutes < end }
+    }
+
+    /// How far into its gradual shift a scheduled night is, `seconds`
+    /// (since local midnight, with their fraction: a minute's shift steps
+    /// ten times a second) in: seconds since `start`, while that is under
+    /// `gradual_minutes` (and it shifts gradually at all).
+    pub fn shifting(&self, seconds: f64) -> Option<f64> {
+        if self.mode != NightLightMode::Scheduled || !self.gradual {
+            return None;
+        }
+        let start = (parse_hhmm(&self.start)? * 60) as f64;
+        let into = (seconds - start).rem_euclid(86_400.0);
+        (into < (self.gradual_minutes.clamp(1, 180) * 60) as f64 && self.in_window((seconds / 60.0) as u32)).then_some(into)
     }
 }
 
@@ -2837,6 +2855,37 @@ mod tests {
         assert!(n.in_window(3 * 60));
         assert!(!n.in_window(12 * 60));
         assert!(!n.in_window(7 * 60));
+    }
+
+    /// Ben, 2026-11-08: "gradually ... starting at the from time so that it
+    /// will get to the target warmth at from + n minutes (if from + n
+    /// minutes is > to time then it still just goes back to normal at the
+    /// to time no gradual shift out just in)".
+    #[test]
+    fn a_gradual_night_shifts_in_only() {
+        let h = |h: u32, m: u32, s: u32| (h * 3600 + m * 60 + s) as f64;
+        let mut n = NightLight { mode: NightLightMode::Scheduled, gradual: true, gradual_minutes: 45, ..NightLight::default() };
+        assert_eq!(n.shifting(h(19, 59, 59)), None, "before its start");
+        assert_eq!(n.shifting(h(20, 0, 0)), Some(0.0));
+        assert_eq!(n.shifting(h(20, 30, 15) + 0.25), Some((30 * 60 + 15) as f64 + 0.25));
+        assert_eq!(n.shifting(h(20, 45, 0)), None, "there: its warmth");
+        assert_eq!(n.shifting(h(3, 0, 0)), None);
+        // Across midnight.
+        n.start = "23:50".into();
+        assert_eq!(n.shifting(h(0, 10, 0)), Some((20 * 60) as f64));
+        // A night shorter than the shift: neutral at its end, mid-shift.
+        n.end = "00:20".into();
+        assert_eq!(n.shifting(h(0, 19, 59)), Some((29 * 60 + 59) as f64));
+        assert_eq!(n.shifting(h(0, 20, 0)), None);
+        // Not gradual, or not scheduled: never.
+        n.gradual = false;
+        assert_eq!(n.shifting(h(23, 55, 0)), None);
+        n.gradual = true;
+        n.mode = NightLightMode::On;
+        assert_eq!(n.shifting(h(23, 55, 0)), None);
+        // Settings from before it: off, 30 minutes.
+        let old: NightLight = serde_json::from_str(r#"{"mode":"scheduled","start":"20:00","end":"07:00","temperature":3600}"#).unwrap();
+        assert_eq!((old.gradual, old.gradual_minutes), (false, 30));
     }
 
     #[test]

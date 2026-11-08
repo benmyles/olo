@@ -346,8 +346,11 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// Where each window coming back was put, to check once they're all
     /// back (`layout::check_restored`).
     pub restored: Vec<(crate::shell::WindowElement, crate::layout::Placement)>,
-    /// Night-light colour temperature in effect, if any.
-    pub night_light: Option<u32>,
+    /// Night-light colour temperature in effect, if any (between neutral
+    /// and the night's while it shifts gradually), and the timer for its
+    /// next step meanwhile.
+    pub night_light: Option<f64>,
+    pub night_shift: Option<smithay::reexports::calloop::RegistrationToken>,
     /// The screens' gamma gains now (none until first set), and the fade
     /// toward new ones (see `night`).
     pub white_point: Option<[f64; 3]>,
@@ -1298,6 +1301,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             display_wait_until: None,
             restored: Vec::new(),
             night_light: None,
+            night_shift: None,
             white_point: None,
             night_fade: None,
             mirrors: Vec::new(),

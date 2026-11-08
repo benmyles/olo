@@ -3712,5 +3712,11 @@
   "title": "Deskbar: Group All Windows, as the windows are",
   "caption": "Deskbar's menu for an app says what its windows are, not a setting: Group All Windows when they aren't all in one group (here one was taken out by hand), Ungroup All Windows when they are. Group All puts every one back in; Ungroup All takes each out in a cascade, every tab showing. Before, Group Windows was ticked whenever the app's grouping was on, even with windows out of the group.",
   "image": "2026-11-08/120547-deskbar-group-all-windows-as-the-windows-are.png"
+ },
+ {
+  "time": "2026-11-08T12:29:12",
+  "title": "Night Mode: shift gradually",
+  "caption": "Preferences \u25b8 Appearance \u25b8 Night Mode can warm gradually: scheduled, it shifts from neutral to its warmth over 1 minute to 3 hours from its start, in steps too small to see, and is back to neutral at its end as before (no shift out).",
+  "image": "2026-11-08/122912-night-mode-shift-gradually.png"
  }
 ]

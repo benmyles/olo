@@ -491,6 +491,18 @@ pub fn panel(
 }
 
 /// Minutes since local midnight.
+/// Seconds since local midnight, with their fraction.
+fn local_seconds() -> f64 {
+    // SAFETY: plain libc time calls with valid pointers.
+    unsafe {
+        let mut ts: libc::timespec = std::mem::zeroed();
+        libc::clock_gettime(libc::CLOCK_REALTIME, &mut ts);
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&ts.tv_sec, &mut tm);
+        (tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec) as f64 + ts.tv_nsec as f64 / 1e9
+    }
+}
+
 fn local_minutes() -> u32 {
     // SAFETY: plain libc time calls with valid pointers.
     unsafe {
@@ -2076,10 +2088,37 @@ impl<B: Backend + 'static> AnvilState<B> {
         if (theme::set(a.palette()) || force) && B::IS_SESSION {
             crate::toolkits::publish(a.icon_theme.clone(), a.colors.clone(), theme);
         }
-        let kelvin = night.then_some(self.settings.appearance.night_light.temperature);
+        // A scheduled night shifting gradually: its warmth so far, and its
+        // next step in a while (only while it shifts: no timer otherwise).
+        let nl = &self.settings.appearance.night_light;
+        let shift = if night { nl.shifting(local_seconds()) } else { None };
+        let (target, minutes) = (nl.temperature, nl.gradual_minutes);
+        let kelvin = night.then(|| shift.map_or(target as f64, |into| crate::night::shifted(target, into, minutes)));
         if kelvin != self.night_light || self.white_point.is_none() {
+            // (Its first step, or the night's end, fades as ever.)
+            let step = shift.is_some() && self.night_light.is_some();
             self.night_light = kelvin;
-            self.set_night_light(kelvin);
+            self.set_night_light(kelvin, step);
+        }
+        match (shift, self.night_shift.is_some()) {
+            (Some(_), false) => {
+                let every = crate::night::shift_every(target, minutes);
+                let timer = smithay::reexports::calloop::timer::Timer::from_duration(every);
+                self.night_shift = self
+                    .handle
+                    .insert_source(timer, |_, _, state| {
+                        state.night_shift = None;
+                        state.update_appearance(false);
+                        smithay::reexports::calloop::timer::TimeoutAction::Drop
+                    })
+                    .ok();
+            }
+            (None, true) => {
+                if let Some(t) = self.night_shift.take() {
+                    self.handle.remove(t);
+                }
+            }
+            _ => {}
         }
         if changed || force {
             self.ipc.broadcast(Event::SettingsChanged { settings: self.told_settings() });
