@@ -1369,3 +1369,66 @@ fn inset_shadows_paint_inside_the_padding_box() {
     assert_eq!(pixel(&t, 48, 30), [0, 0, 200, 255]);
     assert_eq!(pixel(&t, 30, 30), [255; 4]);
 }
+
+#[test]
+fn a_shadow_tree_renders_in_its_hosts_place_with_its_slots() {
+    // GitHub's <relative-time>: its shadow root's text ("last week") in
+    // place of its own (the server's date); a <slot> takes the host's
+    // children.
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 400., height: 100., scale: 1. };
+    let mut page = olo_web::page::load(
+        Arc::from(format!("<!doctype html><style>{BASE}b{{display:block}}</style><p><span id=t>DDDD</span></p><div id=h><b id=l>CC</b></div>")),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let find = |doc: &olo_web::dom::Document, id: &str| {
+        let mut stack = vec![doc.root()];
+        while let Some(n) = stack.pop() {
+            if doc.attribute(n, "id").ok().flatten() == Some(id) {
+                return n;
+            }
+            stack.extend(doc.children(n).unwrap());
+        }
+        panic!("no #{id}")
+    };
+    let mut doc = page.document.clone();
+    let (t, h, l) = (find(&doc, "t"), find(&doc, "h"), find(&doc, "l"));
+    // The span shows its shadow text instead of its own.
+    let root = doc.attach_shadow(t).unwrap();
+    let text = doc.create_text("AB").unwrap();
+    doc.append_child(root, text).unwrap();
+    // The div: "E", its child through a slot, then "f".
+    let root = doc.attach_shadow(h).unwrap();
+    for part in ["E", "slot", "f"] {
+        let n = if part == "slot" { doc.create_element("slot", olo_web::dom::Namespace::Html).unwrap() } else { doc.create_text(part).unwrap() };
+        doc.append_child(root, n).unwrap();
+    }
+    assert!(doc.is_connected(text).unwrap());
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    let shown: Vec<String> = page
+        .scene
+        .commands()
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| matches!(c.primitive, paint::Primitive::Text { .. }))
+        .filter_map(|(i, _)| page.scene.text_content(i as u32).map(|t| t.into_owned()))
+        .collect();
+    let all = shown.join("|");
+    assert!(all.contains("AB"), "{all}");
+    assert!(!all.contains("DDDD"), "{all}");
+    assert!(all.contains('E') && all.contains("CC") && all.contains('f'), "{all}");
+    let lb = page.scene.layout().cache().tree().iter().find(|(_, x)| x.node == l && matches!(x.kind, layout::BoxKind::Block { .. })).map(|(id, _)| page.scene.layout().bounds(id).unwrap());
+    assert!(lb.is_some_and(|r| r.height > 0.), "the slotted child laid out: {lb:?}");
+}

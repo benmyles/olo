@@ -1699,6 +1699,8 @@ const NATIVES: &[&str] = &[
     "createText",
     "createComment",
     "createFragment",
+    "attachShadow",
+    "shadowHost",
     "templateContents",
     "clone",
     "query",
@@ -2227,6 +2229,24 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             match created.and_then(|n| wrap(scope, &state, n)) {
                 Some(o) => rv.set(o.into()),
                 None => throw(scope, "could not create the node"),
+            }
+        }
+        // attachShadow(host) → its shadow root, rendered in its place.
+        "attachShadow" => {
+            if let Some(n) = node(scope, 0) {
+                let root = state.borrow_mut().document.attach_shadow(n).ok();
+                match root.and_then(|r| wrap(scope, &state, r)) {
+                    Some(o) => rv.set(o.into()),
+                    None => throw(scope, "could not attach a shadow root"),
+                }
+            }
+        }
+        // shadowHost(node) → the host when node is a shadow root, else null.
+        "shadowHost" => {
+            let host = node(scope, 0).and_then(|n| state.borrow().document.shadow_host(n));
+            match host.and_then(|h| wrap(scope, &state, h)) {
+                Some(o) => rv.set(o.into()),
+                None => rv.set_null(),
             }
         }
         "clone" => {

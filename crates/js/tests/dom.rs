@@ -437,3 +437,47 @@ document.getElementById('s').addEventListener('click', (e) => { e.preventDefault
     assert_eq!(realm.take_navigation(), Some(("https://example.test/mac/".to_owned(), false)));
     assert_eq!(realm.report().console, ["[log] panel", "[log] ran"]);
 }
+#[test]
+fn an_upgraded_elements_observed_attributes_reach_its_callback() {
+    // React makes <relative-time> then sets its datetime.
+    let page = r#"<script>
+class T extends HTMLElement { static get observedAttributes() { return ['datetime']; } attributeChangedCallback(n, o, v) { console.log('changed', n, o, v); } }
+customElements.define('x-time', T);
+const t = document.createElement('x-time');
+t.setAttribute('datetime', '2026');
+t.setAttribute('title', 'ignored');
+t.setAttribute('datetime', '2027');
+t.removeAttribute('datetime');
+const root = t.attachShadow({ mode: 'open' });
+root.textContent = '4 hours ago';
+document.body.appendChild(t);
+console.log(t.shadowRoot === root, t.isConnected, root.host === t);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    assert_eq!(realm.report().errors, Vec::<String>::new());
+    assert_eq!(realm.report().console, ["[log] changed datetime null 2026", "[log] changed datetime 2026 2027", "[log] changed datetime 2027 null", "[log] true true true"]);
+    // The engine's document has the shadow root under its host.
+    let (doc, _) = realm.finish();
+    let mut stack = vec![doc.root()];
+    let mut found = None;
+    while let Some(n) = stack.pop() {
+        if doc.name(n).ok().flatten() == Some("x-time") {
+            found = Some(n);
+        }
+        stack.extend(doc.children(n).unwrap());
+    }
+    let t = found.unwrap();
+    let root = doc.shadow_root(t).expect("a shadow root");
+    let text = doc.composed_first_child(t).unwrap().unwrap();
+    assert_eq!(doc.parent(text).unwrap(), Some(root));
+    assert_eq!(doc.value(text).unwrap(), Some("4 hours ago"));
+}

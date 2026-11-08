@@ -118,8 +118,10 @@
     event.isTrusted = false;
     const path = [target];
     if (target instanceof Node) {
-      let p = N.parent(target);
-      while (p) { path.push(p); p = N.parent(p); }
+      // Up the composed tree: out of a shadow root to its host.
+      const up = (n) => N.parent(n) || N.shadowHost(n);
+      let p = up(target);
+      while (p) { path.push(p); p = up(p); }
       // The document's parent is the window, bar for load events (DOM §4.6:
       // an image's or script's load never reaches window listeners).
       if (path[path.length - 1] === documentNode && event.type !== 'load') path.push(global);
@@ -548,7 +550,7 @@
     submit() { if (N.nodeName(this) === 'FORM') submitForm(this, null, false); }, reset() { if (N.nodeName(this) === 'FORM') for (const c of N.query(this, 'input,textarea', true)) N.setControlValue(c, N.nodeName(c) === 'TEXTAREA' ? N.textContent(c) : (N.attr(c, 'value') || '')); }, requestSubmit(submitter) { if (N.nodeName(this) === 'FORM') submitForm(this, submitter || null, true); }, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
     animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), null); a.play(); return a; },
     getAnimations() { return animations.filter((a) => a.effect && a.effect.target === this && a.playState !== 'idle'); },
-    attachShadow(init) { const root = N.createFragment(); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open' }); return root; },
+    attachShadow(init) { if (this._shadow) throw new DOMException('This element already hosts a shadow root.', 'NotSupportedError'); const root = N.attachShadow(this); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open' }); return root; },
     requestFullscreen() { return Promise.resolve(); },
     play() { if (!isMedia(this)) return Promise.resolve(); N.mediaCommand(this, 'play', 0); queueMedia(this, ['play']); return Promise.resolve(); },
     pause() { if (!isMedia(this) || N.media(this)[0]) return; N.mediaCommand(this, 'pause', 0); queueMedia(this, ['pause']); },
@@ -743,6 +745,23 @@
   const definitions = new Map();
   const whenDefined = new Map();
   const upgrade = (el, name) => { const def = definitions.get(name) || (N.attr(el, 'is') && definitions.get(N.attr(el, 'is'))); if (def && !el._upgraded) { Object.defineProperty(el, '_upgraded', { value: true }); Object.defineProperty(el, '_constructed', { value: true }); try { constructing = el; const made = new def(); if (made !== el) Object.setPrototypeOf(el, def.prototype); } catch (e) { reportError(e); Object.setPrototypeOf(el, def.prototype); } finally { constructing = null; } if (typeof el.attributeChangedCallback === 'function' && Array.isArray(def.observedAttributes)) for (const a of def.observedAttributes) { const v = N.attr(el, a); if (v != null) { try { el.attributeChangedCallback(a, null, v); } catch (e) { reportError(e); } } } } };
+  // Changes to an upgraded element's observed attributes reach its
+  // attributeChangedCallback (HTML §4.13.4), however a script made them
+  // (React sets <relative-time>'s datetime after making it: GitHub's dates
+  // stayed as the server wrote them).
+  const observed = new WeakMap();
+  const observedOf = (el) => { const ctor = el.constructor; if (!ctor) return null; let set = observed.get(ctor); if (set === undefined) { let list = null; try { list = ctor.observedAttributes; } catch (e) {} set = Array.isArray(list) ? new Set(list.map((a) => String(a).toLowerCase())) : null; observed.set(ctor, set); } return set; };
+  const changedAttribute = (el, name, old) => {
+    if (!el._upgraded || typeof el.attributeChangedCallback !== 'function') return;
+    const set = observedOf(el); const n = String(name).toLowerCase();
+    if (!set || !set.has(n)) return;
+    try { el.attributeChangedCallback(n, old, N.attr(el, n)); } catch (e) { reportError(e); }
+  };
+  {
+    const setAttr = N.setAttr, removeAttr = N.removeAttr;
+    N.setAttr = (el, name, value) => { const old = el && el._upgraded ? N.attr(el, name) : undefined; const r = setAttr(el, name, value); if (old !== undefined) changedAttribute(el, name, old); return r; };
+    N.removeAttr = (el, name) => { const old = el && el._upgraded ? N.attr(el, name) : undefined; const r = removeAttr(el, name); if (old != null) changedAttribute(el, name, old); return r; };
+  }
   global.customElements = {
     define(name, ctor, options) { definitions.set(name, ctor); const w = whenDefined.get(name); if (w) w.resolve(ctor); for (const el of N.query(documentNode, name + (options && options.extends ? ', [is="' + name + '"]' : ''), true)) { upgrade(el, name); if (el._upgraded && typeof el.connectedCallback === 'function') { Object.defineProperty(el, '_connected', { value: true, configurable: true, writable: true }); try { el.connectedCallback(); } catch (e) { reportError(e); } } } },
     get(name) { return definitions.get(name); },

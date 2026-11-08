@@ -742,7 +742,11 @@ impl RuleSet {
                 builder.add(d, Priority { origin: Origin::PresentationalHint, rule: u64::MAX - 1, declaration: i as u32, ..Default::default() })?;
             }
         }
-        builder.finish(has_parent, parent)
+        // A shadow tree's top elements inherit from its host (the composed
+        // parent, which the caller passes), their DOM parent a fragment.
+        let fragment_child =
+            parent.is_some() && matches!(tree.parent(node).map_err(Error::Selectors)?.map(|p| tree.content(p)).transpose().map_err(Error::Selectors)?, Some(selectors::Content::Fragment));
+        builder.finish(has_parent || fragment_child, parent)
     }
     #[allow(clippy::too_many_arguments)]
     fn match_inner<'a, T: selectors::Tree>(
@@ -885,7 +889,11 @@ impl RuleSet {
                 builder.add(d, Priority { origin: Origin::PresentationalHint, rule: u64::MAX - 1, declaration: i as u32, ..Default::default() })?;
             }
         }
-        builder.finish(has_parent, parent)
+        // A shadow tree's top elements inherit from its host (the composed
+        // parent, which the caller passes), their DOM parent a fragment.
+        let fragment_child =
+            parent.is_some() && matches!(tree.parent(node).map_err(Error::Selectors)?.map(|p| tree.content(p)).transpose().map_err(Error::Selectors)?, Some(selectors::Content::Fragment));
+        builder.finish(has_parent || fragment_child, parent)
     }
 }
 

@@ -375,7 +375,7 @@ impl<'a> BuildJob<'a> {
             controls: Vec::new(),
             open: Vec::new(),
             list_counters: Default::default(),
-            stack: vec![Cursor { next: document.first_child(document.root())?, container: root, style: document.root().into(), close: false, inline: false, after: None, restore: None }],
+            stack: vec![Cursor { next: document.composed_first_child(document.root())?, container: root, style: document.root().into(), close: false, inline: false, after: None, restore: None }],
             pending: None,
             progress: BuildProgress { boxes: 1, ..Default::default() },
             failed: false,
@@ -528,7 +528,7 @@ impl<'a> BuildJob<'a> {
         if self.stack.len() >= self.limits.depth {
             return Err(Error::Limit);
         }
-        self.stack.push(Cursor { next: self.document.first_child(node)?, container, style: style.into(), close, inline: false, after: Some(node), restore: None });
+        self.stack.push(Cursor { next: self.document.composed_first_child(node)?, container, style: style.into(), close, inline: false, after: Some(node), restore: None });
         Ok(())
     }
     /// An atomic inline (inline-block, inline-flex, inline-grid, inline-table):
@@ -544,7 +544,7 @@ impl<'a> BuildJob<'a> {
         }
         let _ = flex_or_grid;
         let restore = self.pending.take().map(Box::new);
-        self.stack.push(Cursor { next: self.document.first_child(node)?, container: block, style: node.into(), close: true, inline: false, after: Some(node), restore });
+        self.stack.push(Cursor { next: self.document.composed_first_child(node)?, container: block, style: node.into(), close: true, inline: false, after: Some(node), restore });
         self.generated(node, block, PseudoElement::Before)?;
         Ok(())
     }
@@ -742,7 +742,7 @@ impl<'a> BuildJob<'a> {
                 continue;
             };
             let (container, parent_style) = (frame.container, frame.style);
-            frame.next = self.document.next_sibling(node)?;
+            frame.next = self.document.composed_next_sibling(node)?;
             self.progress.visited += 1;
             if self.progress.visited > self.limits.nodes {
                 return Err(Error::Limit);

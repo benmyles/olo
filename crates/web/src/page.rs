@@ -1914,7 +1914,8 @@ fn dirty_ancestors(doc: &Document, nodes: &[crate::dom::NodeId], dirty: &mut std
             if !dirty.insert(n) {
                 break;
             }
-            at = doc.parent(n).ok().flatten();
+            // Out of a shadow tree to its host.
+            at = doc.parent(n).ok().flatten().or_else(|| doc.shadow_host(n));
         }
     }
 }

@@ -346,6 +346,10 @@ pub struct Document {
     /// painter it moved).
     scrolls: Arc<HashMap<NodeId, [f64; 2]>>,
     scroll_serial: u64,
+    /// Shadow roots by host, and hosts by shadow root (DOM §4.2.2): each a
+    /// fragment, rendered in its host's place (the composed tree).
+    shadows: Arc<HashMap<NodeId, NodeId>>,
+    shadow_hosts: Arc<HashMap<NodeId, NodeId>>,
     name_bytes: usize,
     limits: Limits,
 }
@@ -393,6 +397,8 @@ impl Document {
             controls: Arc::new(HashMap::new()),
             scrolls: Arc::new(HashMap::new()),
             scroll_serial: 0,
+            shadows: Arc::new(HashMap::new()),
+            shadow_hosts: Arc::new(HashMap::new()),
             name_bytes: 0,
             limits,
         })
@@ -775,7 +781,8 @@ impl Document {
     pub fn parent(&self, id: NodeId) -> Result<Option<NodeId>> {
         Ok(self.nodes[index(self.resolve(id)?)].parent.map(|at| self.handle(at)))
     }
-    /// Whether the node is in the document (its ancestors reach the root).
+    /// Whether the node is in the document (its ancestors reach the root,
+    /// through the hosts of the shadow roots on the way).
     pub fn is_connected(&self, id: NodeId) -> Result<bool> {
         let mut at = self.resolve(id)?;
         let root = self.resolve(self.root())?;
@@ -783,7 +790,10 @@ impl Document {
         while at != root {
             match self.nodes[index(at)].parent {
                 Some(p) => at = p,
-                None => return Ok(false),
+                None => match self.shadow_hosts.get(&self.handle(at)) {
+                    Some(&host) => at = self.resolve(host)?,
+                    None => return Ok(false),
+                },
             }
             steps += 1;
             if steps > self.nodes.len() {
@@ -791,6 +801,126 @@ impl Document {
             }
         }
         Ok(true)
+    }
+    /// Give `host` a shadow root (an empty fragment), or its own again.
+    pub fn attach_shadow(&mut self, host: NodeId) -> Result<NodeId> {
+        self.resolve(host)?;
+        if let Some(&root) = self.shadows.get(&host) {
+            return Ok(root);
+        }
+        let root = self.create_fragment()?;
+        Arc::make_mut(&mut self.shadows).insert(host, root);
+        Arc::make_mut(&mut self.shadow_hosts).insert(root, host);
+        // The host renders its shadow tree from now on.
+        self.bump_with(Change::Node(host))?;
+        Ok(root)
+    }
+    pub fn shadow_root(&self, host: NodeId) -> Option<NodeId> {
+        if self.shadows.is_empty() { None } else { self.shadows.get(&host).copied() }
+    }
+    pub fn shadow_host(&self, root: NodeId) -> Option<NodeId> {
+        if self.shadow_hosts.is_empty() { None } else { self.shadow_hosts.get(&root).copied() }
+    }
+    /// The slot name a host's child asks for (`slot`, else the default).
+    fn slot_asked(&self, node: NodeId) -> Result<&str> {
+        Ok(if self.node_type(node)? == NodeType::Element { self.attribute(node, "slot")?.unwrap_or("") } else { "" })
+    }
+    /// The host of the shadow tree `node` is in (DOM parents up to a shadow root).
+    fn host_of(&self, node: NodeId) -> Result<Option<NodeId>> {
+        let mut at = node;
+        for _ in 0..4096 {
+            match self.parent(at)? {
+                Some(p) => at = p,
+                None => return Ok(self.shadow_host(at)),
+            }
+        }
+        Ok(None)
+    }
+    /// The slot of `host`'s shadow tree a child asking for `name` goes to:
+    /// its first `<slot>` of that name (in tree order).
+    fn slot_for(&self, host: NodeId, name: &str) -> Result<Option<NodeId>> {
+        let Some(root) = self.shadow_root(host) else { return Ok(None) };
+        let mut stack: Vec<NodeId> = self.children(root)?.collect();
+        stack.reverse();
+        while let Some(n) = stack.pop() {
+            if self.node_type(n)? != NodeType::Element {
+                continue;
+            }
+            if self.name(n)? == Some("slot") && self.attribute(n, "name")?.unwrap_or("") == name {
+                return Ok(Some(n));
+            }
+            let start = stack.len();
+            stack.extend(self.children(n)?);
+            stack[start..].reverse();
+        }
+        Ok(None)
+    }
+    /// The host whose shadow tree holds `node` when it is a `<slot>`.
+    fn slot_host(&self, node: NodeId) -> Result<Option<NodeId>> {
+        if self.shadow_hosts.is_empty() || self.node_type(node)? != NodeType::Element || self.name(node)? != Some("slot") {
+            return Ok(None);
+        }
+        self.host_of(node)
+    }
+    /// The composed tree (DOM §4.2.2.4, flattened): a shadow host's
+    /// children are its shadow root's; a `<slot>`'s are the host's children
+    /// assigned to it, else its own (fallback); a host's children not
+    /// assigned to a slot aren't in it. Without shadow roots, the DOM's.
+    pub fn composed_first_child(&self, id: NodeId) -> Result<Option<NodeId>> {
+        if self.shadows.is_empty() {
+            return self.first_child(id);
+        }
+        if let Some(root) = self.shadow_root(id) {
+            return self.first_child(root);
+        }
+        if let Some(host) = self.slot_host(id)? {
+            let name = self.attribute(id, "name")?.unwrap_or("").to_owned();
+            if self.slot_for(host, &name)? == Some(id) {
+                let mut c = self.first_child(host)?;
+                while let Some(x) = c {
+                    if self.slot_asked(x)? == name {
+                        return Ok(Some(x));
+                    }
+                    c = self.next_sibling(x)?;
+                }
+            }
+        }
+        self.first_child(id)
+    }
+    pub fn composed_next_sibling(&self, id: NodeId) -> Result<Option<NodeId>> {
+        if self.shadows.is_empty() {
+            return self.next_sibling(id);
+        }
+        if let Some(host) = self.parent(id)?
+            && self.shadow_root(host).is_some()
+        {
+            // A host's child: the next one assigned to the same slot.
+            let name = self.slot_asked(id)?.to_owned();
+            let mut c = self.next_sibling(id)?;
+            while let Some(x) = c {
+                if self.slot_asked(x)? == name {
+                    return Ok(Some(x));
+                }
+                c = self.next_sibling(x)?;
+            }
+            return Ok(None);
+        }
+        self.next_sibling(id)
+    }
+    pub fn composed_parent(&self, id: NodeId) -> Result<Option<NodeId>> {
+        let parent = self.parent(id)?;
+        if self.shadows.is_empty() {
+            return Ok(parent);
+        }
+        let Some(p) = parent else { return Ok(None) };
+        if let Some(host) = self.shadow_host(p) {
+            return Ok(Some(host));
+        }
+        if self.shadow_root(p).is_some() {
+            let name = self.slot_asked(id)?.to_owned();
+            return self.slot_for(p, &name);
+        }
+        Ok(Some(p))
     }
     pub fn first_child(&self, id: NodeId) -> Result<Option<NodeId>> {
         Ok(self.nodes[index(self.resolve(id)?)].first.map(|at| self.handle(at)))

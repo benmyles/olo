@@ -638,7 +638,7 @@ impl<'a> Job<'a> {
             if self.document.node_type(node).map_err(Error::Dom)? == NodeType::Element {
                 // The filter holds the ancestors: pop to this node's parent,
                 // style it, then push it for its children.
-                let parent = self.document.parent(node).map_err(Error::Dom)?;
+                let parent = self.document.composed_parent(node).map_err(Error::Dom)?;
                 while self.chain.last().is_some_and(|(n, _)| Some(*n) != parent) {
                     let (_, hashes) = self.chain.pop().unwrap();
                     for h in hashes {
@@ -680,16 +680,18 @@ impl<'a> Job<'a> {
     fn skip_subtree(&mut self, mut node: NodeId) -> Result<Option<NodeId>> {
         while node != self.document.root() {
             self.tick()?;
-            if let Some(sibling) = self.document.next_sibling(node).map_err(Error::Dom)? {
+            if let Some(sibling) = self.document.composed_next_sibling(node).map_err(Error::Dom)? {
                 return Ok(Some(sibling));
             }
-            node = self.document.parent(node).map_err(Error::Dom)?.ok_or(Error::Invalid)?;
+            node = self.document.composed_parent(node).map_err(Error::Dom)?.ok_or(Error::Invalid)?;
             self.depth = self.depth.checked_sub(1).ok_or(Error::Invalid)?;
         }
         Ok(None)
     }
+    /// The next node of the composed tree (shadow trees in their hosts'
+    /// places), in tree order.
     fn successor(&mut self, mut node: NodeId) -> Result<Option<NodeId>> {
-        if let Some(child) = self.document.first_child(node).map_err(Error::Dom)? {
+        if let Some(child) = self.document.composed_first_child(node).map_err(Error::Dom)? {
             if self.depth >= self.limits.depth {
                 return Err(Error::Limit);
             }
@@ -698,10 +700,10 @@ impl<'a> Job<'a> {
         }
         while node != self.document.root() {
             self.tick()?;
-            if let Some(sibling) = self.document.next_sibling(node).map_err(Error::Dom)? {
+            if let Some(sibling) = self.document.composed_next_sibling(node).map_err(Error::Dom)? {
                 return Ok(Some(sibling));
             }
-            node = self.document.parent(node).map_err(Error::Dom)?.ok_or(Error::Invalid)?;
+            node = self.document.composed_parent(node).map_err(Error::Dom)?.ok_or(Error::Invalid)?;
             self.depth = self.depth.checked_sub(1).ok_or(Error::Invalid)?;
         }
         Ok(None)
@@ -915,7 +917,7 @@ impl<'a> Job<'a> {
         if self.tree.styles.len() >= self.limits.elements || self.tree.styles.len() >= u32::MAX as usize || node.slot() as usize >= self.limits.slots {
             return Err(Error::Limit);
         }
-        let parent_node = self.document.parent(node).map_err(Error::Dom)?;
+        let parent_node = self.document.composed_parent(node).map_err(Error::Dom)?;
         let parent = parent_node.and_then(|n| self.tree.index(n));
         let parent_box = parent
             .and_then(|i| if matches!(self.tree.styles[i].style.value(Property::Display), Value::Display(Display::Contents)) { self.tree.styles[i].parent_box } else { NonZeroU32::new(i as u32 + 1) });
@@ -1238,7 +1240,7 @@ impl<'a> Job<'a> {
                 continue;
             }
             let node = self.tree.styles[i].node;
-            let parent_node = self.document.parent(node).map_err(Error::Dom)?;
+            let parent_node = self.document.composed_parent(node).map_err(Error::Dom)?;
             let parent = parent_node.and_then(|n| self.tree.index(n));
             if parent_node.is_some_and(|p| self.document.node_type(p).map_err(Error::Dom).is_ok_and(|t| t == NodeType::Element)) && parent.is_none() {
                 return Ok(Err(format!("<{}>'s parent has no style", name(self, node))));
