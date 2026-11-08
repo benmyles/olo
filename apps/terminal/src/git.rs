@@ -633,6 +633,14 @@ impl Watcher {
                 seen.retain(|shell, _| tabs.iter().any(|(s, _)| s == shell));
                 for (shell, shared) in &tabs {
                     let Some(shared) = shared.upgrade() else { continue };
+                    // Not attached yet (Terminal started again takes its
+                    // shells back from termd one by one): where it is isn't
+                    // known, which isn't "in no repository", so the group
+                    // its tab joined on its own isn't let go for it. Looked
+                    // at once it attaches (session.rs pokes).
+                    if shared.shell().is_none() {
+                        continue;
+                    }
                     let w = seen.entry(*shell).or_default();
                     let cwd = shared.foreground().or(shared.shell()).and_then(|pid| std::fs::read_link(format!("/proc/{pid}/cwd")).ok());
                     // Read again only what may have changed.

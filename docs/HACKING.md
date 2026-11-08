@@ -9843,7 +9843,15 @@ on its own (repos.rs `auto_group`): the group beside it, else one made
 for it in the colour that repository's group has in another window;
 never one elsewhere in the window (a tab doesn't jump on `cd`), nor
 once the person took it out of a group (`Tab::own_grouping`); one that
-leaves the repository leaves a group it joined on its own. `--tab -w
+leaves the repository leaves a group it joined on its own. The window's
+title follows at once (`auto_group` retitles: a new window's shell has
+printed its prompt by the time its repository is known). A shell not
+yet attached (Terminal started again, an upgrade, takes them back from
+termd one by one) is in no known folder, which isn't "in no
+repository": git.rs's watcher skips it, so its tab keeps its group, and
+looks once it attaches (attaching pokes it, as output does). Checked
+with `upgrade-check --auto-tiled --times 15`: before, a tab came back
+out of its group in 2 rounds of 10 and stayed so; now 0 of 15. `--tab -w
 DIR` opens at the end of the group for DIR's repository, if one is
 here. Save Group keeps the group and each of its tabs' folders in
 `terminal-groups.json` (config dir); Open Saved Group shows its first

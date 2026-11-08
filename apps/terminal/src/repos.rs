@@ -182,6 +182,10 @@ impl Terminal {
         }
         if changed {
             t.tidy();
+            // The window's title has its group's name: at once, not at
+            // the next output (a new window's shell has printed its
+            // prompt by the time its repository is known).
+            crate::retitle(cx, win, t);
             cx.redraw(win);
         }
     }
