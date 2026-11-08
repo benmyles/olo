@@ -308,6 +308,7 @@ mod tests {
             focused: false,
             chosen: false,
             rolled: false,
+            on_top: false,
             covered: false,
             zoomed: false,
             zoomed_along: None,

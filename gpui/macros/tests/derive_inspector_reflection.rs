@@ -1,4 +1,8 @@
 //! This code was generated using Zed Agent with Claude Opus 4.
+// Olo: the macro is there only with the inspector or debug assertions, so
+// a release build's tests (`cargo test --release --workspace`) had nothing
+// to import.
+#![cfg(any(feature = "inspector", debug_assertions))]
 
 use gpui_macros::derive_inspector_reflection;
 
