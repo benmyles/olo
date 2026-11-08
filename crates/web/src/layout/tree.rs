@@ -844,6 +844,12 @@ impl<'a> BuildJob<'a> {
             if self.progress.visited > self.limits.nodes {
                 return Err(Error::Limit);
             }
+            // A closed <details> shows its first <summary> alone (HTML
+            // §15.5.15: the rest is in a slot it hides, whatever their own
+            // display says).
+            if closed_details_hides(self.document, node)? {
+                continue;
+            }
             match self.document.node_type(node)? {
                 NodeType::Element => {
                     let styles = self.styles.clone();
@@ -1404,4 +1410,19 @@ fn control_text(doc: &Document, node: NodeId, name: &str) -> Result<Option<(Stri
         },
         false,
     )))
+}
+
+/// Whether `node` is content a closed `<details>` hides: a child of one
+/// without `open`, other than its first `<summary>`.
+fn closed_details_hides(document: &Document, node: NodeId) -> Result<bool> {
+    let Some(parent) = document.parent(node)? else { return Ok(false) };
+    if document.node_type(parent)? != NodeType::Element
+        || document.name(parent)? != Some("details")
+        || document.namespace(parent)? != Some(crate::dom::Namespace::Html)
+        || document.attribute(parent, "open")?.is_some()
+    {
+        return Ok(false);
+    }
+    let first_summary = document.children(parent)?.find(|&c| document.node_type(c).ok() == Some(NodeType::Element) && document.name(c).ok().flatten() == Some("summary"));
+    Ok(first_summary != Some(node))
 }

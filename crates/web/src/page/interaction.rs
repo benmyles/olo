@@ -133,6 +133,8 @@ impl StateSource for Snapshot<'_> {
             // Elements are defined, bar custom elements (their registry is
             // the scripts'; an undefined one is what `:not(:defined)` finds).
             State::Defined => self.doc.is_defined(node)?,
+            // A dialog shown with showModal().
+            State::Modal => self.doc.is_modal(node)?,
             // States the engine does not track yet (:invalid, …) do not
             // match, as in a document where nothing has that state.
             _ => false,

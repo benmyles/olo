@@ -76,6 +76,8 @@ pub struct Page {
     sheet_ids: Vec<(crate::dom::NodeId, u64)>,
     /// The document and revision the sheets were last looked for at.
     sheets_checked: Option<(u64, u64)>,
+    /// The style tree its pictures were last looked for in (`note_pictures`).
+    pictures_scanned: usize,
     media: css::media::Media,
     /// Whether any stylesheet has `@media` rules, so only such pages recompile.
     pub media_dependent: bool,
@@ -345,6 +347,10 @@ pub const UA: &str = concat!(
     "svg{overflow:hidden}",
     "html,body,address,article,aside,blockquote,center,dialog,div,figure,figcaption,footer,form,header,hgroup,hr,legend,listing,main,nav,p,plaintext,pre,search,section,xmp,details,summary,fieldset,dl,dd,dt,ul,ol,menu,dir,li,optgroup,option,h1,h2,h3,h4,h5,h6{display:block}",
     "head,link,meta,script,style,title,template,area,base,basefont,datalist,noembed,noframes,param,rp,[hidden]{display:none}",
+    // Dialogs (HTML §15.3.3): closed ones hidden; open ones centred across
+    // their containing block, framed; a modal one over the viewport (the
+    // top layer, as near as stacking gets).
+    "dialog:not([open]){display:none}dialog{position:absolute;left:0;right:0;width:fit-content;height:fit-content;margin:auto;border:solid;padding:1em;background-color:Canvas;color:CanvasText}dialog:modal{position:fixed;overflow:auto;top:0;bottom:0;max-width:calc(100% - 6px - 2em);max-height:calc(100% - 6px - 2em);z-index:2147483647}",
     // With scripting, <noscript> holds its markup as raw text (HTML §13.2):
     // never shown.
     "@media (scripting:enabled){noscript{display:none!important}}",
@@ -2169,9 +2175,40 @@ pub fn finish_with(
         base_scope,
         sheet_ids,
         sheets_checked: None,
+        pictures_scanned: 0,
     })
 }
 impl Page {
+    /// The pictures its styles name (`background-image`, `mask-image`, as
+    /// computed: through `var()`, inline styles, rules scripts added) that
+    /// it has none of, taken as late ones (`bind_late` fetches and binds
+    /// them): whether any came. Looked for once per style tree.
+    pub fn note_pictures(&mut self) -> bool {
+        let styles = self.scene.layout().cache().tree().styles().clone();
+        let at = Arc::as_ptr(&styles) as usize;
+        if at == self.pictures_scanned {
+            return false;
+        }
+        self.pictures_scanned = at;
+        let mut added = false;
+        for (_, style) in styles.iter() {
+            for property in [css::properties::Property::BackgroundImage, css::properties::Property::MaskImage] {
+                let style::Value::Images(images) = style.value(property) else { continue };
+                for image in images.0.iter().flatten() {
+                    let css::properties::Image::Url(url) = image else { continue };
+                    if self.images.as_ref().is_some_and(|set| set.background(url).is_some()) || self.late.iter().any(|l| matches!(l, Late::Background(u, _) if u == url)) {
+                        continue;
+                    }
+                    if self.late.len() >= BACKGROUND_IMAGES {
+                        return added;
+                    }
+                    self.late.push(Late::Background(url.clone(), self.base_href.clone()));
+                    added = true;
+                }
+            }
+        }
+        added
+    }
     /// Whether it shows without pictures still on their way.
     pub fn has_late_images(&self) -> bool {
         !self.late.is_empty()
@@ -2336,10 +2373,18 @@ impl Page {
         // waiting, see `PENDING`): looked at again at the next render.
         let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel).inspect_err(|_| self.sheets_checked = None)?;
         sheets.extend(loaded);
-        let (rules, dependent, faces, _) = match wake {
+        let (rules, dependent, faces, backgrounds) = match wake {
             Some(wake) => compile_in_background(&sheets, self.media, wake).inspect_err(|_| self.sheets_checked = None)?,
             None => compile(&sheets, self.media, cancel)?,
         };
+        // The pictures the new rules name (backgrounds, masks) that it has
+        // none of: fetched and bound as late ones are (`bind_late`).
+        for (url, sheet_base) in backgrounds.iter().take(BACKGROUND_IMAGES) {
+            let had = self.images.as_ref().is_some_and(|set| set.background(url).is_some());
+            if !had && !self.late.iter().any(|l| matches!(l, Late::Background(u, _) if u == url)) {
+                self.late.push(Late::Background(url.clone(), sheet_base.as_deref().map(str::to_owned).or_else(|| base.clone())));
+            }
+        }
         let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel).inspect_err(|_| self.sheets_checked = None)?;
         self.rules = rules;
         self.media_dependent = dependent;

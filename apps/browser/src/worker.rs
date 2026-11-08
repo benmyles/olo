@@ -1349,7 +1349,16 @@ fn render(
                     }
                 }
                 match c.page.refresh(&doc, Some(&cancel), &mut resource, Some(&wake)) {
-                    Ok(true) if olo_web::env_on!("OLO_BROWSER_TIMING") => eprintln!("  live render: stylesheets changed, rules remade"),
+                    Ok(true) => {
+                        if olo_web::env_on!("OLO_BROWSER_TIMING") {
+                            eprintln!("  live render: stylesheets changed, rules remade");
+                        }
+                        // Pictures its new rules name: looked for at once.
+                        if c.page.has_late_images() {
+                            live.late_check = true;
+                            live.render_again = true;
+                        }
+                    }
                     Ok(_) => {}
                     // A sheet still loading: this render with the sheets as
                     // they were, the next once it lands.
@@ -1403,6 +1412,11 @@ fn render(
             if !swapped {
                 c.page.set_time(now_ms);
                 c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&cancel), |_, _| {})?;
+                // Pictures its styles now name that it has none of: fetched.
+                if c.page.note_pictures() {
+                    live.late_check = true;
+                    live.render_again = true;
+                }
             } else if olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!("  live: new pictures swapped in");
             }
@@ -1845,7 +1859,10 @@ fn render(
         let host = PageHost::new(prepared.scope(), &r.key);
         let mut prepared = prepared;
         prepared.bind_images(std::mem::take(&mut canvas_slot), Some(&r.cancel))?;
-        let page = page::finish_with(prepared, &host, shaper, painter, viewport, Some(&r.cancel), layout_slot.as_deref(), &mut report)?;
+        let mut page = page::finish_with(prepared, &host, shaper, painter, viewport, Some(&r.cancel), layout_slot.as_deref(), &mut report)?;
+        // Pictures its computed styles name that preparation didn't find
+        // (through `var()`): late ones, fetched by its live render.
+        page.note_pictures();
         let origin = document.as_ref().map(|d| d.url.clone()).unwrap_or(url::Url::parse("about:engine")?);
         let base = page.base_href.as_deref().and_then(|href| origin.join(href).ok()).unwrap_or_else(|| origin.clone());
         eprintln!("Browser: {} page ready {:.0} ms after the request", if pass == Pass::Scripted { "scripted" } else { "static" }, loaded_at.elapsed().as_secs_f64() * 1000.);

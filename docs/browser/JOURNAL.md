@@ -6849,3 +6849,14 @@ the Guardian and old Reddit, looking for pages that fail outright:
   keeps its room (300 × 150 by default); a video's poster shows until it
   plays, and `preload="none"` fetches nothing until then (the whole
   video was downloaded and its first frame shown over the poster).
+- **Dialogs and details.** A closed `<dialog>` is hidden (MDN's search
+  box showed open); `show()`, `showModal()` (`:modal`), `close()`,
+  `requestClose()` and `returnValue` work. A closed `<details>` shows its
+  first `<summary>` alone, whatever its content's own `display` (MDN's
+  Baseline panel showed open); a click on the summary opens or closes it,
+  `toggle` fired.
+- **Pictures named through `var()`** (MDN's icons: a `mask-image:
+  var(--icon)` whose `url()` is in a custom property) and pictures in
+  rules a live page adds are fetched: the computed styles are looked
+  through after each restyle, and what isn't bound is fetched as a late
+  picture.

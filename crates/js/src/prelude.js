@@ -275,6 +275,8 @@
   const started = new WeakSet();
   let inserts = 0;
   const fireOn = (el, type) => setTimeout(() => dispatch(el, new Event(type)), 0);
+  // Dialogs shown modally (their `:modal` state the engine's too).
+  const dialogModal = new WeakSet();
   const runScriptElement = (el) => {
     if (started.has(el)) return;
     started.add(el);
@@ -613,6 +615,13 @@
     getBoundingClientRect() { const r = N.rect(this); return r ? new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]) : new DOMRect(0, 0, 0, 0); },
     getClientRects() { const r = N.rect(this); return listOf(r ? [new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3])] : [], global.DOMRectList); },
     focus() { focusElement(this); }, blur() { if (activeElement === this) focusElement(null); }, select() { caretOf.set(this, this.value.length); }, setSelectionRange(a) { caretOf.set(this, Math.max(0, Math.min(Number(a) || 0, this.value.length))); }, scrollIntoView() {}, scrollTo(x, y) { if (typeof x === 'object' && x) { const o = N.scrollOffset(this); y = x.top ?? o[1]; x = x.left ?? o[0]; } scrollElement(this, Number(x) || 0, Number(y) || 0); }, scrollBy(x, y) { const o = N.scrollOffset(this); if (typeof x === 'object' && x) { y = x.top || 0; x = x.left || 0; } scrollElement(this, o[0] + (Number(x) || 0), o[1] + (Number(y) || 0)); }, scroll(x, y) { this.scrollTo(x, y); },
+    // <dialog>: shown (open), shown modally (`:modal`, over the page) and
+    // closed, with its `close` event and return value (HTML §4.11.4).
+    show() { if (N.nodeName(this) !== 'DIALOG' || N.attr(this, 'open') != null) return; this.setAttribute('open', ''); },
+    showModal() { if (N.nodeName(this) !== 'DIALOG') return; if (N.attr(this, 'open') != null) { if (dialogModal.has(this)) return; throw new DOMException('The dialog is already open', 'InvalidStateError'); } if (!this.isConnected) throw new DOMException('The dialog is not connected', 'InvalidStateError'); dialogModal.add(this); N.setModal(this, true); this.setAttribute('open', ''); const first = this.querySelector('[autofocus]') || this.querySelector('button, input, select, textarea, a[href], [tabindex]'); if (first && typeof first.focus === 'function') first.focus(); },
+    close(value) { if (N.nodeName(this) !== 'DIALOG' || N.attr(this, 'open') == null) return; if (value !== undefined) this._returnValue = String(value); this.removeAttribute('open'); if (dialogModal.delete(this)) N.setModal(this, false); fireOn(this, 'close'); },
+    requestClose(value) { if (N.nodeName(this) !== 'DIALOG' || N.attr(this, 'open') == null) return; const ev = new Event('cancel', { cancelable: true }); if (dispatch(this, ev) !== false && !ev.defaultPrevented) this.close(value); },
+    returnValue: { get() { return this._returnValue === undefined ? '' : this._returnValue; }, set(v) { this._returnValue = String(v); } },
     click() { const el = this; if (N.attr(el, 'disabled') != null && ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(N.nodeName(el))) return; activate(el, () => { const ev = Object.assign(new MouseEvent('click', { bubbles: true, cancelable: true }), { isTrusted: false }); dispatch(el, ev); return ev; }); },
     submit() { if (N.nodeName(this) === 'FORM') submitForm(this, null, false); }, reset() { if (N.nodeName(this) === 'FORM') for (const c of N.query(this, 'input,textarea', true)) N.setControlValue(c, N.nodeName(c) === 'TEXTAREA' ? N.textContent(c) : (N.attr(c, 'value') || '')); }, requestSubmit(submitter) { if (N.nodeName(this) === 'FORM') submitForm(this, submitter || null, true); }, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
     animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), global.document.timeline); if (options && typeof options === 'object' && options.id != null) a.id = String(options.id); a.play(); return a; },
@@ -1425,6 +1434,17 @@
     const ev = click();
     if (ev && ev.defaultPrevented) { if (toggle) N.setControlChecked(toggle, was); return; }
     if (toggle) { if (was !== N.controlChecked(toggle)) { dispatch(toggle, new Event('input', { bubbles: true, composed: true })); dispatch(toggle, new Event('change', { bubbles: true })); } return; }
+    // A <details>'s first <summary> (not a link or button in it): opens or
+    // closes it, `toggle` fired after (HTML §4.11.1).
+    const summary = target.closest && target.closest('summary');
+    if (summary && (!control || !summary.contains(control))) {
+      const details = N.parent(summary);
+      if (details && N.nodeName(details) === 'DETAILS' && N.childNodes(details).find((c) => N.nodeName(c) === 'SUMMARY') === summary) {
+        if (N.attr(details, 'open') != null) details.removeAttribute('open'); else details.setAttribute('open', '');
+        fireOn(details, 'toggle');
+        return;
+      }
+    }
     if (!control || N.attr(control, 'disabled') != null) return;
     const tag = N.nodeName(control);
     if (tag === 'LABEL') {

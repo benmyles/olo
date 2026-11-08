@@ -1825,6 +1825,7 @@ const NATIVES: &[&str] = &[
     "createFragment",
     "attachShadow",
     "setDefined",
+    "setModal",
     "shadowRootOf",
     "shadowRoots",
     "shadowHost",
@@ -2503,6 +2504,13 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             let roots = state.borrow().document.shadow_roots();
             let items: Vec<v8::Local<v8::Value>> = roots.into_iter().filter_map(|r| wrap(scope, &state, r)).map(Into::into).collect();
             rv.set(v8::Array::new_with_elements(scope, &items).into());
+        }
+        // setModal(element, modal): a dialog shown modally, or closed (`:modal`).
+        "setModal" => {
+            if let Some(n) = node(scope, 0) {
+                let modal = args.get(1).boolean_value(scope);
+                let _ = state.borrow_mut().document.set_modal(n, modal);
+            }
         }
         // setDefined(element): its definition upgraded it (`:defined`).
         "setDefined" => {

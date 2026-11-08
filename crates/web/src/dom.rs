@@ -382,6 +382,8 @@ pub struct Document {
     shadow_hosts: Arc<NodeMap<NodeId>>,
     /// Custom elements their definition has upgraded (`:defined`).
     defined: Arc<NodeSet>,
+    /// Dialogs shown modally (`showModal()`): what `:modal` matches.
+    modal: Arc<NodeSet>,
     /// The animations scripts made (`element.animate()`), in the order
     /// they were made: what the page samples over the CSS ones.
     script_animations: Arc<Vec<ScriptAnimation>>,
@@ -471,6 +473,7 @@ impl Document {
             shadows: Arc::new(Default::default()),
             shadow_hosts: Arc::new(Default::default()),
             defined: Arc::new(Default::default()),
+            modal: Arc::new(Default::default()),
             script_animations: Arc::new(Vec::new()),
             name_bytes: 0,
             limits,
@@ -928,6 +931,19 @@ impl Document {
             self.bump_with(Change::Node(node))?;
         }
         Ok(())
+    }
+    /// A dialog shown modally (`showModal()`), or no longer (`close()`).
+    pub fn set_modal(&mut self, node: NodeId, modal: bool) -> Result<()> {
+        self.resolve(node)?;
+        let changed = if modal { Arc::make_mut(&mut self.modal).insert(node) } else { Arc::make_mut(&mut self.modal).remove(&node) };
+        if changed {
+            self.bump_with(Change::Node(node))?;
+        }
+        Ok(())
+    }
+    /// Whether `:modal` matches: a dialog shown modally.
+    pub fn is_modal(&self, node: NodeId) -> Result<bool> {
+        Ok(self.modal.contains(&node))
     }
     /// Whether `:defined` matches: a built-in element, or a custom one
     /// (a name with a hyphen) its definition has upgraded (HTML §4.13.3).

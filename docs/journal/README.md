@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: MDN's header and Baseline as Chrome's
+
+*13:28* — MDN against Chrome (right): its closed search dialog hidden, its Baseline panel (a closed details) collapsed, and its icons drawn (masks named through var(), in its components' styles); the article lines up with Chrome's line for line.
+
+![Browser: MDN's header and Baseline as Chrome's](2026-11-08/132813-browser-mdn-s-header-and-baseline-as-chrome-s.png)
+
 ### Browser: Wikipedia's figures
 
 *13:15* — Wikipedia's 'Web browser' article against Chrome (right): its figures (display: table with a table-caption) are as wide as their pictures and the text wraps round them; they were a column one letter wide, and the article's next section was pushed out of sight.
