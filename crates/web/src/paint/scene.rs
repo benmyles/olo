@@ -219,6 +219,13 @@ pub struct Group {
     /// and its shadow (`filter` holds those before).
     pub after: Option<[f32; 20]>,
 }
+/// The hasher of tile signatures: foldhash's quality one, fixed (a
+/// signature is compared within the process), a fraction of SipHash's cost.
+pub type SignatureHasher = foldhash::quality::FoldHasher<'static>;
+pub fn signature_hasher() -> SignatureHasher {
+    use std::hash::BuildHasher;
+    foldhash::quality::FixedState::with_seed(0x6f6c_6f5f_7469_6c65).build_hasher()
+}
 /// A `drop-shadow()`: its offset and blur (CSS px; the blur a standard
 /// deviation, as Chrome takes it) and its colour.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -560,18 +567,18 @@ impl Scene {
         use std::hash::{Hash, Hasher};
         let mut parts = Vec::new();
         let tree = self.layout.cache().tree();
-        let mut h = std::hash::DefaultHasher::new();
+        let mut h = signature_hasher();
         self.base.hash(&mut h);
         self.canvas.hash(&mut h);
         self.layout.device_scale().to_bits().hash(&mut h);
         hits.len().hash(&mut h);
-        let rect = |r: Rect, h: &mut std::hash::DefaultHasher| {
+        let rect = |r: Rect, h: &mut SignatureHasher| {
             r.x.to_bits().hash(h);
             r.y.to_bits().hash(h);
             r.width.to_bits().hash(h);
             r.height.to_bits().hash(h);
         };
-        let matrix = |t: u32, h: &mut std::hash::DefaultHasher| {
+        let matrix = |t: u32, h: &mut SignatureHasher| {
             (t != NONE).hash(h);
             if t != NONE {
                 for v in self.transforms[t as usize] {
@@ -579,19 +586,19 @@ impl Scene {
                 }
             }
         };
-        let style_identity = |owner: BoxId, h: &mut std::hash::DefaultHasher| {
+        let style_identity = |owner: BoxId, h: &mut SignatureHasher| {
             if let Some(s) = tree.style(owner) {
                 s.identity().hash(h);
             }
         };
         let backgrounds = tree.images().map_or(0, |i| i.backgrounds_identity());
         let whole = h.finish();
-        let mut combined = std::hash::DefaultHasher::new();
+        let mut combined = signature_hasher();
         whole.hash(&mut combined);
         for &id in hits {
             check(cancel)?;
             let c = &self.commands[id as usize];
-            let mut h = std::hash::DefaultHasher::new();
+            let mut h = signature_hasher();
             let mut sub = [0u64; 5];
             rect(c.bounds, &mut h);
             sub[0] = h.clone().finish();
@@ -765,7 +772,7 @@ impl Scene {
     /// placed apart): a frame that only moves layers needs no tile looked at.
     pub fn paint_identity(&self) -> (usize, u64) {
         use std::hash::{Hash, Hasher};
-        let mut h = std::hash::DefaultHasher::new();
+        let mut h = signature_hasher();
         for m in self.transforms.iter() {
             for v in m {
                 v.to_bits().hash(&mut h);

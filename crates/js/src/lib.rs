@@ -1687,8 +1687,9 @@ fn class<'s>(
 fn install(scope: &mut v8::PinScope<'_, '_>, state: &Shared) -> Result<(), String> {
     let global = scope.get_current_context().global(scope);
     let natives = v8::Object::new(scope);
-    for name in NATIVES {
-        let data: v8::Local<v8::Value> = v8::String::new(scope, name).ok_or("string")?.into();
+    for (index, name) in NATIVES.iter().enumerate() {
+        // Its index names it (read at each call without a string made).
+        let data: v8::Local<v8::Value> = v8::Integer::new(scope, index as i32).into();
         let f = v8::FunctionTemplate::builder(native).data(data).build(scope);
         let f = f.get_function(scope).ok_or("function")?;
         let key = v8::String::new(scope, name).ok_or("string")?;
@@ -2051,11 +2052,15 @@ pub fn take_native_profile() -> Vec<(String, u64, f64)> {
     v.sort_by(|a, b| b.2.total_cmp(&a.2));
     v
 }
+/// The native a call is to: its index, as `install` gave it.
+fn native_name(args: &v8::FunctionCallbackArguments) -> &'static str {
+    args.data().try_cast::<v8::Integer>().ok().and_then(|i| NATIVES.get(i.value() as usize)).copied().unwrap_or("")
+}
 fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, rv: v8::ReturnValue) {
     if !native_profiling() {
         return native_inner(scope, args, rv);
     }
-    let name = args.data().to_rust_string_lossy(scope);
+    let name = native_name(&args).to_owned();
     let started = Instant::now();
     native_inner(scope, args, rv);
     let spent = started.elapsed().as_secs_f64();
@@ -2068,9 +2073,9 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, rv: v8:
 }
 fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
     let Some(state) = scope.get_slot::<Shared>().cloned() else { return };
-    let name = args.data().to_rust_string_lossy(scope);
+    let name = native_name(&args);
     let node = |scope: &mut v8::PinScope, i: i32| node_of(scope, args.get(i));
-    match name.as_str() {
+    match name {
         "nodeType" => {
             if let Some(n) = node(scope, 0) {
                 let t = state.borrow().document.node_type(n).ok();
@@ -2124,7 +2129,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 let related = {
                     let s = state.borrow();
                     let doc = &s.document;
-                    match name.as_str() {
+                    match name {
                         "parent" => doc.parent(n),
                         "firstChild" => doc.first_child(n),
                         "lastChild" => doc.last_child(n),
@@ -2371,7 +2376,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             let text = arg_string(scope, &args, 0);
             let created = {
                 let mut s = state.borrow_mut();
-                match name.as_str() {
+                match name {
                     "createText" => s.document.create_text(text).ok(),
                     "createComment" => s.document.create_comment(text).ok(),
                     _ => s.document.create_fragment().ok(),
@@ -2715,7 +2720,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         "rect" | "paddingRect" | "scrollSize" => {
             if let Some(n) = node(scope, 0) {
                 let mut s = state.borrow_mut();
-                let kind = name.as_str();
+                let kind = name;
                 let mut values = s.measured().and_then(|m| match kind {
                     "rect" => m.border_box(n).map(|r| [r.x, r.y, r.width, r.height]),
                     "paddingRect" => m.padding_box(n).map(|r| [r.x, r.y, r.width, r.height]),

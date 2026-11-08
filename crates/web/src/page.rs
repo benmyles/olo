@@ -803,9 +803,20 @@ impl Measured {
             // holds.
             let mut out = vec![false; n];
             let mut clips = vec![false; n];
+            // Each box's coordinate origin (its parent's content box on the
+            // page), carried down: boxes are in preorder, parents first, so
+            // one pass places them all (`bounds` walks the ancestors of one).
+            let mut origin = vec![(0f64, 0f64); n];
             let (mut right, mut bottom) = (self.viewport.width, self.viewport.height);
             for (id, b) in tree.iter() {
                 let i = id.index();
+                if let Some(p) = b.parent
+                    && let Some(pg) = self.layout.geometry(p)
+                {
+                    let c = pg.content_box();
+                    let at = origin[p.index()];
+                    origin[i] = (at.0 + c.x, at.1 + c.y);
+                }
                 let style = tree.style(id);
                 let fixed = style.is_some_and(|s| matches!(s.value(P::Position), Value::Keyword(K::Fixed)));
                 out[i] = fixed || b.parent.is_some_and(|p| out[p.index()] || clips[p.index()]);
@@ -816,9 +827,10 @@ impl Measured {
                 if out[i] || b.parent.is_none() {
                     continue;
                 }
-                if let (Some(r), Some(g)) = (self.layout.bounds(id), self.layout.geometry(id)) {
-                    right = right.max(r.x + r.width + g.margin.right.max(0.));
-                    bottom = bottom.max(r.y + r.height + g.margin.bottom.max(0.));
+                if let Some(g) = self.layout.geometry(id) {
+                    let r = g.border_box;
+                    right = right.max(origin[i].0 + r.x + r.width + g.margin.right.max(0.));
+                    bottom = bottom.max(origin[i].1 + r.y + r.height + g.margin.bottom.max(0.));
                 }
             }
             (right, bottom)

@@ -110,7 +110,7 @@ impl FocusTargets {
         self.positions.get(&node).copied()
     }
 }
-pub fn focus_targets(page: &page::Page, base: &Url, origin: &Url, cache: &mut HashMap<NodeId, Option<Arc<Link>>>, cancel: &AtomicBool) -> page::Result<Arc<FocusTargets>> {
+pub fn focus_targets(page: &page::Page, base: &Url, origin: &Url, cache: &mut olo_web::dom::NodeMap<Option<Arc<Link>>>, cancel: &AtomicBool) -> page::Result<Arc<FocusTargets>> {
     let mut targets: HashMap<NodeId, FocusTarget> = HashMap::new();
     for (i, _) in page.scene.commands().iter().enumerate() {
         check(cancel)?;
@@ -197,7 +197,7 @@ mod tests {
         let mut painter = paint::Engine::default();
         let page=page::load(Arc::from("<!doctype html><style>body{margin:0}p{height:200px}</style><a href=zero>Z</a><a href=two tabindex='2junk'>B</a><a href=one tabindex=1>A</a><a href=skip tabindex=-1>S</a><div inert><a href=inert>I</a></div><a hidden href=hidden>H</a><p></p><a href=offscreen>O</a>"),&host,&scope,&mut shaper,&mut painter,layout::Viewport{width:200.,height:100.,scale:1.},None,|_,_|{}).unwrap();
         let origin = Url::parse("https://example.test/").unwrap();
-        let targets = focus_targets(&page, &origin, &origin, &mut HashMap::new(), &AtomicBool::new(false)).unwrap();
+        let targets = focus_targets(&page, &origin, &origin, &mut Default::default(), &AtomicBool::new(false)).unwrap();
         let urls: Vec<_> = targets.iter().map(|t| t.link.url.as_ref()).collect();
         assert_eq!(urls, ["https://example.test/one", "https://example.test/two", "https://example.test/zero", "https://example.test/offscreen"]);
         assert!(targets.last().unwrap().rect.y > 100.);
@@ -221,7 +221,7 @@ mod tests {
                     .unwrap();
             let mut samples = Vec::new();
             for _ in 0..31 {
-                let mut cache = HashMap::new();
+                let mut cache = olo_web::dom::NodeMap::default();
                 let start = std::time::Instant::now();
                 let targets = focus_targets(&page, &origin, &origin, &mut cache, &cancel).unwrap();
                 samples.push(start.elapsed().as_secs_f64() * 1e6);

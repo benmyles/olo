@@ -552,6 +552,9 @@ fn frame_period_ms(live: &Live) -> f64 {
 /// display frame (60 Hz), so animations are as smooth as the page draws
 /// them (at 100 ms they showed at 10 frames a second and stuttered).
 const FRAME: Duration = Duration::from_micros(16_667);
+/// A map by (stratum, tile x, tile y), on the fast hasher: looked up for
+/// every tile of every frame.
+type TileMap<V> = HashMap<(usize, i32, i32), V, std::hash::BuildHasherDefault<olo_web::dom::NodeHasher>>;
 struct Cached {
     key: Key,
     page: page::Page,
@@ -569,7 +572,7 @@ struct Cached {
     viewport_dependent: bool,
     origin: url::Url,
     base: url::Url,
-    links: HashMap<olo_web::dom::NodeId, Option<Arc<crate::links::Link>>>,
+    links: olo_web::dom::NodeMap<Option<Arc<crate::links::Link>>>,
     /// The scene and document revision the focus targets were found in.
     targets_scene: Option<Arc<olo_web::paint::Scene>>,
     targets_revision: u64,
@@ -581,7 +584,7 @@ struct Cached {
     /// The last scene's paint identity (and size) and its tiles'
     /// signatures, by stratum and place.
     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
-    tile_signatures: HashMap<(usize, i32, i32), Option<u64>>,
+    tile_signatures: TileMap<Option<u64>>,
     navigation: u64,
     focus_targets: Option<Arc<crate::navigation::FocusTargets>>,
     anchor_scroll: Option<f64>,
@@ -796,8 +799,12 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                         proxy.send(Reply::History(r.id, change));
                                     }
                                 }
-                                if live.realm.revision() != live.rendered {
-                                    // What the person did shows at once, not at the next frame.
+                                // What the person did shows at once, not at the next
+                                // frame; but a scroll moves the page in the window
+                                // already, and what the page's scripts do on it shows
+                                // at the next frame (as Chrome's): a wheel turned
+                                // rendered the page an extra time a notch.
+                                if live.realm.revision() != live.rendered && !matches!(input.kind, olo_js::InputKind::Scroll) {
                                     live.next_due_ms = Some(0.);
                                     live.next_frame_ms = 0.;
                                 }
@@ -1644,14 +1651,14 @@ fn render(
             viewport_dependent: host.viewport_used.get(),
             origin,
             base,
-            links: HashMap::new(),
+            links: Default::default(),
             navigation: 0,
             focus_targets: None,
             targets_scene: None,
             targets_revision: 0,
             label_cache: None,
             paint_identity: None,
-            tile_signatures: HashMap::new(),
+            tile_signatures: Default::default(),
             anchor_scroll: None,
         });
         cache.clear();
@@ -1836,7 +1843,7 @@ fn render(
             }
         }
         let mut labels = Vec::new();
-        let mut hidden_cache: HashMap<olo_web::dom::NodeId, bool> = HashMap::new();
+        let mut hidden_cache: olo_web::dom::NodeMap<bool> = Default::default();
         for (id, fixed, sticky, offset) in hits
             .into_iter()
             .map(|id| (id, false, None, [0., 0.]))
@@ -1924,7 +1931,7 @@ fn render(
     let identity = (scene.paint_identity(), r.key.width, r.key.height, scene.device_scale().to_bits());
     let same_paint = cached.paint_identity == Some(identity);
     let previous_signatures = std::mem::take(&mut cached.tile_signatures);
-    let mut signatures: HashMap<(usize, i32, i32), Option<u64>> = HashMap::with_capacity(previous_signatures.len());
+    let mut signatures: TileMap<Option<u64>> = TileMap::with_capacity_and_hasher(previous_signatures.len(), Default::default());
     let backdrop_boxes = backdrop_boxes(scene.layout(), scale);
     for (si, stratum) in scene.strata().iter().enumerate() {
         if let paint::LayerKind::Surface(_) = stratum.kind {
@@ -2122,7 +2129,7 @@ fn render(
                         None => {
                             let (signature, any) = scene.stratum_tile_signature(si, tile_rect, Some(&r.cancel))?;
                             use std::hash::{Hash, Hasher};
-                            let mut h = std::hash::DefaultHasher::new();
+                            let mut h = olo_web::paint::signature_hasher();
                             (signature, si).hash(&mut h);
                             (si == 0 || any).then(|| h.finish())
                         }
@@ -2352,7 +2359,7 @@ impl Host for PageHost {
 /// `<a aria-label="Store">` holding an aria-hidden SVG of the word).
 /// Whether a node is inside an `aria-hidden="true"` element (asked per
 /// node; the answers for ancestors kept in `cache`).
-fn aria_hidden(doc: &olo_web::dom::Document, node: olo_web::dom::NodeId, cache: &mut HashMap<olo_web::dom::NodeId, bool>) -> bool {
+fn aria_hidden(doc: &olo_web::dom::Document, node: olo_web::dom::NodeId, cache: &mut olo_web::dom::NodeMap<bool>) -> bool {
     let mut path = Vec::new();
     let mut at = Some(node);
     let mut found = false;

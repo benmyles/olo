@@ -11,7 +11,7 @@ pub struct Link {
     pub url: olo_ui::gpui::SharedString,
     pub blocked: Option<&'static str>,
 }
-pub fn resolve(doc: &Document, node: NodeId, base: &Url, origin: &Url, cache: &mut HashMap<NodeId, Option<Arc<Link>>>) -> page::Result<Option<Arc<Link>>> {
+pub fn resolve(doc: &Document, node: NodeId, base: &Url, origin: &Url, cache: &mut olo_web::dom::NodeMap<Option<Arc<Link>>>) -> page::Result<Option<Arc<Link>>> {
     let mut path = Vec::new();
     let mut at = Some(node);
     let found = loop {
@@ -76,7 +76,7 @@ mod tests {
         let doc=html::parse(Arc::from("<!doctype html><a href='../next?q=1#part'><span id=child>follow</span></a><a id=http href='http://example.test/'>downgrade navigation</a><a id=file href='file:///etc/passwd'>file</a><a id=js href='javascript:alert(1)'>script</a><a id=credentials href='https://name:secret@example.test/'>secret</a><a id=download download href=x>download</a><a id=window target=_blank href=x>window</a><div id=none>plain</div>"),Default::default(),None).unwrap().document;
         let origin = Url::parse("https://example.test/dir/page").unwrap();
         let base = origin.join("/assets/deep/").unwrap();
-        let mut cache = HashMap::new();
+        let mut cache = olo_web::dom::NodeMap::default();
         let child = find(&doc, "child");
         let link = resolve(&doc, child, &base, &origin, &mut cache).unwrap().unwrap();
         assert_eq!(link.url, "https://example.test/assets/next?q=1#part");

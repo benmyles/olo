@@ -74,6 +74,9 @@ brotli-decompressor = { version = "6", default-features = false, features = ["st
 flate2 = "1"
 # Subresource Integrity: a linked sheet's digest.
 sha2 = "0.10"
+# Tile signatures: a fast hash of good quality (SipHash was a few percent of
+# a frame).
+foldhash = "0.2"
 
 [dev-dependencies]
 serde_json.workspace = true
