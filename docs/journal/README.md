@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: GitHub's file list
+
+*22:49* — rust-lang/rust in Olo: the commits load (IndexedDB fails as events), fixed table columns with the dates, continuous row lines, messages cut with an ellipsis.
+
+![Browser: GitHub's file list](2026-11-07/224906-browser-github-s-file-list.png)
+
 ### Browser: inline backgrounds
 
 *22:23* — Olo (left) and Chrome (right): code with padding, mark, a highlight wrapping two lines, a bigger code.

@@ -27,7 +27,7 @@ GitHub's homepage, open (seen against Chrome at 1000 × 700):
 - [x] Flex `order`, row and column (its header's menu button sat left).
 - [ ] CSS animations and transitions: `animation`, `@keyframes` (207
   rules), `transition` are not parsed; also `outline`,
-  `text-overflow`, `appearance`, `filter`, `backdrop-filter`
+  `appearance`, `filter`, `backdrop-filter`
   (`text-transform` and `text-box` done).
 - [ ] Load cost: its first 12 s cost Olo about 2.4 CPU s and Chrome about
   1.3-1.9 (scripts 1.2 s, the scripts' first full style 45 ms each time
@@ -71,6 +71,15 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
 - [x] `background-clip: text` (apple.com's gradient subhead), on block
   boxes. Open: on an inline box, and comma-separated `background-clip`
   lists.
+- [ ] Shadow DOM: a shadow root is a detached fragment, never rendered
+  (GitHub's `<relative-time>` shows its fallback date, not "last week";
+  web components generally). Render the composed tree: the shadow root's
+  content in the host's place, slots taking their assigned children,
+  its sheets scoped (`:host`, `::slotted`).
+- [x] GitHub's repository page: the file list's commits (IndexedDB
+  requests now fail as events, so its query cache runs), its columns
+  (`table-layout: fixed`), its row lines (cells fill their row),
+  `text-overflow: ellipsis`, the README's dark logo.
 - [x] apple.com scrolled through: lazy pictures load (images a script
   inserts, `<picture>` sources changed, `noscript.innerHTML` as text),
   no touch handlers (it served the tablet page), inline-level absolute

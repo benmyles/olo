@@ -6352,3 +6352,12 @@ journal).
   breaks): each line's piece of the box's content area, grown by its
   padding and by the paddings of boxes inside it at its edges. A test
   page matches Chrome.
+- **GitHub's repository page** (rust-lang/rust, dark). Its file list had
+  loading placeholders for every commit: its query cache opens IndexedDB
+  first and listened for the request's `error` event, which the stub
+  never fired. Then its columns: `table-layout: fixed` wasn't there (the
+  dates were pushed out); then its row lines (a middle-aligned cell's box
+  moved instead of its content); then `text-overflow: ellipsis` (the
+  messages end in "…" now). Its README logo came light on dark: the realm
+  chose picture sources for a light page. Its `<relative-time>` dates
+  need shadow DOM (TODO).

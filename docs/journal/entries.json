@@ -3922,5 +3922,11 @@
   "title": "Browser: inline backgrounds",
   "caption": "Olo (left) and Chrome (right): code with padding, mark, a highlight wrapping two lines, a bigger code.",
   "image": "2026-11-07/222333-browser-inline-backgrounds.png"
+ },
+ {
+  "time": "2026-11-07T22:49:06",
+  "title": "Browser: GitHub's file list",
+  "caption": "rust-lang/rust in Olo: the commits load (IndexedDB fails as events), fixed table columns with the dates, continuous row lines, messages cut with an ellipsis.",
+  "image": "2026-11-07/224906-browser-github-s-file-list.png"
  }
 ]
