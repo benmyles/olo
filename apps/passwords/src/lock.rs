@@ -4,7 +4,9 @@
 //! `olo_system::face`: olo-faced looks, once each time the window takes
 //! the keyboard), or the account password (PAM), each on a thread. The
 //! sensor, the key and the camera are waited on only while the locked
-//! window has the keyboard, so none is held from sudo or the lock screen.
+//! window has the keyboard, so none is held from sudo or the lock screen,
+//! and only in front of the computer (`olo_system::env::readers_here`:
+//! not in a test session or on an agent's screen).
 
 use olo_system::{auth, fingerprint};
 use olo_ui::Proxy;
@@ -51,7 +53,7 @@ pub struct Lock {
 
 impl Lock {
     pub fn new(proxy: Proxy, locked: bool) -> Lock {
-        let finger = if std::env::var_os("OLO_NO_FINGERPRINT").is_some() { Finger::Off } else { Finger::Idle };
+        let finger = if olo_system::env::finger_here() { Finger::Idle } else { Finger::Off };
         Lock { locked, password: String::new(), checking: false, error: None, finger, stop: None, key: None, key_note: None, looked: false, user: auth::current_user().unwrap_or_default(), proxy }
     }
 
@@ -75,7 +77,7 @@ impl Lock {
             _ => {}
         }
         match (focused && self.locked, &self.key) {
-            (true, None) => self.wait_for_key(),
+            (true, None) if olo_system::env::key_here() => self.wait_for_key(),
             (false, Some(_)) => {
                 self.key = None;
                 self.key_note = None;
@@ -84,7 +86,7 @@ impl Lock {
         }
         // A look, once each time it takes the keyboard (the camera's
         // light isn't on and off as the window is).
-        if focused && self.locked && !self.looked {
+        if focused && self.locked && !self.looked && olo_system::env::face_here() {
             self.looked = true;
             let proxy = self.proxy.clone();
             std::thread::Builder::new().name("face".into()).spawn(move || proxy.send(LockMsg::Face(olo_system::face::verify(3000)))).expect("thread");

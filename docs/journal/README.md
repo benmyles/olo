@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Passwords: a terminal's op or ssh allowed with a touch or a look
+
+*03:14* — The Allow alert for a terminal session's op, or its first SSH signature, now says what else allows it (Touch ID, a security key set up, face unlock) and waits for it while open: a touch here took it away and op went on. Shown at 2× with a test's soft key.
+
+![Passwords: a terminal's op or ssh allowed with a touch or a look](2026-11-08/031430-passwords-a-terminal-s-op-or-ssh-allowed-with-a-.png)
+
 ### The overview: windows dragged between workspaces, and New Workspace
 
 *02:55* — In the overview (⌃Space) a window dragged onto another workspace's pane goes there, and onto New Workspace (the strip at the side) to an empty one, made if every one has windows; the overview stays out and lays itself out again. A click on New Workspace shows an empty one.

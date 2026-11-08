@@ -111,9 +111,12 @@ struct Auth {
 
 impl Auth {
     /// Wait for a touch of a key set up, while the identity chosen is the
-    /// person's own.
+    /// person's own (and not where nobody sits at the computer).
     fn wait_for_key(&mut self, cx: &mut Context<Self>) {
         self.key = None;
+        if !olo_system::env::key_here() {
+            return;
+        }
         let me = olo_system::auth::current_user();
         let (Some(me), Some(window)) = (me, self.window) else { return };
         if self.users.get(self.user).map(|u| u.as_ref()) != Some(me.as_str()) {

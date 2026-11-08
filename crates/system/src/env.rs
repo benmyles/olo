@@ -40,6 +40,36 @@ pub fn at_the_computer() -> bool {
     std::env::var_os("OLO_REAL_SESSION").is_some() && std::env::var_os("OLO_SCREEN").is_none()
 }
 
+/// Whether the person's fingerprint reader, security key and camera are
+/// for this program to wait on: only in front of the computer
+/// ([`at_the_computer`], asked once). A test session's or an agent
+/// screen's lock, or Passwords there, leaves them alone (an agent's
+/// screen that locked itself looked for the person's face whenever the
+/// agent moved its pointer, 2026-11-07). A test's own fake key or face
+/// service counts anywhere: [`key_here`], [`face_here`].
+pub fn readers_here() -> bool {
+    static HERE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HERE.get_or_init(at_the_computer)
+}
+
+/// Whether to wait for a security key's touch: [`readers_here`], or a
+/// test's soft key (`OLO_FIDO_SOFT`, debug builds' only).
+pub fn key_here() -> bool {
+    readers_here() || std::env::var_os("OLO_FIDO_SOFT").is_some()
+}
+
+/// Whether to look for the person's face: [`readers_here`], or a test's
+/// own face service (`OLO_FACE_BUS`).
+pub fn face_here() -> bool {
+    readers_here() || std::env::var_os("OLO_FACE_BUS").is_some()
+}
+
+/// Whether to listen for a finger: [`readers_here`], unless
+/// `OLO_NO_FINGERPRINT` (fprintd has no stand-in to test with).
+pub fn finger_here() -> bool {
+    readers_here() && std::env::var_os("OLO_NO_FINGERPRINT").is_none()
+}
+
 /// Where programs keep their temporary files (`TMPDIR`, and `TMP` and
 /// `TEMP` some read instead): on disk, not /tmp (Ben, 2026-11-05: "/tmp is
 /// often in memory and not a good place for apps to use as temp"). Olo

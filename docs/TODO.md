@@ -20,10 +20,6 @@ something nobody here has is in "Blocked", with what it waits for.
 Leftovers found in finished entries (2026-11-08 audit: each checked
 against the code, still not there):
 
-- **Passwords' SSH agent: allow with a touch or a look** (its "Left",
-  done 2026-11-05): the Allow for a terminal session's first signature
-  also answered by a security key's touch or face unlock, as unlocking
-  is.
 - **Telegram: record voice notes; animated stickers move** (its "Not
   yet", done 2026-10-29): hold to record a voice note (Opus, in
   process), and animated stickers (Lottie, WebM) play, not just their
@@ -2356,6 +2352,14 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Passwords' SSH agent: allow with a touch or a look**~~ (its "Left",
+  2026-11-05). *Done* (2026-11-08): the Allow alert for a terminal
+  session's `op` or first signature is answered too by Touch ID, a
+  touch of a security key set up, or a look, waited for while it's open,
+  and says so; and Passwords' lock, Terminal's sudo and the polkit agent
+  no longer wait on the person's reader, key or camera from a test
+  session or an agent's screen.
 
 - ~~**The overview: drag a window to another workspace; add a
   workspace**~~ (its "Not yet", 2026-10-28). *Done* (2026-11-08): a

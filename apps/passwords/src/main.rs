@@ -9,6 +9,7 @@
 //! the alerts are views of their own that read it.
 
 mod agent;
+mod allow;
 mod cli;
 mod edit;
 mod generator;
@@ -163,10 +164,28 @@ fn remove_message(removed: &[Linked]) -> String {
 }
 
 /// Whether app_server approves requests without asking (Deskbar's key),
-/// for `ask_approval`.
+/// for `ask_approval`, and what else could allow a session's `op`.
 struct Approval {
     about: Option<cli::Session>,
     on: bool,
+    ways: allow::Ways,
+}
+
+/// A terminal session's Allow alert, open: its window (once it's
+/// opened), the touch, finger or look also waited for, and what's said
+/// when one of them allows it.
+struct Allowing {
+    window: Option<WindowHandle<Frame>>,
+    _waits: allow::Waits,
+    command: String,
+    ssh: bool,
+}
+
+/// Said in a notification that makes no sound.
+fn quietly(n: &Notifier, title: &str, body: String) {
+    let mut note = Note::new(title).body(body);
+    note.silent = true;
+    n.show(None, note);
 }
 
 /// Asked of app_server, off the UI thread.
@@ -176,14 +195,19 @@ fn approving_without_asking() -> bool {
     matches!(status, Some(olo_protocol::Reply::Power { status }) if status.auto_approve_until.is_some_and(|t| t > now))
 }
 
-/// The question for letting `op` use the passwords.
-fn allow_message(a: &cli::Asker, ssh: bool) -> String {
+/// The question for letting `op` use the passwords, with what else
+/// allows it (`ways`: a touch, a finger, a look).
+fn allow_message(a: &cli::Asker, ssh: bool, ways: Option<String>) -> String {
     let what = if ssh { "sign in with your SSH keys" } else { "use your passwords" };
     let mut m = format!("Allow “{}” to {what}?", a.command);
     match (&a.parent, &a.cwd) {
         (Some(p), Some(d)) => m.push_str(&format!(" It was run by {p} in {d}.")),
         (Some(p), None) => m.push_str(&format!(" It was run by {p}.")),
         _ => {}
+    }
+    if let Some(ways) = ways {
+        m.push(' ');
+        m.push_str(&ways);
     }
     m.push_str(" Other commands from the same terminal can then use them too, until Passwords locks or for 10 minutes after the last.");
     m
@@ -297,7 +321,7 @@ pub struct Passwords {
     parts: Option<Parts>,
     generator: Option<(WindowHandle<Frame>, Entity<GeneratorView>)>,
     /// The terminal sessions being asked about (an alert showing).
-    allow_shown: HashSet<cli::Session>,
+    allow_shown: HashMap<cli::Session, Allowing>,
     status: Notice,
     last_use: Instant,
     /// Just unlocked: the password field gives up the keyboard.
@@ -1134,6 +1158,21 @@ impl Passwords {
         }
     }
 
+    /// A touch, a finger or a look allowed a terminal session: its alert
+    /// goes, and a quiet notification says so.
+    fn allowed(&mut self, allow::Allowed { session, how }: allow::Allowed, cx: &mut Context<Self>) {
+        let Some(asked) = self.allow_shown.remove(&session) else { return };
+        tracing::info!(command = asked.command, how, "op allowed");
+        let what = if asked.ssh { "sign in with your SSH keys" } else { "use your passwords" };
+        quietly(&self.notifier, &format!("Allowed with {how}"), format!("“{}” can {what}.", asked.command));
+        if let Some(w) = asked.window {
+            cx.defer(move |cx| {
+                let _ = w.update(cx, |_, window, _| window.remove_window());
+            });
+        }
+        self.answer_cli(session, true, cx);
+    }
+
     /// The person allowed (or denied) a terminal session's `op`.
     fn answer_cli(&mut self, session: cli::Session, allow: bool, cx: &mut Context<Self>) {
         self.allow_shown.remove(&session);
@@ -1155,23 +1194,22 @@ impl Passwords {
     /// asking now, for the unlock (None) or `op` in `session`; `approval`
     /// goes on from the answer.
     fn ask_approval(&mut self, about: Option<cli::Session>) {
-        let shown = about.is_some_and(|s| self.allow_shown.contains(&s));
+        let shown = about.is_some_and(|s| self.allow_shown.contains_key(&s));
         if shown || !self.asking.insert(about) {
             return;
         }
-        let proxy = self.proxy.clone();
-        std::thread::spawn(move || proxy.send(Approval { about, on: approving_without_asking() }));
+        let (proxy, user) = (self.proxy.clone(), self.lock.user().to_owned());
+        std::thread::spawn(move || {
+            let on = approving_without_asking();
+            let ways = if about.is_some() && !on { allow::Ways::find(&user) } else { allow::Ways::default() };
+            proxy.send(Approval { about, on, ways })
+        });
     }
 
     /// Unlocked or allowed without asking, said in a quiet notification;
     /// else asked as usual.
-    fn approval(&mut self, Approval { about, on }: Approval, cx: &mut Context<Self>) {
+    fn approval(&mut self, Approval { about, on, ways }: Approval, cx: &mut Context<Self>) {
         self.asking.remove(&about);
-        let quietly = |n: &Notifier, title: &str, body: String| {
-            let mut note = Note::new(title).body(body);
-            note.silent = true;
-            n.show(None, note);
-        };
         match about {
             None if !self.lock.locked => self.serve_waiting(cx),
             None if self.waiting.is_empty() => {}
@@ -1195,10 +1233,21 @@ impl Passwords {
                     quietly(&self.notifier, "op allowed without asking", asker.command.clone());
                     self.answer_cli(session, true, cx);
                 } else {
-                    self.allow_shown.insert(session);
+                    // Allowed by its button, or by what unlocks Passwords.
+                    let message = allow_message(&asker, ssh, ways.sentence());
+                    let waits = allow::Waits::start(ways, self.lock.user(), session, &self.proxy);
+                    self.allow_shown.insert(session, Allowing { window: None, _waits: waits, command: asker.command, ssh });
                     let me = cx.entity();
-                    self.alert("Passwords", "warning", allow_message(&asker, ssh), &["Deny", "Allow"], cx, move |choice, cx| {
-                        me.update(cx, |a, cx| a.answer_cli(session, choice == Some(1), cx));
+                    cx.defer(move |cx| {
+                        let answer = me.clone();
+                        let window = open_alert(cx, "Passwords", "warning", &message, &["Deny", "Allow"], move |choice, cx| {
+                            answer.update(cx, |a, cx| a.answer_cli(session, choice == Some(1), cx));
+                        });
+                        // (Already allowed by a touch: it goes again.)
+                        let open = me.update(cx, |a, _| a.allow_shown.get_mut(&session).map(|a| a.window = window).is_some());
+                        if !open && let Some(w) = window {
+                            let _ = w.update(cx, |_, window, _| window.remove_window());
+                        }
                     });
                 }
             }
@@ -2249,6 +2298,10 @@ impl Passwords {
             Ok(incoming) => return self.keychain(*incoming, cx),
             Err(m) => m,
         };
+        let msg = match msg.downcast::<allow::Allowed>() {
+            Ok(a) => return self.allowed(*a, cx),
+            Err(m) => m,
+        };
         let msg = match msg.downcast::<Approval>() {
             Ok(a) => {
                 self.approval(*a, cx);
@@ -2611,7 +2664,7 @@ fn main() {
                 main: None,
                 parts: None,
                 generator: None,
-                allow_shown: HashSet::new(),
+                allow_shown: HashMap::new(),
                 status: Notice::default(),
                 last_use: Instant::now(),
                 unlocked: false,

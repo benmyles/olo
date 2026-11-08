@@ -438,7 +438,12 @@ impl Request {
 
     /// Wait for a touch of a security key set up (if one is plugged in),
     /// its answer coming to `proxy` as `Event::Key`.
+    /// Not where nobody sits at the computer (a test session, an agent's
+    /// screen): the key is the person's.
     pub fn wait_for_key(&mut self, proxy: Proxy) {
+        if !olo_system::env::key_here() {
+            return;
+        }
         let Some(user) = olo_system::auth::current_user() else { return };
         let (conn, p) = (self.conn, proxy.clone());
         self.key = Some(olo_fido::touch(user, move || p.send(Event::KeyWaiting(conn)), move |r| proxy.send(Event::Key(conn, r.map_err(|e| e.to_string())))));

@@ -6419,7 +6419,10 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   ("never"), with a PIN if `OLO_FIDO_SOFT_PIN` is set (eight tries); with
   the PAM stand-in (`OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE`, given to
   `tsession run` itself: it doesn't pass them on), `OLO_SUDO_REAL` and
-  `OLO_POLKIT_HELPER` the whole thing runs headless.
+  `OLO_POLKIT_HELPER` the whole thing runs headless. `cargo run -p
+  olo-fido --example soft-set-up [PASSWORD]` (with `OLO_FIDO_SOFT` and
+  the session's `XDG_CONFIG_HOME`) sets the soft key up as Preferences
+  does, sealing PASSWORD ("test"), for a window to wait on it.
 * **A key with a PIN**: setting it up asks for the PIN beside the
   password, once (Preferences knows from the key's info). `olo_fido::pin::
   token` gets a token for it (CTAP 2.1's with the make-credential
@@ -11230,7 +11233,10 @@ whatever its settings say: the "agent" screen once started its saver
 after an in-place restart and locked itself, 2026-11-07; it locks only
 when asked, `Request::Lock`, and its lock screen leaves the person's
 fingerprint reader, security key and camera alone, as everything
-outside their own session does: `olo_system::env::at_the_computer`),
+outside their own session does: `olo_system::env::readers_here`, from
+`at_the_computer`, which the lock screen, Passwords' lock and Allow
+alert, Terminal's sudo and the polkit agent all ask; Passwords' lock,
+sudo's and polkit's waits didn't until 2026-11-08),
 silent unless `--sound` (`PULSE_SERVER` pointed at nothing),
 without `DISPLAY` (X programs would show on the person's screen), and on
 a D-Bus session bus of its own (below, "A screen's own bus"). Screens
@@ -13026,6 +13032,24 @@ an alert names the command, the program that ran it and its folder, and
 Allow covers that terminal session (the caller's session id and
 terminal, from `/proc/PID/stat`) until Passwords locks or for 10 minutes
 after its last use (12 hours at most); Deny answers "not allowed".
+What unlocks Passwords allows it too (`apps/passwords/src/allow.rs`):
+Touch ID, a touch of a security key set up, or a look, each waited for
+on a thread of its own while the alert is open (the look once, up to
+3 s, as it opens; the sensor and the key 40 s at most, so an alert left
+open holds neither from sudo) and stopped as it's answered. What there
+is is found on the worker that asks app_server first (`Ways::find`:
+fprintd's and olo-faced's lists over D-Bus, the key's file and /sys;
+nothing asked of the sensor, key or camera themselves), and the alert
+says it ("To allow it, you can also touch your security key."). Allowed
+so, the alert goes, a quiet notification says how ("Allowed with Touch
+ID"), and the request goes on. None of the three where nobody sits at
+the computer (`olo_system::env::readers_here`: see Agent Screens); a test's soft
+key or face service (`key_here`, `face_here`) does. Tried headless: the
+soft key set up in the session (`cargo run -p olo-fido --example
+soft-set-up`), Passwords debug with it and the PAM stand-in; `op item
+list` showed the alert with the sentence, the key's touch 2.5 s later
+took it away and op printed the list; with a key that never touches,
+Allow still answered it and the key's wait ended with it.
 `op run` passes the values in the environment and masks them in the
 command's output (`<concealed by 1Password>`, `text::Masker`) unless
 `--no-masking`; `inject` writes files 0600. Commands that change items,
