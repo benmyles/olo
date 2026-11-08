@@ -7709,6 +7709,7 @@ version = "0.1.0"
 dependencies = [
  "avif-parse",
  "filmcraft-vp9",
+ "flate2",
  "half",
  "heifer",
  "image",
@@ -7718,6 +7719,8 @@ dependencies = [
  "olo-crash",
  "rav1d",
  "rust_h265",
+ "velato",
+ "vello_cpu 0.3.0",
 ]
 
 [[package]]
@@ -8473,6 +8476,7 @@ dependencies = [
  "grammers-mtsender",
  "grammers-session",
  "grammers-tl-types",
+ "olo-images",
  "olo-sync",
  "olo-system",
  "olo-xdg",
@@ -13831,6 +13835,17 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
+
+[[package]]
+name = "velato"
+version = "0.12.0"
+dependencies = [
+ "kurbo 0.13.1",
+ "peniko",
+ "serde",
+ "serde_json",
+ "serde_repr",
+]
 
 [[package]]
 name = "vello_common"

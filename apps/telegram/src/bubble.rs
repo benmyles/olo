@@ -1164,8 +1164,10 @@ fn paint_media(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, m: &Message
             }
         }
         Some(Media::Sticker { .. }) => match &pp.picture {
+            // At whole device pixels its own size: an animated sticker's
+            // frame is drawn that size (`stickers.rs`), one to one.
             Some(img) => {
-                let _ = window.paint_image(style::snap(window, r), Corners::default(), img.clone(), 0, false);
+                let _ = window.paint_image(style::snap_centred(window, r.center(), f32::from(r.size.width), f32::from(r.size.height)), Corners::default(), img.clone(), 0, false);
             }
             None => fill(window, r, px(8.0), look.text.opacity(0.06)),
         },

@@ -66,6 +66,7 @@ matroska-demuxer = { path = "vendor/matroska-demuxer" }
 blocking = { path = "vendor/blocking" }
 brush-interactive = { path = "vendor/brush-interactive" }
 rust_h265 = { path = "vendor/rust_h265" }
+velato = { path = "vendor/velato" }
 
 [profile.release]
 debug = "line-tables-only"

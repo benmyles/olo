@@ -1190,7 +1190,23 @@ against 93 and 68) and with threads (250 and 341 at four), and reading
 the range extensions too. Keep its
 dependencies permissive: zenavif / rav1d-safe were dropped for being
 AGPL. `OLO_SAMPLES=dir cargo test -p olo-images -- --ignored` decodes
-example.avif and example.heic from `dir`. Colour emoji are GPUI's text
+example.avif and example.heic from `dir`. Lottie animations
+(`olo_images::lottie`: Telegram's animated stickers, `.tgs`, gzipped
+Lottie JSON; `open` gives a `.tgs`'s first frame) are read by velato and
+drawn by vello_cpu (linebender's, pure Rust) through velato's
+`RenderSink`, a frame at a time at the size asked by a `Painter` that
+keeps its buffers; reading and drawing each `catch_unwind` (the files
+are anyone's), and a file over 16 MB unpacked isn't read. velato as
+released read 11 of Telegram Desktop's 52 animations (its `todo!()` on
+a transform with no rotation, 24 of them; a position it required, 17),
+and drew NaN for every frame landing on a property's last keyframe (0/0
+for its weight), each costing vello_cpu milliseconds to draw nothing:
+vendored with those fixed (vendor/README.md), it reads all 52, and they
+draw at 0.50 ms a frame on average at 336 pixels, 4.5 ms at worst
+(rlottie isn't here to compare against; each looked right on a contact
+sheet, Telegram's white line icons on grey). `lottie::HEART` is Olo's
+own (a heart that beats, a trimmed ring round it): the demo's sticker
+and the tests'. Colour emoji are GPUI's text
 system's, drawn with the text; `olo-emoji` (`crates/emoji`) finds and
 paints clusters itself where that's wanted (Telegram's messages of
 emoji alone, shown big): it shapes with harfrust and paints COLRv0/v1
@@ -1675,7 +1691,11 @@ event reaches it.
   when it emits `Entered`), scrolled to keep the caret in view, each
   line's baseline on a device pixel; its owner sizes it from
   `rows_at(window, width)` and `TextField::line_height_for` (Telegram's
-  composer). ⌘↑ and ⌘↓ are left to the window's menu.
+  composer). Its hint is drawn as its first row of text is (GPUI's line
+  in the row's height), so the first letter typed lands where the hint
+  was (drawn as a label it sat a device pixel higher at 1.5×, and the
+  review found its line cut by the field's top). ⌘↑ and ⌘↓ are left to
+  the window's menu.
 - `widgets::find_bar` (with `find_said`): Find's bar over what it
   searches, a band as a tool bar is, the field's text under the menu
   bar's first title, how many it found ("3 of 90", "Not found",
@@ -3937,7 +3957,9 @@ recorded otherwise.
     the viewport, or the viewport with its frame and bar, not any clip
     with a scroll view somewhere in it), `overlap` (two controls over each other,
     neither inside the other), `text-outside` and `text-cut` (text past
-    the window, or cut off: give it room or `style::fit` it),
+    the window, or cut off: give it room or `style::fit` it; it says how
+    much shows across, and the line's and its clip's tops and bottoms,
+    for a line cut above or below),
     `text-over-text`, `overflow` (anything that starts in a box or a tab
     view's pane and runs past its inset, bottom or right: a tab's
     content under the panel's Defaults, a long check box into its box's
@@ -13554,7 +13576,27 @@ A Telegram client of Olo's own: MTProto in process through grammers
   second of the composer alone, 0.69 ms each). The file, parsed (each
   page's CRC) and decoded again: 11.23 s, 20 kb/s, lined up with the
   speech to the sample at 5.6 dB, what the encoder gives (below).
-* **Not yet**: animated stickers show their first frame.
+* **Animated stickers** (`stickers.rs`): a Lottie one's whole file is
+  fetched when it's first drawn, read once on a worker, and drawn there
+  a frame at a time at the size the bubble shows it (`snap_centred`'s
+  device pixels, one to one); each frame is drawn into the conversation
+  as it comes, and the next asked for at its time by a timer (nothing
+  polled; several playing still draw the conversation once a display
+  frame, GPUI drawing what was notified at its next frame). It plays
+  once as it comes into view, again while the pointer is over it, then
+  rests on its first frame (drawn at its size, sharper than Telegram's
+  thumbnail); out of view it stops and lets its frames go, and frames
+  replaced leave the window's atlas when the conversation next paints
+  (30 s of one looping: 88.5 → 88.7 MB). The demo account's is in
+  Mira's chat. Measured (release, 2×): resting 0.0% of a core; looping
+  8.4% (60 frames a second: the conversation drawn 60 times, 0.61 ms
+  each, 5.1–5.8%; the worker 2.2% after opaque and empty pixels were
+  left out of un-premultiplying, 3.0% before). A sticker drawn in its
+  own view would have had to be outside the conversation's pane (GPUI
+  marks a notified view's ancestors dirty) and a frame behind it while
+  scrolling, so it isn't.
+* **Not yet**: video stickers (WebM, VP9 with its alpha in the blocks'
+  additions, which the demuxer doesn't read yet) show their first frame.
 
 **Ogg Opus** (`olo_video::opus::OggOpus`): mono 48 kHz pushed in any
 amounts, coded in 20 ms frames by rusty-opus (pure Rust), written a page

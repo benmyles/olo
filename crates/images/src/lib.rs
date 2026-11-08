@@ -1,7 +1,8 @@
 //! Reading pictures for thumbnails, Quick Look and the like: everything the
 //! `image` crate reads, plus JPEG XL (what Fedora ships its backgrounds
-//! as), AVIF (avif-parse and the rav1d AV1 decoder) and HEIC / HEIF (heifer,
-//! iPhone photos), all in Rust, the right way up and within a memory
+//! as), AVIF (avif-parse and the rav1d AV1 decoder), HEIC / HEIF (heifer,
+//! iPhone photos) and Lottie animations' first frames (`.tgs`, [`lottie`]),
+//! all in Rust, the right way up and within a memory
 //! limit.
 
 use std::{io::Read, path::Path};
@@ -59,6 +60,7 @@ fn avif(data: &[u8]) -> Result<DynamicImage, String> {
 
 pub mod gain;
 pub mod hdr;
+pub mod lottie;
 
 /// AV1 through rav1d's dav1d API (stills and video), and YUV to RGB.
 pub mod av1 {
@@ -957,6 +959,10 @@ fn decode(path: &Path) -> Result<(DynamicImage, String, Option<Vec<u8>>), String
             // Some HEIF files hold AV1 under a generic brand.
             Heif::Hevc => heic(&data).map(|i| (i, "HEIC".into(), icc.clone())).or_else(|e| avif(&data).map(|i| (i, "AVIF".into(), icc)).map_err(|_| e)),
         };
+    }
+    // A Telegram sticker (or a Lottie animation, gzipped): its first frame.
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tgs")) {
+        return lottie::first_frame(path).map(|i| (i, "Lottie".into(), None));
     }
     let mut reader = ImageReader::open(path).map_err(|e| e.to_string())?.with_guessed_format().map_err(|e| e.to_string())?;
     let format = reader.format().map(|f| format!("{f:?}").to_uppercase()).unwrap_or_else(|| "Image".into());

@@ -3652,5 +3652,11 @@
   "title": "Telegram: voice messages recorded",
   "caption": "Nothing to send, Telegram's send button is a microphone: hold it and speak (the time and live levels in the field), let go on it to send, away from it to cancel; a click records until Send, \u00d7 or Escape. Opus in Ogg, coded in process (rusty-opus, kept to SILK). Shown at 2\u00d7 with a test's fake microphone.",
   "image": "2026-11-08/033705-telegram-voice-messages-recorded.png"
+ },
+ {
+  "time": "2026-11-08T04:25:17",
+  "title": "Telegram: animated stickers play",
+  "caption": "Lottie stickers (Telegram's .tgs) now play: once as they come into view, and again while the pointer is over them, each frame drawn at the sticker's own device size on a worker (velato, vendored with its panics on real files fixed, drawn by vello_cpu). The demo's is Olo's own beating heart, caught mid-beat with its ring.",
+  "image": "2026-11-08/042517-telegram-animated-stickers-play.png"
  }
 ]

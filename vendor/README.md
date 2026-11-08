@@ -12,6 +12,17 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   patch (`Executor::main_loop` in `src/lib.rs`) stops a thread that is
   over the limit *or* has had nothing to do for half a second, as its
   comment says it should.
+- **velato 0.12.0** (Apache-2.0 OR MIT): it read 11 of Telegram
+  Desktop's 52 animated stickers. 24 hit `todo!()` (a transform with no
+  rotation, or a split one), 17 a position it required; and a frame
+  landing on a property's last keyframe weighed it 0/0, NaN for every
+  point after (each such path cost vello_cpu milliseconds, drawing
+  nothing). The patch (`src/import/converters.rs`, `src/schema/helpers/
+  transform.rs`, `src/runtime/model/value.rs`, each marked "Olo:"):
+  no rotation is none, a split one its z, a missing position the origin,
+  Add and Hard Mix blending drawn (Plus, Normal) rather than
+  `unimplemented!()`, and a keyframe span of nothing weighs 0. All 52
+  read and draw (olo-images' `lottie`). Drop it once upstream reads them.
 - **matroska-demuxer 0.8.1** (Zlib OR MIT OR Apache-2.0): seeking with
   cue points that carry a CueRelativePosition (as ffmpeg writes in WebM)
   read the position against the file's first cluster instead of the cue's

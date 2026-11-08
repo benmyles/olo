@@ -9,6 +9,7 @@ mod bubble;
 mod conv;
 mod list;
 mod pics;
+mod stickers;
 mod store;
 mod voice;
 mod when;
@@ -62,6 +63,8 @@ pub struct Tg {
     backend: Backend,
     store: store::Store,
     pics: pics::Pics,
+    /// Animated stickers playing.
+    stickers: stickers::Stickers,
     status: Status,
     me: Option<Me>,
     view: list::View,
@@ -394,6 +397,20 @@ impl Tg {
         self.store.pending(pending);
         self.field.update(cx, |f, cx| f.set_text("", cx));
         cx.notify();
+    }
+
+    /// After `wait`, the frame due for an animated sticker (`stickers.rs`).
+    pub fn sticker_timer(&mut self, (key, wait): (stickers::Key, Duration), cx: &mut Context<Self>) {
+        cx.spawn(async move |tg, cx| {
+            cx.background_executor().timer(wait).await;
+            let _ = tg.update(cx, |tg, cx| {
+                tg.stickers.ask(key, Instant::now());
+                for due in tg.stickers.take_due() {
+                    tg.sticker_timer(due, cx);
+                }
+            });
+        })
+        .detach();
     }
 
     /// Redraw the composer alone (a voice message's level, ten a second).
@@ -1312,6 +1329,20 @@ impl Tg {
             Ok(e) => return self.event(*e, cx),
             Err(m) => m,
         };
+        let message = match message.downcast::<stickers::Msg>() {
+            Ok(m) => {
+                let (redraw, next) = self.stickers.message(*m);
+                if let Some(next) = next {
+                    self.sticker_timer(next, cx);
+                }
+                if redraw && let Some(p) = self.pane(Kind::Conv) {
+                    let app: &mut App = cx;
+                    app.notify(p);
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         let message = match message.downcast::<voice::Msg>() {
             Ok(m) => return self.voice_msg(*m, cx),
             Err(m) => m,
@@ -2006,6 +2037,7 @@ fn main() {
                 backend,
                 store: store::Store::default(),
                 pics: pics::Pics::new(olo_ui::proxy(cx)),
+                stickers: stickers::Stickers::new(olo_ui::proxy(cx)),
                 status: Status::Connecting,
                 sync: (0, 0, None),
                 quitting: None,

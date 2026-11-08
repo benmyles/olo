@@ -1345,8 +1345,18 @@ fn paint_multiline(entity: &Entity<TextField>, bounds: Bounds<Pixels>, window: &
             let _ = p.paint(point(origin.x, origin.y + tops[k].1), lh, gpui::TextAlign::Left, None, window, cx);
         }
         if text.is_empty() && !hint.is_empty() && marked.is_none() {
+            // Drawn as the first row's text is (GPUI's line, in its
+            // height), so the first letter typed lands where the hint
+            // was: drawn as a label (its capitals centred) it sat a device
+            // pixel higher at 1.5×, and its line stood out of the field.
             let ink = style::disabled_text(&palette);
-            style::label(window, cx, origin.x, origin.y + lh / 2.0, style::Align::Left, hint.clone(), size_px, font.clone(), ink);
+            let hint = SharedString::from(hint.to_string());
+            let run = TextRun { len: hint.len(), font: font.clone(), color: ink, background_color: None, underline: None, strikethrough: None, size: None };
+            let line = window.text_system().shape_line(hint.clone(), px(size_px), &[run], None);
+            let _ = line.paint(origin, lh, window, cx);
+            let h = line.ascent + line.descent;
+            let top = origin.y + (lh - h) / 2.0;
+            crate::review::text(window, Bounds { origin: point(origin.x, top), size: size(line.width, h) }, top + line.ascent, &hint, size_px);
         }
         if focused && selected.is_empty() && caret_on {
             let line = window.text_system().shape_line(

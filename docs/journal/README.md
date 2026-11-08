@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Telegram: animated stickers play
+
+*04:25* — Lottie stickers (Telegram's .tgs) now play: once as they come into view, and again while the pointer is over them, each frame drawn at the sticker's own device size on a worker (velato, vendored with its panics on real files fixed, drawn by vello_cpu). The demo's is Olo's own beating heart, caught mid-beat with its ring.
+
+![Telegram: animated stickers play](2026-11-08/042517-telegram-animated-stickers-play.png)
+
 ### Telegram: voice messages recorded
 
 *03:37* — Nothing to send, Telegram's send button is a microphone: hold it and speak (the time and live levels in the field), let go on it to send, away from it to cancel; a click records until Send, × or Escape. Opus in Ogg, coded in process (rusty-opus, kept to SILK). Shown at 2× with a test's fake microphone.

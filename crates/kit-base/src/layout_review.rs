@@ -476,7 +476,16 @@ fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
             finding(
                 Level::Error,
                 kind,
-                format!("{:?} {said} (laid out {:.0} wide, {:.0} shows): give it room, or cut it short with an ellipsis (`style::fit`)", t.label, t.rect.width(), t.rect.intersect(t.clip).width()),
+                format!(
+                    "{:?} {said} (laid out {:.0} wide, {:.0} shows; its line {:.1}–{:.1} down, what it's in {:.1}–{:.1}): give it room, or cut it short with an ellipsis (`style::fit`)",
+                    t.label,
+                    t.rect.width(),
+                    t.rect.intersect(t.clip).width(),
+                    t.rect.min.y,
+                    t.rect.max.y,
+                    t.clip.min.y,
+                    t.clip.max.y
+                ),
                 t.rect,
             ),
         );

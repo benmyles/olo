@@ -381,7 +381,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
     }
 
     // The messages, down to the composer (a pane of its own).
-    let Tg { store, conv, pics, backend, player, h24, .. } = &mut *tg;
+    let Tg { store, conv, pics, backend, player, h24, stickers, .. } = &mut *tg;
     let conv = conv.as_mut().expect("a conversation");
     let list = r(x0, top, w, f32::from(rect.bottom()) - top);
 
@@ -460,6 +460,9 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
     let flashing = conv.flash.filter(|f| f.1.elapsed() < FLASH);
     // What's in view (and a sliver more), to paint: a scroll draws again.
     let mut draws = Vec::new();
+    // Animated stickers drawn (`stickers.rs`), and the time they're at.
+    let mut animated = HashSet::new();
+    let now = Instant::now();
     let first = items.partition_point(|it| it.y + it.h + lift < offset - 40.0);
     for it in items[first..].iter().take_while(|it| it.y + lift <= offset + view_h + 40.0) {
         match &it.what {
@@ -469,10 +472,25 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                 let found = if key < 0 { thread.and_then(|t| t.pending.iter().find(|m| key_of(m) == key)) } else { thread.and_then(|t| t.msgs.get(&id)) };
                 let (Some(msg), Some((_, laid))) = (found, conv.layouts.laid.get(&key)) else { continue };
                 let laid = laid.clone();
-                let picture = match &msg.media {
+                let mut picture = match &msg.media {
                     Some(md) if md.visual() && msg.pending.is_none() => pics.get(&Pic::Thumb(msg.chat, msg.id), backend),
                     _ => None,
                 };
+                // An animated sticker: its frame at its device size, once
+                // its file is here (its thumbnail till then).
+                if let (Some(Media::Sticker { animated: true, .. }), Some(r), None) = (&msg.media, laid.media, &msg.pending) {
+                    let key = (msg.chat, msg.id);
+                    let file = Pic::File(msg.chat, msg.id);
+                    if pics.file(&file).is_none() {
+                        pics.fetch_file(file.clone(), backend);
+                    }
+                    let size = (((r.w * scale).round() as u16).max(1), ((r.h * scale).round() as u16).max(1));
+                    let hovered = conv.hover.as_ref().is_some_and(|h| h.0 == msg.id);
+                    if let Some(frame) = stickers.shown(key, pics.file(&file), size, hovered, now) {
+                        picture = Some(frame);
+                    }
+                    animated.insert(key);
+                }
                 let sender_pic = if laid.avatar && msg.from.as_ref().is_some_and(|f| f.photo.is_some()) { msg.from.as_ref().and_then(|f| pics.get(&Pic::Avatar(f.id), backend)) } else { None };
                 let playing = player.as_ref().filter(|pl| pl.0 == msg.chat && pl.1 == msg.id).map(|pl| crate::played(&pl.2));
                 draws.push(Draw::Msg {
@@ -490,6 +508,9 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
             }
         }
     }
+    stickers.painted(&animated);
+    let dropped = std::mem::take(&mut stickers.dropped);
+    let due = stickers.take_due();
     let loaded = thread.is_some_and(|t| t.loaded);
     let empty = items.is_empty();
     let partial = plan.partial;
@@ -508,6 +529,9 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
     if tg.player.as_ref().is_some_and(|pl| pl.0 == chat_id) {
         tg.wake_in(Duration::from_millis(100), cx);
     }
+    for d in due {
+        tg.sticker_timer(d, cx);
+    }
     // Older pages, as the top comes near; read up to what's seen.
     if older {
         tg.conv_act(Act::Older, window, cx);
@@ -520,6 +544,10 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
     let messages = canvas(
         move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
         move |b, hitbox: Hitbox, window, cx| {
+            // Stickers' frames replaced since: out of the atlas.
+            for img in dropped {
+                let _ = window.drop_image(img);
+            }
             if hover_hit {
                 window.set_cursor_style(CursorStyle::PointingHand, &hitbox);
             }
@@ -583,7 +611,10 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                 let c = tg.conv.as_mut()?;
                 let now = c.hit_at(e.position);
                 let pointing = |h: &Option<(MsgId, Option<Hit>)>| h.as_ref().is_some_and(|h| h.1.is_some());
-                let redraw = pointing(&now) != pointing(&c.hover);
+                // (Onto an animated sticker or off one: it plays or stops.)
+                let sticker = |h: &Option<(MsgId, Option<Hit>)>| h.as_ref().is_some_and(|h| tg.stickers.is_shown((c.chat, h.0)));
+                let moved = now.as_ref().map(|h| h.0) != c.hover.as_ref().map(|h| h.0);
+                let redraw = pointing(&now) != pointing(&c.hover) || moved && (sticker(&now) || sticker(&c.hover));
                 c.hover = now;
                 redraw.then_some(pane)
             });

@@ -7,6 +7,8 @@ license.workspace = true
 
 [dependencies]
 olo-sync.workspace = true
+# The demo's animated sticker (`olo_images::lottie`).
+olo-images.workspace = true
 olo-system.workspace = true
 olo-xdg.workspace = true
 serde.workspace = true

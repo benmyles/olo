@@ -20,9 +20,11 @@ something nobody here has is in "Blocked", with what it waits for.
 Leftovers found in finished entries (2026-11-08 audit: each checked
 against the code, still not there):
 
-- **Telegram: animated stickers move** (its "Not yet", done
-  2026-10-29): animated stickers (Lottie, WebM) play, not just their
-  first frame.
+- **Telegram: video stickers move** (what's left of its "Not yet",
+  2026-10-29; Lottie stickers play since 2026-11-08): WebM stickers
+  (VP9, their alpha a second stream in the blocks' additions, which the
+  vendored matroska-demuxer doesn't read yet) play, not just their first
+  frame.
 - **Auto-tiling: master and stack, one transaction, a layout picker**
   (its "Not yet", done 2026-10-28): a master-and-stack layout as dwm's,
   every tile resized in one transaction, and a picker of layouts.
@@ -2351,6 +2353,13 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Telegram: animated stickers move**~~ (Lottie; its "Not yet",
+  2026-10-29). *Done* (2026-11-08): `.tgs` stickers play once as they
+  come into view and again under the pointer, drawn at their device size
+  (velato, vendored with its panics on real files fixed, on vello_cpu);
+  `.tgs` files open as pictures too. Video stickers are still to come
+  (Not started).
 
 - ~~**Telegram: record voice notes**~~ (its "Not yet", 2026-10-29).
   *Done* (2026-11-08): with nothing to send, the send button is a
