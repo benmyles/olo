@@ -1690,3 +1690,48 @@ fn a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted() {
     assert_eq!(pixel(&tile, 50, 35), [0, 255, 255, 255], "the slotted span");
     assert_eq!(pixel(&tile, 50, 45), [255, 0, 0, 255], "the document's p");
 }
+#[test]
+fn a_class_that_selectors_reach_from_restyles_what_they_reach() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // apple.com's menu: a class on an item colours what is under it and
+    // the box after it.
+    let mut page = olo_web::page::load(
+        Arc::from(
+            "<!doctype html><style>body{margin:0}div,p{margin:0;height:10px;background-color:white}.open .item{background-color:green}.open+.after{background-color:blue}</style>\
+             <div id=m><p class=item></p></div><div class=after></div>",
+        ),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let rows = |page: &olo_web::page::Page, painter: &mut paint::Engine| {
+        let tile = render(painter, &page.scene);
+        [5, 15].map(|y| pixel(&tile, 50, y))
+    };
+    assert_eq!(rows(&page, &mut painter), [[255, 255, 255, 255]; 2]);
+    for (class, expected) in [("open", [[0, 128, 0, 255], [0, 0, 255, 255]]), ("", [[255, 255, 255, 255]; 2])] {
+        let mut doc = page.document.clone();
+        let mut stack = vec![doc.root()];
+        let mut m = None;
+        while let Some(n) = stack.pop() {
+            if doc.attribute(n, "id").ok().flatten() == Some("m") {
+                m = Some(n);
+            }
+            stack.extend(doc.children(n).unwrap());
+        }
+        doc.set_attribute(m.unwrap(), "class", class).unwrap();
+        page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+        assert_eq!(rows(&page, &mut painter), expected, "class {class:?}");
+    }
+}

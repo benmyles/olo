@@ -2079,21 +2079,11 @@ struct Patchable {
 /// be followed (a `:has()` testing a state beside its subject): every
 /// element then. (A hover moving as the page scrolls under the pointer
 /// restyled BBC's page whole, 40-60 ms, many times a second.)
-fn interaction_rematch(doc: &Document, rules: &css::cascade::RuleSet, before: Interaction, now: Interaction, mask: u64) -> Option<Vec<(crate::dom::NodeId, bool)>> {
-    let has = rules.has_keys();
-    if has.interaction_siblings {
-        return None;
-    }
-    let invalidation = rules.invalidation();
-    let mut seen = std::collections::HashSet::new();
-    let mut out = Vec::new();
-    let mut push = |n: crate::dom::NodeId, out: &mut Vec<(crate::dom::NodeId, bool)>| {
-        if seen.insert(n) {
-            out.push((n, true));
-        }
-    };
+/// The elements `down` reaches below `node`, and `beside` reaches among
+/// its later siblings and below them: what selectors with a changed key in
+/// a compound left of the subject can now match (see `Invalidation`).
+fn reached_from(doc: &Document, node: crate::dom::NodeId, down: &css::selectors::Reach, beside: &css::selectors::Reach, out: &mut Vec<crate::dom::NodeId>) {
     let is_element = |n: crate::dom::NodeId| doc.node_type(n).ok() == Some(NodeType::Element);
-    // Every element below `root` that `reach` reaches.
     let below = |root: crate::dom::NodeId, reach: &css::selectors::Reach, out: &mut Vec<crate::dom::NodeId>| {
         if reach.is_empty() {
             return;
@@ -2111,6 +2101,34 @@ fn interaction_rematch(doc: &Document, rules: &css::cascade::RuleSet, before: In
             }
         }
     };
+    below(node, down, out);
+    if !beside.is_empty() {
+        let mut sibling = doc.next_sibling(node).ok().flatten();
+        while let Some(e) = sibling {
+            if is_element(e) {
+                if beside.reaches(doc, e) {
+                    out.push(e);
+                }
+                below(e, beside, out);
+            }
+            sibling = doc.next_sibling(e).ok().flatten();
+        }
+    }
+}
+fn interaction_rematch(doc: &Document, rules: &css::cascade::RuleSet, before: Interaction, now: Interaction, mask: u64) -> Option<Vec<(crate::dom::NodeId, bool)>> {
+    let has = rules.has_keys();
+    if has.interaction_siblings {
+        return None;
+    }
+    let invalidation = rules.invalidation();
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    let mut push = |n: crate::dom::NodeId, out: &mut Vec<(crate::dom::NodeId, bool)>| {
+        if seen.insert(n) {
+            out.push((n, true));
+        }
+    };
+    let is_element = |n: crate::dom::NodeId| doc.node_type(n).ok() == Some(NodeType::Element);
     for (node, key) in before.changed_elements(now, doc, mask) {
         if !is_element(node) || !doc.is_connected(node).unwrap_or(false) {
             continue;
@@ -2118,19 +2136,7 @@ fn interaction_rematch(doc: &Document, rules: &css::cascade::RuleSet, before: In
         push(node, &mut out);
         let (down, beside) = invalidation.reach_of(std::iter::once(key.to_owned()));
         let mut reached = Vec::new();
-        below(node, &down, &mut reached);
-        if !beside.is_empty() {
-            let mut sibling = doc.next_sibling(node).ok().flatten();
-            while let Some(e) = sibling {
-                if is_element(e) {
-                    if beside.reaches(doc, e) {
-                        reached.push(e);
-                    }
-                    below(e, &beside, &mut reached);
-                }
-                sibling = doc.next_sibling(e).ok().flatten();
-            }
-        }
+        reached_from(doc, node, &down, &beside, &mut reached);
         // An ancestor's `:has()` testing the state may flip: the ancestor
         // matched again, and what a compound with a `:has()` reaches from
         // it (`body:has(.card:hover) .note`).
@@ -2140,19 +2146,7 @@ fn interaction_rematch(doc: &Document, rules: &css::cascade::RuleSet, before: In
             while let Some(a) = at {
                 if is_element(a) && has.interaction_subjects.reaches(doc, a) {
                     reached.push(a);
-                    below(a, &has_down, &mut reached);
-                    if !has_beside.is_empty() {
-                        let mut sibling = doc.next_sibling(a).ok().flatten();
-                        while let Some(e) = sibling {
-                            if is_element(e) {
-                                if has_beside.reaches(doc, e) {
-                                    reached.push(e);
-                                }
-                                below(e, &has_beside, &mut reached);
-                            }
-                            sibling = doc.next_sibling(e).ok().flatten();
-                        }
-                    }
+                    reached_from(doc, a, &has_down, &has_beside, &mut reached);
                 }
                 at = doc.parent(a).ok().flatten();
             }
@@ -2210,10 +2204,21 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
                     return Err(format!("<{}> {attribute}: a :has() tests it", name(*node)));
                 }
                 let (down, beside) = invalidation.reach_of(keys.into_iter());
-                if !down.is_empty() || !beside.is_empty() {
-                    return Err(format!("<{}> {attribute}: selectors reach from it", name(*node)));
-                }
                 add(*node, true);
+                // What selectors reach from it (`.open .item`, `.on + p`):
+                // matched again too, where they are few enough to patch
+                // (apple.com's menu items' classes, flipped as it loads,
+                // restyled the page whole, 10-24 ms each).
+                if !down.is_empty() || !beside.is_empty() {
+                    let mut reached = Vec::new();
+                    reached_from(doc, *node, &down, &beside, &mut reached);
+                    if reached.len() > 512 {
+                        return Err(format!("<{}> {attribute}: selectors reach {} elements from it", name(*node), reached.len()));
+                    }
+                    for n in reached {
+                        add(n, true);
+                    }
+                }
             }
             crate::dom::Change::Node(n) => return Err(format!("<{}> attributes", name(*n))),
             // A control's value: its own style matched again (its states), and
