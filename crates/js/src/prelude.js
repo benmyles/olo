@@ -703,6 +703,9 @@
     appendData(s) { N.setData(this, N.data(this) + String(s)); }, deleteData(o, c) { const t = N.data(this); N.setData(this, t.slice(0, o) + t.slice(o + c)); }, insertData(o, s) { const t = N.data(this); N.setData(this, t.slice(0, o) + String(s) + t.slice(o)); }, replaceData(o, c, s) { const t = N.data(this); N.setData(this, t.slice(0, o) + String(s) + t.slice(o + c)); }, substringData(o, c) { return N.data(this).substr(o, c); },
   });
   for (const k of ['data', 'length', 'appendData', 'deleteData', 'insertData', 'replaceData', 'substringData']) Object.defineProperty(Comment.prototype, k, Object.getOwnPropertyDescriptor(Text.prototype, k));
+  // Text and comments have element siblings too (NonDocumentTypeChildNode:
+  // Lit's hydration finds a part's element from its `<!--lit-node-->`).
+  for (const proto of [Text.prototype, Comment.prototype]) for (const k of ['nextElementSibling', 'previousElementSibling']) if (!Object.prototype.hasOwnProperty.call(proto, k)) Object.defineProperty(proto, k, Object.getOwnPropertyDescriptor(Element.prototype, k));
   global.CharacterData = Text; global.ShadowRoot = DocumentFragment;
   const html = () => N.query(documentNode, 'html', false);
   const scrollXY = [0, 0];

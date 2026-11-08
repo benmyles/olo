@@ -6860,3 +6860,9 @@ the Guardian and old Reddit, looking for pages that fail outright:
   rules a live page adds are fetched: the computed styles are looked
   through after each restyle, and what isn't bound is fetched as a late
   picture.
+- **Lit components hydrate.** A text or comment node had no
+  `nextElementSibling`: Lit's hydration of server-rendered components
+  (it finds each part's element after its `<!--lit-node-->` comment)
+  threw inside its update, and the next update rendered the component's
+  content a second time (MDN's language menu showed twice). Every site
+  built on Lit SSR hydrates now.

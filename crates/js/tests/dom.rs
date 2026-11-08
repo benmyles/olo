@@ -619,3 +619,16 @@ fn dialogs_open_close_and_summaries_toggle_their_details() {
     let d = find(&doc, "d");
     assert!(doc.attribute(d, "open").unwrap().is_some());
 }
+#[test]
+fn text_and_comments_have_element_siblings() {
+    // Lit hydrates a server-rendered component by the element after each
+    // `<!--lit-node N-->` comment: undefined there, it threw and rendered
+    // its content a second time (MDN's language menu, twice).
+    let (report, _) = run("<div id=p><!--lit-node 0--><b id=b></b>text<i id=i></i></div><script>
+        const p = document.getElementById('p');
+        const comment = p.firstChild, text = p.childNodes[2];
+        console.log(comment.nodeType, comment.nextElementSibling.id, comment.previousElementSibling, text.nextElementSibling.id, text.previousElementSibling.id);
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] 8 b null i b"]);
+}
