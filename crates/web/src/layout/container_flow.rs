@@ -25,6 +25,10 @@ struct Item {
     /// Its min-content contribution itself, which `min-content` (and
     /// `max-content`) minimums take.
     min_content: f64,
+    /// Its automatic minimum, when `min-width` is `auto` and it isn't a scroll
+    /// container: the content-based minimum, which an item spanning
+    /// several tracks, a flexible one among them, doesn't have (§6.6).
+    auto_minimum: Option<f64>,
     cell: Cell,
     justify: K,
     align: K,
@@ -387,6 +391,7 @@ impl Job<'_> {
             // min-content size. GitHub's feature columns (min-width: 0) took
             // their screenshots' widths and overflowed the page.
             let mut minimum = w.min_content;
+            let mut auto_minimum = None;
             if grid && !text {
                 if !matches!(s.value(P::MinWidth), Value::Keyword(K::Auto)) {
                     let given = used::length(s, P::MinWidth, None, Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
@@ -394,8 +399,24 @@ impl Job<'_> {
                     minimum = if border_box { given } else { given + self.decoration_of(s, queries, width)? };
                 } else if !matches!(s.value(P::OverflowX), Value::Keyword(K::Visible | K::Clip)) {
                     minimum = self.decoration_of(s, queries, width)?;
+                } else {
+                    auto_minimum = Some(self.decoration_of(s, queries, width)?);
                 }
                 minimum = minimum.min(w.min_content);
+            }
+            // A grid item's `max-width` caps what it contributes (resolved
+            // against the container: BBC's `min(100% - 32px, 722px)` grid
+            // in an `auto` column, which its wide carousel had widened).
+            let mut w = w;
+            if grid
+                && !text
+                && let Some(cap) = used::length(s, P::MaxWidth, Some(width), None, queries, &mut self.scratch, self.cancel, self.scale)?
+            {
+                let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
+                let cap = if border_box { cap } else { cap + self.decoration_of(s, queries, width)? };
+                w.min_content = w.min_content.min(cap);
+                w.max_content = w.max_content.min(cap);
+                minimum = minimum.min(cap);
             }
             if items.len() >= self.limits.boxes {
                 return Err(Error::Limit);
@@ -405,6 +426,7 @@ impl Job<'_> {
                 used: Used { width: 0., ..used },
                 contribution: (minimum + margin_x, w.max_content + margin_x),
                 min_content: w.min_content + margin_x,
+                auto_minimum: auto_minimum.map(|d| d + margin_x),
                 cell: Cell { columns: (0, 1), rows: (0, 1) },
                 justify,
                 align,
@@ -522,7 +544,15 @@ impl Job<'_> {
                 .map(|i| {
                     let (a, z) = i.cell.columns;
                     let content_mins = (a..z.max(a + 1)).all(|c| columns.get(c).is_some_and(|t| matches!(t.min, Bound::MinContent | Bound::MaxContent)));
-                    (a, z, if content_mins { i.min_content.max(i.contribution.0) } else { i.contribution.0 }, i.contribution.1)
+                    // Spanning several tracks, a flexible one among them: no
+                    // content-based minimum (§6.6; BBC's carousel across its
+                    // 24 `1fr` columns had widened them all).
+                    let spans_flex = z > a + 1 && (a..z).any(|c| columns.get(c).is_some_and(|t| matches!(t.max, Bound::Flex(_))));
+                    let minimum = match i.auto_minimum {
+                        Some(zero) if spans_flex => zero,
+                        _ => i.contribution.0,
+                    };
+                    (a, z, if content_mins { i.min_content.max(minimum) } else { minimum }, i.contribution.1)
                 })
                 .collect();
             let sizes = size_tracks(&columns, &contributions, Some(width), column_gap, matches!(justify_content, K::Normal | K::Stretch), self.scale);
@@ -970,7 +1000,10 @@ fn size_tracks(tracks: &[Track], items: &[(usize, usize, f64, f64)], available: 
             // (implicit columns past the explicit grid) stay as their own
             // items make them, 0 px for none.
             let spans_flex = (a..z).any(|i| flex[i].is_some());
-            let spanned: Vec<usize> = (a..z).filter(|&i| intrinsic(&tracks[i]) && (!spans_flex || flex[i].is_some())).collect();
+            // Of the flexible tracks, only those with an intrinsic minimum
+            // (`1fr` is `minmax(auto, 1fr)`); `minmax(0, 1fr)` stays 0
+            // (BBC's 24-column grid, its carousel spanning them all).
+            let spanned: Vec<usize> = (a..z).filter(|&i| intrinsic(&tracks[i]) && (!spans_flex || flex[i].is_some() && !matches!(tracks[i].min, Bound::Fixed(_)))).collect();
             if spanned.is_empty() {
                 continue;
             }
@@ -1067,6 +1100,33 @@ fn size_tracks(tracks: &[Track], items: &[(usize, usize, f64, f64)], available: 
                 for &i in &autos {
                     base[i] += free / autos.len() as f64;
                 }
+            }
+        }
+    } else if flex.iter().any(Option::is_some) {
+        // No size to fill (a grid as tall as its rows): flexible tracks
+        // take the flex fraction their items need (CSS Grid §11.7.1): the
+        // largest of each track's base over its factor and, for each item
+        // crossing one, what its max-content contribution leaves over the
+        // other tracks it spans, over their factors. (`minmax(0, 1fr)`
+        // rows grew by nothing before: BBC's second row was 0 tall.)
+        let mut fr = 0f64;
+        for i in 0..n {
+            if let Some(f) = flex[i] {
+                fr = fr.max(if f > 1. { base[i] / f } else { base[i] });
+            }
+        }
+        for &(a, z, _, max) in items {
+            let z = z.max(a + 1).min(n);
+            if a >= n || !(a..z).any(|i| flex[i].is_some()) {
+                continue;
+            }
+            let others: f64 = (a..z).filter(|&i| flex[i].is_none()).map(|i| base[i]).sum::<f64>() + gap * (z - a - 1) as f64;
+            let factors: f64 = (a..z).filter_map(|i| flex[i]).sum();
+            fr = fr.max((max - others).max(0.) / factors.max(1.));
+        }
+        for i in 0..n {
+            if let Some(f) = flex[i] {
+                base[i] = base[i].max(fr * f);
             }
         }
     }

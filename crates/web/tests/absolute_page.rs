@@ -248,3 +248,19 @@ fn container_queries_ask_the_nearest_container_of_their_name() {
     // conditions must all hold; outside any container nothing holds.
     assert_eq!([h("a"), h("b"), h("s1"), h("s2"), h("o"), h("nest"), h("out")], [2., 1., 1., 4., 1., 6., 1.]);
 }
+#[test]
+fn an_item_spanning_minmax_zero_fr_tracks_does_not_grow_them() {
+    // BBC's 24-column grid (`repeat(24, minmax(0, 1fr))`): its carousel
+    // spans every column and holds a wide scroller; the columns stay
+    // their share, as `1fr` (an `auto` minimum) would not.
+    let p = load(
+        "#o{display:grid;grid-template-columns:repeat(24,minmax(0,1fr));column-gap:4px;width:300px}#g{grid-column:1/span 24}#s{display:flex;overflow-x:scroll}#s div{width:200px;flex-shrink:0;height:10px}#a{display:grid;grid-template-columns:repeat(2,1fr);width:100px}#w{grid-column:1/span 2;width:300px;height:5px}</style><div id=o><div id=g><div id=s><div></div><div></div><div></div></div></div></div><div id=a><div id=w></div></div>",
+        1.,
+    );
+    // (24 columns of 8.67 px, each on the device grid.)
+    assert!((rect(&p, "g").width - 300.).abs() < 1., "{:?}", rect(&p, "g"));
+    assert!((rect(&p, "s").width - 300.).abs() < 1.);
+    // `1fr` tracks do grow for it (CSS Grid §11.5): 150 px each.
+    assert_eq!(rect(&p, "a").width, 100.);
+    assert_eq!(rect(&p, "w").width, 300.);
+}

@@ -874,13 +874,8 @@ impl<'a> BuildJob<'a> {
                     {
                         let key: StyleKey =
                             if placeholder && self.styles.pseudo(node, PseudoElement::Placeholder).is_some() { StyleKey::pseudo(node, PseudoElement::Placeholder) } else { node.into() };
-                        // A placeholder its style hides (`opacity: 0` until the
-                        // field has focus, GitHub's sign-up) shows nothing.
-                        let hidden = placeholder
-                            && self.styles.pseudo(node, PseudoElement::Placeholder).is_some_and(|s| {
-                                s.value(Property::Opacity).scalar().is_some_and(|o| o <= 0.) || matches!(s.value(Property::Visibility), Value::Keyword(Keyword::Hidden | Keyword::Collapse))
-                            });
-                        let text = if hidden { String::new() } else { text };
+                        // (Its `::placeholder` opacity applies when painted.)
+
                         // An empty field or button is still a line tall.
                         let text = if text.is_empty() && control != "textarea" { "\u{200b}".to_owned() } else { text };
                         match display {

@@ -6280,3 +6280,13 @@ journal).
   GitHub's sign-up field. The page's focus now drives `:focus` and
   `:focus-within` (GitHub's label floats, its ring shows): the window's
   request had overwritten it, restyling the page twice a frame.
+- **bbc.com, scrolled through.** Its documentaries carousel sat 900 px to
+  the right, 2,512 px wide: an item spanning several tracks, a flexible
+  one among them, has no content-based minimum (CSS Grid §6.6), and a
+  grid item's `max-width` caps what it contributes (BBC's
+  `min(100% - 32px, 722px)` grid in an `auto` column). Then rows of
+  `minmax(0, 1fr)` in a grid as tall as its content came out 0 tall
+  (a section drawn over the next): flexible tracks with no size to fill
+  now take the flex fraction their items need (§11.7.1). Layout on
+  BBC's page 5.5 ms before, 5.6 after. A placeholder's `::placeholder`
+  opacity now applies when it is painted (GitHub's shows on focus).

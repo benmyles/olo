@@ -1338,6 +1338,12 @@ impl<'a> BuildJob<'a> {
                             if !visible(s) {
                                 c[3] = 0
                             }
+                            // A field's placeholder at its `::placeholder` opacity
+                            // (GitHub's shows only while the field has the focus).
+                            if span.style_node.pseudo == Some(crate::css::selectors::PseudoElement::Placeholder) {
+                                let o = s.value(P::Opacity).scalar().unwrap_or(1.).clamp(0., 1.);
+                                c[3] = (f64::from(c[3]) * o).round() as u8;
+                            }
                             // text-decoration-line, in text-decoration-color.
                             let deco = match s.value(P::TextDecorationLine) {
                                 Value::Keyword(k @ (K::Underline | K::Overline | K::LineThrough)) if c[3] != 0 => Some((s.used_color(P::TextDecorationColor)?.srgb8_clipped(), *k)),
