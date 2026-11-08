@@ -824,19 +824,34 @@ impl Job<'_> {
                     let (a, z) = item.cell.columns;
                     let g = &mut self.geometry[item.id.index()];
                     let cell_height = used::grid(height.max(g.border_box.height), scale);
-                    let dy = match item.align {
-                        K::Center => (height - g.border_box.height) / 2.,
-                        K::End => height - g.border_box.height,
-                        _ => 0.,
-                    };
+                    let dy = used::grid(
+                        match item.align {
+                            K::Center => (height - g.border_box.height) / 2.,
+                            K::End => height - g.border_box.height,
+                            _ => 0.,
+                        }
+                        .max(0.),
+                        scale,
+                    );
                     g.border_box.x = used::grid(starts[a.min(starts.len() - 1)], scale);
-                    g.border_box.y = used::grid(dy.max(0.), scale);
                     let _ = z;
-                    // A cell fills its row; content stays where its alignment put it.
-                    if !matches!(item.align, K::Center | K::End) {
-                        g.border_box.height = cell_height;
-                    }
+                    // A cell fills its row (its background and borders do);
+                    // its content moves down by its vertical-align (CSS 2.2
+                    // §17.5.3; GitHub's file list's row lines fell apart).
+                    g.border_box.y = 0.;
+                    g.border_box.height = cell_height;
                     g.margin = Edges::default();
+                    if dy > 0. {
+                        let tree = self.cache.clone();
+                        let mut child = tree.tree.get(item.id).ok_or(Error::Invalid)?.first_child;
+                        while let Some(c) = child {
+                            let b = tree.tree.get(c).ok_or(Error::Invalid)?;
+                            child = b.next_sibling;
+                            if !b.absolute {
+                                self.geometry[c.index()].border_box.y += dy;
+                            }
+                        }
+                    }
                 }
                 height + spacing.1
             }

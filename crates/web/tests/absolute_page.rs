@@ -344,3 +344,19 @@ fn a_fixed_table_takes_its_first_rows_widths() {
     assert_eq!(w("d"), (551., 136.));
     assert_eq!(w("m"), w("c"), "the rows follow the first");
 }
+#[test]
+fn cells_fill_their_row_and_align_their_content_in_it() {
+    // GitHub's file list: its row lines (cells' borders) fell apart when a
+    // middle-aligned cell's box moved instead of its content (Chrome: both
+    // cells 0 + 43, the small one's text in the middle).
+    let p = load(
+        "table{border-spacing:0;width:300px}td{border-top:1px solid red;padding:4px;vertical-align:middle;line-height:18px}.big{font-size:30px;line-height:34px}</style><table><tr><td id=a>small</td><td id=b class=big>Big</td></tr></table>",
+        1.,
+    );
+    let (a, b) = (rect(&p, "a"), rect(&p, "b"));
+    assert_eq!((a.y, a.height), (b.y, b.height));
+    let l = p.scene.layout();
+    let text = l.cache().tree().iter().find(|(_, x)| matches!(x.kind, layout::BoxKind::InlineContent { .. }) && p.document.attribute(x.node, "id").unwrap() == Some("a")).unwrap().0;
+    let t = l.bounds(text).unwrap();
+    assert!((t.y - (a.y + (a.height - 18.) / 2.)).abs() < 1., "{t:?} in {a:?}");
+}
