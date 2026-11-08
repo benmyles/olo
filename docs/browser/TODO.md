@@ -89,8 +89,9 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   outer tree wins for normal declarations), `::part()` (an outer tree's
   rules win over the shadow tree's own). Shoelace's docs as Chrome
   (JOURNAL 2026-11-08). Open: `:host-context()`, `::part()` reaching
-  through `exportparts`, declarative shadow DOM (`<template
-  shadowrootmode>`), `revert` across trees (Unsupported).
+  through `exportparts`, `revert` across trees (Unsupported). Declarative
+  shadow roots (`<template shadowrootmode>`) parse, render and reach
+  scripts.
 - [x] GitHub's repository page: the file list's commits (IndexedDB
   requests now fail as events, so its query cache runs), its columns
   (`table-layout: fixed`), its row lines (cells fill their row),

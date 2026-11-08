@@ -6523,3 +6523,10 @@ journal).
   from the outer tree and wins over the shadow tree's own (the shadow
   context's encapsulation: an outer `::part()` 0, an element's own tree 1,
   `:host`/`::slotted()` 2). The page's dialog now matches Chrome's.
+- **Declarative shadow DOM.** A `<template shadowrootmode="open|closed">`
+  failed the whole parse ("Unsupported"); server-rendered web components
+  use it. It parses as a template and, when it closes, becomes its
+  parent's shadow root (its contents moved in, the template gone), styled
+  by its own `<style>`s. Scripts see it as `host.shadowRoot`, a
+  definition upgrades elements inside it, and `attachShadow` claims it
+  once, emptied, as the DOM standard has it.

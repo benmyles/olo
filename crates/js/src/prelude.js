@@ -486,7 +486,7 @@
     scrollWidth: { get() { if (this === html() || this === document.body && N.computed(this, 'overflow-y') === 'visible') return Math.round(N.docSize()[0]); const r = N.scrollSize(this); return r ? Math.round(r[2]) : 0; } }, scrollHeight: { get() { if (this === html() || this === document.body && N.computed(this, 'overflow-y') === 'visible') return Math.round(N.docSize()[1]); const r = N.scrollSize(this); return r ? Math.round(r[3]) : 0; } },
     scrollTop: { get() { if (this === html() || this === document.body) return global.scrollY; return N.scrollOffset(this)[1]; }, set(v) { if (this === html() || this === document.body) { global.scrollTo(global.scrollX, Number(v) || 0); return; } scrollElement(this, N.scrollOffset(this)[0], Number(v) || 0); } },
     scrollLeft: { get() { if (this === html() || this === document.body) return global.scrollX; return N.scrollOffset(this)[0]; }, set(v) { if (this === html() || this === document.body) return; scrollElement(this, Number(v) || 0, N.scrollOffset(this)[1]); } },
-    shadowRoot: { get() { return this._shadow || null; } },
+    shadowRoot: { get() { if (this._shadow) return this._shadow; const root = N.shadowRootOf(this); if (root) { Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this, configurable: true }); Object.defineProperty(root, 'mode', { value: 'open', configurable: true }); Object.defineProperty(root, '_declarative', { value: true, configurable: true, writable: true }); shadowRoots.add(root); } return root; } },
     assignedSlot: { get() { return null; } },
     isContentEditable: { get() { return false; } },
     options: { get() { return listOf(N.query(this, 'option', true), HTMLOptionsCollection); } },
@@ -550,7 +550,13 @@
     submit() { if (N.nodeName(this) === 'FORM') submitForm(this, null, false); }, reset() { if (N.nodeName(this) === 'FORM') for (const c of N.query(this, 'input,textarea', true)) N.setControlValue(c, N.nodeName(c) === 'TEXTAREA' ? N.textContent(c) : (N.attr(c, 'value') || '')); }, requestSubmit(submitter) { if (N.nodeName(this) === 'FORM') submitForm(this, submitter || null, true); }, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
     animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), null); a.play(); return a; },
     getAnimations() { return animations.filter((a) => a.effect && a.effect.target === this && a.playState !== 'idle'); },
-    attachShadow(init) { if (this._shadow) throw new DOMException('This element already hosts a shadow root.', 'NotSupportedError'); const root = N.attachShadow(this); shadowRoots.add(root); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open' }); return root; },
+    attachShadow(init) {
+      // A declarative shadow root (the parser's) is claimed once, emptied
+      // (DOM §4.2.2.2: attachShadow on such a host); any other is an error.
+      if (this._shadow && !this._shadow._declarative) throw new DOMException('This element already hosts a shadow root.', 'NotSupportedError');
+      const declared = (this._shadow && this._shadow._declarative) || (!this._shadow && N.shadowRootOf(this));
+      const root = N.attachShadow(this);
+      if (declared) { for (const c of N.childNodes(root)) nativeRemove(c); Object.defineProperty(root, '_declarative', { value: false, configurable: true, writable: true }); } shadowRoots.add(root); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this, configurable: true }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open', configurable: true }); return root; },
     requestFullscreen() { return Promise.resolve(); },
     play() { if (!isMedia(this)) return Promise.resolve(); N.mediaCommand(this, 'play', 0); queueMedia(this, ['play']); return Promise.resolve(); },
     pause() { if (!isMedia(this) || N.media(this)[0]) return; N.mediaCommand(this, 'pause', 0); queueMedia(this, ['pause']); },
@@ -843,7 +849,7 @@
     N.removeAttr = (el, name) => { const old = el && el._upgraded ? N.attr(el, name) : undefined; const r = removeAttr(el, name); if (old != null) changedAttribute(el, name, old); return r; };
   }
   global.customElements = {
-    define(name, ctor, options) { definitions.set(name, ctor); const w = whenDefined.get(name); if (w) w.resolve(ctor); const sel = name + (options && options.extends ? ', [is="' + name + '"]' : ''); const found = N.query(documentNode, sel, true); for (const root of shadowRoots) if (N.isConnected(root)) found.push(...N.query(root, sel, true)); for (const el of found) { upgrade(el, name); if (el._upgraded && typeof el.connectedCallback === 'function') { Object.defineProperty(el, '_connected', { value: true, configurable: true, writable: true }); try { el.connectedCallback(); } catch (e) { reportError(e); } } } },
+    define(name, ctor, options) { definitions.set(name, ctor); const w = whenDefined.get(name); if (w) w.resolve(ctor); const sel = name + (options && options.extends ? ', [is="' + name + '"]' : ''); const found = N.query(documentNode, sel, true); for (const root of N.shadowRoots()) if (N.isConnected(root)) found.push(...N.query(root, sel, true)); for (const el of found) { upgrade(el, name); if (el._upgraded && typeof el.connectedCallback === 'function') { Object.defineProperty(el, '_connected', { value: true, configurable: true, writable: true }); try { el.connectedCallback(); } catch (e) { reportError(e); } } } },
     get(name) { return definitions.get(name); },
     getName(ctor) { for (const [n, c] of definitions) if (c === ctor) return n; return null; },
     whenDefined(name) { if (definitions.has(name)) return Promise.resolve(definitions.get(name)); let entry = whenDefined.get(name); if (!entry) { let resolve; const promise = new Promise((r) => { resolve = r; }); entry = { promise, resolve }; whenDefined.set(name, entry); } return entry.promise; },

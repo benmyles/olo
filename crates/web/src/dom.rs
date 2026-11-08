@@ -831,6 +831,12 @@ impl Document {
     pub fn is_defined(&self, node: NodeId) -> Result<bool> {
         Ok(!self.name(node)?.is_some_and(|n| n.contains('-')) || self.defined.contains(&node))
     }
+    /// Every shadow root, ordered by its host's place in the node table.
+    pub fn shadow_roots(&self) -> Vec<NodeId> {
+        let mut roots: Vec<(NodeId, NodeId)> = self.shadows.iter().map(|(h, r)| (*h, *r)).collect();
+        roots.sort_by_key(|(h, _)| h.slot());
+        roots.into_iter().map(|(_, r)| r).collect()
+    }
     /// Whether any element hosts a shadow root.
     pub fn has_shadows(&self) -> bool {
         !self.shadows.is_empty()

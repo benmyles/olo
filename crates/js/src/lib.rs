@@ -1701,6 +1701,8 @@ const NATIVES: &[&str] = &[
     "createFragment",
     "attachShadow",
     "setDefined",
+    "shadowRootOf",
+    "shadowRoots",
     "shadowHost",
     "templateContents",
     "clone",
@@ -2241,6 +2243,21 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     None => throw(scope, "could not attach a shadow root"),
                 }
             }
+        }
+        // shadowRootOf(element) → its shadow root (a declarative one the
+        // parser made too), or null.
+        "shadowRootOf" => {
+            let root = node(scope, 0).and_then(|n| state.borrow().document.shadow_root(n));
+            match root.and_then(|r| wrap(scope, &state, r)) {
+                Some(o) => rv.set(o.into()),
+                None => rv.set_null(),
+            }
+        }
+        // shadowRoots() → every shadow root.
+        "shadowRoots" => {
+            let roots = state.borrow().document.shadow_roots();
+            let items: Vec<v8::Local<v8::Value>> = roots.into_iter().filter_map(|r| wrap(scope, &state, r)).map(Into::into).collect();
+            rv.set(v8::Array::new_with_elements(scope, &items).into());
         }
         // setDefined(element): its definition upgraded it (`:defined`).
         "setDefined" => {

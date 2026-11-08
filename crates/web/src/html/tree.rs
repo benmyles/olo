@@ -159,6 +159,8 @@ struct Builder<'a> {
     formatting: Vec<Option<Formatting<'a>>>,
     selected_content: Vec<NodeId>,
     template_modes: Vec<Insertion>,
+    /// Open templates that are declarative shadow roots (`shadowrootmode`).
+    declarative_shadows: Vec<crate::dom::NodeId>,
     // The builder owns/roots this temporary node until fragment finish.
     // Keep its local arena slot rather than a 24-byte optional public ID.
     fragment_context: Option<std::num::NonZeroU32>,
@@ -290,6 +292,7 @@ impl<'a> Builder<'a> {
             formatting: Vec::new(),
             selected_content: Vec::new(),
             template_modes: Vec::new(),
+            declarative_shadows: Vec::new(),
             fragment_context: None,
             head: None,
             form: None,

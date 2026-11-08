@@ -515,3 +515,24 @@ console.log(host.shadowRoot.querySelectorAll(':not(:defined)').length, document.
     assert_eq!(realm.report().errors, Vec::<String>::new());
     assert_eq!(realm.report().console, ["[log] a b i u s", "[log] a b #8 i u s", "[log] b s", "[log] u i b a r", "[log] a i s r s", "[log] true true", "[log] connected in shadow true", "[log] 0 0"]);
 }
+#[test]
+fn declarative_shadow_roots_are_their_hosts_shadow_roots() {
+    let page = r#"<div id=h><template shadowrootmode="open"><b>inside</b></template>light</div><script>
+const h = document.getElementById('h');
+console.log(!!h.shadowRoot, h.shadowRoot && h.shadowRoot.firstChild.textContent, h.querySelector('template'), h.textContent);
+const again = h.attachShadow({ mode: 'open' });
+console.log(again === h.shadowRoot, again.childNodes.length);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    assert_eq!(realm.report().errors, Vec::<String>::new());
+    assert_eq!(realm.report().console, ["[log] true inside null light", "[log] true 0"]);
+}
