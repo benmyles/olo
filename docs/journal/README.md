@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: inline backgrounds
+
+*22:23* — Olo (left) and Chrome (right): code with padding, mark, a highlight wrapping two lines, a bigger code.
+
+![Browser: inline backgrounds](2026-11-07/222333-browser-inline-backgrounds.png)
+
 ### Browser: apple.com's search, used
 
 *21:32* — The search panel opened by its button (the page now cancels the link), its field focused on transitionend (CSS transitions), suggestions from its POST as you type.

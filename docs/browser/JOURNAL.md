@@ -6348,3 +6348,7 @@ journal).
   couldn't fill it: it took the first match across windows, Chrome's
   (behind, on the same page), and clicked there in Olo's; the focused
   window's matches come first now, and it waits up to 1.5 s for the focus.
+- **Inline backgrounds** paint (`<code>`, `<mark>`, highlights over line
+  breaks): each line's piece of the box's content area, grown by its
+  padding and by the paddings of boxes inside it at its edges. A test
+  page matches Chrome.

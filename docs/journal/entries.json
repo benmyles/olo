@@ -3916,5 +3916,11 @@
   "title": "Browser: apple.com's search, used",
   "caption": "The search panel opened by its button (the page now cancels the link), its field focused on transitionend (CSS transitions), suggestions from its POST as you type.",
   "image": "2026-11-07/213207-browser-apple-com-s-search-used.png"
+ },
+ {
+  "time": "2026-11-07T22:23:33",
+  "title": "Browser: inline backgrounds",
+  "caption": "Olo (left) and Chrome (right): code with padding, mark, a highlight wrapping two lines, a bigger code.",
+  "image": "2026-11-07/222333-browser-inline-backgrounds.png"
  }
 ]

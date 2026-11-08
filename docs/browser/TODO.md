@@ -130,7 +130,8 @@ Next, in impact order (each removes a fallback kind or a visible gap):
 - [x] Paint: `url()` background images (size, position, repeat), CSS
   transforms, opacity groups.
 - [ ] Paint: inset shadows, dashed/dotted
-  borders, inline backgrounds, rounded borders with differing sides,
+  borders, inline backgrounds' corners, images and borders (their colour
+  paints), rounded borders with differing sides,
   `filter`, `mask-image`, `mix-blend-mode`, SVG `<text>`, `<use>`,
   `<mask>` (Stripe's Sign in button).
 - [x] Text: letter-spacing/word-spacing, `text-wrap: balance`,
