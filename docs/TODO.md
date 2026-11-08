@@ -20,9 +20,14 @@ something nobody here has is in "Blocked", with what it waits for.
 Leftovers found in finished entries (2026-11-08 audit: each checked
 against the code, still not there):
 
-- **app_server keeps its big buffers** (its "Left", 2026-11-02): a
-  screenshot's 31 MB texture and read-back kept for reuse, not left to
-  Mesa's 3-second cache (Screenshot's live resize, 18–21 ms then).
+- **A screenshot holds app_server's loop ~5 ms at 4K** (found
+  2026-11-08, measuring the item below in Done): 3.5 ms waiting on the
+  GPU in `map_texture` and 1.5 copying 33 MB to the heap, in the frame
+  that takes it. Read back asynchronously: the copy queued in that frame
+  and mapped when the GPU says it's done (a fence's fd in the event
+  loop, or the next frame), so the loop never waits. Mostly agent
+  screens' looks and tsession's shots (each their own app_server); the
+  person's own Screenshot app now and then.
 
 ## Done, waiting for Ben to try or confirm
 
@@ -2341,6 +2346,15 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**app_server keeps its big buffers**~~ (its "Left", 2026-11-02).
+  *Done* (2026-11-08): a screenshot's target texture is kept for the
+  next of its size, and smithay keeps the last read-back's buffer, each
+  let go 10 s after its last use. Measured honestly on the Intel GPU:
+  the texture's 30–70 µs saved, the read-back unchanged (A/B), the shot
+  the same 5.3–5.5 ms of app_server's loop; the 18–21 ms it was about
+  was the M2's, gone since 2026-11-02. What a shot costs now is the
+  GPU wait and the copy (Not started).
 
 - ~~**Shortcuts for programs that aren't Olo's**~~ (the shortcut
   profiles' "Not yet"). *Done* (2026-11-08): Chrome's own keys are in

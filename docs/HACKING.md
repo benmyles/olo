@@ -7058,7 +7058,21 @@ with that output's next frame (`screenshot::take`): the screen via
 shape, or only the client's area). A thread then draws the pointer in
 (the cursor it is showing, from `cursor.rs`), unpremultiplies, encodes and
 writes `NAME.part` and renames it, so readers never see half a file.
-Window shots are refused while the screen is locked.
+Window shots are refused while the screen is locked. The picture's
+target texture is kept for the next shot of its size in its GL context
+(`render::kept_target`), and smithay's GLES renderer keeps the last
+read-back's buffer for the next read-back of its size (`GlesCleanup::
+spare`, Olo's patch), each let go 10 s after its last use (as the next
+frame, or cleanup, comes): a 4K shot no longer makes and frees 66 MB.
+Measured, a 4K screen on the ThinkPad's Intel GPU (release, the
+`screenshot` timing phase, both backends): the texture's making 30–70 µs
+→ under 1 µs; the read-back the same either way (an A/B in one
+session: copying it out 1.46 against 1.45 ms); a shot holds app_server's
+loop 5.3–5.5 ms either way, 3.5 of them waiting on the GPU in
+`map_texture` and 1.5 copying 33 MB to the heap, so the round trip is
+the same 32 ms (the file written on a thread). The 18–21 ms this was
+about was the M2's Mesa freeing such buffers inside the renderer's next
+bind (gone since `dmabuf_check`, 2026-11-02).
 
 The Screenshot app (`olo-screenshot`) follows Haiku's: it takes a
 picture as it starts, then shows it with Capture active window / Include

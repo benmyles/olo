@@ -466,6 +466,7 @@ pub fn run_headless(size_arg: Option<&str>) {
                         AsRenderElements::<GlesRenderer>::render_elements(&tree, &mut state.backend_data.renderer, at, scale.into(), 1.0);
                     overlays.splice(0..0, dragged);
                 }
+                let t = std::time::Instant::now();
                 crate::screenshot::take::<_, GlesTexture>(
                     &mut state.ipc,
                     shot,
@@ -478,7 +479,9 @@ pub fn run_headless(size_arg: Option<&str>) {
                     locked,
                     (pointer, crate::cursor::pictured(&crate::saver::shown_cursor(&state.saver, &state.cursor_status))),
                 );
+                state.timings.phase("screenshot", t);
             }
+            crate::render::let_go_of_kept_target();
             // Frames programs asked for (screen sharing).
             state.captures.finish();
             let here = if state.captures.pending() { state.capture_windows_on(output, state.lock.locked()) } else { Vec::new() };

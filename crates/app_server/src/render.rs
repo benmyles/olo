@@ -861,6 +861,7 @@ pub fn capture<R, T>(
 ) -> Result<image::RgbaImage, String>
 where
     R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
+    T: Clone + 'static,
     R::TextureId: Clone + Send + 'static,
     R::Error: std::fmt::Display,
 {
@@ -1067,6 +1068,8 @@ pub fn offscreen<R, T, E>(renderer: &mut R, size: Size<i32, Physical>, scale: f6
 where
     R: Renderer + Offscreen<T> + ExportMem,
     R::Error: std::fmt::Display,
+    R::TextureId: 'static,
+    T: Clone + 'static,
     E: RenderElement<R>,
 {
     if size.w <= 0 || size.h <= 0 {
@@ -1074,7 +1077,7 @@ where
     }
     let buffer_size: Size<i32, Buffer> = (size.w, size.h).into();
     let err = |e: R::Error| e.to_string();
-    let mut target = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).map_err(err)?;
+    let mut target = kept_target(renderer, buffer_size).map_err(err)?;
     let mapping = {
         let mut fb = renderer.bind(&mut target).map_err(err)?;
         let mut damage_tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
@@ -1089,6 +1092,59 @@ where
         image::imageops::flip_vertical_in_place(&mut img);
     }
     Ok(img)
+}
+
+thread_local! {
+    /// The last offscreen target (a screenshot's: 33 MB at 4K), kept for
+    /// the next of the same size in the same GL context (an agent's looks,
+    /// a recording's frames) rather than made for each, and let go of
+    /// `TARGET_KEPT` after its last use ([`let_go_of_kept_target`]).
+    static TARGET: std::cell::RefCell<Option<KeptTarget>> = const { std::cell::RefCell::new(None) };
+}
+
+struct KeptTarget {
+    context: smithay::backend::renderer::ErasedContextId,
+    size: Size<i32, Buffer>,
+    texture: Box<dyn std::any::Any>,
+    used: std::time::Instant,
+}
+
+/// How long an offscreen target is kept after its last use.
+const TARGET_KEPT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// An offscreen target of `size` in `renderer`'s context: the one kept, or
+/// a new one (kept in its place).
+fn kept_target<R, T>(renderer: &mut R, size: Size<i32, Buffer>) -> Result<T, R::Error>
+where
+    R: Renderer + Offscreen<T>,
+    R::TextureId: 'static,
+    T: Clone + 'static,
+{
+    let context = renderer.context_id().erased();
+    let kept = TARGET.with(|t| {
+        let mut t = t.borrow_mut();
+        let k = t.as_mut().filter(|k| k.context == context && k.size == size)?;
+        k.used = std::time::Instant::now();
+        k.texture.downcast_ref::<T>().cloned()
+    });
+    if let Some(texture) = kept {
+        return Ok(texture);
+    }
+    let texture = renderer.create_buffer(Fourcc::Abgr8888, size)?;
+    TARGET.with(|t| *t.borrow_mut() = Some(KeptTarget { context, size, texture: Box::new(texture.clone()), used: std::time::Instant::now() }));
+    Ok(texture)
+}
+
+/// Let the kept offscreen target go once it's been unused `TARGET_KEPT`
+/// (each frame asks: nothing is held while shots are taken, and it goes
+/// with the next frame after that).
+pub fn let_go_of_kept_target() {
+    TARGET.with(|t| {
+        let mut t = t.borrow_mut();
+        if t.as_ref().is_some_and(|k| k.used.elapsed() >= TARGET_KEPT) {
+            *t = None;
+        }
+    });
 }
 
 #[cfg(test)]

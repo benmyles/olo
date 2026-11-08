@@ -97,6 +97,7 @@ pub fn take<R, T>(
     (pointer, shape): (Point<f64, Logical>, Option<crate::cursor::Shape>),
 ) where
     R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
+    T: Clone + 'static,
     R::TextureId: Clone + Send + 'static,
     R::Error: std::fmt::Display,
 {
@@ -120,6 +121,7 @@ pub fn take<R, T>(
 fn capture_window<R, T>(renderer: &mut R, space: &Space<WindowElement>, id: u64, scale: f64, border: bool) -> Result<(image::RgbaImage, Rectangle<i32, Logical>), String>
 where
     R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
+    T: Clone + 'static,
     R::TextureId: Clone + Send + 'static,
     R::Error: std::fmt::Display,
 {

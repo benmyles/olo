@@ -2522,7 +2522,10 @@ impl AnvilState<UdevData> {
         .unwrap();
 
         let locked = self.lock.locked();
+        let shots_from = std::time::Instant::now();
+        let mut shots = 0;
         for shot in self.ipc.shots_for(&output) {
+            shots += 1;
             let overlays = if locked { crate::lock::elements(&self.lock, &mut renderer, &output) } else { Vec::new() };
             crate::screenshot::take::<_, smithay::backend::renderer::gles::GlesTexture>(
                 &mut self.ipc,
@@ -2537,6 +2540,10 @@ impl AnvilState<UdevData> {
                 (self.pointer.current_location(), crate::cursor::pictured(&crate::saver::shown_cursor(&self.saver, &self.cursor_status))),
             );
         }
+        if shots > 0 {
+            self.timings.phase("screenshot", shots_from);
+        }
+        crate::render::let_go_of_kept_target();
         // Frames programs asked for (screen sharing).
         self.captures.finish();
         let on_output = |id| here.contains(&id);
