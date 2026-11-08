@@ -1766,7 +1766,7 @@ impl<'a> Job<'a> {
                 }
             } else {
                 let natural = cache.tree.natural(child)?;
-                let used = super::images::used(s, width, height, natural, false, false, queries, &mut self.scratch, self.cancel, self.scale)?;
+                let used = super::images::used(s, width, height, natural, !measuring && cache.tree.ratio_only(child), false, false, queries, &mut self.scratch, self.cancel, self.scale)?;
                 (super::images::geometry(used), used.margin)
             };
             let height = g.border_box.height + margin.vertical();
@@ -2011,7 +2011,9 @@ impl<'a> Job<'a> {
                         let queries = frame.queries;
                         let s = self.cache.tree.style(child).ok_or(Error::Invalid)?;
                         let natural = self.cache.tree.natural(child)?;
-                        let mut used = super::images::used(s, parent.width, parent.height.map(|h| parent.height(h)), natural, true, parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
+                        let ratio_only = self.cache.tree.ratio_only(child);
+                        let mut used =
+                            super::images::used(s, parent.width, parent.height.map(|h| parent.height(h)), natural, ratio_only, true, parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
                         let flexed = match self.flex_child_used(child)? {
                             Some(u) => Some(u),
                             None => self.container_child_used(child)?,

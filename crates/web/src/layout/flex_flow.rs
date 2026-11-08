@@ -267,7 +267,7 @@ fn item(
         // Images, vectors and placeholders: the natural size is the content
         // size, and the automatic minimum is that content (CSS Flexbox 4.5).
         let natural = tree.natural(id)?;
-        let used = super::images::used(s, parent.width, parent.height.map(|h| parent.height(h)), natural, false, false, queries, scratch, cancel, scale)?;
+        let used = super::images::used(s, parent.width, parent.height.map(|h| parent.height(h)), natural, false, false, false, queries, scratch, cancel, scale)?;
         let extra = used.padding.horizontal() + used.border.horizontal();
         let maximum = used::length(s, P::MaxWidth, Some(parent.width), None, queries, scratch, cancel, scale)?.unwrap_or(f64::INFINITY);
         let minimum = if keyword(s, P::MinWidth).ok() == Some(K::Auto) {

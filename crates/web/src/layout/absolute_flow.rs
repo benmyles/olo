@@ -149,7 +149,7 @@ impl Job<'_> {
         if node.kind.is_replaced() {
             // Replaced boxes have their size before placement (CSS 2.2 10.3.8/10.6.5).
             let natural = tree.natural(d.id)?;
-            let mut u = super::images::used(s, width, Some(height), natural, false, rtl, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+            let mut u = super::images::used(s, width, Some(height), natural, false, false, rtl, d.queries, &mut self.scratch, self.cancel, self.scale)?;
             let h = u.height.ok_or(Error::Invalid)?;
             let x = input(s, Axis::Horizontal { rtl, static_rtl: rtl }, width, height, u, Some(u.width), [u.width, u.width], static_x, d.queries, &mut self.scratch, self.cancel, self.scale)?;
             let y = input(s, Axis::Vertical, width, height, u, Some(h), [h, h], static_y, d.queries, &mut self.scratch, self.cancel, self.scale)?;

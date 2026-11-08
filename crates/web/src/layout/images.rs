@@ -11,6 +11,7 @@ pub(super) fn used(
     width: f64,
     height: Option<f64>,
     natural: (f64, f64),
+    ratio_only: bool,
     block: bool,
     rtl: bool,
     queries: QueryBasis,
@@ -55,8 +56,18 @@ pub(super) fn used(
             (ratio.map_or(natural.0, |r| h * r).clamp(minw, maxw), h)
         }
         (None, None) => {
+            // A ratio and no natural size (an SVG with only a viewBox): as
+            // wide as a block would be, the ratio giving its height (CSS
+            // 2.2 §10.3.2's suggestion, which browsers follow).
+            let (w, h) = match ratio.filter(|_| ratio_only) {
+                Some(r) => {
+                    let mut m = |p| length(s, p, Some(width), Some(0.), queries, scratch, cancel, scale).map(|v| v.unwrap_or(0.));
+                    let w = (width - ex - m(P::MarginLeft)? - m(P::MarginRight)?).max(0.);
+                    (w, w / r)
+                }
+                None => (natural.0, natural.1),
+            };
             // CSS2 replaced-element intrinsic-ratio constraint table.
-            let (w, h) = (natural.0, natural.1);
             if w < minw && h > maxh {
                 (minw, maxh)
             } else if w > maxw && h < minh {

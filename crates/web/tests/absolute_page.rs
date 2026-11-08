@@ -284,3 +284,28 @@ fn an_inline_level_absolute_box_takes_its_place_in_its_line() {
     // A block-level one keeps a block's static position: after the line.
     assert_eq!((rect(&p, "d").x, rect(&p, "d").y), (0., 36.));
 }
+#[test]
+fn an_svg_with_only_a_viewbox_fills_the_width_at_its_ratio() {
+    // apple.com's Music, Fitness+ and Arcade logos: `<svg viewBox>` in a
+    // 64 × 20 box is 64 wide (Chrome 63.95 × 15.09), not the 300 × 150
+    // default; one with a width keeps it; one without a viewBox is 300 × 150.
+    let p = load(
+        ".l{width:64px;height:20px}</style><div class=l><svg id=a viewBox='0 0 339 80'></svg></div><div style='width:200px'><svg id=b viewBox='0 0 100 50'></svg><svg id=c width=40 viewBox='0 0 100 50'></svg></div><svg id=d></svg>",
+        1.,
+    );
+    let r = |name: &str| {
+        let l = p.scene.layout();
+        let id = l
+            .cache()
+            .tree()
+            .iter()
+            .find(|(_, b)| matches!(b.kind, layout::BoxKind::InlineVector { .. } | layout::BoxKind::BlockVector { .. }) && p.document.attribute(b.node, "id").unwrap() == Some(name))
+            .unwrap()
+            .0;
+        l.bounds(id).unwrap()
+    };
+    assert_eq!((r("a").width, (r("a").height * 100.).round() / 100.), (64., 15.09));
+    assert_eq!((r("b").width, r("b").height), (200., 100.));
+    assert_eq!((r("c").width, r("c").height), (40., 20.));
+    assert_eq!((r("d").width, r("d").height), (300., 150.));
+}

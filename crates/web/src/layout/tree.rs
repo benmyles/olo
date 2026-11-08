@@ -156,6 +156,11 @@ impl Tree {
     pub fn vectors(&self) -> &[crate::svg::Viewport] {
         &self.vectors
     }
+    /// A box with a natural ratio and no natural size: an SVG with a
+    /// viewBox (its width and height attributes, when given, are CSS).
+    pub(super) fn ratio_only(&self, id: BoxId) -> bool {
+        matches!(self.get(id).map(|b| b.kind), Some(BoxKind::InlineVector { vector } | BoxKind::BlockVector { vector }) if self.vector(vector).is_some_and(|v| v.view_box.is_some_and(|b| b[2] > 0. && b[3] > 0.)))
+    }
     pub(super) fn natural(&self, id: BoxId) -> Result<(f64, f64)> {
         match self.get(id).ok_or(Error::Invalid)?.kind {
             BoxKind::InlineImage { image } | BoxKind::BlockImage { image } => {
