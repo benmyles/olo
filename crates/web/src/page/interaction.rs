@@ -138,4 +138,7 @@ impl StateSource for Snapshot<'_> {
             _ => false,
         })
     }
+    fn direction(&self, node: NodeId) -> selectors::Result<bool> {
+        selectors::dir_attribute(self.doc, node)
+    }
 }

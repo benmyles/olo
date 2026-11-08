@@ -1819,6 +1819,7 @@ const NATIVES: &[&str] = &[
     "historyChanged",
     "navigatePost",
     "openSelect",
+    "runModule",
     "compatMode",
     "animationRemove",
     "structuredClone",
@@ -2759,6 +2760,22 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 let error = exception_text(tc, &name);
                 state.borrow_mut().report.errors.push(error);
             }
+            rv.set_bool(ran);
+        }
+        // runModule(source or null, url): a module script a script inserted
+        // (its graph fetched, instantiated and evaluated); true when it ran.
+        "runModule" => {
+            let url = arg_string(scope, &args, 1);
+            let source = args.get(0).is_string().then(|| arg_string(scope, &args, 0));
+            state.borrow_mut().report.scripts += 1;
+            v8::tc_scope!(let tc, scope);
+            let ran = match modules::run(tc, &state, &url, source.as_deref()) {
+                Ok(_) => true,
+                Err(error) => {
+                    state.borrow_mut().report.errors.push(error);
+                    false
+                }
+            };
             rv.set_bool(ran);
         }
         // Geometry, from a layout of the document as it is now.

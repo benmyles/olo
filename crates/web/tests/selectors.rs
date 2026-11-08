@@ -220,7 +220,9 @@ fn live_host_states_pseudo_targets_and_history_privacy() {
     assert!(selector.matches(&tree, node, Default::default(), Default::default(), None).unwrap().is_none());
     states.0.store(true, Ordering::Relaxed);
     assert!(selector.matches(&tree, node, Default::default(), Default::default(), None).unwrap().is_some());
-    assert_eq!(selector.matches(&DomTree::new(&doc), node, Default::default(), Default::default(), None), Err(Error::StateUnavailable));
+    // Without a state source no element has the state (a cascade or a
+    // script's query goes on, as Bing's :dir() needed).
+    assert_eq!(selector.matches(&DomTree::new(&doc), node, Default::default(), Default::default(), None), Ok(None));
     assert!(compiled(":visited").matches(&tree, node, Default::default(), Default::default(), None).unwrap().is_none());
     assert!(compiled(":link").matches(&tree, node, Default::default(), Default::default(), None).unwrap().is_some());
     let pseudo = MatchOptions { pseudo: Some(PseudoElement::Before), ..Default::default() };

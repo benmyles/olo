@@ -146,12 +146,34 @@ impl Tree for DomTree<'_> {
             None if matches!(state, State::AnyLink | State::Link) && pseudo.is_none() => {
                 Ok(self.document.namespace(node)? == Some(dom::Namespace::Html) && matches!(self.document.name(node)?, Some("a" | "area")) && self.document.attribute(node, "href")?.is_some())
             }
-            None => Err(Error::StateUnavailable),
+            // Without a state source (a script's query): no element has it.
+            None => Ok(false),
         }
     }
     fn direction(&self, node: NodeId) -> Result<bool> {
-        self.states.ok_or(Error::StateUnavailable)?.direction(node)
+        match self.states {
+            Some(states) => states.direction(node),
+            None => dir_attribute(self.document, node),
+        }
     }
+}
+/// `:dir(rtl)` (true) from the nearest `dir` attribute: `rtl` or `ltr`
+/// (`auto` and none read as left to right), the page's when none says.
+pub fn dir_attribute(document: &Document, node: NodeId) -> Result<bool> {
+    let mut at = Some(node);
+    while let Some(n) = at {
+        if let Some(dir) = document.attribute(n, "dir")? {
+            let dir = dir.trim();
+            if dir.eq_ignore_ascii_case("rtl") {
+                return Ok(true);
+            }
+            if dir.eq_ignore_ascii_case("ltr") {
+                return Ok(false);
+            }
+        }
+        at = document.parent(n)?;
+    }
+    Ok(false)
 }
 #[derive(Clone, Copy, Debug)]
 pub struct MatchLimits {

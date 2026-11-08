@@ -6738,3 +6738,20 @@ DuckDuckGo's HTML search (a POST form, no scripts) rendered unstyled:
   shared it evenly); and a table with a set width is never narrower than
   its columns' min-content. Rust's infobox: label column 122 px (Chrome
   127.6).
+
+## 2026-11-08, evening: a sweep of popular sites
+
+Loaded MDN, Stack Overflow, Reddit, Amazon, the NYT, CNN, docs.rs, Bing,
+the Guardian and old Reddit, looking for pages that fail outright:
+- **MDN didn't style at all** (`Cascade(Selectors(InvalidNode))`): an
+  `:nth-child()` on a node in a shadow tree, and `:disabled` on a control
+  the forms' walk didn't see, each failed the whole cascade. They count
+  the siblings directly and take the element's own `disabled`. MDN renders
+  (its layout is still off: TODO).
+- **Bing didn't style at all** (`StateUnavailable`): `:dir()` had no
+  answer. It reads the nearest `dir` attribute; without a state source no
+  element has a state, rather than the cascade failing.
+- **`data:` URLs** load as scripts, modules (`import 'data:…'`), style
+  sheets and through `fetch()` (old Reddit's scripts were refused).
+- **Module scripts that scripts insert** run (they were skipped): their
+  graph is fetched, instantiated and evaluated, then `load` or `error`.

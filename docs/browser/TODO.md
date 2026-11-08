@@ -169,6 +169,9 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   `::before`/`::after` generated content (strings, attr()).
 - [ ] Text: word-break/overflow-wrap (583), text-decoration (28),
   text-transform, counters and quotes in `content`.
+- [ ] MDN's layout (its sidebar and article overlap; the search box shows
+  open); old Reddit's login dialog (a `faceplate-partial` its app loads)
+  never shows; Amazon's front page shows nothing.
 - [ ] Line height: Chrome spaces DuckDuckGo's result snippets (an inline
   `<a>` with `line-height: 1.45` in a block with 1.6) by the inline's
   line height, its block's strut not counting, though every reduced case

@@ -3,7 +3,7 @@ use olo_web::{
     dom::{Document, Namespace, NodeId},
     page,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use url::Url;
 #[derive(Clone, Debug)]
 pub struct Link {

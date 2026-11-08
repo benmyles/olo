@@ -279,7 +279,17 @@
     if (started.has(el)) return;
     started.add(el);
     const type = (N.attr(el, 'type') || '').trim().toLowerCase();
-    if (type === 'module') { log('warn', ['module script skipped: ' + (N.attr(el, 'src') || 'inline')]); fireOn(el, 'error'); return; }
+    // A module script: its graph loaded and run (no currentScript), then
+    // load or error on the element.
+    if (type === 'module') {
+      const msrc = N.attr(el, 'src');
+      const previous = currentScript;
+      currentScript = null;
+      let ok = false;
+      try { ok = msrc != null && msrc.trim() !== '' ? N.runModule(null, resolveURL(msrc.trim())) : N.runModule(N.textContent(el), global.location.href.split('#')[0] + '#inline-module-' + (++inserts)); } finally { currentScript = previous; }
+      fireOn(el, ok ? 'load' : 'error');
+      return;
+    }
     if (!JS_TYPES.includes(type)) return;
     const src = N.attr(el, 'src');
     let source, name;

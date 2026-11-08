@@ -6,7 +6,7 @@ mod compile;
 pub(crate) use compile::RuleCompiler;
 mod matching;
 use super::Components;
-pub use matching::{Attribute, Content, DomTree, ElementName, KeyCache, MatchLimits, MatchOptions, MatchProgress, Matcher, StateSource, Tree, scope_key};
+pub use matching::{Attribute, Content, DomTree, ElementName, KeyCache, MatchLimits, MatchOptions, MatchProgress, Matcher, StateSource, Tree, dir_attribute, scope_key};
 use smallvec::SmallVec;
 use std::{
     collections::HashMap,

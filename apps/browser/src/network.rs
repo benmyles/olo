@@ -275,6 +275,26 @@ impl Loader {
         Ok(Arc::from(resource.bytes))
     }
     fn fetch(&self, url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, mut progress: impl FnMut(usize), kind: Kind) -> page::Result<Resource> {
+        // A data: URL (a script's, a module's, fetch()'s, a style sheet's):
+        // its own bytes and media type, decoded where it is.
+        if url.scheme() == "data" {
+            let data = data_url::DataUrl::process(url.as_str()).map_err(|_| "Malformed data URL")?;
+            let mut bytes = Vec::new();
+            data.decode(|chunk| {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err("Cancelled");
+                }
+                if chunk.len() > limit.saturating_sub(bytes.len()) {
+                    return Err("data: URL exceeds its size limit");
+                }
+                bytes.extend_from_slice(chunk);
+                Ok(())
+            })
+            .map_err(|_| "data: URL rejected or cancelled")?;
+            progress(bytes.len());
+            let mime = data.mime_type().to_string().parse::<mime::Mime>().ok();
+            return Ok(Resource { url, bytes, mime, status: Some(200), document_encoding: None });
+        }
         let allow_file = url.scheme() == "file";
         let cacheable = !matches!(kind, Kind::Document | Kind::Fetch) && url.scheme() != "file";
         if cacheable && let Some(c) = self.cache.lock().unwrap().entries.get(url.as_str()).cloned() {
