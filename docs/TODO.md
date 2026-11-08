@@ -78,6 +78,64 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **DiskBackup: Agent Setup, and Claude Code's model** (Ben, 2026-11-08:
+  "add an "Agent Setup" feature to disk backup where an agent can do the
+  google drive oauth/app setup …"; "have the claude code model
+  selectable in the ai prefs, default to opus 5.5 on medium"). Done
+  (e1ba11cc): Back Up to Google Drive ▸ Let an Agent Do It…, the login
+  shared with its agent screen, Claude Code in Terminal with the task,
+  `olo-diskbackup --agent-setup-done` keeping the client in Passwords
+  and signing in; Preferences ▸ AI ▸ Claude Code. Tried live on Ben's
+  testing screen with real Claude Code: in 9 minutes it made the
+  project, the Drive API, the sign-in (Internal: Google now publishes an
+  External app only with a homepage and privacy-policy address, so the
+  steps say so), the client (`~/Downloads/client_secret_161753405295-…
+  .json`), and DiskBackup signed in as ben@2q31.com; the test stopped
+  there (no backup made in his Drive with a test's key). Left (Ben):
+  upgrade, then finish with that client (Back Up To ▸ Google Drive… ▸
+  Choose File…, or Agent Setup again, which finds it made), or run Agent
+  Setup from scratch and follow along; the testing screen (`agent`) still
+  shows the client's secret in a Google Cloud tab, and its history keeps
+  the run.
+
+- **DiskBackup showed no window** (Ben, 2026-11-08: "i opened the app and
+  i see it has an entry in the deskbar but no windows for it"). Done
+  (0296d2d2): a window that fits what it shows, opened zoomed (Focus) or
+  tiled, never drew (it waited for a size the compositor kept from it);
+  now it lays out at the size given. Left (Ben): upgrade, then open
+  DiskBackup in Focus.
+
+- **Move to Window for every tab** (Ben, 2026-11-08: "a pattern and
+  works for all tabbed olo apps … move to window -> <window name>. if that
+  leaves no more tabs in the origin window then that window should
+  close"). Done (9ae5c484): the kit's `Menu::move_to_window`; Terminal's
+  tabs and tab groups (Move Group to Window), the window closing when
+  emptied; a window's own tab into another of its app's windows (the
+  window menu). Left (Ben): upgrade, then try it in Terminal.
+
+- **Night Mode: shift gradually** (Ben, 2026-11-08: "an extra checkbox
+  option for having it gradually shift over n minutes (between 1 and
+  180) …"). Done (92281cbf): Appearance ▸ Night Mode ▸ Shift gradually,
+  starting at From, over 1 minute to 3 hours; steps too small to see;
+  neutral at To as before. Left (Ben): upgrade, then a scheduled night
+  with a short shift to watch it.
+
+- **Deskbar: Group All Windows / Ungroup All Windows** (Ben, 2026-11-08:
+  "it should not be checked unless they are all grouped … so no
+  checks/ticks just the option changes based on the state"). Done
+  (6d1b147e). Left (Ben): upgrade, then Terminal's team menu.
+
+- **Every way in at once; Touch ID, face and keys in Security** (Ben,
+  2026-11-08: "after setting up the touch id fingerprint now my yubikey
+  isn't working. ALL enabled modes should work … also, centralize the
+  settings for all of these under prefs -> security"). Done (f1e3f934):
+  sudo's window and the polkit agent take the password (or the key's)
+  while the finger is listened for (a second PAM conversation once the
+  first holds the sensor); Preferences ▸ Security ▸ Sign In has Touch ID,
+  Face Unlock and Security Keys. Left (Ben): upgrade, then sudo in
+  Terminal and an administrator request with the YubiKey, the finger and
+  the face, each.
+
 - **The power button: Preferences ▸ Keyboard ▸ Power Button** (Ben,
   2026-11-08: "under prefs -> keyboard please add an option for
   choosing what the power button on the built in keyboard does when
