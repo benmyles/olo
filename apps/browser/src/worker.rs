@@ -1814,6 +1814,7 @@ fn render(
             }
         }
         let mut labels = Vec::new();
+        let mut hidden_cache: HashMap<olo_web::dom::NodeId, bool> = HashMap::new();
         for (id, fixed, sticky, offset) in hits
             .into_iter()
             .map(|id| (id, false, None, [0., 0.]))
@@ -1824,6 +1825,12 @@ fn render(
             let vector = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Vector { .. });
             let image = vector || matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
             let node = scene.node(id);
+            // What `aria-hidden` hides is not there for agents (nor for a
+            // screen reader): YouTube's thumbnail links, hidden so, read
+            // their image's alt "true".
+            if node.is_some_and(|n| aria_hidden(&page.document, n, &mut hidden_cache)) {
+                continue;
+            }
             let text = if image {
                 match node.map(|n| graphic_name(&page.document, n, vector)).transpose()?.flatten() {
                     Some(name) => std::borrow::Cow::Owned(name),
@@ -1844,6 +1851,7 @@ fn render(
             };
             labels.push(Label { image, text: text.into_owned().into(), rect, node, link, fixed, sticky, control: None });
         }
+        let mut labels = merge_words(labels);
         labels.extend(control_labels(page, scene, band, visible));
         cached.label_cache = Some((cached.page.scene.clone(), Instant::now(), (band.y, band.y + band.height), (r.key.width, r.key.height), labels.clone()));
         labels
@@ -2307,6 +2315,68 @@ impl Host for PageHost {
 /// `aria-label` (a graphic), an SVG's `<title>`, else the `aria-label` or
 /// `title` of the link or button it is drawn in (apple.com's nav links are
 /// `<a aria-label="Store">` holding an aria-hidden SVG of the word).
+/// Whether a node is inside an `aria-hidden="true"` element (asked per
+/// node; the answers for ancestors kept in `cache`).
+fn aria_hidden(doc: &olo_web::dom::Document, node: olo_web::dom::NodeId, cache: &mut HashMap<olo_web::dom::NodeId, bool>) -> bool {
+    let mut path = Vec::new();
+    let mut at = Some(node);
+    let mut found = false;
+    while let Some(n) = at {
+        if let Some(&known) = cache.get(&n) {
+            found = known;
+            break;
+        }
+        path.push(n);
+        if doc.node_type(n).ok() == Some(olo_web::dom::NodeType::Element) && doc.attribute(n, "aria-hidden").ok().flatten().is_some_and(|v| v.trim().eq_ignore_ascii_case("true")) {
+            found = true;
+            break;
+        }
+        at = doc.parent(n).ok().flatten();
+        if path.len() > 256 {
+            break;
+        }
+    }
+    for n in path {
+        cache.insert(n, found);
+    }
+    found
+}
+/// The page's labels with a link's words (or a text's) on one line as one
+/// label, as an accessibility tree names a link by all its text: "Rust in
+/// 100 Seconds", not "Rust", "in", "100", "Seconds".
+fn merge_words(labels: Vec<Label>) -> Vec<Label> {
+    let mut out: Vec<Label> = Vec::with_capacity(labels.len());
+    for l in labels {
+        if let Some(last) = out.last_mut() {
+            let same_link = match (&last.link, &l.link) {
+                (Some(a), Some(b)) => a.node == b.node,
+                (None, None) => !last.image && !l.image && last.node.is_some() && last.node == l.node,
+                _ => false,
+            };
+            let line = (last.rect.y + last.rect.height / 2. - (l.rect.y + l.rect.height / 2.)).abs() < last.rect.height.max(l.rect.height) / 2.;
+            let gap = l.rect.x - (last.rect.x + last.rect.width);
+            // A link's next line too (its text wraps): one name.
+            let next_line = last.link.is_some() && l.rect.y > last.rect.y && l.rect.y - (last.rect.y + last.rect.height) < l.rect.height.max(8.);
+            if same_link
+                && !last.image
+                && !l.image
+                && last.fixed == l.fixed
+                && last.sticky.map(|s| s.root) == l.sticky.map(|s| s.root)
+                && (line && gap > -1. && gap < last.rect.height.max(8.) * 1.5 || next_line)
+            {
+                let x0 = last.rect.x.min(l.rect.x);
+                let y0 = last.rect.y.min(l.rect.y);
+                let x1 = (last.rect.x + last.rect.width).max(l.rect.x + l.rect.width);
+                let y1 = (last.rect.y + last.rect.height).max(l.rect.y + l.rect.height);
+                last.rect = layout::Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+                last.text = format!("{} {}", last.text, l.text).into();
+                continue;
+            }
+        }
+        out.push(l);
+    }
+    out
+}
 fn graphic_name(doc: &olo_web::dom::Document, node: olo_web::dom::NodeId, vector: bool) -> olo_web::dom::Result<Option<String>> {
     let named = |n: olo_web::dom::NodeId, a: &str| -> olo_web::dom::Result<Option<String>> { Ok(doc.attribute(n, a)?.map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned)) };
     if let Some(name) = named(node, if vector { "aria-label" } else { "alt" })? {
