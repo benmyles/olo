@@ -687,12 +687,13 @@ impl Measurer {
         };
         phases[4] = started.elapsed().as_secs_f64() * 1000. - phases[..4].iter().sum::<f64>();
         phases[5] = started.elapsed().as_secs_f64() * 1000.;
-        Ok(Measured { layout, index, revision: doc.revision(), viewport, phases, defaults, path })
+        Ok(Measured { layout, document_size: Default::default(), index, revision: doc.revision(), viewport, phases, defaults, path })
     }
 }
 /// One layout of the document, queried by node.
 pub struct Measured {
     layout: Arc<layout::Layout>,
+    document_size: std::sync::OnceLock<(f64, f64)>,
     index: crate::dom::NodeMap<layout::BoxId>,
     revision: u64,
     viewport: layout::Viewport,
@@ -765,11 +766,43 @@ impl Measured {
         let _ = (r, g);
         Some(((right - padding.x).max(0.), (bottom - padding.y).max(0.)))
     }
-    /// The page's height: the root box's.
+    /// The page's scrollable size (`documentElement.scrollWidth/Height`):
+    /// as far as its boxes reach that no ancestor clips and that aren't
+    /// fixed, margins included, painted or not, and at least the viewport;
+    /// worked out once per layout.
     pub fn document_size(&self) -> (f64, f64) {
-        let root = self.layout.cache().tree().root();
-        let r = self.layout.bounds(root).unwrap_or_default();
-        (r.width.max(self.viewport.width), r.height.max(self.viewport.height))
+        *self.document_size.get_or_init(|| {
+            use css::{
+                properties::{Keyword as K, Property as P},
+                style::Value,
+            };
+            let tree = self.layout.cache().tree();
+            let n = tree.boxes().len();
+            // Per box: whether it is out of the page's overflow (an ancestor
+            // clips it, or it or one is fixed); and whether it clips what it
+            // holds.
+            let mut out = vec![false; n];
+            let mut clips = vec![false; n];
+            let (mut right, mut bottom) = (self.viewport.width, self.viewport.height);
+            for (id, b) in tree.iter() {
+                let i = id.index();
+                let style = tree.style(id);
+                let fixed = style.is_some_and(|s| matches!(s.value(P::Position), Value::Keyword(K::Fixed)));
+                out[i] = fixed || b.parent.is_some_and(|p| out[p.index()] || clips[p.index()]);
+                // (The root element's and the body's overflow is the
+                // viewport's: theirs clips nothing of the page.)
+                let top = b.parent.is_none_or(|p| tree.get(p).is_none_or(|pb| pb.parent.is_none() || pb.parent.and_then(|g| tree.get(g)).is_some_and(|gb| gb.parent.is_none())));
+                clips[i] = !top && style.is_some_and(|s| !matches!(s.value(P::OverflowX), Value::Keyword(K::Visible)) || !matches!(s.value(P::OverflowY), Value::Keyword(K::Visible)));
+                if out[i] || b.parent.is_none() {
+                    continue;
+                }
+                if let (Some(r), Some(g)) = (self.layout.bounds(id), self.layout.geometry(id)) {
+                    right = right.max(r.x + r.width + g.margin.right.max(0.));
+                    bottom = bottom.max(r.y + r.height + g.margin.bottom.max(0.));
+                }
+            }
+            (right, bottom)
+        })
     }
     /// A computed (resolved) value as getComputedStyle gives it, for the
     /// properties scripts read: keywords, lengths in px, colours, display,

@@ -94,6 +94,9 @@ pub struct Command {
     /// of a group it is in spreads it (what finds it by area looks that
     /// much further).
     pub(super) reach: f32,
+    /// Under a box with a `backdrop-filter` on the page (that box): painted
+    /// in a layer of its own, over what is under it blurred.
+    pub(super) backdrop: Option<BoxId>,
 }
 /// The axis-aligned bounds of `r` mapped through `m`.
 pub(super) fn aabb(m: [f64; 6], r: Rect) -> Rect {
@@ -205,6 +208,10 @@ pub enum LayerKind {
     /// carousel): its subtree painted in its own space and placed by the
     /// translation, so a frame that only moves it repaints nothing.
     Moved(BoxId),
+    /// A box with a `backdrop-filter` scrolled with the page, and its
+    /// subtree: a layer of the page's of its own, so what is painted under
+    /// it can be blurred (on the GPU) before it (the box's).
+    Backdrop(BoxId),
 }
 /// A moved layer (see `LayerKind::Moved`): its box, its translation now
 /// (CSS px), the clip of its ancestors it is shown within (document
@@ -307,6 +314,8 @@ pub struct Scene {
     pub(super) base: [u8; 4],
     pub(super) canvas: [u8; 4],
     extent: Rect,
+    /// The page's scrollable overflow from its boxes, painted or not.
+    layout_extent: Rect,
     /// What painting substituted (a dashed border drawn solid): kept by
     /// the scenes patched from this one, which paint the same.
     fallbacks: Arc<layout::Fallbacks>,
@@ -427,8 +436,10 @@ impl Scene {
         let bounds = if c.clip == NONE { c.bounds } else { intersection(c.bounds, self.clips[c.clip as usize].rect) };
         (bounds.width > 0. && bounds.height > 0.).then_some(bounds)
     }
+    /// How far the page reaches: what it paints, and its boxes (an empty
+    /// one makes a page as tall as it, as in Chrome).
     pub fn content_extent(&self) -> Rect {
-        self.extent
+        if self.layout_extent.width <= 0. && self.layout_extent.height <= 0. { self.extent } else { union(self.extent, self.layout_extent) }
     }
     pub fn device_scale(&self) -> f64 {
         self.layout.device_scale()
@@ -783,6 +794,7 @@ impl Scene {
             // Nothing transformed changed: the same scene over the new layout.
             return Ok(Some(Arc::new(Scene {
                 extent: self.extent,
+                layout_extent: self.layout_extent,
                 fallbacks: self.fallbacks.clone(),
                 layout,
                 commands: self.commands.clone(),
@@ -828,6 +840,7 @@ impl Scene {
         }
         Ok(Some(Arc::new(Scene {
             extent,
+            layout_extent: self.layout_extent,
             fallbacks: self.fallbacks.clone(),
             layout,
             commands: self.commands.clone(),
@@ -861,7 +874,7 @@ impl Scene {
         let mut hits = Vec::new();
         for (i, stratum) in self.strata.iter().enumerate().rev() {
             let (x, py) = match stratum.kind {
-                LayerKind::Page | LayerKind::Surface(_) => (x, y),
+                LayerKind::Page | LayerKind::Surface(_) | LayerKind::Backdrop(_) => (x, y),
                 LayerKind::Fixed => (x, y - scroll),
                 LayerKind::Sticky(root) => (x, y - stickies.iter().find(|s| s.root == root).map_or(0., |s| s.offset(scroll, height))),
                 LayerKind::Moved(_) => {
@@ -1048,7 +1061,7 @@ impl Scene {
         }
         out.clear();
         let mut part = Vec::new();
-        for stratum in self.strata.iter().filter(|s| s.kind == LayerKind::Page) {
+        for stratum in self.strata.iter().filter(|s| matches!(s.kind, LayerKind::Page | LayerKind::Backdrop(_))) {
             stratum.index.query(&self.commands, &self.transforms, region, &mut part, cancel)?;
             out.extend_from_slice(&part);
         }
@@ -1084,6 +1097,8 @@ struct State {
     sticky: Option<BoxId>,
     /// Under a moved layer (see `Command::moved`).
     moved: Option<BoxId>,
+    /// Under a backdrop layer (see `Command::backdrop`).
+    backdrop: Option<BoxId>,
     /// The scroll container whose content this is (index into
     /// `scrollers`), or NONE.
     scroller: u32,
@@ -1128,6 +1143,7 @@ pub struct BuildJob<'a> {
     canvas: [u8; 4],
     canvas_owner: Option<BoxId>,
     extent: Rect,
+    layout_extent: Rect,
     states: Vec<State>,
     draft: Vec<Draft>,
     clips: Vec<Clip>,
@@ -1144,6 +1160,7 @@ pub struct BuildJob<'a> {
     current_surface: bool,
     /// The moved layer the box being painted is under.
     current_moved: Option<BoxId>,
+    current_backdrop: Option<BoxId>,
     /// Nodes whose `transform` animates: each translated one becomes a
     /// moved layer.
     animated: std::collections::HashSet<crate::dom::NodeId>,
@@ -1209,6 +1226,7 @@ impl<'a> BuildJob<'a> {
             canvas,
             canvas_owner: owner,
             extent: Rect::default(),
+            layout_extent: Rect::default(),
             states: Vec::new(),
             draft: Vec::new(),
             clips: Vec::new(),
@@ -1220,6 +1238,7 @@ impl<'a> BuildJob<'a> {
             current_sticky: None,
             current_surface: false,
             current_moved: None,
+            current_backdrop: None,
             animated: Default::default(),
             moved: Vec::new(),
             scrollers: Vec::new(),
@@ -1270,6 +1289,7 @@ impl<'a> BuildJob<'a> {
             sticky: self.current_sticky,
             surface: self.current_surface,
             moved: self.current_moved,
+            backdrop: self.current_backdrop,
             reach: if self.current_group == NONE { 0. } else { self.groups[self.current_group as usize].reach },
         };
         let reach = extent(&command, &self.transforms);
@@ -1866,6 +1886,7 @@ impl<'a> BuildJob<'a> {
                 } else {
                     (Point::default(), 0, NONE, NONE, NONE, false, false, None, None, NONE, Point::default())
                 };
+            let parent_backdrop = b.parent.and_then(|p| self.states[p.index()].backdrop);
             if parent_hidden {
                 self.states.push(State {
                     origin: parent,
@@ -1877,6 +1898,7 @@ impl<'a> BuildJob<'a> {
                     fixed: parent_fixed,
                     sticky: parent_sticky,
                     moved: parent_moved,
+                    backdrop: parent_backdrop,
                     scroller: parent_scroller,
                     shift: parent_shift,
                     text_fill: NONE,
@@ -1894,6 +1916,8 @@ impl<'a> BuildJob<'a> {
             let mut children_transform = parent_transform;
             self.current_moved = parent_moved;
             let mut children_moved = parent_moved;
+            self.current_backdrop = parent_backdrop;
+            let mut children_backdrop = parent_backdrop;
             let parent_text_fill = b.parent.map_or(NONE, |p| self.states[p.index()].text_fill);
             self.current_text_fill = parent_text_fill;
             let mut children_text_fill = parent_text_fill;
@@ -1942,6 +1966,18 @@ impl<'a> BuildJob<'a> {
                 sc.content[0] = sc.content[0].max(outer.x + outer.width + g.margin.right.max(0.) + sc.pad[0] + sc.offset[0] - sc.rect.x);
                 sc.content[1] = sc.content[1].max(outer.y + outer.height + g.margin.bottom.max(0.) + sc.pad[1] + sc.offset[1] - sc.rect.y);
             }
+            // The page's own scrollable overflow (CSS Overflow 3 §2.2): a box
+            // no ancestor clips, not fixed, reaches it (its margin box's end)
+            // whether it paints or not.
+            if parent_scroller == NONE
+                && clip == NONE
+                && !parent_fixed
+                && !matches!(b.kind, BoxKind::Viewport)
+                && !tree.style(id).is_some_and(|s| matches!(s.value(P::Position), Value::Keyword(K::Fixed)))
+            {
+                let reach = Rect { width: outer.width + g.margin.right.max(0.), height: outer.height + g.margin.bottom.max(0.), ..outer };
+                self.layout_extent = if self.layout_extent.width <= 0. && self.layout_extent.height <= 0. { reach } else { union(self.layout_extent, reach) };
+            }
             match b.kind {
                 BoxKind::Viewport => {}
                 BoxKind::Block { .. } | BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. } => {
@@ -1984,6 +2020,26 @@ impl<'a> BuildJob<'a> {
                         children_clip = NONE;
                         layered = true;
                     }
+                    // A box with a backdrop-filter on the page itself (not
+                    // fixed, sticky, moved, in a group or another backdrop's
+                    // layer): it and its subtree in a layer of their own, so
+                    // what is under it shows blurred through it.
+                    if parent_backdrop.is_none()
+                        && parent_moved.is_none()
+                        && children_moved.is_none()
+                        && !children_fixed
+                        && children_sticky.is_none()
+                        && parent_group == NONE
+                        && let Value::Filters(f) = s.value(P::BackdropFilter)
+                        && f.0.iter().any(|f| match f {
+                            crate::css::properties::Filter::Blur(n) => n.expression().constant().is_some_and(|q| q.value > 0.),
+                            crate::css::properties::Filter::Saturate(v) => (v - 1.).abs() > 1e-6,
+                            _ => false,
+                        })
+                    {
+                        self.current_backdrop = Some(id);
+                        children_backdrop = Some(id);
+                    }
                     let transformed = if layered { parent_transform } else { self.transform_of(id, s, outer, parent_transform)? };
                     if transformed != parent_transform {
                         // OLO_TRANSFORM_DEBUG: which boxes paint through a matrix.
@@ -2012,6 +2068,7 @@ impl<'a> BuildJob<'a> {
                             fixed: children_fixed,
                             sticky: children_sticky,
                             moved: children_moved,
+                            backdrop: children_backdrop,
                             scroller: children_scroller,
                             shift: children_shift,
                             text_fill: NONE,
@@ -2091,7 +2148,7 @@ impl<'a> BuildJob<'a> {
                     let z = if positioned || item { z } else { None };
                     // (A filter other than none makes one, as it would whatever
                     // it does to colours.)
-                    let filtered = !matches!(s.value(P::Filter), Value::Keyword(K::None));
+                    let filtered = !matches!(s.value(P::Filter), Value::Keyword(K::None)) || !matches!(s.value(P::BackdropFilter), Value::Keyword(K::None));
                     let stacking = z.is_some() || opacity < 1. || isolated || transformed != parent_transform || layered || mask.is_some() || filtered;
                     if positioned || stacking {
                         if self.contexts.len() >= self.limits.commands {
@@ -2143,6 +2200,13 @@ impl<'a> BuildJob<'a> {
                         clip
                     };
                     children_clip = clip;
+                    // A backdrop layer's box paints at least nothing at its
+                    // place, so the layer is there for what is under it to
+                    // show through blurred (one with neither background
+                    // nor border has nothing else).
+                    if self.current_backdrop == Some(id) {
+                        self.emit(group, false, outer, Primitive::Fill { color: [0; 4], owner: id, radii: [0.; 4] }, clip)?;
+                    }
                     if visible(s) {
                         self.decorate(id, s, g, outer, group, clip, false)?;
                         // Backgrounds clipped to the text: painted with the
@@ -2231,6 +2295,7 @@ impl<'a> BuildJob<'a> {
                 fixed: children_fixed,
                 sticky: children_sticky,
                 moved: children_moved,
+                backdrop: children_backdrop,
                 scroller: children_scroller,
                 shift: children_shift,
                 text_fill: children_text_fill,
@@ -2330,6 +2395,8 @@ impl<'a> BuildJob<'a> {
                 LayerKind::Fixed
             } else if let Some(root) = c.sticky {
                 LayerKind::Sticky(root)
+            } else if let Some(root) = c.backdrop {
+                LayerKind::Backdrop(root)
             } else {
                 LayerKind::Page
             };
@@ -2357,6 +2424,7 @@ impl<'a> BuildJob<'a> {
         }
         Ok(Arc::new(Scene {
             extent: self.extent,
+            layout_extent: self.layout_extent,
             fallbacks: Arc::new(self.fallbacks),
             layout: self.layout,
             commands,

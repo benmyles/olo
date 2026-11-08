@@ -168,7 +168,15 @@ pub struct LayerTiles {
 }
 /// The boxes with a `backdrop-filter` blur, fixed (None) or under a
 /// sticky root, in the layer coordinates of either (device pixels).
-fn backdrop_boxes(layout: &layout::Layout, scale: f64) -> Vec<(Option<layout::BoxId>, (paint::DeviceRect, [f32; 4], f32, f32, bool))> {
+/// The layer a box with a `backdrop-filter` paints in: the fixed one, a
+/// sticky box's, or (on the page) its own (`LayerKind::Backdrop`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BackdropLayer {
+    Fixed,
+    Sticky(layout::BoxId),
+    Page(layout::BoxId),
+}
+fn backdrop_boxes(layout: &layout::Layout, scale: f64) -> Vec<(BackdropLayer, (paint::DeviceRect, [f32; 4], f32, f32, bool))> {
     use olo_web::css::{
         properties::{Filter, Property as P},
         style::Value,
@@ -216,9 +224,10 @@ fn backdrop_boxes(layout: &layout::Layout, scale: f64) -> Vec<(Option<layout::Bo
         let Some(outer) = layout.bounds(id) else { continue };
         let fixed = fixed.get_or_insert_with(|| layout.fixed_boxes());
         let stickies = stickies.get_or_insert_with(|| layout.sticky());
-        // Its layer: the fixed one, or its nearest sticky ancestor's.
+        // Its layer: the fixed one, its nearest sticky ancestor's, or (on
+        // the page) its own.
         let layer = if fixed.get(id.index()).copied().unwrap_or(false) {
-            None
+            BackdropLayer::Fixed
         } else {
             let mut at = Some(id);
             let mut root = None;
@@ -230,8 +239,8 @@ fn backdrop_boxes(layout: &layout::Layout, scale: f64) -> Vec<(Option<layout::Bo
                 at = tree.get(a).and_then(|x| x.parent);
             }
             match root {
-                Some(r) => Some(r),
-                None => continue,
+                Some(r) => BackdropLayer::Sticky(r),
+                None => BackdropLayer::Page(id),
             }
         };
         let _ = b;
@@ -1719,7 +1728,12 @@ fn render(
     let before_labels = Instant::now();
     let page = &cached.page;
     let scene = &page.scene;
-    let extent = scene.content_extent().height;
+    // How far down the page reaches: its bottom (what lies above the top,
+    // a box hidden at top: -9999px, adds no scrolling).
+    let extent = {
+        let e = scene.content_extent();
+        (e.y + e.height).max(0.)
+    };
     let scroll = sought.map_or(r.scroll, |y| (y * r.key.scale).round().max(0.) as i32).clamp(0, max_scroll(&r.key, extent));
     let visible = layout::Rect { x: 0., y: f64::from(scroll) / r.key.scale, width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale };
     // The labels (what agents read of the page, what the pointer is over)
@@ -1943,7 +1957,7 @@ fn render(
             continue;
         }
         let (x0, y0, x1, y1) = match stratum.kind {
-            paint::LayerKind::Page | paint::LayerKind::Surface(_) => (0, top, r.key.width as i32, scroll + r.key.height as i32),
+            paint::LayerKind::Page | paint::LayerKind::Surface(_) | paint::LayerKind::Backdrop(_) => (0, top, r.key.width as i32, scroll + r.key.height as i32),
             // A moved layer: the tiles of its own space that show now (the
             // visible rows within its clip, less its translation); a frame
             // that only moves it finds them all kept.
@@ -1995,7 +2009,7 @@ fn render(
                 },
                 None => Placement::Page,
             },
-            paint::LayerKind::Page | paint::LayerKind::Surface(_) => Placement::Page,
+            paint::LayerKind::Page | paint::LayerKind::Surface(_) | paint::LayerKind::Backdrop(_) => Placement::Page,
             paint::LayerKind::Fixed => Placement::Fixed,
             paint::LayerKind::Sticky(root) => match stickies.iter().find(|s| s.root == root) {
                 Some(st) => Placement::Sticky(*st),
@@ -2101,8 +2115,9 @@ fn render(
         if si > 0 {
             // Its boxes' backdrops, under its tiles.
             let backdrops = match stratum.kind {
-                paint::LayerKind::Fixed => backdrop_boxes.iter().filter(|(l, _)| l.is_none()).map(|(_, b)| *b).collect(),
-                paint::LayerKind::Sticky(root) => backdrop_boxes.iter().filter(|(l, _)| *l == Some(root)).map(|(_, b)| *b).collect(),
+                paint::LayerKind::Fixed => backdrop_boxes.iter().filter(|(l, _)| *l == BackdropLayer::Fixed).map(|(_, b)| *b).collect(),
+                paint::LayerKind::Sticky(root) => backdrop_boxes.iter().filter(|(l, _)| *l == BackdropLayer::Sticky(root)).map(|(_, b)| *b).collect(),
+                paint::LayerKind::Backdrop(root) => backdrop_boxes.iter().filter(|(l, _)| *l == BackdropLayer::Page(root)).map(|(_, b)| *b).collect(),
                 _ => Vec::new(),
             };
             layers.push(LayerTiles { opacity: 1., backdrops, mask: None, yuv: None, shared: None, placement, tiles: layer_tiles, scaled: false });
