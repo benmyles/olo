@@ -17,9 +17,8 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-Leftovers found in finished entries (2026-11-08 audit: each checked
-against the code, still not there):
-
+(Nothing: the leftovers the 2026-11-08 audit found in finished entries
+are all done, and are in Done, newest first.)
 
 ## Done, waiting for Ben to try or confirm
 
@@ -1822,6 +1821,7 @@ against the code, still not there):
     configuration" and "CODEC DAI cs35l56-ot25 not registered": no
     sound card but the NVIDIA HDMI one. A kernel gap (kernel
     7.2.11-300.fc45); Olo Doctor should say so plainly, with what to do.
+    (Since 7.2.15, they do: see below.)
   - **The NVIDIA GPU (RTX PRO 2000 Blackwell, GB206)**: nouveau's GSP
     fails ("gsp: init failed, -22"), so no driver has it, and with
     `power/control` "on" it stays powered (D0) the whole time, draining
@@ -1966,10 +1966,12 @@ against the code, still not there):
     NVIDIA's driver to install (akmod-nvidia, PackageKit), built-in
     sound with no driver (kernel 7.2.15 and firmware updates offered),
     with progress; a look at login and every 15 minutes; its bag in
-    Deskbar's tray while there's something to fix. Left: Ben to press
-    Install Driver Updates and see whether 7.2.15 brings the speakers;
-    else a kernel bug report for the P1 Gen 9 (17aa:235c, cs42l43 +
-    2× CS35L57 on SoundWire link 2).
+    Deskbar's tray while there's something to fix. 7.2.15 is installed
+    and running now (checked 2026-11-08, read-only: /proc/asound and the
+    kernel's log): a `sof-soundwire` card for the P1 Gen 9 with Speaker,
+    Microphone, Jack In/Out and three HDMI devices, the CS35L56
+    amplifiers' tuning and calibration applied, so the driver is there.
+    Left: Ben to hear them (the speakers and microphone in use).
   - Sound: None as the output (the Sonos isn't forced on), kept across
     logins.
   - The microphone key (F4) mutes the microphone in use, shown on
