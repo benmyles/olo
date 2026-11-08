@@ -100,6 +100,18 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Quick Look went gray on a PDF, and the arrows stopped** (Ben,
+  2026-11-07: "i hit space then press down, looks fine on next file,
+  down again and looks fine, down again and just gray with no content,
+  up again same no content"). Since the Viewer's move to GPUI (Nov 1),
+  Quick Look showed a PDF as its card on gray (its pages weren't drawn,
+  the window sized for a page), and on it Up and Down did nothing (they
+  were the pages'), so going back showed the same. Now its first page
+  shows (the rest are the Viewer's: Open with Viewer), and the arrows
+  step on past it as past a picture. Not reproduced with pictures of any
+  size or format at 1× and 2×. Try: Quick Look through a folder with a
+  PDF in it; if it goes gray on something else, say what the file was.
+
 - **Float a window, or its group, from its tab; Unfloat** (Ben,
   2026-11-07: "right click on a tab title bar thing and if we are in
   auto-tiling or focus mode i should be able to choose "Float Window"
