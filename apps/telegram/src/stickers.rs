@@ -1,8 +1,12 @@
-//! Animated stickers played (Lottie: `olo_images::lottie`). The whole
-//! file is fetched when the sticker is first drawn, read once on the
-//! worker, and drawn there a frame at a time at the very size the bubble
-//! shows it (`snap_centred`'s device pixels: one to one, nothing
-//! resampled). Each frame is drawn into the conversation as it comes, and
+//! Animated stickers played: Lottie ones (`olo_images::lottie`) and video
+//! ones (WebM, VP9 with alpha: `olo_images::webm`), told apart by their
+//! files' first bytes. The whole file is fetched when the sticker is
+//! first drawn, read once on the worker, and drawn there a frame at a
+//! time: a Lottie one at the very size the bubble shows it
+//! (`snap_centred`'s device pixels: one to one, nothing resampled), a
+//! video one decoded at its own size (512 pixels; the bubble scales it, as
+//! it does photos and videos), its decoders kept on the worker while it's
+//! in view. Each frame is drawn into the conversation as it comes, and
 //! the next is asked for when it's due, by a timer: nothing is polled,
 //! and the conversation is drawn once a frame, no more.
 //!
@@ -19,26 +23,103 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_images::lottie::{self, Lottie, Painter};
+use olo_images::{
+    lottie::{self, Lottie, Painter},
+    webm::{self, Webm},
+};
 use olo_tg::{ChatId, MsgId};
 use olo_ui::{Proxy, gpui::RenderImage};
 
 pub type Key = (ChatId, MsgId);
 
+/// A sticker's animation, read.
+#[derive(Clone)]
+pub enum Anim {
+    Lottie(Arc<Lottie>),
+    Video(Arc<Webm>),
+}
+
+impl Anim {
+    /// From a file's bytes: a WebM (EBML's magic), else Lottie.
+    fn read(path: &std::path::Path) -> Result<Anim, String> {
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        if bytes.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]) { Webm::read(&bytes).map(|v| Anim::Video(Arc::new(v))) } else { Lottie::read(&bytes).map(|l| Anim::Lottie(Arc::new(l))) }
+    }
+
+    fn duration(&self) -> Duration {
+        match self {
+            Anim::Lottie(l) => l.duration(),
+            Anim::Video(v) => Duration::from_secs_f64(v.duration),
+        }
+    }
+
+    /// Its first frame.
+    fn first(&self) -> f64 {
+        match self {
+            Anim::Lottie(l) => l.frames().start,
+            Anim::Video(_) => 0.0,
+        }
+    }
+
+    /// The frame showing `t` in (looping): a Lottie frame's number, a
+    /// video's frame's index.
+    fn frame_at(&self, t: Duration) -> f64 {
+        match self {
+            Anim::Lottie(l) => l.frame_at(t),
+            Anim::Video(v) => v.frame_at(t.as_secs_f64()) as f64,
+        }
+    }
+
+    /// From `elapsed` playing, how long till the next frame's time.
+    fn next_in(&self, elapsed: Duration) -> Duration {
+        match self {
+            Anim::Lottie(l) => {
+                let at = elapsed.as_secs_f64() * l.frame_rate();
+                Duration::from_secs_f64((at.floor() + 1.0 - at) / l.frame_rate())
+            }
+            Anim::Video(v) => {
+                let d = v.duration.max(1e-3);
+                let t = elapsed.as_secs_f64();
+                let into = t.rem_euclid(d);
+                let i = v.frame_at(t);
+                let next = if i + 1 < v.len() { v.time_of(i + 1) } else { d };
+                Duration::from_secs_f64((next - into).max(0.001))
+            }
+        }
+    }
+
+    /// The size its frames are drawn at, for one shown `size` device
+    /// pixels: a Lottie one's that size, a video's its own.
+    fn drawn_size(&self, size: (u16, u16)) -> (u16, u16) {
+        match self {
+            Anim::Lottie(_) => size,
+            Anim::Video(v) => (v.width.clamp(1, 4096) as u16, v.height.clamp(1, 4096) as u16),
+        }
+    }
+}
+
 /// From the worker.
 pub enum Msg {
-    Read(Key, Result<Arc<Lottie>, String>),
+    Read(Key, Result<Anim, String>),
     Frame { key: Key, generation: u64, frame: f64, size: (u16, u16), image: Arc<RenderImage> },
 }
 
 enum Job {
     Read(Key, PathBuf),
-    Paint { key: Key, generation: u64, lottie: Arc<Lottie>, frame: f64, size: (u16, u16) },
+    Paint {
+        key: Key,
+        generation: u64,
+        anim: Anim,
+        frame: f64,
+        size: (u16, u16),
+    },
+    /// Out of view: a video's decoders go.
+    Forget(Key),
 }
 
 #[derive(Default)]
 struct Sticker {
-    lottie: Option<Arc<Lottie>>,
+    anim: Option<Anim>,
     reading: bool,
     failed: bool,
     /// Playing since (None: resting on its first frame).
@@ -77,19 +158,34 @@ impl Stickers {
         let (work, jobs) = mpsc::channel::<Job>();
         let _ = std::thread::Builder::new().name("telegram-stickers".into()).spawn(move || {
             // A painter for the size last asked (a sticker's, at the
-            // window's scale): its buffers kept.
+            // window's scale): its buffers kept. Each video in view: its
+            // decoders, where they've got to.
             let mut painter: Option<Painter> = None;
+            let mut players: HashMap<Key, webm::Player> = HashMap::new();
             while let Ok(job) = jobs.recv() {
                 match job {
-                    Job::Read(key, path) => proxy.send(Msg::Read(key, Lottie::open(&path).map(Arc::new))),
-                    Job::Paint { key, generation, lottie, frame, size } => {
-                        let p = match &mut painter {
-                            Some(p) if p.size() == size => p,
-                            p => p.insert(Painter::new(size.0, size.1)),
+                    Job::Read(key, path) => proxy.send(Msg::Read(key, Anim::read(&path))),
+                    Job::Forget(key) => _ = players.remove(&key),
+                    Job::Paint { key, generation, anim, frame, size } => {
+                        let bgra = match &anim {
+                            Anim::Lottie(lottie) => {
+                                let p = match &mut painter {
+                                    Some(p) if p.size() == size => p,
+                                    p => p.insert(Painter::new(size.0, size.1)),
+                                };
+                                let Ok(px) = p.paint(lottie, frame) else { continue };
+                                let mut bgra = px.to_vec();
+                                lottie::to_straight_bgra(&mut bgra);
+                                bgra
+                            }
+                            Anim::Video(v) => {
+                                let Ok(mut px) = players.entry(key).or_default().frame(v, frame as usize) else { continue };
+                                for p in px.as_chunks_mut::<4>().0 {
+                                    p.swap(0, 2);
+                                }
+                                px
+                            }
                         };
-                        let Ok(px) = p.paint(&lottie, frame) else { continue };
-                        let mut bgra = px.to_vec();
-                        lottie::to_straight_bgra(&mut bgra);
                         let Some(buf) = image::RgbaImage::from_raw(u32::from(size.0), u32::from(size.1), bgra) else { continue };
                         let image = Arc::new(RenderImage::new([image::Frame::new(buf)]));
                         proxy.send(Msg::Frame { key, generation, frame, size, image });
@@ -115,7 +211,7 @@ impl Stickers {
         let s = self.stickers.entry(key).or_default();
         s.size = size;
         s.to_play |= new_in_view;
-        if s.lottie.is_none() {
+        if s.anim.is_none() {
             if let Some(path) = file
                 && !s.reading
                 && !s.failed
@@ -150,6 +246,9 @@ impl Stickers {
                 if let Some((_, _, img)) = s.shown.take() {
                     self.dropped.push(img);
                 }
+                if matches!(s.anim, Some(Anim::Video(_))) {
+                    let _ = self.work.send(Job::Forget(key));
+                }
             }
         }
         // Read ones not in view: a few kept, for coming back.
@@ -171,18 +270,19 @@ impl Stickers {
             return;
         }
         let Some(s) = self.stickers.get_mut(&key) else { return };
-        let Some(lottie) = s.lottie.clone() else { return };
-        let mut frame = lottie.frames().start;
+        let Some(anim) = s.anim.clone() else { return };
+        let mut frame = anim.first();
         if let Some(since) = s.since {
             let t = now.saturating_duration_since(since);
-            if t >= lottie.duration() && !s.hovered {
+            if t >= anim.duration() && !s.hovered {
                 s.since = None;
                 s.generation += 1;
             } else {
-                frame = lottie.frame_at(t);
+                frame = anim.frame_at(t);
             }
         }
-        let want = (frame, s.size);
+        let size = anim.drawn_size(s.size);
+        let want = (frame, size);
         if s.asked.is_some() {
             return;
         }
@@ -194,7 +294,7 @@ impl Stickers {
             return;
         }
         s.asked = Some(want);
-        let _ = self.work.send(Job::Paint { key, generation: s.generation, lottie, frame, size: s.size });
+        let _ = self.work.send(Job::Paint { key, generation: s.generation, anim, frame, size });
     }
 
     /// Timers to set: after each, [`Stickers::ask`] for that sticker.
@@ -210,7 +310,7 @@ impl Stickers {
                 let Some(s) = self.stickers.get_mut(&key) else { return (false, None) };
                 s.reading = false;
                 match r {
-                    Ok(l) => s.lottie = Some(l),
+                    Ok(a) => s.anim = Some(a),
                     Err(e) => {
                         tracing::debug!("telegram: an animated sticker couldn’t be read: {e}");
                         s.failed = true;
@@ -243,7 +343,5 @@ impl Stickers {
 
 /// Playing: how long till its next frame's time.
 fn next_frame(s: &Sticker) -> Option<Duration> {
-    let (since, l) = (s.since?, s.lottie.as_ref()?);
-    let elapsed = since.elapsed().as_secs_f64() * l.frame_rate();
-    Some(Duration::from_secs_f64((elapsed.floor() + 1.0 - elapsed) / l.frame_rate()))
+    Some(s.anim.as_ref()?.next_in(s.since?.elapsed()))
 }

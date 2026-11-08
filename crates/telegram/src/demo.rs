@@ -433,7 +433,8 @@ impl Demo {
             crate::account::private_write(&tgs, &olo_images::lottie::heart_tgs()).ok()?;
         }
         if file {
-            return Some(tgs);
+            // A test's own sticker file instead (a video sticker, say).
+            return Some(std::env::var_os("OLO_TELEGRAM_DEMO_STICKER").map_or(tgs, PathBuf::from));
         }
         let path = self.pictures.join("heart.png");
         if !path.exists() {

@@ -29,7 +29,10 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   own, so a seek past the first cluster landed in the wrong place and the
   Viewer showed no picture. The patch (`seek_broad_phase` in `src/lib.rs`)
   uses the cue's cluster. Its tests (and their 1 MB of sample files) are
-  left out.
+  left out. It also skipped each block's additions, and with them WebM's
+  alpha (a second VP8 or VP9 stream, BlockAddID 1): `next_frame` now
+  goes into BlockAdditions and BlockMore and keeps that BlockAdditional
+  as `Frame::additional` (Telegram's video stickers, olo-images' `webm`).
 - **brush-interactive 0.4.0** (MIT): brush's line editor gives no way in
   for its hints or for the lines entered. The patch adds `src/hooks.rs`
   (`set_hooks`: a program's own hinter, given the shell's folder and last

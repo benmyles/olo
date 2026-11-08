@@ -1206,7 +1206,14 @@ draw at 0.50 ms a frame on average at 336 pixels, 4.5 ms at worst
 (rlottie isn't here to compare against; each looked right on a contact
 sheet, Telegram's white line icons on grey). `lottie::HEART` is Olo's
 own (a heart that beats, a trimmed ring round it): the demo's sticker
-and the tests'. Colour emoji are GPUI's text
+and the tests'. WebM with alpha (`olo_images::webm`: Telegram's video
+stickers) is demuxed whole (the vendored matroska-demuxer keeps each
+block's BlockAdditional, `Frame::additional`) and decoded in order by a
+`Player` on two VP9 decoders, the second's luma the alpha as it is, 0
+to 255 (`Frame::luma_into_alpha`, a table; libvpx's decoders copy it
+so, and read as video's limited range Chromium's test file's 68 came
+out 61). `OLO_SAMPLES=dir cargo test -p olo-images webm -- --ignored`
+plays `bear-vp9a.webm` from `dir`. Colour emoji are GPUI's text
 system's, drawn with the text; `olo-emoji` (`crates/emoji`) finds and
 paints clusters itself where that's wanted (Telegram's messages of
 emoji alone, shown big): it shapes with harfrust and paints COLRv0/v1
@@ -13595,8 +13602,20 @@ A Telegram client of Olo's own: MTProto in process through grammers
   own view would have had to be outside the conversation's pane (GPUI
   marks a notified view's ancestors dirty) and a frame behind it while
   scrolling, so it isn't.
-* **Not yet**: video stickers (WebM, VP9 with its alpha in the blocks'
-  additions, which the demuxer doesn't read yet) show their first frame.
+  Video stickers (WebM: VP9, 512 pixels, its alpha a second VP9 stream
+  in each block's BlockAdditional) are told from Lottie ones by the
+  file's first bytes (EBML's magic) and play the same way, decoded on
+  the worker at their own size (`olo_images::webm`; the bubble scales
+  them, as it does photos and videos, their own shape kept), each in
+  view keeping its two decoders there until it leaves. Every sticker's
+  picture goes through `bubble::sticker_picture`: a frame drawn for its
+  box at the window's scale is drawn exactly its pixels, anything else
+  fitted. `OLO_TELEGRAM_DEMO_STICKER=FILE` makes the demo's sticker that
+  file (a video sticker to test with: Chromium's `media/test/data/
+  bear-vp9a.webm`, 320 × 240, its alpha a flat 68). Measured looping
+  that one (release, 2×): 8.1% of a core (the worker 4.9%, both streams
+  at 30 frames a second, 1.4 ms a frame; the window 3.1%), 113.2 →
+  113.5 MB over 30 s.
 
 **Ogg Opus** (`olo_video::opus::OggOpus`): mono 48 kHz pushed in any
 amounts, coded in 20 ms frames by rusty-opus (pure Rust), written a page

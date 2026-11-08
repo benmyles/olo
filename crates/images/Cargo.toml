@@ -28,5 +28,8 @@ half = "2"
 velato = { version = "0.12", default-features = false }
 vello_cpu = "0.3"
 flate2 = "1"
+# WebM with alpha (`webm`: Telegram's video stickers; vendored, reading
+# the blocks' additions).
+matroska-demuxer = "0.8"
 
 [dev-dependencies]

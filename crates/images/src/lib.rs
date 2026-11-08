@@ -61,6 +61,7 @@ fn avif(data: &[u8]) -> Result<DynamicImage, String> {
 pub mod gain;
 pub mod hdr;
 pub mod lottie;
+pub mod webm;
 
 /// AV1 through rav1d's dav1d API (stills and video), and YUV to RGB.
 pub mod av1 {
@@ -289,6 +290,26 @@ pub mod av1 {
             let (sx, sy) = if plane == 0 { (0, 0) } else { self.chroma.unwrap_or((0, 0)) };
             let i = (y >> sy) as usize * self.stride[plane] + (x >> sx) as usize;
             planes!(&self.planes, p => p[plane][i] as f32)
+        }
+
+        /// This frame's luma as the alpha of `rgba` (RGBA rows of the
+        /// same size, or as much of them as there is): a WebM alpha
+        /// stream's picture, whose luma is the alpha itself, 0 to the
+        /// top, whatever range the stream says (libvpx's decoders copy
+        /// it so; read as video's limited range, Chromium's test file's
+        /// 68 came out 61).
+        pub fn luma_into_alpha(&self, rgba: &mut [u8], width: u32) {
+            let shift = self.bpc.saturating_sub(8);
+            let table: Vec<u8> = (0..1u32 << self.bpc).map(|v| (v >> shift) as u8).collect();
+            let (w, h) = (self.width.min(width) as usize, self.height as usize);
+            planes!(&self.planes, p => {
+                for (y, row) in rgba.chunks_exact_mut(width as usize * 4).take(h).enumerate() {
+                    let ly = &p[0][y * self.stride[0]..][..w];
+                    for (px, &l) in row.as_chunks_mut::<4>().0.iter_mut().zip(ly) {
+                        px[3] = table[(l as usize).min(table.len() - 1)];
+                    }
+                }
+            });
         }
 
         /// Luma as an 8-bit value: an alpha plane.
