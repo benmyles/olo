@@ -110,7 +110,12 @@ impl Found {
 pub fn matches(trees: &[ScreenTree], q: &Query) -> Vec<Found> {
     let mut exact = Vec::new();
     let mut partial = Vec::new();
-    for t in trees {
+    // The focused window's first: what is in front, where a click lands
+    // (a page open in Chrome behind the Olo browser matched first, and the
+    // click went to what Olo showed there).
+    let mut ordered: Vec<&ScreenTree> = trees.iter().collect();
+    ordered.sort_by_key(|t| !t.focused);
+    for t in ordered {
         let mut last: Option<&UiNode> = None;
         for n in &t.nodes {
             let repeat = last.is_some_and(|l| l.role == n.role && l.name == n.name && l.value == n.value && l.x == n.x && l.y == n.y);

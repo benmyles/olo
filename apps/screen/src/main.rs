@@ -673,7 +673,15 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             let mut focused = false;
             for _ in 0..2 {
                 s.input(screens::click(f.center.0 as f64, f.center.1 as f64, screens::LEFT, 1))?;
-                focused = into(&s);
+                // A page takes a moment to move its focus (its scripts run,
+                // it restyles): up to a second and a half before clicking
+                // again (BBC's search field took longer than one look).
+                for _ in 0..10 {
+                    focused = into(&s);
+                    if focused {
+                        break;
+                    }
+                }
                 if focused {
                     break;
                 }

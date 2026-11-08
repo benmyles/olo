@@ -6338,3 +6338,13 @@ journal).
   body now. And an infinite spinner in the hidden bag menu kept the page
   rendering 120 times a second: an animation that shows nothing asks for
   no frames (0.0% of a core idle again).
+- **BBC's menu, used.** Its drawer opens; its sections (News, Business...)
+  stayed shut: React adds the section's children and styled-components
+  writes the section's new class rule into a `<style>` (a whole restyle
+  against the new rules), while the chevron's turn is a transition (an
+  animation patch after the restyle), and that patch's "geometry kept"
+  erased the restyle's change: the old layout was kept. Its site search
+  then types, submits and shows the results page. `olo-screen set`
+  couldn't fill it: it took the first match across windows, Chrome's
+  (behind, on the same page), and clicked there in Olo's; the focused
+  window's matches come first now, and it waits up to 1.5 s for the focus.
