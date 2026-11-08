@@ -12297,6 +12297,63 @@ its shell taking the keyboard at once, each display's scale (2×, 1×,
 and the saved scale back), the keys while locked, and a restart in
 place.
 
+## DiskBackup (crates/diskbackup, `olo-diskbackup`)
+
+Backups of the disk to the cloud (Google Drive first), continuous, in the
+background, versioned, deduplicated, compressed and encrypted. Being built
+in layers; done so far, **the engine** (crates/diskbackup):
+
+- **Chunks** (`chunker.rs`): a file cut where its content says (FastCDC's
+  gear hash, normalized: 256 KiB to 4 MiB, about 1 MiB), so bytes typed
+  into the middle of a file change only the chunks around them (a test:
+  30 bytes into 30 MB, at most two new chunks). A chunk's id is a keyed
+  hash of what it holds (HMAC-SHA-256 under a key of the repository's:
+  the same content anywhere is kept once, and ids say nothing without
+  the key). Each is compressed (zstd 3, unless that saves under 3%) and
+  sealed (XChaCha20-Poly1305, a random nonce each).
+- **Packs** of about 16 MiB (`data/xx/<id>`): few large objects suit a
+  slow store; each ends with its own sealed list of what it holds, so the
+  index can be made again from the packs. **The index** (`index/<id>`,
+  sealed, a file a flush) says where each chunk is; it's read at open
+  (cached locally: index files never change).
+- **Trees and snapshots** (`tree.rs`, `repo.rs`): a folder is a tree
+  (name, kind, mode, modified and changed times, inode, size, a file's
+  chunks, a folder's tree, a link's target), itself a blob, so an
+  unchanged folder is the same blob. A snapshot (`snapshots/<id>`) is a
+  moment's tree of `/` holding the folders backed up, every version
+  whole, sharing what didn't change; with a summary (files, new and
+  changed and unchanged, new bytes, stored bytes, time, errors).
+- **Backing up** (`backup.rs`): a file whose size, times and inode are as
+  in the last snapshot isn't read (its chunks taken as they were); the
+  rest are read with O_NOATIME and let go of from the page cache after
+  (`POSIX_FADV_DONTNEED`: the backup's reading isn't anyone's working
+  set). Sockets, pipes and devices skipped; unreadable files said in the
+  summary and left out; Stop at any point.
+- **Excludes** (`exclude.rs`): groups of what can be made again (caches,
+  Trash, Rust's target/ builds and Cargo's downloads, node_modules and
+  frameworks' builds, Python's, Go's, Gradle's and Maven's, C/C++/Zig/
+  Haskell/Elixir/Dart builds, containers and Flatpaks, editors' swap
+  files; virtual machines' disks offered, off by default), the person's
+  own patterns (`~/`, `**/`), and any folder with a `CACHEDIR.TAG`.
+- **Restoring** (`restore.rs`): a file or folder of any snapshot put back
+  anywhere, as it was (contents, permissions, modified times, links),
+  each file written aside and renamed into place; `find` for browsing.
+- **Stores** (`store.rs`): `Store` (put whole, get, get a range, list,
+  delete); objects are written once under names of their content, so a
+  slow or eventually consistent store never shows half of one.
+  `LocalStore` (a folder) now; Google Drive next.
+- **`config`**: the format and chunking, sealed: opening it is how a key
+  is known to be the right one (`Error::WrongKey`). The key, 32 random
+  bytes (`Key::to_hex`), is kept by Olo Passwords, not in the store.
+
+Measured (release, one thread, this machine, 2026-11-07;
+`tests/round_trip.rs`'s `throughput`): data/ (988 MB, 12,160 files,
+pictures mostly) first backed up in 7.5 s (132 MB/s), 947 MB stored; again
+with nothing changed 0.03 s, nothing stored. `round_trip` backs up,
+changes (bytes inserted, a file added, one removed), backs up again (1
+changed, 1 new, the rest unchanged, under 4 MiB new), restores both
+versions and checks nothing in the store is readable.
+
 ## Passwords (apps/passwords, crates/onepassword)
 
 **Undo** (undo.rs, `olo_ui::undo`): Edit ▸ Undo and Redo for items

@@ -7504,6 +7504,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-diskbackup"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305",
+ "ciborium",
+ "getrandom 0.3.4",
+ "globset",
+ "hkdf 0.13.0",
+ "hmac 0.13.0",
+ "libc",
+ "serde",
+ "sha2 0.11.1",
+ "zstd",
+]
+
+[[package]]
 name = "olo-doctor"
 version = "0.1.0"
 dependencies = [
