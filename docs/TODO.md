@@ -13,50 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-## Not started (highest priority first)
-
-- **Undo in Tracker, and everywhere it makes sense** (Ben, 2026-11-07:
-  "tracker needs to support undo for file/folder renames/moves/etc and
-  also we need generally and unviversally to support undo in all olo
-  apps where it makes sense"). Tracker has none now: Edit ▸ Undo (⌘Z) and
-  Redo for what its operations did (`ops.rs`: rename, move, copy,
-  duplicate, new folder, move to Trash, restore; a copy undone is the
-  copy removed, a trashing undone is the restore), each step what it
-  did and where, done again or undone as one even when it was many
-  files, on the worker with progress as the operations are, and said
-  plainly when it can't be any more (a file since changed or gone).
-  Then one kit-wide way for every app (`olo_ui`: an undo history a window
-  keeps, Edit ▸ Undo/Redo named by what they'd undo, "Undo Rename",
-  agents able to read and drive it), and each app looked at for what
-  should undo: what has its own already (text fields, StyledEdit, the
-  Viewer's picture edits, app_server's ⌃⌘Z window arrangement) moved
-  onto it or matched to it; Preferences' changes, Passwords' edits,
-  Deskbar's and the desktop's moves, Terminal's tab and pane changes,
-  and the rest.
-
-- **A resting display still looks every 100 ms** (found 2026-11-07,
-  looking into the Intel GPU): `render::IDLE_POLL`, the safety net for
-  changes that don't wake a display (`Backend::wake`). An idle
-  headless session's app_server: 0.3% of a core, 16 wakeups a second,
-  each look gathering and comparing every element (strace: timerfd armed
-  ~100 ms each time). Find what changes without waking (keep_warm's
-  pixel, timers not hooked up), wake for each, then make the poll a long
-  safety net (seconds) or none; measure idle before and after.
-
-- **Voice Processing's delay, the rest** (Ben, 2026-11-07: "we need that
-  to be way more optimized so that it is not introducing any kind of
-  noticeable lag"). Done: 51 ms really (said 40) → 40, said as it is
-  (the buffering 21.33 → 10.0 ms, measured: tools/dev/voice-latency).
-  Left: (1) the cycle a source fed by another stream is behind (10 ms):
-  one node with the microphone in and the cleaned sound out (pw_filter,
-  linked to the microphone by Olo itself), no quality cost; (2) the
-  noise suppressor's 30 ms: DeepFilterNet3's look-ahead. Measured
-  against RNNoise (tests/least_delay.rs): 10 ms, a tenth of the CPU,
-  but room noise down 8-11 dB where DeepFilterNet3 takes 26-30, the
-  voice kept as well: Ben to choose (a least-delay choice, or not).
-  The least-delay test's "after another voice" lag search locks on the
-  quiet voice: fix before judging that case.
-
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for
   continuous, minimal impact (in terms of cpu/mem/network usage -- it
@@ -96,8 +52,51 @@ something nobody here has is in "Blocked", with what it waits for.
   uploads, rate limits), a service at idle priority (I/O and CPU) that
   follows changes (fanotify) rather than scanning, Doctor and Deskbar
   and Tracker and Passwords where they fit.
+  Ben, later the same day: "make sure that i can also set a max
+  upload/download speed for the backups too".
+  Done: the engine (crates/diskbackup: chunks, packs, index, trees,
+  snapshots, excludes, restore, speed limits, a folder as a store); the
+  service and its command line (idle priority, a schedule, Back Up Now,
+  Stop, battery, status, the key in the login keyring); HACKING.md,
+  "DiskBackup". Next: the app (setup, status, settings, restore; the key
+  kept in Passwords too); keeping (forget by `Keep`, then prune what only
+  forgotten snapshots used); Google Drive (needs an OAuth client of
+  Ben's: a Google Cloud project's "Desktop app" credentials); Deskbar,
+  Tracker, Doctor.
+
+## Not started (highest priority first)
+
+- **Undo everywhere it makes sense** (Ben, 2026-11-07: "tracker needs to
+  support undo for file/folder renames/moves/etc and also we need
+  generally and unviversally to support undo in all olo apps where it
+  makes sense"). Done so far: the kit's way (`olo_ui::undo`: named
+  steps, runs merged, Edit ▸ Undo/Redo with the profile's keys, a
+  window without a menu bar given ⌘Z by its Frame, agents and the
+  palette finding them among the app's menus); Tracker (files, and the
+  desktop's icons dragged or cleaned up),
+  Preferences (every panel's settings) and Passwords (items changed,
+  made, deleted; not the Archive, which nothing takes an item out of
+  yet) on it. Left, each app looked at for what should undo and put on
+  it: StyledEdit's and the Viewer's own undo (and text fields') matched
+  to it or moved onto it; Deskbar's moves;
+  Terminal's tab and pane changes (a closed tab can't come back with its
+  process: say so); app_server's ⌃⌘Z window arrangement matched (named,
+  Redo); and the rest (Notes, DeskCalc's tape, …).
 
 ## Done, waiting for Ben to try or confirm
+
+- **Voice Processing's delay: Ben to choose the default noise model**
+  (Ben, 2026-11-07: "we need that to be way more optimized so that it is
+  not introducing any kind of noticeable lag"; "get rid of the remaining
+  delay"). Done: 51 ms really (said 40) → what an app recording through
+  Pulse gets now, measured with a synchronous probe: 30 ms with
+  DeepFilterNet3, 10 with DeepFilterNet3 Low Delay (Preferences ▸ Sound
+  ▸ Noise model), 0 with noise suppression off; the "cycle a source fed
+  by another stream is behind" was the old probe's (pw-record is
+  scheduled asynchronously), not Olo's. Left: Ben to choose the default
+  once he's heard both (Try It compares them). tract still allocates
+  ~850 times a frame on the realtime thread (its tensors): a plan with
+  its buffers made once would take that away.
 
 - **Preferences ▸ Deskbar's own icon** (with the image model's key Ben
   added, 2026-11-07): an upright grey panel with status lights and a
@@ -2284,6 +2283,40 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A resting display still looked every 100 ms**~~ (found
+  2026-11-07, looking into the Intel GPU). *Done* (7af77a04): a resting
+  display looks when woken, or when the keep-warm pixel is due (once a
+  second while in use), then every 10 s; the event loop sleeps until
+  something comes (it woke every 16 ms on real displays, 100 headless).
+  Idle headless 10 → 1-2 wakeups a second, 0.2 → 0.0-0.1% of a core;
+  with Deskbar 15 → 5. Nothing found changing without a wake.
+
+- ~~**Undo in Tracker**~~ (Ben, 2026-11-07: "tracker needs to support
+  undo for file/folder renames/moves/etc"). *Done* (11b98376): Edit ▸
+  Undo and Redo (⌘Z, ⇧⌘Z) for rename, move, copy, duplicate, new
+  folder, links, pastes and drops, Move to Trash and restore, many
+  files as one, back and forth, on the worker with progress; said
+  plainly when it can't any more. Kit-wide undo stays in Not started.
+
+- ~~**Voice: the remaining delay**~~ (Ben, 2026-11-07: "get rid of the
+  remaining delay"). *Done* (1f0f4a4a): none for apps recording through
+  Pulse (measured with a synchronous probe: 10 ms with the low-delay
+  model, 30 with DeepFilterNet3, 0 with it off); the 10 ms more had been
+  the old probe's (pw-record runs asynchronously). The service says
+  what it adds.
+
+- ~~**Voice: a low-delay noise model, its inference fast**~~ (Ben,
+  2026-11-07: "make the model selectable so keep DeepFilterNet3 as an
+  option but then add another option for the lower latency model";
+  "just optimize the inference for it"). *Done* (0300c6d2):
+  DeepFilterNet3 Low Delay in Preferences ▸ Sound; the GRUs in 8 bits
+  on AVX-VNNI (`deep_filter::q8`), a frame 850-1458 → 405-441 µs, SDR
+  within 0.4 dB of f16.
+
+- ~~**Tracker: a click in the name being edited ended the edit**~~
+  (Ben, 2026-11-07). *Done* (49bef2a4): a text field keeps its clicks,
+  in every app.
 
 - ~~**The README: one wordmark, and screenshots that show Olo off**~~ (Ben,
   2026-11-07: "update the olo readme so that there's just the one

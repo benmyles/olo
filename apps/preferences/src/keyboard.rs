@@ -384,7 +384,7 @@ pub fn profile(ui: &mut Ui, saving: Option<&Entity<TextField>>) {
                     let Some(field) = st.shortcuts.saving.take() else { return };
                     let name = field.read(cx).text().trim().to_owned();
                     let _ = prefs.update(cx, |p, cx| {
-                        p.edit(cx, |s| {
+                        p.edit_as(cx, "", "Save Profile", |s| {
                             s.keyboard.profile.name = name;
                             s.keyboard.save_profile();
                         })

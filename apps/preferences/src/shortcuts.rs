@@ -84,7 +84,7 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
                 let platform = keyboard.profile.platform;
                 let prefs = ui.prefs();
                 ui.cx.defer(move |cx| {
-                    let _ = prefs.update(cx, |p, cx| p.edit(cx, |s| s.keyboard = keyboard));
+                    let _ = prefs.update(cx, |p, cx| p.edit_as(cx, "", "Shortcut", |s| s.keyboard = keyboard));
                 });
                 (!taken.is_empty()).then(|| format!("{} was taken from “{}”.", chord.map(|c| c.label(platform)).unwrap_or_default(), taken.join("”, “")))
             }

@@ -1477,7 +1477,7 @@ fn sound_menu(devices: Option<&olo_system::audio::Devices>, pods: Option<&olo_pr
 /// Voice processing (olo-voice): on or off, and in a submenu what for,
 /// how much noise, echo and level.
 fn voice_items(m: Menu, v: &olo_protocol::voice::Settings) -> Menu {
-    use olo_protocol::voice::{Mode, Noise};
+    use olo_protocol::voice::{Mode, Model, Noise};
     let flip = |key: &str, on: bool| format!("voice:{key}={}", if on { "off" } else { "on" });
     let m = m.item("Clean Up Microphone Sound", flip("enabled", v.enabled)).checked(v.enabled);
     if !v.enabled {
@@ -1494,6 +1494,10 @@ fn voice_items(m: Menu, v: &olo_protocol::voice::Settings) -> Menu {
             _ => n.label().to_lowercase(),
         };
         sub = sub.item(n.label(), format!("voice:noise={word}")).checked(v.noise == n);
+    }
+    sub = sub.separator().item("Noise Model", "").enabled(false);
+    for model in Model::ALL {
+        sub = sub.item(model.label(), format!("voice:model={}", model.word())).checked(v.model == model).enabled(v.noise != Noise::Off);
     }
     sub = sub
         .separator()

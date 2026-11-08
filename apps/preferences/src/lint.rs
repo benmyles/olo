@@ -98,6 +98,7 @@ fn prefs() -> Prefs {
         power: Some(PowerStatus { brightness: Some(0.62), keyboard_backlight: Some(0.4), ..Default::default() }),
         server: Server::detached(),
         windows: Vec::new(),
+        history: Default::default(),
     }
 }
 

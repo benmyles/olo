@@ -497,6 +497,15 @@ impl Render for Frame {
                     cx.stop_propagation();
                     return;
                 }
+                // Undo and Redo, for a window without a menu bar that
+                // takes them (`undo::keys`).
+                if let Some(redo) = crate::undo::pressed(&e.keystroke)
+                    && let Some(take) = cx.try_global::<crate::undo::UndoKeys>().and_then(|u| u.0.get(&window.window_handle().window_id())).cloned()
+                {
+                    take(redo, window, cx);
+                    cx.stop_propagation();
+                    return;
+                }
                 // Next and Previous Tab: the window's tab view.
                 let step = tab_step(&e.keystroke);
                 if step != 0
@@ -908,6 +917,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
             let open: std::collections::HashSet<gpui::WindowId> = cx.windows().iter().map(|w| w.window_id()).collect();
             cx.default_global::<DefaultButtons>().0.retain(|id, _| open.contains(id));
             cx.default_global::<TabKeys>().0.retain(|id, _| open.contains(id));
+            cx.default_global::<crate::undo::UndoKeys>().0.retain(|id, _| open.contains(id));
             crate::menu::forget_closed(cx);
             if cx.windows().is_empty() && !cx.has_global::<Resident>() {
                 cx.global_mut::<Messages>().quitting = true;

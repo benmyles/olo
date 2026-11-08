@@ -9,7 +9,7 @@
 
 mod speech;
 
-use olo_voice::{FRAME, Mode, Noise, Settings, Voice};
+use olo_voice::{FRAME, Model, Noise, Settings, Voice};
 use speech::{Lcg, RATE, db, rms, speech};
 
 const VOICES: [&str; 2] = ["slt", "rms"];
@@ -81,19 +81,21 @@ fn room_noise(n: usize, level: f32, seed: u32) -> Vec<f32> {
         .collect()
 }
 
-fn noise_only(mode: Mode) -> Settings {
-    Settings { mode, echo_cancellation: false, noise: Noise::Strong, normalize: false, ..Settings::default() }
+/// Noise suppression alone, by `model` (the mode changes only the
+/// buffering around the chain, so the tests go through the models).
+fn noise_only(model: Model) -> Settings {
+    Settings { model, echo_cancellation: false, noise: Noise::Strong, normalize: false, ..Settings::default() }
 }
 
 #[test]
 fn a_clean_voice_comes_through_untouched() {
     for who in VOICES {
         let clean = speech(who, 0.3);
-        for mode in [Mode::Calls, Mode::Recording] {
-            let (out, _) = run(noise_only(mode), &clean, None);
+        for model in Model::ALL {
+            let (out, _) = run(noise_only(model), &clean, None);
             let s = sdr(&clean, &out);
-            eprintln!("{who} {mode:?}, clean: {s:.1} dB SDR");
-            assert!(s > 20.0, "{who} {mode:?}: a clean voice changed ({s:.1} dB SDR)");
+            eprintln!("{who} {model:?}, clean: {s:.1} dB SDR");
+            assert!(s > 20.0, "{who} {model:?}: a clean voice changed ({s:.1} dB SDR)");
         }
     }
 }
@@ -105,18 +107,18 @@ fn noise_is_taken_out_and_the_voice_kept() {
         let noise = room_noise(clean.len(), 0.06, 5);
         let mic: Vec<f32> = clean.iter().zip(&noise).map(|(a, b)| a + b).collect();
         let before = sdr(&clean, &mic);
-        for mode in [Mode::Calls, Mode::Recording] {
-            let (out, us) = run(noise_only(mode), &mic, None);
+        for model in Model::ALL {
+            let (out, us) = run(noise_only(model), &mic, None);
             let after = sdr(&clean, &out);
             let (level, chopped) = kept(&clean, &noise, &out);
             let (noise_in, noise_out) = (in_pauses(&clean, &mic), in_pauses(&clean, &out));
             eprintln!(
-                "{who} {mode:?}, noisy: {before:.1} → {after:.1} dB SDR, noise {noise_in:.1} → {noise_out:.1} dBFS, voice {level:+.1} dB ({:.0}% chopped), {us:.0} µs a 10 ms frame",
+                "{who} {model:?}, noisy: {before:.1} → {after:.1} dB SDR, noise {noise_in:.1} → {noise_out:.1} dBFS, voice {level:+.1} dB ({:.0}% chopped), {us:.0} µs a 10 ms frame",
                 chopped * 100.0
             );
-            assert!(after - before > 6.0, "{who} {mode:?}: only {:.1} dB better", after - before);
-            assert!(noise_in - noise_out > 25.0, "{who} {mode:?}: noise only {:.1} dB down", noise_in - noise_out);
-            assert!(level.abs() < 1.5 && chopped < 0.05, "{who} {mode:?}: voice {level:.1} dB, {chopped} chopped");
+            assert!(after - before > 6.0, "{who} {model:?}: only {:.1} dB better", after - before);
+            assert!(noise_in - noise_out > 25.0, "{who} {model:?}: noise only {:.1} dB down", noise_in - noise_out);
+            assert!(level.abs() < 1.5 && chopped < 0.05, "{who} {model:?}: voice {level:.1} dB, {chopped} chopped");
         }
     }
 }
@@ -126,13 +128,28 @@ fn turning_noise_suppression_down_leaves_more_of_the_room() {
     let clean = speech("slt", 0.3);
     let noise = room_noise(clean.len(), 0.06, 9);
     let mic: Vec<f32> = clean.iter().zip(&noise).map(|(a, b)| a + b).collect();
-    let left: Vec<f32> = [Noise::Moderate, Noise::Strong, Noise::Full].into_iter().map(|noise| in_pauses(&clean, &run(Settings { noise, ..noise_only(Mode::Recording) }, &mic, None).0)).collect();
-    let input = in_pauses(&clean, &mic);
-    eprintln!("noise left in pauses: moderate {:.1}, strong {:.1}, full {:.1} dBFS (in: {input:.1})", left[0], left[1], left[2]);
-    // Moderate keeps about 18 dB of it, Strong 30, Full as little as it can.
-    assert!((input - left[0] - 18.0).abs() < 3.0, "{left:?}");
-    assert!((input - left[1] - 30.0).abs() < 3.0, "{left:?}");
-    assert!(left[2] < left[1] - 3.0, "{left:?}");
+    for model in Model::ALL {
+        let left: Vec<f32> = [Noise::Moderate, Noise::Strong, Noise::Full].into_iter().map(|noise| in_pauses(&clean, &run(Settings { noise, ..noise_only(model) }, &mic, None).0)).collect();
+        let input = in_pauses(&clean, &mic);
+        eprintln!("{model:?}: noise left in pauses: moderate {:.1}, strong {:.1}, full {:.1} dBFS (in: {input:.1})", left[0], left[1], left[2]);
+        // Moderate keeps about 18 dB of it, Strong 30, Full as little as it
+        // can. The low-delay model, not looking ahead, lets a little of the
+        // noise through at words' ends, and its estimate of a frame's SNR
+        // runs about 10 dB under DeepFilterNet3's, so fewer frames of noise
+        // alone are gated to silence (2026-11-07, this noise: Strong 23 dB
+        // down, Full 25, against 30 and all of it).
+        assert!((input - left[0] - 18.0).abs() < 3.0, "{model:?}: {left:?}");
+        match model {
+            Model::DeepFilterNet3 => {
+                assert!((input - left[1] - 30.0).abs() < 3.0, "{model:?}: {left:?}");
+                assert!(left[2] < left[1] - 3.0, "{model:?}: {left:?}");
+            }
+            Model::LowDelay => {
+                assert!(input - left[1] > 20.0, "{model:?}: {left:?}");
+                assert!(left[2] <= left[1], "{model:?}: {left:?}");
+            }
+        }
+    }
 }
 
 /// What the speakers play: chords with a beat and some hiss.
@@ -186,15 +203,15 @@ fn talking_over_the_music_keeps_the_voice_and_drops_the_echo() {
         let mut near = vec![0f32; n];
         near[4 * RATE..].copy_from_slice(&voice);
         let mic: Vec<f32> = near.iter().zip(&echo).map(|(a, b)| a + b).collect();
-        for mode in [Mode::Calls, Mode::Recording] {
-            let s = Settings { mode, echo_cancellation: true, noise: Noise::Strong, normalize: false, ..Settings::default() };
+        for model in Model::ALL {
+            let s = Settings { model, echo_cancellation: true, noise: Noise::Strong, normalize: false, ..Settings::default() };
             let (out, us) = run(s, &mic, Some(&speakers));
             let talk = 4 * RATE..out.len();
             let (level, chopped) = kept(&near[talk.clone()], &echo[talk.clone()], &out[talk.clone()]);
             let (echo_in, echo_out) = (in_pauses(&near[talk.clone()], &mic[talk.clone()]), in_pauses(&near[talk.clone()], &out[talk]));
-            eprintln!("{who} {mode:?}, talking over music: voice {level:+.1} dB ({:.0}% chopped), echo between words {echo_in:.1} → {echo_out:.1} dBFS, {us:.0} µs a frame", chopped * 100.0);
-            assert!(level.abs() < 2.0 && chopped < 0.1, "{who} {mode:?}: voice {level:.1} dB, {chopped} chopped");
-            assert!(echo_in - echo_out > 30.0, "{who} {mode:?}: echo only {:.1} dB down", echo_in - echo_out);
+            eprintln!("{who} {model:?}, talking over music: voice {level:+.1} dB ({:.0}% chopped), echo between words {echo_in:.1} → {echo_out:.1} dBFS, {us:.0} µs a frame", chopped * 100.0);
+            assert!(level.abs() < 2.0 && chopped < 0.1, "{who} {model:?}: voice {level:.1} dB, {chopped} chopped");
+            assert!(echo_in - echo_out > 30.0, "{who} {model:?}: echo only {:.1} dB down", echo_in - echo_out);
         }
     }
 }
@@ -231,8 +248,8 @@ fn best_lag(x: &[f32], out: &[f32], range: std::ops::Range<usize>, most: usize) 
 fn the_delay_is_what_it_says() {
     // Noise suppression: where the voice lines up best.
     let clean = speech("slt", 0.3);
-    for mode in [Mode::Calls, Mode::Recording] {
-        let mut v = Voice::new(noise_only(mode)).unwrap();
+    for model in Model::ALL {
+        let mut v = Voice::new(noise_only(model)).unwrap();
         let mut out = vec![];
         let mut frame = [0f32; FRAME];
         for c in clean.as_chunks::<FRAME>().0.iter() {
@@ -240,11 +257,12 @@ fn the_delay_is_what_it_says() {
             out.extend_from_slice(&frame);
         }
         let lag = best_lag(&clean, &out, RATE..4 * RATE, 3 * FRAME);
-        eprintln!("{mode:?}: {} ms", lag as f32 / 48.0);
-        assert!(lag.abs_diff(v.latency_samples()) <= 1, "{mode:?}: {lag} against {}", v.latency_samples());
+        eprintln!("{model:?}: {} ms", lag as f32 / 48.0);
+        assert!(lag.abs_diff(v.latency_samples()) <= 1, "{model:?}: {lag} against {}", v.latency_samples());
     }
-    assert_eq!(Voice::new(noise_only(Mode::Calls)).unwrap().latency().as_millis(), 30);
-    assert_eq!(Voice::new(noise_only(Mode::Recording)).unwrap().latency().as_millis(), 30);
+    // DeepFilterNet3 looks two frames ahead, the low-delay one none.
+    assert_eq!(Voice::new(noise_only(Model::DeepFilterNet3)).unwrap().latency().as_millis(), 30);
+    assert_eq!(Voice::new(noise_only(Model::LowDelay)).unwrap().latency().as_millis(), 10);
     // Echo cancellation: where a burst at 3 kHz comes out (a voice's low
     // notes would come later, through the high-pass filter's phase).
     let mut x = vec![0f32; 3 * RATE];
@@ -313,15 +331,19 @@ fn talking_over_the_other_person_keeps_the_voice_and_drops_theirs() {
         let mut near = vec![0f32; n];
         near[4 * RATE..].copy_from_slice(&voice);
         let mic: Vec<f32> = near.iter().zip(&echo).map(|(a, b)| a + b).collect();
-        for mode in [Mode::Calls, Mode::Recording] {
-            let s = Settings { mode, echo_cancellation: true, noise: Noise::Strong, normalize: false, ..Settings::default() };
+        for model in Model::ALL {
+            let s = Settings { model, echo_cancellation: true, noise: Noise::Strong, normalize: false, ..Settings::default() };
             let (out, _) = run(s, &mic, Some(&speakers));
             let talk = 4 * RATE..out.len();
             let (level, chopped) = kept(&near[talk.clone()], &echo[talk.clone()], &out[talk.clone()]);
             let (echo_in, echo_out) = (in_pauses(&near[talk.clone()], &mic[talk.clone()]), in_pauses(&near[talk.clone()], &out[talk]));
-            eprintln!("{near_who} over {far_who}, {mode:?}: voice {level:+.1} dB ({:.0}% chopped), their voice between words {echo_in:.1} → {echo_out:.1} dBFS", chopped * 100.0);
-            assert!(level.abs() < 1.5 && chopped < 0.05, "{near_who} {mode:?}: voice {level:.1} dB, {chopped} chopped");
-            assert!(echo_in - echo_out > 40.0, "{near_who} {mode:?}: echo only {:.1} dB down", echo_in - echo_out);
+            eprintln!("{near_who} over {far_who}, {model:?}: voice {level:+.1} dB ({:.0}% chopped), their voice between words {echo_in:.1} → {echo_out:.1} dBFS", chopped * 100.0);
+            assert!(level.abs() < 1.5 && chopped < 0.05, "{near_who} {model:?}: voice {level:.1} dB, {chopped} chopped");
+            // What the canceller leaves of their voice, the noise model
+            // takes down: DeepFilterNet3 to 57 dB under, the low-delay one
+            // (keeping more of a quieter voice, not looking ahead) to 34.
+            let least = if model == Model::LowDelay { 30.0 } else { 40.0 };
+            assert!(echo_in - echo_out > least, "{near_who} {model:?}: echo only {:.1} dB down", echo_in - echo_out);
         }
     }
 }

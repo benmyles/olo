@@ -60,11 +60,13 @@ pub struct Ui<'a, 'b> {
     boxes: Vec<Vec<Probe>>,
     /// Changed boxes get a Reset (not in panels without Defaults).
     resets: bool,
+    /// The titles of the boxes being built (an undo step's name).
+    titles: Vec<String>,
 }
 
 impl<'a, 'b> Ui<'a, 'b> {
     pub fn new(window: &'a mut Window, cx: &'a mut Context<'b, PanelView>, s: &'a Settings, prefs: WeakEntity<Prefs>, fields: &'a mut Fields) -> Self {
-        Ui { window, cx, s, prefs, fields, items: Vec::new(), enabled: true, boxes: Vec::new(), resets: false }
+        Ui { window, cx, s, prefs, fields, items: Vec::new(), enabled: true, boxes: Vec::new(), resets: false, titles: Vec::new() }
     }
 
     /// Boxes whose settings aren't their defaults get a Reset.
@@ -102,19 +104,42 @@ impl<'a, 'b> Ui<'a, 'b> {
         self.enabled
     }
 
-    /// A change to the settings, for a control's callback.
+    /// What a change made here is called for Undo ("“Volume”": the
+    /// control's label, else its box's title), and (with `run`, for a
+    /// slider or a field) the run it's part of.
+    fn step(&self, label: Option<&str>, run: bool) -> (String, String) {
+        let label = label.map(|l| l.trim().trim_end_matches(':').trim().to_owned()).filter(|l| !l.is_empty());
+        let name = match (&label, self.titles.iter().rev().find(|t| !t.is_empty())) {
+            (Some(l), _) => format!("“{l}”"),
+            (None, Some(t)) => format!("“{t}”"),
+            _ => "Change".into(),
+        };
+        let key = if run { format!("{}/{}", self.titles.join("/"), label.unwrap_or_default()) } else { String::new() };
+        (key, name)
+    }
+
+    /// A change to the settings, for a control's callback (kept for Undo
+    /// by its box's name).
     pub fn edit<T: 'static>(&self, set: impl Fn(&mut Settings, T) + 'static) -> impl Fn(T, &mut Window, &mut App) + 'static {
+        let (run, name) = self.step(None, false);
+        self.edit_as(run, name, set)
+    }
+
+    /// `edit`, kept for Undo as `name`, part of `run` (none: a step of its
+    /// own).
+    fn edit_as<T: 'static>(&self, run: String, name: String, set: impl Fn(&mut Settings, T) + 'static) -> impl Fn(T, &mut Window, &mut App) + 'static {
         let prefs = self.prefs.clone();
         move |v, _, cx| {
-            let _ = prefs.update(cx, |p, cx| p.edit(cx, |s| set(s, v)));
+            let _ = prefs.update(cx, |p, cx| p.edit_as(cx, &run, &name, |s| set(s, v)));
         }
     }
 
     /// A change to the settings on a click.
     pub fn edit_click(&self, set: impl Fn(&mut Settings) + 'static) -> impl Fn(&mut Window, &mut App) + 'static {
+        let (run, name) = self.step(None, false);
         let prefs = self.prefs.clone();
         move |_, cx| {
-            let _ = prefs.update(cx, |p, cx| p.edit(cx, &set));
+            let _ = prefs.update(cx, |p, cx| p.edit_as(cx, &run, &name, &set));
         }
     }
 
@@ -124,7 +149,9 @@ impl<'a, 'b> Ui<'a, 'b> {
         let set = Rc::new(set);
         let probe = set.clone();
         self.probe(move |s| probe(s, now.clone()));
-        self.edit(move |s, v| set(s, v))
+        // (Often dragged: a run is one step.)
+        let (run, name) = self.step(None, true);
+        self.edit_as(run, name, move |s, v| set(s, v))
     }
 
     /// [`Ui::edit_click`] for one of a set of choices built by hand (a
@@ -165,13 +192,16 @@ impl<'a, 'b> Ui<'a, 'b> {
     /// end while its settings aren't their defaults.
     pub fn bbox(&mut self, title: &str, build: impl FnOnce(&mut Self)) {
         self.boxes.push(Vec::new());
+        self.titles.push(title.to_owned());
         let items = self.collect(build);
+        self.titles.pop();
         let probes = self.boxes.pop().unwrap_or_default();
         let mut b = if title.is_empty() { BBox::plain() } else { BBox::new(SharedString::from(title.to_owned())) };
         if self.enabled && (changed(&probes) || every_reset() && !probes.is_empty()) {
             let prefs = self.prefs.clone();
+            let name = if title.is_empty() { "Reset".to_owned() } else { format!("Reset of “{title}”") };
             b = b.action("Reset", move |_, cx| {
-                let _ = prefs.update(cx, |p, cx| p.edit(cx, |s| reset(s, &probes)));
+                let _ = prefs.update(cx, |p, cx| p.edit_as(cx, "", &name, |s| reset(s, &probes)));
             });
         }
         self.add(b.children(items));
@@ -230,7 +260,9 @@ impl<'a, 'b> Ui<'a, 'b> {
         let set = Rc::new(set);
         let probe = set.clone();
         self.probe(move |s| probe(s, on));
-        let c = CheckBox::new(label, on).enabled(self.enabled).on_toggle(self.edit(move |s, v| set(s, v)));
+        let label: SharedString = label.into();
+        let (run, name) = self.step(Some(&label), false);
+        let c = CheckBox::new(label, on).enabled(self.enabled).on_toggle(self.edit_as(run, name, move |s, v| set(s, v)));
         self.add(c);
     }
 
@@ -249,7 +281,12 @@ impl<'a, 'b> Ui<'a, 'b> {
         let set = Rc::new(set);
         let probe = set.clone();
         self.probe(move |s| probe(s, value));
-        let s = with(Slider::new(SharedString::from(id.to_owned()), value, range)).enabled(self.enabled).on_change(self.edit(move |s, v| set(s, v)));
+        let slider = with(Slider::new(SharedString::from(id.to_owned()), value, range));
+        // (Dragged: a run is one step.)
+        let title = slider.title().map(|t| t.to_string());
+        let (_, name) = self.step(title.as_deref(), false);
+        let run = format!("slider:{id}");
+        let s = slider.enabled(self.enabled).on_change(self.edit_as(run, name, move |s, v| set(s, v)));
         self.add(s);
     }
 
@@ -262,7 +299,10 @@ impl<'a, 'b> Ui<'a, 'b> {
     }
 
     fn menu_of(&mut self, id: &str, options: Vec<SharedString>, selected: usize, with: impl FnOnce(MenuField) -> MenuField, set: impl Fn(&mut Settings, usize) + 'static) {
-        let f = with(MenuField::new(SharedString::from(id.to_owned()), options, selected)).enabled(self.enabled).on_change(self.edit(set));
+        let f = with(MenuField::new(SharedString::from(id.to_owned()), options, selected));
+        let title = f.title().map(|t| t.to_string());
+        let (run, name) = self.step(title.as_deref(), false);
+        let f = f.enabled(self.enabled).on_change(self.edit_as(run, name, set));
         self.add(f);
     }
 
@@ -306,6 +346,9 @@ impl<'a, 'b> Ui<'a, 'b> {
                 f.update(self.cx, |f, cx| f.set_text(value.to_owned(), cx));
                 let key = id.clone();
                 let prefs = self.prefs.clone();
+                // (Typed in: a run is one step.)
+                let (_, name) = self.step(None, false);
+                let run = format!("field:{id}");
                 self.cx
                     .subscribe(&f, move |view, field, e: &TextFieldEvent, cx| {
                         if !matches!(e, TextFieldEvent::Changed) {
@@ -313,7 +356,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                         }
                         let text = field.read(cx).text().to_owned();
                         let Some(set) = view.fields.setters.get(&key).cloned() else { return };
-                        let _ = prefs.update(cx, |p, cx| p.edit(cx, |s| set(s, text.clone())));
+                        let _ = prefs.update(cx, |p, cx| p.edit_as(cx, &run, &name, |s| set(s, text.clone())));
                     })
                     .detach();
                 self.fields.fields.insert(id.clone(), f.clone());

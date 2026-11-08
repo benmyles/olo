@@ -4,7 +4,7 @@
 //! - `olo-voice --status [--json]`: what it's doing and its settings.
 //! - `olo-voice --set KEY=VALUE…`: change a setting: `enabled`, `echo`,
 //!   `normalize` (on/off), `mode` (calls/recording), `noise`
-//!   (off/moderate/strong/full).
+//!   (off/moderate/strong/full), `model` (deepfilternet3/low-delay).
 
 mod engine;
 
@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use olo_protocol::voice::{Mode, NODE, Noise, Settings, State};
+use olo_protocol::voice::{Mode, Model, NODE, Noise, Settings, State};
 use olo_system::audio::{self, Devices, Kind};
 
 fn main() -> ExitCode {
@@ -40,7 +40,9 @@ fn main() -> ExitCode {
             }
         },
         _ => {
-            eprintln!("usage: olo-voice --service | --status [--json] | --set KEY=VALUE… (enabled, echo, normalize: on/off; mode: calls/recording; noise: off/moderate/strong/full)");
+            eprintln!(
+                "usage: olo-voice --service | --status [--json] | --set KEY=VALUE… (enabled, echo, normalize: on/off; mode: calls/recording; noise: off/moderate/strong/full; model: deepfilternet3/low-delay)"
+            );
             ExitCode::from(2)
         }
     }
@@ -49,7 +51,14 @@ fn main() -> ExitCode {
 fn print_status(state: &State, settings: &Settings) {
     let on = |b: bool| if b { "on" } else { "off" };
     println!("voice processing: {}", on(settings.enabled));
-    println!("  mode: {}, noise: {}, echo cancellation: {}, level: {}", settings.mode.label(), settings.noise.label(), on(settings.echo_cancellation), on(settings.normalize));
+    println!(
+        "  mode: {}, noise: {} ({}), echo cancellation: {}, level: {}",
+        settings.mode.label(),
+        settings.noise.label(),
+        settings.model.label(),
+        on(settings.echo_cancellation),
+        on(settings.normalize)
+    );
     if state.pid == 0 {
         println!("  service: not running");
         return;
@@ -90,7 +99,13 @@ fn set(pairs: &[String]) -> Result<(), String> {
                     _ => Noise::ALL.into_iter().find(|n| n.label().eq_ignore_ascii_case(v)).ok_or("noise: off, moderate, strong or full")?,
                 }
             }
-            _ => return Err(format!("{k}: enabled, echo, normalize, mode or noise")),
+            "model" => {
+                s.model = match v {
+                    "ll" | "deepfilternet3-ll" => Model::LowDelay,
+                    _ => Model::ALL.into_iter().find(|m| m.word() == v || m.label().eq_ignore_ascii_case(v)).ok_or("model: deepfilternet3 or low-delay")?,
+                }
+            }
+            _ => return Err(format!("{k}: enabled, echo, normalize, mode, noise or model")),
         }
     }
     s.save().map_err(|e| e.to_string())

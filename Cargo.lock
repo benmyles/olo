@@ -7700,6 +7700,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-diskbackup"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305",
+ "ciborium",
+ "getrandom 0.3.4",
+ "globset",
+ "hkdf 0.13.0",
+ "hmac 0.13.0",
+ "libc",
+ "serde",
+ "sha2 0.11.1",
+ "zstd",
+]
+
+[[package]]
+name = "olo-diskbackup-app"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-crash",
+ "olo-diskbackup",
+ "olo-kit-base",
+ "olo-protocol",
+ "olo-system",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "olo-doctor"
 version = "0.1.0"
 dependencies = [
@@ -8800,6 +8833,7 @@ dependencies = [
  "ndarray",
  "nnnoiseless",
  "olo-protocol",
+ "olo-system",
  "realfft",
  "sonora",
 ]

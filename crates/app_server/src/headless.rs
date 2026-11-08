@@ -61,7 +61,7 @@ struct Screen {
     drawn: Option<smithay::backend::renderer::sync::SyncPoint>,
     /// Looks in a row that found nothing new (`render::IDLE_FRAMES`).
     idle_frames: u32,
-    /// Resting: its next look is `render::IDLE_POLL` away, unless woken.
+    /// Resting: its next look is `render::rest_for` away, unless woken.
     asleep: bool,
     /// When it last looked, so a wake comes no sooner than a frame after.
     looked: Option<std::time::Instant>,
@@ -426,8 +426,8 @@ pub fn run_headless(size_arg: Option<&str>) {
 
     info!("Initialization completed, starting the main loop.");
     while state.running.load(Ordering::SeqCst) {
-        // (As udev's: the timeout only keeps `tick` looking now and then.)
-        if event_loop.dispatch(Some(crate::render::IDLE_POLL), &mut state).is_err() {
+        // (As udev's: the timeout only for what looks now and then.)
+        if event_loop.dispatch(Some(state.loop_timeout()), &mut state).is_err() {
             state.running.store(false, Ordering::SeqCst);
             break;
         }
@@ -594,7 +594,7 @@ fn add_output(state: &mut AnvilState<HeadlessData>, output: &Output) {
 }
 
 /// Each screen draws at its mode's rate, on time; one that found nothing
-/// new for `render::IDLE_FRAMES` rests, looking every `render::IDLE_POLL`
+/// new for `render::IDLE_FRAMES` rests, looking after `render::rest_for`
 /// until woken (`Backend::wake`). The timer wakes for whichever is due
 /// next.
 fn schedule_frames(data: &mut HeadlessData, at: std::time::Instant) {
@@ -630,6 +630,7 @@ fn frames_due(state: &mut AnvilState<HeadlessData>) -> std::time::Instant {
         // (Something of ours moving: it doesn't rest.)
         let awake = state.keeps_awake();
         let t = std::time::Instant::now();
+        RESTING_LOOK.set(was_asleep);
         let new = render_frame(state, i);
         state.timings.phase("look (whole)", t);
         for (name, took) in crate::render::take_parts() {
@@ -642,16 +643,31 @@ fn frames_due(state: &mut AnvilState<HeadlessData>) -> std::time::Instant {
         let new = new && !(was_asleep && crate::render::warm_changed(&output)) || crate::wallpaper::coming(&output) || awake;
         screen.idle_frames = if new { 0 } else { screen.idle_frames.saturating_add(1) };
         if new && was_asleep {
-            // Something changed without waking it (worth a wake).
-            tracing::debug!(output = screen.output.name(), "a resting display found something new at its look");
+            // Something changed without waking it (worth a wake): where.
+            let damage = RESTING_DAMAGE.take();
+            tracing::debug!(output = screen.output.name(), ?damage, "a resting display found something new at its look");
         }
         if screen.idle_frames >= crate::render::IDLE_FRAMES && crate::render::rests(false) {
             screen.asleep = true;
-            screen.due = now + crate::render::IDLE_POLL;
+            screen.due = now + crate::render::rest_for();
         }
     }
     state.backend_data.in_frames = false;
     state.backend_data.screens.iter().map(|s| s.due).min().unwrap_or(now + Duration::from_millis(16))
+}
+
+thread_local! {
+    /// The look being drawn is a resting display's, and what it found
+    /// damaged (for the debug line saying what changed without a wake).
+    static RESTING_LOOK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static RESTING_DAMAGE: std::cell::RefCell<Vec<smithay::utils::Rectangle<i32, smithay::utils::Physical>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// What a resting look found damaged, kept for its debug line.
+fn note_resting_damage(damage: Option<&Vec<smithay::utils::Rectangle<i32, smithay::utils::Physical>>>) {
+    if RESTING_LOOK.get() {
+        RESTING_DAMAGE.set(damage.cloned().unwrap_or_default());
+    }
 }
 
 /// Draw screen `index`; whether anything on it was new.
@@ -706,7 +722,10 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
                 locked,
                 fit,
             )
-            .map(|r| (r.damage.is_some(), r.sync, r.states)),
+            .map(|r| {
+                note_resting_damage(r.damage);
+                (r.damage.is_some(), r.sync, r.states)
+            }),
             crate::color::Drawing::Sdr(target) => {
                 data.renderer.set_color_target(Some(target));
                 let r = render_output(output, &state.space, overlay, &mut data.renderer, &mut fb, &mut screen.damage_tracker, 1, state.overview.as_ref(), desktop_color, locked, fit)

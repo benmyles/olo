@@ -73,7 +73,7 @@ fn choose(ui: &Ui) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui::gpui::App)
         let prefs = prefs.clone();
         file_panel::show(cx, "Choose a Wallpaper", FilePanel::open(dir).types(WALLPAPER_TYPES), move |a, cx| {
             if let PanelResult::Chosen(path) = a.result {
-                let _ = prefs.update(cx, |p, cx| p.edit(cx, |s| s.wallpaper = Some(path.to_string_lossy().into_owned())));
+                let _ = prefs.update(cx, |p, cx| p.edit_as(cx, "", "Background", |s| s.wallpaper = Some(path.to_string_lossy().into_owned())));
             }
         });
     }

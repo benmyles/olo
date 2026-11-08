@@ -35,7 +35,7 @@ const EDGE: f32 = m::SPACING;
 const DRAG_SLOP: f32 = 3.0;
 
 /// Icons being moved, by [`place_key`], and where each cell was.
-type Placed = Vec<(String, Point<Pixels>)>;
+type Dragged = Vec<(String, Point<Pixels>)>;
 
 struct Item {
     entry: Entry,
@@ -58,7 +58,7 @@ pub struct Desktop {
     screen: Bounds<Pixels>,
     /// A drag of icons started here: where the button went down, and
     /// where they were then (to put them where they are dropped).
-    dragging: Option<(Point<Pixels>, Placed)>,
+    dragging: Option<(Point<Pixels>, Dragged)>,
     press: Option<Press>,
     /// The items as last drawn.
     layouts: Rc<RefCell<Vec<ItemLayout>>>,
@@ -102,6 +102,10 @@ impl Places {
         olo_ui::store::save(places_path(), self);
     }
 }
+
+/// Icons whose places changed: each one's key, and its place before and
+/// after (None: on the grid).
+pub type Placed = Vec<(String, Option<[f32; 2]>, Option<[f32; 2]>)>;
 
 /// What a desktop icon's place is kept under: a ~/Desktop item's name,
 /// else its path (Home, volumes), or "Trash".
@@ -317,13 +321,29 @@ impl Desktop {
     }
 
     /// Put the icons that were dragged from here where they were dropped
-    /// (`at`, the pointer).
-    pub fn place_dragged(&mut self, at: Point<Pixels>) {
-        let Some((from, icons)) = self.dragging.take() else { return };
+    /// (`at`, the pointer); where each was and is now (Edit ▸ Undo).
+    pub fn place_dragged(&mut self, at: Point<Pixels>) -> Placed {
+        let Some((from, icons)) = self.dragging.take() else { return Vec::new() };
         let screen = self.screen;
+        let mut moved = Vec::new();
         for (key, was) in icons {
             let to = point(was.x + (at.x - from.x), was.y + (at.y - from.y));
-            self.places.icons.insert(key, [f32::from(screen.right() - to.x), f32::from(to.y - screen.top())]);
+            let to = [f32::from(screen.right() - to.x), f32::from(to.y - screen.top())];
+            let before = self.places.icons.insert(key.clone(), to);
+            moved.push((key, before, Some(to)));
+        }
+        self.places.save();
+        moved
+    }
+
+    /// Each icon of `moved` back where it was before it (Undo; Redo gives
+    /// them the other way round): placed, or on the grid.
+    pub fn put_places(&mut self, moved: &Placed) {
+        for (key, before, _) in moved {
+            match before {
+                Some(at) => self.places.icons.insert(key.clone(), *at),
+                None => self.places.icons.remove(key),
+            };
         }
         self.places.save();
     }
@@ -347,10 +367,11 @@ impl Desktop {
         }
     }
 
-    /// BeOS's Clean Up: every icon back on the grid.
-    pub fn clean_up(&mut self) {
-        self.places.icons.clear();
+    /// BeOS's Clean Up: every icon back on the grid; where each was.
+    pub fn clean_up(&mut self) -> Placed {
+        let moved = std::mem::take(&mut self.places.icons).into_iter().map(|(k, at)| (k, Some(at), None)).collect();
         self.places.save();
+        moved
     }
 
     fn act(&self, a: Action, cx: &mut Context<Self>) {
@@ -376,7 +397,13 @@ impl Desktop {
     pub fn command(&mut self, cmd: &str, cx: &mut Context<Self>) {
         match cmd {
             "clean-up" => {
-                self.clean_up();
+                let moved = self.clean_up();
+                let app = self.app.clone();
+                cx.defer(move |cx| {
+                    if let Some(app) = app.upgrade() {
+                        app.update(cx, |t, cx| t.done("Clean Up", crate::undo::Change::Placed(moved), cx));
+                    }
+                });
                 cx.notify();
             }
             "open" => {
@@ -585,6 +612,10 @@ impl Desktop {
             "new"
         } else if pressed(k, "new-folder") {
             "new-folder"
+        } else if pressed(k, "redo") {
+            "redo"
+        } else if pressed(k, "undo") {
+            "undo"
         } else {
             return;
         };

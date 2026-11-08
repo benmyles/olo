@@ -492,10 +492,10 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
         .px(px(m::WINDOW_INSET))
         .pb(px(m::WINDOW_INSET))
         .child(Button::new("Defaults").min_width(m::BUTTON_MIN_WIDTH).enabled(to_defaults).on_click(move |_, cx| {
-            let _ = d.update(cx, |p, cx| p.edit(cx, |s| panel.reset(s, &Settings::default())));
+            let _ = d.update(cx, |p, cx| p.edit_as(cx, "", "Defaults", |s| panel.reset(s, &Settings::default())));
         }))
         .child(Button::new("Revert").min_width(m::BUTTON_MIN_WIDTH).enabled(to_opened).on_click(move |_, cx| {
-            let _ = r.update(cx, |p, cx| p.edit(cx, |s| panel.reset(s, &opened)));
+            let _ = r.update(cx, |p, cx| p.edit_as(cx, "", "Revert", |s| panel.reset(s, &opened)));
         }));
     root.child(footer)
 }

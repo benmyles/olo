@@ -159,7 +159,12 @@ like pixel alignment is.
 
    A display with nothing new rests (`render::IDLE_FRAMES`, both
    backends): after 3 looks in a row that found no damage it looks
-   only every 100 ms (`IDLE_POLL`), and at once when woken
+   again only when woken, or when `render::rest_for` says: while the
+   desktop is in use (two minutes after anything drew) when the
+   keep-warm pixel is due, once a second, and then only every 10 s, a
+   safety net (it was every 100 ms whatever; a bare headless session
+   idle 10 wakeups a second, 0.2% of a core, now 2 while warm and 1
+   after, 0.0%; with Deskbar 15 → 5). At once when woken
    (`Backend::wake`, paced a quarter of a frame after its last look):
    a commit wakes the displays its window is on (every display for a
    popup, a layer or the pointer; none for a window showing nowhere),
@@ -175,8 +180,15 @@ like pixel alignment is.
    (on a real display, a DRM test commit too): 120 a second for each of
    two displays kept an idle app_server at a fifth of a core. Something
    new of ours that shows without a wake shows at the next look, up to
-   100 ms late: wake for it (at debug level the log says "a resting
-   display found something new at its look"). The keep-warm pixel
+   10 s late: wake for it (at debug level, `app_server::headless=debug`
+   or `app_server::udev=debug`, the log says "a resting display found
+   something new at its look", with where, headless). None was found
+   in minutes of a headless shell session used every way (2026-11-07).
+   The event loop sleeps until something comes (clients, input, the
+   displays' timers, other threads' channels), or `loop_timeout`: a
+   `tick` put off by its 8 ms throttle, auto-tiling's half-second look
+   while it's in use, else a second as a safety net (it woke every 16
+   ms on real displays, every 100 headless, whatever happened). The keep-warm pixel
    alone doesn't wake a resting display. `OLO_REST=off` looks every
    frame, as before, and `{"type":"set_resting","on":false}` at run
    time. Woken looks come no sooner than a frame after the last, aimed at
@@ -2162,6 +2174,23 @@ event reaches it.
   that notifies itself for everything (Terminal's `Shell`, which
   redraws for output) gains nothing from it.
   `Menu::keys_from(bar)` gives a context menu the bar's keys.
+- `undo::History<C>`: Undo and Redo, one way for every app. A step is
+  named for what it did ("Rename", "“Volume”") and holds what the app
+  needs to take it back (`C`); `done` records one (`done_merging` folds
+  a run of the same thing into one step: a slider dragged, a field typed
+  in, while each comes within 1.5 s and nothing was undone); Undo takes
+  the last off (`take_undo`), the app takes it back and records what that
+  did with `Purpose::Undo` for Redo, and the other way round, so both
+  lists hold what was done and a step goes back and forth; something new
+  forgets Redo's. `edit_items(menu)` adds Edit ▸ Undo *name* and Redo
+  *name* (commands `undo`, `redo`, the profile's keys). A window with no
+  menu bar takes the profile's Undo and Redo keys with `undo::keys(window,
+  cx, |redo, window, cx| …)`: its Frame gives them when nothing in it
+  took them (a text field's ⌘Z is its own). Agents and the command
+  palette find Undo and Redo among the app's menus (the bar's, or
+  `agent::set_menus`). Tracker (files: undo.rs) and Preferences
+  (settings: undo.rs) use it; what's left is in TODO ("Undo everywhere
+  it makes sense").
 - `WindowOptions::floating()`: the xdg-toplevel-tag `floating`, so
   app_server floats it over auto-tiled windows. `child()`: the window
   belongs to the app's window that has the keyboard (its xdg parent:
@@ -4192,6 +4221,17 @@ opened, its own `panel::State` and text fields).
   `SetSettings` (collapsed to the newest) and `ConfigureOutput`. A control's
   change goes to `Prefs::edit`, which sends the settings and draws every
   panel again; nothing blocks.
+* **Undo and Redo** (undo.rs, `olo_ui::undo`): every change made with a
+  panel's control is a step, kept as the settings it changed (each by its
+  JSON path, what it was and what it became), named for the control
+  (`form.rs`: a check box's or a slider's label, a menu's, else its box's
+  title: Undo “Space at the edges”; Reset, Defaults, Revert, Restore from
+  Backup by theirs). Undo puts back just those settings and Redo makes
+  them what they became, so what changed meanwhile elsewhere (Deskbar, an
+  agent, another panel) stays. A slider dragged or a field typed in is one
+  step. ⌘Z and ⇧⌘Z in any panel's window (no menu bar: `undo::keys`), and
+  Edit ▸ Undo and Redo for the command palette and agents
+  (`agent::set_menus`; `{"invoke":"undo"}`). One history for every panel.
 * Each panel module has `ui(ui: &mut form::Ui, ..)`: `form.rs` collects the
   panel's controls top to bottom, each bound to its part of the settings
   (`ui.check(label, value, |s, v| s.x = v)`, `slider`, `menu`, `choose`,
@@ -8963,19 +9003,42 @@ normalization) choose the chain; build a `Voice` off the real-time thread
    uncertainty, applied to the noise model's input spectrum (so it never
    hears the other person's voice, which would make it turn yours down).
    No delay of its own. About 30 µs a frame.
-2. **Noise suppression**: DeepFilterNet3 with two frames of look-ahead.
-   Thresholds: noise-only frames go down to the limit, both decoders always
-   run otherwise (the library's defaults chop clean speech). About 250 µs
-   a frame. Its weight matrices are f16 (`deep_filter::tract::
-   half_weights`: each matmul's constant f32 weights swapped for an f16
-   copy before optimizing, so tract packs them as f16 and runs its
-   f16-weights, f32-activations kernels; the sums and activations stay
-   f32): half the bytes to fall out of the caches between frames. On x86
-   with F16C a frame back to back went from 391 to 296 µs and one every
-   10 ms, as live, from 773 to 536 µs, the voice trials' SDR the same to
-   a tenth of a dB (translating the whole model to f16, activations too,
-   had wrecked it). Where it doesn't optimize (a processor with no such
-   kernels) it's f32; `OLO_VOICE_F32=1` asks for f32 to compare.
+2. **Noise suppression**: DeepFilterNet3, one of two models
+   (`Settings::model`, Preferences ▸ Sound ▸ Noise model): DeepFilterNet3
+   itself, two frames of look-ahead (the voice 30 ms behind), or its
+   low-delay version DeepFilterNet3-LL, none (10 ms; both tarballs
+   built in from LFS, the second's pages read only when it's chosen).
+   Measured against each other (tests/least_delay.rs, chain.rs): as much
+   room noise out between words, a voice in a noisy room 1-2 dB less
+   clean with the low-delay one, and it keeps more of a quieter voice
+   (another person's, or what the canceller leaves of the far end's: 34
+   dB down where DeepFilterNet3 takes 57); its estimate of a frame's SNR
+   runs about 10 dB under DeepFilterNet3's, so fewer frames of noise
+   alone are gated to silence. Thresholds: noise-only frames go down to
+   the limit, both decoders always run otherwise (the library's defaults
+   chop clean speech).
+
+   The GRUs' matrices (512 wide in the low-delay model: twelve 1536 ×
+   512, read whole every frame for one vector each) are 8-bit
+   (`deep_filter::q8`): a byte a weight scaled by its row, the vector as
+   15-bit integers, summed as integers by AVX-VNNI (`vpdpbusd` on the
+   vector's high and low bytes: the same sums as 16-bit, to the bit),
+   else AVX2 (`vpmaddwd`), else a plain loop. The rest of the weights
+   are f16 (`deep_filter::tract::half_weights`: each matmul's constant
+   f32 weights swapped for an f16 copy before optimizing, so tract runs
+   its f16-weights, f32-activations kernels; translating the whole model
+   to f16, activations too, had wrecked it). The time a frame is the
+   time to stream the weights: in f16 a GRU matrix took 58 µs (27 GB/s
+   on one core); in 8 bits 10.5 µs from L2, 18 from L3, 34 from memory.
+   A frame back to back, x86 with AVX-VNNI (2026-11-07): DeepFilterNet3
+   318 → 232-260 µs, the low-delay one 850-1458 → 405-441 µs; one every
+   10 ms as live, the low-delay one's median 1.5-1.8 → 1.0 ms and its
+   99th 2.4-5.5 → 1.5 ms; every voice trial's SDR within 0.4 dB of f16.
+   `OLO_VOICE_F16=1` leaves out the 8 bits, `OLO_VOICE_F32=1` asks for
+   f32, to compare. Where a frame's time goes, model by model and node
+   by node, paced or not: `vendor/deep_filter/tests/profile.rs`
+   (`OLO_DF_MODEL`, `OLO_DF_NODES`, `OLO_DF_PACED`; `q8_speed` times the
+   8-bit product hot, from the cache and from memory).
 3. **Level normalization**: AGC2 (adaptive digital gain from a neural
    voice detector, then a limiter), allowed to turn loud talkers down as
    well as quiet ones up: speech lands within half a dB of -24 dBFS rms
@@ -9032,17 +9095,27 @@ one are always told apart:
   nothing is held back for the frames' fit, and with a quantum another
   program forces only its misfit is (`misfit`: `FRAME - gcd`, 448 samples
   for a power of two), exactly, from the start (silence before the
-  sound); recordings 2048 samples and four frames more. What it says it
-  adds is what it does: the processing's delay, what's held, and the
-  one cycle a source fed by another stream is behind (PipeWire's own
-  loopback is too). `tools/dev/voice-latency` measures it in a private
-  PipeWire graph of its own (no hardware; its own WirePlumber with every
-  monitor off, runtime, config and state folders): clicks into a test
-  microphone, one stereo recording of it and of Olo Voice's source, the
-  gap between them (`--settings`, `--quantum`, `--other loopback` for
-  PipeWire's own as a floor). Before the group and trigger: 21.33 ms of
-  buffering said as 10; after: 10.0 (14.67 at a forced 256, 30.67 at
-  1024), said as measured, no dropouts.
+  sound); recordings 2048 samples and four frames more. Triggered, the
+  source gives each cycle's frames in that cycle, so an app recording
+  through Pulse (Chrome's, every call app's: PipeWire schedules them in
+  the cycle) gets the voice with nothing added but the processing's
+  delay and what's held; only a client PipeWire schedules asynchronously
+  (pw-record, pw-play: `node.async`, `=` in pw-top) reads it a cycle
+  late, as it reads any source that isn't a device. What the service
+  says it adds is that. `tools/dev/voice-latency` measures it in a
+  private PipeWire graph of its own (no hardware; its own WirePlumber
+  with every monitor off, runtime, config and state folders): speech
+  into a test microphone, the microphone and Olo Voice's source recorded
+  side by side by a synchronous probe (a realtime `pw_filter`, as
+  Pulse's streams are scheduled), and the lag between them
+  cross-correlated (`--settings`, `--quantum`, `--probe async` for
+  pw-record, `--signal clicks`, `--other loopback` for PipeWire's own).
+  2026-11-07: the processing off 0.0 ms, a forced 256 or 1024 quantum
+  9.33 (the frames' misfit), the low-delay noise model 10.0, DeepFilterNet3
+  30.0, each said as measured, no dropouts. (Measured with pw-record
+  before, every figure had a quantum more: not Olo's.) Don't judge the
+  delay with clicks in silence: the level stage boosts and limits them,
+  and a speech model takes them for noise.
 - **Settings** `voice.json` in the config folder
   (`olo_protocol::voice::Settings`: enabled, mode, echo cancellation,
   noise, normalize), followed by inotify. **State** `olo-voice.json` in
@@ -11029,6 +11102,27 @@ deferred so the Tracker can update the window back):
   drop handler gives the Tracker the drop. Drags out carry Olo's own
   types (the folder and file system they're from, whether to ask).
 - Paste reads the clipboard off the UI thread (`App::paste_as`).
+- **Edit ▸ Undo and Redo** (undo.rs; ⌘Z and ⇧⌘Z, `app.undo`/`app.redo`,
+  named for the step: "Undo Rename", "Undo Move to Trash"), one history
+  for every window and the desktop, as Finder's. A step is what was
+  done, as done: items moved from where to where (rename, move, put
+  back), put in the Trash or restored from it (from where, to where in
+  it), or made (copy, duplicate, new folder, links, a paste or drop of
+  text or a picture), or desktop icons placed (dragged, Clean Up: each
+  one's place before and after, put back at once, no job). Each job reports that (`ops::Outcome::moved`,
+  `created`); a rename or a new folder records it at once. Undoing runs
+  what takes it back as a job like any other (on a worker, progress,
+  Stop): moved items go back to exactly where they were
+  (`ops::Kind::PutBack`), trashed ones are restored, restored ones go
+  back in the Trash, made ones go in the Trash (Redo restores them from
+  it, to the byte). What that job did is the step Redo takes back, and
+  the other way round, so a step goes back and forth as often as wanted,
+  many files as one; a job stopped part way records what it did. When a
+  step can't be any more (an item gone, the Trash emptied, something new
+  where it would go back to), the job says why and the step goes. A
+  name being edited keeps ⌘Z for its text (a menu's keys reach the
+  window only when nothing in it took them). Emptying the Trash isn't
+  undone.
 - `quicklook.rs`: olo-preview's `PreviewView` with the footer and keys;
   its window opens when the preview comes (or after 120 ms with a
   spinner) and has the keyboard.
@@ -12281,7 +12375,109 @@ its shell taking the keyboard at once, each display's scale (2×, 1×,
 and the saved scale back), the keys while locked, and a restart in
 place.
 
+## DiskBackup (crates/diskbackup, `olo-diskbackup`)
+
+Backups of the disk to the cloud (Google Drive first), continuous, in the
+background, versioned, deduplicated, compressed and encrypted. Being built
+in layers; done so far, **the engine** (crates/diskbackup):
+
+- **Chunks** (`chunker.rs`): a file cut where its content says (FastCDC's
+  gear hash, normalized: 256 KiB to 4 MiB, about 1 MiB), so bytes typed
+  into the middle of a file change only the chunks around them (a test:
+  30 bytes into 30 MB, at most two new chunks). A chunk's id is a keyed
+  hash of what it holds (HMAC-SHA-256 under a key of the repository's:
+  the same content anywhere is kept once, and ids say nothing without
+  the key). Each is compressed (zstd 3, unless that saves under 3%) and
+  sealed (XChaCha20-Poly1305, a random nonce each).
+- **Packs** of about 16 MiB (`data/xx/<id>`): few large objects suit a
+  slow store; each ends with its own sealed list of what it holds, so the
+  index can be made again from the packs. **The index** (`index/<id>`,
+  sealed, a file a flush) says where each chunk is; it's read at open
+  (cached locally: index files never change).
+- **Trees and snapshots** (`tree.rs`, `repo.rs`): a folder is a tree
+  (name, kind, mode, modified and changed times, inode, size, a file's
+  chunks, a folder's tree, a link's target), itself a blob, so an
+  unchanged folder is the same blob. A snapshot (`snapshots/<id>`) is a
+  moment's tree of `/` holding the folders backed up, every version
+  whole, sharing what didn't change; with a summary (files, new and
+  changed and unchanged, new bytes, stored bytes, time, errors).
+- **Backing up** (`backup.rs`): a file whose size, times and inode are as
+  in the last snapshot isn't read (its chunks taken as they were); the
+  rest are read with O_NOATIME and let go of from the page cache after
+  (`POSIX_FADV_DONTNEED`: the backup's reading isn't anyone's working
+  set). Sockets, pipes and devices skipped; unreadable files said in the
+  summary and left out; Stop at any point.
+- **Excludes** (`exclude.rs`): groups of what can be made again (caches,
+  Trash, Rust's target/ builds and Cargo's downloads, node_modules and
+  frameworks' builds, Python's, Go's, Gradle's and Maven's, C/C++/Zig/
+  Haskell/Elixir/Dart builds, containers and Flatpaks, editors' swap
+  files; virtual machines' disks offered, off by default), the person's
+  own patterns (`~/`, `**/`), and any folder with a `CACHEDIR.TAG`.
+- **Restoring** (`restore.rs`): a file or folder of any snapshot put back
+  anywhere, as it was (contents, permissions, modified times, links),
+  each file written aside and renamed into place; `find` for browsing.
+- **Stores** (`store.rs`): `Store` (put whole, get, get a range, list,
+  delete); objects are written once under names of their content, so a
+  slow or eventually consistent store never shows half of one.
+  `LocalStore` (a folder) now; Google Drive next.
+- **`config`**: the format and chunking, sealed: opening it is how a key
+  is known to be the right one (`Error::WrongKey`). The key, 32 random
+  bytes (`Key::to_hex`), is kept by Olo Passwords, not in the store.
+
+- **Speed limits** (`store::Limit`; Ben: "make sure that i can also set
+  a max upload/download speed"): bytes a second each way, 0 for none,
+  changed live; a store paces its transfers a 256 KiB piece at a time
+  (`Throttled` for one that doesn't pace itself), up to a quarter second's
+  worth at once, so the network never sees a burst at full speed.
+
+**The service** (apps/diskbackup, `olo-diskbackup --service`; olo-session
+runs it in the logged-in session): the whole process at the CPU's and the
+disks' idle priority (SCHED_IDLE, the idle I/O class: anything else that
+wants them goes first); asleep until a backup is due (`every_minutes`
+after the last), its settings change (inotify) or it's asked on its
+socket (`olo_protocol::diskbackup::Request`: Back Up Now, Stop); waits
+for power on battery unless allowed (`on_battery`), looking again every
+five minutes then. A backup takes unchanged files from the last snapshot
+of this computer's (its host name), leaves out the exclude groups chosen,
+the person's patterns, its own cache and a folder target; its progress in
+the state file (`$XDG_RUNTIME_DIR/olo-diskbackup.json`, `State`) every 2 s
+while it runs and not otherwise; the last's outcome kept across restarts
+(the state folder). Settings: `~/.config/olo/diskbackup.json`
+(`olo_protocol::diskbackup::Settings`: target, paths, exclude groups and
+patterns, every, keep, speed limits, battery, one file system). The key:
+in the login keyring (`olo_system::secrets::DISKBACKUP_KEY`, which the
+settings backup carries too), where the service finds it with no one
+there; Passwords keeps it as well (the app, next). Command line:
+`--status [--json]`, `--now`, `--stop`, `--set-up-folder PATH`,
+`--snapshots`, `--restore SNAPSHOT PATH [TO]`, `--set KEY=VALUE…`
+(enabled, battery, every, upload, download, paths, exclude, groups),
+`--groups`. For tests, `OLO_DISKBACKUP_DIR` keeps its settings, state and
+socket apart and `OLO_DISKBACKUP_KEY` gives the key. Checked so (a
+sandbox HOME, a folder target): set up, the first backup at once (9
+files, node_modules left out), a change and Back Up Now (1 changed,
+nothing new), the older version restored, 5 MB new at a 500 KB/s upload
+limit in 10.06 s; its scheduling policy 5 (SCHED_IDLE).
+
+Measured (release, one thread, this machine, 2026-11-07;
+`tests/round_trip.rs`'s `throughput`): data/ (988 MB, 12,160 files,
+pictures mostly) first backed up in 7.5 s (132 MB/s), 947 MB stored; again
+with nothing changed 0.03 s, nothing stored. `round_trip` backs up,
+changes (bytes inserted, a file added, one removed), backs up again (1
+changed, 1 new, the rest unchanged, under 4 MiB new), restores both
+versions and checks nothing in the store is readable.
+
 ## Passwords (apps/passwords, crates/onepassword)
+
+**Undo** (undo.rs, `olo_ui::undo`): Edit ▸ Undo and Redo for items
+changed (put back as they were), made (deleted) and deleted (made again:
+a new item, every field as it was; `Vault::delete` gives back what it
+deleted). Each is a save, a creation or a deletion like any other, so a
+sync with 1Password takes it as one; the store's jobs carry a `Tag` (what
+for, the step's name, an edit's item as it was) that its reply gives
+back, and the reply records the step. An item with files attached can't
+be made again (its files went), so its Delete still says it's for good;
+the Archive isn't undone (nothing takes an item out of it yet). Steps
+hold secrets: they go when Passwords locks (and when the store changes).
 
 **Searching**: the toolbar's `SearchField` and a `FilterBar` over the
 list (Tag, Has) share one query (`olo_ui::search`). Words find an item

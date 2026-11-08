@@ -16,6 +16,7 @@ mod lock;
 mod passkey;
 mod store;
 mod sync;
+mod undo;
 mod vault;
 mod view;
 
@@ -245,6 +246,9 @@ pub struct Parts {
 }
 
 pub struct Passwords {
+    /// Edit ▸ Undo and Redo (`undo.rs`): items as they were. Secrets: gone
+    /// when it locks.
+    history: olo_ui::undo::History<undo::Change>,
     settings: Settings,
     /// Preferences ▸ Security's choices for Passwords (followed live).
     security: PasswordsSecurity,
@@ -1243,8 +1247,9 @@ impl Passwords {
         // A waiting plan holds secrets too; it is worked out again later.
         self.end_review(cx);
         // The store lets go of its secrets (after a running sync), and
-        // `op` must be allowed again.
+        // `op` must be allowed again; Undo's steps hold them too.
         self.store.send(Job::Close);
+        self.history.clear();
         self.grants.clear();
         self.lock.lock();
         self.lock_field.update(cx, |f, cx| f.clear_secret(cx));
@@ -1452,13 +1457,16 @@ impl Passwords {
             cx.notify();
             return;
         }
-        if editor.base.is_some() {
+        let tag = |name: String, before: Option<Box<onepassword::Item>>| Some(store::Tag { purpose: olo_ui::undo::Purpose::Do, name, before });
+        if let Some(base) = editor.base.clone() {
             if let Some(item) = editor.to_item() {
-                self.store.send(Job::Put(Box::new(item)));
+                let name = format!("Changes to “{}”", base.title);
+                self.store.send(Job::Put(Box::new(item), tag(name, Some(Box::new(base)))));
                 self.flash("Saving…");
             }
         } else if let Some(params) = editor.to_params(&self.vaults) {
-            self.store.send(Job::Create(Box::new(params)));
+            let name = format!("New “{}”", params.title);
+            self.store.send(Job::Create(Box::new(params), tag(name, None)));
             self.flash("Saving…");
         }
         cx.notify();
@@ -1614,16 +1622,35 @@ impl Passwords {
         self.end_review(cx);
     }
 
+    /// Edit ▸ Undo (or Redo): the step's inverse as a save, a creation or
+    /// a deletion, its reply recording what it did for the other way.
+    fn undo_redo(&mut self, redo: bool, cx: &mut Context<Self>) {
+        let step = if redo { self.history.take_redo() } else { self.history.take_undo() };
+        let Some(step) = step else { return };
+        let purpose = if redo { olo_ui::undo::Purpose::Redo } else { olo_ui::undo::Purpose::Undo };
+        let name = step.name.clone();
+        self.store.send(step.change.inverse(|before| Some(store::Tag { purpose, name, before })));
+        self.flash(if redo { "Redoing…" } else { "Undoing…" });
+        cx.notify();
+    }
+
     fn confirm_delete(&mut self, cx: &mut Context<Self>) {
         if on_screen() {
             return self.flash(SHARED_ONLY);
         }
         let Some(o) = self.selected.as_ref().and_then(|s| self.overview(s)).cloned() else { return };
-        let message = format!("Delete “{}” for good? This can’t be undone.", o.title);
+        // (Undone, it's made again: not with files attached.)
+        let back = self.details.get(&o.id).is_none_or(undo::can_come_back);
+        let message = if back {
+            format!("Delete “{}”? Edit ▸ Undo makes it again until Passwords locks.", o.title)
+        } else {
+            format!("Delete “{}” for good? Its attached files can’t come back.", o.title)
+        };
+        let tag = back.then(|| store::Tag { purpose: olo_ui::undo::Purpose::Do, name: format!("Delete “{}”", o.title), before: None });
         let me = cx.entity();
         self.alert("Delete Item", "warning", message, &["Cancel", "Delete"], cx, move |choice, cx| {
             if choice == Some(1) {
-                me.update(cx, |a, _| a.store.send(Job::Delete { vault: o.vault_id.clone(), item: o.id.clone() }));
+                me.update(cx, |a, _| a.store.send(Job::Delete { vault: o.vault_id.clone(), item: o.id.clone(), tag: tag.clone() }));
             }
         });
     }
@@ -1814,7 +1841,12 @@ impl Passwords {
             Reply::Missing { item, error } => {
                 self.missing.insert(item, error);
             }
-            Reply::Saved { item, created } => {
+            Reply::Saved { item, created, tag } => {
+                if let Some(tag) = &tag
+                    && let Some(change) = undo::Change::of_saved(&item, created, tag)
+                {
+                    self.history.record(tag.purpose, tag.name.clone(), change);
+                }
                 let overview = ItemOverview {
                     id: item.id.clone(),
                     title: item.title.clone(),
@@ -1854,7 +1886,12 @@ impl Passwords {
                 self.after_removal(&item, row);
                 self.changed_here();
             }
-            Reply::Deleted { item } => {
+            Reply::Deleted { item, was, tag } => {
+                if let (Some(tag), Some(was)) = (tag, was)
+                    && undo::can_come_back(&was)
+                {
+                    self.history.record(tag.purpose, tag.name, undo::Change::Deleted(was));
+                }
                 let row = self.visible().iter().position(|i| i.id == item);
                 if let Some(i) = self.items.iter().find(|i| i.id == item) {
                     self.flash(format!("Deleted “{}”.", i.title));
@@ -1997,7 +2034,10 @@ impl Passwords {
             .key("w")
             .item("Quit", "quit")
             .key("q");
-        let edit = Menu::new("Edit")
+        let edit = self
+            .history
+            .edit_items(Menu::new("Edit"))
+            .separator()
             .item("Copy Username", "copy:username")
             .key("c")
             .enabled(has && details.is_some())
@@ -2101,6 +2141,8 @@ impl Passwords {
                 }
             }
             "delete" => self.confirm_delete(cx),
+            "undo" | "redo" if on_screen() => self.flash(SHARED_ONLY),
+            "undo" | "redo" => self.undo_redo(command == "redo", cx),
             c if c.starts_with("copy:") => self.copy_selected(&c[5..], cx),
             c if c.starts_with("new:") => {
                 if let Some(cat) = ItemCategory::ALL.iter().find(|x| x.as_str() == &c[4..]) {
@@ -2178,6 +2220,7 @@ impl Passwords {
         let msg = match msg.downcast::<SharedChanged>() {
             Ok(_) => {
                 self.store.send(Job::Close);
+                self.history.clear();
                 self.connect(cx);
                 return;
             }
@@ -2525,6 +2568,7 @@ fn main() {
                 a.follow_countdown(cx);
             }));
             let mut app = Passwords {
+                history: Default::default(),
                 chosen: settings.accounts.iter().map(|l| l.id.clone()).collect(),
                 account_field: account_field.clone(),
                 accounts: Accounts::Unknown,

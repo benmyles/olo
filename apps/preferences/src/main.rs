@@ -45,6 +45,7 @@ mod touchid;
 mod touchpad;
 mod tracker;
 mod typing_tutor;
+mod undo;
 mod voice_try;
 mod windows;
 mod workspaces;
@@ -87,6 +88,9 @@ pub struct Prefs {
     pub power: Option<PowerStatus>,
     pub server: server::Server,
     windows: Vec<Shown>,
+    /// Edit ▸ Undo and Redo for the changes made here (`undo.rs`), for
+    /// every panel: ⌘Z in any of them, the palette's and agents' Edit menu.
+    pub history: olo_ui::undo::History<Vec<undo::Diff>>,
 }
 
 /// A window open: a panel's (and its view), or the launcher.
@@ -100,13 +104,44 @@ impl Prefs {
     /// Changes the settings: app_server is sent them, and every window
     /// showing them is drawn again. (Not connected yet: nothing to change.)
     pub fn edit(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Settings)) {
+        self.edit_as(cx, "", "Change", f);
+    }
+
+    /// `edit`, kept for Undo as `name` (Edit ▸ Undo “Volume”); with a
+    /// `run` key, part of a run of it (a slider dragged, a field typed in:
+    /// one step).
+    pub fn edit_as(&mut self, cx: &mut Context<Self>, run: &str, name: &str, f: impl FnOnce(&mut Settings)) {
         let Some(s) = self.settings.as_mut() else { return };
         let before = s.clone();
         f(s);
         if *s != before {
+            let change = undo::diff(&before, s);
+            if !change.is_empty() {
+                if run.is_empty() {
+                    self.history.done(name, change);
+                } else {
+                    self.history.done_merging(run, name, change, undo::merge);
+                }
+            }
             self.server.set_settings(s.clone());
             cx.notify();
         }
+    }
+
+    /// Edit ▸ Undo (or Redo): the last step's settings back as they were
+    /// (or as they became), the rest as they are.
+    pub fn undo_redo(&mut self, redo: bool, cx: &mut Context<Self>) {
+        let step = if redo { self.history.take_redo() } else { self.history.take_undo() };
+        let Some(step) = step else { return };
+        if let Some(s) = self.settings.as_mut()
+            && let Some(new) = undo::apply(s, &step.change, redo)
+        {
+            *s = new;
+            self.server.set_settings(s.clone());
+        }
+        let purpose = if redo { olo_ui::undo::Purpose::Redo } else { olo_ui::undo::Purpose::Undo };
+        self.history.record(purpose, step.name, step.change);
+        cx.notify();
     }
 
     fn open(&mut self, name: &str, cx: &mut Context<Self>) {
@@ -132,6 +167,12 @@ impl Prefs {
             let out = made.clone();
             let p = prefs.clone();
             let Some(handle) = olo_ui::open_window(cx, options, move |window, cx| {
+                // ⌘Z and ⇧⌘Z: the app's Undo and Redo (a text field's own
+                // first).
+                let undoer = p.downgrade();
+                olo_ui::undo::keys(window, cx, move |redo, _, cx| {
+                    let _ = undoer.update(cx, |p, cx| p.undo_redo(redo, cx));
+                });
                 let view = cx.new(|cx| PanelView::new(p, panel, opened, window, cx));
                 *out.borrow_mut() = Some(view.clone());
                 view
@@ -155,7 +196,15 @@ impl Prefs {
         let options = WindowOptions { fixed: true, ..WindowOptions::new("Preferences", w, h).min_size(w, h).floating() };
         cx.defer(move |cx| {
             let p = prefs.clone();
-            let Some(handle) = olo_ui::open_window(cx, options, move |_, cx| cx.new(|_| Launcher { prefs: p })) else { return };
+            let Some(handle) = olo_ui::open_window(cx, options, move |window, cx| {
+                let undoer = p.downgrade();
+                olo_ui::undo::keys(window, cx, move |redo, _, cx| {
+                    let _ = undoer.update(cx, |p, cx| p.undo_redo(redo, cx));
+                });
+                cx.new(|_| Launcher { prefs: p })
+            }) else {
+                return;
+            };
             prefs.update(cx, |p, cx| p.register(None, handle.into(), None, cx));
         });
     }
@@ -486,7 +535,7 @@ fn main() {
     olo_ui::run(APP_ID, move |cx| {
         instance::listen(APP_ID, olo_ui::proxy(cx));
         let server = server::Server::start(olo_ui::proxy(cx));
-        let prefs = cx.new(|_| Prefs { settings: None, outputs: Vec::new(), outputs_in: false, holds: Vec::new(), power: None, server, windows: Vec::new() });
+        let prefs = cx.new(|_| Prefs { settings: None, outputs: Vec::new(), outputs_in: false, holds: Vec::new(), power: None, server, windows: Vec::new(), history: Default::default() });
         let restored = olo_ui::restored_state().and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok()).filter(|o| !o.is_empty());
         prefs.update(cx, |p, cx| match restored {
             Some(open) => {
@@ -500,6 +549,17 @@ fn main() {
             }
             None => p.handle_args(&args, cx),
         });
+        // Edit ▸ Undo and Redo for the command palette and agents (the
+        // windows have no menu bar).
+        let (shown, chosen) = (prefs.downgrade(), prefs.downgrade());
+        olo_ui::agent::set_menus(
+            cx,
+            move |cx| shown.upgrade().map(|p| p.read(cx).history.edit_items(olo_ui::menu::Menu::new("Edit")).entries(APP_ID)).unwrap_or_default(),
+            move |command, cx| match command {
+                "undo" | "redo" => chosen.update(cx, |p, cx| p.undo_redo(command == "redo", cx)).is_ok(),
+                _ => false,
+            },
+        );
         let messages = prefs.clone();
         olo_ui::message_handler(cx, move |message, cx| {
             let message = match message.downcast::<Launch>() {

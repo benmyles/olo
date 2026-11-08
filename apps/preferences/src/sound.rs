@@ -253,6 +253,18 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
                 .enabled(settings.enabled)
                 .on_change(move |i, _, _| s2(voice::Settings { noise: voice::Noise::ALL[i], ..settings })),
         );
+        // Which model takes it out: the voice 20 ms sooner with the
+        // low-delay one.
+        let models: Vec<SharedString> = voice::Model::ALL.iter().map(|m| SharedString::from(m.label())).collect();
+        let at = voice::Model::ALL.iter().position(|m| *m == settings.model).unwrap_or(0);
+        let s2 = save.clone();
+        ui.add(
+            MenuField::new("voice-model", models, at)
+                .label("Noise model:")
+                .divider(130.0)
+                .enabled(settings.enabled && settings.noise != voice::Noise::Off)
+                .on_change(move |i, _, _| s2(voice::Settings { model: voice::Model::ALL[i], ..settings })),
+        );
         let s2 = save.clone();
         ui.add(
             CheckBox::new("Cancel echo from the speakers", settings.echo_cancellation).enabled(settings.enabled).on_toggle(move |on, _, _| s2(voice::Settings { echo_cancellation: on, ..settings })),

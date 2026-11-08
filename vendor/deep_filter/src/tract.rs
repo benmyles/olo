@@ -187,11 +187,30 @@ impl Default for RuntimeParams {
 
 pub type TractModel = TypedSimpleState;
 
+/// Olo: `state` run, each node timed into `nodes` when it's set.
+fn timed(state: &mut TractModel, net: &str, nodes: &mut Option<std::collections::HashMap<String, (std::time::Duration, u64)>>, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    let Some(nodes) = nodes.as_mut() else { return state.run(inputs) };
+    state.run_plan_with_eval(inputs, |ctx, op_state, node, input| {
+        let t = std::time::Instant::now();
+        let r = tract_core::plan::eval(ctx, op_state, node, input);
+        let e = nodes.entry(format!("{net} {} {}", node.op().name(), node.name)).or_default();
+        e.0 += t.elapsed();
+        e.1 += 1;
+        r
+    })
+}
+
 #[derive(Clone)]
 pub struct DfTract {
     enc: TractModel,
     erb_dec: TractModel,
     df_dec: TractModel,
+    /// Olo: the time spent in the encoder, the ERB decoder and the DF
+    /// decoder so far, and the frames (to see where a model's time goes).
+    pub spent: [std::time::Duration; 3],
+    pub frames: u64,
+    /// Olo: when set, each node's time and runs, by network and node.
+    pub nodes: Option<std::collections::HashMap<String, (std::time::Duration, u64)>>,
     pub lookahead: usize,
     pub df_lookahead: usize,
     pub conv_lookahead: usize,
@@ -319,6 +338,9 @@ impl DfTract {
             enc,
             erb_dec,
             df_dec,
+            spent: Default::default(),
+            nodes: None,
+            frames: 0,
             lookahead,
             conv_lookahead,
             df_lookahead,
@@ -446,11 +468,14 @@ impl DfTract {
             );
         }
         // Run encoder
-        let mut enc_emb = self.enc.run(tvec!(
+        self.frames += 1;
+        let t0 = std::time::Instant::now();
+        let mut enc_emb = timed(&mut self.enc, "enc", &mut self.nodes, tvec!(
             TValue::from(self.erb_buf.clone()),
             TValue::from(self.cplx_buf.clone().permute_axes(&[0, 3, 1, 2])?)
         ))?;
 
+        self.spent[0] += t0.elapsed();
         let &lsnr = enc_emb.pop().unwrap().try_as_plain_ram()?.to_scalar::<f32>()?;
         let c0 = enc_emb.pop().unwrap();
         let emb = enc_emb.pop().unwrap();
@@ -472,7 +497,9 @@ impl DfTract {
                 enc_emb.pop().unwrap(), // e1
                 enc_emb.pop().unwrap(), // e0
             );
-            let mut m = self.erb_dec.run(dec_input)?;
+            let t1 = std::time::Instant::now();
+            let mut m = timed(&mut self.erb_dec, "erb", &mut self.nodes, dec_input)?;
+            self.spent[1] += t1.elapsed();
             let mut m = m.pop().unwrap().into_tensor();
             m.remove_axis(1)?;
             m.remove_axis(1)?;
@@ -484,7 +511,9 @@ impl DfTract {
         };
 
         let coefs = if apply_df {
-            let mut coefs = self.df_dec.run(tvec!(emb, c0))?.pop().unwrap().into_tensor();
+            let t2 = std::time::Instant::now();
+            let mut coefs = timed(&mut self.df_dec, "df", &mut self.nodes, tvec!(emb, c0))?.pop().unwrap().into_tensor();
+            self.spent[2] += t2.elapsed();
             coefs.set_shape(&[ch, self.nb_df, self.df_order, 2])?;
             Some(coefs)
         } else {
@@ -1118,19 +1147,30 @@ pub fn half_weights(model: &mut TypedModel) -> Result<usize> {
     Ok(changed)
 }
 
-/// The model optimized with its weights in f16 (`half_weights`), as
-/// measured on x86 with F16C (2026-11-05: a frame back to back 391 → 296
-/// µs, one every 10 ms as live 773 → 536 µs, the voice trials' SDR the
-/// same to a tenth of a dB); in f32 where that doesn't optimize (no
-/// kernels for it on this processor) or with `OLO_VOICE_F32` set.
+/// The model optimized with its big matrix-vector products in 8 bits
+/// (`q8::q8_weights`: the GRUs) and the rest of its weights in f16
+/// (`half_weights`), as measured on x86 with AVX-VNNI and F16C:
+///
+/// - 2026-11-05, f16 alone: DeepFilterNet3 a frame back to back 391 →
+///   296 µs, one every 10 ms as live 773 → 536 µs, the voice trials' SDR
+///   the same to a tenth of a dB.
+/// - 2026-11-07, 8 bits: DeepFilterNet3 318 → 232–260 µs back to back,
+///   724 → 564 µs paced; DeepFilterNet3-LL 850–1458 → 405–441 µs, paced
+///   1.5–1.8 ms → 1.0 ms (99th 2.4–5.5 → 1.5 ms); SDR within 0.4 dB of
+///   f16 in every voice trial, as much noise taken out.
+///
+/// In f32 where f16 doesn't optimize (no kernels for it on this
+/// processor) or with `OLO_VOICE_F32` set; `OLO_VOICE_F16` leaves out the
+/// 8 bits (to compare).
 fn optimized(m: TypedModel, what: &str) -> Result<TypedModel> {
     if std::env::var_os("OLO_VOICE_F32").is_none() {
         let mut half = m.clone();
         half.declutter()?;
+        let eight = if std::env::var_os("OLO_VOICE_F16").is_none() { crate::q8::q8_weights(&mut half)? } else { 0 };
         let n = half_weights(&mut half)?;
         match half.into_optimized() {
             Ok(o) => {
-                log::info!("{what}: {n} weight matrices in f16");
+                log::info!("{what}: {n} weight matrices in f16, {eight} in 8 bits");
                 return Ok(o);
             }
             Err(e) => log::warn!("{what}: weights in f16 didn't optimize ({e}); in f32"),

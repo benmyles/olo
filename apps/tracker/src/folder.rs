@@ -444,7 +444,9 @@ impl FolderWin {
     }
 
     /// The menu bar's menus.
-    fn menus(&self, can_paste: bool, places: &olo_kit_base::places::Places) -> Vec<Menu> {
+    /// `undo`: Edit ▸ Undo's and Redo's names, and whether there's a step
+    /// for each (the app's history).
+    fn menus(&self, can_paste: bool, places: &olo_kit_base::places::Places, undo: &[(String, bool); 2]) -> Vec<Menu> {
         let current = self.current().1;
         let has_sel = !current.selected.is_empty();
         let in_trash = self.current_dir().starts_with(fs::trash_files());
@@ -488,6 +490,13 @@ impl FolderWin {
         }
         let file = file.separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
         let edit = Menu::new("Edit")
+            .item(undo[0].0.clone(), "undo")
+            .key("z")
+            .enabled(undo[0].1)
+            .item(undo[1].0.clone(), "redo")
+            .shift_key("z")
+            .enabled(undo[1].1)
+            .separator()
             .item("Cut", "cut")
             .key("x")
             .enabled(has_sel)
@@ -1289,7 +1298,11 @@ impl Render for FolderWin {
         self.poll_while_loading(cx);
         let places = crate::places(cx);
         let can_paste = crate::can_paste(cx);
-        let menus = self.menus(can_paste, &places);
+        let undo = self.app.upgrade().map(|a| {
+            let h = &a.read(cx).history;
+            [(h.undo_label(), h.can_undo()), (h.redo_label(), h.can_redo())]
+        });
+        let menus = self.menus(can_paste, &places, &undo.unwrap_or_else(|| [("Undo".into(), false), ("Redo".into(), false)]));
         let (app, key) = (self.app.clone(), self.key());
         let bar = MenuBar::new(menus, move |cmd, _, cx| {
             if let Some(app) = app.upgrade() {

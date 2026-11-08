@@ -25,6 +25,15 @@ use crate::{
     vault::Vault,
 };
 
+/// What a change is for, so its reply says (Edit ▸ Undo): done, undone or
+/// redone, its step's name, and for an edit the item as it was.
+#[derive(Clone, Debug)]
+pub struct Tag {
+    pub purpose: olo_ui::undo::Purpose,
+    pub name: String,
+    pub before: Option<Box<Item>>,
+}
+
 pub enum Job {
     /// Open the store (made the first time) and list it.
     Open,
@@ -34,8 +43,8 @@ pub enum Job {
         vault: String,
         item: String,
     },
-    Create(Box<ItemCreateParams>),
-    Put(Box<Item>),
+    Create(Box<ItemCreateParams>, Option<Tag>),
+    Put(Box<Item>, Option<Tag>),
     Archive {
         vault: String,
         item: String,
@@ -43,6 +52,7 @@ pub enum Job {
     Delete {
         vault: String,
         item: String,
+        tag: Option<Tag>,
     },
     /// Answer another app (Chrome's extension): `candidates` are the logins
     /// saved for its page (for a passkey to sign with: the one chosen);
@@ -124,16 +134,20 @@ pub enum Reply {
     /// What searching and filtering need of every item (no secrets).
     Index(HashMap<String, Searchable>),
     Item(Box<Item>),
-    /// Created or changed (`created`: it is new).
+    /// Created or changed (`created`: it is new), and what for.
     Saved {
         item: Box<Item>,
         created: bool,
+        tag: Option<Tag>,
     },
     Archived {
         item: String,
     },
+    /// Deleted: as it was, and what for.
     Deleted {
         item: String,
+        was: Option<Box<Item>>,
+        tag: Option<Tag>,
     },
     /// An item has a new id (1Password gave it one).
     Renamed {
@@ -358,7 +372,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
         copies_due = !matches!(job, Job::Get { .. } | Job::Close | Job::Cli { .. } | Job::Sync { .. } | Job::Decline);
         // What's shared with an agent screen is read only.
         if vault.as_ref().is_some_and(Vault::is_shared)
-            && matches!(job, Job::Create(_) | Job::Put(_) | Job::Archive { .. } | Job::Delete { .. } | Job::Sync { .. } | Job::RemoveAccount { .. } | Job::Approve { .. } | Job::Reset)
+            && matches!(job, Job::Create(..) | Job::Put(..) | Job::Archive { .. } | Job::Delete { .. } | Job::Sync { .. } | Job::RemoveAccount { .. } | Job::Approve { .. } | Job::Reset)
         {
             proxy.send(FromStore { generation: gen_of_job, reply: Reply::Error("Shared with this screen: change it in your own Passwords.".into()) });
             continue;
@@ -531,19 +545,19 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 Ok(i) => reply(Reply::Item(Box::new(i))),
                 Err(e) => reply(Reply::Missing { item, error: describe(&e) }),
             },
-            Job::Create(params) => match v.create(&params) {
+            Job::Create(params, tag) => match v.create(&params) {
                 Ok(i) => {
-                    reply(Reply::Saved { item: Box::new(i), created: true });
+                    reply(Reply::Saved { item: Box::new(i), created: true, tag });
                     reply(Reply::Index(index(v)));
                 }
                 Err(e) => reply(Reply::Error(format!("Couldn’t save “{}”: {}", params.title, describe(&e)))),
             },
-            Job::Put(item) => match v.put(&item) {
+            Job::Put(item, tag) => match v.put(&item) {
                 Ok(i) => {
                     if i.id != item.id {
                         reply(Reply::Renamed { old: item.id.clone(), new: i.id.clone() });
                     }
-                    reply(Reply::Saved { item: Box::new(i), created: false });
+                    reply(Reply::Saved { item: Box::new(i), created: false, tag });
                     reply(Reply::Index(index(v)));
                 }
                 Err(e) => reply(Reply::Error(format!("Couldn’t save “{}”: {}", item.title, describe(&e)))),
@@ -555,9 +569,9 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 }
                 Err(e) => reply(Reply::Error(describe(&e))),
             },
-            Job::Delete { vault, item } => match v.delete(&vault, &item) {
-                Ok(()) => {
-                    reply(Reply::Deleted { item });
+            Job::Delete { vault, item, tag } => match v.delete(&vault, &item) {
+                Ok(was) => {
+                    reply(Reply::Deleted { item, was: Some(Box::new(was)), tag });
                     reply(Reply::Index(index(v)));
                 }
                 Err(e) => reply(Reply::Error(describe(&e))),
@@ -743,7 +757,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
                 return match c.put(&item) {
                     Ok(saved) => {
                         let title = saved.title.clone();
-                        reply(Reply::Saved { item: Box::new(saved), created: false });
+                        reply(Reply::Saved { item: Box::new(saved), created: false, tag: None });
                         Response::Saved { title, updated: true }
                     }
                     Err(e) => error(&e),
@@ -756,7 +770,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
             match c.create(&params) {
                 Ok(item) => {
                     let title = item.title.clone();
-                    reply(Reply::Saved { item: Box::new(item), created: true });
+                    reply(Reply::Saved { item: Box::new(item), created: true, tag: None });
                     Response::Saved { title, updated: false }
                 }
                 Err(e) => error(&e),
@@ -825,7 +839,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
             match saved {
                 Ok((item, created)) => {
                     let title = item.title.clone();
-                    reply(Reply::Saved { item: Box::new(item), created });
+                    reply(Reply::Saved { item: Box::new(item), created, tag: None });
                     let auth_data = new.auth_data(rp_id);
                     Response::PasskeyCreated {
                         title,

@@ -1220,6 +1220,21 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// workspace with auto-tiling on, if its windows or room changed, a
     /// command changed its tree, or a kept place is due to go; trees of
     /// displays turned off are dropped.
+    /// Whether auto-tiling is in use (anything tiled, or a mode for it
+    /// set): then it looks closely every `LOOK`, and the loop wakes for it.
+    pub fn auto_tiling(&self) -> bool {
+        let t = &self.settings.tiling;
+        let auto = olo_protocol::WindowingMode::AutoTiling;
+        !self.auto.trees.is_empty() || t.default_mode == auto || t.modes.iter().any(|m| m.mode == auto)
+    }
+
+    /// How long the event loop may sleep with nothing coming: auto-tiling's
+    /// `LOOK` while it's in use, else a second, a safety net for anything
+    /// changed off the loop (other threads tell it through channels).
+    pub fn auto_loop_timeout(&self) -> Duration {
+        if self.auto_tiling() { LOOK } else { Duration::from_secs(1) }
+    }
+
     pub fn auto_tick(&mut self) {
         let t = &self.settings.tiling;
         let auto = olo_protocol::WindowingMode::AutoTiling;

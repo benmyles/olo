@@ -852,6 +852,11 @@ impl TextField {
     }
 
     fn on_mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        // The click is the field's (the caret, a selection), not also what
+        // it's drawn over: Tracker's view under a name being edited took
+        // it as a click beside the item and ended the edit (Ben,
+        // 2026-11-07). The edit menu's right-click stops here too.
+        cx.stop_propagation();
         window.focus(&self.focus);
         self.selecting = true;
         let at = self.index_at(event.position);

@@ -17,6 +17,7 @@ pub mod airpods;
 pub mod app_keys;
 pub mod color;
 pub mod deskbar;
+pub mod diskbackup;
 pub mod doctor;
 pub mod keyboards;
 pub mod mice;

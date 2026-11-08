@@ -19,6 +19,11 @@ autobenches = false
 name = "df"
 path = "src/lib.rs"
 
+# Olo: where a model's time goes (ignored; OLO_DF_MODEL picks the model).
+[[test]]
+name = "profile"
+path = "tests/profile.rs"
+
 [features]
 default = ["tract", "default-model"]
 transforms = ["dep:thiserror", "dep:ndarray", "dep:rubato"]

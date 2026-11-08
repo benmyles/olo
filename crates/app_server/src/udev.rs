@@ -1385,7 +1385,10 @@ pub fn run_udev() {
      */
 
     while state.running.load(Ordering::SeqCst) {
-        let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut state);
+        // Woken by what comes (clients, input, timers, the displays); the
+        // timeout only for what looks now and then (`loop_timeout`): it
+        // was 16 ms, sixty turns a second whatever happened.
+        let result = event_loop.dispatch(Some(state.loop_timeout()), &mut state);
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
@@ -1496,7 +1499,7 @@ struct SurfaceData {
     vblank_throttle_timer: Option<RegistrationToken>,
     /// Looks in a row that found nothing new (`render::IDLE_FRAMES`).
     idle_frames: u32,
-    /// Resting: its next look is `render::IDLE_POLL` away, unless woken
+    /// Resting: its next look is `render::rest_for` away, unless woken
     /// (`Backend::wake`).
     asleep: bool,
     /// The timer for its next look when no frame is on its way (resting,
@@ -2719,9 +2722,10 @@ impl AnvilState<UdevData> {
             // If reschedule is true we either hit a temporary failure or more likely rendering
             // did not cause any damage on the output. In this case we just re-schedule a repaint
             // after approx. one frame to re-test for damage; after `IDLE_FRAMES` of
-            // nothing new, it rests: every `IDLE_POLL`, or when woken.
+            // nothing new, it rests: until `rest_for`, or when woken.
             let (next_frame_target, reschedule_timeout) = if resting {
-                (frame_target + crate::render::IDLE_POLL, crate::render::IDLE_POLL)
+                let rest = crate::render::rest_for();
+                (frame_target + rest, rest)
             } else {
                 let next = frame_target + Duration::from_millis(1_000_000 / output_refresh as u64);
                 (next, Duration::from(next).saturating_sub(self.clock.now().into()))

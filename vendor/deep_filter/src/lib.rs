@@ -31,6 +31,8 @@ mod capi;
 #[cfg(feature = "logging")]
 pub mod logging;
 #[cfg(feature = "tract")]
+pub mod q8;
+#[cfg(feature = "tract")]
 pub mod tract;
 
 #[cfg(feature = "wasm")]

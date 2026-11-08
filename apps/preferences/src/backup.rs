@@ -1643,7 +1643,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         // app_server keeps its own copy: hand it the backup's.
         let prefs = ui.prefs();
         ui.cx.defer(move |cx| {
-            let _ = prefs.update(cx, |p, cx| p.edit(cx, |now| *now = s));
+            let _ = prefs.update(cx, |p, cx| p.edit_as(cx, "", "Restore from Backup", |now| *now = s));
         });
     }
     let p = theme::palette(ui.cx);

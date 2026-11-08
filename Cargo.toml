@@ -41,6 +41,7 @@ olo-token-pool = { path = "crates/pool" }
 olo-ai = { path = "crates/ai" }
 olo-eld = { path = "crates/eld" }
 olo-voice = { path = "crates/voice" }
+olo-diskbackup = { path = "crates/diskbackup" }
 olo-tg = { path = "crates/telegram" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

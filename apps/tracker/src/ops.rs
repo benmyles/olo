@@ -3,6 +3,10 @@
 //! on worker threads, with live progress and cancellation, so Tracker never
 //! blocks however big the job (see "The responsiveness rule").
 //!
+//! Each reports what it did (`Outcome`: what it made, what it moved from
+//! where to where), which is what Edit ▸ Undo takes back (`undo.rs`);
+//! `Kind::PutBack` takes items back to exactly where they were.
+//!
 //! Copies use `copy_file_range` in chunks: zero-copy in the kernel (and
 //! reflinks on btrfs) while still reporting progress and checking for Stop
 //! between chunks. Moves on one file system are renames; across file
@@ -32,6 +36,9 @@ pub enum Kind {
     /// Put items in the Trash back where they came from.
     Restore,
     EmptyTrash,
+    /// Each source back to exactly its target (`start_to`): a move
+    /// undone. Not over anything now there, nor of anything gone.
+    PutBack,
 }
 
 /// Counters the worker updates and the status window reads.
@@ -71,6 +78,7 @@ impl Progress {
 
 pub struct Job {
     pub id: u64,
+    pub kind: Kind,
     /// "Copying 3 items to “Documents”".
     pub title: String,
     /// "Finished copying 3 items to “Documents”", for a notification.
@@ -87,6 +95,8 @@ pub struct Job {
 pub struct Outcome {
     /// New items (copies, moved items at their new paths).
     pub created: Vec<PathBuf>,
+    /// What was moved (moved, put back, trashed, restored): from, to.
+    pub moved: Vec<(PathBuf, PathBuf)>,
     pub error: Option<String>,
     pub cancelled: bool,
 }
@@ -104,6 +114,7 @@ fn title(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
         Kind::Trash => format!("Moving {what} to the Trash"),
         Kind::Restore => format!("Restoring {what}"),
         Kind::EmptyTrash => "Emptying the Trash".into(),
+        Kind::PutBack => format!("Putting {what} back"),
     }
 }
 
@@ -115,10 +126,12 @@ fn finished(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
     format!("Finished {first}{}", lower.as_str())
 }
 
-/// Start a job on a worker thread; `done` runs on that thread when it ends.
-pub fn start(id: u64, kind: Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, done: impl FnOnce(Outcome) + Send + 'static) -> Job {
+/// Start a job on a worker thread (`targets`: each source's own, for
+/// `Kind::PutBack`); `done` runs on that thread when it ends.
+pub fn start(id: u64, kind: Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, targets: Vec<PathBuf>, done: impl FnOnce(Outcome) + Send + 'static) -> Job {
     let job = Job {
         id,
+        kind,
         title: title(kind, &sources, dest.as_deref()),
         finished: finished(kind, &sources, dest.as_deref()),
         dest: dest.clone(),
@@ -132,7 +145,7 @@ pub fn start(id: u64, kind: Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, 
         .spawn(move || {
             let w = Worker { p: &progress, cancel: &cancel };
             let mut out = Outcome::default();
-            let r = w.run(kind, &sources, dest.as_deref(), &mut out.created);
+            let r = w.run(kind, &sources, dest.as_deref(), &targets, &mut out);
             match r {
                 Ok(()) => {}
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => out.cancelled = true,
@@ -167,7 +180,9 @@ impl Worker<'_> {
         if self.cancel.load(Ordering::Relaxed) { Err(cancelled()) } else { Ok(()) }
     }
 
-    fn run(&self, kind: Kind, sources: &[PathBuf], dest: Option<&Path>, created: &mut Vec<PathBuf>) -> io::Result<()> {
+    fn run(&self, kind: Kind, sources: &[PathBuf], dest: Option<&Path>, targets: &[PathBuf], out: &mut Outcome) -> io::Result<()> {
+        let created = &mut out.created;
+        let moved = &mut out.moved;
         match kind {
             Kind::Copy | Kind::Duplicate => {
                 for s in sources {
@@ -196,7 +211,31 @@ impl Worker<'_> {
                     self.p.set_current(s);
                     let target = fs::unique(dir, &s.file_name().unwrap_or_default().to_string_lossy());
                     self.move_one(s, &target).map_err(|e| context(e, s))?;
+                    moved.push((s.clone(), target.clone()));
                     created.push(target);
+                    self.p.done_items.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            Kind::PutBack => {
+                self.p.total_items.store(sources.len() as u64, Ordering::Relaxed);
+                self.p.counting.store(false, Ordering::Relaxed);
+                for (s, target) in sources.iter().zip(targets) {
+                    self.check()?;
+                    self.p.set_current(s);
+                    let name = |p: &Path| p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                    if sfs::symlink_metadata(s).is_err() {
+                        return Err(io::Error::other(format!("“{}” isn't there any more", name(s))));
+                    }
+                    if sfs::symlink_metadata(target).is_ok() {
+                        return Err(io::Error::other(format!("something else is called “{}” there now", name(target))));
+                    }
+                    // Its folder may have gone meanwhile: made again.
+                    if let Some(dir) = target.parent() {
+                        sfs::create_dir_all(dir).map_err(|e| context(e, dir))?;
+                    }
+                    self.move_one(s, target).map_err(|e| context(e, s))?;
+                    moved.push((s.clone(), target.clone()));
+                    created.push(target.clone());
                     self.p.done_items.fetch_add(1, Ordering::Relaxed);
                 }
             }
@@ -211,6 +250,7 @@ impl Worker<'_> {
                         let _ = sfs::remove_file(&info);
                         context(e, s)
                     })?;
+                    moved.push((s.clone(), target));
                     self.p.done_items.fetch_add(1, Ordering::Relaxed);
                 }
             }
@@ -220,6 +260,10 @@ impl Worker<'_> {
                 for s in sources {
                     self.check()?;
                     self.p.set_current(s);
+                    // (Emptied, or put back by hand, since: an undo said so.)
+                    if sfs::symlink_metadata(s).is_err() {
+                        return Err(io::Error::other(format!("“{}” isn't in the Trash any more", s.file_name().unwrap_or_default().to_string_lossy())));
+                    }
                     let (origin, info) = fs::trash_origin(s)?;
                     let dir = origin.parent().ok_or_else(|| io::Error::other("no folder to restore into"))?;
                     // Its folder may have gone too; something new in its
@@ -228,6 +272,7 @@ impl Worker<'_> {
                     let target = fs::unique(dir, &origin.file_name().unwrap_or_default().to_string_lossy());
                     self.move_one(s, &target).map_err(|e| context(e, s))?;
                     let _ = sfs::remove_file(&info);
+                    moved.push((s.clone(), target.clone()));
                     created.push(target);
                     self.p.done_items.fetch_add(1, Ordering::Relaxed);
                 }
@@ -520,7 +565,7 @@ mod tests {
 
     fn run(kind: Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>) -> Outcome {
         let (tx, rx) = mpsc::channel();
-        start(1, kind, sources, dest, move |o| tx.send(o).unwrap());
+        start(1, kind, sources, dest, Vec::new(), move |o| tx.send(o).unwrap());
         rx.recv().unwrap()
     }
 
@@ -612,7 +657,7 @@ mod tests {
         sfs::create_dir_all(dir.join("dst")).unwrap();
         sfs::write(dir.join("f.bin"), vec![1u8; 1 << 20]).unwrap();
         let (tx, rx) = mpsc::channel();
-        let job = start(1, Kind::Copy, vec![dir.join("f.bin")], Some(dir.join("dst")), move |o| tx.send(o).unwrap());
+        let job = start(1, Kind::Copy, vec![dir.join("f.bin")], Some(dir.join("dst")), Vec::new(), move |o| tx.send(o).unwrap());
         job.cancel.store(true, Ordering::Relaxed);
         let o = rx.recv().unwrap();
         // Either it finished before the cancel landed, or nothing is left behind.
