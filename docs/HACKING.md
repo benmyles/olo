@@ -2179,7 +2179,11 @@ event reaches it.
   toolbars' tips are the menus', so they say it too. A text field's own
   Undo takes back a run of typing at once (letters typed where the last
   went, within 1.5 s: one step, a space starting the next), as the kit's
-  runs do. What's left is in TODO ("Undo everywhere it makes sense").
+  runs do; an app's own edit of a field is a step too when it should be
+  (`TextField::replace_all`: DeskCalc's keys, Clear, a result, so ⌘Z
+  after = brings the sum back), and its Undo and Redo can be an app's
+  commands (`can_undo`, `undo_step`: DeskCalc's menu has them). What's
+  left is in TODO ("Undo everywhere it makes sense").
 - `WindowOptions::floating()`: the xdg-toplevel-tag `floating`, so
   app_server floats it over auto-tiled windows. `child()`: the window
   belongs to the app's window that has the keyboard (its xdg parent:

@@ -28,12 +28,13 @@ something nobody here has is in "Blocked", with what it waits for.
   Preferences (every panel's settings) and Passwords (items changed,
   made, deleted; not the Archive, which nothing takes an item out of
   yet) on it; StyledEdit's and the Viewer's own (pictures, videos,
-  PDFs) named as it names them, and text fields' typing undone a run at
-  a time. Left, each app looked at for what should undo and put on
+  PDFs) named as it names them, text fields' typing undone a run at a
+  time, and DeskCalc's line (keys, Clear, results: ⌘Z after = brings the
+  sum back; Undo and Redo in its menu). Left, each app looked at for what should undo and put on
   it: Deskbar's moves;
   Terminal's tab and pane changes (a closed tab can't come back with its
   process: say so); app_server's ⌃⌘Z window arrangement matched (named,
-  Redo); and the rest (Notes, DeskCalc's tape, …).
+  Redo); and the rest that may have something to undo.
 
 ## Done, waiting for Ben to try or confirm
 

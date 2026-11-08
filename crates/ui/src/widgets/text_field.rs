@@ -403,6 +403,33 @@ impl TextField {
         cx.notify();
     }
 
+    /// Replaces all the text as an undo step (the app's own edit of it: a
+    /// calculator's key, Clear), the caret at the end.
+    pub fn replace_all(&mut self, text: &str, cx: &mut Context<Self>) {
+        if text != self.text {
+            self.typed = None;
+            self.replace(0..self.text.len(), text, cx);
+        }
+    }
+
+    /// Its own Undo and Redo, for an app's menus (the palette, agents):
+    /// what ⌘Z and ⇧⌘Z do in it.
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    pub fn undo_step(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.undo(&Undo, window, cx);
+    }
+
+    pub fn redo_step(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.redo(&Redo, window, cx);
+    }
+
     /// The caret to the end.
     pub fn caret_to_end(&mut self, cx: &mut Context<Self>) {
         self.move_to(self.text.len(), cx);
