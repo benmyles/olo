@@ -55,6 +55,8 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 | Grammar::Ratio
                 | Grammar::Content
                 | Grammar::Filters
+                | Grammar::Counters(_)
+                | Grammar::Quotes
         )
     {
         let parts: Vec<Component<'_>> = values.clone().filter(|c| c.kind() != Kind::Whitespace).collect();
@@ -77,6 +79,8 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             Grammar::Features => font::parse_features(&parts)?,
             Grammar::Ratio => ratio(&parts)?,
             Grammar::Content => content::parse_content(&parts)?,
+            Grammar::Counters(default) => content::parse_counters(&parts, default)?,
+            Grammar::Quotes => content::parse_quotes(&parts)?,
             Grammar::Filters => decoration::parse_filters(&parts, limits, cancelled)?,
             _ => decoration::parse_radius(&parts, limits, cancelled)?,
         };
@@ -624,7 +628,9 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
         | Grammar::Features
         | Grammar::Ratio
         | Grammar::Content
-        | Grammar::Filters => {
+        | Grammar::Filters
+        | Grammar::Counters(_)
+        | Grammar::Quotes => {
             unreachable!("parsed before part collection")
         }
         Grammar::Color(keywords) => {
@@ -706,7 +712,9 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
         | Grammar::Features
         | Grammar::Ratio
         | Grammar::Content
-        | Grammar::Filters => Err(Error::Invalid),
+        | Grammar::Filters
+        | Grammar::Counters(_)
+        | Grammar::Quotes => Err(Error::Invalid),
     }
 }
 fn wide(s: &str) -> Option<variables::Wide> {

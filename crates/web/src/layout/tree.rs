@@ -334,6 +334,12 @@ pub struct BuildJob<'a> {
     open: Vec<OpenInline>,
     /// The last ordinal given in each list (by the list's node).
     list_counters: std::collections::HashMap<NodeId, i64>,
+    /// CSS counters in scope (CSS Lists 3 §4): each its name, value and the
+    /// depth of the frame it belongs to (it ends when that frame does: an
+    /// element's counter reaches its following siblings).
+    counters: Vec<(Arc<str>, i64, usize)>,
+    /// How deep quotes are nested (open-quote and close-quote).
+    quote_depth: usize,
     stack: Vec<Cursor>,
     pending: Option<Pending>,
     progress: BuildProgress,
@@ -375,6 +381,8 @@ impl<'a> BuildJob<'a> {
             controls: Vec::new(),
             open: Vec::new(),
             list_counters: Default::default(),
+            counters: Vec::new(),
+            quote_depth: 0,
             stack: vec![Cursor { next: document.composed_first_child(document.root())?, container: root, style: document.root().into(), close: false, inline: false, after: None, restore: None }],
             pending: None,
             progress: BuildProgress { boxes: 1, ..Default::default() },
@@ -590,16 +598,77 @@ impl<'a> BuildJob<'a> {
     /// The element's `::before` or `::after` content, if it has any: text in
     /// the pseudo-element's style, as an inline run of the paragraph, an
     /// atomic inline, or a block of its own (CSS Generated Content 3 §2).
+    /// An element's (or pseudo-element's) `counter-reset`, `counter-set`
+    /// and `counter-increment`, in that order (CSS Lists 3 §4.2), its new
+    /// counters belonging to the frame at `depth`.
+    fn apply_counters(&mut self, s: &Style, depth: usize) {
+        use crate::css::properties::ContentPart as C;
+        let list = |p: Property| match s.value(p) {
+            Value::Content(c) => c.0.iter().filter_map(|x| if let C::Change(n, v) = x { Some((n.clone(), *v)) } else { None }).collect::<Vec<_>>(),
+            _ => Vec::new(),
+        };
+        for (name, value) in list(Property::CounterReset) {
+            match self.counters.iter().rposition(|c| c.0 == name) {
+                // A sibling's counter of the name: this one takes its place.
+                Some(i) if self.counters[i].2 == depth => self.counters[i].1 = value,
+                _ if self.counters.len() < 1024 => self.counters.push((name, value, depth)),
+                _ => {}
+            }
+        }
+        for (name, value, add) in list(Property::CounterSet).into_iter().map(|(n, v)| (n, v, false)).chain(list(Property::CounterIncrement).into_iter().map(|(n, v)| (n, v, true))) {
+            match self.counters.iter().rposition(|c| c.0 == name) {
+                Some(i) => self.counters[i].1 = if add { self.counters[i].1.saturating_add(value) } else { value },
+                // None in scope: one made here, from 0.
+                None if self.counters.len() < 1024 => self.counters.push((name, value, depth)),
+                None => {}
+            }
+        }
+    }
     fn generated(&mut self, node: NodeId, container: BoxId, pseudo: PseudoElement) -> Result<()> {
         let styles = self.styles.clone();
         let Some(s) = styles.pseudo(node, pseudo) else { return Ok(()) };
         let key = StyleKey::pseudo(node, pseudo);
         let mut text = String::new();
+        // Its own counters first (a ::before counting itself), within the
+        // element.
+        self.apply_counters(s, self.stack.len() + 1);
         if let Value::Content(content) = s.value(Property::Content) {
+            use crate::css::properties::ContentPart as C;
             for part in content.0.iter() {
                 match part {
-                    crate::css::properties::ContentPart::Text(t) => text.push_str(t),
-                    crate::css::properties::ContentPart::Attr(name) => text.push_str(self.document.attribute(node, name)?.unwrap_or("")),
+                    C::Text(t) => text.push_str(t),
+                    C::Attr(name) => text.push_str(self.document.attribute(node, name)?.unwrap_or("")),
+                    C::Counter(name, style) => text.push_str(&counter_text(*style, self.counters.iter().rev().find(|c| c.0 == *name).map_or(0, |c| c.1))),
+                    C::Counters(name, separator, style) => {
+                        let values: Vec<String> = self.counters.iter().filter(|c| c.0 == *name).map(|c| counter_text(*style, c.1)).collect();
+                        text.push_str(&if values.is_empty() { counter_text(*style, 0) } else { values.join(separator) });
+                    }
+                    C::Quote(open, shows) => {
+                        // `quotes`: its pairs, or the language's (en: curly
+                        // double, then single) for auto.
+                        let pairs: Vec<(Arc<str>, Arc<str>)> = match s.value(Property::Quotes) {
+                            Value::Content(q) => q.0.iter().filter_map(|p| if let C::Pair(a, b) = p { Some((a.clone(), b.clone())) } else { None }).collect(),
+                            Value::Keyword(Keyword::None) => Vec::new(),
+                            _ => vec![(Arc::from("\u{201c}"), Arc::from("\u{201d}")), (Arc::from("\u{2018}"), Arc::from("\u{2019}"))],
+                        };
+                        let level = if *open {
+                            let l = self.quote_depth;
+                            self.quote_depth += 1;
+                            Some(l)
+                        } else if self.quote_depth > 0 {
+                            self.quote_depth -= 1;
+                            Some(self.quote_depth)
+                        } else {
+                            None
+                        };
+                        if *shows
+                            && let Some(l) = level
+                            && let Some((a, b)) = pairs.get(l.min(pairs.len().saturating_sub(1)))
+                        {
+                            text.push_str(if *open { a } else { b });
+                        }
+                    }
+                    C::Change(..) | C::Pair(..) => {}
                 }
             }
         }
@@ -726,6 +795,9 @@ impl<'a> BuildJob<'a> {
                 let inline = frame.inline;
                 let restore = frame.restore.take();
                 self.stack.pop();
+                // The counters its elements made end with it.
+                let depth = self.stack.len();
+                self.counters.retain(|c| c.2 <= depth);
                 if inline {
                     self.close_inline()?;
                 }
@@ -756,6 +828,7 @@ impl<'a> BuildJob<'a> {
                     if display == Display::None {
                         continue;
                     }
+                    self.apply_counters(s, self.stack.len());
                     let name = self.document.name(node)?;
                     let namespace = self.document.namespace(node)?;
                     if s.axes().writing_mode != WritingMode::HorizontalTb {
@@ -1137,6 +1210,15 @@ impl BuildJob<'_> {
 
 /// A marker's text for a `list-style-type` and ordinal (CSS Counter Styles 3
 /// §6): the bullet or the counter with its suffix, a space after.
+/// A counter's value as its style shows it (`counter()`): the list
+/// marker's text without its suffix.
+fn counter_text(kind: Keyword, value: i64) -> String {
+    match kind {
+        Keyword::None => String::new(),
+        Keyword::Disc | Keyword::Circle | Keyword::Square => marker_text(kind, value).trim_end_matches('\u{a0}').to_owned(),
+        _ => marker_text(kind, value).trim_end_matches('\u{a0}').trim_end_matches('.').to_owned(),
+    }
+}
 fn marker_text(kind: Keyword, ordinal: i64) -> String {
     fn alpha(mut n: i64, upper: bool) -> String {
         if n <= 0 {
