@@ -1,0 +1,234 @@
+#!/usr/bin/python3
+"""How far behind the microphone Olo Voice's source is, measured: a
+private PipeWire graph of its own (no hardware: a timer driver, a test
+microphone and speakers; its own WirePlumber with every monitor off, its
+own runtime, config and state folders, no D-Bus), olo-voice --service in
+it, clicks played into the test microphone, and one stereo recording of
+the microphone (left) and Olo Voice's source (right): the gap between the
+two is what Olo Voice adds, nothing else's buffering in it.
+
+  tools/dev/voice-latency [--settings noise=off,…] [--seconds N] [--quantum N] [--keep]
+
+--settings: olo-voice --set pairs (default noise=off,echo=off,normalize=off:
+only the buffering; its processing's own delay the chain tests check).
+--quantum: the graph's quantum another client asks for (as a call app
+might), else what Olo Voice asks. Release builds (cargo build --release
+-p olo-voice). Nothing of the person's session is touched: every program
+runs with the private folders, and they're removed after (--keep keeps
+them, in /var/tmp/olo-pw)."""
+
+import json, math, os, shutil, signal, struct, subprocess, sys, time, wave
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+BASE = "/var/tmp/olo-pw"
+RATE = 48000
+
+PIPEWIRE_CONF = """
+context.properties = {
+    core.daemon = true
+    core.name   = pipewire-0
+    default.clock.rate = 48000
+    default.clock.quantum = 1024
+    default.clock.min-quantum = 32
+}
+context.spa-libs = {
+    audio.convert.* = audioconvert/libspa-audioconvert
+    audio.adapt     = audioconvert/libspa-audioconvert
+    support.*       = support/libspa-support
+}
+context.modules = [
+    { name = libpipewire-module-protocol-native }
+    { name = libpipewire-module-metadata }
+    { name = libpipewire-module-spa-node-factory }
+    { name = libpipewire-module-client-node }
+    { name = libpipewire-module-access }
+    { name = libpipewire-module-adapter }
+    { name = libpipewire-module-link-factory }
+    { name = libpipewire-module-protocol-pulse }
+]
+pulse.properties = { server.address = [ "unix:native" ] }
+stream.properties = { adapter.auto-port-config = { mode = dsp } }
+context.objects = [
+    { factory = metadata args = { metadata.name = default } }
+    { factory = spa-node-factory
+        args = { factory.name = support.node.driver node.name = Dummy-Driver node.group = pipewire.dummy priority.driver = 20000 } }
+    { factory = adapter
+        args = { factory.name = support.null-audio-sink node.name = test-mic node.description = "Test Microphone"
+                 media.class = Audio/Source/Virtual audio.position = [ MONO ] node.driver = true priority.driver = 30000 } }
+    { factory = adapter
+        args = { factory.name = support.null-audio-sink node.name = test-speakers node.description = "Test Speakers"
+                 media.class = Audio/Sink audio.position = [ MONO ] } }
+]
+"""
+
+WIREPLUMBER_CONF = """
+wireplumber.profiles = {
+  main = {
+    monitor.alsa = disabled
+    monitor.alsa-midi = disabled
+    monitor.bluez = disabled
+    monitor.bluez-midi = disabled
+    monitor.bluez.seat-monitoring = disabled
+    monitor.v4l2 = disabled
+    monitor.libcamera = disabled
+    support.logind = disabled
+    support.portal-permissionstore = disabled
+    support.reserve-device = disabled
+  }
+}
+"""
+
+
+def env():
+    e = dict(os.environ)
+    run = f"{BASE}/run"
+    e.update(
+        XDG_RUNTIME_DIR=run,
+        PIPEWIRE_RUNTIME_DIR=run,
+        PULSE_SERVER=f"unix:{run}/pulse/native",
+        PULSE_RUNTIME_PATH=f"{run}/pulse",
+        XDG_CONFIG_HOME=f"{BASE}/conf",
+        XDG_STATE_HOME=f"{BASE}/state",
+        XDG_DATA_HOME=f"{BASE}/data",
+        HOME=f"{BASE}/home",
+        OLO_VOICE_DIR=f"{BASE}/voice",
+        DBUS_SESSION_BUS_ADDRESS=f"unix:path={run}/no-bus",
+    )
+    # Never the person's display or session.
+    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_REAL_SESSION", "PIPEWIRE_REMOTE"):
+        e.pop(k, None)
+    return e
+
+
+def start(name, args, log):
+    return subprocess.Popen(args, env=env(), stdout=open(f"{BASE}/{log}", "w"), stderr=subprocess.STDOUT, start_new_session=True)
+
+
+def clicks(path, seconds, every=0.5):
+    """A second of silence (while it's linked), then a click (a 2 ms
+    burst) every `every` seconds."""
+    n = int((seconds + 1) * RATE)
+    frames = bytearray()
+    for i in range(n):
+        t = (i - RATE) % int(every * RATE)
+        v = 0.6 * math.sin(2 * math.pi * 3000 * t / RATE) if i >= RATE and t < 96 else 0.0
+        frames += struct.pack("<h", int(v * 32767))
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes(bytes(frames))
+
+
+def onsets(x, threshold=0.2, gap=RATE // 10):
+    out, last = [], -gap
+    for i, v in enumerate(x):
+        if abs(v) > threshold and i - last >= gap:
+            out.append(i)
+            last = i
+    return out
+
+
+def main():
+    a = sys.argv[1:]
+    opt = lambda k, d: a[a.index(k) + 1] if k in a else d
+    settings = opt("--settings", "noise=off,echo=off,normalize=off").split(",")
+    seconds = float(opt("--seconds", "6"))
+    quantum = opt("--quantum", None)
+    # Another virtual source to measure instead (PipeWire's own loopback,
+    # as a floor): `loopback`.
+    other = opt("--other", None)
+    keep = "--keep" in a
+    shutil.rmtree(BASE, ignore_errors=True)
+    for d in ("run", "conf/pipewire", "conf/wireplumber/wireplumber.conf.d", "state", "data", "home", "voice"):
+        os.makedirs(f"{BASE}/{d}", exist_ok=True)
+    os.chmod(f"{BASE}/run", 0o700)
+    open(f"{BASE}/conf/pipewire/pipewire.conf", "w").write(PIPEWIRE_CONF)
+    open(f"{BASE}/conf/wireplumber/wireplumber.conf.d/private.conf", "w").write(WIREPLUMBER_CONF)
+    procs = []
+    try:
+        procs.append(start("pipewire", ["pipewire", "-c", f"{BASE}/conf/pipewire/pipewire.conf"], "pipewire.log"))
+        time.sleep(0.8)
+        procs.append(start("wireplumber", ["wireplumber"], "wireplumber.log"))
+        time.sleep(1.5)
+        voice = os.path.join(ROOT, "target/release/olo-voice")
+        subprocess.run([voice, "--set", "enabled=on", *settings], env=env(), check=True, capture_output=True)
+        if other == "loopback":
+            procs.append(start("loopback", ["pw-loopback", "--capture-props", "{ target.object = test-mic node.latency = 480/48000 }", "--playback-props", "{ media.class = Audio/Source node.name = olo_voice_loopback node.latency = 480/48000 }"], "loopback.log"))
+        else:
+            procs.append(start("voice", [voice, "--service"], "voice.log"))
+        time.sleep(2.0)
+        if quantum:
+            # Another client asking for that quantum (as a call app might).
+            procs.append(start("quantum", ["pw-metadata", "-n", "settings", "0", "clock.force-quantum", quantum], "quantum.log"))
+            time.sleep(0.5)
+        probe = f"{BASE}/probe.wav"
+        rec = start("record", ["pw-record", "--rate", str(RATE), "--channels", "2", "--format", "f32", "-P", "{ node.name = olo-latency-probe node.autoconnect = false }", probe], "record.log")
+        procs.append(rec)
+        time.sleep(1.0)
+        ports = subprocess.run(["pw-link", "-o"], env=env(), capture_output=True, text=True).stdout.split()
+        source = next((p for p in ports if p.startswith("olo_voice_loopback" if other else "olo_voice") and (":capture" in p or ":output" in p)), None)
+        mic = next((p for p in ports if p.startswith("test-mic:capture")), None)
+        if not source or not mic:
+            sys.exit(f"ports not found: {ports}")
+        for out, inp in ((mic, "olo-latency-probe:input_FL"), (source, "olo-latency-probe:input_FR")):
+            r = subprocess.run(["pw-link", out, inp], env=env(), capture_output=True, text=True)
+            if r.returncode:
+                sys.exit(f"pw-link {out} {inp}: {r.stderr}")
+        time.sleep(1.5)
+        wav = f"{BASE}/clicks.wav"
+        clicks(wav, seconds)
+        # (Linked by hand: WirePlumber links a player to a sink, not into
+        # a virtual microphone.)
+        play = start("play", ["pw-play", "-P", "{ node.name = olo-latency-clicks node.autoconnect = false }", wav], "play.log")
+        procs.append(play)
+        for _ in range(50):
+            if "olo-latency-clicks:output_MONO" in subprocess.run(["pw-link", "-o"], env=env(), capture_output=True, text=True).stdout:
+                break
+            time.sleep(0.02)
+        subprocess.run(["pw-link", "olo-latency-clicks:output_MONO", "test-mic:input_MONO"], env=env(), check=True)
+        # The graph as it runs: each node's quantum and driver.
+        top = subprocess.run(["pw-top", "-b", "-n", "2"], env=env(), capture_output=True, text=True, timeout=10).stdout
+        graph = [" ".join(l.split()) for l in top.splitlines()][-12:]
+        play.wait(timeout=seconds + 10)
+        time.sleep(0.8)
+        rec.send_signal(signal.SIGINT)
+        rec.wait(timeout=5)
+        status = subprocess.run([voice, "--status", "--json"], env=env(), capture_output=True, text=True).stdout
+        with wave.open(probe) as w:
+            raw = w.readframes(w.getnframes())
+        n = len(raw) // 8
+        samples = struct.unpack(f"<{2 * n}f", raw[: 8 * n])
+        left, right = samples[0::2], samples[1::2]
+        lo, ro = onsets(left), onsets(right)
+        lags = []
+        for t in lo:
+            later = [r for r in ro if 0 <= r - t < RATE // 4]
+            if later:
+                lags.append(later[0] - t)
+        state = json.loads(status).get("state", {}) if status.strip().startswith("{") else {}
+        print(json.dumps({
+            "settings": settings,
+            "quantum": quantum or "Olo Voice's",
+            "clicks": len(lo),
+            "came_through": len(lags),
+            "added_ms": {"least": round(min(lags) * 1000 / RATE, 2), "most": round(max(lags) * 1000 / RATE, 2), "mean": round(sum(lags) * 1000 / RATE / len(lags), 2)} if lags else None,
+            "graph": graph,
+            "says_ms": state.get("latency_ms"),
+            "dropouts": state.get("dropouts"),
+        }, indent=1))
+    finally:
+        for p in reversed(procs):
+            if p.poll() is None:
+                os.killpg(p.pid, signal.SIGTERM)
+        for p in procs:
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(p.pid, signal.SIGKILL)
+        if not keep:
+            shutil.rmtree(BASE, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()

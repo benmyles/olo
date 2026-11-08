@@ -8947,8 +8947,24 @@ one are always told apart:
   factor). Made inactive, switched on only while something records from
   the source: idle, nothing runs and the microphone isn't open. A new
   microphone or new settings rebuild only the captures, so a call keeps
-  its device. Calls ask the graph for a 10 ms quantum and keep a frame
-  ahead; recordings 2048 samples and four frames.
+  its device. The captures and the source are one group (`node.group`:
+  one driver and clock) and the source a triggered stream, run from the
+  microphone's process as its frames are done; calls force the graph to
+  a frame a cycle while something records (`node.force-quantum` 480), so
+  nothing is held back for the frames' fit, and with a quantum another
+  program forces only its misfit is (`misfit`: `FRAME - gcd`, 448 samples
+  for a power of two), exactly, from the start (silence before the
+  sound); recordings 2048 samples and four frames more. What it says it
+  adds is what it does: the processing's delay, what's held, and the
+  one cycle a source fed by another stream is behind (PipeWire's own
+  loopback is too). `tools/dev/voice-latency` measures it in a private
+  PipeWire graph of its own (no hardware; its own WirePlumber with every
+  monitor off, runtime, config and state folders): clicks into a test
+  microphone, one stereo recording of it and of Olo Voice's source, the
+  gap between them (`--settings`, `--quantum`, `--other loopback` for
+  PipeWire's own as a floor). Before the group and trigger: 21.33 ms of
+  buffering said as 10; after: 10.0 (14.67 at a forced 256, 30.67 at
+  1024), said as measured, no dropouts.
 - **Settings** `voice.json` in the config folder
   (`olo_protocol::voice::Settings`: enabled, mode, echo cancellation,
   noise, normalize), followed by inotify. **State** `olo-voice.json` in
