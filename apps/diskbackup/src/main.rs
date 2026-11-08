@@ -2,6 +2,8 @@
 //!
 //! - (none): the app's window (`app.rs`): what it's doing and did, where
 //!   backups go, what, when, how fast, the key.
+//! - `--restore-window`: the app's Restore window (Deskbar's Restore
+//!   Files…).
 //! - `--service`: run the service (olo-session does, in a real session).
 //! - `--status [--json]`: what it's doing, has done, and its settings.
 //! - `--now`, `--stop`: back up now; stop what's under way.
@@ -15,7 +17,7 @@
 //!   computer's snapshots past keeping forgotten, and the space only they
 //!   used freed (with the backup to itself: not while one runs). Asked of
 //!   the service if it's running (its state says how it went), else here.
-//! - `--set KEY=VALUE…`: `enabled`, `battery` (on/off), `every`
+//! - `--set KEY=VALUE…`: `enabled`, `battery`, `deskbar` (on/off), `every`
 //!   (minutes), `upload`, `download` (KB/s, 0 for no limit), `paths`
 //!   (comma-separated), `exclude` (a pattern, added), `groups`
 //!   (comma-separated ids; `--groups` lists them), `hourly`, `daily`,
@@ -64,7 +66,7 @@ fn main() -> ExitCode {
                 }
                 Ok(())
             }
-            None => return app_main(),
+            None | Some("--restore-window") => return app_main(),
             _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --snapshots | --restore SNAPSHOT PATH [TO] | --tidy | --set KEY=VALUE… | --groups"
                 .into()),
         };
@@ -167,7 +169,8 @@ fn app_main() -> ExitCode {
         let proxy = olo_ui::proxy(cx);
         olo_ui::instance::listen(APP_ID, proxy.clone());
         let disk = cx.new(|_| app::Disk::new(proxy));
-        disk.update(cx, |d, cx| d.open(cx));
+        let restore = args.iter().any(|a| a == "--restore-window");
+        disk.update(cx, |d, cx| if restore { d.open_restore(cx) } else { d.open(cx) });
         let messages = disk.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
         // (Back as it was after an upgrade: its window.)
@@ -309,12 +312,13 @@ fn set(pairs: &[String]) -> Result<(), String> {
             "download" => s.download_kbs = number()?,
             "paths" => s.paths = v.split(',').map(|p| p.trim().to_owned()).filter(|p| !p.is_empty()).collect(),
             "exclude" => s.excludes.push(v.to_owned()),
+            "deskbar" => s.in_deskbar = flag()?,
             "groups" => s.exclude_groups = Some(v.split(',').map(|g| g.trim().to_owned()).filter(|g| !g.is_empty()).collect()),
             "hourly" => s.keep.hourly = number()?.min(u32::MAX as u64) as u32,
             "daily" => s.keep.daily = number()?.min(u32::MAX as u64) as u32,
             "weekly" => s.keep.weekly = number()?.min(u32::MAX as u64) as u32,
             "monthly" => s.keep.monthly = number()?.min(u32::MAX as u64) as u32,
-            _ => return Err(format!("{k}: enabled, battery, every, upload, download, paths, exclude, groups, hourly, daily, weekly or monthly")),
+            _ => return Err(format!("{k}: enabled, battery, deskbar, every, upload, download, paths, exclude, groups, hourly, daily, weekly or monthly")),
         }
     }
     s.save().map_err(|e| e.to_string())

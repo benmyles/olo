@@ -3568,5 +3568,11 @@
   "title": "DiskBackup: Keep, and tidying",
   "caption": "How long snapshots are kept (hourly, daily, weekly, monthly), beside When; Speed moved beside Back Up To so the window still fits 1280 \u00d7 800. The status says what the backups take there and the last tidy (old snapshots let go of, space freed).",
   "image": "2026-11-07/204457-diskbackup-keep-and-tidying.png"
+ },
+ {
+  "time": "2026-11-07T21:10:21",
+  "title": "DiskBackup in Deskbar's tray",
+  "caption": "A drive in a circular arrow: idle, backing up (green), not backing up (dim: off, on battery), the last didn't finish (red dot), nothing for days (amber). Its menu, read as it opens: what it's doing, the last and next, Stop or Back Up Now, Pause, Restore Files\u2026, DiskBackup\u2026. Light and dark at 2\u00d7.",
+  "image": "2026-11-07/211021-diskbackup-in-deskbar-s-tray.png"
  }
 ]

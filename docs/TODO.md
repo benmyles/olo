@@ -67,10 +67,12 @@ something nobody here has is in "Blocked", with what it waits for.
   forgotten after each backup, what only they used freed daily: packs
   deleted or copied from, locks so two computers or a restore never
   collide, trees in packs the cache keeps, the index checkpointed every
-  five minutes; the app's Keep box). Next: Google Drive (needs an OAuth
+  five minutes; the app's Keep box); Deskbar's item (what it's doing in
+a glyph, its menu: Back Up Now or Stop, Pause, Restore Files…). Next:
+Google Drive (needs an OAuth
   client of Ben's: a Google Cloud project's "Desktop app" credentials;
   the store's list with sizes, ranges, resumable uploads, rate limits);
-  Deskbar, Tracker, Doctor; DiskBackup's own icon (Preferences ▸
+  Tracker, Doctor; DiskBackup's own icon (Preferences ▸
   Backup's for now); following changes (fanotify) rather than walking
   (an unchanged walk of 100,000 files is 0.4 s, so not yet pressing); a
   repair for a damaged index (made again from the packs' own lists).

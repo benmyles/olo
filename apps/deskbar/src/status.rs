@@ -86,6 +86,59 @@ pub struct Status {
     /// What Olo Doctor last found: its bag in the tray while there is
     /// something to fix.
     pub doctor: olo_protocol::doctor::DoctorFound,
+    /// DiskBackup, once it's set up (and shown in Deskbar).
+    pub backup: Option<Backup>,
+}
+
+/// DiskBackup as its tray item shows it: only what the glyph and the tip
+/// say (its progress, changing every 2 s while it runs, is read when its
+/// menu opens: Deskbar isn't drawn again for it).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Backup {
+    /// Backing up, tidying or restoring ("Backing up").
+    pub busy: Option<&'static str>,
+    /// Not backing up, and why (turned off, on battery, the service not
+    /// running).
+    pub off: Option<String>,
+    /// Something to see: the last didn't finish, or nothing finished for
+    /// days.
+    pub trouble: Option<String>,
+    /// When it last finished whole, seconds since 1970.
+    pub last_ok: Option<i64>,
+}
+
+/// DiskBackup's tray item, if it's set up and shown.
+pub fn backup() -> Option<Backup> {
+    use olo_protocol::diskbackup::{Doing, Settings, State, Target};
+    let s = Settings::load();
+    if s.target == Target::None || !s.in_deskbar {
+        return None;
+    }
+    let st = State::load();
+    let busy = match st.doing {
+        Doing::BackingUp => Some("Backing up"),
+        Doing::Pruning => Some("Tidying"),
+        Doing::Restoring => Some("Restoring"),
+        _ => None,
+    };
+    let off = if st.pid == 0 {
+        Some("the DiskBackup service isn’t running".to_owned())
+    } else if let Doing::Waiting { why } = &st.doing {
+        Some(why.clone())
+    } else {
+        None
+    };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    // Days without a whole backup (at least three, or three of its own
+    // intervals): said, if it isn't backing up now.
+    let overdue = (3 * 86_400).max(3 * 60 * s.every_minutes as i64);
+    let trouble = match (&st.last, st.last_ok) {
+        (Some(l), _) if l.error.is_some() => Some(format!("the last backup didn’t finish ({})", l.error.clone().unwrap_or_default())),
+        (_, Some(ok)) if now - ok > overdue => Some(format!("nothing backed up for {} days", (now - ok) / 86_400)),
+        _ => None,
+    }
+    .filter(|_| busy.is_none() && s.enabled);
+    Some(Backup { busy, off, trouble, last_ok: st.last_ok })
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -264,6 +317,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let pods = olo_protocol::airpods::AirPodsState::path();
     let voice = olo_protocol::voice::Settings::path();
     let doctor = olo_protocol::doctor::DoctorFound::path();
+    let (backup_state, backup_settings) = (olo_protocol::diskbackup::State::path(), olo_protocol::diskbackup::Settings::path());
     let display = olo_protocol::recording::this_display();
     let recording = olo_protocol::recording::path_for(&display);
     let installed = olo_xdg::find_program("olo-supervisor").is_some();
@@ -271,6 +325,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
         let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
         let (perf, supervising, pods, voice, doctor) = (perf.clone(), supervising.clone(), pods.clone(), voice.clone(), doctor.clone());
         let (recording, display) = (recording.clone(), display.clone());
+        let (backup_state, backup_settings) = (backup_state.clone(), backup_settings.clone());
         move |changed: &[PathBuf]| {
             let all = changed.is_empty();
             // The screens' folder also has viewers' frames going through
@@ -283,11 +338,15 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             let voice_settings = (all || changed.contains(&voice)).then(olo_protocol::voice::Settings::load);
             let found = (all || changed.contains(&doctor)).then(olo_protocol::doctor::DoctorFound::load);
             let recorded = (all || changed.contains(&recording)).then(|| olo_protocol::recording::going_on(&display));
+            let backed_up = (all || changed.contains(&backup_state) || changed.contains(&backup_settings)).then(backup);
             let supervisor =
                 (installed && (all || changed.contains(&perf) || changed.contains(&supervising))).then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
             publish(&shared, |s| {
                 if let Some(r) = recorded {
                     s.recording = r;
+                }
+                if let Some(b) = backed_up {
+                    s.backup = b;
                 }
                 if let Some(a) = airpods {
                     s.airpods = a;
@@ -320,7 +379,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     read(&[]);
     let read = Arc::new(read);
     let on_change = read.clone();
-    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice, doctor, recording], move |changed| on_change(changed)) {
+    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice, doctor, recording, backup_state, backup_settings], move |changed| on_change(changed)) {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);
     }
@@ -380,6 +439,20 @@ fn local_now() -> libc::tm {
 
 /// `unix` seconds as a time of day, in the Deskbar clock's style (without
 /// seconds).
+/// The local day `unix` is in, as a number (days since 1970 here): two
+/// times on the same day the same, the next day one more.
+pub fn local_day(unix: i64) -> i64 {
+    // SAFETY: localtime_r writes into the zeroed struct we own.
+    let off = unsafe {
+        tzset();
+        let t = unix as libc::time_t;
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&t, &mut tm);
+        tm.tm_gmtoff as i64
+    };
+    (unix + off).div_euclid(86_400)
+}
+
 pub fn time_of_day(unix: u64, clock: &olo_protocol::ClockSettings) -> String {
     // SAFETY: localtime_r writes into the zeroed struct we own.
     let tm = unsafe {
@@ -762,6 +835,47 @@ pub fn draw_sharing(window: &mut Window, r: Bounds<Pixels>, p: &Palette) {
     let at = (f32::from(at.x), f32::from(at.y));
     disc(window, at, 3.4, c(p.panel_background));
     disc(window, at, 2.5, c(p.failure));
+}
+
+/// DiskBackup (its app icon's hard disk and arrow, in ink): a drive in a
+/// circular arrow going round it; the drive's light and the arrow green
+/// (the icon's) while it's busy (backing up, tidying, restoring: green,
+/// not the selection's blue, so it shows with its menu open); all dim while
+/// it isn't backing up (turned off, on battery); a dot (`trouble`'s
+/// colour) when there's something to see.
+pub fn draw_backup(window: &mut Window, r: Bounds<Pixels>, p: &Palette, busy: bool, off: bool, trouble: Option<Hsla>) {
+    let line = if off { dim(p) } else { ink(p) };
+    let centre = style::snap_centred(window, r.center(), 1.0, 1.0).center();
+    let centre = (f32::from(centre.x), f32::from(centre.y));
+    // The drive, an odd number of points wide so it sits in the middle.
+    let body = style::snap(window, rect(centre.0 - 3.5, centre.1 - 2.5, 7.0, 5.0));
+    round_frame(window, body, 1.0, transparent_black(), line);
+    // (A pixel clear of the frame at 1×.)
+    let led = (f32::from(body.right()) - 2.5, f32::from(body.center().y));
+    disc(window, led, 0.8, if busy { c(p.success) } else { line });
+    // The arrow: round from just past 12 o'clock, clockwise, to its head
+    // short of 12 again.
+    let arrow = if busy { c(p.success) } else { line };
+    let pi = std::f32::consts::PI;
+    // (Its tail starting later beside a dot, clear of it.)
+    let tail = if trouble.is_some() { 0.3 } else { 0.12 };
+    let (radius, start, sweep) = (6.6, tail * pi, (1.74 - tail) * pi);
+    arc(window, centre, radius, 1.3, start, sweep, arrow);
+    let a = start + sweep;
+    let (radial, along) = ((a.sin(), -a.cos()), (a.cos(), a.sin()));
+    let end = (centre.0 + radius * radial.0, centre.1 + radius * radial.1);
+    let head = [
+        (end.0 + along.0 * 2.6, end.1 + along.1 * 2.6),
+        (end.0 + radial.0 * 2.3 - along.0 * 0.4, end.1 + radial.1 * 2.3 - along.1 * 0.4),
+        (end.0 - radial.0 * 2.3 - along.0 * 0.4, end.1 - radial.1 * 2.3 - along.1 * 0.4),
+    ];
+    polygon(window, &head, arrow);
+    if let Some(color) = trouble {
+        // Ringed in the panel's colour, so it stands off the arrow.
+        let at = (f32::from(r.right()) - 2.0, f32::from(r.top()) + 2.0);
+        disc(window, at, 3.4, c(p.panel_background));
+        disc(window, at, 2.5, color);
+    }
 }
 
 /// A recording going: the kit's record light (`style::recording_light`).

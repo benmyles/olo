@@ -81,6 +81,8 @@ pub struct Settings {
     /// The key is kept in Passwords too (the app keeps it there: so the
     /// backups can be restored on another computer).
     pub key_in_passwords: bool,
+    /// Its item in Deskbar's tray (once set up).
+    pub in_deskbar: bool,
 }
 
 impl Default for Settings {
@@ -98,6 +100,7 @@ impl Default for Settings {
             on_battery: true,
             one_file_system: true,
             key_in_passwords: false,
+            in_deskbar: true,
         }
     }
 }
@@ -144,6 +147,7 @@ pub enum Doing {
 
 /// A backup or restore under way.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Progress {
     /// Seconds since 1970, when it started.
     pub started: i64,
@@ -158,6 +162,7 @@ pub struct Progress {
 
 /// The last backup that ended.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Last {
     /// Seconds since 1970, when it ended.
     pub time: i64,

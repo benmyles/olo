@@ -12059,7 +12059,22 @@ opens Preferences ▸ Power, a right-click the power mode (Performance,
 Balanced, Power Saver, checked as the daemon says) and Power
 Preferences…. Olo Doctor's bag shows while its last look found
 something to fix (`olo_protocol::doctor::DoctorFound`, followed by
-inotify); a click opens Olo Doctor. The speaker's menu has None first
+inotify); a click opens Olo Doctor. (A recording going wasn't counted
+either, until 2026-11-07: the last item went undrawn while one was.)
+DiskBackup's item shows once it's set up (and `in_deskbar`, the app's
+Show in Deskbar): a drive in a circular arrow (`status::draw_backup`),
+the arrow and the drive's light green while it backs up, tidies or
+restores (green, not the selection's blue, so it shows with its menu
+open), all dim while it isn't backing up (off, on battery, the service
+not running), a red dot when the last didn't finish and an amber one
+when nothing finished for three days (or three of its intervals). Its
+status (`status::Backup`) holds only what the glyph and tip say, so the
+state file's progress every 2 s while it runs draws nothing (measured:
+5 frames in 20 s with a write every 2 s, 3 without, 0.0–0.1% of a
+core); the menu reads the state as it opens: what it's doing (files,
+read, new), the last and the next, Back Up Now or Stop, Pause or Resume
+Backups (`olo-diskbackup --now`, `--stop`, `--set enabled=…`), Restore
+Files… (`olo-diskbackup --restore-window`) and DiskBackup…. The speaker's menu has None first
 among the outputs (below). The tray's battery and links
 follow UPower's display device and NetworkManager's signals
 (`olo_system::battery::watch`, `network::watch_links`, each on a thread
@@ -12442,7 +12457,8 @@ those langs"; the person's own patterns in a box of their own), when (every
 (hourly for 12 hours to a week, daily for 7 to 90 days, weekly for 4 to
 52 weeks, monthly for 6 months to forever; none for any), and how fast
 (upload and download limits). The status says what the backups take
-there and the last tidy that did something. Every change is written to the settings, which the service
+there and the last tidy that did something; Show in Deskbar puts DiskBackup's
+item in Deskbar's tray (see Deskbar: its glyph, its menu). Every change is written to the settings, which the service
 follows at once. The keychain's `Secrets` reads an Olo program's secrets
 back by title (another computer's setup, next).
 

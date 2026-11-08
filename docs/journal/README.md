@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### DiskBackup in Deskbar's tray
+
+*21:10* — A drive in a circular arrow: idle, backing up (green), not backing up (dim: off, on battery), the last didn't finish (red dot), nothing for days (amber). Its menu, read as it opens: what it's doing, the last and next, Stop or Back Up Now, Pause, Restore Files…, DiskBackup…. Light and dark at 2×.
+
+![DiskBackup in Deskbar's tray](2026-11-07/211021-diskbackup-in-deskbar-s-tray.png)
+
 ### DiskBackup: Keep, and tidying
 
 *20:44* — How long snapshots are kept (hourly, daily, weekly, monthly), beside When; Speed moved beside Back Up To so the window still fits 1280 × 800. The status says what the backups take there and the last tidy (old snapshots let go of, space freed).

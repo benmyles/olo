@@ -983,6 +983,10 @@ impl Deskbar {
             // Voice processing: the service's own command line, as for an
             // agent (`olo-voice --set noise=strong`).
             Some(("voice", what)) => spawn(&format!("olo-voice --set {what}")),
+            // DiskBackup: likewise (`olo-diskbackup --now`, `--set enabled=off`).
+            Some(("backup", "now")) => spawn("olo-diskbackup --now"),
+            Some(("backup", "stop")) => spawn("olo-diskbackup --stop"),
+            Some(("backup", what)) if what.starts_with("enabled=") => spawn(&format!("olo-diskbackup --set {what}")),
             Some(("airpods", what)) => {
                 let address = self.status.airpods.as_ref().map(|a| a.address.clone()).unwrap_or_default();
                 spawn(&format!("olo-airpods --address {address} --{what}"));
@@ -1419,6 +1423,77 @@ fn without_icons(mut menu: Menu) -> Menu {
 }
 
 /// Each share, said, with Stop Sharing under it.
+/// DiskBackup's menu, as it is now (its state read as it opens: what it's
+/// doing and did, then Back Up Now or Stop, Pause or Resume, Restore
+/// Files…, the app).
+fn backup_menu(clock: &olo_protocol::ClockSettings) -> Menu {
+    use olo_protocol::diskbackup::{Doing, Settings, State};
+    let (s, st) = (Settings::load(), State::load());
+    let now = now_secs() as i64;
+    // "at 14:05", "yesterday at 14:05", "tomorrow at 9:00", "3 days ago".
+    let when = |t: i64| {
+        let at = status::time_of_day(t.max(0) as u64, clock);
+        match status::local_day(now) - status::local_day(t) {
+            0 => format!("at {at}"),
+            1 => format!("yesterday at {at}"),
+            -1 => format!("tomorrow at {at}"),
+            d if d > 0 => format!("{d} days ago"),
+            d => format!("in {} days", -d),
+        }
+    };
+    let count = |n: u64| {
+        let digits = n.to_string();
+        let mut grouped = String::new();
+        for (i, ch) in digits.chars().enumerate() {
+            if i > 0 && (digits.len() - i).is_multiple_of(3) {
+                grouped.push(',');
+            }
+            grouped.push(ch);
+        }
+        if n == 1 { "1 file".to_owned() } else { format!("{grouped} files") }
+    };
+    let size = |b: u64| if b >= 1_000_000_000 { format!("{:.1} GB", b as f64 / 1e9) } else { format!("{:.0} MB", b as f64 / 1e6) };
+    let mut said: Vec<String> = Vec::new();
+    match &st.doing {
+        Doing::BackingUp => {
+            let p = st.progress.clone().unwrap_or_default();
+            said.push(format!("Backing up: {}, {} read, {} new", count(p.files), size(p.bytes), size(p.new_bytes)));
+        }
+        Doing::Pruning => said.push("Tidying: letting go of old snapshots".into()),
+        Doing::Restoring => said.push("Restoring".into()),
+        Doing::Waiting { why } => said.push(format!("Waiting: {why}")),
+        Doing::Idle if st.pid == 0 => said.push("The DiskBackup service isn’t running".into()),
+        Doing::Idle => {}
+    }
+    match (&st.last, st.last_ok) {
+        (Some(l), ok) if l.error.is_some() => {
+            let mut why = l.error.clone().unwrap_or_default();
+            if why.chars().count() > 60 {
+                why = format!("{}…", why.chars().take(59).collect::<String>());
+            }
+            said.push(format!("The backup {} didn’t finish: {why}", when(l.time)));
+            if let Some(t) = ok {
+                said.push(format!("Last backed up whole {}", when(t)));
+            }
+        }
+        (_, Some(t)) if st.doing == Doing::BackingUp => said.push(format!("Last backed up {}", when(t))),
+        (_, Some(t)) => said.push(format!("Backed up {}", when(t))),
+        _ => said.push("Not backed up yet".into()),
+    }
+    if let Some(n) = st.next.filter(|_| st.doing == Doing::Idle) {
+        said.push(format!("Next {}", when(n)));
+    }
+    let mut m = Menu::new("DiskBackup");
+    for line in said {
+        m = m.item(line, "").enabled(false);
+    }
+    let busy = matches!(st.doing, Doing::BackingUp | Doing::Pruning);
+    m = m.separator();
+    m = if busy { m.item(if st.doing == Doing::Pruning { "Stop Tidying" } else { "Stop Backing Up" }, "backup:stop") } else { m.item("Back Up Now", "backup:now").enabled(st.pid != 0 && s.enabled) };
+    m = if s.enabled { m.item("Pause Backups", "backup:enabled=off") } else { m.item("Resume Backups", "backup:enabled=on") };
+    m.separator().item("Restore Files…", "run:olo-diskbackup --restore-window").item("DiskBackup…", "run:olo-diskbackup")
+}
+
 fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
     let mut m = Menu::new("Sharing");
     for (i, s) in shares.iter().enumerate() {
@@ -2031,6 +2106,8 @@ impl Deskbar {
             + [
                 display_number.is_some(),
                 !st.upgrade.is_empty() || st.upgrade_waiting,
+                st.recording.is_some(),
+                st.backup.is_some(),
                 !st.sharing.is_empty(),
                 st.airpods.is_some(),
                 !st.agent_screens.is_empty(),
@@ -2277,6 +2354,42 @@ impl Deskbar {
                     if matches!(button(e), MouseButton::Left | MouseButton::Right) {
                         let mm = m.clone();
                         open_menu(window, cx, &v, "tray:recording", r, menu.clone(), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    }
+                })
+                .into_any_element(),
+            );
+        }
+        // DiskBackup, once set up: what it's doing (and anything to see),
+        // a click its menu.
+        if let Some(b) = st.backup.clone() {
+            let tip_text = match (&b.busy, &b.off, &b.trouble) {
+                (Some(busy), _, _) => format!("DiskBackup: {}. Click to see how far it is.", busy.to_lowercase()),
+                (_, Some(why), _) => format!("DiskBackup: not backing up ({why})."),
+                (_, _, Some(what)) => format!("DiskBackup: {what}. Click to see more."),
+                _ => match b.last_ok {
+                    Some(t) => format!("DiskBackup: backed up at {}.", status::time_of_day(t.max(0) as u64, &clock)),
+                    None => "DiskBackup: not backed up yet.".to_owned(),
+                },
+            };
+            let (busy, off) = (b.busy.is_some(), b.off.is_some());
+            let failed = b.trouble.as_deref().is_some_and(|t| t.contains("didn’t finish"));
+            let trouble = b.trouble.is_some();
+            let (r, h) = tray_item(
+                &mut d,
+                "backup",
+                tip_text,
+                Box::new(move |window, cx, r| {
+                    let p = theme::palette(cx);
+                    let dot = trouble.then(|| style::c(if failed { p.failure } else { p.warning }));
+                    status::draw_backup(window, r, &p, busy, off, dot)
+                }),
+            );
+            let (m, v, clock) = (model.clone(), view.clone(), clock.clone());
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| {
+                    if matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, "tray:backup", r, backup_menu(&clock), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
                     }
                 })
                 .into_any_element(),

@@ -59,8 +59,9 @@ impl Disk {
     }
 
     pub fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
-        if message.is::<olo_ui::instance::Launch>() {
-            return self.open(cx);
+        if let Some(launch) = message.downcast_ref::<olo_ui::instance::Launch>() {
+            // (`--restore-window`: Deskbar's Restore Files….)
+            return if launch.args.iter().any(|a| a == "--restore-window") { self.open_restore(cx) } else { self.open(cx) };
         }
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
@@ -138,7 +139,7 @@ impl Disk {
     }
 
     /// The Restore window (or brought to the front).
-    fn open_restore(&mut self, cx: &mut Context<Self>) {
+    pub fn open_restore(&mut self, cx: &mut Context<Self>) {
         if let Some((w, _)) = &self.restore
             && olo_ui::raise(Some(*w), cx)
         {
@@ -381,6 +382,11 @@ impl Render for MainWindow {
         });
         let buttons = buttons.child(Button::new("Restore…").enabled(set_up).on_click(cmd("restore")));
         status = status.child(buttons);
+        // (What Deskbar's tray shows: this, in a glance.)
+        status = status.child(div().pt(px(m::TIGHT)).child({
+            let app = app.clone();
+            CheckBox::new("Show in Deskbar", s.in_deskbar).on_toggle(move |on, _, cx| app.update(cx, |d, cx| d.change(|s| s.in_deskbar = on, cx)))
+        }));
 
         // ---- where backups go.
         let mut target = BBox::new("Back Up To");
