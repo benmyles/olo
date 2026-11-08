@@ -29,19 +29,6 @@ something nobody here has is in "Blocked", with what it waits for.
   Preferences' changes, Passwords' edits, Deskbar's and the desktop's
   moves, Terminal's tab and pane changes, and the rest.
 
-- **Voice Processing's delay: Ben to choose the default noise model**
-  (Ben, 2026-11-07: "we need that to be way more optimized so that it is
-  not introducing any kind of noticeable lag"; "get rid of the remaining
-  delay"). Done: 51 ms really (said 40) → what an app recording through
-  Pulse gets now, measured with a synchronous probe: 30 ms with
-  DeepFilterNet3, 10 with DeepFilterNet3 Low Delay (Preferences ▸ Sound
-  ▸ Noise model), 0 with noise suppression off; the "cycle a source fed
-  by another stream is behind" was the old probe's (pw-record is
-  scheduled asynchronously), not Olo's. Left: Ben to choose the default
-  once he's heard both (Try It compares them). tract still allocates
-  ~850 times a frame on the realtime thread (its tensors): a plan with
-  its buffers made once would take that away.
-
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for
   continuous, minimal impact (in terms of cpu/mem/network usage -- it
@@ -83,6 +70,19 @@ something nobody here has is in "Blocked", with what it waits for.
   and Tracker and Passwords where they fit.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Voice Processing's delay: Ben to choose the default noise model**
+  (Ben, 2026-11-07: "we need that to be way more optimized so that it is
+  not introducing any kind of noticeable lag"; "get rid of the remaining
+  delay"). Done: 51 ms really (said 40) → what an app recording through
+  Pulse gets now, measured with a synchronous probe: 30 ms with
+  DeepFilterNet3, 10 with DeepFilterNet3 Low Delay (Preferences ▸ Sound
+  ▸ Noise model), 0 with noise suppression off; the "cycle a source fed
+  by another stream is behind" was the old probe's (pw-record is
+  scheduled asynchronously), not Olo's. Left: Ben to choose the default
+  once he's heard both (Try It compares them). tract still allocates
+  ~850 times a frame on the realtime thread (its tensors): a plan with
+  its buffers made once would take that away.
 
 - **Preferences ▸ Deskbar's own icon** (with the image model's key Ben
   added, 2026-11-07): an upright grey panel with status lights and a
@@ -2269,6 +2269,40 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A resting display still looked every 100 ms**~~ (found
+  2026-11-07, looking into the Intel GPU). *Done* (7af77a04): a resting
+  display looks when woken, or when the keep-warm pixel is due (once a
+  second while in use), then every 10 s; the event loop sleeps until
+  something comes (it woke every 16 ms on real displays, 100 headless).
+  Idle headless 10 → 1-2 wakeups a second, 0.2 → 0.0-0.1% of a core;
+  with Deskbar 15 → 5. Nothing found changing without a wake.
+
+- ~~**Undo in Tracker**~~ (Ben, 2026-11-07: "tracker needs to support
+  undo for file/folder renames/moves/etc"). *Done* (11b98376): Edit ▸
+  Undo and Redo (⌘Z, ⇧⌘Z) for rename, move, copy, duplicate, new
+  folder, links, pastes and drops, Move to Trash and restore, many
+  files as one, back and forth, on the worker with progress; said
+  plainly when it can't any more. Kit-wide undo stays in Not started.
+
+- ~~**Voice: the remaining delay**~~ (Ben, 2026-11-07: "get rid of the
+  remaining delay"). *Done* (1f0f4a4a): none for apps recording through
+  Pulse (measured with a synchronous probe: 10 ms with the low-delay
+  model, 30 with DeepFilterNet3, 0 with it off); the 10 ms more had been
+  the old probe's (pw-record runs asynchronously). The service says
+  what it adds.
+
+- ~~**Voice: a low-delay noise model, its inference fast**~~ (Ben,
+  2026-11-07: "make the model selectable so keep DeepFilterNet3 as an
+  option but then add another option for the lower latency model";
+  "just optimize the inference for it"). *Done* (0300c6d2):
+  DeepFilterNet3 Low Delay in Preferences ▸ Sound; the GRUs in 8 bits
+  on AVX-VNNI (`deep_filter::q8`), a frame 850-1458 → 405-441 µs, SDR
+  within 0.4 dB of f16.
+
+- ~~**Tracker: a click in the name being edited ended the edit**~~
+  (Ben, 2026-11-07). *Done* (49bef2a4): a text field keeps its clicks,
+  in every app.
 
 - ~~**The README: one wordmark, and screenshots that show Olo off**~~ (Ben,
   2026-11-07: "update the olo readme so that there's just the one
