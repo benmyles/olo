@@ -6431,3 +6431,21 @@ journal).
   481 MB (Olo's scroll was 107%); apple.com Chrome 1.2 / 0.1% / 26% /
   667 MB, Olo 1.6 / 0% / 45% / 249 MB; github.com Chrome idle 36%, scroll
   62%, 505 MB, Olo 9.3 CPU s, 29%, 63%, 531 MB.
+- **apple.com scrolled: its video a surface, scene patches kept.** Its
+  iPhone video was painted with the page each picture (192-356 tiles
+  repainted in a scroll): it has `mask-image: radial-gradient(white,
+  black)`, Safari's trick for clipping a video to its rounded box, which
+  under the default alpha mode masks nothing yet made an offscreen
+  group. A mask of opaque gradients repeated over the box, on a box that
+  paints nothing outside its border box (a replaced element, or one
+  clipping its overflow, unshadowed), makes no group now. Then the scene
+  patch for animated transforms and opacity kept refusing: an element's
+  line boxes (which never get a group or a matrix of their own; the
+  element's main box carries them) counted as "an opacity without a
+  group" and "a transform on a box that had none". And inline elements'
+  `opacity` was ignored: their glyphs, decorations and backgrounds now
+  paint at the product of the opacities around them (a test page as
+  Chrome). Scrolling apple.com: tiles 752 → 162 ms in the measured
+  window (386 → 82 repainted, what the scroll shows), renders 1,044 →
+  690 ms. `compare-cost.py` apple.com, two runs: Chrome load 1.2 CPU s,
+  scroll 25-37%; Olo 1.8-2.2 CPU s, scroll 34-38%.

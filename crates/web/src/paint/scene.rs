@@ -691,7 +691,12 @@ impl Scene {
                     }
                     groups[g as usize].opacity = opacity;
                 }
-                None if opacity < 1. => {
+                // A box the build gives no group whatever its opacity (an
+                // element's line boxes, an inline image: their element's
+                // main box has the group): built again, it would be the same.
+                None if opacity < 1.
+                    && !tree.get(id).is_some_and(|b| matches!(b.kind, BoxKind::InlineContent { .. } | BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. })) =>
+                {
                     refused("an opacity below 1 without a group");
                     return Ok(None);
                 }
@@ -699,15 +704,22 @@ impl Scene {
             }
             // A moved layer's root: its translation, nothing to repaint.
             if let Some(m) = moved.iter_mut().find(|m| m.root == id) {
-                let Some(about) = about_of(s, m.outer).filter(|a| is_translation(*a)) else { return Ok(None) };
+                let Some(about) = about_of(s, m.outer).filter(|a| is_translation(*a)) else {
+                    refused("a moved layer's transform is no longer a translation");
+                    return Ok(None);
+                };
                 m.translate = [about[4], about[5]];
                 continue;
             }
             let Some(i) = entries.iter().position(|e| e.owner == id) else {
                 // Never transformed; one that is now needs the scene built.
                 // (An identity transform, which the build gave no matrix,
-                // is no change.)
-                if matches!(s.value(P::Transform), Value::Transforms(_)) && !layout.bounds(id).and_then(|outer| about_of(s, outer)).is_some_and(crate::css::properties::is_identity) {
+                // is no change; nor is one on an element's line boxes, which
+                // its main box's transform carries.)
+                if matches!(s.value(P::Transform), Value::Transforms(_))
+                    && !tree.get(id).is_some_and(|b| matches!(b.kind, BoxKind::InlineContent { .. }))
+                    && !layout.bounds(id).and_then(|outer| about_of(s, outer)).is_some_and(crate::css::properties::is_identity)
+                {
                     refused("a transform on a box that had none");
                     return Ok(None);
                 }
@@ -1405,11 +1417,25 @@ impl<'a> BuildJob<'a> {
                 None => prepared.text().len() as u32,
             }
         };
+        // Inline elements' `opacity` (output ranges and opacities, those
+        // below 1): what they paint (glyphs, decorations, backgrounds) at
+        // the product of the opacities around it, as their groups would
+        // composite it where it doesn't overlap itself (apple.com swaps
+        // words by fading one out over the other).
+        let faded: Vec<(Range<u32>, f64)> = inline_boxes
+            .iter()
+            .filter_map(|b| {
+                let o = layout.cache().tree().styles().snapshot(b.node)?.value(P::Opacity).scalar().unwrap_or(1.).clamp(0., 1.);
+                (o < 1.).then(|| (to_output(b.range.start)..to_output(b.range.end), o))
+            })
+            .collect();
+        let opacity_at = |at: u32| -> f64 { faded.iter().filter(|(r, _)| r.contains(&at)).map(|(_, o)| *o).product() };
+        let fade = |c: [u8; 4], o: f64| if o < 1. { [c[0], c[1], c[2], (f64::from(c[3]) * o).round() as u8] } else { c };
         let mut backgrounds: Vec<(Range<u32>, [u8; 4], [f64; 4], bool, bool)> = Vec::new();
         for b in inline_boxes {
             check(self.cancel)?;
             let s = layout.cache().tree().styles().snapshot(b.node).ok_or(Error::Stale)?;
-            let c = color(s, P::BackgroundColor)?;
+            let c = fade(color(s, P::BackgroundColor)?, opacity_at(to_output(b.range.start)));
             if !visible(s) || c[3] == 0 {
                 continue;
             }
@@ -1593,7 +1619,8 @@ impl<'a> BuildJob<'a> {
                         Some((owner, color, deco, shown)) if owner == mapping.span => (color, deco, shown),
                         _ => {
                             let s = layout.cache().tree().styles().snapshot(span.style_node).ok_or(Error::Stale)?;
-                            let mut c = color(s, P::Color)?;
+                            let opacity = opacity_at(g.cluster);
+                            let mut c = fade(color(s, P::Color)?, opacity);
                             if !visible(s) {
                                 c[3] = 0
                             }
@@ -1605,7 +1632,7 @@ impl<'a> BuildJob<'a> {
                             }
                             // text-decoration-line, in text-decoration-color.
                             let deco = match s.value(P::TextDecorationLine) {
-                                Value::Keyword(k @ (K::Underline | K::Overline | K::LineThrough)) if c[3] != 0 => Some((s.used_color(P::TextDecorationColor)?.srgb8_clipped(), *k)),
+                                Value::Keyword(k @ (K::Underline | K::Overline | K::LineThrough)) if c[3] != 0 => Some((fade(s.used_color(P::TextDecorationColor)?.srgb8_clipped(), opacity), *k)),
                                 _ => None,
                             };
                             // Under `background-clip: text`, transparent
@@ -1931,7 +1958,16 @@ impl<'a> BuildJob<'a> {
                     }
                     // mask-image: the box and its content composite through
                     // the mask's alpha, as one group.
+                    // A mask that changes nothing (see `mask_is_opaque`) where
+                    // nothing of the box paints outside its border box: a
+                    // replaced element, or a box clipping its overflow, with
+                    // no outer shadow. No group, nothing offscreen.
+                    let inside_border =
+                        matches!(b.kind, BoxKind::BlockImage { .. }) || !matches!(s.value(P::OverflowX), Value::Keyword(K::Visible)) && !matches!(s.value(P::OverflowY), Value::Keyword(K::Visible));
+                    let extent = decoration::shadow_extent(s);
+                    let unshadowed = extent.left <= 0. && extent.right <= 0. && extent.top <= 0. && extent.bottom <= 0.;
                     let mask = match s.value(P::MaskImage) {
+                        Value::Images(_) if inside_border && unshadowed && decoration::mask_is_opaque(s) => None,
                         Value::Images(list) => {
                             let urls = list.0.iter().flatten().filter_map(|i| if let crate::css::properties::Image::Url(u) = i { Some(u) } else { None });
                             let mut loaded = false;
@@ -2178,7 +2214,10 @@ impl<'a> BuildJob<'a> {
                 });
             if c.surface && !surface && std::env::var_os("OLO_SURFACE_DEBUG").is_some() {
                 let clip = (c.clip != NONE).then(|| (self.clips[c.clip as usize].rect, self.clips[c.clip as usize].transform, self.clips[c.clip as usize].radii.is_some()));
-                eprintln!("surface refused: bounds {:?} shown {shown:?} matrix {matrix:?} moved {:?} fixed {} sticky {:?} group {} clip {clip:?}", c.bounds, c.moved, c.fixed, c.sticky, c.group);
+                let groups: Vec<(f32, bool)> = std::iter::successors((c.group != NONE).then_some(c.group), |&g| (self.groups[g as usize].parent != NONE).then(|| self.groups[g as usize].parent))
+                    .map(|g| (self.groups[g as usize].opacity, self.groups[g as usize].mask.is_some()))
+                    .collect();
+                eprintln!("surface refused: bounds {:?} shown {shown:?} matrix {matrix:?} moved {:?} fixed {} sticky {:?} groups {groups:?} clip {clip:?}", c.bounds, c.moved, c.fixed, c.sticky);
             }
             let kind = if let Some(root) = c.moved {
                 LayerKind::Moved(root)

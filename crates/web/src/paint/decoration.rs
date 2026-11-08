@@ -781,7 +781,7 @@ fn tile(s: &Style, (size_property, position_property, repeat_property): (P, P, P
     };
     let (rx, ry) = match s.value(repeat_property) {
         Value::Repeats(r) if !r.0.is_empty() => r.0[nth(r.0.len())],
-        _ => (RepeatAxis::Repeat, RepeatAxis::Repeat),
+        _ => (crate::css::properties::RepeatAxis::Repeat, crate::css::properties::RepeatAxis::Repeat),
     };
     Some(Tile { x, y, w, h, repeat_x: rx != RepeatAxis::NoRepeat, repeat_y: ry != RepeatAxis::NoRepeat })
 }
@@ -963,6 +963,28 @@ pub(super) fn mask_layers(
         }
     }
     Ok(())
+}
+/// Whether a box's `mask-image` leaves everything it masks as it is:
+/// every layer a gradient whose every stop is opaque, repeated both ways
+/// (covering the box), its alpha the mask (`mask-mode` not luminance).
+/// Then the mask only bounds what the box paints by its border box.
+/// (`radial-gradient(white, black)`, a trick that makes Safari clip a
+/// video to its rounded box, put apple.com's video in an offscreen group
+/// painted with the page.)
+pub fn mask_is_opaque(s: &Style) -> bool {
+    let Value::Images(images) = s.value(P::MaskImage) else { return false };
+    if matches!(s.value(P::MaskMode), Value::Keyword(K::Luminance)) || images.0.is_empty() {
+        return false;
+    }
+    let Ok(current) = s.used_color(P::Color) else { return false };
+    let repeats = |layer: usize| match s.value(P::MaskRepeat) {
+        Value::Repeats(r) if !r.0.is_empty() => r.0[layer % r.0.len()] == (crate::css::properties::RepeatAxis::Repeat, crate::css::properties::RepeatAxis::Repeat),
+        _ => true,
+    };
+    images.0.iter().enumerate().all(|(layer, image)| match image {
+        Some(Image::Linear { stops, .. } | Image::Radial { stops, .. }) => repeats(layer) && !stops.is_empty() && stops.iter().all(|stop| stop.color.used(current).srgb8_clipped()[3] == 255),
+        _ => false,
+    })
 }
 /// How far a box's outer shadows extend past its border box, per side.
 pub fn shadow_extent(s: &Style) -> crate::layout::Edges {

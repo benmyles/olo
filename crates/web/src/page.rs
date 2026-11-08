@@ -2645,8 +2645,11 @@ fn render_once(
         let mut boxes = Vec::new();
         let only_transforms = patched.nodes.iter().all(|&node| match (old.styles().snapshot(node), new.styles().snapshot(node)) {
             (Some(a), Some(b)) if a.differs_only_in_transform_or_opacity(b) => {
+                let before = boxes.len();
                 boxes.extend(new.boxes_of(node));
-                true
+                // An inline element (no box of its own): its opacity is in
+                // its glyphs' colours, painted again.
+                boxes.len() > before || a.value(css::properties::Property::Opacity).scalar() == b.value(css::properties::Property::Opacity).scalar()
             }
             _ => false,
         });

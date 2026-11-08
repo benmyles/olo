@@ -47,13 +47,13 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   H.264, HEVC, AV1, VP9 in MP4 or Matroska), each picture made the size
   it shows at and bound to its element like a drawn canvas; scripts get
   HTMLMediaElement (play, pause, currentTime, readyState and its
-  constants, events). GitHub's hero film plays (HEVC). Open, in order:
-  GitHub with its film playing costs Olo 67% of a core where Chrome
-  takes 21% (it was 154% before GPU decoding): animate opacity and
-  transform without a style patch each display frame (1.4 ms of 3.4 a
-  render; Chrome's compositor does it off its main thread); show a
-  video's planes through the window's GPU where it is a surface (4.2 ms
-  a picture to make RGBA now); a page paint `Invalid` after a script's change on
+  constants, events). GitHub's hero film plays (HEVC); a video shown as a
+  surface layer goes to the window as its decoded planes, made RGB,
+  scaled and rounded by the GPU (JOURNAL 2026-11-08). Open, in order:
+  animate opacity and transform without a style patch each display
+  frame (0.3 ms a render on GitHub now; Chrome's compositor does it off
+  its main thread); a video under a real mask or an opacity group is
+  still painted with the page each picture; a page paint `Invalid` after a script's change on
   GitHub (now healed by a whole render, logged); pictures decoded on the GPU and shown as its planes
   (now the processor, the `video` thread 40-50% of a core for 2560 x
   1726); sound (muted only); `poster`; `<source>` media queries;
@@ -66,6 +66,17 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   (incremental) and lays out again. Open: `style()` and `scroll-state()`
   queries, the scripts' measurements (they don't apply them), container
   units against the container (they read the viewport).
+- [ ] Cost against Chrome (`compare-cost.py`, each browser alone; JOURNAL
+  2026-11-08): bbc.com Olo better in all four (scroll 23% to 129%);
+  github.com idle 29% to 36%, scroll level, memory level; apple.com
+  scroll 34-38% to 25-37%, load 1.8-2.2 to 1.2 CPU s (open: its load;
+  scrolling's scene rebuilds and tile painting on the processor, Chrome
+  rasterises on the GPU). Inline elements' `opacity` paints now (glyphs,
+  decorations and inline backgrounds at the product of their inline
+  elements' opacities; where an element overlaps itself a group would
+  differ). Open: apple.com's "Hello, hello." word swap (scripted
+  transform and opacity on inline-blocks) ends with both words showing,
+  shifted.
 - [ ] GitHub's "More ways" cards stay pinned (sticky, stacked) while the
   page scrolls in Chrome; in Olo they scroll by.
 - [x] `background-clip: text` (apple.com's gradient subhead), on block

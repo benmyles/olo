@@ -1568,3 +1568,36 @@ fn an_interaction_restyle_matches_only_what_the_states_reach_and_paints_as_a_who
         assert_eq!(rows(&whole, &mut painter), expected, "styled whole, hovering {hover:?}");
     }
 }
+#[test]
+fn inline_elements_paint_at_their_opacity() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 200., height: 100., scale: 1. };
+    // A word faded out, one half faded inside a faded span (0.5 × 0.5),
+    // and an inline background at half opacity.
+    let page = olo_web::page::load(
+        Arc::from(
+            "<!doctype html><style>body{margin:0;font:16px 'Olo Inline plain';color:rgb(0,0,0)}</style>\
+             <p style=margin:0><span style=opacity:0>gone</span> <span style=opacity:0.5>half <b style=opacity:0.5>quarter</b></span></p>\
+             <p style=margin:0><span style='opacity:0.5;background-color:rgb(0,0,255)'>blue</span></p>",
+        ),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let alphas: Vec<u8> = page.scene.commands().iter().filter_map(|c| if let paint::Primitive::Text { color, .. } = c.primitive { Some(color[3]) } else { None }).collect();
+    assert!(alphas.contains(&128) && alphas.contains(&64), "half and quarter: {alphas:?}");
+    let fills: Vec<[u8; 4]> = page.scene.commands().iter().filter_map(|c| if let paint::Primitive::Fill { color, .. } = c.primitive { Some(color) } else { None }).collect();
+    assert!(fills.contains(&[0, 0, 255, 128]), "the background at half: {fills:?}");
+    // Nothing of the faded-out word shows: no opaque black glyph run.
+    assert!(page.scene.commands().iter().all(|c| !matches!(c.primitive, paint::Primitive::Text { color: [0, 0, 0, 255], .. })), "{alphas:?}");
+}
