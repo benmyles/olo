@@ -2,8 +2,9 @@
 //! puts `olo-sudo`, as `sudo`, first on its shells' PATH and listens for
 //! it here. When sudo needs a password, an alert opens over the window of
 //! the tab it came from, saying who's asking (a coding agent by name) and
-//! the command, and relays sudo's conversation: Touch ID first where PAM
-//! has it, then the password. Cancel, Escape or the close box says no.
+//! the command, and relays sudo's conversation: the face and Touch ID
+//! where PAM has them, a security key and the password, at once
+//! (olo-sudo's two checks). Cancel, Escape or the close box says no.
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -33,8 +34,6 @@ use crate::{
 };
 
 pub const WIDTH: u32 = 420;
-/// The window's note while a finger or a key could answer it.
-const BOTH: &str = "Touch the fingerprint sensor or your security key, or wait to type your password.";
 const ICON: &str = "authentication";
 /// The password field's label column, as in the polkit agent's.
 const DIVIDER: f32 = 72.0;
@@ -274,9 +273,15 @@ pub struct Request {
     /// (stopped when it goes), and the password it gave, till sudo asks.
     key: Option<olo_fido::Touch>,
     key_password: Option<Zeroizing<String>>,
-    /// What the window can be answered with besides typing.
+    /// What the window can be answered with besides typing: the finger
+    /// first (PAM's own order), the finger alongside the password
+    /// (olo-sudo's second check asks while the first listens), a key.
     fingerprint: bool,
+    finger_too: bool,
     key_waiting: bool,
+    /// The error showing is the finger's (said while no answer was being
+    /// checked), to go when it stops listening.
+    finger_error: bool,
 }
 
 /// How a request approved without asking goes.
@@ -310,7 +315,9 @@ impl Request {
             key: None,
             key_password: None,
             fingerprint: false,
+            finger_too: false,
             key_waiting: false,
+            finger_error: false,
         }
     }
 
@@ -334,7 +341,7 @@ impl Request {
                 self.answered = true;
                 Approved::Waiting
             }
-            Ask::Info(_) | Ask::Begin { .. } => Approved::Waiting,
+            Ask::Info(_) | Ask::Finger(_) | Ask::Begin { .. } => Approved::Waiting,
             Ask::Done(ok) => Approved::Done(ok),
             // Asked again, or an error: not the password it should be.
             said @ (Ask::Prompt(_) | Ask::Error(_)) => {
@@ -412,16 +419,38 @@ impl Request {
         match a {
             Ask::Info(t) => {
                 self.conv.error.clear();
-                self.conv.info = t;
+                // pam_fprintd again (after a finger it didn't know) while
+                // the password is asked too: ours says both.
+                if self.finger_too && olo_system::fingerprint::listening(&t) {
+                    self.conv.info.clear();
+                    self.tell_ways();
+                } else {
+                    self.conv.info = t;
+                }
             }
             Ask::Error(t) => {
+                self.finger_error = self.finger_too && !self.conv.checking;
                 self.conv.checking = false;
                 self.conv.error = if t.starts_with("Sorry, try again") { "Sorry, that didn't work. Please try again.".into() } else { t };
             }
             Ask::Prompt(t) => {
-                // Past the fingerprint, if there was one.
-                self.conv.info.clear();
+                // Past the fingerprint, if there was one, unless it's
+                // listened for alongside.
+                if !self.finger_too {
+                    self.conv.info.clear();
+                }
                 self.conv.ask(t, false);
+                self.tell_ways();
+            }
+            Ask::Finger(on) => {
+                self.finger_too = on;
+                if !on && std::mem::take(&mut self.finger_error) {
+                    self.conv.error.clear();
+                }
+                // Ours in place of pam_fprintd's "Place your finger…".
+                if on || olo_system::fingerprint::listening(&self.conv.info) {
+                    self.conv.info.clear();
+                }
                 self.tell_ways();
             }
             Ask::Done(_) => return true,
@@ -458,16 +487,12 @@ impl Request {
     /// Say how the window can be answered (a finger, a key, typing), while
     /// sudo hasn't said otherwise.
     fn tell_ways(&mut self) {
-        let ours = ["Touch the fingerprint sensor, or wait to type your password.", olo_fido::TOUCH_OR_TYPE, BOTH];
-        if self.conv.checking || !(self.conv.info.is_empty() || ours.contains(&self.conv.info.as_str())) {
+        if self.conv.checking || !(self.conv.info.is_empty() || widgets::WAYS_IN.contains(&self.conv.info.as_str())) {
             return;
         }
-        self.conv.info = match (self.fingerprint && self.conv.prompt.is_none(), self.key_waiting) {
-            (true, true) => BOTH.into(),
-            (true, false) => ours[0].into(),
-            (false, true) => olo_fido::TOUCH_OR_TYPE.into(),
-            (false, false) => String::new(),
-        };
+        let typing = self.conv.prompt.is_some();
+        let finger = self.fingerprint && !typing || self.finger_too;
+        self.conv.info = widgets::ways_in(finger, self.key_waiting, typing).unwrap_or_default().to_owned();
     }
 
     /// The security key's answer: its password goes to sudo now if sudo
@@ -552,6 +577,39 @@ impl Terminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What the window says as olo-sudo's two checks go: the finger
+    /// alongside the password, its own error gone when it stops.
+    #[test]
+    fn the_finger_alongside_the_password() {
+        let (a, _b) = UnixStream::pair().unwrap();
+        let mut r = Request::new(1, a, &["true".into()], None, None);
+        r.touch();
+        assert_eq!(r.conv.info, widgets::WAYS_IN[3]);
+        r.said(Ask::Info("Place your finger on the fingerprint reader".into()));
+        r.said(Ask::Finger(true));
+        assert_eq!(r.conv.info, widgets::WAYS_IN[3]);
+        r.said(Ask::Prompt("Password:".into()));
+        assert!(r.conv.ready());
+        assert_eq!(r.conv.info, widgets::WAYS_IN[2], "the finger and typing, both");
+        // A key waiting too.
+        r.key_waiting();
+        assert_eq!(r.conv.info, widgets::WAYS_IN[0]);
+        // A finger it doesn't know: its error, then it listens again.
+        r.said(Ask::Error("Failed to match fingerprint".into()));
+        assert_eq!(r.conv.error, "Failed to match fingerprint");
+        r.said(Ask::Info("Place your finger on the fingerprint reader".into()));
+        assert_eq!(r.conv.info, widgets::WAYS_IN[0], "ours, not pam_fprintd's");
+        r.said(Ask::Error("Verification timed out".into()));
+        r.said(Ask::Finger(false));
+        assert!(r.conv.error.is_empty(), "the finger's error goes with it");
+        assert_eq!(r.conv.info, widgets::WAYS_IN[4], "the key and typing");
+        // A wrong password's error stays.
+        r.conv.sent();
+        r.said(Ask::Error("Sorry, try again.".into()));
+        r.said(Ask::Prompt("Password:".into()));
+        assert_eq!(r.conv.error, "Sorry, that didn't work. Please try again.");
+    }
 
     #[test]
     fn ancestors_lead_to_init() {

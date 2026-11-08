@@ -29,8 +29,8 @@ pub mod tooltip;
 pub mod views;
 
 pub use alert::{
-    ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, AlertFrame, Conversation, ConversationField, Timeout, Unsaved, alert_height, alert_title, alert_width, ask_to_save, button_row, open_alert,
-    open_timed_alert, paragraph, paragraph_height,
+    ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, AlertFrame, Conversation, ConversationField, Timeout, Unsaved, WAYS_IN, alert_height, alert_title, alert_width, ask_to_save, button_row, open_alert,
+    open_timed_alert, paragraph, paragraph_height, ways_in,
 };
 pub use banner::{Banner, Tone, banner_back, banner_height, verdict_mark};
 pub use buttons::{Button, CheckBox, LinkButton, RadioButton, button_width, check_box_look, link_button_width};

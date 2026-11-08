@@ -99,6 +99,17 @@ pub fn fingers(user: &str) -> Result<Vec<String>> {
     }
 }
 
+/// Whether PAM's message `text` is pam_fprintd's, listening: it says so
+/// ("Place your finger on the fingerprint reader", "Swipe your right
+/// index finger across …") only once it has claimed the sensor, so a
+/// second PAM conversation started after it finds the sensor taken, and
+/// its pam_fprintd goes straight on to the password. sudo's window and
+/// the polkit agent start one so (a security key, or typing, answers it
+/// while the finger is listened for).
+pub fn listening(text: &str) -> bool {
+    text.to_lowercase().contains("finger")
+}
+
 /// Whether there's a fingerprint sensor at all.
 pub fn available() -> bool {
     device().is_ok()

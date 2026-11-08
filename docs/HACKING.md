@@ -4440,8 +4440,17 @@ opened, its own `panel::State` and text fields).
   this process only (never `RequestDefaultAgent`) and shows passkeys and
   PIN requests in the panel. **Tests only look and search: never Pair,
   Connect, Remove or toggle Bluetooth on the real machine.**
-* Touch ID (`touchid.rs`) lists, enrols (`fingerprint::enroll`, with a
-  StatusBar per touch, cancellable) and removes fingers through fprintd.
+* Security has two tabs (`security.rs`). Sign In holds every way in
+  besides the password, together (Ben, 2026-11-08: "centralize the
+  settings for all of these under prefs -> security"): Touch ID, Face
+  Unlock and Security Keys, each a box. Passwords holds Passwords' and
+  programs' secrets. Touch ID was a panel of its own: its names
+  (`touchid`, `fingerprint`, `face`, `security-keys`, `yubikey`) open
+  Sign In, and `passwords` and `privacy` open the Passwords tab
+  (`--tab` works too).
+* Touch ID (`touchid.rs`, Security ▸ Sign In's box) lists, enrols
+  (`fingerprint::enroll`, with a StatusBar per touch, cancellable) and
+  removes fingers through fprintd.
   fprintd only answers a process in an active local session; headless, the
   panel says so. `OLO_FAKE_FINGERS=right-index-finger,…` (debug builds)
   fakes a sensor so the whole panel can be exercised headless. **Never
@@ -6481,7 +6490,7 @@ asking"). Never test with the real PAM: debug builds take
 Terminal's sudo `OLO_SUDO_REAL`, and `OLO_NO_FINGERPRINT=1` leaves
 fprintd alone.
 
-## Security keys (olo-fido; Preferences ▸ Security; app_server security_key.rs)
+## Security keys (olo-fido; Preferences ▸ Security ▸ Sign In; app_server security_key.rs)
 
 A security key set up (a YubiKey: any FIDO2 key with `hmac-secret`) is
 touched instead of typing the account password: Terminal's sudo window,
@@ -6492,7 +6501,7 @@ CTAPHID to the key's FIDO interface (its hidraw node, found by usage page
 uaccess) and CTAP2 itself (GetInfo, ClientPIN's key agreement in PIN
 protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
 
-* **Setting up** (Preferences ▸ Security ▸ Security Keys, `security_keys.rs`):
+* **Setting up** (Preferences ▸ Security ▸ Sign In ▸ Security Keys, `security_keys.rs`):
   the box says the steps first (the password, then a touch when the
   key's light blinks, of its gold contact, on a Nano the gold edge at its
   end; a touch before it blinks types a code, which app_server swallows,
@@ -6516,7 +6525,11 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   (GetAssertion with `up` off). A key with a PIN set that wants it for a
   credential isn't supported yet (it says so).
 * **Unlocking** (`olo_fido::touch`): each window, as it asks for the
-  password, starts a wait on a thread of its own: if a key set up is
+  password, starts a wait on a thread of its own (alongside the finger
+  and the face: in sudo's window and the polkit agent a second PAM
+  conversation takes the key's password while the first listens for a
+  finger, so Touch ID set up doesn't hold the key back; see Terminal's
+  sudo and the polkit agent): if a key set up is
   plugged in it says `olo_fido::TOUCH_OR_TYPE` ("Touch your security key,
   or type your password.") beside the field, and the password the touch
   unseals goes where a typed one would (sudo's prompt, the polkit
@@ -6534,7 +6547,7 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   and passes its keys to nobody; three touches in a row (each within
   three seconds of the last) type the third's code into the focused
   window as the key would have (`SecurityKeySettings::three_touches_type`,
-  on by default: Preferences ▸ Security ▸ Three touches type a code).
+  on by default: Preferences ▸ Security ▸ Sign In ▸ Three touches type a code).
   While a window waits for the key a touch answers that instead (FIDO),
   typing nothing at all.
 * **Testing**: never with the person's key or password. Debug builds take
@@ -6570,7 +6583,7 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   and `uaccess`, for systems whose own rules don't), applied to the keys
   there with a `change`; one that is, a fine line.
 
-## Face unlock (olo-face, olo-faced, pam_olo_face; Preferences ▸ Security)
+## Face unlock (olo-face, olo-faced, pam_olo_face; Preferences ▸ Security ▸ Sign In)
 
 A look at the infrared camera stands for the account password: sudo
 (Terminal's window, any terminal), polkit's requests, Passwords' unlock
@@ -6635,7 +6648,7 @@ binaries, no linux-enable-ir-emitter.
   window takes the keyboard, the lock screen when someone is there (a
   key, the pointer) at most every 5 s, so the camera's light isn't left
   on.
-* **Installing** (Preferences ▸ Security ▸ Face Unlock ▸ Install…):
+* **Installing** (Preferences ▸ Security ▸ Sign In ▸ Face Unlock ▸ Install…):
   `pkexec olo-faced install --models DIR --pam FILE` (Olo's polkit agent
   asks) copies the service to /usr/local/libexec, the models to
   /usr/local/share/olo/face and the module to /usr/lib64/security,
@@ -10320,9 +10333,22 @@ Otherwise it asks Terminal, which opens an alert over the window of the
 tab it came from (found by walking up from the pid to a shell it
 owns) naming who asks (a coding agent by name, `agent.rs`) and the
 command, and relays sudo's own PAM conversation from `sudo -S -v`:
-the fingerprint first where `/etc/pam.d/sudo` has pam_fprintd and a
-finger is enrolled, then the password, its errors ("Sorry, try again.")
-in the alert. Cancel, Escape or the close box say no (exit 1, "sudo:
+the face and fingerprint where sudo's PAM has them, and the password,
+at once, its errors ("Sorry, try again.") in the alert. sudo's PAM goes
+one way at a time, so after Touch ID was set up a security key's
+password waited until pam_fprintd gave up (Ben, 2026-11-08: "after
+setting up the touch id fingerprint now my yubikey isn't working. ALL
+enabled modes should work"). So once the first `sudo -S -v` says it
+listens for a finger (`fingerprint::listening`: pam_fprintd says so only
+once it has claimed the sensor), olo-sudo starts a second, whose
+pam_fprintd finds the sensor taken and asks for the password at once:
+`Ask::Finger(true)`, and the window says both ways (`widgets::ways_in`,
+with the key's). Answers go to whichever asks, and the first yes counts.
+The first one, past the finger, would ask too: it gets no input and
+fails (`Finger(false)`, and the finger's own error goes). sudo is root's
+and can't be stopped, so a first check still listening when the
+password wins holds the sensor until pam_fprintd gives up (30 s). A
+finger in that time only validates sudo's credential again. Cancel, Escape or the close box say no (exit 1, "sudo:
 not run: cancelled in Terminal's password window"). Then the command runs on the credential sudo just
 cached: the terminal's, or with no terminal its parent's (olo-sudo stays
 the parent). Settings ▸ Ask for sudo Passwords in a Window
@@ -10358,6 +10384,16 @@ over the prompts of the session it was started from. It stays resident
 the cookie goes on its stdin, and its PAM conversation (`PAM_TEXT_INFO`
 from fprintd for Touch ID, then `PAM_PROMPT_ECHO_OFF` for the password)
 is relayed to the window; a failure starts it again for another try.
+Every way in counts at once, as in sudo's window: once the helper's
+PAM listens for a finger, a second helper starts, whose pam_fprintd
+finds the sensor taken and asks for the password (the key's goes there
+too). The first to succeed closes the window and the other is killed
+(the helper is the person's to stop). A wrong password starts the second
+again while the finger listens on; the first, past the finger, goes
+(`finger_over`). Tried with a fake helper that claims a made-up sensor
+(by its pid, freed when it dies, as fprintd frees a claim): a finger,
+the password while the finger listens, wrong then right, the finger
+giving up, no sensor.
 
 Test it with `tsession run NAME olo-polkit-agent --self-test ACTION`:
 it serves only its own process and asks polkitd about ACTION with

@@ -5,11 +5,13 @@
 //! It registers with polkitd as the authentication agent for this login
 //! session and stays in the background; each request opens a BAlert-style
 //! window with polkit's message and a password field. The PAM conversation
-//! runs in polkit's own helper (`olo_system::polkit::Helper`), so with
-//! Touch ID set up in PAM the window first says to touch the sensor, then
-//! asks for the password if that doesn't work. A touch of a security key
-//! set up (`olo_fido`) answers for the person's own identity: the password
-//! it keeps goes to the helper when PAM asks.
+//! runs in polkit's own helper (`olo_system::polkit::Helper`), which goes
+//! one way at a time (the face, Touch ID, the password); so once it
+//! listens for a finger, a second helper starts, whose PAM finds the
+//! sensor taken and asks for the password at once (`second`): the finger,
+//! typing and a security key all answer, the first to succeed counting.
+//! A touch of a security key set up (`olo_fido`) answers for the person's
+//! own identity: the password it keeps goes to whichever helper asks.
 //!
 //! ```text
 //! olo-polkit-agent                   the session's agent (started by olo-session)
@@ -96,9 +98,21 @@ struct Auth {
     users: Vec<SharedString>,
     user: usize,
     helper: Option<Helper>,
-    /// Which run of the helper is current; events from older runs are
+    /// The second helper, asking for the password while the first listens
+    /// for a finger (`listening`), and whether the prompt answered is its.
+    second: Option<Helper>,
+    listening: bool,
+    asking_second: bool,
+    /// Each helper's run (`run` counts them); events from older runs are
     /// ignored.
     run: u64,
+    first_run: u64,
+    second_run: u64,
+    /// A security key waits for a touch.
+    key_waiting: bool,
+    /// The error showing is the finger's (pam_fprintd's, "Failed to match
+    /// fingerprint"), to go when it stops listening.
+    finger_error: bool,
     conv: Conversation,
     field: Entity<TextField>,
     focus: FocusHandle,
@@ -114,6 +128,7 @@ impl Auth {
     /// person's own (and not where nobody sits at the computer).
     fn wait_for_key(&mut self, cx: &mut Context<Self>) {
         self.key = None;
+        self.key_waiting = false;
         if !olo_system::env::key_here() {
             return;
         }
@@ -128,16 +143,26 @@ impl Auth {
     }
 
     fn key_waiting(&mut self, cx: &mut Context<Self>) {
-        if self.conv.info.is_empty() && !self.conv.checking {
-            self.conv.info = olo_fido::TOUCH_OR_TYPE.into();
-            cx.notify();
+        self.key_waiting = true;
+        self.tell_ways();
+        cx.notify();
+    }
+
+    /// Say how the window can be answered (the finger alongside, a key,
+    /// typing), unless PAM said something of its own.
+    fn tell_ways(&mut self) {
+        if self.conv.checking || !(self.conv.info.is_empty() || widgets::WAYS_IN.contains(&self.conv.info.as_str())) {
+            return;
         }
+        self.conv.info = widgets::ways_in(self.listening, self.key_waiting, self.conv.prompt.is_some()).unwrap_or_default().to_owned();
     }
 
     fn key_said(&mut self, r: Result<zeroize::Zeroizing<String>, String>, cx: &mut Context<Self>) {
         self.key = None;
-        if self.conv.info == olo_fido::TOUCH_OR_TYPE {
+        self.key_waiting = false;
+        if widgets::WAYS_IN.contains(&self.conv.info.as_str()) {
             self.conv.info.clear();
+            self.tell_ways();
         }
         match r {
             Ok(password) => {
@@ -157,7 +182,7 @@ impl Auth {
             return;
         }
         let Some(password) = self.key_password.take() else { return };
-        let r = self.helper.as_mut().map(|h| h.respond(&password));
+        let r = self.asking().map(|h| h.respond(&password));
         self.field.update(cx, |f, cx| f.clear_secret(cx));
         self.conv.sent();
         if !matches!(r, Some(Ok(()))) {
@@ -167,24 +192,70 @@ impl Auth {
         self.sync_field(cx);
     }
 
-    /// (Re)starts the helper for the chosen user.
-    fn start_helper(&mut self, cx: &mut Context<Self>) {
-        self.helper = None;
-        self.conv.prompt = None;
-        self.conv.checking = false;
-        self.conv.info.clear();
+    /// The helper whose prompt is answered.
+    fn asking(&mut self) -> Option<&mut Helper> {
+        if self.asking_second { self.second.as_mut() } else { self.helper.as_mut() }
+    }
+
+    /// A helper for the chosen user, its events tagged with a new run.
+    fn helper(&mut self, cx: &mut Context<Self>) -> Option<(Helper, u64)> {
+        let (user, window) = (self.users.get(self.user)?.clone(), self.window?);
         self.run += 1;
-        self.sync_field(cx);
-        let (Some(user), Some(window)) = (self.users.get(self.user), self.window) else { return };
         let (proxy, run, id) = (olo_ui::proxy(cx), self.run, window.window_id());
-        match Helper::start(user, &self.cookie, move |e| proxy.send(Msg::Helper(id, run, e))) {
-            Ok(h) => self.helper = Some(h),
+        match Helper::start(&user, &self.cookie, move |e| proxy.send(Msg::Helper(id, run, e))) {
+            Ok(h) => Some((h, run)),
             Err(e) => {
                 tracing::warn!("polkit helper: {e}");
                 self.conv.error = "The authentication helper couldn't be started.".into();
+                None
             }
         }
+    }
+
+    /// (Re)starts the helper for the chosen user (the second, if there
+    /// was one, goes).
+    fn start_helper(&mut self, cx: &mut Context<Self>) {
+        self.helper = None;
+        self.second = None;
+        self.listening = false;
+        self.asking_second = false;
+        self.conv.prompt = None;
+        self.conv.checking = false;
+        self.conv.info.clear();
+        self.sync_field(cx);
+        if let Some((h, run)) = self.helper(cx) {
+            self.helper = Some(h);
+            self.first_run = run;
+        }
+        self.tell_ways();
         cx.notify();
+    }
+
+    /// The second helper: the first listens for a finger (pam_fprintd has
+    /// the sensor), so the second's PAM finds it taken and asks for the
+    /// password at once.
+    fn start_second(&mut self, cx: &mut Context<Self>) {
+        self.second = None;
+        self.asking_second = false;
+        if let Some((h, run)) = self.helper(cx) {
+            self.second = Some(h);
+            self.second_run = run;
+        }
+    }
+
+    /// The first helper is done with the finger (nothing matched, or the
+    /// sensor gave up) and would ask for the password itself: the second
+    /// asks instead, so the first goes.
+    fn finger_over(&mut self) {
+        self.helper = None;
+        self.listening = false;
+        if std::mem::take(&mut self.finger_error) {
+            self.conv.error.clear();
+        }
+        if olo_system::fingerprint::listening(&self.conv.info) {
+            self.conv.info.clear();
+        }
+        self.tell_ways();
     }
 
     /// The field takes typing while PAM waits for it, showing bullets
@@ -202,18 +273,41 @@ impl Auth {
     }
 
     fn helper_event(&mut self, run: u64, e: HelperEvent, cx: &mut Context<Self>) {
-        if run != self.run {
+        let first = run == self.first_run && self.helper.is_some();
+        let second = run == self.second_run && self.second.is_some();
+        if !first && !second {
             return;
         }
         match e {
+            // Past the finger, the first would ask too: the second does.
+            HelperEvent::Prompt { .. } | HelperEvent::Done(false) if first && self.second.is_some() => self.finger_over(),
             HelperEvent::Prompt { text, echo } => {
+                self.asking_second = second;
                 self.conv.ask(text, echo);
+                self.tell_ways();
                 self.sync_field(cx);
                 // (The key answered before PAM asked.)
                 self.answer_with_key(cx);
             }
-            HelperEvent::Info(t) => self.conv.info = t,
-            HelperEvent::Error(t) => self.conv.error = t,
+            HelperEvent::Info(t) => {
+                if first && self.second.is_none() && olo_system::fingerprint::listening(&t) {
+                    // pam_fprintd has the sensor: ask for the password
+                    // alongside.
+                    self.listening = true;
+                    self.start_second(cx);
+                }
+                if self.listening && olo_system::fingerprint::listening(&t) {
+                    self.conv.error.clear();
+                    self.conv.info.clear();
+                    self.tell_ways();
+                } else {
+                    self.conv.info = t;
+                }
+            }
+            HelperEvent::Error(t) => {
+                self.finger_error = first && self.second.is_some();
+                self.conv.error = t;
+            }
             HelperEvent::Done(true) => {
                 if let Some(r) = self.request.take() {
                     r.finish(true);
@@ -225,8 +319,17 @@ impl Auth {
                 if self.conv.error.is_empty() || self.conv.checking {
                     self.conv.error = "Sorry, that didn't work. Please try again.".into();
                 }
-                // Another go, as GNOME and KDE allow.
-                self.start_helper(cx);
+                if second && self.helper.is_some() {
+                    // Another go at the password, the finger still
+                    // listened for.
+                    self.conv.prompt = None;
+                    self.conv.checking = false;
+                    self.sync_field(cx);
+                    self.start_second(cx);
+                } else {
+                    // Another go, as GNOME and KDE allow.
+                    self.start_helper(cx);
+                }
             }
         }
         cx.notify();
@@ -241,7 +344,7 @@ impl Auth {
             return;
         }
         let answer = self.field.read(cx).text().to_owned();
-        let r = self.helper.as_mut().map(|h| h.respond(&answer));
+        let r = self.asking().map(|h| h.respond(&answer));
         drop(zeroed(answer));
         self.field.update(cx, |f, cx| f.clear_secret(cx));
         self.conv.sent();
@@ -256,6 +359,8 @@ impl Auth {
     /// Closes the window; an unanswered request is cancelled (dropped).
     fn close(&mut self, cx: &mut Context<Self>) {
         self.key = None;
+        self.helper = None;
+        self.second = None;
         self.key_password = None;
         self.field.update(cx, |f, cx| f.clear_secret(cx));
         if let Some(window) = self.window.take() {
@@ -349,7 +454,14 @@ fn begin(cx: &mut App, request: Request) {
             user: 0,
             request: Some(request),
             helper: None,
+            second: None,
+            listening: false,
+            asking_second: false,
             run: 0,
+            first_run: 0,
+            second_run: 0,
+            key_waiting: false,
+            finger_error: false,
             conv,
             field,
             focus: cx.focus_handle(),

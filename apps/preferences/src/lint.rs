@@ -117,7 +117,7 @@ fn ui_lint_every_panel() {
         // Room kept for what the lint doesn't draw.
         match panel {
             Panel::Integrations => lint.keeps_room(240.0, "Telegram's sign-in: a QR code to scan, and the code and password steps"),
-            Panel::TouchId => lint.keeps_room(100.0, "a finger being enrolled: what to do, a progress bar and Cancel"),
+            Panel::Security => lint.keeps_room(100.0, "a finger being enrolled in Touch ID: what to do, a progress bar and Cancel"),
             _ => &mut lint,
         };
         for f in lint.window(&options, move |window, cx| {

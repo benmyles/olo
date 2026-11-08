@@ -31,6 +31,10 @@ pub enum Ask {
     Error(String),
     /// sudo waits for this answer (a password unless it says otherwise).
     Prompt(String),
+    /// The fingerprint sensor is listened for (true) alongside the
+    /// password's prompt, or isn't any more (false): olo-sudo's second
+    /// check asks for the password while the first listens.
+    Finger(bool),
     /// sudo said yes, or no.
     Done(bool),
 }

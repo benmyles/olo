@@ -87,6 +87,32 @@ pub fn alert_title(text: impl Into<SharedString>) -> impl IntoElement {
     super::StringView::new(text).bold(true).height(m::LABEL_ROW)
 }
 
+/// What a password alert can be answered with besides typing, said under
+/// its field (sudo's window, the polkit agent): a finger on the
+/// fingerprint sensor (PAM listening for it), a touch of a security key
+/// set up, and whether the password can be typed now or only once the
+/// sensor gives up. None: only typing.
+pub fn ways_in(finger: bool, key: bool, typing: bool) -> Option<&'static str> {
+    Some(match (finger, key, typing) {
+        (true, true, true) => WAYS_IN[0],
+        (true, true, false) => WAYS_IN[1],
+        (true, false, true) => WAYS_IN[2],
+        (true, false, false) => WAYS_IN[3],
+        (false, true, _) => WAYS_IN[4],
+        (false, false, _) => return None,
+    })
+}
+
+/// Every note [`ways_in`] gives, to tell its own from PAM's messages.
+pub const WAYS_IN: [&str; 5] = [
+    "Touch the fingerprint sensor or your security key, or type your password.",
+    "Touch the fingerprint sensor or your security key, or wait to type your password.",
+    "Touch the fingerprint sensor, or type your password.",
+    "Touch the fingerprint sensor, or wait to type your password.",
+    // (olo_fido::TOUCH_OR_TYPE, as Passwords and the lock screen say it.)
+    "Touch your security key, or type your password.",
+];
+
 /// Where a password alert's conversation with PAM is (polkit's helper,
 /// sudo): what it asks and what it last said. The answer is typed in a
 /// [`TextField`] (a password one) beside it.

@@ -1,8 +1,12 @@
-//! Security: how Passwords keeps its secrets (syncing with 1Password,
-//! locking, `op` on the command line, the clipboard; Passwords follows
-//! these live), whether Olo keeps programs' secrets (olo-secrets, its
-//! state followed from the file it writes), and beside them security keys
-//! (`security_keys`).
+//! Security, in two tabs. Sign In: every way in besides the password,
+//! together (Ben, 2026-11-08: "centralize the settings for all of these
+//! under prefs -> security"): Touch ID's fingers (`touchid`), security keys
+//! (`security_keys`) and Face Unlock (`face_unlock`), each standing for
+//! the password wherever it's asked, all at once. Passwords: how Passwords
+//! keeps its secrets (syncing with 1Password, locking, `op` on the command
+//! line, the clipboard; Passwords follows these live) and whether Olo keeps
+//! programs' secrets (olo-secrets, its state followed from the file it
+//! writes).
 
 use std::sync::{Arc, OnceLock};
 
@@ -10,17 +14,74 @@ use olo_sync::Mutex;
 use olo_ui::gpui::SharedString;
 use serde::Deserialize;
 
-use crate::{
-    form::{Ui, divider_for},
-    power::minutes_menu,
-    security_keys,
+use olo_ui::{
+    gpui::{Context, ParentElement as _, Styled as _, div, px},
+    metrics as m,
+    widgets::TabView,
 };
 
-pub fn ui(ui: &mut Ui, keys: &mut security_keys::State) {
-    ui.columns(passwords, |ui| {
-        security_keys::ui(ui, keys);
-        crate::face_unlock::ui(ui, &mut keys.face);
+use crate::{
+    PanelView,
+    form::{Ui, divider_for},
+    panel,
+    power::minutes_menu,
+    security_keys, touchid,
+};
+
+/// The panel's tabs.
+pub const TABS: [&str; 2] = ["Sign In", "Passwords"];
+
+pub struct State {
+    tab: usize,
+    /// Security keys', with Face Unlock's.
+    pub keys: security_keys::State,
+    pub touchid: touchid::State,
+}
+
+impl State {
+    pub fn new(cx: &mut Context<PanelView>) -> State {
+        State { tab: 0, keys: security_keys::State::new(cx), touchid: touchid::State::new(cx) }
+    }
+}
+
+/// The tab named `tab` shown (`--tab`, and the names that opened Touch ID
+/// and Passwords' settings before: `Panel::tab_of`).
+pub fn show_tab(st: &mut State, tab: &str) {
+    if let Some(i) = TABS.iter().position(|t| t.eq_ignore_ascii_case(tab)) {
+        st.tab = i;
+    }
+}
+
+pub fn ui(ui: &mut Ui, st: &mut State) {
+    let items = ui.collect(|ui| match st.tab {
+        0 => sign_in(ui, st),
+        _ => ui.columns(passwords, passwords_more),
     });
+    let pick = ui.on_view(|v, i: usize, _, cx| {
+        if let panel::State::Security(st) = &mut v.state {
+            st.tab = i;
+        }
+        cx.notify();
+    });
+    let tabs: Vec<SharedString> = TABS.into_iter().map(SharedString::from).collect();
+    ui.add(
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .child(TabView::new("security-tabs", tabs, st.tab).grows().on_select(pick).child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+    );
+}
+
+/// Every way in besides the password, side by side.
+fn sign_in(ui: &mut Ui, st: &mut State) {
+    ui.note("Each of these set up stands for your password wherever it's asked (the lock screen, Passwords, sudo in Terminal, administrator requests), all at once: whichever you use first.");
+    let left = ui.collect(|ui| {
+        touchid::ui(ui, &mut st.touchid);
+        crate::face_unlock::ui(ui, &mut st.keys.face);
+    });
+    let right = ui.collect(|ui| security_keys::ui(ui, &mut st.keys));
+    ui.add_columns(left, right);
 }
 
 fn passwords(ui: &mut Ui) {
@@ -35,6 +96,12 @@ fn passwords(ui: &mut Ui) {
         minutes_menu(ui, "pw-lock", label, divider, &[1, 5, 10, 30, 60, 0], p.lock_minutes, |s, m| s.security.passwords.lock_minutes = m);
         ui.check("Lock when the screen locks", p.lock_with_screen, |s, v| s.security.passwords.lock_with_screen = v);
     });
+    clipboard(ui, &p);
+}
+
+/// Passwords' tab's second column.
+fn passwords_more(ui: &mut Ui) {
+    let p = ui.s.security.passwords.clone();
     ui.bbox("Passwords: Command line", |ui| {
         ui.check("Answer 1Password’s op command", p.op_cli, |s, v| s.security.passwords.op_cli = v);
         // (Served from the next login, or as soon as Passwords is opened:
@@ -48,6 +115,9 @@ fn passwords(ui: &mut Ui) {
         ui.check("Keep programs’ secrets in Olo", p.secret_service, |s, v| s.security.passwords.secret_service = v);
         secrets_note(ui, p.secret_service);
     });
+}
+
+fn clipboard(ui: &mut Ui, p: &olo_protocol::PasswordsSecurity) {
     ui.bbox("Passwords: Clipboard", |ui| {
         const CHOICES: [u32; 5] = [30, 60, 90, 180, 300];
         let mut names: Vec<SharedString> = CHOICES.iter().map(|&s| seconds_text(s).into()).collect();

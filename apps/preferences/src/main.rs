@@ -254,8 +254,11 @@ impl Prefs {
         // `network --tab Ethernet`; the GPUs panel's old names, Power's
         // Graphics tab).
         let last = panels.last().map(|p| p.as_str());
-        let tab = tab.or_else(|| matches!(last, Some("gpus" | "gpu" | "graphics" | "nvidia")).then(|| "Graphics".to_owned()));
-        if let (None, Some(tab), Some(panel @ (Panel::Network | Panel::Power))) = (&show, &tab, last.and_then(Panel::from_arg)) {
+        let tab = tab
+            .or_else(|| matches!(last, Some("gpus" | "gpu" | "graphics" | "nvidia")).then(|| "Graphics".to_owned()))
+            // (Security's Passwords tab by its old names.)
+            .or_else(|| matches!(last, Some("passwords" | "privacy")).then(|| "Passwords".to_owned()));
+        if let (None, Some(tab), Some(panel @ (Panel::Network | Panel::Power | Panel::Security))) = (&show, &tab, last.and_then(Panel::from_arg)) {
             let (me, tab) = (cx.entity(), tab.clone());
             cx.defer(move |cx| {
                 let view = me.read(cx).windows.iter().find(|w| w.panel == Some(panel)).and_then(|w| w.view.clone());
@@ -264,6 +267,7 @@ impl Prefs {
                         match &mut v.state {
                             panel::State::Network(st) => network::show_tab(st, &tab),
                             panel::State::Power(st) => power::show_tab(st, &tab),
+                            panel::State::Security(st) => security::show_tab(st, &tab),
                             _ => {}
                         }
                         cx.notify();

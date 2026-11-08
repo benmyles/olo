@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Security ▸ Sign In: Touch ID, Face Unlock and Security Keys together
+
+*11:50* — Preferences ▸ Security has two tabs. Sign In has every way in besides the password, each standing for it wherever it's asked, all at once. Touch ID, which was a panel of its own, is a box beside Face Unlock and Security Keys. The Passwords tab has Passwords' and programs' secrets settings. The old names (touchid, fingerprint, passwords) open the right tab.
+
+![Security ▸ Sign In: Touch ID, Face Unlock and Security Keys together](2026-11-08/115020-security-sign-in-touch-id-face-unlock-and-securi.png)
+
+### Every way in at once: the finger and the password
+
+*11:50* — An administrator request (polkit) with Touch ID set up: the password, or a security key's touch, is taken while the fingerprint sensor listens, not after it gives up. Once polkit's PAM listens for a finger, a second conversation asks for the password; the first to succeed counts. sudo's window in Terminal does the same. Setting up Touch ID had made Ben's YubiKey wait behind the fingerprint.
+
+![Every way in at once: the finger and the password](2026-11-08/115020-every-way-in-at-once-the-finger-and-the-password.png)
+
 ### Keyboard ▸ Power Button
 
 *11:08* — Preferences ▸ Keyboard has a Power Button tab: what the computer's own power button does when pressed, and when held for a number of seconds, each from Nothing, Lock the Screen, Log Out, Restart (asking first, or not, or immediately) and Shut Down (the same three). By default a press does nothing, holding it 3 seconds asks to restart (Deskbar's Restart alert), and 10 seconds shuts down at once. Immediately needs Olo's small helper, which Install the Helper… (Olo Doctor's fix) puts in place. It is a tab of its own because the Keyboard tab with it no longer fit a 1280 × 800 screen.
