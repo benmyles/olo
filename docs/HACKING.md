@@ -5220,8 +5220,8 @@ power-now`); without it, immediately is as Restart and Shut Down. A
 headless app_server (tests, agents' screens) takes a synthetic
 KEY_POWER and never acts: it says what it would have done (`done:
 false`, "not the session: not done" in its log). Firmware may cut the
-power on a long hold whatever is set (ThinkPads' is said to be about
-5 s), so a hold past that never reaches Olo. It's a tab of its own:
+power on a long hold whatever is set (Lenovo's ThinkPad manuals say 4 s
+or more, for the P50 and L480), so a hold past that never reaches Olo. It's a tab of its own:
 in the Keyboard tab it made the panel 1028 points tall, past a 1280 ×
 800 screen.
 

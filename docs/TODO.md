@@ -97,9 +97,9 @@ need Ben".)
   then Preferences ▸ Keyboard ▸ Power Button ▸ Install the Helper…
   (or `olo-doctor --fix power-now`; it asks for the password), and try
   a press, a 3 s hold (the alert; Cancel), and whether the ThinkPad's
-  firmware cuts the power before 10 s (said to be about 5 s on
-  ThinkPads: if so, 10 s never reaches Olo, and a shorter hold there,
-  or holding through the firmware's, is the choice).
+  firmware cuts the power before 10 s (Lenovo's ThinkPad manuals say 4
+  s or more: if so, 10 s never reaches Olo, the firmware's own cut
+  comes first, and the 3 s alert has about a second before it).
 
 - **Telegram's video stickers: their see-through parts on real ones**
   (2026-11-08; Done has the work): WebM stickers play, their alpha the
