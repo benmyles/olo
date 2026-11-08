@@ -289,7 +289,7 @@ impl Set {
         }
         for (node, image) in &bindings {
             check(cancel)?;
-            if document.namespace(*node).map_err(Error::Dom)? != Some(Namespace::Html) || !matches!(document.name(*node).map_err(Error::Dom)?, Some("img" | "canvas" | "video")) {
+            if document.namespace(*node).map_err(Error::Dom)? != Some(Namespace::Html) || !matches!(document.name(*node).map_err(Error::Dom)?, Some("img" | "canvas" | "video" | "iframe")) {
                 return Err(Error::Invalid);
             }
             if unique.insert(Arc::as_ptr(image)) {
@@ -319,7 +319,7 @@ impl Set {
         let bindings: Vec<(NodeId, Arc<Image>)> = self
             .bindings
             .iter()
-            .filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas" | "video")))
+            .filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas" | "video" | "iframe")))
             .cloned()
             .collect();
         Some(Arc::new(Self { document: self.document, revision: document.revision(), bindings: bindings.into_boxed_slice(), backgrounds: self.backgrounds.clone(), bytes: self.bytes }))
@@ -331,7 +331,7 @@ impl Set {
         bindings.extend(extra);
         let bindings = bindings
             .into_iter()
-            .filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas" | "video")))
+            .filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas" | "video" | "iframe")))
             .collect();
         Self::with_backgrounds(document, bindings, self.backgrounds.clone(), limits, cancel)
     }

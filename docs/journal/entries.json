@@ -4018,5 +4018,11 @@
   "title": "Browser: Shoelace with ::part(), as Chrome",
   "caption": "Left Olo, right Chrome: shoelace.style's dialog, its header hidden and its call to action coloured from outside through ::part().",
   "image": "2026-11-08/033301-browser-shoelace-with-part-as-chrome.png"
+ },
+ {
+  "time": "2026-11-08T03:59:23",
+  "title": "Browser: iframes render",
+  "caption": "Top Olo, bottom Chrome: a page with an iframe of a styled child page; the iframe's document rendered at its size and its 2px inset border shaded as Chrome shades it.",
+  "image": "2026-11-08/035923-browser-iframes-render.png"
  }
 ]

@@ -1302,10 +1302,14 @@ impl<'a> BuildJob<'a> {
         for i in 0..4 {
             if widths[i] > 0. {
                 let p = [P::BorderTopStyle, P::BorderRightStyle, P::BorderBottomStyle, P::BorderLeftStyle][i];
-                if !matches!(s.value(p), Value::Keyword(K::Solid)) {
-                    self.note("border style painted solid", id);
-                }
                 colors[i] = color(s, [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor][i])?;
+                match s.value(p) {
+                    Value::Keyword(K::Solid) => {}
+                    // Shaded: the top and left darker for inset (lighter for
+                    // outset), as Chrome shades them (an iframe's border).
+                    Value::Keyword(k @ (K::Inset | K::Outset)) => colors[i] = decoration::bevel(colors[i], *k == K::Inset, i == 0 || i == 3),
+                    _ => self.note("border style painted solid", id),
+                }
             }
         }
         if widths.iter().any(|w| *w > 0.) {

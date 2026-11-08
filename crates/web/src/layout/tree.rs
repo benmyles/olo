@@ -865,7 +865,8 @@ impl<'a> BuildJob<'a> {
                     }
                     // A canvas the scripts drew on is an image of its pixels; a
                     // video showing a picture, an image of that picture.
-                    let drawn_canvas = matches!(name, Some("canvas" | "video")) && self.images.as_ref().is_some_and(|images| images.index(node).is_some());
+                    // An iframe whose document was rendered, an image of it.
+                    let drawn_canvas = matches!(name, Some("canvas" | "video" | "iframe")) && self.images.as_ref().is_some_and(|images| images.index(node).is_some());
                     if name == Some("img") || drawn_canvas {
                         if display == Display::Contents {
                             continue;

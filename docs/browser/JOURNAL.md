@@ -6530,3 +6530,18 @@ journal).
   by its own `<style>`s. Scripts see it as `host.shadowRoot`, a
   definition upgrades elements inside it, and `attachShadow` claims it
   once, emptied, as the DOM standard has it.
+- **Iframes render (first step).** An `<iframe src>` was an empty box. A
+  live page's iframes now each load on a thread of their own (`frames.rs`):
+  the document fetched, its stylesheets and images loaded, laid out and
+  painted at the size the iframe shows at (again when that changes), and
+  the picture bound to the element as a video's picture is; the thread
+  wakes the page when it is done. A test page with a styled child page
+  matches Chrome (only the pointer differs). Not yet: the frame's own
+  scripts, its input (it is a picture), and iframes on pages without
+  scripts. (A first try hung the page thread: a mutex guard in a
+  `match`'s scrutinee lives through its arms, which locked it again.)
+- **`inset` and `outset` borders shade as Chrome's.** They were painted
+  solid in `currentColor` (an iframe's default `2px inset` came out
+  black). Blink's arithmetic, its `Dark()` and `Light()` on the brightest
+  channel, a too-dark colour lightened first, and black inset grey 154
+  over 238: five measured cases match Chrome to the unit.

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: iframes render
+
+*03:59* — Top Olo, bottom Chrome: a page with an iframe of a styled child page; the iframe's document rendered at its size and its 2px inset border shaded as Chrome shades it.
+
+![Browser: iframes render](2026-11-08/035923-browser-iframes-render.png)
+
 ### Browser: Shoelace with ::part(), as Chrome
 
 *03:33* — Left Olo, right Chrome: shoelace.style's dialog, its header hidden and its call to action coloured from outside through ::part().

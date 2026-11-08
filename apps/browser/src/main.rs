@@ -1,5 +1,6 @@
 //! Native shell over Olo's original engine, with network loading and initial
 //! document links. Full web compatibility is an active, uncompleted goal.
+mod frames;
 mod history;
 mod links;
 mod media;

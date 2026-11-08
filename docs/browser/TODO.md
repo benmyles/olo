@@ -164,7 +164,11 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   `::before`/`::after` generated content (strings, attr()).
 - [ ] Text: word-break/overflow-wrap (583), text-decoration (28),
   text-transform, counters and quotes in `content`.
-- [ ] Form controls drawn with the kit's look; canvas/iframe placeholders.
+- [ ] Form controls drawn with the kit's look; canvas placeholders.
+- [ ] Iframes: a live page's iframes render as pictures of their documents
+  (stylesheets, images; JOURNAL 2026-11-08). Open: their scripts (ads,
+  YouTube and map embeds need them), input into them, iframes of pages
+  without scripts, `srcdoc`, `loading=lazy`.
 - [x] JavaScript: V8 with a native DOM (crates/js): the Web API surface in
   a prelude, scripts that scripts insert, measurement from a layout of the
   page as it is (getBoundingClientRect, offset*/client*/scroll*,

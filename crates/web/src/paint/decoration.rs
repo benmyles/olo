@@ -1003,6 +1003,30 @@ pub fn mask_is_opaque(s: &Style) -> bool {
         _ => false,
     })
 }
+/// An `inset` or `outset` border side's colour from its `border-color`, as
+/// Chrome (Blink) shades it: `dark` scales by (v - 0.33) / v and `light` by
+/// min(1, v + 0.33) / v, v the brightest channel; the top and left sides
+/// dark for inset and light for outset, the others the reverse. A colour
+/// too dark to darken is lightened first (its dark side that, its light
+/// side lighter); black inset is grey 154 over 238, as measured.
+pub fn bevel(c: [u8; 4], inset: bool, top_left: bool) -> [u8; 4] {
+    // (Blink's arithmetic: f32, 0.33, each channel truncated from x 255.99.)
+    let scale = 256f32.next_down();
+    let scaled = |c: [u8; 4], f: f32| [0, 1, 2].map(|i| (f * f32::from(c[i]) / 255. * scale).min(255.) as u8);
+    let v = |c: [u8; 4]| f32::from(c[0].max(c[1]).max(c[2])) / 255.;
+    let with = |rgb: [u8; 3], a: u8| [rgb[0], rgb[1], rgb[2], a];
+    let light = |c: [u8; 4]| if v(c) == 0. { [84, 84, 84, c[3]] } else { with(scaled(c, 1f32.min(v(c) + 0.33) / v(c)), c[3]) };
+    let dark = |c: [u8; 4]| with(scaled(c, ((v(c) - 0.33) / v(c)).max(0.)), c[3]);
+    let darker_side = top_left == inset;
+    if v(c) == 0. && inset {
+        return if darker_side { [154, 154, 154, c[3]] } else { [238, 238, 238, c[3]] };
+    }
+    if v(c) < 0.33 {
+        let base = light(c);
+        return if darker_side { base } else { light(base) };
+    }
+    if darker_side { dark(c) } else { light(c) }
+}
 /// How far a box's outer shadows extend past its border box, per side.
 pub fn shadow_extent(s: &Style) -> crate::layout::Edges {
     let mut e = crate::layout::Edges::default();
@@ -1018,4 +1042,22 @@ pub fn shadow_extent(s: &Style) -> crate::layout::Edges {
         }
     }
     e
+}
+#[cfg(test)]
+mod bevel_tests {
+    use super::bevel;
+    #[test]
+    fn inset_and_outset_shade_as_chrome() {
+        // Chrome's pixels: (top/left, bottom/right).
+        for (c, inset, tl, br) in [
+            ([200, 50, 50, 255], true, [116, 29, 29], [255, 63, 63]),
+            ([60, 120, 220, 255], false, [69, 139, 255], [37, 74, 136]),
+            ([30, 30, 30, 255], true, [114, 114, 114], [198, 198, 198]),
+            ([0, 0, 0, 255], false, [168, 168, 168], [84, 84, 84]),
+            ([0, 0, 0, 255], true, [154, 154, 154], [238, 238, 238]),
+        ] {
+            assert_eq!(bevel(c, inset, true)[..3], tl, "{c:?} inset {inset} top/left");
+            assert_eq!(bevel(c, inset, false)[..3], br, "{c:?} inset {inset} bottom/right");
+        }
+    }
 }

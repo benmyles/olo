@@ -302,6 +302,8 @@ struct Live {
     had_focus: bool,
     /// The page's `<video>` players.
     players: crate::media::Players,
+    /// The page's `<iframe>`s, each rendered as a picture.
+    frames: crate::frames::Frames,
     /// A render is wanted although the document is unchanged (a canvas's
     /// readback was in flight at the last one).
     render_again: bool,
@@ -949,7 +951,7 @@ fn render(
             let started = Instant::now();
             // Where each video shows, in device pixels (its content box).
             let layout = c.page.scene.layout().clone();
-            let index: HashMap<olo_web::dom::NodeId, layout::BoxId> = if live.players.is_empty() {
+            let index: HashMap<olo_web::dom::NodeId, layout::BoxId> = if live.players.is_empty() && live.frames.is_empty() && live.frames.scanned_at() == Some(live.realm.revision()) {
                 HashMap::new()
             } else {
                 layout
@@ -980,6 +982,15 @@ fn render(
                 eprintln!("  videos: a picture in {:.1} ms", started.elapsed().as_secs_f64() * 1000.);
             }
             media_changed = step.changed;
+            // Iframes: each one's document rendered at the size it shows at.
+            let revision = live.realm.revision();
+            let realm = &live.realm;
+            let wake = live.loads.waker();
+            let (framed, _) = live.frames.step(revision, || Some(realm.snapshot()), loader, &base, c.page.scope(), &r.key, &shown, &wake);
+            if framed && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                eprintln!("  frames: a picture came");
+            }
+            media_changed |= framed;
             // While the page draws every display frame anyway (an animation,
             // a canvas), a video's next picture waits for the next of them
             // rather than waking the page between them.
@@ -1077,6 +1088,7 @@ fn render(
             }
             let mut canvases = live.realm.canvases();
             canvases.extend(live.players.images());
+            canvases.extend(live.frames.images());
             if media_changed && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
                 eprintln!("  live render with {} bound pictures (videos {})", canvases.len(), live.players.images().len());
             }
@@ -1384,6 +1396,7 @@ fn render(
                 realm,
                 had_focus: false,
                 players: Default::default(),
+                frames: Default::default(),
                 render_again,
                 loads,
                 cancel: live_cancel.clone(),
@@ -2099,7 +2112,7 @@ pub(crate) struct PageHost {
     scope: Scope,
     palette: Arc<Palette>,
     scale: f64,
-    viewport: layout::Viewport,
+    pub(crate) viewport: layout::Viewport,
     viewport_used: Cell<bool>,
 }
 impl PageHost {
