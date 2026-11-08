@@ -10519,6 +10519,32 @@ device grid, the subtitle and kind on the title's baseline): a
 click outside the panel, Escape or ⌘Space again
 put it away.
 
+* **Slash commands** (Ben, 2026-11-07), when the query starts with one
+  (`slash`: `/` or a command's start lists them, never a path, which has
+  a second `/`): `/ws TEXT` searches the web (the "Search the web" row,
+  first and alone); `/ask QUESTION` asks Preferences ▸ AI's Ask model
+  (`AiSettings::ask`, Astra 6 on low by default: "defaulting to astra on
+  low") on a worker (`ask.rs`), for JSON (`ask::schema`: the prose and
+  up to four snippets, each a title, its language and the code), the
+  question carrying the system and the shell. The answer shows in the
+  panel (`answer.rs`, as tall as it is up to most of the screen,
+  scrolled past that by the wheel or the arrows): the prose as it comes
+  (`olo_ai::ask_streaming`, the Responses API's text deltas, read from
+  the JSON still being written with `olo_ai::partial_string`), then each
+  snippet numbered in a sunken well, six lines of it at most with how
+  many more. Keys (`answer_key`; Return comes as the field's, which has
+  it before any listener: `copy_answer`): a number shows that snippet
+  whole, Return (or ⌘C) copies it (none shown: the only one, else the
+  answer's words; "Copied" in the foot), Escape goes back a step (the
+  answer, then the palette to type something else; while it comes, it
+  stops it: the reply let go of where it is), Space asks a follow-up
+  in the same conversation (`olo_ai::Turn`s: each question and the JSON
+  answered, in order, for either API), its Escape back to the answer.
+  The keys that work now are along the foot. Agents read the prose and
+  each snippet (`Item`, its code the value). Tested with a fake
+  Responses API streaming slowly (`OLO_AI_BASE_URL`), and through the
+  Token Pool: "Asking Astra 6…" at once, words from ~4 s, the whole
+  with two snippets after.
 * **Before opening**, a worker asks app_server for the windows and the
   settings, so the window in front is known before the overlay takes the
   keyboard (app_server's focus is then the overlay). Shortcuts are done

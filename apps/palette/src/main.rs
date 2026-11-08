@@ -6,12 +6,21 @@
 //! sums. Return does the selected one; Escape, a click outside or ⌘Space
 //! again puts it away. On the GPUI kit (olo-ui).
 //!
+//! Slash commands (Ben, 2026-11-07): `/ws TEXT` searches the web;
+//! `/ask QUESTION` asks the AI (Preferences ▸ AI's Ask: `ask.rs`) and
+//! shows the answer in the panel, the prose as it comes, then up to four
+//! numbered snippets: a number shows that one whole, Return copies it,
+//! Escape goes back a step, Space asks a follow-up in the same
+//! conversation. `/` alone lists them.
+//!
 //! It stays running between uses so it opens at once: app_server starts
 //! `olo-palette --toggle`, which hands the toggle to the running copy.
 //! It shows a window's menu (a right-click on its tab) the same way, from
 //! `--window-menu` (window_menu.rs), and the shortcuts sheet (⇧⌘/) from
 //! `--shortcuts` (sheet.rs).
 
+mod answer;
+mod ask;
 mod calc;
 mod model;
 mod rank;
@@ -159,6 +168,41 @@ struct Palette {
     window_menu: Option<WindowHandle<Frame>>,
     /// The shortcuts sheet, while it shows.
     sheet: Option<WindowHandle<Frame>>,
+    /// An answer showing (/ask), and how many have been asked (each
+    /// one's updates carry its number).
+    answer: Option<answer::Answering>,
+    asks: u64,
+}
+
+/// The slash commands: what's typed, what it does, its icon.
+const SLASH: [(&str, &str, &str); 2] = [("/ws", "Search the web", "browser"), ("/ask", "Ask AI", "ai")];
+
+/// The results for a slash command typed, if it's one: `/` or the start
+/// of one lists them (the palette's commands, not a path: nothing after
+/// a second `/`); `/ws TEXT` searches the web; `/ask QUESTION` asks.
+fn slash(query: &str) -> Option<Vec<Item>> {
+    let q = query.trim_start();
+    if !q.starts_with('/') {
+        return None;
+    }
+    let (word, rest) = q.split_once(char::is_whitespace).map_or((q, ""), |(w, r)| (w, r.trim()));
+    let command = SLASH.iter().find(|(c, ..)| *c == word);
+    match command {
+        Some(("/ws", ..)) if !rest.is_empty() => Some(vec![Item::new(Kind::Web, format!("Search the web for “{rest}”"), Action::Search(rest.to_owned())).icon("browser").subtitle("Web browser")]),
+        Some(("/ask", ..)) if !rest.is_empty() => {
+            Some(vec![Item::new(Kind::Command, format!("Ask: “{rest}”"), Action::Ask(rest.to_owned())).icon("ai").subtitle("Return asks the model in Preferences ▸ AI")])
+        }
+        Some((c, what, icon)) => Some(vec![Item::new(Kind::Command, format!("{c} …"), Action::Fill(format!("{c} "))).icon(*icon).subtitle(format!("{what}: type what after it"))]),
+        None if rest.is_empty() && !word[1..].contains('/') => {
+            let found: Vec<Item> = SLASH
+                .iter()
+                .filter(|(c, ..)| c.starts_with(word))
+                .map(|(c, what, icon)| Item::new(Kind::Command, c.to_string(), Action::Fill(format!("{c} "))).icon(*icon).subtitle(what.to_string()))
+                .collect();
+            (!found.is_empty()).then_some(found)
+        }
+        None => None,
+    }
 }
 
 /// Closes `w`.
@@ -265,6 +309,7 @@ impl Palette {
         if let Some(w) = self.win.take() {
             cx.defer(move |cx| close(w, cx));
         }
+        self.stop_asking();
         self.menus.clear();
         self.front = None;
         cx.notify();
@@ -273,6 +318,15 @@ impl Palette {
     /// The results for the query now.
     fn refresh(&mut self) {
         let query = self.query_text.clone();
+        // A slash command: its own results alone.
+        if !self.files_mode
+            && let Some(items) = slash(&query)
+        {
+            self.features = vec![None; items.len()];
+            self.results = items;
+            self.selected = 0;
+            return;
+        }
         let words = rank::words(&query);
         let mut scored: Vec<(i32, Item)> = Vec::new();
         let mut features: Vec<Option<[f32; model::F]>> = Vec::new();
@@ -430,6 +484,20 @@ impl Palette {
         if let Some(k) = item.action.key() {
             self.recents.note(k);
         }
+        match &item.action {
+            // (The palette's own: the query filled, or asked here.)
+            Action::Fill(text) => {
+                let text = text.clone();
+                self.query.update(cx, |f, cx| f.set_text(text, cx));
+                self.query_changed(cx);
+                return;
+            }
+            Action::Ask(question) => {
+                let question = question.clone();
+                return self.start_ask(question, Vec::new(), cx);
+            }
+            _ => {}
+        }
         self.learn(index, cx);
         if let Action::Copy(text) = &item.action {
             cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
@@ -539,6 +607,9 @@ impl Palette {
         let k = &e.keystroke;
         // (Ctrl with a key isn't a tap.)
         self.ctrl_tap = false;
+        if self.answer.is_some() {
+            return self.answer_key(e, cx);
+        }
         if olo_kit_base::keys::shortcut("alternate").is_some_and(|s| olo_ui::keys::pressed(&s, k)) {
             let i = self.selected;
             self.reveal(i, cx);
@@ -599,6 +670,10 @@ impl Palette {
             }
             Err(m) => m,
         };
+        let message = match message.downcast::<ask::Asked>() {
+            Ok(asked) => return self.asked(*asked, cx),
+            Err(m) => m,
+        };
         let message = match message.downcast::<model::Retuned>() {
             Ok(r) => {
                 self.tuning = false;
@@ -638,14 +713,173 @@ impl Palette {
     }
 }
 
+impl Palette {
+    /// Ask `question` (after `history`): the answer shows in the panel as
+    /// it comes, the question in the field as asked.
+    fn start_ask(&mut self, question: String, history: Vec<olo_ai::Turn>, cx: &mut Context<Self>) {
+        self.stop_asking();
+        self.asks += 1;
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        ask::ask(self.asks, question.clone(), history.clone(), cancel.clone(), olo_ui::proxy(cx));
+        self.answer = Some(answer::Answering::new(self.asks, question.clone(), history, cancel));
+        self.show_question(cx);
+        cx.notify();
+    }
+
+    /// The question asked, in the field (where typing goes only for a
+    /// follow-up).
+    fn show_question(&mut self, cx: &mut Context<Self>) {
+        let Some(a) = &self.answer else { return };
+        let text = format!("/ask {}", a.question);
+        self.query.update(cx, |f, cx| {
+            f.set_text(text.clone(), cx);
+            f.set_hint(hint(false), cx);
+        });
+        self.query_text = text;
+    }
+
+    /// The answer let go of (its reply too, if it's still coming).
+    fn stop_asking(&mut self) {
+        if let Some(a) = self.answer.take() {
+            a.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    /// The answer as it comes.
+    fn asked(&mut self, asked: ask::Asked, cx: &mut Context<Self>) {
+        let Some(a) = self.answer.as_mut() else { return };
+        match asked {
+            ask::Asked::Model(n, model) if n == a.n => a.model = model,
+            ask::Asked::SoFar(n, prose) if n == a.n && a.json.is_none() => a.prose = prose,
+            ask::Asked::Done(n, result) if n == a.n => match result {
+                Ok((prose, snippets, json)) => {
+                    a.prose = prose;
+                    a.snippets = snippets;
+                    a.json = Some(json);
+                }
+                Err(e) => a.error = Some(e),
+            },
+            _ => return,
+        }
+        cx.notify();
+    }
+
+    /// Return (or ⌘C) on an answer: the snippet shown copied, else the
+    /// only one, else the answer's words; said in the foot.
+    fn copy_answer(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(a) = self.answer.as_mut() else { return false };
+        let Some((what, text)) = a.to_copy() else { return false };
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        a.copied = Some(what);
+        cx.notify();
+        true
+    }
+
+    /// A follow-up typed (Return): asked in the same conversation.
+    fn follow_up(&mut self, cx: &mut Context<Self>) {
+        let text = self.query.read(cx).text().trim().to_owned();
+        let Some(a) = &self.answer else { return };
+        if text.is_empty() {
+            return;
+        }
+        let mut history = a.history.clone();
+        if let Some(json) = &a.json {
+            history.push(olo_ai::Turn { question: a.question.clone(), answer: json.clone() });
+        }
+        self.start_ask(text, history, cx);
+    }
+
+    /// The keys while an answer shows (Ben: "if i press the number then it
+    /// shows that one expanded, and if i hit enter it copies that code to
+    /// the clipboard, if i hit escape it goes back one … and escape again
+    /// goes back so i can type something else … if i hit space let me ask
+    /// a followup question"): a number shows that snippet whole, Return
+    /// copies it (with none shown: the only one, else the answer), Escape
+    /// goes back a step (to the answer, then to the palette: stopping it
+    /// if it's still coming), Space asks a follow-up, the arrows scroll.
+    fn answer_key(&mut self, e: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+        let k = &e.keystroke;
+        let Some(a) = self.answer.as_mut() else { return false };
+        if a.following {
+            // The field's, but Escape goes back to the answer.
+            if k.key == "escape" && !k.modifiers.modified() {
+                a.following = false;
+                self.show_question(cx);
+                cx.notify();
+                return true;
+            }
+            return false;
+        }
+        // (⌘C copies as Return does; other keys with modifiers are no
+        // one's here.)
+        let copy = k.key == "enter" || (k.key == "c" && (k.modifiers.platform || k.modifiers.control));
+        if k.modifiers.modified() && !copy {
+            return true;
+        }
+        let line = answer::mono_line();
+        match k.key.as_str() {
+            "escape" => {
+                if a.open.take().is_some() {
+                    a.scroll = 0.0;
+                    a.copied = None;
+                } else {
+                    self.stop_asking();
+                    self.query.update(cx, |f, cx| f.set_text("", cx));
+                    self.query_text.clear();
+                    self.selected = 0;
+                    self.top = 0;
+                    self.refresh();
+                }
+            }
+            "space" if a.done() => {
+                a.following = true;
+                a.copied = None;
+                self.query.update(cx, |f, cx| {
+                    f.set_text("", cx);
+                    f.set_hint("Ask a follow-up, then Return", cx);
+                });
+                self.query_text.clear();
+            }
+            _ if copy => return self.copy_answer(cx) || true,
+            "up" => a.scroll = (a.scroll - 3.0 * line).max(0.0),
+            "down" => a.scroll += 3.0 * line,
+            "pageup" => a.scroll = (a.scroll - 240.0).max(0.0),
+            "pagedown" => a.scroll += 240.0,
+            n if n.len() == 1 && n.as_bytes()[0].is_ascii_digit() => {
+                let i = (n.as_bytes()[0] - b'0') as usize;
+                if i >= 1 && i <= a.snippets.len() {
+                    a.open = Some(i - 1);
+                    a.scroll = 0.0;
+                    a.copied = None;
+                }
+            }
+            _ => {}
+        }
+        cx.notify();
+        true
+    }
+}
+
 impl Render for Palette {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let me = cx.entity();
         let screen = window.viewport_size();
         let shown = self.results.len().min(ROWS);
-        let list_h = if self.query_text.trim().is_empty() && shown == 0 { 0.0 } else { shown as f32 * ROW + if shown > 0 { m::TIGHT * 2.0 } else { 0.0 } };
         let width = WIDTH.min(f32::from(screen.width) - 32.0);
-        let height = FIELD_HEIGHT + 2.0 * m::SPACING + list_h + if self.results.is_empty() { 0.0 } else { m::SPACING };
+        // An answer (/ask): as tall as it is, up to most of the screen
+        // under the panel's top, its keys along the foot.
+        let laid =
+            self.answer.as_ref().map(|a| answer::lay_out(a, width - 2.0 * m::SPACING, (f32::from(screen.height) * (0.92 - TOP) - FIELD_HEIGHT - 4.0 * m::SPACING - answer::FOOT).max(120.0), cx));
+        if let (Some(a), Some(l)) = (self.answer.as_mut(), &laid) {
+            a.scroll = l.scroll;
+        }
+        let (list_h, height) = match &laid {
+            Some(l) => (l.area, FIELD_HEIGHT + 3.0 * m::SPACING + l.area + m::SPACING + answer::FOOT),
+            None => {
+                let list_h = if self.query_text.trim().is_empty() && shown == 0 { 0.0 } else { shown as f32 * ROW + if shown > 0 { m::TIGHT * 2.0 } else { 0.0 } };
+                (list_h, FIELD_HEIGHT + 2.0 * m::SPACING + list_h + if self.results.is_empty() { 0.0 } else { m::SPACING })
+            }
+        };
         let panel = style::snap(window, Bounds { origin: point((screen.width - px(width)) / 2.0, (screen.height * TOP).round()), size: size(px(width), px(height)) });
         let field = Bounds { origin: point(panel.left() + px(m::SPACING), panel.top() + px(m::SPACING)), size: size(px(width - 2.0 * m::SPACING), px(FIELD_HEIGHT)) };
         let glass = style::snap_centred(window, point(field.left() + px(8.0 + 12.0), field.center().y), 24.0, 24.0);
@@ -703,8 +937,8 @@ impl Render for Palette {
             .child(div().flex_1().h(room).child(self.query.clone()))
             .child(KeyHint::new("Ctrl", other));
 
-        // The results.
-        let rows: Vec<(usize, Item)> = (self.top..self.results.len()).take(ROWS).map(|i| (i, self.results[i].clone())).collect();
+        // The results (none while an answer shows).
+        let rows: Vec<(usize, Item)> = if laid.is_some() { Vec::new() } else { (self.top..self.results.len()).take(ROWS).map(|i| (i, self.results[i].clone())).collect() };
         let (selected, command) = (self.selected, self.command);
         let rows_me = me.clone();
         let total = self.results.len();
@@ -824,6 +1058,13 @@ impl Render for Palette {
         .absolute()
         .inset_0();
 
+        let answer_parts: Vec<olo_ui::gpui::AnyElement> = match (&self.answer, &laid) {
+            (Some(a), Some(l)) => {
+                let foot = Bounds { origin: point(field.left(), list.bottom() + px(m::SPACING)), size: size(field.size.width, px(answer::FOOT)) };
+                vec![answer::view(a, l, list, me.clone(), cx), answer::foot(a, foot, cx)]
+            }
+            _ => Vec::new(),
+        };
         let keys = me.clone();
         let mods = me.clone();
         div()
@@ -831,6 +1072,7 @@ impl Render for Palette {
             .relative()
             .child(backdrop)
             .child(results)
+            .children(answer_parts)
             .child(query)
             .capture_key_down(move |e: &KeyDownEvent, _, cx| {
                 if keys.update(cx, |p, cx| p.key(e, cx)) {
@@ -881,6 +1123,16 @@ fn main() {
         let palette = cx.new(|cx| {
             cx.subscribe(&query, |p: &mut Palette, _, e: &TextFieldEvent, cx| match e {
                 TextFieldEvent::Entered => {
+                    // (An answer's Return copies: the field has the key
+                    // before any listener does.)
+                    match p.answer.as_ref().map(|a| a.following) {
+                        Some(true) => return p.follow_up(cx),
+                        Some(false) => {
+                            p.copy_answer(cx);
+                            return;
+                        }
+                        None => {}
+                    }
                     let i = p.selected;
                     p.choose(i, cx);
                 }
@@ -916,6 +1168,8 @@ fn main() {
                 workers,
                 window_menu: None,
                 sheet: None,
+                answer: None,
+                asks: 0,
             }
         });
         let messages = palette.clone();

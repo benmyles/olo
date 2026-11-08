@@ -38,24 +38,6 @@ something nobody here has is in "Blocked", with what it waits for.
   The least-delay test's "after another voice" lag search locks on the
   quiet voice: fix before judging that case.
 
-- **Slash commands in the command palette** (Ben, 2026-11-07, Super+Space:
-  "support `/ws` for web search so if i do `/ws when was beos released?`
-  it should open that search in my browser. if i do `/ask how do i find
-  what ports are open` it should use AI (with a config to choose the
-  model under prefs-> ai defaulting to astra on low) to show me an
-  answer, and it should be a structured json response so you can let it
-  provide a text/prose answer as well as up to, say, 4 optional code
-  snippets and then if it returned the code snippets show them (or a
-  preview of them if they're large) and give each one a number and make
-  it so if i press the number then it shows that one expanded, and if i
-  hit enter it copies that code to the clipboard, if i hit escape it goes
-  back one e.g. back to seeing all the snippets and escape again goes
-  back so i can type something else in the command bar. also if i hit
-  space let me ask a followup question where it keeps the
-  context/messages from the previous interactions and the followup
-  should be able to provide a new answer/snippets. make sure it all
-  works very intuitively and fast"). Streams, cancellable, never blocks.
-
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for
   continuous, minimal impact (in terms of cpu/mem/network usage -- it
@@ -97,6 +79,16 @@ something nobody here has is in "Blocked", with what it waits for.
   and Tracker and Passwords where they fit.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Slash commands in the command palette: /ws and /ask** (Ben,
+  2026-11-07). `/` lists them; `/ws TEXT` searches the web; `/ask
+  QUESTION` asks Preferences ▸ AI's new Ask model (Astra 6 on low by
+  default) and shows the answer in the palette as it streams, then up
+  to four numbered snippets (previewed, six lines): its number shows one
+  whole, Return copies it ("Copied"), Escape goes back a step (and
+  stops one still coming), Space asks a follow-up in the same
+  conversation. Tried end to end through the Token Pool. Try: ⌘Space,
+  `/ask how do i find what ports are open`.
 
 - **Quick Look went gray on a PDF, and the arrows stopped** (Ben,
   2026-11-07: "i hit space then press down, looks fine on next file,

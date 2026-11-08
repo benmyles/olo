@@ -46,6 +46,8 @@ pub enum Error {
     Truncated,
     #[error("The answer wasn't what was asked for: {0}")]
     BadAnswer(String),
+    #[error("Stopped.")]
+    Cancelled,
 }
 
 /// Where the saved API key is (only its owner can read it).
@@ -85,6 +87,16 @@ pub struct Ask {
     /// A JSON schema the answer must follow.
     pub schema: Value,
     pub max_tokens: u32,
+    /// The conversation before it (a follow-up's), oldest first.
+    pub history: Vec<Turn>,
+}
+
+/// A question asked before and the JSON answered (a follow-up carries
+/// them).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Turn {
+    pub question: String,
+    pub answer: String,
 }
 
 /// An image content block from PNG bytes.
@@ -117,13 +129,24 @@ pub fn body(feature: &AiFeature, ask: &Ask) -> Value {
         "model": feature.model,
         "max_tokens": ask.max_tokens,
         "system": ask.system,
-        "messages": [{"role": "user", "content": ask.content}],
+        "messages": messages(ask),
         "output_config": {"effort": feature.effort, "format": {"type": "json_schema", "schema": ask.schema}},
     });
     if fallbacks(&feature.model) {
         body["fallbacks"] = json!("default");
     }
     body
+}
+
+/// The Messages API's turns: the conversation before, then the question.
+fn messages(ask: &Ask) -> Value {
+    let mut out: Vec<Value> = Vec::new();
+    for t in &ask.history {
+        out.push(json!({"role": "user", "content": [text_block(t.question.clone())]}));
+        out.push(json!({"role": "assistant", "content": [text_block(t.answer.clone())]}));
+    }
+    out.push(json!({"role": "user", "content": ask.content}));
+    Value::Array(out)
 }
 
 /// Whether the model can hand a declined request to another (Haiku can't).
@@ -217,10 +240,16 @@ pub fn openai_body(feature: &AiFeature, ask: &Ask) -> Value {
         .collect();
     // Its efforts stop at xhigh.
     let effort = if feature.effort == "max" { "xhigh" } else { feature.effort.as_str() };
+    let mut input: Vec<Value> = Vec::new();
+    for t in &ask.history {
+        input.push(json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": t.question}]}));
+        input.push(json!({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": t.answer}]}));
+    }
+    input.push(json!({"type": "message", "role": "user", "content": content}));
     json!({
         "model": feature.model,
         "instructions": ask.system,
-        "input": [{"type": "message", "role": "user", "content": content}],
+        "input": input,
         "reasoning": {"effort": effort},
         "text": {"format": {"type": "json_schema", "name": "answer", "strict": true, "schema": ask.schema}},
         "stream": true,
@@ -247,6 +276,88 @@ fn ask_openai(feature: &AiFeature, ask: &Ask) -> Result<Value, Error> {
         return Err(Error::Api(message.unwrap_or_else(|| status.to_string())));
     }
     openai_answer(&text)
+}
+
+/// [`ask`], its answer told as it comes: `so_far` with the JSON written
+/// yet, each time more comes (read a field of it with [`partial_string`]),
+/// stopped once `cancel` is set (checked as each piece comes). The
+/// Responses API streams; the Messages API's (no model now) is told once,
+/// whole.
+pub fn ask_streaming(settings: &AiSettings, feature: &AiFeature, ask: &Ask, cancel: &std::sync::atomic::AtomicBool, mut so_far: impl FnMut(&str)) -> Result<Value, Error> {
+    use std::io::BufRead;
+    use std::sync::atomic::Ordering;
+    let feature = &AiFeature { model: feature.model_id().into(), ..feature.clone() };
+    if !is_openai(&feature.model) {
+        let v = self::ask(settings, feature, ask)?;
+        so_far(&v.to_string());
+        return Ok(v);
+    }
+    let base = match std::env::var("OLO_AI_BASE_URL") {
+        Ok(base) => base.trim_end_matches('/').to_owned(),
+        Err(_) => {
+            let port = std::env::var("OLO_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(POOL_PORT);
+            format!("http://127.0.0.1:{port}/codex")
+        }
+    };
+    let url = format!("{base}/v1/responses");
+    let client = http(&base)?;
+    let body = openai_body(feature, ask);
+    let reply = send(&base, || client.post(&url).json(&body))?;
+    let status = reply.status();
+    if !status.is_success() {
+        let text = reply.text().unwrap_or_default();
+        let message = serde_json::from_str::<Value>(&text).ok().and_then(|v| v["error"]["message"].as_str().or(v["detail"].as_str()).map(str::to_owned));
+        return Err(Error::Api(message.unwrap_or_else(|| status.to_string())));
+    }
+    // Each event as it comes; the whole kept for the answer at the end.
+    let (mut whole, mut deltas) = (String::new(), String::new());
+    for line in std::io::BufReader::new(reply).lines() {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(Error::Cancelled);
+        }
+        let line = line.map_err(|e| Error::Unreachable(base.clone(), e.to_string()))?;
+        if let Some(data) = line.strip_prefix("data:")
+            && let Ok(event) = serde_json::from_str::<Value>(data.trim())
+            && event["type"] == "response.output_text.delta"
+        {
+            deltas += event["delta"].as_str().unwrap_or("");
+            so_far(&deltas);
+        }
+        whole.push_str(&line);
+        whole.push('\n');
+    }
+    openai_answer(&whole)
+}
+
+/// A string field of JSON still being written, as far as it's come
+/// (`{"answer": "To see wh` gives "To see wh"); None before it starts.
+/// Its escapes undone; a half-written one left off.
+pub fn partial_string(json: &str, key: &str) -> Option<String> {
+    let at = json.find(&format!("\"{key}\""))? + key.len() + 2;
+    let rest = json[at..].trim_start().strip_prefix(':')?.trim_start().strip_prefix('"')?;
+    let mut out = String::new();
+    let mut chars = rest.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('r') => {}
+                Some('u') => {
+                    let hex: String = chars.by_ref().take(4).collect();
+                    match u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
+                        Some(ch) if hex.len() == 4 => out.push(ch),
+                        _ => return Some(out),
+                    }
+                }
+                Some(other) => out.push(other),
+                None => return Some(out),
+            },
+            c => out.push(c),
+        }
+    }
+    Some(out)
 }
 
 /// The JSON in a Responses API reply: a stream of events (the text's
@@ -308,7 +419,7 @@ mod tests {
     #[test]
     fn asks_with_effort_schema_and_fallbacks() {
         let opus = AiFeature { model: "claude-opus-5-5".into(), effort: "medium".into(), enabled: true };
-        let ask = Ask { system: "s".into(), content: vec![text_block("hi")], schema: json!({"type": "object"}), max_tokens: 100 };
+        let ask = Ask { system: "s".into(), content: vec![text_block("hi")], schema: json!({"type": "object"}), max_tokens: 100, history: Vec::new() };
         let b = body(&opus, &ask);
         assert_eq!(b["model"], "claude-opus-5-5");
         assert_eq!(b["output_config"]["effort"], "medium");
@@ -317,6 +428,31 @@ mod tests {
         assert!(b.get("thinking").is_none());
         let haiku = AiFeature { model: "claude-haiku-5-5".into(), ..opus };
         assert!(body(&haiku, &ask).get("fallbacks").is_none());
+    }
+
+    /// A follow-up carries the conversation before it, in order, for
+    /// both APIs.
+    #[test]
+    fn a_follow_up_carries_the_conversation() {
+        let astra = AiFeature { model: "gpt-6-astra".into(), effort: "low".into(), enabled: true };
+        let history = vec![Turn { question: "how do i list ports".into(), answer: "{\"answer\":\"ss -tulpn\"}".into() }];
+        let ask = Ask { system: "s".into(), content: vec![text_block("and only tcp?")], schema: json!({"type": "object"}), max_tokens: 100, history };
+        let b = openai_body(&astra, &ask);
+        let roles: Vec<&str> = b["input"].as_array().unwrap().iter().map(|m| m["role"].as_str().unwrap()).collect();
+        assert_eq!(roles, ["user", "assistant", "user"]);
+        assert_eq!(b["input"][1]["content"][0]["type"], "output_text");
+        assert_eq!(b["input"][2]["content"][0]["text"], "and only tcp?");
+        let m = body(&AiFeature { model: "claude-opus-5-5".into(), ..astra }, &ask);
+        assert_eq!(m["messages"].as_array().unwrap().len(), 3);
+    }
+
+    /// A field of JSON still being written reads as far as it's come.
+    #[test]
+    fn reads_json_still_being_written() {
+        assert_eq!(partial_string(r#"{"answer": "To see wh"#, "answer").as_deref(), Some("To see wh"));
+        assert_eq!(partial_string(r#"{"answer":"a\nb \"q\" é","snippets":[]}"#, "answer").as_deref(), Some("a\nb \"q\" é"));
+        assert_eq!(partial_string(r#"{"answer":"half \"#, "answer").as_deref(), Some("half "));
+        assert_eq!(partial_string(r#"{"answ"#, "answer"), None);
     }
 
     #[test]
@@ -332,7 +468,7 @@ mod tests {
     #[test]
     fn asks_openai_in_its_shape() {
         let f = AiFeature { model: "gpt-6-astra".into(), effort: "max".into(), enabled: true };
-        let ask = Ask { system: "s".into(), content: vec![png_block(b"x"), text_block("hi")], schema: json!({"type": "object"}), max_tokens: 100 };
+        let ask = Ask { system: "s".into(), content: vec![png_block(b"x"), text_block("hi")], schema: json!({"type": "object"}), max_tokens: 100, history: Vec::new() };
         let b = openai_body(&f, &ask);
         assert_eq!(b["instructions"], "s");
         assert_eq!(b["reasoning"]["effort"], "xhigh");

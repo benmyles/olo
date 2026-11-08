@@ -1,6 +1,6 @@
 //! AI: Olo's AI features, each on or off, with its model (OpenAI's,
 //! through the Token Pool's Codex accounts) and effort: Smart Tiling,
-//! and the emoji picker's suggestions.
+//! the command palette's /ask, and the emoji picker's suggestions.
 
 use olo_protocol::{AI_EFFORTS, AI_MODELS, AiFeature, Settings, shortcuts};
 use olo_ui::gpui::SharedString;
@@ -24,6 +24,10 @@ pub fn ui(ui: &mut Ui) {
         ui.bbox("Smart Tiling", |ui| {
             feature(ui, "smart-tiling", &s.ai.smart_tiling, "Arrange windows with a model", |s| &mut s.ai.smart_tiling);
             ui.note(how);
+        });
+        ui.bbox("Ask", |ui| {
+            feature(ui, "ask", &s.ai.ask, "Answer questions in the command palette", |s| &mut s.ai.ask);
+            ui.note("In the command palette, type /ask and a question: the answer shows there with code to copy (its number, then Return). Space asks a follow-up.");
         });
     });
     let right = ui.collect(|ui| {

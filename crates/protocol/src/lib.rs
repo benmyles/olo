@@ -1498,6 +1498,8 @@ pub struct AiSettings {
     pub smart_tiling: AiFeature,
     /// The emoji picker's ⌘↩: five emoji for a description.
     pub emoji: AiFeature,
+    /// The command palette's /ask: an answer, and code to copy.
+    pub ask: AiFeature,
     /// Agent Screens: how much of each screen's history (its actions and
     /// the frames it drew) is kept, in megabytes, and for how many days
     /// (0: for ever).
@@ -1512,6 +1514,9 @@ impl Default for AiSettings {
             smart_tiling: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() },
             // Asked while the person waits: quick.
             emoji: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "low".into() },
+            // Asked while the person waits too (Ben, 2026-11-07: "defaulting
+            // to astra on low").
+            ask: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "low".into() },
             screen_history_mb: 512,
             screen_history_days: 30,
         }

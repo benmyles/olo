@@ -7846,6 +7846,7 @@ version = "0.1.0"
 dependencies = [
  "ignore",
  "libc",
+ "olo-ai",
  "olo-complete",
  "olo-crash",
  "olo-keychain",

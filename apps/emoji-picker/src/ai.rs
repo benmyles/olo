@@ -67,7 +67,7 @@ pub fn suggest(description: &str) -> Result<Vec<Suggestion>, String> {
     if !feature.enabled {
         return Err("Emoji suggestions are off in Preferences ▸ AI.".into());
     }
-    let ask = olo_ai::Ask { system: SYSTEM.into(), content: vec![olo_ai::text_block(description)], schema: schema(), max_tokens: 4000 };
+    let ask = olo_ai::Ask { system: SYSTEM.into(), content: vec![olo_ai::text_block(description)], schema: schema(), max_tokens: 4000, history: Vec::new() };
     let answer = olo_ai::ask(&settings.ai, feature, &ask).map_err(|e| e.to_string())?;
     Ok(read(&answer))
 }
