@@ -88,6 +88,78 @@ pub enum Message {
     /// The person went back or forward to this URL within the document
     /// (an entry the page pushed): its `popstate`.
     Traverse(String),
+    /// The person chose this option (by index) of a select from its menu.
+    ChooseOption(olo_web::dom::NodeId, usize),
+}
+/// A drop-down the person pressed, for the window to open its menu over:
+/// where it is (its border box, CSS px on the page, or in the viewport when
+/// `fixed`), its options (label, disabled) and the chosen one.
+#[derive(Clone, Debug)]
+pub struct SelectMenu {
+    pub node: olo_web::dom::NodeId,
+    pub rect: layout::Rect,
+    pub fixed: bool,
+    pub options: Vec<(String, bool)>,
+    pub current: usize,
+}
+/// A select's menu: its options in order (an `<optgroup>`'s, disabled with
+/// it), each by its `label` or its text with spaces collapsed.
+fn select_menu(page: &page::Page, node: olo_web::dom::NodeId) -> Option<SelectMenu> {
+    let doc = &page.document;
+    let layout = page.scene.layout();
+    let tree = layout.cache().tree();
+    let id = tree.boxes_of(node).next()?;
+    let rect = layout.bounds(id)?;
+    let fixed = layout.fixed_boxes().get(id.index()).copied().unwrap_or(false);
+    let mut options = Vec::new();
+    let mut current = None;
+    let mut stack: Vec<(olo_web::dom::NodeId, bool)> = doc.children(node).ok()?.rev_vec().into_iter().map(|c| (c, false)).collect();
+    while let Some((n, group_disabled)) = stack.pop() {
+        match doc.name(n).ok().flatten() {
+            Some("option") => {
+                let label = match doc.attribute(n, "label").ok().flatten() {
+                    Some(l) if !l.trim().is_empty() => l.to_owned(),
+                    _ => {
+                        let mut text = String::new();
+                        let mut inner: Vec<olo_web::dom::NodeId> = doc.children(n).ok()?.rev_vec();
+                        while let Some(t) = inner.pop() {
+                            if let Some(v) = doc.value(t).ok().flatten() {
+                                text.push_str(v);
+                            }
+                            inner.extend(doc.children(t).ok()?.rev_vec());
+                        }
+                        text.split_whitespace().collect::<Vec<_>>().join(" ")
+                    }
+                };
+                if current.is_none() && doc.attribute(n, "selected").ok().flatten().is_some() {
+                    current = Some(options.len());
+                }
+                options.push((label, group_disabled || doc.attribute(n, "disabled").ok().flatten().is_some()));
+            }
+            Some("optgroup") => {
+                let disabled = group_disabled || doc.attribute(n, "disabled").ok().flatten().is_some();
+                for c in doc.children(n).ok()?.rev_vec() {
+                    stack.push((c, disabled));
+                }
+            }
+            _ => {}
+        }
+    }
+    if options.is_empty() {
+        return None;
+    }
+    Some(SelectMenu { node, rect, fixed, options, current: current.unwrap_or(0) })
+}
+/// Children in reverse order, for a stack that pops them in order.
+trait RevVec {
+    fn rev_vec(self) -> Vec<olo_web::dom::NodeId>;
+}
+impl<I: Iterator<Item = olo_web::dom::NodeId>> RevVec for I {
+    fn rev_vec(self) -> Vec<olo_web::dom::NodeId> {
+        let mut v: Vec<_> = self.collect();
+        v.reverse();
+        v
+    }
 }
 /// A scroll container on the page, for the window to send the wheel over
 /// it there (see `Message::ScrollBox`): its padding box (CSS px, document
@@ -312,6 +384,8 @@ pub enum Reply {
     SharedWanted(u64, Vec<(olo_web::dom::NodeId, u32, u32, [u8; 16])>),
     /// Shared textures the page let go of, for the window to free.
     DropShared(Vec<u64>),
+    /// The person pressed a drop-down: the window opens its menu.
+    SelectMenu(u64, SelectMenu),
     /// The page's scripts (or a form it submitted) sent it to `url`.
     Navigate {
         id: u64,
@@ -799,6 +873,13 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                         proxy.send(Reply::History(r.id, change));
                                     }
                                 }
+                                // A drop-down pressed: its menu, for the window to open.
+                                if let Some(select) = live.realm.take_select_menu()
+                                    && let Some(r) = &last
+                                    && let Some(menu) = select_menu(&c.page, select)
+                                {
+                                    proxy.send(Reply::SelectMenu(r.id, menu));
+                                }
                                 // What the person did shows at once, not at the next
                                 // frame; but a scroll moves the page in the window
                                 // already, and what the page's scripts do on it shows
@@ -820,6 +901,14 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                         }
                         Message::Recycle(images) => {
                             drop(images);
+                            continue;
+                        }
+                        Message::ChooseOption(select, index) => {
+                            if let Some(live) = cached.as_mut().and_then(|c| c.live.as_mut()) {
+                                live.realm.choose_option(select, index);
+                                live.next_due_ms = Some(0.);
+                                live.next_frame_ms = 0.;
+                            }
                             continue;
                         }
                         Message::Traverse(url) => {
@@ -909,7 +998,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             Message::Recycle(images) => drop(images),
                             Message::SharedTextures(list) => kept.push_back(Message::SharedTextures(list)),
                             Message::RecycleTargets(targets) => drop(targets),
-                            m @ (Message::ScrollBox { .. } | Message::Traverse(_)) => kept.push_back(m),
+                            m @ (Message::ScrollBox { .. } | Message::Traverse(_) | Message::ChooseOption(..)) => kept.push_back(m),
                         }
                     }
                     pending = kept;
@@ -2486,6 +2575,57 @@ fn control_labels(page: &page::Page, scene: &paint::Scene, band: layout::Rect, v
         text.split_whitespace().collect::<Vec<_>>().join(" ")
     };
     let attr = |n: olo_web::dom::NodeId, a: &str| doc.attribute(n, a).ok().flatten().map(str::to_owned).filter(|s| !s.trim().is_empty());
+    // A `<label>` holding a control names it: its text, the controls in it
+    // left out (a select's options are not its name).
+    let wrapping_label = |n: olo_web::dom::NodeId| -> Option<String> {
+        let mut at = doc.parent(n).ok().flatten();
+        let label = loop {
+            let a = at?;
+            if doc.name(a).ok().flatten() == Some("label") {
+                break a;
+            }
+            at = doc.parent(a).ok().flatten();
+        };
+        let mut text = String::new();
+        let mut stack = vec![label];
+        while let Some(m) = stack.pop() {
+            if text.len() > 200 {
+                break;
+            }
+            if matches!(doc.name(m).ok().flatten(), Some("select" | "input" | "textarea" | "button")) {
+                continue;
+            }
+            if let Ok(Some(v)) = doc.value(m)
+                && doc.node_type(m).ok() == Some(olo_web::dom::NodeType::Text)
+            {
+                text.push_str(v);
+            }
+            if let Ok(children) = doc.children(m) {
+                let children: Vec<_> = children.collect();
+                stack.extend(children.into_iter().rev());
+            }
+        }
+        Some(text.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|t| !t.is_empty())
+    };
+    // A select's value as a person reads it: its chosen option's label.
+    let chosen_option = |n: olo_web::dom::NodeId| -> Option<String> {
+        let mut first = None;
+        let mut stack = vec![n];
+        while let Some(m) = stack.pop() {
+            if doc.name(m).ok().flatten() == Some("option") {
+                if doc.attribute(m, "selected").ok().flatten().is_some() {
+                    return Some(attr(m, "label").unwrap_or_else(|| text_of(m)));
+                }
+                first.get_or_insert(m);
+                continue;
+            }
+            if let Ok(children) = doc.children(m) {
+                let children: Vec<_> = children.collect();
+                stack.extend(children.into_iter().rev());
+            }
+        }
+        first.map(|m| attr(m, "label").unwrap_or_else(|| text_of(m)))
+    };
     // A `<label for=id>` names its control.
     let label_for = |n: olo_web::dom::NodeId| -> Option<String> {
         let id = attr(n, "id")?;
@@ -2544,13 +2684,15 @@ fn control_labels(page: &page::Page, scene: &paint::Scene, band: layout::Rect, v
         }
         let label = attr(b.node, "aria-label")
             .or_else(|| label_for(b.node))
+            .or_else(|| wrapping_label(b.node))
             .or_else(|| (role == "Button").then(|| attr(b.node, "value").or_else(|| Some(text_of(b.node)).filter(|t| !t.is_empty()))).flatten())
             .or_else(|| attr(b.node, "placeholder"))
             .or_else(|| attr(b.node, "title"))
             .or_else(|| attr(b.node, "name"))
             .unwrap_or_default();
         let value = match role {
-            "TextInput" | "ComboBox" => doc.control_value(b.node).ok().map(|v| olo_ui::gpui::SharedString::from(v.into_owned())),
+            "TextInput" => doc.control_value(b.node).ok().map(|v| olo_ui::gpui::SharedString::from(v.into_owned())),
+            "ComboBox" => chosen_option(b.node).map(olo_ui::gpui::SharedString::from),
             _ => None,
         };
         let checked = matches!(role, "CheckBox" | "RadioButton").then(|| doc.control_checked(b.node).unwrap_or(false));

@@ -6687,3 +6687,19 @@ DuckDuckGo's HTML search (a POST form, no scripts) rendered unstyled:
   takes it (not half, as `box-shadow`'s): measured fall-offs within 1–2
   levels of Chrome's at 1x, 1.5x and 2x. Colour functions after it colour
   the shadow too (`drop-shadow(…) grayscale(1)` is a grey shadow).
+
+## 2026-11-08, afternoon: clicks at 1.5x and 2x, select menus, cheaper frames
+
+- **Clicks reached the wrong place at 1.5x and 2x.** The window gave the
+  page's scripts the pointer in CSS pixels divided by the scale again (a
+  checkbox at 2x didn't tick; a click landed at half its place). The
+  window's points are CSS pixels; only the scroll is in device pixels.
+- **Selects open their menu** (journal image): pressing one opens the
+  kit's menu field popup over it, its chosen option lying over the select,
+  disabled options greyed; the option chosen is the select's, with
+  `input` and `change`. Agents see a `ComboBox` named by its `<label>`
+  (one holding it, too) and valued by its chosen option.
+- **Cheaper frames.** Natives are named by index, not a string made per
+  call (59 → 50 ns a call); tile signatures hash with foldhash, not
+  SipHash; `scrollHeight` is one pass over the boxes, not an ancestor
+  walk per box. Apple.com's scroll: tiles −13%, live renders −3%.

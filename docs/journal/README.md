@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: select menus
+
+*09:44* — Pressing a select opens the kit's menu field popup over it, its chosen option lying over the select and disabled options greyed; the choice is the select's, with input and change events, as in Chrome.
+
+![Browser: select menus](2026-11-08/094426-browser-select-menus.png)
+
 ### Browser: filter: drop-shadow()
 
 *09:11* — drop-shadow() was left out of filter. It is drawn as Chrome draws it: the content's alpha in the shadow's colour, moved and blurred (its blur a standard deviation, as Chrome takes it), with colour functions after it colouring the shadow too. Olo above, Chrome below, at 2x.

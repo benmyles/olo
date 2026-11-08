@@ -1428,6 +1428,21 @@
     ev.isTrusted = true;
     dispatch(el, ev);
   };
+  // The person chose option `index` of a select from its menu: it is the
+  // select's now, with `input` and `change` when that changed it.
+  global.__olo_choose = (sel, index) => {
+    const options = N.query(sel, 'option', true);
+    const chosen = options[index];
+    if (!chosen) return;
+    const before = sel.value;
+    for (const o of options) { if (o === chosen) N.setAttr(o, 'selected', ''); else N.removeAttr(o, 'selected'); }
+    if (sel.value !== before || N.attr(chosen, 'selected') != null) {
+      if (sel.value !== before) {
+        const input = new Event('input', { bubbles: true, composed: true }); input.isTrusted = true; dispatch(sel, input);
+        const change = new Event('change', { bubbles: true }); change.isTrusted = true; dispatch(sel, change);
+      }
+    }
+  };
   global.__olo_input = (json, target) => {
     const i = JSON.parse(json);
     scrollXY[0] = 0;
@@ -1458,7 +1473,12 @@
         fire(PointerEvent, 'pointerdown', target, { button: 0, buttons: 1 });
         const ev = fire(MouseEvent, 'mousedown', target, { button: 0, buttons: 1 });
         pressTarget = target;
-        if (!ev.defaultPrevented) { const f = target.closest ? target.closest(FOCUSABLE) : null; focusElement(f); }
+        if (!ev.defaultPrevented) {
+          const f = target.closest ? target.closest(FOCUSABLE) : null; focusElement(f);
+          // A drop-down pressed opens its menu (the window's), as a press does.
+          const sel = target.closest ? target.closest('select') : null;
+          if (sel && N.attr(sel, 'disabled') == null && N.attr(sel, 'multiple') == null && !(Number(N.attr(sel, 'size')) > 1)) N.openSelect(sel);
+        }
         break;
       }
       case 'up': {

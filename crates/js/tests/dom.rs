@@ -536,3 +536,36 @@ console.log(again === h.shadowRoot, again.childNodes.length);
     assert_eq!(realm.report().errors, Vec::<String>::new());
     assert_eq!(realm.report().console, ["[log] true inside null light", "[log] true 0"]);
 }
+#[test]
+fn pressing_a_select_asks_for_its_menu_and_a_choice_is_the_persons() {
+    use olo_js::{Input, InputKind};
+    let page = r#"<select id=s><option value=a>A<option value=b selected>B<option value=c>C</select><select id=d disabled><option>X</select><script>
+const s = document.getElementById('s');
+s.addEventListener('input', () => console.log('input', s.value));
+s.addEventListener('change', () => console.log('change', s.value, s.selectedIndex));
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let (s, d) = (find(&parsed.document, "s"), find(&parsed.document, "d"));
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., buttons: 0, modifiers: 0 };
+    // A disabled select opens nothing; an enabled one asks for its menu.
+    realm.input(&at(InputKind::Down), Some(d));
+    assert_eq!(realm.take_select_menu(), None);
+    realm.input(&at(InputKind::Down), Some(s));
+    realm.input(&at(InputKind::Up), Some(s));
+    assert_eq!(realm.take_select_menu(), Some(s));
+    // The same option again changes nothing; another fires input and change.
+    realm.choose_option(s, 1);
+    realm.choose_option(s, 2);
+    let report = realm.report();
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] input c", "[log] change c 2"]);
+}

@@ -351,11 +351,32 @@ impl Browser {
         }
     }
     /// Input for the page's scripts: the pointer's document position, keys.
+    /// A select's menu, opened over it with its chosen option lying over
+    /// it (the kit's menu field popup); the option chosen goes to the page.
+    fn open_select(&mut self, menu: worker::SelectMenu, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(key) = &self.key else { return };
+        let bounds = self.viewport.get();
+        // The window's points are CSS pixels; the scroll is in device pixels.
+        let scroll = if menu.fixed { 0. } else { f64::from(self.scroll) / key.scale };
+        let field = Bounds::new(point(bounds.left() + px(menu.rect.x as f32), bounds.top() + px((menu.rect.y - scroll) as f32)), gpui::size(px(menu.rect.width as f32), px(menu.rect.height as f32)));
+        let mut m = olo_ui::menu::Menu::new("Options");
+        for (i, (label, disabled)) in menu.options.iter().enumerate() {
+            m = m.item(if label.is_empty() { " ".to_owned() } else { label.clone() }, i.to_string()).enabled(!disabled);
+        }
+        let tx = self.tx.clone();
+        let node = menu.node;
+        olo_ui::menu::popup_over(window, cx, m, field, menu.current, move |command, _, _| {
+            if let Ok(index) = command.parse::<usize>() {
+                let _ = tx.send(worker::Message::ChooseOption(node, index));
+            }
+        });
+    }
     fn send_input(&mut self, kind: worker::InputKind, at: Option<gpui::Point<gpui::Pixels>>, modifiers: gpui::Modifiers) {
         let Some(key) = &self.key else { return };
         let bounds = self.viewport.get();
         let scale = key.scale;
-        let (x, y) = at.map_or((0., 0.), |at| (f64::from(f32::from(at.x - bounds.left())) / scale, f64::from(f32::from(at.y - bounds.top())) / scale + f64::from(self.scroll) / scale));
+        // The window's points are CSS pixels; the scroll is in device pixels.
+        let (x, y) = at.map_or((0., 0.), |at| (f64::from(f32::from(at.x - bounds.left())), f64::from(f32::from(at.y - bounds.top())) + f64::from(self.scroll) / scale));
         let _ = self.tx.send(worker::Message::Input(worker::Input {
             kind,
             x,
@@ -1187,6 +1208,13 @@ fn main() {
                                 v.navigate_with(url, post, w, cx)
                             })
                         });
+                    }
+                } else if let worker::Reply::SelectMenu(_, menu) = reply {
+                    // A drop-down pressed: its menu over it, as a menu field's.
+                    if let Some(v) = messages.borrow().as_ref()
+                        && let Some(handle) = handle
+                    {
+                        let _ = handle.update(cx, |_, w, cx| v.update(cx, |v, cx| v.open_select(menu, w, cx)));
                     }
                 } else if let Some(v) = messages.borrow().as_ref() {
                     v.update(cx, |v, cx| v.reply(reply, cx));

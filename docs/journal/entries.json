@@ -4048,5 +4048,11 @@
   "title": "Browser: filter: drop-shadow()",
   "caption": "drop-shadow() was left out of filter. It is drawn as Chrome draws it: the content's alpha in the shadow's colour, moved and blurred (its blur a standard deviation, as Chrome takes it), with colour functions after it colouring the shadow too. Olo above, Chrome below, at 2x.",
   "image": "2026-11-08/091127-browser-filter-drop-shadow.png"
+ },
+ {
+  "time": "2026-11-08T09:44:26",
+  "title": "Browser: select menus",
+  "caption": "Pressing a select opens the kit's menu field popup over it, its chosen option lying over the select and disabled options greyed; the choice is the select's, with input and change events, as in Chrome.",
+  "image": "2026-11-08/094426-browser-select-menus.png"
  }
 ]

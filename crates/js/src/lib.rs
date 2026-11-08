@@ -272,6 +272,8 @@ struct State {
     navigation: Option<(String, bool)>,
     /// The body the navigation posts (a form's): its media type and bytes.
     navigation_post: Option<(String, Vec<u8>)>,
+    /// A select the person pressed, whose menu the window is to open.
+    select_menu: Option<NodeId>,
     /// The session history the page changed since last taken (pushState,
     /// replaceState, a traversal within the document).
     history: Vec<HistoryChange>,
@@ -442,6 +444,7 @@ impl Realm {
             modules: modules::Modules::with_map(import_map),
             navigation: None,
             navigation_post: None,
+            select_menu: None,
             history: Vec::new(),
             focused: None,
             media: HashMap::new(),
@@ -762,6 +765,34 @@ impl Realm {
     /// media type and bytes.
     pub fn take_navigation_post(&self) -> Option<(String, Vec<u8>)> {
         self.state.borrow_mut().navigation_post.take()
+    }
+    /// A select the person pressed (its menu to open), if any since asked.
+    pub fn take_select_menu(&self) -> Option<NodeId> {
+        self.state.borrow_mut().select_menu.take()
+    }
+    /// The person chose option `index` of a select from its menu: chosen,
+    /// with its `input` and `change` events, as a person's choice is.
+    pub fn choose_option(&mut self, select: NodeId, index: usize) {
+        let guard = self.guard.clone();
+        if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            return;
+        }
+        let _busy = Busy::new(&guard);
+        let state = self.state.clone();
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let global = context.global(tc);
+        let index = v8::Number::new(tc, index as f64);
+        if let Some(element) = wrap(tc, &state, select)
+            && let Some(name) = v8::String::new(tc, "__olo_choose")
+            && let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
+            && f.call(tc, global.into(), &[element.into(), index.into()]).is_none()
+        {
+            let error = exception_text(tc, "choose");
+            state.borrow_mut().report.errors.push(error);
+        }
     }
     /// How the page moved its session history since the last call.
     pub fn take_history(&self) -> Vec<HistoryChange> {
@@ -1239,6 +1270,7 @@ impl State {
             modules: Default::default(),
             navigation: None,
             navigation_post: None,
+            select_menu: None,
             history: Vec::new(),
             focused: None,
             media: HashMap::new(),
@@ -1786,6 +1818,7 @@ const NATIVES: &[&str] = &[
     "animationSet",
     "historyChanged",
     "navigatePost",
+    "openSelect",
     "animationRemove",
     "structuredClone",
     "workerStart",
@@ -2185,6 +2218,12 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             let mut s = state.borrow_mut();
             s.navigation = Some((url, replace));
             s.navigation_post = None;
+        }
+        // openSelect(select): the person pressed it; the window opens its menu.
+        "openSelect" => {
+            if let Some(n) = node(scope, 0) {
+                state.borrow_mut().select_menu = Some(n);
+            }
         }
         // navigatePost(url, body, type): a form's POST, the page left for
         // what the server answers.
