@@ -6675,3 +6675,15 @@ DuckDuckGo's HTML search (a POST form, no scripts) rendered unstyled:
   Among a family's best-matching faces the one whose range holds the
   character is chosen (CSS Fonts 4 §5.1); Lobster from Google Fonts now
   draws as in Chrome. `OLO_FONT_DEBUG` lists each web font's load.
+
+## 2026-11-08, noon: `drop-shadow()`
+
+- **`filter: drop-shadow()`** (journal image) was left out. The group's
+  content is painted again where its shadow comes from (the tile moved
+  back by the offset, as far round as the blur reaches, at a fraction of
+  the resolution for a wide blur), its alpha takes the shadow's colour
+  (the box's `color` when it names none), and it is blurred and drawn
+  under the group. Its blur length is the standard deviation, as Chrome
+  takes it (not half, as `box-shadow`'s): measured fall-offs within 1–2
+  levels of Chrome's at 1x, 1.5x and 2x. Colour functions after it colour
+  the shadow too (`drop-shadow(…) grayscale(1)` is a grey shadow).

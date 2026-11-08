@@ -183,7 +183,10 @@ fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_
             let colors = context::Color { numeric };
             Value::Images(images.computed(&colors, &colors.numeric, limits.math, limits.color, cancelled).map_err(Error::property)?)
         }
-        p::Value::Filters(f) => Value::Filters(f.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
+        p::Value::Filters(f) => {
+            let colors = context::Color { numeric };
+            Value::Filters(f.computed(&colors, &colors.numeric, limits.math, limits.color, cancelled).map_err(Error::property)?)
+        }
         p::Value::Shadows(shadows) => {
             let colors = context::Color { numeric };
             Value::Shadows(shadows.computed(&colors, &colors.numeric, limits.math, limits.color, cancelled).map_err(Error::property)?)

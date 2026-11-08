@@ -212,6 +212,21 @@ pub struct Group {
     /// Its `mix-blend-mode`, as it composites onto what is under it (0
     /// normal; see `raster::blend_mode`).
     pub blend: u8,
+    /// Its `filter`'s `drop-shadow()`: the group's alpha in a colour, moved
+    /// and blurred, under it.
+    pub shadow: Option<DropShadow>,
+    /// The colour functions after its `drop-shadow()`, applied to the group
+    /// and its shadow (`filter` holds those before).
+    pub after: Option<[f32; 20]>,
+}
+/// A `drop-shadow()`: its offset and blur (CSS px; the blur a standard
+/// deviation, as Chrome takes it) and its colour.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DropShadow {
+    pub dx: f32,
+    pub dy: f32,
+    pub sigma: f32,
+    pub color: [u8; 4],
 }
 /// The box whose mask images, over its border box, mask a group.
 #[derive(Clone, Copy, Debug)]
@@ -2353,16 +2368,34 @@ impl<'a> BuildJob<'a> {
                         _ => None,
                     };
                     // filter: the box and its content through its colour
-                    // functions and its blur, as one group (drop-shadow() and
-                    // url() not yet).
+                    // functions and its blur, as one group, its drop shadow
+                    // under it (one; url() not yet).
+                    let mut shadow = None;
+                    let mut after = None;
                     let (filter, blur) = match s.value(P::Filter) {
                         Value::Filters(f) => {
                             if f.0.iter().any(|f| matches!(f, crate::css::properties::Filter::Other)) {
-                                self.note("filter drop-shadow()/url() not drawn", id);
+                                self.note("filter url() not drawn", id);
                             }
+                            let current = s.used_color(P::Color)?;
+                            let mut split = f.0.len();
+                            for (i, f) in f.0.iter().enumerate() {
+                                if let crate::css::properties::Filter::DropShadowComputed(d) = f {
+                                    if shadow.is_some() {
+                                        self.note("filter with more than one drop-shadow(): the first drawn", id);
+                                        break;
+                                    }
+                                    let constant = |n: &crate::css::properties::Numeric| n.expression().constant().map_or(0., |q| q.value) as f32;
+                                    let color = d.color.as_ref().map_or(current, |c| c.used(current)).srgb8_clipped();
+                                    shadow = Some(DropShadow { dx: constant(&d.x), dy: constant(&d.y), sigma: constant(&d.blur).clamp(0., 1000.), color });
+                                    split = i;
+                                }
+                            }
+                            // The colour functions after the shadow colour it too.
+                            after = crate::css::properties::color_matrix(&f.0[split.min(f.0.len())..]);
                             let sigma2: f64 =
                                 f.0.iter().map(|f| if let crate::css::properties::Filter::Blur(n) = f { n.expression().constant().map_or(0., |q| q.value.max(0.)).powi(2) } else { 0. }).sum();
-                            (crate::css::properties::color_matrix(&f.0), sigma2.sqrt().min(1000.) as f32)
+                            (crate::css::properties::color_matrix(&f.0[..split]), sigma2.sqrt().min(1000.) as f32)
                         }
                         _ => (None, 0.),
                     };
@@ -2393,14 +2426,16 @@ impl<'a> BuildJob<'a> {
                         .unwrap_or(0) as u8,
                         _ => 0,
                     };
-                    if opacity < 1. || mask.is_some() || filter.is_some() || blur > 0. || blend != 0 {
+                    if opacity < 1. || mask.is_some() || filter.is_some() || blur > 0. || blend != 0 || shadow.is_some() || after.is_some() {
                         if self.groups.len() >= self.limits.commands {
                             return Err(Error::Limit);
                         }
                         let index = self.groups.len() as u32;
                         let parent_reach = if parent_group == NONE { 0. } else { self.groups[parent_group as usize].reach };
-                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask, filter, blur, reach: parent_reach + 3. * blur, blend });
-                        if mask.is_none() && filter.is_none() && blur == 0. && blend == 0 {
+                        // (A shadow reaches as far as it is moved and blurred.)
+                        let shadow_reach = shadow.map_or(0., |d| d.dx.abs().max(d.dy.abs()) + 3. * d.sigma);
+                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask, filter, blur, reach: parent_reach + (3. * blur).max(shadow_reach), blend, shadow, after });
+                        if mask.is_none() && filter.is_none() && blur == 0. && blend == 0 && shadow.is_none() && after.is_none() {
                             self.group_owners.push((id, index));
                         }
                         self.current_group = index;

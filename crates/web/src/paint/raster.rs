@@ -499,7 +499,65 @@ impl Engine {
         if let Some(m) = &g.filter {
             filter_colors(&mut layer, m);
         }
+        if let Some(d) = g.shadow {
+            layer = self.drop_shadow(scene, stratum, group, layer, d, region, scale, cancel)?;
+        }
+        if let Some(m) = &g.after {
+            filter_colors(&mut layer, m);
+        }
         Ok(layer)
+    }
+    /// A `drop-shadow()` under a group's layer: the group's content painted
+    /// again where the shadow comes from (the tile moved back by its offset,
+    /// as far round as its blur reaches; at a fraction of the resolution for
+    /// a wide blur), its alpha in the shadow's colour, blurred and moved.
+    #[allow(clippy::too_many_arguments)]
+    fn drop_shadow(&mut self, scene: &Scene, stratum: usize, group: u32, layer: Pixmap, d: super::scene::DropShadow, region: DeviceRect, scale: f64, cancel: Option<&AtomicBool>) -> Result<Pixmap> {
+        if d.color[3] == 0 {
+            return Ok(layer);
+        }
+        let sigma = f64::from(d.sigma) * scale;
+        let (dx, dy) = (f64::from(d.dx) * scale, f64::from(d.dy) * scale);
+        let mut k = (sigma / 12.).max(1.).floor();
+        loop {
+            let margin = (3. * sigma / k).ceil();
+            let w = (f64::from(region.width) / k).ceil() + 2. * margin;
+            let h = (f64::from(region.height) / k).ceil() + 2. * margin;
+            if w * h <= self.limits().tile_pixels as f64 || k >= 64. {
+                break;
+            }
+            k *= 2.;
+        }
+        let margin = (3. * sigma / k).ceil() as i32;
+        // Where the shadow on this tile comes from, at 1/k.
+        let small = DeviceRect {
+            x: ((f64::from(region.x) - dx) / k).floor() as i32 - margin,
+            y: ((f64::from(region.y) - dy) / k).floor() as i32 - margin,
+            width: (f64::from(region.width) / k).ceil() as u32 + 2 * margin as u32 + 1,
+            height: (f64::from(region.height) / k).ceil() as u32 + 2 * margin as u32 + 1,
+        };
+        let Ok(tile) = self.raster_layer(scene, stratum, small, false, Some(group), scale / k, cancel) else { return Ok(layer) };
+        let mut shadow = tile.pixmap;
+        // Its alpha in the colour (premultiplied).
+        let c = d.color;
+        for px in shadow.data_mut().chunks_exact_mut(4) {
+            let a = u32::from(px[3]) * u32::from(c[3]) / 255;
+            for i in 0..3 {
+                px[i] = (u32::from(c[i]) * a / 255) as u8;
+            }
+            px[3] = a as u8;
+        }
+        blur(&mut shadow, sigma / k);
+        let mut out = Pixmap::new(region.width, region.height).ok_or(Error::Limit)?;
+        let ox = f64::from(small.x) * k + dx - f64::from(region.x);
+        let oy = f64::from(small.y) * k + dy - f64::from(region.y);
+        let paint = tiny_skia::PixmapPaint {
+            quality: if k > 1. || ox.fract() != 0. || oy.fract() != 0. { tiny_skia::FilterQuality::Bilinear } else { tiny_skia::FilterQuality::Nearest },
+            ..Default::default()
+        };
+        out.draw_pixmap(0, 0, shadow.as_ref(), &paint, Transform::from_row(k as f32, 0., 0., k as f32, ox as f32, oy as f32), None);
+        out.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), None);
+        Ok(out)
     }
     /// A group's mask over this tile: its owner's mask images drawn on a
     /// transparent surface, taken as alpha.

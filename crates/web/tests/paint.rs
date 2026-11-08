@@ -859,11 +859,11 @@ fn a_patched_rerender_reports_the_whole_pages_fallbacks() {
     let mut shaper = Shaper::default();
     let mut painter = paint::Engine::default();
     let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
-    // A drop-shadow filter (not drawn yet: a paint fallback) and a flex
+    // A url() filter (not drawn yet: a paint fallback) and a flex
     // baseline (a layout fallback) on the page; then an inline style
     // changes on another box, patched over, its layout kept.
     let mut page = olo_web::page::load(
-        Arc::from("<!doctype html><style>body{margin:0}#a{filter:drop-shadow(2px 2px red);height:10px}</style><div id=a></div><div style=display:flex;align-items:baseline><span>o</span></div><div id=b style='height:5px'>x</div>"),
+        Arc::from("<!doctype html><style>body{margin:0}#a{filter:url(#f);height:10px}</style><div id=a></div><div style=display:flex;align-items:baseline><span>o</span></div><div id=b style='height:5px'>x</div>"),
         &host,
         &scope,
         &mut shaper,
@@ -874,7 +874,7 @@ fn a_patched_rerender_reports_the_whole_pages_fallbacks() {
     )
     .unwrap();
     let before = page.fallbacks.to_string();
-    assert!(before.contains("flex baseline alignment") && before.contains("drop-shadow"), "{before}");
+    assert!(before.contains("flex baseline alignment") && before.contains("url()"), "{before}");
     for colour in ["red", "blue", "green"] {
         let mut doc = page.document.clone();
         let body = doc.children(doc.root()).unwrap().last().unwrap();
@@ -1867,4 +1867,24 @@ fn checkboxes_radios_and_selects_draw_as_chrome_in_their_scheme() {
     // `accent-color`, and a disabled one faded.
     assert_eq!(pixel(&t, 2, 29 + 2), [255, 0, 0, 255]);
     assert_eq!(pixel(&t, 13, 29 + 6), [0xd1, 0xd1, 0xd1, 255]);
+}
+
+#[test]
+fn drop_shadow_draws_the_alpha_moved_under_the_box_and_later_functions_colour_both() {
+    let mut p = paint::Engine::default();
+    let s = scene(
+        "<div class=a></div><div class=b></div>",
+        ".a,.b{width:10px;height:10px;background-color:red}.a{filter:drop-shadow(5px 5px 0 blue)}.b{margin-top:10px;filter:drop-shadow(5px 5px 0 blue) grayscale(1)}",
+        &mut p,
+    );
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 2, 2), [255, 0, 0, 255]);
+    // The shadow where the box isn't: moved 5 px right and down.
+    assert_eq!(pixel(&t, 12, 12), [0, 0, 255, 255]);
+    assert_eq!(pixel(&t, 12, 2), [255; 4]);
+    // grayscale() after the shadow greys it and the box alike.
+    let grey = pixel(&t, 2, 22);
+    assert!(grey[0] == grey[1] && grey[1] == grey[2] && grey[0] < 128, "{grey:?}");
+    let shadow = pixel(&t, 12, 32);
+    assert!(shadow[0] == shadow[1] && shadow[1] == shadow[2] && shadow[0] < 64, "{shadow:?}");
 }

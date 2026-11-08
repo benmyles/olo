@@ -162,8 +162,8 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   borders, inline backgrounds' images and borders (their colour; their
   corners round since JOURNAL 2026-11-08, elliptical radii as circular)
   paints), rounded borders with differing sides,
-  `filter` (colours and blur drawn; open: drop-shadow(), url(); JOURNAL
-  2026-11-08 late morning), `mask-image`, `mix-blend-mode`, SVG `<text>`, `<use>`,
+  `filter` (colours, blur and one `drop-shadow()` drawn, in order;
+  open: a second drop-shadow, url(); JOURNAL 2026-11-08), `mask-image`, `mix-blend-mode`, SVG `<text>`, `<use>`,
   `<mask>` (Stripe's Sign in button).
 - [x] Text: letter-spacing/word-spacing, `text-wrap: balance`,
   `::before`/`::after` generated content (strings, attr()).

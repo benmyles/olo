@@ -614,10 +614,14 @@ pub(super) fn parse_repeats(parts: &[Component<'_>]) -> Result<Value> {
 /// A `filter` or `backdrop-filter` function (Filter Effects 1 §13):
 /// `blur()` (its standard deviation), the colour functions by their
 /// amounts (1 or 100% as they are; `hue-rotate` in degrees), and those
-/// not drawn yet (`drop-shadow()`, `url()`), kept to be said not to be.
+/// not drawn yet (`url()`), kept to be said not to be. `drop-shadow()`
+/// is a shadow (no spread, never inset): its colour as written, then as
+/// computed.
 #[derive(Clone, Debug)]
 pub enum Filter {
     Blur(Numeric),
+    DropShadow(Box<Shadow<color::Value>>),
+    DropShadowComputed(Box<Shadow<color::Computed>>),
     Saturate(f64),
     Brightness(f64),
     Contrast(f64),
@@ -714,7 +718,7 @@ pub fn color_matrix(filters: &[Filter]) -> Option<[f32; 20]> {
                 }
             }
             Filter::Opacity(o) => m[18] = o.clamp(0., 1.),
-            Filter::Blur(_) | Filter::Other => continue,
+            Filter::Blur(_) | Filter::DropShadow(_) | Filter::DropShadowComputed(_) | Filter::Other => continue,
         }
         any = true;
         // total = m after total: m x total (4x5 as 5x5 with a last row of 0 0 0 0 1).
@@ -744,6 +748,8 @@ impl Filters {
         self.0.len() == other.0.len()
             && self.0.iter().zip(other.0.iter()).all(|(a, b)| match (a, b) {
                 (Filter::Blur(x), Filter::Blur(y)) => x.same(y),
+                (Filter::DropShadow(x), Filter::DropShadow(y)) => x.x.same(&y.x) && x.y.same(&y.y) && x.blur.same(&y.blur) && format!("{:?}", x.color) == format!("{:?}", y.color),
+                (Filter::DropShadowComputed(x), Filter::DropShadowComputed(y)) => x.x.same(&y.x) && x.y.same(&y.y) && x.blur.same(&y.blur) && x.color == y.color,
                 (Filter::Saturate(x), Filter::Saturate(y))
                 | (Filter::Brightness(x), Filter::Brightness(y))
                 | (Filter::Contrast(x), Filter::Contrast(y))
@@ -756,12 +762,20 @@ impl Filters {
                 _ => false,
             })
     }
-    pub fn computed(&self, numeric: &impl math::Context, math: math::Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
+    pub fn computed(&self, colors: &impl color::Context, numeric: &impl math::Context, math: math::Limits, limits: color::Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
         let mut out = Vec::with_capacity(self.0.len());
         for f in self.0.iter() {
             check(cancelled)?;
             out.push(match f {
                 Filter::Blur(n) => Filter::Blur(n.computed(numeric, false, math, cancelled)?),
+                Filter::DropShadow(s) => Filter::DropShadowComputed(Box::new(Shadow {
+                    color: s.color.as_ref().map(|c| c.computed(colors, limits, cancelled).map_err(super::parse::color_error)).transpose()?,
+                    x: s.x.computed(numeric, false, math, cancelled)?,
+                    y: s.y.computed(numeric, false, math, cancelled)?,
+                    blur: s.blur.computed(numeric, false, math, cancelled)?,
+                    spread: s.spread.clone(),
+                    inset: false,
+                })),
                 other => other.clone(),
             });
         }
@@ -790,6 +804,11 @@ pub(super) fn parse_filters(parts: &[Component<'_>], limits: Limits, cancelled: 
     let mut out = Vec::new();
     for c in parts {
         check(cancelled)?;
+        // `url(#filter)` unquoted is a URL token: an SVG filter, not drawn.
+        if c.kind() == Kind::Url {
+            out.push(Filter::Other);
+            continue;
+        }
         if c.kind() != Kind::Function {
             return Err(Error::Invalid);
         }
@@ -816,7 +835,33 @@ pub(super) fn parse_filters(parts: &[Component<'_>], limits: Limits, cancelled: 
                 [a] => Filter::HueRotate(Numeric::compile(*a, NumericKind::Angle, Range::All, limits, cancelled)?.expression().constant().ok_or(Error::Invalid)?.value),
                 _ => return Err(Error::Invalid),
             },
-            "drop-shadow" | "url" => Filter::Other,
+            // `drop-shadow( <color>? && <length>{2,3} )`: its colour the
+            // box's `color` when it has none.
+            "drop-shadow" => {
+                let (mut color, mut lengths) = (None, Vec::new());
+                for c in &args {
+                    if matches!(c.kind(), Kind::Dimension | Kind::IntegerDimension | Kind::Number | Kind::Integer) || c.kind() == Kind::Function && c.text().unwrap().eq_ignore_ascii_case("calc") {
+                        lengths.push(Numeric::compile(*c, NumericKind::Length, Range::All, limits, cancelled)?);
+                    } else if color.is_none() {
+                        let values = c.children().between(c.at, c.after());
+                        color = Some(color::Value::parse(values, limits.color(), cancelled).map_err(super::parse::color_error)?);
+                    } else {
+                        return Err(Error::Invalid);
+                    }
+                }
+                if !(2..=3).contains(&lengths.len()) {
+                    return Err(Error::Invalid);
+                }
+                let zero = || Numeric::scalar(0., math::Dimension::Length, Range::All);
+                let mut it = lengths.into_iter();
+                let (x, y) = (it.next().unwrap(), it.next().unwrap());
+                let blur = it.next().unwrap_or_else(zero);
+                if blur.expression().constant().is_some_and(|q| q.value < 0.) {
+                    return Err(Error::Invalid);
+                }
+                Filter::DropShadow(Box::new(Shadow { color, x, y, blur, spread: zero(), inset: false }))
+            }
+            "url" => Filter::Other,
             _ => return Err(Error::Invalid),
         });
         if out.len() > 32 {

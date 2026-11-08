@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: filter: drop-shadow()
+
+*09:11* — drop-shadow() was left out of filter. It is drawn as Chrome draws it: the content's alpha in the shadow's colour, moved and blurred (its blur a standard deviation, as Chrome takes it), with colour functions after it colouring the shadow too. Olo above, Chrome below, at 2x.
+
+![Browser: filter: drop-shadow()](2026-11-08/091127-browser-filter-drop-shadow.png)
+
 ### Browser: form controls drawn as Chrome's, forms post
 
 *08:22* — Checkboxes, radio buttons and selects were empty boxes; they are now drawn as Chrome draws them (accent-color, disabled, dark color-scheme), sharp at every scale and lined up on the baseline as Chrome lines them up (left: Olo above Chrome at 2x). color-scheme is honoured: system colours, light-dark(), the canvas and controls follow it. Forms POST (urlencoded, multipart, text/plain), also on pages without scripts, and JSON answers show as text (right).
