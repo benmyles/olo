@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Notifications: Undo Clear All and Forget
+
+*00:33* — The History window's Edit ▸ Undo brings back what Clear All or Forget took, where it was (closed at its app by now); Redo forgets it again.
+
+![Notifications: Undo Clear All and Forget](2026-11-08/003340-notifications-undo-clear-all-and-forget.png)
+
 ### DiskBackup: Edit ▸ Undo for its settings
 
 *00:27* — Each settings change in DiskBackup's window is a step named for what it changed (Leave Out, Keep, Speed, Patterns typed as one run); Undo puts back only that, leaving what the service or a setup changed since.

@@ -3610,5 +3610,11 @@
   "title": "DiskBackup: Edit \u25b8 Undo for its settings",
   "caption": "Each settings change in DiskBackup's window is a step named for what it changed (Leave Out, Keep, Speed, Patterns typed as one run); Undo puts back only that, leaving what the service or a setup changed since.",
   "image": "2026-11-08/002700-diskbackup-edit-undo-for-its-settings.png"
+ },
+ {
+  "time": "2026-11-08T00:33:40",
+  "title": "Notifications: Undo Clear All and Forget",
+  "caption": "The History window's Edit \u25b8 Undo brings back what Clear All or Forget took, where it was (closed at its app by now); Redo forgets it again.",
+  "image": "2026-11-08/003340-notifications-undo-clear-all-and-forget.png"
  }
 ]

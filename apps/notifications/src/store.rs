@@ -320,6 +320,30 @@ impl History {
         }
     }
 
+    /// Take out those `keep` doesn't keep, each with where it was, for
+    /// Undo to put back (their pictures stay till then: what is left of
+    /// them goes at the next start, nothing naming them).
+    pub fn take_out(&mut self, keep: impl Fn(usize, &Entry) -> bool) -> Vec<(usize, Entry)> {
+        let mut gone = Vec::new();
+        let mut kept = Vec::with_capacity(self.entries.len());
+        for (i, e) in std::mem::take(&mut self.entries).into_iter().enumerate() {
+            if keep(i, &e) { kept.push(e) } else { gone.push((i, e)) }
+        }
+        self.entries = kept;
+        gone
+    }
+
+    /// Put back what `take_out` took (where each was, among what is
+    /// there now), closed at its app by now and off screen.
+    pub fn put_back(&mut self, gone: Vec<(usize, Entry)>) {
+        for (i, mut e) in gone {
+            e.live = false;
+            e.shown = false;
+            let i = i.min(self.entries.len());
+            self.entries.insert(i, e);
+        }
+    }
+
     /// Forget all but those `keep` says to.
     pub fn retain(&mut self, keep: impl Fn(&Entry) -> bool) {
         let (kept, gone): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut self.entries).into_iter().partition(|e| keep(e));
@@ -460,5 +484,21 @@ mod tests {
         assert_eq!(e.to_note(None).kind, Kind::Error);
         e.live = false;
         assert!(e.to_note(None).actions.is_empty());
+    }
+
+    /// Taken out (Clear All, Forget) and put back (Undo): each where it
+    /// was, closed at its app, and what came since kept after.
+    #[test]
+    fn taken_out_then_put_back() {
+        let mut h = History::load(None);
+        for i in 1..=5 {
+            h.put(Entry { live: true, ..entry(i, "") });
+        }
+        let gone = h.take_out(|i, _| i % 2 == 1);
+        assert_eq!(h.entries.iter().map(|e| e.id).collect::<Vec<_>>(), [2, 4]);
+        h.put(entry(6, "new"));
+        h.put_back(gone);
+        assert_eq!(h.entries.iter().map(|e| e.id).collect::<Vec<_>>(), [1, 2, 3, 4, 5, 6]);
+        assert!(h.entries.iter().filter(|e| e.id % 2 == 1).all(|e| !e.live && !e.shown));
     }
 }
