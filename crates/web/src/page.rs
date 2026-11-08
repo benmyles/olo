@@ -826,6 +826,20 @@ impl Measured {
         if let Some(v) = used {
             return Some(px(v));
         }
+        // A transform resolves to its matrix, its percentages against the
+        // border box (CSSOM's resolved value; Chrome reports matrix(...),
+        // and apple.com's scripts read the numbers out of it: they made
+        // matrix(NaN, ...) of Olo's translate(30px, 0px)).
+        if p == P::Transform
+            && let Value::Transforms(t) = style.value(P::Transform)
+        {
+            if t.0.is_empty() {
+                return Some("none".into());
+            }
+            let (w, h) = g.map_or((0., 0.), |(_, r, _)| (r.width, r.height));
+            let m = t.matrix(w, h);
+            return Some(format!("matrix({})", m.iter().map(|v| trim(if v.abs() < 1e-12 { 0. } else { *v })).collect::<Vec<_>>().join(", ")));
+        }
         computed_value(style, p)
     }
 }

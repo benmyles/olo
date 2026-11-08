@@ -1788,8 +1788,153 @@
   global.TransformStream = global.TransformStream || class TransformStream {};
   // Canvas: a 2D context that accepts every call and draws nothing yet
   // (the canvas stays an empty box), so canvas-using scripts run.
-  class DOMMatrix { constructor(init) { Object.assign(this, { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, m11: 1, m12: 0, m21: 0, m22: 1, m41: 0, m42: 0, is2D: true, isIdentity: true }); if (Array.isArray(init) && init.length >= 6) { [this.a, this.b, this.c, this.d, this.e, this.f] = init; this.isIdentity = false; } } multiply() { return new DOMMatrix(); } translate() { return new DOMMatrix(); } scale() { return new DOMMatrix(); } rotate() { return new DOMMatrix(); } inverse() { return new DOMMatrix(); } transformPoint(p) { return p; } toFloat32Array() { return new Float32Array(16); } toString() { return 'matrix(1, 0, 0, 1, 0, 0)'; } static fromMatrix() { return new DOMMatrix(); } }
-  global.DOMMatrix = DOMMatrix; global.DOMMatrixReadOnly = DOMMatrix; global.WebKitCSSMatrix = DOMMatrix; global.DOMPoint = class DOMPoint { constructor(x, y, z, w) { this.x = x || 0; this.y = y || 0; this.z = z || 0; this.w = w === undefined ? 1 : w; } static fromPoint(p) { return new DOMPoint(p.x, p.y, p.z, p.w); } matrixTransform() { return new DOMPoint(this.x, this.y, this.z, this.w); } }; global.DOMPointReadOnly = global.DOMPoint;
+  // DOMMatrix (Geometry Interfaces 1): a 4×4 matrix, column-major (m11
+  // m12 m13 m14 the first column), with a–f for its 2D part; made from a
+  // CSS transform list, 6 or 16 numbers, or another matrix. apple.com reads
+  // computed transforms through it: a stub's NaN scaled its words away.
+  const matrixIdentity = () => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  const matrixMultiply = (A, B) => { const C = new Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let v = 0; for (let k = 0; k < 4; k++) v += A[k * 4 + r] * B[c * 4 + k]; C[c * 4 + r] = v; } return C; };
+  const from2D = (a, b, c, d, e, f) => [a, b, 0, 0, c, d, 0, 0, 0, 0, 1, 0, e, f, 0, 1];
+  const toRadians = (v, unit) => { v = Number(v); switch ((unit || 'deg').toLowerCase()) { case 'rad': return v; case 'grad': return v * Math.PI / 200; case 'turn': return v * 2 * Math.PI; default: return v * Math.PI / 180; } };
+  const rotation3d = (x, y, z, angle) => {
+    const len = Math.hypot(x, y, z); if (!len) return matrixIdentity();
+    x /= len; y /= len; z /= len;
+    const s = Math.sin(angle), c = Math.cos(angle), t = 1 - c;
+    return [t * x * x + c, t * x * y + s * z, t * x * z - s * y, 0, t * x * y - s * z, t * y * y + c, t * y * z + s * x, 0, t * x * z + s * y, t * y * z - s * x, t * z * z + c, 0, 0, 0, 0, 1];
+  };
+  // A CSS transform list as a matrix and whether it stays 2D.
+  const parseTransformList = (text) => {
+    text = String(text).trim();
+    let m = matrixIdentity(), is2D = true;
+    if (text === '' || text === 'none') return { m, is2D };
+    const re = /([a-zA-Z0-9]+)\(([^)]*)\)/g; let match, consumed = '';
+    while ((match = re.exec(text))) {
+      consumed += match[0];
+      const name = match[1].toLowerCase();
+      const args = match[2].split(/\s*,\s*|\s+/).filter(Boolean).map((a) => { const u = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z%]*)$/i.exec(a); if (!u) throw new DOMException('Failed to parse the transform list.', 'SyntaxError'); if (u[2] === '%') throw new DOMException('Failed to parse the transform list.', 'SyntaxError'); return { v: Number(u[1]), u: u[2] }; });
+      const n = (i, d = 0) => (args[i] ? args[i].v : d);
+      const angle = (i) => (args[i] ? toRadians(args[i].v, args[i].u) : 0);
+      let f;
+      switch (name) {
+        case 'matrix': f = from2D(n(0), n(1), n(2), n(3), n(4), n(5)); break;
+        case 'matrix3d': if (args.length !== 16) throw new DOMException('Failed to parse the transform list.', 'SyntaxError'); f = args.map((a) => a.v); is2D = false; break;
+        case 'translate': f = from2D(1, 0, 0, 1, n(0), n(1)); break;
+        case 'translatex': f = from2D(1, 0, 0, 1, n(0), 0); break;
+        case 'translatey': f = from2D(1, 0, 0, 1, 0, n(0)); break;
+        case 'translatez': f = matrixIdentity(); f[14] = n(0); is2D = false; break;
+        case 'translate3d': f = matrixIdentity(); f[12] = n(0); f[13] = n(1); f[14] = n(2); is2D = false; break;
+        case 'scale': f = from2D(n(0, 1), 0, 0, args.length > 1 ? n(1) : n(0, 1), 0, 0); break;
+        case 'scalex': f = from2D(n(0, 1), 0, 0, 1, 0, 0); break;
+        case 'scaley': f = from2D(1, 0, 0, n(0, 1), 0, 0); break;
+        case 'scalez': f = matrixIdentity(); f[10] = n(0, 1); is2D = false; break;
+        case 'scale3d': f = matrixIdentity(); f[0] = n(0, 1); f[5] = n(1, 1); f[10] = n(2, 1); is2D = false; break;
+        case 'rotate': case 'rotatez': { const a = angle(0); f = from2D(Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), 0, 0); if (name === 'rotatez') is2D = false; break; }
+        case 'rotatex': f = rotation3d(1, 0, 0, angle(0)); is2D = false; break;
+        case 'rotatey': f = rotation3d(0, 1, 0, angle(0)); is2D = false; break;
+        case 'rotate3d': f = rotation3d(n(0), n(1), n(2), angle(3)); is2D = false; break;
+        case 'skew': f = from2D(1, Math.tan(angle(1)), Math.tan(angle(0)), 1, 0, 0); break;
+        case 'skewx': f = from2D(1, 0, Math.tan(angle(0)), 1, 0, 0); break;
+        case 'skewy': f = from2D(1, Math.tan(angle(0)), 0, 1, 0, 0); break;
+        case 'perspective': f = matrixIdentity(); if (n(0)) f[11] = -1 / n(0); is2D = false; break;
+        default: throw new DOMException('Failed to parse the transform list.', 'SyntaxError');
+      }
+      m = matrixMultiply(m, f);
+    }
+    if (consumed.replace(/\s+/g, '') !== text.replace(/\s+/g, '')) throw new DOMException('Failed to parse the transform list.', 'SyntaxError');
+    return { m, is2D };
+  };
+  const MATRIX_NAMES = ['m11', 'm12', 'm13', 'm14', 'm21', 'm22', 'm23', 'm24', 'm31', 'm32', 'm33', 'm34', 'm41', 'm42', 'm43', 'm44'];
+  const fmtNumber = (v) => { const r = Number(v); return Object.is(r, -0) ? '0' : String(r); };
+  class DOMMatrixReadOnly {
+    constructor(init) {
+      let m = matrixIdentity(), is2D = true;
+      if (typeof init === 'string') ({ m, is2D } = parseTransformList(init));
+      else if (init && typeof init === 'object' && typeof init.length === 'number') {
+        const a = Array.from(init, Number);
+        if (a.length === 6) m = from2D(...a);
+        else if (a.length === 16) { m = a; is2D = false; }
+        else throw new TypeError('The sequence must contain 6 elements for a 2D matrix or 16 elements for a 3D matrix.');
+      } else if (init instanceof DOMMatrixReadOnly) { m = init._m.slice(); is2D = init._is2D; }
+      else if (init != null) throw new TypeError("Failed to construct 'DOMMatrix': The provided value is not of type '(DOMMatrixInit or sequence or string)'.");
+      Object.defineProperty(this, '_m', { value: m, writable: true }); Object.defineProperty(this, '_is2D', { value: is2D, writable: true });
+    }
+    get is2D() { return this._is2D; }
+    get isIdentity() { const i = matrixIdentity(); return this._m.every((v, k) => v === i[k]); }
+    get a() { return this._m[0]; } get b() { return this._m[1]; } get c() { return this._m[4]; } get d() { return this._m[5]; } get e() { return this._m[12]; } get f() { return this._m[13]; }
+    _make(m, is2D) { const r = new DOMMatrix(); r._m = m; r._is2D = is2D; return r; }
+    multiply(other) { const o = other instanceof DOMMatrixReadOnly ? other : DOMMatrix.fromMatrix(other); return this._make(matrixMultiply(this._m, o._m), this._is2D && o._is2D); }
+    translate(tx = 0, ty = 0, tz = 0) { const t = matrixIdentity(); t[12] = tx; t[13] = ty; t[14] = tz; return this._make(matrixMultiply(this._m, t), this._is2D && !tz); }
+    scale(sx = 1, sy = sx, sz = 1, ox = 0, oy = 0, oz = 0) { let r = this.translate(ox, oy, oz); const t = matrixIdentity(); t[0] = sx; t[5] = sy; t[10] = sz; r = this._make(matrixMultiply(r._m, t), r._is2D && sz === 1); return r.translate(-ox, -oy, -oz); }
+    scale3d(s = 1, ox = 0, oy = 0, oz = 0) { return this.scale(s, s, s, ox, oy, oz); }
+    scaleNonUniform(sx = 1, sy = 1) { return this.scale(sx, sy); }
+    rotate(rx = 0, ry, rz) { if (ry === undefined && rz === undefined) { rz = rx; rx = 0; ry = 0; } ry = ry || 0; rz = rz || 0; let m = this._m; const d = Math.PI / 180; if (rz) m = matrixMultiply(m, rotation3d(0, 0, 1, rz * d)); if (ry) m = matrixMultiply(m, rotation3d(0, 1, 0, ry * d)); if (rx) m = matrixMultiply(m, rotation3d(1, 0, 0, rx * d)); return this._make(m, this._is2D && !rx && !ry); }
+    rotateAxisAngle(x = 0, y = 0, z = 0, angle = 0) { return this._make(matrixMultiply(this._m, rotation3d(x, y, z, angle * Math.PI / 180)), this._is2D && !x && !y); }
+    rotateFromVector(x = 0, y = 0) { return this.rotate(x === 0 && y === 0 ? 0 : Math.atan2(y, x) * 180 / Math.PI); }
+    skewX(a = 0) { return this._make(matrixMultiply(this._m, from2D(1, 0, Math.tan(a * Math.PI / 180), 1, 0, 0)), this._is2D); }
+    skewY(a = 0) { return this._make(matrixMultiply(this._m, from2D(1, Math.tan(a * Math.PI / 180), 0, 1, 0, 0)), this._is2D); }
+    flipX() { return this._make(matrixMultiply(this._m, from2D(-1, 0, 0, 1, 0, 0)), this._is2D); }
+    flipY() { return this._make(matrixMultiply(this._m, from2D(1, 0, 0, -1, 0, 0)), this._is2D); }
+    inverse() {
+      const m = this._m, inv = new Array(16);
+      inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+      inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+      inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+      inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+      inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+      inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+      inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+      inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+      inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+      inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+      inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+      inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+      inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+      inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+      inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+      inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+      const det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+      if (!det) return this._make(new Array(16).fill(NaN), false);
+      return this._make(inv.map((v) => v / det), this._is2D);
+    }
+    transformPoint(p) { p = p || {}; const x = p.x || 0, y = p.y || 0, z = p.z || 0, w = p.w === undefined ? 1 : p.w; const m = this._m; return new DOMPoint(m[0] * x + m[4] * y + m[8] * z + m[12] * w, m[1] * x + m[5] * y + m[9] * z + m[13] * w, m[2] * x + m[6] * y + m[10] * z + m[14] * w, m[3] * x + m[7] * y + m[11] * z + m[15] * w); }
+    toFloat32Array() { return new Float32Array(this._m); }
+    toFloat64Array() { return new Float64Array(this._m); }
+    toString() { return this._is2D ? 'matrix(' + [this.a, this.b, this.c, this.d, this.e, this.f].map(fmtNumber).join(', ') + ')' : 'matrix3d(' + this._m.map(fmtNumber).join(', ') + ')'; }
+    toJSON() { const o = { a: this.a, b: this.b, c: this.c, d: this.d, e: this.e, f: this.f, is2D: this.is2D, isIdentity: this.isIdentity }; MATRIX_NAMES.forEach((n, i) => { o[n] = this._m[i]; }); return o; }
+    static fromMatrix(init) { if (init instanceof DOMMatrixReadOnly) return new this(init); init = init || {}; const two = ['m13', 'm14', 'm23', 'm24', 'm31', 'm32', 'm34', 'm43'].every((k) => !init[k]) && (init.m33 === undefined || init.m33 === 1) && (init.m44 === undefined || init.m44 === 1); const r = new this(); const m = matrixIdentity(); MATRIX_NAMES.forEach((n, i) => { if (init[n] !== undefined) m[i] = Number(init[n]); }); for (const [k, i] of [['a', 0], ['b', 1], ['c', 4], ['d', 5], ['e', 12], ['f', 13]]) if (init[k] !== undefined) m[i] = Number(init[k]); r._m = m; r._is2D = init.is2D !== undefined ? !!init.is2D : two; return r; }
+    static fromFloat32Array(a) { return new this(Array.from(a)); }
+    static fromFloat64Array(a) { return new this(Array.from(a)); }
+  }
+  MATRIX_NAMES.forEach((n, i) => Object.defineProperty(DOMMatrixReadOnly.prototype, n, { get() { return this._m[i]; }, configurable: true, enumerable: true }));
+  class DOMMatrix extends DOMMatrixReadOnly {
+    _set(r) { this._m = r._m; this._is2D = r._is2D; return this; }
+    multiplySelf(o) { return this._set(this.multiply(o)); }
+    preMultiplySelf(o) { const other = o instanceof DOMMatrixReadOnly ? o : DOMMatrix.fromMatrix(o); this._m = matrixMultiply(other._m, this._m); this._is2D = this._is2D && other._is2D; return this; }
+    translateSelf(...a) { return this._set(this.translate(...a)); }
+    scaleSelf(...a) { return this._set(this.scale(...a)); }
+    scale3dSelf(...a) { return this._set(this.scale3d(...a)); }
+    rotateSelf(...a) { return this._set(this.rotate(...a)); }
+    rotateAxisAngleSelf(...a) { return this._set(this.rotateAxisAngle(...a)); }
+    rotateFromVectorSelf(...a) { return this._set(this.rotateFromVector(...a)); }
+    skewXSelf(a) { return this._set(this.skewX(a)); }
+    skewYSelf(a) { return this._set(this.skewY(a)); }
+    invertSelf() { return this._set(this.inverse()); }
+    setMatrixValue(text) { const { m, is2D } = parseTransformList(text); this._m = m; this._is2D = is2D; return this; }
+  }
+  for (const [n, i] of [...MATRIX_NAMES.map((n, i) => [n, i]), ['a', 0], ['b', 1], ['c', 4], ['d', 5], ['e', 12], ['f', 13]]) {
+    const third = ['m13', 'm14', 'm23', 'm24', 'm31', 'm32', 'm33', 'm34', 'm43', 'm44'].includes(n);
+    Object.defineProperty(DOMMatrix.prototype, n, { get() { return this._m[i]; }, set(v) { this._m[i] = Number(v); if (third && !((n === 'm33' || n === 'm44') ? Number(v) === 1 : Number(v) === 0)) this._is2D = false; }, configurable: true, enumerable: true });
+  }
+  class DOMPointReadOnly {
+    constructor(x = 0, y = 0, z = 0, w = 1) { this._x = Number(x); this._y = Number(y); this._z = Number(z); this._w = Number(w); }
+    get x() { return this._x; } get y() { return this._y; } get z() { return this._z; } get w() { return this._w; }
+    static fromPoint(p) { p = p || {}; return new this(p.x, p.y, p.z, p.w); }
+    matrixTransform(m) { const matrix = m instanceof DOMMatrixReadOnly ? m : DOMMatrix.fromMatrix(m); return matrix.transformPoint(this); }
+    toJSON() { return { x: this.x, y: this.y, z: this.z, w: this.w }; }
+  }
+  class DOMPoint extends DOMPointReadOnly {}
+  for (const k of ['x', 'y', 'z', 'w']) Object.defineProperty(DOMPoint.prototype, k, { get() { return this['_' + k]; }, set(v) { this['_' + k] = Number(v); }, configurable: true, enumerable: true });
+  global.DOMMatrix = DOMMatrix; global.DOMMatrixReadOnly = DOMMatrixReadOnly; global.WebKitCSSMatrix = DOMMatrix; global.DOMPoint = DOMPoint; global.DOMPointReadOnly = DOMPointReadOnly;
   // A Path2D records its calls and replays them into a context's path.
   class Path2D {
     constructor(other) { this._ops = []; if (other instanceof Path2D) this._ops = other._ops.slice(); }
