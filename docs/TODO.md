@@ -80,6 +80,13 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Preferences ▸ Deskbar's own icon** (with the image model's key Ben
+  added, 2026-11-07): an upright grey panel with status lights and a
+  green rising graph (`data/icons/manifest.txt`), two Classic candidates
+  against the reference set (the one whose top face shows more), and
+  drawn for all nine other themes against their own references; the
+  panel and the palette's entry use it in place of Activity Monitor's.
+
 - **Slash commands in the command palette: /ws and /ask** (Ben,
   2026-11-07). `/` lists them; `/ws TEXT` searches the web; `/ask
   QUESTION` asks Preferences ▸ AI's new Ask model (Astra 6 on low by
@@ -2047,15 +2054,6 @@ something nobody here has is in "Blocked", with what it waits for.
     above (HDR, VRR, face sign-in, the haptic touchpad's palm filter).
 
 ## Blocked
-
-- **Preferences ▸ Deskbar's own icon**: generated with
-  `tools/genicon.py deskbar "…" --variants 2` against the reference set
-  (docs/ICONS.md), which needs the image model's key (`OPENAI_API_KEY`
-  or `~ben/.env`, absent on 2026-11-07). Subject: "a slim upright panel
-  of light grey metal standing on the desk like a tall narrow plaque, a
-  short row of tiny coloured status lights near its top and a small
-  green rising line graph glowing on its face". Until then the panel
-  shows Activity Monitor's (`activity`).
 
 Each waits for what its entry's "Left" says: Ben at the machine (a
 password, a touch, a camera, a reboot he agrees to), hardware nobody
