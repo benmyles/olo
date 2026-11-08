@@ -67,7 +67,7 @@ Ways in that keep the person's session out of it:
 | olo-images `tests::samples` | `OLO_SAMPLES`: libheif's `examples/example.avif`, `.heic` | pass |
 | olo-images `webm::tests::plays_vp9_with_alpha` | Chromium's `bear-vp9a.webm` | pass: 82 frames, 1.34 ms each, alpha 68 |
 | olo-preview `opus::tests::opus_file` | an Ogg Opus file over 5 s (ffmpeg's libopus; and a Commons file with a VP8 stream first) | pass (after f9536320: the track as the Viewer takes it) |
-| olo-preview `video::tests::av1_in_mp4`, `vp9_plays`, `hevc_plays`, `b_frames`, `seeks_to_the_frame`, `keeps_up`, `seek_cost` | the samples their comments name, made as they say: testsrc2 through SVT-AV1, libvpx (`-auto-alt-ref 1 -lag-in-frames 25`), NVENC (H.264 with and without B-frames, 1080p HEVC as hev1, hvc1 and Matroska), the JCT-VC Main 10 stream remuxed from zero, 4K H.264 | pass: every picture, every seek; keeps_up 235–2,103 pictures a second; seek 267 ms (HACKING: 317). **The originals: on the Mac** (made there; none on this machine) (Blocked) |
+| olo-preview `video::tests::av1_in_mp4`, `vp9_plays`, `hevc_plays`, `b_frames`, `seeks_to_the_frame`, `keeps_up`, `seek_cost` | the samples their comments name, made as they say: testsrc2 through SVT-AV1, libvpx (`-auto-alt-ref 1 -lag-in-frames 25`), NVENC (H.264 with and without B-frames, 1080p HEVC as hev1, hvc1 and Matroska), the JCT-VC Main 10 stream remuxed from zero, 4K H.264 | pass: every picture, every seek; keeps_up 235–2,103 pictures a second; seek 267 ms (HACKING: 317). The originals were made on the Mac and kept nowhere here; clips made as the comments say count (Ben, 2026-11-08) |
 | olo-preview `video::tests::hdr10_in_the_stream` | Chromium's `bear-1280x720-hevc-10bit-hdr10.mp4` | pass |
 | olo-preview `video::tests::plays_across_another_encoders_entry` | `OLO_FALLBACK_MP4`: olo-video's `a_recording_goes_on_with_another_encoder` kept (`OLO_KEEP_TEST_VIDEO=1`) | pass |
 | olo-video `export::tests::make_4k60`, `make_fixture`, `make_4k60_y4m` | `OLO_FIXTURE_DIR`, `OLO_FIXTURE`; `OLO_Y4M` a FIFO ffmpeg's libvpx reads | pass; the 4K60 clips played by the Viewer headless to their end on Intel's GPU, nothing dropped (H.264, HEVC, AV1, VP9) |
@@ -119,7 +119,7 @@ Ways in that keep the person's session out of it:
 | `priority::tests::makes_a_thread_realtime` | as is (asks rtkit) | pass, after a0dad3dc (rtkit's realtime threads read as realtime) |
 | `procs::timing::a_looks_cost` | as is | pass: 8.1 ms a look, known |
 | `auth::tests::live_wrong_password` | as is: `password-auth` here is pam_unix alone (no face, reader or faillock); and against a PAM service of its own (debug build) | pass both: denied; one authentication failure in the journal for the real one |
-| `fingerprint::tests::live_start_and_stop` | against fake-readers on a private bus (`OLO_FPRINT_BUS`, debug build) | pass against the stand-in (after 3948c7e6); **the real reader not tried: one of the person's approvals** (Blocked) |
+| `fingerprint::tests::live_start_and_stop` | the real reader, with the person's OK and a finger enrolled (`FPRINT_USER`, else theirs); or fake-readers on a private bus (`OLO_FPRINT_BUS`, debug build) | pass on both: the ThinkPad's Synaptics reader (press): Ready, no match when stopped, released, claimed again |
 
 ## Not tests
 
@@ -127,8 +127,7 @@ Seventeen documentation examples are fenced `ignore` (gpui-macros 1,
 olo-kit-base 3, olo-ui 3, Smithay 10, two of them in generated
 bindings): illustrations, not meant to compile.
 
-Of the 115 tests: 110 pass as run above, 1 passes only against its
-stand-in (the fingerprint reader), 4 haven't run (the cameras; the
-Mac's palm captures). The Viewer's sample tests ran on clips made as
-each test's comment says; their originals were made on the Mac and were
-never on this machine (Blocked, with the palm captures).
+Of the 115 tests: 111 pass as run above, 4 haven't run (the cameras;
+the Mac's palm captures). The Viewer's sample tests ran on clips made as
+each test's comment says, which count (Ben, 2026-11-08: the originals
+were the Mac's scratch).

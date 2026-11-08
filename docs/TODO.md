@@ -2226,22 +2226,13 @@ people.
   - His cameras: olo-face's `this_machines_units` opens every
     `/dev/video` node to find the infrared one (his rule: his cameras
     aren't opened without him).
-  - His fingerprint reader: `live_start_and_stop` claims it and starts a
-    verification, one of his approvals (his rule: his camera and his
-    approvals are his). Passes against fake-readers. (The real
-    `live_wrong_password` has run: password-auth here is pam_unix alone,
-    no face, reader or faillock; denied after its 1.9 s delay, one
-    authentication failure in the journal for it.)
   - Data on the Mac: the MacBook's palm captures (`on_real_hands`,
     `what_the_runs_dont_show`, `make_default_model`, which makes the
-    shipped model from them), and the Viewer's original sample clips
-    (test.mp4, gop.mp4, av1.mp4, vp9.mp4, hevc.mp4 and the rest): made
-    there (HACKING's figures for them are the M2 Max's; no session on
-    this machine made them, its transcripts searched, and / and /home
-    have none). Here the tests ran and pass on clips of the same names
-    made as HACKING says (ffmpeg's testsrc2 through SVT-AV1, libvpx,
-    NVENC; the JCT-VC stream); the originals, run on the Mac or copied
-    here, are what's left.
+    shipped model from them).
+  (Run since, with Ben's OK: `live_start_and_stop` on his reader, a
+  finger enrolled for it; `live_wrong_password` on the real stack. The
+  Viewer's sample tests count on clips made as HACKING says: the
+  originals were the Mac's scratch, Ben, 2026-11-08.)
 
 - **The ThinkPad's leftovers that are work, not a try** (from its entry
   above; each blocked on the hardware in hand or Ben's say):
