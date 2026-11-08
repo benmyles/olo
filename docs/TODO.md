@@ -22,10 +22,24 @@ are all done, and are in Done, newest first.)
 
 ## Done, waiting for Ben to try or confirm
 
-(Audited again 2026-11-08, all 50 then: each is done, and what's left in
+(Audited again 2026-11-08, all 51: each is done, and what's left in
 each is Ben's alone: his accounts (Google, GitHub, 1Password), his
 hands, face, keys, dock or displays at the machine, his upgrade, or his
-say on how it looks and sounds.)
+say on how it looks and sounds. Their checks re-run the same day on the
+final release build: the whole workspace's tests, 1,546 passed, 0
+failed (two test targets that no longer built or matched, and six of
+smithay's doctests, fixed first); agent-title-check, hdr-check,
+order-check, rescue-check, outside-check (GTK, Slack, Chrome through
+three restarts), layout-check (plain, auto-tiled, unplugged, and each
+with the screens found late), upgrade-check --auto-tiled (15 rounds),
+wm-sweep (510 steps), plymouth-check at 1×, 1.5× and 2×,
+voice-latency (0.0 ms added, no dropouts), the Slack status check, and
+the layout lint with review at 1×, 1.5× and 2× (40 windows, 0 errors, 0
+to look at). upgrade-check found a Terminal tab coming back out of its
+repository's group: fixed (Done). The tests left ignored are this
+machine's live ones (they write its settings, keyring or backlight,
+prompt, play sound or wake a sensor), timings, and ones needing sample
+files not here.)
 
 - **Telegram's video stickers: their see-through parts on real ones**
   (2026-11-08; Done has the work): WebM stickers play, their alpha the
@@ -2372,6 +2386,15 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A Terminal tab came back from an upgrade out of its repository's
+  group**~~ (found 2026-11-08 by upgrade-check, re-run for the waiting
+  entries). *Done* (same day, 7a3d6640): a shell not attached yet after
+  Terminal starts again counted as "in no repository", so its tab's own
+  group went, and an idle one stayed so; and a window's title caught up
+  with its group only at the next output. Now upgrade-check
+  --auto-tiled has 0 changed in 15 rounds (2 of 10 before), and a new
+  window shows its group in its title within about a second.
 
 - ~~**A screenshot holds app_server's loop ~5 ms at 4K**~~ (found
   2026-11-08, measuring the buffers below). *Done* (same day): headless
