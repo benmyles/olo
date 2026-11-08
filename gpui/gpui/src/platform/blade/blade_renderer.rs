@@ -52,6 +52,9 @@ struct SurfaceParams {
     rgb_from_yuv: [[f32; 4]; 4],
     /// Olo: its corners' radii (top left, top right, bottom right, bottom left).
     corner_radii: [f32; 4],
+    /// Olo: its opacity, padded to the uniform's 16 bytes.
+    opacity: f32,
+    pad: [f32; 3],
 }
 
 /// Olo: a video's picture's two textures (luma; chroma interleaved).
@@ -1878,6 +1881,8 @@ impl BladeRenderer {
                                             surface.corner_radii.bottom_right.0,
                                             surface.corner_radii.bottom_left.0,
                                         ],
+                                        opacity: surface.opacity,
+                                        pad: [0.; 3],
                                     },
                                     t_y: pair.y_view,
                                     t_cb_cr: pair.uv_view,
@@ -1963,6 +1968,8 @@ impl BladeRenderer {
                                             false,
                                         ),
                                         corner_radii: [0.; 4],
+                                        opacity: surface.opacity,
+                                        pad: [0.; 3],
                                     },
                                     t_y,
                                     t_cb_cr,

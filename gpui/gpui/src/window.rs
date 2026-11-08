@@ -4537,11 +4537,13 @@ impl Window {
         let scale_factor = self.scale_factor();
         let bounds = bounds.scale(scale_factor);
         let content_mask = self.content_mask().scale(scale_factor);
+        let opacity = self.element_opacity();
         self.next_frame.scene.insert_primitive(PaintSurface {
             order: 0,
             bounds,
             content_mask,
             corner_radii: corner_radii.scale(scale_factor),
+            opacity,
             frame,
         });
     }
@@ -4593,6 +4595,7 @@ impl Window {
             bounds,
             content_mask,
             corner_radii: Corners::default(),
+            opacity: 1.,
             image_buffer,
         });
     }

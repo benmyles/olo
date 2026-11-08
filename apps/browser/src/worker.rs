@@ -163,6 +163,8 @@ pub struct LayerTiles {
     /// device coordinates, its corner radii in CSS px, the blur's standard
     /// deviation in CSS px, the saturation).
     pub backdrops: Vec<(paint::DeviceRect, [f32; 4], f32, f32, bool)>,
+    /// The opacity a surface shows at (its opacity groups'); 1 for tiles.
+    pub opacity: f32,
 }
 /// The boxes with a `backdrop-filter` blur, fixed (None) or under a
 /// sticky root, in the layer coordinates of either (device pixels).
@@ -1863,7 +1865,7 @@ fn render(
             // page, kept by its identity (no tiles to paint: what is around
             // it stays as it was while it changes).
             let Some((shown_at, image)) = scene.surface(si) else {
-                layers.push(LayerTiles { backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                layers.push(LayerTiles { opacity: 1., backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                 continue;
             };
             let device = |r: olo_web::layout::Rect| {
@@ -1876,7 +1878,7 @@ fn render(
             let clip = shown_at.clip.map(|c| device(c));
             let visible = clip.is_none_or(|(cx, cy, cw, ch)| x < cx + cw && cx < x + width && y < cy + ch && cy < y + height);
             if width <= 0 || height <= 0 || !visible {
-                layers.push(LayerTiles { backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                layers.push(LayerTiles { opacity: 1., backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                 continue;
             }
             let inside = clip.is_none_or(|(cx, cy, cw, ch)| x >= cx && y >= cy && x + width <= cx + cw && y + height <= cy + ch);
@@ -1889,7 +1891,16 @@ fn render(
             // A video's picture as decoded: the window's GPU shows it.
             if let Some(frame) = image.source().and_then(|s| s.clone().downcast::<olo_ui::gpui::YuvFrame>().ok()) {
                 total += 1;
-                layers.push(LayerTiles { backdrops: Vec::new(), mask, yuv: Some((region, frame)), shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: true });
+                layers.push(LayerTiles {
+                    opacity: shown_at.opacity,
+                    backdrops: Vec::new(),
+                    mask,
+                    yuv: Some((region, frame)),
+                    shared: None,
+                    placement: Placement::Page,
+                    tiles: Vec::new(),
+                    scaled: true,
+                });
                 continue;
             }
             // A frame in a shared texture: the window shows the texture.
@@ -1897,7 +1908,16 @@ fn render(
                 shown_shared.push(key);
                 total += 1;
                 let scaled = image.width() != region.width || image.height() != region.height;
-                layers.push(LayerTiles { backdrops: Vec::new(), mask, yuv: None, shared: Some((region, key, premultiplied)), placement: Placement::Page, tiles: Vec::new(), scaled });
+                layers.push(LayerTiles {
+                    opacity: shown_at.opacity,
+                    backdrops: Vec::new(),
+                    mask,
+                    yuv: None,
+                    shared: Some((region, key, premultiplied)),
+                    placement: Placement::Page,
+                    tiles: Vec::new(),
+                    scaled,
+                });
                 continue;
             }
             *clock = clock.wrapping_add(1);
@@ -1919,7 +1939,7 @@ fn render(
             };
             total += 1;
             let scaled = image.width() != region.width || image.height() != region.height;
-            layers.push(LayerTiles { backdrops: Vec::new(), mask, yuv: None, shared: None, placement: Placement::Page, tiles: vec![(region, shown)], scaled });
+            layers.push(LayerTiles { opacity: shown_at.opacity, backdrops: Vec::new(), mask, yuv: None, shared: None, placement: Placement::Page, tiles: vec![(region, shown)], scaled });
             continue;
         }
         let (x0, y0, x1, y1) = match stratum.kind {
@@ -1938,14 +1958,14 @@ fn render(
                     sy1 = sy1.min(((c.y + c.height) * scale).ceil() as i32);
                 }
                 if sx1 <= sx0 || sy1 <= sy0 {
-                    layers.push(LayerTiles { backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                    layers.push(LayerTiles { opacity: 1., backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                     continue;
                 }
                 ((sx0 - dx).div_euclid(256) * 256, (sy0 - dy).div_euclid(256) * 256, sx1 - dx, sy1 - dy)
             }
             paint::LayerKind::Fixed | paint::LayerKind::Sticky(_) => {
                 let Some(extent) = scene.stratum_extent(si) else {
-                    layers.push(LayerTiles { backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Fixed, tiles: Vec::new(), scaled: false });
+                    layers.push(LayerTiles { opacity: 1., backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Fixed, tiles: Vec::new(), scaled: false });
                     continue;
                 };
                 let (limit_x, limit_y) = if stratum.kind == paint::LayerKind::Fixed { (f64::from(r.key.width), f64::from(r.key.height)) } else { (f64::INFINITY, f64::INFINITY) };
@@ -2085,7 +2105,7 @@ fn render(
                 paint::LayerKind::Sticky(root) => backdrop_boxes.iter().filter(|(l, _)| *l == Some(root)).map(|(_, b)| *b).collect(),
                 _ => Vec::new(),
             };
-            layers.push(LayerTiles { backdrops, mask: None, yuv: None, shared: None, placement, tiles: layer_tiles, scaled: false });
+            layers.push(LayerTiles { opacity: 1., backdrops, mask: None, yuv: None, shared: None, placement, tiles: layer_tiles, scaled: false });
         }
     }
     TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);

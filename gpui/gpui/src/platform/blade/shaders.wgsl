@@ -1602,6 +1602,9 @@ struct SurfaceParams {
     rgb_from_yuv: mat4x4<f32>,
     // Olo: its corners rounded (a video in a rounded box).
     corner_radii: Corners,
+    // Olo: its opacity (a video in an opacity group); the struct rounds
+    // to 128 bytes, as the Rust side's padding makes it.
+    opacity: f32,
 }
 
 var<uniform> surface_locals: SurfaceParams;
@@ -1647,7 +1650,7 @@ fn fs_surface(input: SurfaceVarying) -> @location(0) vec4<f32> {
 
     let rgb = surface_locals.rgb_from_yuv * y_cb_cr;
     let distance = quad_sdf(input.position.xy, surface_locals.bounds, surface_locals.corner_radii);
-    return blend_color(vec4<f32>(rgb.rgb, 1.0), saturate(0.5 - distance));
+    return blend_color(vec4<f32>(rgb.rgb, 1.0), saturate(0.5 - distance) * surface_locals.opacity);
 }
 
 // --- backdrops (Olo: CSS backdrop-filter) --- //

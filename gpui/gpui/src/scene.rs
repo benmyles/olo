@@ -1304,6 +1304,8 @@ pub(crate) struct PaintSurface {
     pub content_mask: ContentMask<ScaledPixels>,
     /// Olo: its corners rounded.
     pub corner_radii: Corners<ScaledPixels>,
+    /// Olo: its opacity (a video fading in, inside an opacity group).
+    pub opacity: f32,
     #[cfg(target_os = "macos")]
     pub image_buffer: core_video::pixel_buffer::CVPixelBuffer,
     /// Olo: a video's picture, its planes as decoded (`Window::paint_yuv`).

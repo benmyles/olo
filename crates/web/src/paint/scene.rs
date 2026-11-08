@@ -143,11 +143,23 @@ pub struct SurfaceShown {
     pub bounds: Rect,
     pub clip: Option<Rect>,
     pub radii: Option<[f64; 4]>,
+    /// The opacity it shows at: its opacity groups' (each holding nothing
+    /// but it), multiplied.
+    pub opacity: f32,
 }
 /// How a surface at `b` shows within a clip `k` rounded by `r`: unrounded
 /// (Some(None)) where it keeps away from the corners, rounded by circular
 /// radii (Some(Some)) where the clip is its own rectangle, and None where
 /// neither (it is painted with the page then).
+/// A surface's clip in document coordinates: its rectangle, moved by its
+/// transform when that only translates; none under any other.
+fn surface_clip(transforms: &[[f64; 6]], clip: &Clip) -> Option<Rect> {
+    if clip.transform == NONE {
+        return Some(clip.rect);
+    }
+    let m = transforms[clip.transform as usize];
+    (m[0] == 1. && m[1] == 0. && m[2] == 0. && m[3] == 1.).then(|| Rect { x: clip.rect.x + m[4], y: clip.rect.y + m[5], ..clip.rect })
+}
 fn surface_corners(b: Rect, k: Rect, r: &decoration::Radii) -> Option<Option<[f64; 4]>> {
     let inside = b.x >= k.x && b.y >= k.y && b.x + b.width <= k.x + k.width && b.y + b.height <= k.y + k.height;
     let (left, right) = (r[0][0].max(r[3][0]), r[1][0].max(r[2][0]));
@@ -659,10 +671,17 @@ impl Scene {
         let bounds = if c.transform == NONE { c.bounds } else { aabb(self.transforms[c.transform as usize], c.bounds) };
         let (clip, radii) = match self.clips.get(c.clip as usize) {
             None => (None, None),
-            Some(clip) => (Some(clip.rect), clip.radii.and_then(|r| surface_corners(bounds, clip.rect, &r).flatten())),
+            Some(clip) => {
+                let rect = surface_clip(&self.transforms, clip)?;
+                (Some(rect), clip.radii.and_then(|r| surface_corners(bounds, rect, &r).flatten()))
+            }
         };
-        Some((SurfaceShown { bounds, clip, radii }, image))
+        let opacity = std::iter::successors((c.group != NONE).then_some(c.group), |&g| (self.groups[g as usize].parent != NONE).then(|| self.groups[g as usize].parent))
+            .map(|g| self.groups[g as usize].opacity)
+            .product();
+        Some((SurfaceShown { bounds, clip, radii, opacity }, image))
     }
+
     /// This scene over `layout` (the same boxes, with new styles) with the
     /// matrices of the `changed` boxes made again from their styles, and
     /// those under them composed again: a changed `transform` without
@@ -2213,6 +2232,28 @@ impl<'a> BuildJob<'a> {
         // Strata: runs of commands shown the same way, in paint order; the
         // first always a page run, for the base with the background.
         let mut runs: Vec<(LayerKind, Vec<u32>)> = vec![(LayerKind::Page, Vec::new())];
+        // How many commands each opacity group holds (its nested groups'
+        // too): a surface shows through groups that hold it alone, at
+        // their opacity (GitHub's videos fade in and out; painted with the
+        // page meanwhile, each picture was made RGB on the processor).
+        let mut members = vec![0u32; self.groups.len()];
+        for c in commands.iter() {
+            let mut g = c.group;
+            while g != NONE {
+                members[g as usize] += 1;
+                g = self.groups[g as usize].parent;
+            }
+        }
+        let alone = |mut g: u32| {
+            while g != NONE {
+                let group = &self.groups[g as usize];
+                if members[g as usize] != 1 || group.mask.is_some() {
+                    return false;
+                }
+                g = group.parent;
+            }
+            true
+        };
         for i in 0..commands.len() as u32 {
             let c = &commands[i as usize];
             // A surface's image is a layer of its own where it is shown
@@ -2230,10 +2271,10 @@ impl<'a> BuildJob<'a> {
                 && !c.fixed
                 && c.sticky.is_none()
                 && axis_aligned
-                && c.group == NONE
+                && alone(c.group)
                 && (c.clip == NONE || {
                     let clip = &self.clips[c.clip as usize];
-                    clip.transform == NONE && clip.radii.is_none_or(|r| surface_corners(shown, clip.rect, &r).is_some())
+                    surface_clip(&self.transforms, clip).is_some_and(|rect| clip.radii.is_none_or(|r| surface_corners(shown, rect, &r).is_some()))
                 });
             if c.surface && !surface && crate::env_on!("OLO_SURFACE_DEBUG") {
                 let clip = (c.clip != NONE).then(|| (self.clips[c.clip as usize].rect, self.clips[c.clip as usize].transform, self.clips[c.clip as usize].radii.is_some()));

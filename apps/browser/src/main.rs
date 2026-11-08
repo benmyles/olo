@@ -621,7 +621,8 @@ impl Render for Browser {
             Option<(olo_web::paint::DeviceRect, [f32; 4])>,
             Option<(olo_web::paint::DeviceRect, Arc<gpui::YuvFrame>)>,
             Vec<(olo_web::paint::DeviceRect, [f32; 4], f32, f32, bool)>,
-        )> = self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone(), l.shared, l.mask, l.yuv.clone(), l.backdrops.clone())).collect();
+            f32,
+        )> = self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone(), l.shared, l.mask, l.yuv.clone(), l.backdrops.clone(), l.opacity)).collect();
         let shared_requests = std::mem::take(&mut self.shared_requests);
         let shared_retired = std::mem::take(&mut self.shared_retired);
         let made_shared: std::rc::Rc<std::cell::RefCell<Vec<u64>>> = Default::default();
@@ -741,31 +742,37 @@ impl Render for Browser {
                             size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
                         )
                     };
-                    for (placement, scaled, layer_tiles, shared, mask, yuv, backdrops) in &layers {
-                        // A surface cut to its clip and rounded, on the GPU.
+                    for (placement, scaled, layer_tiles, shared, mask, yuv, backdrops, opacity) in &layers {
+                        // A surface cut to its clip and rounded, on the GPU, at
+                        // its opacity groups' opacity.
                         let content_mask = mask.as_ref().map(|(clip, _)| gpui::ContentMask { bounds: page_rect(clip) });
                         let corners = mask.as_ref().map_or(Default::default(), |(_, r)| gpui::Corners { top_left: px(r[0]), top_right: px(r[1]), bottom_right: px(r[2]), bottom_left: px(r[3]) });
+                        let faded = (*opacity < 1.).then_some(*opacity);
                         // A video's picture as decoded, made RGB and scaled on the GPU.
                         if let Some((r, frame)) = yuv {
-                            window.with_content_mask(content_mask, |window| window.paint_yuv_rounded(page_rect(r), corners, frame.clone()));
+                            window.with_element_opacity(faded, |window| window.with_content_mask(content_mask, |window| window.paint_yuv_rounded(page_rect(r), corners, frame.clone())));
                             continue;
                         }
                         // A canvas frame in a shared texture, with the page.
                         if let Some((r, key, premultiplied)) = shared {
-                            window.with_content_mask(content_mask, |window| {
-                                window.paint_shared_texture(page_rect(r), corners, olo_ui::gpui::ImageId(*key as usize), *premultiplied, !*scaled);
+                            window.with_element_opacity(faded, |window| {
+                                window.with_content_mask(content_mask, |window| {
+                                    window.paint_shared_texture(page_rect(r), corners, olo_ui::gpui::ImageId(*key as usize), *premultiplied, !*scaled);
+                                })
                             });
                             continue;
                         }
-                        if mask.is_some() {
-                            window.with_content_mask(content_mask, |window| {
-                                for (r, image) in layer_tiles {
-                                    let _ = if *scaled {
-                                        window.paint_image(page_rect(r), corners, image.clone(), 0, false)
-                                    } else {
-                                        window.paint_image_nearest_rounded(page_rect(r), corners, image.clone())
-                                    };
-                                }
+                        if mask.is_some() || faded.is_some() {
+                            window.with_element_opacity(faded, |window| {
+                                window.with_content_mask(content_mask, |window| {
+                                    for (r, image) in layer_tiles {
+                                        let _ = if *scaled {
+                                            window.paint_image(page_rect(r), corners, image.clone(), 0, false)
+                                        } else {
+                                            window.paint_image_nearest_rounded(page_rect(r), corners, image.clone())
+                                        };
+                                    }
+                                })
                             });
                             continue;
                         }

@@ -1442,12 +1442,16 @@ fn a_live_canvas_is_a_surface_cut_by_its_clip_and_rounded_by_its_own() {
     let mut painter = paint::Engine::default();
     let viewport = layout::Viewport { width: 300., height: 200., scale: 1. };
     // One canvas half outside a straight clip (GitHub's mascot, below the
-    // edge of its box), one filling a rounded box (a video tile).
+    // edge of its box), one filling a rounded box (a video tile), one
+    // alone in an opacity group (a video fading in: shown at its opacity),
+    // and one sharing its group with a background (painted with the page).
     let mut page = olo_web::page::load(
         Arc::from(
             "<!doctype html><style>body{margin:0}div{overflow:hidden}canvas{display:block;width:100px;height:100px}</style>\
              <div style='width:60px;height:40px'><canvas></canvas></div>\
-             <div style='width:100px;height:100px;border-radius:10px'><canvas></canvas></div>",
+             <div style='width:100px;height:100px;border-radius:10px'><canvas></canvas></div>\
+             <section style='opacity:.5'><canvas></canvas></section>\
+             <section style='opacity:.5;background:red'><canvas></canvas></section>",
         ),
         &host,
         &scope,
@@ -1476,14 +1480,15 @@ fn a_live_canvas_is_a_surface_cut_by_its_clip_and_rounded_by_its_own() {
             None
         });
     }
-    assert_eq!(canvases.len(), 2);
+    assert_eq!(canvases.len(), 4);
     page.rerender(doc, canvases, &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     let scene = &page.scene;
-    assert_eq!(scene.surface_count(), 2);
+    assert_eq!(scene.surface_count(), 3);
     let shown: Vec<paint::SurfaceShown> = (0..scene.strata().len()).filter_map(|i| scene.surface(i).map(|(s, _)| s)).collect();
     let rect = |x, y, width, height| layout::Rect { x, y, width, height };
-    assert_eq!(shown[0], paint::SurfaceShown { bounds: rect(0., 0., 100., 100.), clip: Some(rect(0., 0., 60., 40.)), radii: None });
-    assert_eq!(shown[1], paint::SurfaceShown { bounds: rect(0., 40., 100., 100.), clip: Some(rect(0., 40., 100., 100.)), radii: Some([10.; 4]) });
+    assert_eq!(shown[0], paint::SurfaceShown { bounds: rect(0., 0., 100., 100.), clip: Some(rect(0., 0., 60., 40.)), radii: None, opacity: 1. });
+    assert_eq!(shown[1], paint::SurfaceShown { bounds: rect(0., 40., 100., 100.), clip: Some(rect(0., 40., 100., 100.)), radii: Some([10.; 4]), opacity: 1. });
+    assert_eq!(shown[2], paint::SurfaceShown { bounds: rect(0., 140., 100., 100.), clip: None, radii: None, opacity: 0.5 });
 }
 #[test]
 fn attribute_changes_reach_through_states_and_not_through_any_element() {
