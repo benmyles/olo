@@ -12,6 +12,7 @@
 #![forbid(unsafe_op_in_unsafe_fn)]
 pub mod canvas;
 pub mod clone;
+mod crypto;
 pub mod html;
 mod modules;
 pub mod webgl;
@@ -1820,6 +1821,9 @@ const NATIVES: &[&str] = &[
     "navigatePost",
     "openSelect",
     "runModule",
+    "digest",
+    "hmac",
+    "randomBytes",
     "compatMode",
     "animationRemove",
     "structuredClone",
@@ -2761,6 +2765,25 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 state.borrow_mut().report.errors.push(error);
             }
             rv.set_bool(ran);
+        }
+        // Web Crypto: digest(name, bytes), hmac(hash, key, bytes) (null for
+        // an algorithm it doesn't know), randomBytes(n).
+        "digest" | "hmac" | "randomBytes" => {
+            let out = match name {
+                "digest" => {
+                    let algorithm = arg_string(scope, &args, 0);
+                    crypto::digest(&algorithm, &arg_body(scope, &args, 1))
+                }
+                "hmac" => {
+                    let algorithm = arg_string(scope, &args, 0);
+                    crypto::hmac(&algorithm, &arg_body(scope, &args, 1), &arg_body(scope, &args, 2))
+                }
+                _ => Some(crypto::random(args.get(0).number_value(scope).unwrap_or(0.).max(0.) as usize)),
+            };
+            match out {
+                Some(bytes) => rv.set(bytes_array(scope, bytes, ByteKind::U8)),
+                None => rv.set_null(),
+            }
         }
         // runModule(source or null, url): a module script a script inserted
         // (its graph fetched, instantiated and evaluated); true when it ran.

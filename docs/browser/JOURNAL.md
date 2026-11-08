@@ -6755,3 +6755,11 @@ the Guardian and old Reddit, looking for pages that fail outright:
   sheets and through `fetch()` (old Reddit's scripts were refused).
 - **Module scripts that scripts insert** run (they were skipped): their
   graph is fetched, instantiated and evaluated, then `load` or `error`.
+- **Web Crypto**: `crypto.subtle.digest` (SHA-1/256/384/512), HMAC keys
+  (`importKey` raw, `sign`, `verify`, `exportKey`), native; other
+  algorithms reject as unsupported. `getRandomValues` and `randomUUID`
+  take the system's random generator (they used `Math.random`, which is
+  not fit for keys or nonces). In workers too.
+- **`FormData` bodies** for `fetch()`, `Request` and XHR go as
+  `multipart/form-data` with a boundary (they went as `[object Object]`:
+  Amazon's challenge posted one and was refused with 415).

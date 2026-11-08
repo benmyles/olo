@@ -81,7 +81,7 @@ struct State {
     closed: bool,
 }
 type Shared = Rc<RefCell<State>>;
-const NATIVES: &[&str] = &["log", "postMessage", "fetchSync", "runScript", "now", "url", "userAgent", "close"];
+const NATIVES: &[&str] = &["log", "postMessage", "fetchSync", "runScript", "now", "url", "userAgent", "close", "digest", "hmac", "randomBytes"];
 
 #[allow(clippy::too_many_arguments)]
 fn run(
@@ -247,6 +247,24 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
     let Some(state) = scope.get_slot::<Shared>().cloned() else { return };
     let name = args.data().to_rust_string_lossy(scope);
     match name.as_str() {
+        // Web Crypto, as the page's (see the page's natives).
+        "digest" | "hmac" | "randomBytes" => {
+            let out = match name.as_str() {
+                "digest" => {
+                    let algorithm = arg_string(scope, &args, 0);
+                    crate::crypto::digest(&algorithm, &crate::arg_body(scope, &args, 1))
+                }
+                "hmac" => {
+                    let algorithm = arg_string(scope, &args, 0);
+                    crate::crypto::hmac(&algorithm, &crate::arg_body(scope, &args, 1), &crate::arg_body(scope, &args, 2))
+                }
+                _ => Some(crate::crypto::random(args.get(0).number_value(scope).unwrap_or(0.).max(0.) as usize)),
+            };
+            match out {
+                Some(bytes) => rv.set(crate::bytes_array(scope, bytes, crate::ByteKind::U8)),
+                None => rv.set_null(),
+            }
+        }
         "log" => {
             let level = arg_string(scope, &args, 0);
             let text = arg_string(scope, &args, 1);

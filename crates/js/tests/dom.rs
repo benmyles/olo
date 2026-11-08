@@ -569,3 +569,31 @@ s.addEventListener('change', () => console.log('change', s.value, s.selectedInde
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] input c", "[log] change c 2"]);
 }
+#[test]
+fn web_crypto_digests_and_signs_and_form_data_bodies_are_multipart() {
+    let (report, _) = run(r#"<script>
+const hex = (b) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('');
+crypto.subtle.digest('SHA-256', new TextEncoder().encode('abc')).then((b) => console.log('sha256', hex(b)));
+crypto.subtle.importKey('raw', new TextEncoder().encode('Jefe'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  .then((k) => crypto.subtle.sign('HMAC', k, new TextEncoder().encode('what do ya want for nothing?')))
+  .then((s) => console.log('hmac', hex(s)));
+crypto.subtle.digest('MD5', new Uint8Array(1)).catch((e) => console.log('md5', e.name));
+console.log('uuid', /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(crypto.randomUUID()));
+const fd = new FormData(); fd.append('a', '1'); fd.append('f', new File(['xy'], 'x.txt', { type: 'text/plain' }));
+const r = new Request('https://example.test/up', { method: 'POST', body: fd });
+const type = r.headers.get('content-type');
+const boundary = type.split('boundary=')[1];
+r.text().then((t) => console.log('form', type.startsWith('multipart/form-data; boundary='), t === '--' + boundary + '\r\nContent-Disposition: form-data; name="a"\r\n\r\n1\r\n--' + boundary + '\r\nContent-Disposition: form-data; name="f"; filename="x.txt"\r\nContent-Type: text/plain\r\n\r\nxy\r\n--' + boundary + '--\r\n'));
+</script>"#);
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(
+        report.console,
+        [
+            "[log] uuid true",
+            "[log] sha256 ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            "[log] md5 NotSupportedError",
+            "[log] form true true",
+            "[log] hmac 5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+        ]
+    );
+}

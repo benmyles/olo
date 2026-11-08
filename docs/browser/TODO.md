@@ -171,7 +171,9 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   text-transform, counters and quotes in `content`.
 - [ ] MDN's layout (its sidebar and article overlap; the search box shows
   open); old Reddit's login dialog (a `faceplate-partial` its app loads)
-  never shows; Amazon's front page shows nothing.
+  never shows; Amazon's front page is its AWS WAF challenge, which fetches
+  its inputs and then waits on something that never comes (no verify
+  request; blob workers, Web Crypto and FormData bodies work).
 - [ ] Line height: Chrome spaces DuckDuckGo's result snippets (an inline
   `<a>` with `line-height: 1.45` in a block with 1.6) by the inline's
   line height, its block's strut not counting, though every reduced case

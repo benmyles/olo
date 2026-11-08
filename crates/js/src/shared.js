@@ -176,9 +176,10 @@
     constructor(input, init) {
       init = init || {};
       const from = input instanceof Request ? requestSlot(input) : null;
-      super(init.body == null ? (from ? input._bytes : '') : init.body);
+      const form = init.body != null && global.FormData && init.body instanceof global.FormData ? global.__olo_bodyOf(init.body) : null;
+      super(init.body == null ? (from ? input._bytes : '') : form ? form.bytes : init.body);
       const headers = new Headers(init.headers || (from && from.headers));
-      if (init.body != null && !headers.has('content-type')) { const b = init.body; const t = typeof b === 'string' ? 'text/plain;charset=UTF-8' : b instanceof URLSearchParams ? 'application/x-www-form-urlencoded;charset=UTF-8' : b instanceof Blob && b.type ? b.type : null; if (t) headers.set('content-type', t); }
+      if (init.body != null && !headers.has('content-type')) { const b = init.body; const t = form ? form.type : typeof b === 'string' ? 'text/plain;charset=UTF-8' : b instanceof URLSearchParams ? 'application/x-www-form-urlencoded;charset=UTF-8' : b instanceof Blob && b.type ? b.type : null; if (t) headers.set('content-type', t); }
       requestSlots.set(this, {
         url: from ? from.url : resolveURL(String(input)),
         method: String(init.method || (from && from.method) || 'GET').toUpperCase(),
@@ -206,6 +207,47 @@
     clone() { return new Request(this); }
   }
   global.Headers = Headers; global.Response = Response; global.Request = Request;
+  // Web Crypto: strong random values; digests, HMAC keys and signatures
+  // (native); other algorithms reject as unsupported.
+  const unsupported = () => Promise.reject(new DOMException('Unsupported algorithm', 'NotSupportedError'));
+  const algorithmName = (a) => String(typeof a === 'string' ? a : a && a.name || '').toUpperCase();
+  const hashName = (h) => algorithmName(h).replace(/^SHA(\d)/, 'SHA-$1');
+  class CryptoKey { constructor(type, algorithm, extractable, usages, raw) { this.type = type; this.algorithm = algorithm; this.extractable = !!extractable; this.usages = Array.from(usages || []); Object.defineProperty(this, '_raw', { value: raw }); } }
+  global.CryptoKey = CryptoKey;
+  const subtle = {
+    digest(algorithm, data) { try { const out = N.digest(hashName(algorithm), toBytes(data)); return out ? Promise.resolve(bufferOf(out)) : unsupported(); } catch (e) { return Promise.reject(e); } },
+    importKey(format, keyData, algorithm, extractable, usages) {
+      if (format === 'raw' && algorithmName(algorithm) === 'HMAC') { const raw = toBytes(keyData); return Promise.resolve(new CryptoKey('secret', { name: 'HMAC', hash: { name: hashName(algorithm.hash) }, length: raw.length * 8 }, extractable, usages, raw)); }
+      return unsupported();
+    },
+    exportKey(format, key) { return format === 'raw' && key && key.extractable && key._raw ? Promise.resolve(bufferOf(key._raw)) : unsupported(); },
+    sign(algorithm, key, data) { if (algorithmName(algorithm) !== 'HMAC' || !key || !key._raw) return unsupported(); const out = N.hmac(key.algorithm.hash.name, key._raw, toBytes(data)); return out ? Promise.resolve(bufferOf(out)) : unsupported(); },
+    verify(algorithm, key, signature, data) { return subtle.sign(algorithm, key, data).then((s) => { const a = new Uint8Array(s), b = toBytes(signature); if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i]; return d === 0; }); },
+    generateKey: unsupported, deriveKey: unsupported, deriveBits: unsupported, encrypt: unsupported, decrypt: unsupported, wrapKey: unsupported, unwrapKey: unsupported,
+  };
+  global.crypto = {
+    getRandomValues(a) { if (!ArrayBuffer.isView(a)) throw new TypeError('getRandomValues takes an integer array'); if (a.byteLength > 65536) throw new DOMException('Too many bytes', 'QuotaExceededError'); new Uint8Array(a.buffer, a.byteOffset, a.byteLength).set(N.randomBytes(a.byteLength)); return a; },
+    randomUUID() { const b = N.randomBytes(16); b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80; const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(''); return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20); },
+    subtle,
+  };
+  global.Crypto = function Crypto() {}; global.SubtleCrypto = function SubtleCrypto() {};
+  // A body as bytes and its media type: a FormData's as multipart/form-data
+  // (its own boundary), the rest as toBytes has them.
+  global.__olo_bodyOf = (body) => {
+    if (global.FormData && body instanceof global.FormData) {
+      const boundary = '----OloFormBoundary' + Array.from(N.randomBytes(12), (x) => (x % 36).toString(36)).join('');
+      const quote = (s) => String(s).replace(/"/g, '%22').replace(/\r\n|\r|\n/g, '%0D%0A');
+      const parts = [];
+      for (const [name, value] of body) {
+        let head = '--' + boundary + '\r\nContent-Disposition: form-data; name="' + quote(name) + '"';
+        if (value instanceof Blob) { head += '; filename="' + quote(value.name !== undefined ? value.name : 'blob') + '"\r\nContent-Type: ' + (value.type || 'application/octet-stream'); parts.push(toBytes(head + '\r\n\r\n'), value._bytes, toBytes('\r\n')); }
+        else parts.push(toBytes(head + '\r\n\r\n' + String(value).replace(/\r\n|\r|\n/g, '\r\n') + '\r\n'));
+      }
+      parts.push(toBytes('--' + boundary + '--\r\n'));
+      return { bytes: concat(parts), type: 'multipart/form-data; boundary=' + boundary };
+    }
+    return { bytes: toBytes(body), type: null };
+  };
   // A data: or blob: URL answered here, without the network.
   global.__olo_fetchInline = (url) => {
     const m = /^data:([^,;]*)((?:;[^,]*)*),([\s\S]*)$/.exec(url);

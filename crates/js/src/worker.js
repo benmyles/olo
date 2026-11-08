@@ -84,7 +84,6 @@
   const url = new URL(N.url());
   global.location = { href: url.href, protocol: url.protocol, host: url.host, hostname: url.hostname, port: url.port, pathname: url.pathname, search: url.search, hash: url.hash, origin: url.origin, toString: () => url.href };
   global.navigator = { userAgent: N.userAgent(), language: 'en-US', languages: ['en-US', 'en'], hardwareConcurrency: 8, onLine: true, platform: 'Linux x86_64', appName: 'Netscape', product: 'Gecko', vendor: 'Google Inc.' };
-  global.crypto = { getRandomValues(a) { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256) & (a.BYTES_PER_ELEMENT === 1 ? 255 : a.BYTES_PER_ELEMENT === 2 ? 65535 : 0xffffffff); return a; }, randomUUID() { const h = '0123456789abcdef'; let s = ''; for (let i = 0; i < 36; i++) s += i === 8 || i === 13 || i === 18 || i === 23 ? '-' : i === 14 ? '4' : h[Math.floor(Math.random() * 16)]; return s; } };
   global.structuredClone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   global.AbortSignal = class AbortSignal extends EventTarget { constructor() { super(); this.aborted = false; this.reason = undefined; this.onabort = null; } throwIfAborted() { if (this.aborted) throw this.reason; } };
   global.AbortController = class AbortController { constructor() { this.signal = new global.AbortSignal(); } abort(reason) { if (this.signal.aborted) return; this.signal.aborted = true; this.signal.reason = reason; dispatch(this.signal, new Event('abort')); } };

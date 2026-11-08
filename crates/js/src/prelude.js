@@ -1566,7 +1566,6 @@
   global.caches = { open: () => Promise.resolve({ match: () => Promise.resolve(undefined), put: () => Promise.resolve(), add: () => Promise.resolve(), addAll: () => Promise.resolve(), delete: () => Promise.resolve(false), keys: () => Promise.resolve([]) }), match: () => Promise.resolve(undefined), has: () => Promise.resolve(false), delete: () => Promise.resolve(false), keys: () => Promise.resolve([]) };
   // Encoding, base64, structured clone, crypto
   global.structuredClone = (v) => (v === undefined ? undefined : N.structuredClone(v));
-  global.crypto = { getRandomValues(a) { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256) & (a.BYTES_PER_ELEMENT === 1 ? 255 : a.BYTES_PER_ELEMENT === 2 ? 65535 : 0xffffffff); return a; }, randomUUID() { const h = () => Math.floor(Math.random() * 16).toString(16); return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => c === 'x' ? h() : (8 + Math.floor(Math.random() * 4)).toString(16)); }, subtle: { digest: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')), importKey: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')), sign: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')) } };
   // Observers: intersection reports everything visible once.
   // MutationObserver (DOM §4.3): every change a script makes to the tree
   // (children, attributes, text) goes through the natives wrapped here,
@@ -1751,6 +1750,9 @@
     _fail() { this.readyState = 4; this.status = 0; this._change(); dispatch(this, new ProgressEvent('error')); dispatch(this, new ProgressEvent('loadend')); }
     send(body) {
       // (Bytes as they are: a binary body must not pass through text.)
+      // A FormData: multipart/form-data with its boundary, the type set
+      // unless the page set one.
+      if (body instanceof FormData) { const form = global.__olo_bodyOf(body); body = form.bytes; if (!Object.keys(this._headers || {}).some((k) => k.toLowerCase() === 'content-type')) this.setRequestHeader('Content-Type', form.type); }
       const payload = body == null ? '' : typeof body === 'string' ? body : body instanceof URLSearchParams ? body.toString() : body instanceof Blob ? body._bytes : body instanceof ArrayBuffer ? new Uint8Array(body) : ArrayBuffer.isView(body) ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength) : String(body);
       if (this._sync) { try { this._finish(fetchSync(this._url, this._method, payload, headerLines(this._headers) + (this.withCredentials ? '\nx-olo-credentials: include' : ''))); } catch (e) { this._fail(); } return; }
       dispatch(this, new ProgressEvent('loadstart'));
