@@ -66,7 +66,7 @@ pub struct Page {
     rules: Arc<css::cascade::RuleSet>,
     /// Every stylesheet in document order (the UA sheet first) with its URL,
     /// kept so a changed medium (viewport, scheme) can recompile the `@media` rules.
-    sheets: Vec<(css::Syntax, Origin, Option<Arc<str>>)>,
+    sheets: Vec<Sheet>,
     base_scope: Scope,
     sheet_ids: Vec<(crate::dom::NodeId, u64)>,
     media: css::media::Media,
@@ -82,7 +82,7 @@ pub struct Page {
 /// to style for a host made for its `scope()`.
 pub struct Prepared {
     document: Document,
-    sheets: Vec<(css::Syntax, Origin, Option<Arc<str>>)>,
+    sheets: Vec<Sheet>,
     rules: Arc<css::cascade::RuleSet>,
     media: css::media::Media,
     media_dependent: bool,
@@ -157,7 +157,7 @@ type Compiled = (Arc<css::cascade::RuleSet>, bool, Vec<css::fonts::FontFace>, Ve
 /// compiled its 2.5 MB of CSS three times on one load, 50 ms each).
 struct CompiledEntry {
     media: css::media::Media,
-    sheets: Vec<(Origin, Option<Arc<str>>, css::SourceHandle)>,
+    sheets: Vec<(Origin, Option<Arc<str>>, css::SourceHandle, Option<u64>)>,
     compiled: Compiled,
 }
 thread_local! {
@@ -190,11 +190,11 @@ fn scope_with_faces(base: &Scope, faces: Vec<(Arc<[u8]>, crate::font::Descriptor
 }
 /// How many compiled rule sets are kept (the last ones compiled or used).
 const COMPILED_KEPT: usize = 2;
-fn compile(sheets: &[(css::Syntax, Origin, Option<Arc<str>>)], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<Compiled> {
+fn compile(sheets: &[Sheet], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<Compiled> {
     let same = |e: &CompiledEntry| {
         e.media == media
             && e.sheets.len() == sheets.len()
-            && e.sheets.iter().zip(sheets).all(|((o, u, s), (syntax, origin, url))| o == origin && u == url && s.len() == syntax.source().len() && **s == *syntax.source())
+            && e.sheets.iter().zip(sheets).all(|((o, u, s, k), (syntax, origin, url, scope))| o == origin && u == url && k == scope && s.len() == syntax.source().len() && **s == *syntax.source())
     };
     if let Some(hit) = COMPILED.with(|c| {
         let mut c = c.borrow_mut();
@@ -207,8 +207,8 @@ fn compile(sheets: &[(css::Syntax, Origin, Option<Arc<str>>)], media: css::media
         return Ok(hit);
     }
     let mut builder = SheetBuilder::new(Default::default()).with_media(media);
-    for (syntax, origin, base) in sheets {
-        builder.add_sheet_from(syntax, *origin, base.clone(), cancel)?;
+    for (syntax, origin, base, scope) in sheets {
+        builder.add_scoped_sheet_from(syntax, *origin, base.clone(), *scope, cancel)?;
     }
     let dependent = builder.media_dependent();
     let faces = builder.font_faces().to_vec();
@@ -216,7 +216,7 @@ fn compile(sheets: &[(css::Syntax, Origin, Option<Arc<str>>)], media: css::media
     let compiled: Compiled = (Arc::new(builder.finish(cancel)?), dependent, faces, backgrounds);
     COMPILED.with(|c| {
         let mut c = c.borrow_mut();
-        c.insert(0, CompiledEntry { media, sheets: sheets.iter().map(|(s, o, u)| (*o, u.clone(), s.source_handle())).collect(), compiled: compiled.clone() });
+        c.insert(0, CompiledEntry { media, sheets: sheets.iter().map(|(s, o, u, k)| (*o, u.clone(), s.source_handle(), *k)).collect(), compiled: compiled.clone() });
         c.truncate(COMPILED_KEPT);
     });
     Ok(compiled)
@@ -390,8 +390,8 @@ pub fn prepare_scripted(
             );
         }
         if std::env::var_os("OLO_SHEET_DEBUG").is_some() {
-            for (i, (x, o, u)) in second.sheets.iter().enumerate() {
-                let was = first.sheets.iter().position(|(y, p, v)| p == o && v == u && y.source() == x.source());
+            for (i, (x, o, u, _)) in second.sheets.iter().enumerate() {
+                let was = first.sheets.iter().position(|(y, p, v, _)| p == o && v == u && y.source() == x.source());
                 eprintln!("  sheet {i}: {:?} {} bytes, before at {was:?}", u.as_deref().map(|u| u.rsplit('/').next().unwrap_or(u)), x.source().len());
             }
         }
@@ -400,8 +400,8 @@ pub fn prepare_scripted(
     gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load, &mut prefetch, None)
 }
 /// Whether two sheet lists are the same sheets (origin, URL and text).
-fn same_sheets(a: &[(css::Syntax, Origin, Option<Arc<str>>)], b: &[(css::Syntax, Origin, Option<Arc<str>>)]) -> bool {
-    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.1 == y.1 && x.2 == y.2 && x.0.source() == y.0.source())
+fn same_sheets(a: &[Sheet], b: &[Sheet]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.1 == y.1 && x.2 == y.2 && x.3 == y.3 && x.0.source() == y.0.source())
 }
 /// What a resource request returned, for a second gathering pass.
 enum Memoed {
@@ -489,7 +489,7 @@ impl Measurer {
             return Ok(false);
         }
         let started = std::time::Instant::now();
-        let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None)];
+        let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None, None)];
         let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel)?;
         sheets.extend(loaded);
         let loaded_at = started.elapsed();
@@ -941,7 +941,9 @@ fn trim(v: f64) -> String {
 /// held to `CSS_BYTES` in all: one past it is left out, counted as an
 /// issue, and the page renders with the rest, as a browser renders a page
 /// whose sheet failed to load.
-pub type Sheet = (css::Syntax, Origin, Option<Arc<str>>);
+/// A sheet, its origin, the URL it came from, and the shadow tree it
+/// belongs to (`selectors::scope_key`; None: the document's).
+pub type Sheet = (css::Syntax, Origin, Option<Arc<str>>, Option<u64>);
 // Within the cascade's work budget (16 M, a unit a source byte), with room
 // for the rules and declarations it ticks too.
 const CSS_BYTES: usize = 8 * 1024 * 1024;
@@ -958,7 +960,10 @@ fn load_sheets(
     }
     let mut items = Vec::with_capacity(style_nodes.len());
     let mut resource_issues = 0usize;
-    for &node in style_nodes {
+    // A shadow tree's sheets (after the document's, each where it is):
+    // its rules for its own tree, its host and what is slotted into it.
+    let (shadow_nodes, style_nodes): (Vec<crate::dom::NodeId>, Vec<crate::dom::NodeId>) = style_nodes.iter().partition(|&&n| doc.shadow_scope(n).is_some());
+    for &node in &style_nodes {
         match doc.name(node)? {
             Some("style") => {
                 if doc.attribute(node, "type")?.is_some_and(|t| !t.trim().is_empty() && !t.trim().eq_ignore_ascii_case("text/css")) {
@@ -1038,7 +1043,7 @@ fn load_sheets(
                         text.push_str(value)
                     }
                 }
-                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None));
+                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None, None));
             }
             Item::Link(href) => {
                 if last.get(href.trim()) != Some(&i) {
@@ -1047,7 +1052,7 @@ fn load_sheets(
                     if let Some((statement, url)) = layered.get(href.trim())
                         && first_seen.insert(href.trim())
                     {
-                        sheets.push((css::Syntax::parse(Arc::from(statement.as_str()), Default::default(), cancel)?, Origin::Author, url.clone()));
+                        sheets.push((css::Syntax::parse(Arc::from(statement.as_str()), Default::default(), cancel)?, Origin::Author, url.clone(), None));
                     }
                     continue;
                 }
@@ -1063,12 +1068,42 @@ fn load_sheets(
                             continue;
                         }
                         css_bytes += bytes;
-                        sheets.push((syntax, Origin::Author, url));
+                        sheets.push((syntax, Origin::Author, url, None));
                     }
                     Some(_) => return Err(paint::Error::Invalid.into()),
                     None => resource_issues += 1,
                 }
             }
+        }
+    }
+    for node in shadow_nodes {
+        let scope = doc.shadow_scope(node).map(crate::css::selectors::scope_key);
+        match doc.name(node)? {
+            Some("style") => {
+                let mut text = String::new();
+                for child in doc.children(node)? {
+                    if let Some(value) = doc.value(child)? {
+                        text.push_str(value)
+                    }
+                }
+                if css_bytes.saturating_add(text.len()) > CSS_BYTES {
+                    resource_issues += 1;
+                    continue;
+                }
+                css_bytes += text.len();
+                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None, scope));
+            }
+            Some("link") if doc.attribute(node, "rel")?.is_some_and(|r| r.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("stylesheet"))) => {
+                let Some(href) = doc.attribute(node, "href")? else { continue };
+                match resource(ResourceKind::Stylesheet, base, href)? {
+                    Some(Resource::Stylesheet(syntax, url)) if css_bytes.saturating_add(syntax.source().len()) <= CSS_BYTES => {
+                        css_bytes += syntax.source().len();
+                        sheets.push((syntax, Origin::Author, url, scope));
+                    }
+                    _ => resource_issues += 1,
+                }
+            }
+            _ => {}
         }
     }
     Ok((sheets, resource_issues))
@@ -1083,7 +1118,22 @@ fn sheet_identities(doc: &Document) -> Result<(Vec<(crate::dom::NodeId, u64)>, O
     let mut nodes = Vec::new();
     let mut base = None;
     let mut next = Some(doc.root());
-    while let Some(node) = next {
+    // Shadow roots met on the way, walked after the document (theirs are
+    // scoped sheets), and those inside them in turn.
+    let mut roots: Vec<crate::dom::NodeId> = Vec::new();
+    let mut walking: Vec<crate::dom::NodeId> = Vec::new();
+    loop {
+        let Some(node) = next.or_else(|| {
+            let root = roots.pop()?;
+            walking = doc.children(root).map(|c| c.collect::<Vec<_>>()).unwrap_or_default();
+            walking.reverse();
+            walking.pop()
+        }) else {
+            break;
+        };
+        if let Some(root) = doc.shadow_root(node) {
+            roots.push(root);
+        }
         if doc.node_type(node)? == NodeType::Element {
             match doc.name(node)? {
                 Some("base") if base.is_none() => {
@@ -1106,7 +1156,17 @@ fn sheet_identities(doc: &Document) -> Result<(Vec<(crate::dom::NodeId, u64)>, O
                 _ => {}
             }
         }
-        next = next_node(doc, node)?;
+        // In the document, its order; in a shadow tree, depth first.
+        if doc.shadow_scope(node).is_none() {
+            next = next_node(doc, node)?;
+        } else {
+            if let Ok(children) = doc.children(node) {
+                let mut children: Vec<_> = children.collect();
+                children.reverse();
+                walking.extend(children);
+            }
+            next = walking.pop();
+        }
     }
     Ok((ids, base, nodes))
 }
@@ -1179,7 +1239,7 @@ fn gather(
     reuse: Option<&Prepared>,
 ) -> Result<Prepared> {
     progress(Phase::Styles, 0);
-    let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None)];
+    let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None, None)];
     let mut next = Some(doc.root());
     let mut title = String::new();
     let mut scripts = 0;
@@ -1562,7 +1622,7 @@ impl Page {
         if ids == self.sheet_ids {
             return Ok(false);
         }
-        let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None)];
+        let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None, None)];
         let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel)?;
         sheets.extend(loaded);
         let (rules, dependent, faces, _) = compile(&sheets, self.media, cancel)?;

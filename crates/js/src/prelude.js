@@ -550,7 +550,7 @@
     submit() { if (N.nodeName(this) === 'FORM') submitForm(this, null, false); }, reset() { if (N.nodeName(this) === 'FORM') for (const c of N.query(this, 'input,textarea', true)) N.setControlValue(c, N.nodeName(c) === 'TEXTAREA' ? N.textContent(c) : (N.attr(c, 'value') || '')); }, requestSubmit(submitter) { if (N.nodeName(this) === 'FORM') submitForm(this, submitter || null, true); }, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
     animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), null); a.play(); return a; },
     getAnimations() { return animations.filter((a) => a.effect && a.effect.target === this && a.playState !== 'idle'); },
-    attachShadow(init) { if (this._shadow) throw new DOMException('This element already hosts a shadow root.', 'NotSupportedError'); const root = N.attachShadow(this); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open' }); return root; },
+    attachShadow(init) { if (this._shadow) throw new DOMException('This element already hosts a shadow root.', 'NotSupportedError'); const root = N.attachShadow(this); shadowRoots.add(root); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open' }); return root; },
     requestFullscreen() { return Promise.resolve(); },
     play() { if (!isMedia(this)) return Promise.resolve(); N.mediaCommand(this, 'play', 0); queueMedia(this, ['play']); return Promise.resolve(); },
     pause() { if (!isMedia(this) || N.media(this)[0]) return; N.mediaCommand(this, 'pause', 0); queueMedia(this, ['pause']); },
@@ -685,8 +685,24 @@
     querySelector(sel) { return N.query(this, String(sel), false); }, querySelectorAll(sel) { return listOf(N.query(this, String(sel), true)); },
     getElementById(id) { return N.query(this, '#' + CSS.escape(String(id)), false); },
     innerHTML: { get() { return N.innerHTML(this); }, set(v) { N.setInnerHTML(this, String(v)); } },
-    styleSheets: { get() { return []; } }, adoptedStyleSheets: { get() { return this._adopted || (this._adopted = []); }, set(v) { this._adopted = Array.from(v || []); } },
+    styleSheets: { get() { return []; } }, adoptedStyleSheets: { get() { return this._adopted || (this._adopted = []); }, set(v) { this._adopted = Array.from(v || []); for (const sheet of this._adopted) (sheet._roots || (sheet._roots = new Set())).add(this); syncShadowAdopted(this); } },
   });
+  // A shadow root's adoptedStyleSheets (Lit's components' styles): their
+  // rules in one hidden <style> first in the root, which the engine styles
+  // the shadow tree from (scoped to it, as its own <style>s are).
+  const syncShadowAdopted = (root) => {
+    const sheets = root._adopted || [];
+    const text = sheets.map((sheet) => sheet._current().join('\n')).join('\n');
+    let el = root._adoptedElement;
+    if (!el || N.parent(el) !== root) {
+      if (!text) return;
+      el = root._adoptedElement = N.createElement('style', '');
+      N.setAttr(el, 'data-olo-adopted', '');
+      const first = N.firstChild(root);
+      if (first) nativeInsertBefore(root, el, first); else nativeAppend(root, el);
+    }
+    N.setTextContent(el, text);
+  };
   class Range {
     constructor() { this.startContainer = documentNode; this.endContainer = documentNode; this.startOffset = 0; this.endOffset = 0; this.collapsed = true; this.commonAncestorContainer = documentNode; }
     setStart(n, o) { this.startContainer = n; this.startOffset = o; } setEnd(n, o) { this.endContainer = n; this.endOffset = o; } setStartBefore(n) { this.setStart(N.parent(n), 0); } setStartAfter(n) { this.setStart(N.parent(n), 0); } setEndBefore(n) { this.setEnd(N.parent(n), 0); } setEndAfter(n) { this.setEnd(N.parent(n), 0); }
@@ -695,17 +711,79 @@
     createContextualFragment(html) { const tmp = N.createElement('div', ''); N.setInnerHTML(tmp, String(html)); const f = N.createFragment(); for (const c of N.childNodes(tmp)) N.append(f, c); return f; }
   }
   global.Range = Range;
+  // TreeWalker (DOM §6.2): each step from the current node, never a list
+  // of the whole subtree (Lit walks every template it clones from the
+  // document, once a node: that took Shoelace's pages over a minute).
+  // 1 accept, 2 reject (a TreeWalker skips the node's subtree), 3 skip.
   class TreeWalker {
-    constructor(root, whatToShow, filter) { this.root = root; this.whatToShow = whatToShow == null ? 0xffffffff : whatToShow; this.filter = filter; this.currentNode = root; this._list = null; }
-    _all() { const out = []; const walk = (n) => { for (const c of N.childNodes(n)) { out.push(c); walk(c); } }; walk(this.root); return out.filter((n) => (this.whatToShow & (1 << (N.nodeType(n) - 1))) && this._accept(n)); }
-    _accept(n) { const f = this.filter; if (!f) return true; const r = typeof f === 'function' ? f(n) : f.acceptNode(n); return r === 1 || r === undefined; }
-    nextNode() { const all = this._all(); const i = all.indexOf(this.currentNode); const n = all[i + 1] || null; if (n) this.currentNode = n; return n; }
-    previousNode() { const all = this._all(); const i = all.indexOf(this.currentNode); const n = i > 0 ? all[i - 1] : null; if (n) this.currentNode = n; return n; }
-    firstChild() { const c = N.childNodes(this.currentNode).find((n) => this._accept(n)); if (c) this.currentNode = c; return c || null; }
-    lastChild() { const c = N.childNodes(this.currentNode).reverse().find((n) => this._accept(n)); if (c) this.currentNode = c; return c || null; }
-    nextSibling() { let n = N.nextSibling(this.currentNode); while (n && !this._accept(n)) n = N.nextSibling(n); if (n) this.currentNode = n; return n; }
-    previousSibling() { let n = N.previousSibling(this.currentNode); while (n && !this._accept(n)) n = N.previousSibling(n); if (n) this.currentNode = n; return n; }
-    parentNode() { const p = N.parent(this.currentNode); if (p && p !== N.parent(this.root)) { this.currentNode = p; return p; } return null; }
+    constructor(root, whatToShow, filter) { this.root = root; this.whatToShow = whatToShow == null ? 0xffffffff : whatToShow >>> 0; this.filter = filter || null; this.currentNode = root; }
+    _filter(n) {
+      if (!(this.whatToShow & (1 << (N.nodeType(n) - 1)))) return 3;
+      const f = this.filter; if (!f) return 1;
+      const r = typeof f === 'function' ? f(n) : f.acceptNode(n);
+      return r === 2 || r === 3 ? r : 1;
+    }
+    _accept(n) { return this._filter(n) === 1; }
+    parentNode() { let n = this.currentNode; while (n && n !== this.root) { n = N.parent(n); if (n && this._filter(n) === 1) { this.currentNode = n; return n; } } return null; }
+    _children(first) {
+      let n = first ? N.firstChild(this.currentNode) : N.lastChild(this.currentNode);
+      while (n) {
+        const r = this._filter(n);
+        if (r === 1) { this.currentNode = n; return n; }
+        const c = r === 3 ? (first ? N.firstChild(n) : N.lastChild(n)) : null;
+        if (c) { n = c; continue; }
+        while (n) { const s = first ? N.nextSibling(n) : N.previousSibling(n); if (s) { n = s; break; } const p = N.parent(n); if (!p || p === this.root || p === this.currentNode) return null; n = p; }
+      }
+      return null;
+    }
+    firstChild() { return this._children(true); }
+    lastChild() { return this._children(false); }
+    _sibling(next) {
+      let node = this.currentNode;
+      if (node === this.root) return null;
+      while (true) {
+        let s = next ? N.nextSibling(node) : N.previousSibling(node);
+        while (s) {
+          node = s;
+          const r = this._filter(node);
+          if (r === 1) { this.currentNode = node; return node; }
+          s = next ? N.firstChild(node) : N.lastChild(node);
+          if (r === 2 || !s) s = next ? N.nextSibling(node) : N.previousSibling(node);
+        }
+        node = N.parent(node);
+        if (!node || node === this.root || this._filter(node) === 1) return null;
+      }
+    }
+    nextSibling() { return this._sibling(true); }
+    previousSibling() { return this._sibling(false); }
+    nextNode() {
+      let node = this.currentNode, r = 1;
+      while (true) {
+        while (r !== 2) { const c = N.firstChild(node); if (!c) break; node = c; r = this._filter(node); if (r === 1) { this.currentNode = node; return node; } }
+        let sibling = null, t = node;
+        while (t) { if (t === this.root) return null; sibling = N.nextSibling(t); if (sibling) break; t = N.parent(t); }
+        if (!sibling) return null;
+        node = sibling; r = this._filter(node);
+        if (r === 1) { this.currentNode = node; return node; }
+      }
+    }
+    previousNode() {
+      let node = this.currentNode;
+      while (node !== this.root) {
+        let s = N.previousSibling(node);
+        while (s) {
+          node = s; let r = this._filter(node);
+          while (r !== 2) { const c = N.lastChild(node); if (!c) break; node = c; r = this._filter(node); }
+          if (r === 1) { this.currentNode = node; return node; }
+          s = N.previousSibling(node);
+        }
+        const p = N.parent(node);
+        if (!p || node === this.root) return null;
+        node = p;
+        if (this._filter(node) === 1) { this.currentNode = node; return node; }
+      }
+      return null;
+    }
     detach() {}
   }
   global.TreeWalker = TreeWalker; global.NodeIterator = TreeWalker;
@@ -744,7 +822,9 @@
   // Custom elements: definitions are recorded and constructed elements upgraded with a connectedCallback when inserted (best effort).
   const definitions = new Map();
   const whenDefined = new Map();
-  const upgrade = (el, name) => { const def = definitions.get(name) || (N.attr(el, 'is') && definitions.get(N.attr(el, 'is'))); if (def && !el._upgraded) { Object.defineProperty(el, '_upgraded', { value: true }); Object.defineProperty(el, '_constructed', { value: true }); try { constructing = el; const made = new def(); if (made !== el) Object.setPrototypeOf(el, def.prototype); } catch (e) { reportError(e); Object.setPrototypeOf(el, def.prototype); } finally { constructing = null; } if (typeof el.attributeChangedCallback === 'function' && Array.isArray(def.observedAttributes)) for (const a of def.observedAttributes) { const v = N.attr(el, a); if (v != null) { try { el.attributeChangedCallback(a, null, v); } catch (e) { reportError(e); } } } } };
+  // Every shadow root made, for definitions to upgrade elements in them too.
+  const shadowRoots = new Set();
+  const upgrade = (el, name) => { const def = definitions.get(name) || (N.attr(el, 'is') && definitions.get(N.attr(el, 'is'))); if (def && !el._upgraded) { Object.defineProperty(el, '_upgraded', { value: true }); Object.defineProperty(el, '_constructed', { value: true }); try { constructing = el; const made = new def(); if (made !== el) Object.setPrototypeOf(el, def.prototype); } catch (e) { reportError(e); Object.setPrototypeOf(el, def.prototype); } finally { constructing = null; } N.setDefined(el); if (typeof el.attributeChangedCallback === 'function' && Array.isArray(def.observedAttributes)) for (const a of def.observedAttributes) { const v = N.attr(el, a); if (v != null) { try { el.attributeChangedCallback(a, null, v); } catch (e) { reportError(e); } } } } };
   // Changes to an upgraded element's observed attributes reach its
   // attributeChangedCallback (HTML §4.13.4), however a script made them
   // (React sets <relative-time>'s datetime after making it: GitHub's dates
@@ -763,7 +843,7 @@
     N.removeAttr = (el, name) => { const old = el && el._upgraded ? N.attr(el, name) : undefined; const r = removeAttr(el, name); if (old != null) changedAttribute(el, name, old); return r; };
   }
   global.customElements = {
-    define(name, ctor, options) { definitions.set(name, ctor); const w = whenDefined.get(name); if (w) w.resolve(ctor); for (const el of N.query(documentNode, name + (options && options.extends ? ', [is="' + name + '"]' : ''), true)) { upgrade(el, name); if (el._upgraded && typeof el.connectedCallback === 'function') { Object.defineProperty(el, '_connected', { value: true, configurable: true, writable: true }); try { el.connectedCallback(); } catch (e) { reportError(e); } } } },
+    define(name, ctor, options) { definitions.set(name, ctor); const w = whenDefined.get(name); if (w) w.resolve(ctor); const sel = name + (options && options.extends ? ', [is="' + name + '"]' : ''); const found = N.query(documentNode, sel, true); for (const root of shadowRoots) if (N.isConnected(root)) found.push(...N.query(root, sel, true)); for (const el of found) { upgrade(el, name); if (el._upgraded && typeof el.connectedCallback === 'function') { Object.defineProperty(el, '_connected', { value: true, configurable: true, writable: true }); try { el.connectedCallback(); } catch (e) { reportError(e); } } } },
     get(name) { return definitions.get(name); },
     getName(ctor) { for (const [n, c] of definitions) if (c === ctor) return n; return null; },
     whenDefined(name) { if (definitions.has(name)) return Promise.resolve(definitions.get(name)); let entry = whenDefined.get(name); if (!entry) { let resolve; const promise = new Promise((r) => { resolve = r; }); entry = { promise, resolve }; whenDefined.set(name, entry); } return entry.promise; },
@@ -1439,6 +1519,7 @@
     for (const sheet of dirtySheets) {
       if (sheet.ownerNode && N.nodeName(sheet.ownerNode) === 'STYLE') { const text = sheet._rules.join('\n'); sheet._text = text; N.setTextContent(sheet.ownerNode, text); }
       else if (!sheet.ownerNode && adopted.includes(sheet)) adoptedChanged = true;
+      if (!sheet.ownerNode && sheet._roots) for (const root of sheet._roots) if ((root._adopted || []).includes(sheet)) syncShadowAdopted(root);
     }
     dirtySheets.clear();
     if (adoptedChanged) syncAdopted();

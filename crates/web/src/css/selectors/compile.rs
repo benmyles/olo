@@ -229,10 +229,35 @@ impl Compiler<'_> {
             self.skip(&mut input)?;
         }
         loop {
-            let (step, spec, has_pseudo) = self.compound(&mut input, relation, ctx)?;
+            // `::slotted(x)` alone: of any slot.
+            let (step, spec, has_pseudo) = if slotted_ahead(&input) {
+                let mut tests = SmallVec::new();
+                self.test(&mut tests, Test::Type { ns: ANY, name: ANY })?;
+                (self.store_step(tests, relation, ANY, false)?, Specificity::default(), false)
+            } else {
+                self.compound(&mut input, relation, ctx)?
+            };
             specificity = specificity.add(spec);
             steps.push(step);
             pseudo |= has_pseudo;
+            // `slot::slotted(<compound>)`: the elements assigned to the slot
+            // that match the compound (CSS Scoping 1 §3.2.2), the subject,
+            // a step from its slot; nothing may follow it.
+            if !pseudo && slotted_ahead(&input) {
+                self.bump(&mut input)?;
+                self.bump(&mut input)?;
+                let function = self.bump(&mut input)?;
+                let mut inner = function.children();
+                self.skip(&mut inner)?;
+                let (step, spec, inner_pseudo) = self.compound(&mut inner, Relation::Slotted, ctx)?;
+                self.skip(&mut inner)?;
+                if inner.next().is_some() || inner_pseudo {
+                    return Err(Error::Invalid);
+                }
+                specificity = specificity.add(spec).add(Specificity { types: 1, ..Default::default() });
+                steps.push(step);
+                pseudo = true;
+            }
             let space = self.skip(&mut input)?;
             if input.clone().next().is_none() {
                 break;
@@ -388,6 +413,8 @@ impl Compiler<'_> {
                     self.test(&mut tests, t)?;
                     Specificity { classes: 1, ..Default::default() }
                 }
+                // `::slotted(…)` starts a step of its own (see `complex`).
+                Kind::Colon if slotted_ahead(input) => break,
                 Kind::Colon => {
                     self.bump(input)?;
                     let (t, s, is_pseudo) = self.pseudo(input, ctx, pseudo)?;
@@ -552,7 +579,10 @@ impl Compiler<'_> {
             if let Some(s) = structural {
                 return Ok((Test::Structural(s), base, false));
             }
-            return state(&lower).map(|s| (Test::State(s), base, false)).ok_or(if matches!(lower.as_str(), "host" | "heading" | "blank" | "current" | "past" | "future") {
+            if lower == "host" {
+                return Ok((Test::Host(NONE), base, false));
+            }
+            return state(&lower).map(|s| (Test::State(s), base, false)).ok_or(if matches!(lower.as_str(), "heading" | "blank" | "current" | "past" | "future") {
                 Error::Unsupported("host or draft pseudo-class")
             } else {
                 Error::Invalid
@@ -654,10 +684,22 @@ impl Compiler<'_> {
                 }
                 Ok((Test::Dir(rtl), base, false))
             }
-            "host" | "host-context" | "state" | "current" | "heading" => Err(Error::Unsupported("host or draft functional pseudo-class")),
+            // `:host(<compound>)`: the host, when it matches the compound.
+            "host" => {
+                let list = self.list(c.children(), child, false)?;
+                Ok((Test::Host(list), Specificity { classes: 1, ..Default::default() }.add(self.out.lists[list as usize].specificity), false))
+            }
+            "host-context" | "state" | "current" | "heading" => Err(Error::Unsupported("host-context or draft functional pseudo-class")),
             _ => Err(Error::Invalid),
         }
     }
+}
+/// Whether `::slotted(` comes next.
+fn slotted_ahead(input: &Components<'_>) -> bool {
+    let mut look = input.clone();
+    look.next().is_some_and(|c| c.kind() == Kind::Colon)
+        && look.next().is_some_and(|c| c.kind() == Kind::Colon)
+        && look.next().is_some_and(|c| c.kind() == Kind::Function && c.text().is_some_and(|t| t.eq_ignore_ascii_case("slotted")))
 }
 fn state(name: &str) -> Option<State> {
     Some(match name {
@@ -718,6 +760,22 @@ pub(crate) struct RuleCompiler {
     selectors: usize,
 }
 impl RuleCompiler {
+    /// Whether selector list `list` addresses its shadow tree's host
+    /// (`:host` in a subject) and whether elements slotted into it
+    /// (`::slotted()`): what the cascade asks of the elements outside a
+    /// shadow tree its rules reach.
+    pub(crate) fn shadow_context(&self, list: u32) -> (bool, bool) {
+        let Some(out) = &self.out else { return (false, false) };
+        let Some(l) = out.lists.get(list as usize) else { return (false, false) };
+        let (mut host, mut slotted) = (false, false);
+        for &i in &out.links[l.links.start as usize..l.links.end as usize] {
+            let complex = &out.complexes[i as usize];
+            let Some(last) = complex.steps.end.checked_sub(1).map(|i| &out.steps[i as usize]) else { continue };
+            host |= out.tests[last.tests.start as usize..last.tests.end as usize].iter().any(|t| matches!(t, Test::Host(_)));
+            slotted |= matches!(last.relation, Relation::Slotted);
+        }
+        (host, slotted)
+    }
     pub(crate) fn new() -> Self {
         Self {
             out: Some(Selectors {

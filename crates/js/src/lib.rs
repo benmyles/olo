@@ -1700,6 +1700,7 @@ const NATIVES: &[&str] = &[
     "createComment",
     "createFragment",
     "attachShadow",
+    "setDefined",
     "shadowHost",
     "templateContents",
     "clone",
@@ -2241,6 +2242,12 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 }
             }
         }
+        // setDefined(element): its definition upgraded it (`:defined`).
+        "setDefined" => {
+            if let Some(n) = node(scope, 0) {
+                let _ = state.borrow_mut().document.set_defined(n);
+            }
+        }
         // shadowHost(node) → the host when node is a shadow root, else null.
         "shadowHost" => {
             let host = node(scope, 0).and_then(|n| state.borrow().document.shadow_host(n));
@@ -2332,10 +2339,20 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 let quirks = s.quirks;
                 let doc = &mut s.document;
                 let result = (|| -> olo_web::dom::Result<()> {
-                    let context = if doc.node_type(n)? == NodeType::Element { n } else { doc.root() };
+                    // A shadow root's markup parses in its host's context
+                    // (`this.shadowRoot.innerHTML = '<style>…'`, how plain
+                    // web components fill theirs); another fragment's in
+                    // the root element's.
+                    let context = match doc.node_type(n)? {
+                        NodeType::Element => n,
+                        _ => match doc.shadow_host(n) {
+                            Some(host) => host,
+                            None => doc.children(doc.root())?.find(|&c| doc.node_type(c).ok() == Some(NodeType::Element)).unwrap_or(doc.root()),
+                        },
+                    };
                     let fragment = html::parse_fragment_into(doc, context, &markup, quirks)?;
                     // A template's markup is its contents, not its children.
-                    let target = doc.template_contents(n)?.unwrap_or(n);
+                    let target = if doc.node_type(n)? == NodeType::Element { doc.template_contents(n)?.unwrap_or(n) } else { n };
                     while let Some(c) = doc.first_child(target)? {
                         doc.detach(c)?;
                     }
@@ -2368,20 +2385,10 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 None => rv.set_null(),
             }
         }
+        // Through shadow roots to their hosts (DOM §4.2.2: shadow-including).
         "isConnected" => {
             if let Some(n) = node(scope, 0) {
-                let s = state.borrow();
-                let doc = &s.document;
-                let mut at = Some(n);
-                let mut connected = false;
-                while let Some(a) = at {
-                    if a == doc.root() {
-                        connected = true;
-                        break;
-                    }
-                    at = doc.parent(a).ok().flatten();
-                }
-                rv.set_bool(connected);
+                rv.set_bool(state.borrow().document.is_connected(n).unwrap_or(false));
             }
         }
         "log" => {

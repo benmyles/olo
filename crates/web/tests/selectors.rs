@@ -39,8 +39,8 @@ fn independent_selector_queries() {
     assert_eq!(report["total"], 463);
     let failures: Vec<_> = report["results"].as_array().unwrap().iter().filter(|r| matches!(r["outcome"].as_str(), Some("mismatch" | "error" | "panic"))).collect();
     assert!(failures.is_empty(), "{failures:?}");
-    assert_eq!(report["counts"]["passed"], 432);
-    assert_eq!(report["counts"]["unsupported"], 29);
+    assert_eq!(report["counts"]["passed"], 435);
+    assert_eq!(report["counts"]["unsupported"], 26);
     assert_eq!(report["counts"]["updated_specification"], 2);
 }
 #[test]

@@ -481,3 +481,37 @@ console.log(t.shadowRoot === root, t.isConnected, root.host === t);
     assert_eq!(doc.parent(text).unwrap(), Some(root));
     assert_eq!(doc.value(text).unwrap(), Some("4 hours ago"));
 }
+#[test]
+fn tree_walkers_step_in_document_order_skip_and_reject_and_define_reaches_shadow_trees() {
+    let page = r#"<div id=r><a id=a><b id=b></b></a><!--c--><i id=i><u id=u></u></i><s id=s></s></div><script>
+const r = document.getElementById('r');
+const ids = (w, step) => { const out = []; let n; while ((n = w[step]())) out.push(n.id || '#' + n.nodeType); return out.join(' '); };
+console.log(ids(document.createTreeWalker(r, NodeFilter.SHOW_ELEMENT), 'nextNode'));
+console.log(ids(document.createTreeWalker(r, 129), 'nextNode'));
+// REJECT skips <i>'s subtree; SKIP skips <a> but not its children.
+const f = { acceptNode: (n) => n.id === 'i' ? NodeFilter.FILTER_REJECT : n.id === 'a' ? NodeFilter.FILTER_SKIP : NodeFilter.FILTER_ACCEPT };
+console.log(ids(document.createTreeWalker(r, NodeFilter.SHOW_ELEMENT, f), 'nextNode'));
+const back = document.createTreeWalker(r, NodeFilter.SHOW_ELEMENT); back.currentNode = document.getElementById('s');
+console.log(ids(back, 'previousNode'));
+const w = document.createTreeWalker(r, NodeFilter.SHOW_ELEMENT);
+console.log(w.firstChild().id, w.nextSibling().id, w.nextSibling().id, w.parentNode().id, w.lastChild().id);
+// A definition upgrades the elements already in shadow trees too.
+const host = document.createElement('div'); document.body.appendChild(host);
+host.attachShadow({ mode: 'open' }).innerHTML = '<x-late></x-late>';
+console.log(host.shadowRoot.isConnected, host.shadowRoot.firstChild.isConnected);
+customElements.define('x-late', class extends HTMLElement { connectedCallback() { console.log('connected in shadow', this.getRootNode() === host.shadowRoot); } });
+console.log(host.shadowRoot.querySelectorAll(':not(:defined)').length, document.querySelectorAll(':not(:defined)').length);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    assert_eq!(realm.report().errors, Vec::<String>::new());
+    assert_eq!(realm.report().console, ["[log] a b i u s", "[log] a b #8 i u s", "[log] b s", "[log] u i b a r", "[log] a i s r s", "[log] true true", "[log] connected in shadow true", "[log] 0 0"]);
+}

@@ -127,7 +127,7 @@ impl StateSource for Snapshot<'_> {
             State::PlaceholderShown => matches!(self.doc.name(node)?, Some("input" | "textarea")) && self.doc.attribute(node, "placeholder")?.is_some() && self.doc.control_value(node)?.is_empty(),
             // Elements are defined, bar custom elements (their registry is
             // the scripts'; an undefined one is what `:not(:defined)` finds).
-            State::Defined => !self.doc.name(node)?.is_some_and(|n| n.contains('-')),
+            State::Defined => self.doc.is_defined(node)?,
             // States the engine does not track yet (:invalid, …) do not
             // match, as in a document where nothing has that state.
             _ => false,

@@ -23,8 +23,29 @@ struct Rule {
     /// The `@container` condition it is under (index into `containers`),
     /// or NO_CONTAINER.
     container: u32,
+    /// The shadow tree whose sheets it is from (`selectors::scope_key`),
+    /// or None for the document's (and the user agent's, which every tree
+    /// takes); with whether it addresses that tree's host (`:host`) and
+    /// elements slotted into it (`::slotted()`).
+    scope: Option<u64>,
+    host: bool,
+    slotted: bool,
 }
 const NO_CONTAINER: u32 = u32::MAX;
+impl Rule {
+    /// Whether it applies to an element taking rules from `scopes`
+    /// (`selectors::Tree::scopes`), and at what shadow encapsulation (CSS
+    /// Cascade 5 §6.1, context): its own tree's rules and the user agent's
+    /// at 0; its shadow tree's `:host` and `::slotted()` rules at 1, which
+    /// its own tree's normal declarations win over. The document's author
+    /// rules don't reach into shadow trees.
+    fn context(&self, scopes: &[Option<u64>; 3]) -> Option<u16> {
+        if self.origin == Origin::UserAgent || self.scope == scopes[0] {
+            return Some(0);
+        }
+        (self.scope.is_some() && (self.host && self.scope == scopes[1] || self.slotted && self.scope == scopes[2])).then_some(1)
+    }
+}
 /// An `@container` rule's condition (CSS Conditional 5 §2): the name of
 /// the container it asks (any container when none), its query, and the
 /// `@container` it is itself inside (all must hold).
@@ -152,6 +173,9 @@ pub struct SheetBuilder {
     containers: Vec<ContainerCondition>,
     /// The `@container` condition the rules being read are under.
     container: u32,
+    /// The shadow tree the sheet being added belongs to (see `Rule::scope`).
+    scope: Option<u64>,
+    scoped: bool,
 }
 impl SheetBuilder {
     pub fn new(limits: CompileLimits) -> Self {
@@ -173,6 +197,8 @@ impl SheetBuilder {
             failed: false,
             containers: Vec::new(),
             container: NO_CONTAINER,
+            scope: None,
+            scoped: false,
         }
     }
     fn issue(&mut self, issue: Issue) -> Result<()> {
@@ -224,6 +250,16 @@ impl SheetBuilder {
     }
     pub fn add_sheet(&mut self, syntax: &Syntax, origin: Origin, cancelled: Option<&AtomicBool>) -> Result<()> {
         self.add_sheet_from(syntax, origin, None, cancelled)
+    }
+    /// A sheet of a shadow tree (`scope`, its `selectors::scope_key`):
+    /// its rules apply in that tree, to its host through `:host` and to
+    /// what is slotted into it through `::slotted()` (CSS Scoping 1 §3).
+    pub fn add_scoped_sheet_from(&mut self, syntax: &Syntax, origin: Origin, base: Option<Arc<str>>, scope: Option<u64>, cancelled: Option<&AtomicBool>) -> Result<()> {
+        self.scope = scope;
+        self.scoped |= scope.is_some();
+        let result = self.add_sheet_from(syntax, origin, base, cancelled);
+        self.scope = None;
+        result
     }
     /// A sheet fetched from `base`: its relative `url()`s resolve against it.
     pub fn add_sheet_from(&mut self, syntax: &Syntax, origin: Origin, base: Option<Arc<str>>, cancelled: Option<&AtomicBool>) -> Result<()> {
@@ -400,7 +436,8 @@ impl SheetBuilder {
                         return Err(Error::Limit);
                     }
                     let order = self.rules.len() as u64;
-                    self.rules.push(Rule { selector, declarations: declarations.into_boxed_slice(), origin, layer: parent, order, container: self.container });
+                    let (host, slotted) = if self.scope.is_some() { self.selector_compiler.shadow_context(selector) } else { (false, false) };
+                    self.rules.push(Rule { selector, declarations: declarations.into_boxed_slice(), origin, layer: parent, order, container: self.container, scope: self.scope, host, slotted });
                 }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("layer")) => {
                     let empty = rule.value().all(|c| c.kind() == Kind::Whitespace);
@@ -726,10 +763,15 @@ impl RuleSet {
         let has_parent =
             if let Some(parent) = tree.parent(node).map_err(Error::Selectors)? { matches!(tree.content(parent).map_err(Error::Selectors)?, selectors::Content::Element(_)) } else { false };
         let mut builder = Builder::new(limits, cancelled);
+        let scopes = tree.scopes(node).map_err(Error::Selectors)?;
         for &(id, specificity) in matched {
             let rule = self.rules.get(id as usize).ok_or(Error::Invalid)?;
+            let encapsulation = rule.context(&scopes).unwrap_or(0);
             for (declaration, d) in rule.declarations.iter().enumerate() {
-                builder.add(d, Priority { origin: rule.origin, layer: rule.layer, specificity, order: rule.order, declaration: declaration as u32, rule: u64::from(id) + 1, ..Default::default() })?;
+                builder.add(
+                    d,
+                    Priority { origin: rule.origin, encapsulation, layer: rule.layer, specificity, order: rule.order, declaration: declaration as u32, rule: u64::from(id) + 1, ..Default::default() },
+                )?;
             }
         }
         if let Some(inline) = inline {
@@ -853,9 +895,11 @@ impl RuleSet {
         let mut work = 0usize;
         let mut keys = selectors::KeyCache::with_ancestors(ancestors);
         let mut matcher = self.selectors.matcher(tree, node, options, match_limits, cancelled, &mut keys).map_err(Error::Selectors)?;
+        let scopes = tree.scopes(node).map_err(Error::Selectors)?;
         for &id in &scratch.candidates {
             check(cancelled)?;
             let rule = &self.rules[id as usize];
+            let Some(encapsulation) = rule.context(&scopes) else { continue };
             let (matched, progress) = matcher.matches(rule.selector, match_limits.work.min(limits.work.saturating_sub(work))).map_err(Error::Selectors)?;
             if progress.steps > 40 && std::env::var_os("OLO_STYLE_TIMING").is_some() {
                 eprintln!("    costly match: <{}> {} steps for {}", name.local_name, progress.steps, self.selectors.subject_summary(rule.selector));
@@ -871,7 +915,10 @@ impl RuleSet {
                     r.push((id, specificity));
                 }
                 for (declaration, d) in rule.declarations.iter().enumerate() {
-                    builder.add(d, Priority { origin: rule.origin, layer: rule.layer, specificity, order: rule.order, declaration: declaration as u32, rule: id as u64 + 1, ..Default::default() })?;
+                    builder.add(
+                        d,
+                        Priority { origin: rule.origin, encapsulation, layer: rule.layer, specificity, order: rule.order, declaration: declaration as u32, rule: id as u64 + 1, ..Default::default() },
+                    )?;
                 }
             }
         }

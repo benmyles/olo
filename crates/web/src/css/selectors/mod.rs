@@ -6,7 +6,7 @@ mod compile;
 pub(crate) use compile::RuleCompiler;
 mod matching;
 use super::Components;
-pub use matching::{Attribute, Content, DomTree, ElementName, KeyCache, MatchLimits, MatchOptions, MatchProgress, Matcher, StateSource, Tree};
+pub use matching::{Attribute, Content, DomTree, ElementName, KeyCache, MatchLimits, MatchOptions, MatchProgress, Matcher, StateSource, Tree, scope_key};
 use smallvec::SmallVec;
 use std::{
     collections::HashMap,
@@ -179,6 +179,8 @@ enum Relation {
     Child,
     Next,
     Later,
+    /// `slot::slotted(x)`: from the slotted element to its slot.
+    Slotted,
 }
 #[derive(Clone, Copy)]
 enum AttrOp {
@@ -217,17 +219,36 @@ enum Structural {
 }
 #[derive(Clone, Copy)]
 enum Test {
-    Type { ns: u32, name: u32 },
+    Type {
+        ns: u32,
+        name: u32,
+    },
     Id(u32),
     Class(u32),
-    Attr { ns: u32, name: u32, value: u32, failure: u32, op: AttrOp, case: Case },
+    Attr {
+        ns: u32,
+        name: u32,
+        value: u32,
+        failure: u32,
+        op: AttrOp,
+        case: Case,
+    },
     Structural(Structural),
     State(State),
     Pseudo(PseudoElement),
-    Logical { mode: Logical, list: u32 },
+    Logical {
+        mode: Logical,
+        list: u32,
+    },
     Nth(u32),
-    Lang { start: u32, end: u32 },
+    Lang {
+        start: u32,
+        end: u32,
+    },
     Dir(bool),
+    /// `:host`, or `:host(<list>)` (the list's index; NONE for none): the
+    /// shadow host, in its shadow tree's rules.
+    Host(u32),
 }
 struct Nth {
     formula: AnB,
@@ -439,6 +460,7 @@ impl Selectors {
                                 Test::Nth(_) => "nth".into(),
                                 Test::Lang { .. } => "lang".into(),
                                 Test::Dir(_) => "dir".into(),
+                                Test::Host(_) => ":host".into(),
                                 Test::Type { name, .. } if *name == ANY => "*".into(),
                                 Test::Type { .. } => "type".into(),
                                 Test::Id(_) => "id".into(),
@@ -510,6 +532,19 @@ impl Selectors {
                 }
                 Test::Lang { .. } => {
                     out.push("[lang".to_owned());
+                    keyed = true;
+                }
+                // `:host([open]) .x`: the host's keys reach into its tree.
+                Test::Host(list) => {
+                    if *list != NONE && depth < 4 {
+                        let links = &self.links[self.lists[*list as usize].links.start as usize..self.lists[*list as usize].links.end as usize];
+                        for &i in links {
+                            let complex = &self.complexes[i as usize];
+                            for inner in complex.steps.start..complex.steps.end {
+                                self.compound_invalidation_keys(inner, depth + 1, out, keyless, unknown);
+                            }
+                        }
+                    }
                     keyed = true;
                 }
                 // States an attribute sets (`:checked`, `:disabled`) and
@@ -862,6 +897,7 @@ impl Selectors {
                         Test::Nth(_) => "nth".into(),
                         Test::Lang { .. } => "lang".into(),
                         Test::Dir(_) => "dir".into(),
+                        Test::Host(_) => ":host".into(),
                     })
                     .collect::<Vec<_>>()
                     .join("+")

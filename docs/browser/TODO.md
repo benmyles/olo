@@ -82,11 +82,13 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
 - [x] `background-clip: text` (apple.com's gradient subhead), on block
   boxes. Open: on an inline box, and comma-separated `background-clip`
   lists.
-- [ ] Shadow DOM: a shadow root is a detached fragment, never rendered
-  (GitHub's `<relative-time>` shows its fallback date, not "last week";
-  web components generally). Render the composed tree: the shadow root's
-  content in the host's place, slots taking their assigned children,
-  its sheets scoped (`:host`, `::slotted`).
+- [x] Shadow DOM: the composed tree renders (shadow content in the host's
+  place, slots taking their children), its sheets scoped (`<style>`,
+  `<link>`, `adoptedStyleSheets`; `:host`, `:host()`, `::slotted()`; the
+  outer tree wins for normal declarations). Open: `:host-context()`,
+  `::part()`, declarative shadow DOM (`<template shadowrootmode>`),
+  `!important` across trees and `revert` with encapsulation (Unsupported),
+  Shoelace's dialog: its fixed overlay is laid out in the page.
 - [x] GitHub's repository page: the file list's commits (IndexedDB
   requests now fail as events, so its query cache runs), its columns
   (`table-layout: fixed`), its row lines (cells fill their row),

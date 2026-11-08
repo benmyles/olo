@@ -2147,7 +2147,9 @@ fn graphic_name(doc: &olo_web::dom::Document, node: olo_web::dom::NodeId, vector
     }
     let mut up = doc.parent(node)?;
     for _ in 0..8 {
-        let Some(n) = up else { break };
+        // Up to the root element (the document has no attributes: asking
+        // it failed the whole paint of shoelace.style's pages).
+        let Some(n) = up.filter(|&n| doc.node_type(n).ok() == Some(olo_web::dom::NodeType::Element)) else { break };
         let control = matches!(doc.name(n)?, Some("a" | "button")) || doc.attribute(n, "role")?.is_some_and(|r| matches!(r, "button" | "link" | "menuitem" | "tab"));
         if control {
             return Ok(named(n, "aria-label")?.or(named(n, "title")?));

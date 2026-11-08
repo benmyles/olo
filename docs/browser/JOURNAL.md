@@ -6455,3 +6455,24 @@ journal).
   Chrome; a test page matches it at 1×, and at 1.5× and 2× the corners
   are smooth. (`Fill` carries corner radii; drawn as an antialiased path.
   Elliptical radii are drawn circular, and noted.)
+- **Web components styled: shadow trees' sheets, `:host`, `::slotted()`.**
+  A shadow root's `<style>`s, `<link>`ed sheets and `adoptedStyleSheets`
+  (Lit's) style its own tree; `:host` and `:host(…)` reach its host and
+  `::slotted(…)` the elements its slots take, where the outer tree's
+  normal declarations win (the cascade's context step, `encapsulation`);
+  the document's rules no longer reach into shadow trees. Rules carry
+  their tree's scope; the shadow tree's top elements have its host as
+  their selector parent (`:host > .x`). A test page checks each case.
+  Shoelace's documentation (Lit components, loaded by its autoloader)
+  painted nothing at first: asking the document node for an attribute
+  (naming an image for agents) failed the whole paint. Then its scripts
+  ran 74 s and were stopped: Olo's TreeWalker rebuilt a list of every
+  node under its root on each step, and Lit walks every template it
+  clones from the document; it steps as the DOM standard has it now
+  (1.7 s for all the page's scripts). Also: `:not(:defined)` in scripts
+  (the autoloader finds what to load with it) and in styles (custom
+  elements count as defined once upgraded), definitions upgrading
+  elements already in shadow trees, `shadowRoot.innerHTML`, and
+  `isConnected` through shadow roots. Its components render (buttons,
+  icons, the theme switch); its dialog's fixed overlay is still laid
+  out in the page (open).

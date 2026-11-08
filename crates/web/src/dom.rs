@@ -350,6 +350,8 @@ pub struct Document {
     /// fragment, rendered in its host's place (the composed tree).
     shadows: Arc<HashMap<NodeId, NodeId>>,
     shadow_hosts: Arc<HashMap<NodeId, NodeId>>,
+    /// Custom elements their definition has upgraded (`:defined`).
+    defined: Arc<std::collections::HashSet<NodeId>>,
     name_bytes: usize,
     limits: Limits,
 }
@@ -399,6 +401,7 @@ impl Document {
             scroll_serial: 0,
             shadows: Arc::new(HashMap::new()),
             shadow_hosts: Arc::new(HashMap::new()),
+            defined: Arc::new(std::collections::HashSet::new()),
             name_bytes: 0,
             limits,
         })
@@ -815,11 +818,52 @@ impl Document {
         self.bump_with(Change::Node(host))?;
         Ok(root)
     }
+    /// A custom element upgraded by its definition: `:defined` from now on.
+    pub fn set_defined(&mut self, node: NodeId) -> Result<()> {
+        self.resolve(node)?;
+        if Arc::make_mut(&mut self.defined).insert(node) {
+            self.bump_with(Change::Node(node))?;
+        }
+        Ok(())
+    }
+    /// Whether `:defined` matches: a built-in element, or a custom one
+    /// (a name with a hyphen) its definition has upgraded (HTML §4.13.3).
+    pub fn is_defined(&self, node: NodeId) -> Result<bool> {
+        Ok(!self.name(node)?.is_some_and(|n| n.contains('-')) || self.defined.contains(&node))
+    }
     pub fn shadow_root(&self, host: NodeId) -> Option<NodeId> {
         if self.shadows.is_empty() { None } else { self.shadows.get(&host).copied() }
     }
     pub fn shadow_host(&self, root: NodeId) -> Option<NodeId> {
         if self.shadow_hosts.is_empty() { None } else { self.shadow_hosts.get(&root).copied() }
+    }
+    /// The shadow root of the tree `node` is in, or None in the document's
+    /// (DOM §4.2.2: a node's root, when that root is a shadow root).
+    pub fn shadow_scope(&self, node: NodeId) -> Option<NodeId> {
+        if self.shadow_hosts.is_empty() {
+            return None;
+        }
+        let mut at = node;
+        for _ in 0..4096 {
+            match self.parent(at).ok().flatten() {
+                Some(p) => at = p,
+                None => return self.shadow_host(at).map(|_| at),
+            }
+        }
+        None
+    }
+    /// The slot a host's child is assigned to (by its `slot` name), if its
+    /// parent hosts a shadow root with one.
+    pub fn assigned_slot(&self, node: NodeId) -> Result<Option<NodeId>> {
+        if self.shadows.is_empty() {
+            return Ok(None);
+        }
+        let Some(host) = self.parent(node)? else { return Ok(None) };
+        if self.shadow_root(host).is_none() {
+            return Ok(None);
+        }
+        let name = self.slot_asked(node)?.to_owned();
+        self.slot_for(host, &name)
     }
     /// The slot name a host's child asks for (`slot`, else the default).
     fn slot_asked(&self, node: NodeId) -> Result<&str> {

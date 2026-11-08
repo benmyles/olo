@@ -1635,3 +1635,58 @@ fn inline_backgrounds_round_their_ends_and_not_their_line_breaks() {
     assert_eq!(pixel(&tile, x0, y0), [255, 255, 255, 255]);
     assert_eq!(pixel(&tile, x1, y0), [0, 0, 255, 255]);
 }
+#[test]
+fn a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // The document's `p` rule doesn't reach the shadow tree's p; the
+    // shadow sheet's `p` doesn't reach the document's. The host takes
+    // `:host`'s height, but the document's background over it (the outer
+    // tree wins); the slotted span takes `::slotted(span)`'s.
+    let mut page = olo_web::page::load(
+        Arc::from(
+            "<!doctype html><style>body{margin:0}p{margin:0;height:10px;background-color:red}#h{background-color:blue}span{display:block;height:10px}</style>\
+             <div id=h><span>s</span></div><p id=outer></p>",
+        ),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let mut doc = page.document.clone();
+    let mut stack = vec![doc.root()];
+    let mut h = None;
+    while let Some(n) = stack.pop() {
+        if doc.attribute(n, "id").ok().flatten() == Some("h") {
+            h = Some(n);
+        }
+        stack.extend(doc.children(n).unwrap());
+    }
+    let h = h.unwrap();
+    let root = doc.attach_shadow(h).unwrap();
+    let style = doc.create_element("style", olo_web::dom::Namespace::Html).unwrap();
+    let css = doc.create_text(":host{display:block;padding-top:20px;background-color:yellow}p{margin:0;height:10px;background-color:green}::slotted(span){background-color:rgb(0,255,255)}").unwrap();
+    doc.append_child(style, css).unwrap();
+    doc.append_child(root, style).unwrap();
+    let p = doc.create_element("p", olo_web::dom::Namespace::Html).unwrap();
+    doc.append_child(root, p).unwrap();
+    let slot = doc.create_element("slot", olo_web::dom::Namespace::Html).unwrap();
+    doc.append_child(root, slot).unwrap();
+    page.refresh(&doc, None, &mut |_, _, _| Ok(None)).unwrap();
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    let tile = render(&mut painter, &page.scene);
+    // The host: 20px of padding (from :host) in blue (the document's).
+    assert_eq!(pixel(&tile, 50, 10), [0, 0, 255, 255], "the host's padding, the document's background");
+    assert_eq!(pixel(&tile, 50, 25), [0, 128, 0, 255], "the shadow tree's p");
+    assert_eq!(pixel(&tile, 50, 35), [0, 255, 255, 255], "the slotted span");
+    assert_eq!(pixel(&tile, 50, 45), [255, 0, 0, 255], "the document's p");
+}

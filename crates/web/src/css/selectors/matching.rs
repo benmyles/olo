@@ -37,6 +37,25 @@ pub trait Tree {
     fn direction(&self, _node: Self::Node) -> Result<bool> {
         Err(Error::StateUnavailable)
     }
+    /// Whether `node` hosts a shadow root (`:host`).
+    fn is_shadow_host(&self, _node: Self::Node) -> Result<bool> {
+        Ok(false)
+    }
+    /// The slot a host's child is assigned to (`::slotted()`).
+    fn assigned_slot(&self, _node: Self::Node) -> Result<Option<Self::Node>> {
+        Ok(None)
+    }
+    /// The cascade scopes `node` takes rules from (see `RuleSet`): the
+    /// shadow tree it is in (None: the document's), the one it hosts
+    /// (`:host` rules), the one its slot is in (`::slotted()` rules), each
+    /// as `scope_key` names a shadow root.
+    fn scopes(&self, _node: Self::Node) -> Result<[Option<u64>; 3]> {
+        Ok([None; 3])
+    }
+}
+/// A shadow root's key in cascade scopes.
+pub fn scope_key(root: NodeId) -> u64 {
+    u64::from(root.slot()) | u64::from(root.generation()) << 32
 }
 pub trait StateSource {
     fn state(&self, node: NodeId, pseudo: Option<PseudoElement>, state: State) -> Result<bool>;
@@ -75,8 +94,24 @@ impl Tree for DomTree<'_> {
             _ => Content::Other,
         })
     }
+    /// A shadow tree's top elements have its host as their parent here
+    /// (`:host > .x`, `:host .x`).
     fn parent(&self, node: NodeId) -> Result<Option<NodeId>> {
-        Ok(self.document.parent(node)?)
+        let parent = self.document.parent(node)?;
+        Ok(match parent {
+            Some(p) if self.document.node_type(node)? == NodeType::Element => self.document.shadow_host(p).or(parent),
+            _ => parent,
+        })
+    }
+    fn is_shadow_host(&self, node: NodeId) -> Result<bool> {
+        Ok(self.document.shadow_root(node).is_some())
+    }
+    fn assigned_slot(&self, node: NodeId) -> Result<Option<NodeId>> {
+        Ok(self.document.assigned_slot(node)?)
+    }
+    fn scopes(&self, node: NodeId) -> Result<[Option<u64>; 3]> {
+        let slot = self.document.assigned_slot(node)?.and_then(|s| self.document.shadow_scope(s));
+        Ok([self.document.shadow_scope(node).map(scope_key), self.document.shadow_root(node).map(scope_key), slot.map(scope_key)])
     }
     fn first_child(&self, node: NodeId) -> Result<Option<NodeId>> {
         Ok(self.document.first_child(node)?)
@@ -95,6 +130,9 @@ impl Tree for DomTree<'_> {
             Some(states) => states.state(node, pseudo, state),
             // Link-ness is the document's, not interaction state: an `a` or
             // `area` with an href (HTML §4.6.1), without a state source too.
+            // Definedness is the document's too (scripts' `:not(:defined)`:
+            // Shoelace's autoloader finds the elements to load so).
+            None if state == State::Defined && pseudo.is_none() => Ok(self.document.is_defined(node)?),
             None if matches!(state, State::AnyLink | State::Link) && pseudo.is_none() => {
                 Ok(self.document.namespace(node)? == Some(dom::Namespace::Html) && matches!(self.document.name(node)?, Some("a" | "area")) && self.document.attribute(node, "href")?.is_some())
             }
@@ -424,6 +462,7 @@ impl<'a, T: Tree> Machine<'a, '_, T> {
                     Relation::Descendant => (self.tree.parent(frame.node)?, Axis::Parent),
                     Relation::Next => (self.previous_element(frame.node)?, Axis::Single),
                     Relation::Later => (self.previous_element(frame.node)?, Axis::Previous),
+                    Relation::Slotted => (self.tree.assigned_slot(frame.node)?, Axis::Single),
                     Relation::None => return Err(Error::Invalid),
                 };
                 if let Some(node) = candidate {
@@ -481,6 +520,13 @@ impl<'a, T: Tree> Machine<'a, '_, T> {
                 Test::Pseudo(p) => {
                     pseudo = Some(p);
                     ctx.pseudo == Some(p)
+                }
+                Test::Host(list) => {
+                    self.tree.is_shadow_host(node)?
+                        && (list == NONE || {
+                            let child = self.child_context(ctx)?;
+                            self.list(list, node, child, false)?.is_some()
+                        })
                 }
                 Test::Logical { mode, list } => {
                     let child = self.child_context(ctx)?;
