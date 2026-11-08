@@ -15,6 +15,25 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Undo in Tracker, and everywhere it makes sense** (Ben, 2026-11-07:
+  "tracker needs to support undo for file/folder renames/moves/etc and
+  also we need generally and unviversally to support undo in all olo
+  apps where it makes sense"). Tracker has none now: Edit ▸ Undo (⌘Z) and
+  Redo for what its operations did (`ops.rs`: rename, move, copy,
+  duplicate, new folder, move to Trash, restore; a copy undone is the
+  copy removed, a trashing undone is the restore), each step what it
+  did and where, done again or undone as one even when it was many
+  files, on the worker with progress as the operations are, and said
+  plainly when it can't be any more (a file since changed or gone).
+  Then one kit-wide way for every app (`olo_ui`: an undo history a window
+  keeps, Edit ▸ Undo/Redo named by what they'd undo, "Undo Rename",
+  agents able to read and drive it), and each app looked at for what
+  should undo: what has its own already (text fields, StyledEdit, the
+  Viewer's picture edits, app_server's ⌃⌘Z window arrangement) moved
+  onto it or matched to it; Preferences' changes, Passwords' edits,
+  Deskbar's and the desktop's moves, Terminal's tab and pane changes,
+  and the rest.
+
 - **A resting display still looks every 100 ms** (found 2026-11-07,
   looking into the Intel GPU): `render::IDLE_POLL`, the safety net for
   changes that don't wake a display (`Backend::wake`). An idle
