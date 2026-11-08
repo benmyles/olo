@@ -156,6 +156,186 @@ impl Tree {
             text_bytes: self.text_bytes,
         }
     }
+    /// This tree with the text the document has now for `texts` (text
+    /// nodes whose data changed) and `holders` (inline elements whose
+    /// children, all text, came or went), in place: the source range each
+    /// covers rewritten, the spans, inline boxes and controls after it
+    /// moved along. None when one can't be (no span or inline box for it,
+    /// an element among the children, a box split by a block, text that
+    /// was or becomes only whitespace, whose boxes depend on where it is):
+    /// built again.
+    pub fn with_text(&self, document: &Document, texts: &[NodeId], holders: &[NodeId]) -> Option<Self> {
+        let blank = |t: &str| t.bytes().all(|b| b.is_ascii_whitespace());
+        let mut sources: Vec<TextSource> = self.sources.iter().map(|t| TextSource { container: t.container, source: t.source.clone(), spans: t.spans.clone(), inlines: t.inlines.clone() }).collect();
+        let mut inlines: Vec<InlineBox> = self.inlines.to_vec();
+        let mut controls: Vec<Control> = self.controls.to_vec();
+        let mut text_bytes = self.text_bytes;
+        // Rewrite `range` of source `si` with `text`, its spans `replaced`.
+        let mut rewrite = |sources: &mut Vec<TextSource>, inlines: &mut Vec<InlineBox>, si: usize, range: Range<u32>, text: &str, replaced: Vec<SourceSpan>| -> Option<()> {
+            let source = &mut sources[si];
+            let delta = text.len() as i64 - (range.end - range.start) as i64;
+            let mut out = String::with_capacity((source.source.len() as i64 + delta).max(0) as usize);
+            out.push_str(&source.source[..range.start as usize]);
+            out.push_str(text);
+            out.push_str(&source.source[range.end as usize..]);
+            if out.len() > u32::MAX as usize {
+                return None;
+            }
+            let shift = |x: u32| (i64::from(x) + delta) as u32;
+            // (The range is never empty: blank text is built again.)
+            if range.start >= range.end {
+                return None;
+            }
+            let mut spans: Vec<SourceSpan> = Vec::with_capacity(source.spans.len() + replaced.len());
+            let mut placed = false;
+            for s in source.spans.iter() {
+                if s.range.end <= range.start {
+                    spans.push(s.clone());
+                } else if s.range.start >= range.end {
+                    if !placed {
+                        spans.extend(replaced.iter().cloned());
+                        placed = true;
+                    }
+                    spans.push(SourceSpan { range: shift(s.range.start)..shift(s.range.end), ..s.clone() });
+                } else if s.range.start < range.start || s.range.end > range.end {
+                    // A span across the range's edge: not this tree's to patch.
+                    return None;
+                }
+            }
+            if !placed {
+                spans.extend(replaced);
+            }
+            for b in &mut inlines[source.inlines.start as usize..source.inlines.end as usize] {
+                if b.range.start >= range.end && b.range.start > range.start {
+                    b.range.start = shift(b.range.start);
+                }
+                if b.range.end >= range.end {
+                    b.range.end = shift(b.range.end);
+                }
+            }
+            for c in controls.iter_mut().filter(|c| c.source as usize == si && c.offset >= range.end) {
+                c.offset = shift(c.offset);
+            }
+            text_bytes = (text_bytes as i64 + delta).max(0) as usize;
+            source.source = Arc::from(out);
+            source.spans = spans.into_boxed_slice();
+            Some(())
+        };
+        for &node in texts {
+            // Gone: its parent's children changed too, rewritten there.
+            if !document.is_connected(node).unwrap_or(false) {
+                continue;
+            }
+            let value = document.value(node).ok()??;
+            let (si, k) = sources.iter().enumerate().find_map(|(si, t)| t.spans.iter().position(|span| span.node == node).map(|k| (si, k)))?;
+            if sources[si].spans.iter().filter(|span| span.node == node).count() != 1 {
+                return None;
+            }
+            let span = sources[si].spans[k].clone();
+            let old = &sources[si].source[span.range.start as usize..span.range.end as usize];
+            if blank(old) || blank(value) {
+                return None;
+            }
+            if old == value {
+                continue;
+            }
+            let end = span.range.start + value.len() as u32;
+            rewrite(&mut sources, &mut inlines, si, span.range.clone(), value, vec![SourceSpan { range: span.range.start..end, ..span }])?;
+        }
+        for &holder in holders {
+            // The range its content covers: its inline box, whole, when it has
+            // one; else its text's spans (styled by it), one run of them.
+            let key = StyleKey::from(holder);
+            let mut found = inlines.iter().enumerate().filter(|(_, b)| b.node == holder);
+            let (si, range) = match found.next() {
+                Some((bi, b)) => {
+                    if found.next().is_some() || !(b.first && b.last) {
+                        return None;
+                    }
+                    let range = b.range.clone();
+                    (sources.iter().position(|t| (t.inlines.start as usize..t.inlines.end as usize).contains(&bi))?, range)
+                }
+                None => {
+                    let si = sources.iter().position(|t| t.spans.iter().any(|s| s.style_node == key))?;
+                    let at: Vec<usize> = sources[si].spans.iter().enumerate().filter(|(_, s)| s.style_node == key).map(|(i, _)| i).collect();
+                    if sources.iter().skip(si + 1).any(|t| t.spans.iter().any(|s| s.style_node == key)) || at.windows(2).any(|w| w[1] != w[0] + 1) {
+                        return None;
+                    }
+                    let spans = &sources[si].spans;
+                    (si, spans[at[0]].range.start..spans[*at.last()?].range.end)
+                }
+            };
+            // What was there: text spans of its own children only.
+            let olds: Vec<&SourceSpan> = sources[si].spans.iter().filter(|s| s.range.start >= range.start && s.range.end <= range.end).collect();
+            let style = olds.first().map(|s| s.style_node)?;
+            if olds.iter().any(|s| s.style_node != style || document.node_type(s.node).ok() != Some(NodeType::Text)) || blank(&sources[si].source[range.start as usize..range.end as usize]) {
+                return None;
+            }
+            let mut text = String::new();
+            let mut spans = Vec::new();
+            for child in document.children(holder).ok()? {
+                if document.node_type(child).ok()? != NodeType::Text {
+                    return None;
+                }
+                let value = document.value(child).ok()??;
+                if value.is_empty() {
+                    continue;
+                }
+                let start = range.start + text.len() as u32;
+                text.push_str(value);
+                spans.push(SourceSpan { range: start..range.start + text.len() as u32, node: child, style_node: style });
+            }
+            if blank(&text) {
+                return None;
+            }
+            rewrite(&mut sources, &mut inlines, si, range, &text, spans)?;
+        }
+        Some(Self {
+            vectors: self.vectors.clone(),
+            images: self.images.clone(),
+            boxes: self.boxes.clone(),
+            sources: sources.into(),
+            styles: self.styles.clone(),
+            inlines: inlines.into(),
+            controls: controls.into(),
+            document: self.document,
+            revision: if document.id() == self.document { document.revision() } else { self.revision },
+            text_bytes,
+        })
+    }
+    /// Where this tree differs from `fresh`, one built anew from the same
+    /// document and styles (`OLO_LAYOUT_CHECK`, for trees kept or patched
+    /// in place): None when they are the same.
+    pub fn differs_from(&self, fresh: &Tree) -> Option<String> {
+        if self.boxes.len() != fresh.boxes.len() {
+            return Some(format!("{} boxes, fresh {}", self.boxes.len(), fresh.boxes.len()));
+        }
+        for (i, (a, b)) in self.boxes.iter().zip(fresh.boxes.iter()).enumerate() {
+            if a.node != b.node || a.style_node != b.style_node || a.absolute != b.absolute || a.span != b.span || std::mem::discriminant(&a.kind) != std::mem::discriminant(&b.kind) {
+                return Some(format!("box {i}"));
+            }
+        }
+        if self.sources.len() != fresh.sources.len() {
+            return Some(format!("{} sources, fresh {}", self.sources.len(), fresh.sources.len()));
+        }
+        for (i, (a, b)) in self.sources.iter().zip(fresh.sources.iter()).enumerate() {
+            if a.source != b.source
+                || a.container != b.container
+                || a.inlines != b.inlines
+                || a.spans.len() != b.spans.len()
+                || a.spans.iter().zip(b.spans.iter()).any(|(x, y)| x.range != y.range || x.node != y.node || x.style_node != y.style_node)
+            {
+                return Some(format!("source {i}: {:?} / fresh {:?}", a.source.chars().take(60).collect::<String>(), b.source.chars().take(60).collect::<String>()));
+            }
+        }
+        if self.inlines.len() != fresh.inlines.len() || self.inlines.iter().zip(fresh.inlines.iter()).any(|(a, b)| a.node != b.node || a.range != b.range || a.first != b.first || a.last != b.last) {
+            return Some("inline boxes".into());
+        }
+        if self.controls.len() != fresh.controls.len() || self.controls.iter().zip(fresh.controls.iter()).any(|(a, b)| a.source != b.source || a.offset != b.offset) {
+            return Some("controls".into());
+        }
+        (self.text_bytes != fresh.text_bytes).then(|| "text bytes".into())
+    }
     /// The identity of its image set (a set with new pictures is another).
     pub fn images_identity(&self) -> usize {
         self.images.as_ref().map_or(0, |i| Arc::as_ptr(i) as *const u8 as usize)

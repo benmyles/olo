@@ -2841,15 +2841,30 @@ fn kept_boxes(previous: &layout::Layout, doc: &Document, revision: u64, styles: 
             eprintln!("  boxes built again: {what}");
         }
     };
+    let mut texts: Vec<crate::dom::NodeId> = Vec::new();
+    let mut holders: Vec<crate::dom::NodeId> = Vec::new();
     for (_, change) in changes {
         match change {
             Change::Style(_) => {}
             Change::Attribute { name, .. } if unread(name) => {}
+            // A text's data, not appearing or going: its paragraph's source
+            // rewritten in place (`Tree::with_text`), if it can be.
+            Change::Text { node, emptiness: false } => {
+                if !texts.contains(node) {
+                    texts.push(*node);
+                }
+            }
+            // Text children of an element, come or gone (a typed line).
+            Change::Children { node, elements: false } => {
+                if !holders.contains(node) {
+                    holders.push(*node);
+                }
+            }
             other => {
                 why(match other {
                     Change::Attribute { name, .. } => format!("attribute {name}"),
                     Change::Text { .. } => "text".into(),
-                    Change::Children { .. } => "children".into(),
+                    Change::Children { node, elements } => format!("children of <{}>{}", doc.name(*node).ok().flatten().unwrap_or("?"), if *elements { " (elements)" } else { " (text)" }),
                     Change::Control(_) => "a control's value".into(),
                     _ => "a change of another kind".into(),
                 });
@@ -2869,8 +2884,34 @@ fn kept_boxes(previous: &layout::Layout, doc: &Document, revision: u64, styles: 
     let kept = if Arc::ptr_eq(old.styles(), styles) { patched_in_place? } else { styles.keeps_boxes_of(old.styles()) };
     if !kept {
         why("a style decides other boxes".into());
+        return None;
     }
-    kept.then(|| old.with_styles(styles.clone(), doc, images.cloned()))
+    let tree = old.with_styles(styles.clone(), doc, images.cloned());
+    let tree = if texts.is_empty() && holders.is_empty() {
+        Some(tree)
+    } else {
+        // (A text node whose holder is rewritten whole needs nothing more.)
+        texts.retain(|t| !doc.parent(*t).ok().flatten().is_some_and(|p| holders.contains(&p)));
+        let tree = tree.with_text(doc, &texts, &holders);
+        if tree.is_none() {
+            why("a text not rewritten in place".into());
+        }
+        tree
+    };
+    // OLO_LAYOUT_CHECK: the tree as kept or patched against one built anew.
+    if let Some(t) = &tree
+        && std::env::var_os("OLO_LAYOUT_CHECK").is_some()
+        && let Ok(mut job) = layout::BuildJob::new(doc, styles.clone(), Default::default(), None).and_then(|j| match images {
+            Some(i) => j.with_images(i.clone()),
+            None => Ok(j),
+        })
+    {
+        while job.step(256).is_ok_and(|p| !p.finished) {}
+        if let Ok(fresh) = job.finish() {
+            eprintln!("box tree check: {}", t.differs_from(&fresh).unwrap_or_else(|| "the same".into()));
+        }
+    }
+    tree
 }
 /// `nodes` and their ancestors into `dirty`.
 fn dirty_ancestors(doc: &Document, nodes: &[crate::dom::NodeId], dirty: &mut crate::dom::NodeSet) {

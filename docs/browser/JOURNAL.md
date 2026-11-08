@@ -6924,3 +6924,14 @@ the Guardian and old Reddit, looking for pages that fail outright:
   takes the new styles and is laid out again incrementally. Checked with
   `OLO_LAYOUT_CHECK` scrolling GitHub and MDN: 0 boxes differ from a fresh
   layout. GitHub's own rebuilds come from child-list changes (open).
+- **Text typed into a page no longer rebuilds its box tree.** A text
+  node's data, or the text children of an inline element (GitHub's demo
+  typing a line, frame by frame), are rewritten in place in their
+  paragraph's source (`Tree::with_text`): the later spans, inline boxes
+  and controls move along, the boxes stay. Whitespace-only text, which
+  can make or drop a box depending on where it is, still rebuilds.
+  Checked with `OLO_LAYOUT_CHECK`, which now also compares each kept or
+  patched box tree with one built anew: GitHub 82 and apple.com 23 times
+  the same, layouts 0 boxes different. GitHub against Chrome (machine
+  busy, load average 10): load 9.4 / 11.0 CPU s vs 9.0 / 10.4, idle 33 /
+  37% vs 37 / 41%; scrolling still behind.
