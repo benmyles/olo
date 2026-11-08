@@ -9851,7 +9851,14 @@ termd one by one) is in no known folder, which isn't "in no
 repository": git.rs's watcher skips it, so its tab keeps its group, and
 looks once it attaches (attaching pokes it, as output does). Checked
 with `upgrade-check --auto-tiled --times 15`: before, a tab came back
-out of its group in 2 rounds of 10 and stayed so; now 0 of 15. `--tab -w
+out of its group in 2 rounds of 10 and stayed so; now 0 of 15. What it
+costs, measured on release builds (4 windows in a repository, headless,
+old and new alternated twice): idle 0.0% of a core and 0 wakeups in 10
+s either way; a shell printing a line every 50 ms 1.3–1.7% of a core
+and 108–110 wakeups in 6 s either way; an upgrade (the file replaced,
+SIGURG) 110–140 ms of the process's time against 120–140, its windows'
+titles final 0.09 s after it either way, all 4 in their group (3 of 4
+before, the last opened). `--tab -w
 DIR` opens at the end of the group for DIR's repository, if one is
 here. Save Group keeps the group and each of its tabs' folders in
 `terminal-groups.json` (config dir); Open Saved Group shows its first
