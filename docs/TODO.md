@@ -15,13 +15,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Tracker: a click in the name being edited ends the edit** (Ben,
-  2026-11-07: "when i do rename / edit name and go to click in the
-  selected text with the cursor it takes me out of edit mode instead of
-  changing the cursor position"). A click in the field moves the caret
-  (a drag selects), as in any text field; only a click outside it ends
-  the edit.
-
 - **Undo in Tracker, and everywhere it makes sense** (Ben, 2026-11-07:
   "tracker needs to support undo for file/folder renames/moves/etc and
   also we need generally and unviversally to support undo in all olo
