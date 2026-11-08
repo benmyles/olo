@@ -83,6 +83,22 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl State {
     /// The attributes whose change can flip the state (a link's href, a
     /// control's checked or disabled); none for interaction states.
+    /// One the person's input sets (hover, press, focus, the URL's target).
+    pub fn is_interaction(self) -> bool {
+        matches!(self, State::Hover | State::Active | State::Focus | State::FocusWithin | State::FocusVisible | State::Target)
+    }
+    /// Its invalidation key (see `Invalidation`), for an interaction state.
+    pub fn key(self) -> &'static str {
+        match self {
+            State::Hover => ":hover",
+            State::Active => ":active",
+            State::Focus => ":focus",
+            State::FocusWithin => ":focus-within",
+            State::FocusVisible => ":focus-visible",
+            State::Target => ":target",
+            _ => ":state",
+        }
+    }
     pub fn reflected_attributes(self) -> &'static [&'static str] {
         match self {
             State::AnyLink | State::Link | State::Visited | State::LocalLink => &["href"],
@@ -305,23 +321,30 @@ impl Selectors {
             keys.any = true;
             self.has_keys_of_list(*list, &mut keys);
         }
-        if keys.empty {
+        if keys.empty || keys.interaction {
             let mut subject = Vec::new();
             for (i, step) in self.steps.iter().enumerate() {
-                let tests_empty = self.tests[step.tests.start as usize..step.tests.end as usize].iter().any(|t| {
-                    let Test::Logical { mode: Logical::Has, list } = t else { return false };
+                let (mut empty, mut interaction, mut siblings) = (false, false, false);
+                for t in &self.tests[step.tests.start as usize..step.tests.end as usize] {
+                    let Test::Logical { mode: Logical::Has, list } = t else { continue };
                     let mut inner = HasKeys::default();
                     self.has_keys_of_list(*list, &mut inner);
-                    inner.empty
-                });
-                if tests_empty {
-                    subject.clear();
-                    self.compound_keys(i as u32, 0, &mut subject);
-                    if subject.is_empty() {
-                        keys.empty_subjects.universal = true;
-                    }
-                    keys.empty_subjects.add(&subject);
+                    empty |= inner.empty;
+                    interaction |= inner.interaction;
+                    siblings |= inner.interaction && inner.siblings;
                 }
+                if !empty && !interaction {
+                    continue;
+                }
+                subject.clear();
+                self.compound_keys(i as u32, 0, &mut subject);
+                for (on, reach) in [(empty, &mut keys.empty_subjects), (interaction, &mut keys.interaction_subjects)] {
+                    if on {
+                        reach.universal |= subject.is_empty();
+                        reach.add(&subject);
+                    }
+                }
+                keys.interaction_siblings |= siblings;
             }
         }
         keys
@@ -332,6 +355,7 @@ impl Selectors {
             let complex = &self.complexes[i as usize];
             // Every compound of the argument: any element on its path.
             for step in &self.steps[complex.steps.start as usize..complex.steps.end as usize] {
+                keys.siblings |= matches!(step.relation, Relation::Next | Relation::Later);
                 let tests = &self.tests[step.tests.start as usize..step.tests.end as usize];
                 for t in tests {
                     match t {
@@ -353,6 +377,7 @@ impl Selectors {
                             for a in state.reflected_attributes() {
                                 keys.attributes.insert((*a).to_owned());
                             }
+                            keys.interaction |= state.is_interaction();
                         }
                         Test::Lang { .. } => {
                             keys.attributes.insert("lang".to_owned());
@@ -467,7 +492,12 @@ impl Selectors {
                 }
                 // :has() follows its own keys (the subtree); :is/:where/:not
                 // branches contribute theirs.
-                Test::Logical { mode: Logical::Has, .. } => keyed = true,
+                Test::Logical { mode: Logical::Has, .. } => {
+                    // What a `:has()` flipping on an element reaches (see
+                    // `page::interaction_rematch`).
+                    out.push(":has".to_owned());
+                    keyed = true;
+                }
                 Test::Logical { list, .. } if depth < 4 => {
                     let links = &self.links[self.lists[*list as usize].links.start as usize..self.lists[*list as usize].links.end as usize];
                     for &i in links {
@@ -484,7 +514,14 @@ impl Selectors {
                 }
                 // States an attribute sets (`:checked`, `:disabled`) and
                 // directionality follow those attributes too.
-                Test::State(state) => out.extend(state.reflected_attributes().iter().map(|a| format!("[{a}"))),
+                Test::State(state) => {
+                    out.extend(state.reflected_attributes().iter().map(|a| format!("[{a}")));
+                    // An interaction state's own key: a hover or focus
+                    // reaches through it (`.card:hover .title`).
+                    if state.is_interaction() {
+                        out.push(state.key().to_owned());
+                    }
+                }
                 Test::Dir(_) => out.push("[dir".to_owned()),
                 Test::Logical { .. } => *unknown = true,
                 Test::Structural(_) | Test::Nth(_) | Test::Pseudo(_) => {}
@@ -565,6 +602,17 @@ pub struct HasKeys {
     /// `:empty` can match (by its keys): only those can flip when text
     /// comes or goes inside them.
     pub empty_subjects: Reach,
+    /// An argument tests an interaction state (`:hover`, `:focus`, …).
+    pub interaction: bool,
+    /// An argument has a sibling combinator (`:has(+ …)`, `:has(~ …)`).
+    pub siblings: bool,
+    /// The elements a compound with a `:has()` whose argument tests an
+    /// interaction state can match: of an element whose state changed,
+    /// only those ancestors can flip.
+    pub interaction_subjects: Reach,
+    /// Such an argument has a sibling combinator: elements beside the
+    /// changed one can flip too (not followed: everything is matched again).
+    pub interaction_siblings: bool,
 }
 /// The subjects a key's change can reach: elements with one of these tags,
 /// ids, classes or attribute names (or every element, when universal).

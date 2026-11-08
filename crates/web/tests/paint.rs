@@ -1527,3 +1527,44 @@ fn attribute_changes_reach_through_states_and_not_through_any_element() {
     assert_eq!(pixel(&tile, 50, 15), [0, 128, 0, 255], "the div after the input's disabled");
     assert_eq!(pixel(&tile, 50, 35), [0, 128, 0, 255], "the p with data-on");
 }
+#[test]
+fn an_interaction_restyle_matches_only_what_the_states_reach_and_paints_as_a_whole_one() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // A hovered card colours its title (a descendant reached through
+    // `:hover`), the box after it (a sibling), and the page (`:has()`).
+    let html = "<!doctype html><style>body{margin:0}div{height:10px;background-color:white}p{margin:0;height:10px;background-color:white}\
+        .card:hover .title{background-color:green}.card:hover+.next{background-color:blue}body:has(.card:hover) .last{background-color:red}</style>\
+        <div class=card><p class=title></p></div><div class=next></div><div class=last></div><div class=other></div>";
+    let load = |shaper: &mut Shaper, painter: &mut paint::Engine| olo_web::page::load(Arc::from(html), &host, &scope, shaper, painter, viewport, None, |_, _| {}).unwrap();
+    let mut page = load(&mut shaper, &mut painter);
+    // [title, other, card] of a page's document.
+    let nodes = |doc: &olo_web::dom::Document| {
+        let html_node = doc.children(doc.root()).unwrap().last().unwrap();
+        let body = doc.children(html_node).unwrap().last().unwrap();
+        let divs: Vec<_> = doc.children(body).unwrap().into_iter().filter(|&n| doc.name(n).unwrap() == Some("div")).collect();
+        let title = doc.children(divs[0]).unwrap().into_iter().find(|&n| doc.name(n).unwrap() == Some("p")).unwrap();
+        [title, divs[3], divs[0]]
+    };
+    let rows = |page: &olo_web::page::Page, painter: &mut paint::Engine| {
+        let tile = render(painter, &page.scene);
+        [5, 15, 25, 35].map(|y| pixel(&tile, 50, y))
+    };
+    let white = [255, 255, 255, 255];
+    let hovered = [[0, 128, 0, 255], [0, 0, 255, 255], [255, 0, 0, 255], white];
+    for (hover, expected) in [(Some(0), hovered), (Some(1), [white; 4]), (Some(2), hovered), (None, [white; 4])] {
+        page.interaction.hover = hover.map(|i| nodes(&page.document)[i]);
+        page.restyle_interaction(&host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+        assert_eq!(rows(&page, &mut painter), expected, "hovering {hover:?}");
+        // As a page styled whole with that hover has it.
+        let mut whole = load(&mut shaper, &mut painter);
+        whole.interaction.hover = hover.map(|i| nodes(&whole.document)[i]);
+        whole.restyle(&host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+        assert_eq!(rows(&whole, &mut painter), expected, "styled whole, hovering {hover:?}");
+    }
+}

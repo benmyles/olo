@@ -24,6 +24,44 @@ impl Interaction {
             || self.target != other.target && uses(&[State::Target])
     }
 }
+impl Interaction {
+    /// The elements whose interaction states differ between `self` (as
+    /// styled) and `now`, each with the key of a state that flipped on it
+    /// (`State::key`): the hovered and pressed elements' ancestors that
+    /// gained or lost the state, the focused ones (and their ancestors,
+    /// for `:focus-within`), the targets. Only states some rule tests
+    /// (`mask`).
+    pub fn changed_elements(self, now: Self, doc: &Document, mask: u64) -> Vec<(NodeId, &'static str)> {
+        let uses = |s: State| mask & (1u64 << s as u8) != 0;
+        let chain = |n: Option<NodeId>| -> Vec<NodeId> { std::iter::successors(n, |&n| doc.parent(n).ok().flatten()).collect() };
+        let mut out = Vec::new();
+        let mut differ = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+            if a == b || !uses(state) {
+                return;
+            }
+            let (x, y) = (chain(a), chain(b));
+            for n in x.iter().filter(|n| !y.contains(n)).chain(y.iter().filter(|n| !x.contains(n))) {
+                out.push((*n, state.key()));
+            }
+        };
+        differ(self.hover, now.hover, State::Hover, &mut out);
+        differ(self.active, now.active, State::Active, &mut out);
+        differ(self.focus, now.focus, State::FocusWithin, &mut out);
+        let one = |a: Option<NodeId>, b: Option<NodeId>, state: State, out: &mut Vec<(NodeId, &'static str)>| {
+            if a != b && uses(state) {
+                out.extend(a.into_iter().chain(b).map(|n| (n, state.key())));
+            }
+        };
+        one(self.focus, now.focus, State::Focus, &mut out);
+        if self.focus != now.focus || self.keyboard_focus != now.keyboard_focus {
+            if uses(State::FocusVisible) {
+                out.extend(self.focus.into_iter().chain(now.focus).map(|n| (n, State::FocusVisible.key())));
+            }
+        }
+        one(self.target, now.target, State::Target, &mut out);
+        out
+    }
+}
 pub(super) struct Snapshot<'a> {
     pub doc: &'a Document,
     pub input: Interaction,

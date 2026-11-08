@@ -1454,6 +1454,7 @@ pub fn finish_with(
         &mut timeline,
         &mut containers,
         &[],
+        &[],
         &mut progress,
     )?;
     Ok(Page {
@@ -1625,17 +1626,23 @@ impl Page {
         }
         let previous_scene = self.scene.clone();
         let previous = previous_scene.layout().clone();
-        // The previous scene stands for patching while it shows the same
-        // interaction (another hover is restyled whole).
-        let patchable_scene = (self.rendered_interaction == self.interaction).then_some(&previous_scene);
+        // Another hover, focus or press: the elements whose states flipped
+        // matched again, with what their selectors reach (see
+        // `interaction_rematch`); where that can't be followed, every
+        // element (geometry and texts kept where they can be), the previous
+        // scene then no longer standing for patching.
+        let interaction_changed = self.rendered_interaction != self.interaction;
+        let rematch = if interaction_changed { interaction_rematch(&doc, &self.rules, self.rendered_interaction, self.interaction, self.interaction_mask) } else { Some(Vec::new()) };
+        let patchable_scene = rematch.is_some().then_some(&previous_scene);
         let before_render = std::time::Instant::now();
-        // Another hover, focus or press: every element matched again
-        // (`:focus-within` and `:hover` reach ancestors, and what descends
-        // from them); geometry and texts kept where they can be.
-        let restyle: Vec<crate::dom::NodeId> = if self.rendered_interaction != self.interaction { vec![doc.root()] } else { Vec::new() };
-        if std::env::var_os("OLO_WEB_TIMING").is_some() && !restyle.is_empty() {
-            eprintln!("rerender: the interaction changed ({:?} -> {:?}): every element matched again", self.rendered_interaction, self.interaction);
+        let restyle: Vec<crate::dom::NodeId> = if rematch.is_none() { vec![doc.root()] } else { Vec::new() };
+        if std::env::var_os("OLO_WEB_TIMING").is_some() && interaction_changed {
+            match &rematch {
+                Some(r) => eprintln!("rerender: the interaction changed: {} elements matched again", r.len()),
+                None => eprintln!("rerender: the interaction changed ({:?} -> {:?}): every element matched again", self.rendered_interaction, self.interaction),
+            }
         }
+        let rematch = rematch.unwrap_or_default();
         let incremental = render(
             &doc,
             self.images.as_ref(),
@@ -1655,6 +1662,7 @@ impl Page {
             &mut self.timeline,
             &mut self.containers,
             &restyle,
+            &rematch,
             &mut progress,
         );
         // What it kept from before failed it (a case the incremental paths
@@ -1682,6 +1690,7 @@ impl Page {
                     &mut self.animated,
                     &mut self.timeline,
                     &mut self.containers,
+                    &[],
                     &[],
                     &mut progress,
                 )?
@@ -1718,6 +1727,67 @@ impl Page {
                 ms(after_title.elapsed())
             );
         }
+        Ok(())
+    }
+    /// Restyle for a new interaction (`interaction` set, the viewport,
+    /// media and fonts as the scene was made with): only the elements whose
+    /// states flipped and what their selectors reach are matched again,
+    /// over the previous styles, layout and scene; `restyle` where that
+    /// can't be followed.
+    pub fn restyle_interaction(
+        &mut self,
+        host: &impl Host,
+        shaper: &mut shaping::Engine,
+        painter: &mut paint::Engine,
+        viewport: layout::Viewport,
+        cancel: Option<&AtomicBool>,
+        mut progress: impl FnMut(Phase, usize),
+    ) -> Result<()> {
+        for node in [self.interaction.hover, self.interaction.active, self.interaction.focus, self.interaction.target].into_iter().flatten() {
+            self.document.node_type(node)?;
+        }
+        let Some(rematch) = interaction_rematch(&self.document, &self.rules, self.rendered_interaction, self.interaction, self.interaction_mask) else {
+            return self.restyle(host, shaper, painter, viewport, cancel, progress);
+        };
+        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+            eprintln!("restyle: the interaction changed: {} elements matched again", rematch.len());
+        }
+        let previous_scene = self.scene.clone();
+        let previous = previous_scene.layout().clone();
+        let incremental = render(
+            &self.document,
+            self.images.as_ref(),
+            &self.rules,
+            self.quirks,
+            self.resource_issues,
+            self.interaction,
+            host,
+            &self.scope,
+            shaper,
+            painter,
+            viewport,
+            cancel,
+            Some(&previous),
+            Some(&previous_scene),
+            &mut self.animated,
+            &mut self.timeline,
+            &mut self.containers,
+            &[],
+            &rematch,
+            &mut progress,
+        );
+        let (scene, issues, fallbacks) = match incremental {
+            Ok(done) => done,
+            Err(error) if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) => return Err(error),
+            Err(error) => {
+                eprintln!("page: an incremental restyle failed ({error}): restyled whole");
+                return self.restyle(host, shaper, painter, viewport, cancel, progress);
+            }
+        };
+        self.rendered_interaction = self.interaction;
+        self.scene = scene;
+        self.stylesheet_issues = issues;
+        self.fallbacks = fallbacks;
         Ok(())
     }
     /// Recompute viewport-dependent styles without network I/O or HTML parsing.
@@ -1760,6 +1830,7 @@ impl Page {
             &mut self.animated,
             &mut self.timeline,
             &mut self.containers,
+            &[],
             &[],
             &mut progress,
         )?;
@@ -1929,6 +2000,97 @@ struct Patchable {
     nodes: Vec<(crate::dom::NodeId, bool)>,
     relayout: bool,
 }
+/// What an interaction change (`before` as styled, `now`) restyles: the
+/// elements whose states flipped, what selectors testing those states
+/// reach from them (`.card:hover .title`), and the ancestors a `:has()`
+/// testing a state can match; each matched again. None where that can't
+/// be followed (a `:has()` testing a state beside its subject): every
+/// element then. (A hover moving as the page scrolls under the pointer
+/// restyled BBC's page whole, 40-60 ms, many times a second.)
+fn interaction_rematch(doc: &Document, rules: &css::cascade::RuleSet, before: Interaction, now: Interaction, mask: u64) -> Option<Vec<(crate::dom::NodeId, bool)>> {
+    let has = rules.has_keys();
+    if has.interaction_siblings {
+        return None;
+    }
+    let invalidation = rules.invalidation();
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    let mut push = |n: crate::dom::NodeId, out: &mut Vec<(crate::dom::NodeId, bool)>| {
+        if seen.insert(n) {
+            out.push((n, true));
+        }
+    };
+    let is_element = |n: crate::dom::NodeId| doc.node_type(n).ok() == Some(NodeType::Element);
+    // Every element below `root` that `reach` reaches.
+    let below = |root: crate::dom::NodeId, reach: &css::selectors::Reach, out: &mut Vec<crate::dom::NodeId>| {
+        if reach.is_empty() {
+            return;
+        }
+        let mut stack: Vec<crate::dom::NodeId> = doc.children(root).map(|c| c.collect()).unwrap_or_default();
+        while let Some(n) = stack.pop() {
+            if !is_element(n) {
+                continue;
+            }
+            if reach.reaches(doc, n) {
+                out.push(n);
+            }
+            if let Ok(children) = doc.children(n) {
+                stack.extend(children);
+            }
+        }
+    };
+    for (node, key) in before.changed_elements(now, doc, mask) {
+        if !is_element(node) || !doc.is_connected(node).unwrap_or(false) {
+            continue;
+        }
+        push(node, &mut out);
+        let (down, beside) = invalidation.reach_of(std::iter::once(key.to_owned()));
+        let mut reached = Vec::new();
+        below(node, &down, &mut reached);
+        if !beside.is_empty() {
+            let mut sibling = doc.next_sibling(node).ok().flatten();
+            while let Some(e) = sibling {
+                if is_element(e) {
+                    if beside.reaches(doc, e) {
+                        reached.push(e);
+                    }
+                    below(e, &beside, &mut reached);
+                }
+                sibling = doc.next_sibling(e).ok().flatten();
+            }
+        }
+        // An ancestor's `:has()` testing the state may flip: the ancestor
+        // matched again, and what a compound with a `:has()` reaches from
+        // it (`body:has(.card:hover) .note`).
+        if has.interaction {
+            let (has_down, has_beside) = invalidation.reach_of(std::iter::once(":has".to_owned()));
+            let mut at = doc.parent(node).ok().flatten();
+            while let Some(a) = at {
+                if is_element(a) && has.interaction_subjects.reaches(doc, a) {
+                    reached.push(a);
+                    below(a, &has_down, &mut reached);
+                    if !has_beside.is_empty() {
+                        let mut sibling = doc.next_sibling(a).ok().flatten();
+                        while let Some(e) = sibling {
+                            if is_element(e) {
+                                if has_beside.reaches(doc, e) {
+                                    reached.push(e);
+                                }
+                                below(e, &has_beside, &mut reached);
+                            }
+                            sibling = doc.next_sibling(e).ok().flatten();
+                        }
+                    }
+                }
+                at = doc.parent(a).ok().flatten();
+            }
+        }
+        for n in reached {
+            push(n, &mut out);
+        }
+    }
+    Some(out)
+}
 fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> std::result::Result<Patchable, String> {
     let name = |n: crate::dom::NodeId| doc.name(n).ok().flatten().unwrap_or("?").to_owned();
     let changes = doc.changes_since(revision).ok_or_else(|| "the changes since are gone".to_owned())?;
@@ -2070,6 +2232,7 @@ fn render(
     timeline: &mut css::animation::Timeline,
     containers: &mut std::collections::HashMap<crate::dom::NodeId, [f64; 2]>,
     restyle: &[crate::dom::NodeId],
+    rematch: &[(crate::dom::NodeId, bool)],
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
     let mut result = render_once(
@@ -2091,6 +2254,7 @@ fn render(
         timeline,
         containers,
         restyle,
+        rematch,
         &mut progress,
     )?;
     if !rules.has_containers() {
@@ -2128,6 +2292,7 @@ fn render(
             timeline,
             containers,
             &resized,
+            &[],
             &mut progress,
         )?;
     }
@@ -2153,6 +2318,7 @@ fn render_once(
     timeline: &mut css::animation::Timeline,
     containers: &std::collections::HashMap<crate::dom::NodeId, [f64; 2]>,
     resized: &[crate::dom::NodeId],
+    rematch: &[(crate::dom::NodeId, bool)],
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
     // The previous layout's styles stand in only while they were computed
@@ -2197,6 +2363,7 @@ fn render_once(
     // elements are patched below).
     if unchanged
         && resized.is_empty()
+        && rematch.is_empty()
         && previous_scene.is_some()
         && let Some(tree) = previous_styles.and_then(|p| p.unchanged(doc, rules.generation()))
     {
@@ -2208,10 +2375,22 @@ fn render_once(
     {
         eprintln!("  render style: not patched: {why}");
     }
+    // The document's changes, and the elements an interaction change
+    // flipped (`rematch`), patched over the previous styles.
     if styles.is_none()
         && let (Some(p), Some(_)) = (previous_styles, previous_scene)
-        && let Ok(Patchable { nodes, relayout: text_changed }) = patchable(doc, rules, p.document_revision())
+        && let Some(Patchable { mut nodes, relayout: text_changed }) = match patchable(doc, rules, p.document_revision()) {
+            Ok(found) => Some(found),
+            Err(_) if unchanged && !rematch.is_empty() => Some(Patchable { nodes: Vec::new(), relayout: false }),
+            Err(_) => None,
+        }
     {
+        for &(n, again) in rematch {
+            match nodes.iter_mut().find(|(m, _)| *m == n) {
+                Some(entry) => entry.1 |= again,
+                None => nodes.push((n, again)),
+            }
+        }
         relayout = text_changed;
         let copying = std::time::Instant::now();
         let mut tree = p.clone();
@@ -2225,6 +2404,10 @@ fn render_once(
             eprintln!("  render style: copy {copied_ms:.2} ms, patch {:.2} ms, {} nodes", copying.elapsed().as_secs_f64() * 1000. - copied_ms, nodes.len());
         }
     }
+    // An interaction change not patched: every element matched again (the
+    // previous styles are of the other interaction).
+    let whole = [doc.root()];
+    let resized = if styles.is_none() && !rematch.is_empty() { &whole[..] } else { resized };
     let mut styles = match styles {
         Some(styles) => styles,
         None => {

@@ -6412,3 +6412,22 @@ journal).
   (each browser alone), two runs: Chrome load 9.0-9.1 CPU s, idle 35-36%,
   scroll 61-65%; Olo load 9.5-9.6 CPU s, idle 30%, scroll 69-71%. Before
   this (same script): Olo load 14-15 CPU s, idle 73-83%.
+- **Hover restyles what it reaches; scrolling doesn't restart it.** On
+  BBC's page, scrolling burned a core and drew nothing new: a hover
+  change restyled the page from scratch (40-60 ms), and each wheel
+  step's render request cancelled it, to begin it again. Now an
+  interaction change (hover, press, focus, target) matches again only
+  the elements whose states flipped (the old and new ancestor chains),
+  what selectors testing those states reach from them (`.card:hover
+  .title`, `.card:hover + .next`: states are invalidation keys now), and
+  the ancestors a `:has()` testing a state can match, with what their
+  `:has()` compound reaches (`body:has(.card:hover) .note`); patched over
+  the previous styles, layout and scene. A test compares each step with
+  a page styled whole. While the wheel scrolls nothing is hovered (as in
+  Chrome); the hover is made 150 ms after the last step. And a request
+  that differs only by its scroll leaves the one in flight to finish.
+  `compare-cost.py`, each browser alone (load CPU s / idle / scroll /
+  PSS): bbc.com Chrome 4.8 / 2.4% / 129% / 725 MB, Olo 3.9 / 0.1% / 23% /
+  481 MB (Olo's scroll was 107%); apple.com Chrome 1.2 / 0.1% / 26% /
+  667 MB, Olo 1.6 / 0% / 45% / 249 MB; github.com Chrome idle 36%, scroll
+  62%, 505 MB, Olo 9.3 CPU s, 29%, 63%, 531 MB.

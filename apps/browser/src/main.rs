@@ -83,7 +83,24 @@ struct Browser {
     pressed: Option<olo_web::dom::NodeId>,
     interaction_mask: u64,
     viewport: Rc<std::cell::Cell<Bounds<gpui::Pixels>>>,
+    /// While the wheel scrolls, what passes under the pointer is not
+    /// hovered (as in Chrome): restyling for each element passing under it
+    /// kept cancelling itself (BBC's page burned a core, rendering
+    /// nothing). When the scroll last moved, where the pointer is, and the
+    /// hover made once the scroll has stopped.
+    scrolled_at: Option<std::time::Instant>,
+    pointer_at: Option<gpui::Point<gpui::Pixels>>,
+    hover_after_scroll: Option<gpui::Task<()>>,
+    /// What the last render request asked for besides its scroll: one
+    /// asking the same at another scroll leaves the one in flight to
+    /// finish (a restyle for a hover, then tiles) instead of cancelling it
+    /// for each wheel step to begin it again (it never finished while the
+    /// page scrolled).
+    last_asked: Option<Asked>,
 }
+type Asked = (worker::Key, olo_web::page::Interaction, u64, Option<gpui::SharedString>, bool, Option<olo_web::dom::NodeId>);
+/// How long after the last wheel step the page is still scrolling (no hover).
+const SCROLL_SETTLE: std::time::Duration = std::time::Duration::from_millis(150);
 impl Browser {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let saved: Saved = olo_ui::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
@@ -160,6 +177,10 @@ impl Browser {
             extent: 0.,
             interaction: Default::default(),
             pressed: None,
+            scrolled_at: None,
+            pointer_at: None,
+            hover_after_scroll: None,
+            last_asked: None,
             interaction_mask: 0,
             viewport: Rc::new(std::cell::Cell::new(Bounds::default())),
         }
@@ -194,10 +215,14 @@ impl Browser {
         let Some(key) = self.key.clone() else {
             return;
         };
-        self.cancel.cancel();
-        self.cancel = network::Cancel::default();
-        self.id += 1;
         let fragment = self.history.current().url.split_once('#').map(|(_, f)| gpui::SharedString::from(f.to_owned()));
+        let asked: Asked = (key.clone(), self.interaction, self.navigation, fragment.clone(), self.seek_anchor, self.focus_scroll);
+        if self.last_asked.as_ref() != Some(&asked) || self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            self.cancel.cancel();
+            self.cancel = network::Cancel::default();
+        }
+        self.last_asked = Some(asked);
+        self.id += 1;
         let _ = self.tx.send(worker::Message::Render(Box::new(worker::Request {
             id: self.id,
             key,
@@ -319,19 +344,9 @@ impl Browser {
             modifiers: u8::from(modifiers.shift) | u8::from(modifiers.control) << 1 | u8::from(modifiers.alt) << 2 | u8::from(modifiers.platform) << 3,
         }));
     }
-    fn pointer(&mut self, at: gpui::Point<gpui::Pixels>, phase: u8, window: &mut Window, cx: &mut Context<Self>) {
-        self.send_input(
-            match phase {
-                1 => worker::InputKind::Down,
-                2 => worker::InputKind::Up,
-                _ => worker::InputKind::Move,
-            },
-            Some(at),
-            window.modifiers(),
-        );
-        if self.key.is_none() || phase == 0 && self.interaction_mask & (1u64 << olo_web::css::selectors::State::Hover as u8) == 0 {
-            return;
-        }
+    /// The element (and link) under window point `at`, as the last
+    /// render's labels have it.
+    fn under(&self, at: gpui::Point<gpui::Pixels>) -> (Option<olo_web::dom::NodeId>, Option<Arc<links::Link>>) {
         let bounds = self.viewport.get();
         let scale = self.key.as_ref().map_or(1., |k| k.scale);
         let x = f64::from(f32::from(at.x - bounds.left()));
@@ -345,8 +360,48 @@ impl Browser {
             let ly = if l.fixed { viewport_y } else { y - l.sticky.as_ref().map_or(0., shift) };
             x >= l.rect.x && x < l.rect.x + l.rect.width && ly >= l.rect.y && ly < l.rect.y + l.rect.height
         });
-        let node = label.and_then(|l| l.node);
-        let link = label.and_then(|l| l.link.clone());
+        (label.and_then(|l| l.node), label.and_then(|l| l.link.clone()))
+    }
+    /// The wheel moved the page: no hover until it stops, then the hover
+    /// of what is under the pointer by then.
+    fn scrolled(&mut self, cx: &mut Context<Self>) {
+        self.scrolled_at = Some(std::time::Instant::now());
+        self.hover_after_scroll = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SCROLL_SETTLE).await;
+            let _ = this.update(cx, |v, cx| {
+                v.scrolled_at = None;
+                v.hover_after_scroll = None;
+                let Some(at) = v.pointer_at else { return };
+                if v.key.is_none() || v.interaction_mask & (1u64 << olo_web::css::selectors::State::Hover as u8) == 0 {
+                    return;
+                }
+                let old = v.interaction;
+                v.interaction.hover = v.under(at).0;
+                if old.changes_style(v.interaction, v.interaction_mask) {
+                    v.update_input(cx);
+                }
+            });
+        }));
+    }
+    fn pointer(&mut self, at: gpui::Point<gpui::Pixels>, phase: u8, window: &mut Window, cx: &mut Context<Self>) {
+        self.send_input(
+            match phase {
+                1 => worker::InputKind::Down,
+                2 => worker::InputKind::Up,
+                _ => worker::InputKind::Move,
+            },
+            Some(at),
+            window.modifiers(),
+        );
+        self.pointer_at = Some(at);
+        if self.key.is_none() || phase == 0 && self.interaction_mask & (1u64 << olo_web::css::selectors::State::Hover as u8) == 0 {
+            return;
+        }
+        // Scrolling: hovered once it stops (`scrolled`).
+        if phase == 0 && self.scrolled_at.is_some_and(|t| t.elapsed() < SCROLL_SETTLE) {
+            return;
+        }
+        let (node, link) = self.under(at);
         let old = self.interaction;
         self.interaction.hover = node;
         if phase == 1 {
@@ -861,6 +916,7 @@ impl Render for Browser {
                         let _ = v.tx.send(worker::Message::ScrollBox { node: a.node, dx, dy });
                         v.scroll_areas = areas.into();
                         v.send_input(worker::InputKind::Wheel { dx, dy }, Some(e.position), e.modifiers);
+                        v.scrolled(cx);
                         return;
                     }
                     // Sideways with nothing to take it: the page doesn't scroll sideways.
@@ -876,6 +932,7 @@ impl Render for Browser {
                         return;
                     }
                     v.send_input(worker::InputKind::Scroll, None, e.modifiers);
+                    v.scrolled(cx);
                     v.seek_anchor = false;
                     v.focus_scroll = None;
                     if let Some(key) = v.key.clone() {

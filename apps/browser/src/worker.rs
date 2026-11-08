@@ -1521,7 +1521,15 @@ fn render(
             let previous = page.interaction;
             page.interaction = input;
             let host = PageHost::new(page.scope(), &r.key);
-            if let Err(error) = page.restyle(&host, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {}) {
+            // Only the interaction changed (a hover as the page scrolls
+            // under the pointer): restyled from where it is.
+            let same_view = key.width == r.key.width && key.height == r.key.height && key.scale == r.key.scale && key.palette == r.key.palette;
+            let restyled = if same_view {
+                page.restyle_interaction(&host, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {})
+            } else {
+                page.restyle(&host, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {})
+            };
+            if let Err(error) = restyled {
                 page.interaction = previous;
                 return Err(page::Error::from(format!("restyle for the viewport: {error}").as_str()));
             }
