@@ -17,6 +17,7 @@ mod panels;
 mod quicklook;
 mod sorts;
 mod thumbs;
+mod undo;
 mod watch;
 
 use std::{
@@ -177,6 +178,10 @@ pub struct Tracker {
     /// Running file operations, each with the window that started it.
     pub jobs: Vec<(ops::Job, Option<EntityId>)>,
     next_job: u64,
+    /// Edit ▸ Undo and Redo, for every window; and the jobs running whose
+    /// outcome becomes a step (what to call it, and why it runs).
+    pub history: undo::History,
+    recording: HashMap<u64, (String, undo::Purpose)>,
     status: Option<EntityId>,
     /// Long jobs say when they're done; Show opens where the items went.
     notes: Notifier,
@@ -629,14 +634,19 @@ impl Tracker {
                     let dir = fs::home().join("Desktop");
                     let _ = std::fs::create_dir_all(&dir);
                     match fs::new_folder(&dir) {
-                        Ok(p) => d.update(cx, |d, cx| {
-                            d.reload();
-                            d.edit_name(&p, cx);
-                        }),
+                        Ok(p) => {
+                            self.done("New Folder", undo::Change::Made(vec![p.clone()]), cx);
+                            d.update(cx, |d, cx| {
+                                d.reload();
+                                d.edit_name(&p, cx);
+                            })
+                        }
                         Err(e) => self.error(format!("Couldn't create a folder: {e}"), cx),
                     }
                 }
                 "empty-trash" => self.confirm_empty_trash(cx),
+                "undo" => self.undo_redo(false, Some(key), cx),
+                "redo" => self.undo_redo(true, Some(key), cx),
                 "terminal" => fs::open_in_terminal(&fs::home().join("Desktop")),
                 // From the desktop: a window on Home.
                 "new" => {
@@ -683,10 +693,13 @@ impl Tracker {
             // The folder it's in, with this one selected (to go on from).
             "parent" => self.show_in_parent(&dir, cx),
             "new-folder" => match fs::new_folder(&dir) {
-                Ok(p) => update(cx, &mut |f, cx| {
-                    f.add_entry(&p);
-                    f.edit_name(&p, cx);
-                }),
+                Ok(p) => {
+                    self.done("New Folder", undo::Change::Made(vec![p.clone()]), cx);
+                    update(cx, &mut |f, cx| {
+                        f.add_entry(&p);
+                        f.edit_name(&p, cx);
+                    })
+                }
                 Err(e) => self.error(format!("Couldn't create a folder: {e}"), cx),
             },
             "terminal" => fs::open_in_terminal(&dir),
@@ -731,11 +744,12 @@ impl Tracker {
                 }
             }
             "link" => {
-                for p in &selected {
-                    let _ = fs::make_link(p);
-                }
+                let made: Vec<PathBuf> = selected.iter().filter_map(|p| fs::make_link(p).ok()).collect();
+                self.done(if made.len() == 1 { "Create Link" } else { "Create Links" }, undo::Change::Made(made), cx);
                 self.reload_all(cx);
             }
+            "undo" => self.undo_redo(false, Some(key), cx),
+            "redo" => self.undo_redo(true, Some(key), cx),
             "trash" => {
                 if !selected.is_empty() {
                     self.start_job(ops::Kind::Trash, selected, None, Some(key), cx);
@@ -871,11 +885,12 @@ impl Tracker {
             return None;
         }
         let r = fs::rename(p, name);
-        if let Ok(new) = &r
-            && let Some(d) = self.desktop()
-        {
-            // A desktop icon keeps its place under its new name.
-            d.update(cx, |d, _| d.renamed(p, new));
+        if let Ok(new) = &r {
+            if let Some(d) = self.desktop() {
+                // A desktop icon keeps its place under its new name.
+                d.update(cx, |d, _| d.renamed(p, new));
+            }
+            self.done("Rename", undo::Change::Moved(vec![(p.to_owned(), new.clone())]), cx);
         }
         self.reload_all(cx);
         match r {
@@ -1151,7 +1166,10 @@ impl Tracker {
                 (!text.trim().is_empty()).then(|| fs::clipping(&dest, &text))
             };
             match saved {
-                Some(Ok(_)) => self.reload_all(cx),
+                Some(Ok(p)) => {
+                    self.done("Drop", undo::Change::Made(vec![p]), cx);
+                    self.reload_all(cx)
+                }
                 Some(Err(e)) => self.error(format!("Couldn't save what was dropped: {e}"), cx),
                 None => {}
             }
@@ -1176,12 +1194,17 @@ impl Tracker {
                         "move" => t.start_job(ops::Kind::Move, paths, Some(dest), Some(key), cx),
                         "copy" => t.start_job(ops::Kind::Copy, paths, Some(dest), Some(key), cx),
                         "link" => {
+                            let mut made = Vec::new();
                             for p in &paths {
-                                if let Err(e) = fs::link_into(p, &dest) {
-                                    t.error(format!("Couldn't create a link: {e}"), cx);
-                                    break;
+                                match fs::link_into(p, &dest) {
+                                    Ok(l) => made.push(l),
+                                    Err(e) => {
+                                        t.error(format!("Couldn't create a link: {e}"), cx);
+                                        break;
+                                    }
                                 }
                             }
+                            t.done(if made.len() == 1 { "Create Link" } else { "Create Links" }, undo::Change::Made(made), cx);
                             t.reload_all(cx);
                         }
                         _ => {}
@@ -1229,7 +1252,10 @@ impl Tracker {
             return;
         };
         match saved {
-            Ok(_) => self.reload_all(cx),
+            Ok(p) => {
+                self.done("Paste", undo::Change::Made(vec![p]), cx);
+                self.reload_all(cx)
+            }
             Err(e) => self.error(format!("Couldn't paste: {e}"), cx),
         }
     }
@@ -1237,10 +1263,53 @@ impl Tracker {
     /// Run a file operation in the background. Short ones finish without a
     /// trace; longer ones show in the Tracker Status window.
     fn start_job(&mut self, kind: ops::Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, origin: Option<EntityId>, cx: &mut Context<Self>) {
+        // (What it does is a step Undo takes back; emptying the Trash isn't.)
+        let record = (kind != ops::Kind::EmptyTrash).then(|| (undo::name_of(kind).to_owned(), undo::Purpose::Do));
+        self.run_job(kind, sources, dest, Vec::new(), origin, record, cx);
+    }
+
+    /// Edit ▸ Undo (or Redo): the step's inverse run as a job, what it
+    /// does then the step for the other way (`undo.rs`).
+    fn undo_redo(&mut self, redo: bool, origin: Option<EntityId>, cx: &mut Context<Self>) {
+        let step = if redo { self.history.take_redo() } else { self.history.take_undo() };
+        let Some(step) = step else { return };
+        let (kind, sources, targets) = step.change.inverse();
+        let purpose = if redo { undo::Purpose::Redo } else { undo::Purpose::Undo };
+        self.run_job(kind, sources, None, targets, origin, Some((step.name, purpose)), cx);
+        self.refresh_menus(cx);
+    }
+
+    /// A step done here and now (a rename, a new folder: no job).
+    fn done(&mut self, name: &str, change: undo::Change, cx: &mut Context<Self>) {
+        self.history.done(name, change);
+        self.refresh_menus(cx);
+    }
+
+    /// The windows' menus again (Undo's name changed).
+    fn refresh_menus(&mut self, cx: &mut Context<Self>) {
+        for s in &self.windows {
+            let _ = s.handle.update(cx, |_, window, _| window.refresh());
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_job(
+        &mut self,
+        kind: ops::Kind,
+        sources: Vec<PathBuf>,
+        dest: Option<PathBuf>,
+        targets: Vec<PathBuf>,
+        origin: Option<EntityId>,
+        record: Option<(String, undo::Purpose)>,
+        cx: &mut Context<Self>,
+    ) {
         let id = self.next_job;
         self.next_job += 1;
+        if let Some(r) = record {
+            self.recording.insert(id, r);
+        }
         let proxy = olo_ui::proxy(cx);
-        let job = ops::start(id, kind, sources, dest, move |outcome| proxy.send(Msg::JobDone(id, outcome)));
+        let job = ops::start(id, kind, sources, dest, targets, move |outcome| proxy.send(Msg::JobDone(id, outcome)));
         let proxy = olo_ui::proxy(cx);
         std::thread::spawn(move || {
             std::thread::sleep(STATUS_DELAY);
@@ -1266,6 +1335,21 @@ impl Tracker {
     fn job_done(&mut self, id: u64, outcome: ops::Outcome, cx: &mut Context<Self>) {
         let Some(i) = self.jobs.iter().position(|(j, _)| j.id == id) else { return };
         let (job, origin) = self.jobs.remove(i);
+        // What it did, for Undo (or Redo): some of it, if it stopped part
+        // way. A desktop icon moved back by an undone rename keeps its place.
+        if let Some((name, purpose)) = self.recording.remove(&id)
+            && let Some(change) = undo::Change::of(job.kind, &outcome)
+        {
+            if let (undo::Change::Moved(pairs), Some(d)) = (&change, self.desktop()) {
+                d.update(cx, |d, _| {
+                    for (from, to) in pairs {
+                        d.renamed(from, to);
+                    }
+                });
+            }
+            self.history.record(purpose, undo::Step { name, change });
+        }
+        self.refresh_menus(cx);
         self.reload_all(cx);
         // New items come up selected, as after a drop.
         if let Some(f) = origin.and_then(|k| self.folder(k))
@@ -1552,6 +1636,8 @@ fn main() {
             default_view: olo_kit_base::settings::current().map(|s| s.tracker.default_view).unwrap_or_default(),
             jobs: Vec::new(),
             next_job: 1,
+            history: undo::History::default(),
+            recording: HashMap::new(),
             status: None,
             notes: Notifier::new(olo_ui::proxy(cx), "Tracker", "olo-tracker"),
             note_dirs: HashMap::new(),

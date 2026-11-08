@@ -10984,6 +10984,26 @@ deferred so the Tracker can update the window back):
   drop handler gives the Tracker the drop. Drags out carry Olo's own
   types (the folder and file system they're from, whether to ask).
 - Paste reads the clipboard off the UI thread (`App::paste_as`).
+- **Edit ▸ Undo and Redo** (undo.rs; ⌘Z and ⇧⌘Z, `app.undo`/`app.redo`,
+  named for the step: "Undo Rename", "Undo Move to Trash"), one history
+  for every window and the desktop, as Finder's. A step is what was
+  done, as done: items moved from where to where (rename, move, put
+  back), put in the Trash or restored from it (from where, to where in
+  it), or made (copy, duplicate, new folder, links, a paste or drop of
+  text or a picture). Each job reports that (`ops::Outcome::moved`,
+  `created`); a rename or a new folder records it at once. Undoing runs
+  what takes it back as a job like any other (on a worker, progress,
+  Stop): moved items go back to exactly where they were
+  (`ops::Kind::PutBack`), trashed ones are restored, restored ones go
+  back in the Trash, made ones go in the Trash (Redo restores them from
+  it, to the byte). What that job did is the step Redo takes back, and
+  the other way round, so a step goes back and forth as often as wanted,
+  many files as one; a job stopped part way records what it did. When a
+  step can't be any more (an item gone, the Trash emptied, something new
+  where it would go back to), the job says why and the step goes. A
+  name being edited keeps ⌘Z for its text (a menu's keys reach the
+  window only when nothing in it took them). Emptying the Trash isn't
+  undone.
 - `quicklook.rs`: olo-preview's `PreviewView` with the footer and keys;
   its window opens when the preview comes (or after 120 ms with a
   spinner) and has the keyboard.

@@ -1,0 +1,272 @@
+//! Edit ▸ Undo and Redo for what Tracker did to files (Ben, 2026-11-07:
+//! "tracker needs to support undo for file/folder renames/moves/etc").
+//!
+//! Each step is what was done, as it was done: items moved (renamed, moved,
+//! put back) from where to where, put in the Trash (from where, to where in
+//! it), restored from it, or made (copied, duplicated, a new folder, links,
+//! what was pasted). Undoing a step runs what takes it back as a job like
+//! any other (on a worker, with progress, stoppable): moved items go back,
+//! trashed ones are restored, restored ones go back in the Trash, made ones
+//! go in the Trash. What that job did is then the step Redo takes back, and
+//! the other way round, so both lists hold what was done and a step can go
+//! back and forth as often as wanted, many files as one. When it can't any
+//! more (an item since moved, renamed or gone, the Trash emptied, something
+//! new where it would go back to), the job says so, plainly, and the step
+//! goes.
+//!
+//! The history is the app's, for every window (as Finder's): a rename in
+//! one window undoes from another.
+
+use std::path::PathBuf;
+
+use crate::ops::{Kind, Outcome};
+
+/// The most steps kept.
+const MOST: usize = 100;
+
+/// What a step did.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Change {
+    /// Moved (renamed, moved, put back): from, to.
+    Moved(Vec<(PathBuf, PathBuf)>),
+    /// Put in the Trash: from, where in the Trash.
+    Trashed(Vec<(PathBuf, PathBuf)>),
+    /// Taken out of the Trash: where in the Trash, to.
+    Restored(Vec<(PathBuf, PathBuf)>),
+    /// Made: copies, a new folder, links, what was pasted.
+    Made(Vec<PathBuf>),
+}
+
+impl Change {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Change::Moved(v) | Change::Trashed(v) | Change::Restored(v) => v.is_empty(),
+            Change::Made(v) => v.is_empty(),
+        }
+    }
+
+    /// The job that takes it back: its kind, sources and (for `PutBack`)
+    /// targets.
+    pub fn inverse(&self) -> (Kind, Vec<PathBuf>, Vec<PathBuf>) {
+        match self {
+            Change::Moved(pairs) => (Kind::PutBack, pairs.iter().map(|(_, to)| to.clone()).collect(), pairs.iter().map(|(from, _)| from.clone()).collect()),
+            Change::Trashed(pairs) => (Kind::Restore, pairs.iter().map(|(_, at)| at.clone()).collect(), Vec::new()),
+            Change::Restored(pairs) => (Kind::Trash, pairs.iter().map(|(_, to)| to.clone()).collect(), Vec::new()),
+            Change::Made(paths) => (Kind::Trash, paths.clone(), Vec::new()),
+        }
+    }
+
+    /// What a finished job of `kind` did, from its outcome (some of it, if
+    /// it stopped part way: what was done can still be undone).
+    pub fn of(kind: Kind, outcome: &Outcome) -> Option<Change> {
+        let c = match kind {
+            Kind::Move | Kind::PutBack => Change::Moved(outcome.moved.clone()),
+            Kind::Trash => Change::Trashed(outcome.moved.clone()),
+            Kind::Restore => Change::Restored(outcome.moved.clone()),
+            Kind::Copy | Kind::Duplicate => Change::Made(outcome.created.clone()),
+            Kind::EmptyTrash => return None,
+        };
+        (!c.is_empty()).then_some(c)
+    }
+}
+
+/// A step: what to call it ("Rename": Edit ▸ Undo Rename) and what it did.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Step {
+    pub name: String,
+    pub change: Change,
+}
+
+/// Why a job runs: to do something, or to undo or redo a step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Purpose {
+    Do,
+    Undo,
+    Redo,
+}
+
+/// What a job of `kind` is called as a step.
+pub fn name_of(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Copy => "Copy",
+        Kind::Move => "Move",
+        Kind::Duplicate => "Duplicate",
+        Kind::Trash => "Move to Trash",
+        Kind::Restore => "Restore",
+        Kind::EmptyTrash => "Empty Trash",
+        Kind::PutBack => "Move",
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct History {
+    undo: Vec<Step>,
+    redo: Vec<Step>,
+}
+
+impl History {
+    /// A step was done (not an undo or a redo): what was undone can't be
+    /// redone any more.
+    pub fn done(&mut self, name: &str, change: Change) {
+        self.record(Purpose::Do, Step { name: name.to_owned(), change });
+    }
+
+    /// What a job for `purpose` did: Undo can take it back after a step
+    /// was done or redone, Redo after one was undone.
+    pub fn record(&mut self, purpose: Purpose, step: Step) {
+        if step.change.is_empty() {
+            return;
+        }
+        match purpose {
+            Purpose::Do => {
+                self.redo.clear();
+                self.undo.push(step);
+            }
+            Purpose::Redo => self.undo.push(step),
+            Purpose::Undo => self.redo.push(step),
+        }
+        for list in [&mut self.undo, &mut self.redo] {
+            if list.len() > MOST {
+                list.drain(..list.len() - MOST);
+            }
+        }
+    }
+
+    /// The step to undo next, taken off the list.
+    pub fn take_undo(&mut self) -> Option<Step> {
+        self.undo.pop()
+    }
+
+    pub fn take_redo(&mut self) -> Option<Step> {
+        self.redo.pop()
+    }
+
+    /// The menu's names for them: "Undo Rename", or "Undo" with nothing.
+    pub fn undo_label(&self) -> (String, bool) {
+        label("Undo", self.undo.last())
+    }
+
+    pub fn redo_label(&self) -> (String, bool) {
+        label("Redo", self.redo.last())
+    }
+}
+
+fn label(verb: &str, step: Option<&Step>) -> (String, bool) {
+    match step {
+        Some(s) => (format!("{verb} {}", s.name), true),
+        None => (verb.to_owned(), false),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops;
+    use std::{fs as sfs, path::Path, sync::mpsc};
+
+    fn run(kind: Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, targets: Vec<PathBuf>) -> Outcome {
+        let (tx, rx) = mpsc::channel();
+        ops::start(1, kind, sources, dest, targets, move |o| tx.send(o).unwrap());
+        rx.recv().unwrap()
+    }
+
+    /// Undo or redo the top step as the app does: its inverse run, what
+    /// that did recorded for the other list.
+    fn turn(h: &mut History, redo: bool) -> Outcome {
+        let step = if redo { h.take_redo() } else { h.take_undo() }.expect("a step");
+        let (kind, sources, targets) = step.change.inverse();
+        let o = run(kind, sources, None, targets);
+        if let Some(change) = Change::of(kind, &o) {
+            h.record(if redo { Purpose::Redo } else { Purpose::Undo }, Step { name: step.name, change });
+        }
+        o
+    }
+
+    fn dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("olo-undo-{name}-{}", std::process::id()));
+        let _ = sfs::remove_dir_all(&d);
+        sfs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// A move of many files undone puts each back where it was, and redone
+    /// moves them again, as often as wanted; the menu names it.
+    #[test]
+    fn a_move_goes_back_and_forth() {
+        let d = dir("move");
+        sfs::create_dir_all(d.join("a")).unwrap();
+        sfs::create_dir_all(d.join("b")).unwrap();
+        for n in ["x.txt", "y.txt"] {
+            sfs::write(d.join("a").join(n), n).unwrap();
+        }
+        let mut h = History::default();
+        assert_eq!(h.undo_label(), ("Undo".into(), false));
+        let o = run(Kind::Move, vec![d.join("a/x.txt"), d.join("a/y.txt")], Some(d.join("b")), Vec::new());
+        h.done(name_of(Kind::Move), Change::of(Kind::Move, &o).unwrap());
+        assert_eq!(h.undo_label(), ("Undo Move".into(), true));
+        for _ in 0..2 {
+            let o = turn(&mut h, false);
+            assert!(o.error.is_none(), "{o:?}");
+            assert!(d.join("a/x.txt").exists() && d.join("a/y.txt").exists() && !d.join("b/x.txt").exists());
+            assert_eq!(h.redo_label(), ("Redo Move".into(), true));
+            assert!(!h.undo_label().1);
+            let o = turn(&mut h, true);
+            assert!(o.error.is_none(), "{o:?}");
+            assert!(d.join("b/x.txt").exists() && d.join("b/y.txt").exists() && !d.join("a/x.txt").exists());
+        }
+        let _ = sfs::remove_dir_all(&d);
+    }
+
+    /// A rename undone is the old name back; not over something that has
+    /// taken it meanwhile, and not of something gone: said, and nothing
+    /// touched.
+    #[test]
+    fn a_rename_undone_or_said_why_not() {
+        let d = dir("rename");
+        sfs::write(d.join("new.txt"), "it").unwrap();
+        let mut h = History::default();
+        h.done("Rename", Change::Moved(vec![(d.join("old.txt"), d.join("new.txt"))]));
+        let o = turn(&mut h, false);
+        assert!(o.error.is_none(), "{o:?}");
+        assert_eq!(sfs::read_to_string(d.join("old.txt")).unwrap(), "it");
+        // Redone, then something else takes the old name: Undo says so.
+        turn(&mut h, true);
+        sfs::write(d.join("old.txt"), "another").unwrap();
+        let o = turn(&mut h, false);
+        assert!(o.error.as_deref().is_some_and(|e| e.contains("something else is called “old.txt”")), "{o:?}");
+        assert_eq!(sfs::read_to_string(d.join("old.txt")).unwrap(), "another");
+        assert_eq!(sfs::read_to_string(d.join("new.txt")).unwrap(), "it");
+        // Gone: said too.
+        h.done("Rename", Change::Moved(vec![(d.join("a"), d.join("gone"))]));
+        let o = turn(&mut h, false);
+        assert!(o.error.as_deref().is_some_and(|e| e.contains("isn't there any more")), "{o:?}");
+        let _ = sfs::remove_dir_all(&d);
+    }
+
+    /// Doing something new forgets what was undone (it can't be redone).
+    #[test]
+    fn a_new_step_forgets_the_redo() {
+        let mut h = History::default();
+        h.done("Rename", Change::Moved(vec![(PathBuf::from("/a"), PathBuf::from("/b"))]));
+        let s = h.take_undo().unwrap();
+        h.record(Purpose::Undo, s);
+        assert!(h.redo_label().1);
+        h.done("New Folder", Change::Made(vec![PathBuf::from("/c")]));
+        assert!(!h.redo_label().1);
+        assert_eq!(h.undo_label().0, "Undo New Folder");
+        // Nothing done: nothing kept.
+        h.done("Copy", Change::Made(Vec::new()));
+        assert_eq!(h.undo_label().0, "Undo New Folder");
+    }
+
+    /// The inverse of each kind of step: moves back, the Trash's restores,
+    /// what was made to the Trash.
+    #[test]
+    fn inverses() {
+        let (a, b) = (Path::new("/a").to_path_buf(), Path::new("/t/a").to_path_buf());
+        assert_eq!(Change::Moved(vec![(a.clone(), b.clone())]).inverse(), (Kind::PutBack, vec![b.clone()], vec![a.clone()]));
+        assert_eq!(Change::Trashed(vec![(a.clone(), b.clone())]).inverse(), (Kind::Restore, vec![b.clone()], vec![]));
+        assert_eq!(Change::Restored(vec![(b.clone(), a.clone())]).inverse(), (Kind::Trash, vec![a.clone()], vec![]));
+        assert_eq!(Change::Made(vec![a.clone()]).inverse(), (Kind::Trash, vec![a], vec![]));
+    }
+}

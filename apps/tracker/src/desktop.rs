@@ -585,6 +585,10 @@ impl Desktop {
             "new"
         } else if pressed(k, "new-folder") {
             "new-folder"
+        } else if pressed(k, "redo") {
+            "redo"
+        } else if pressed(k, "undo") {
+            "undo"
         } else {
             return;
         };
