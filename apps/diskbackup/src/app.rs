@@ -184,6 +184,18 @@ impl Disk {
     pub fn launched(&mut self, args: &[String], cwd: Option<&std::path::Path>, cx: &mut Context<Self>) {
         match args.first().map(String::as_str) {
             Some("--restore-window") => self.open_restore(cx),
+            // Agent Setup's agent set it up: said in the setup window.
+            Some("--agent-setup-done") => {
+                self.settings = Settings::load();
+                self.note = None;
+                if let olo_protocol::diskbackup::Target::GoogleDrive { account, .. } = &self.settings.target
+                    && let Some((_, w)) = &self.drive
+                {
+                    let done = crate::drive_setup::Done::SetUp(Ok(account.clone()));
+                    w.clone().update(cx, |w, cx| w.message(done, cx));
+                }
+                cx.notify();
+            }
             Some("--versions-window") => match args.get(1) {
                 Some(p) => {
                     let p = target::expand(p);

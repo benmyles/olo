@@ -104,3 +104,72 @@ fn serve_google() {
     let secs = std::env::var("OLO_FAKE_GOOGLE_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(120);
     std::thread::sleep(Duration::from_secs(secs));
 }
+
+/// Agent Setup's last step, as the agent runs it (`--agent-setup-done
+/// FILE`): the client kept in Passwords (a stand-in's socket, which says
+/// what it was asked), DiskBackup signed in (the consent page's address
+/// said, the browser's answer taken at the loopback address) and set up.
+#[test]
+fn agent_setup_done() {
+    use std::os::unix::net::UnixListener;
+    let base = std::path::PathBuf::from(format!("/var/tmp/olo-diskbackup-agent-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    for d in ["home/docs", "config", "cache", "state", "run"] {
+        std::fs::create_dir_all(base.join(d)).unwrap();
+    }
+    let file = base.join("home/client_secret_123.json");
+    std::fs::write(&file, r#"{"installed":{"client_id":"123.apps.googleusercontent.com","project_id":"olo-diskbackup","client_secret":"GOCSPX-secret","redirect_uris":["http://localhost"]}}"#)
+        .unwrap();
+    // Passwords, standing in: what it's asked to keep.
+    let sock = base.join("run/k.sock");
+    let listener = UnixListener::bind(&sock).unwrap();
+    let asked = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+    {
+        let asked = asked.clone();
+        std::thread::spawn(move || {
+            for s in listener.incoming().flatten() {
+                let mut line = String::new();
+                if BufReader::new(&s).read_line(&mut line).is_ok() {
+                    asked.lock().unwrap().push(serde_json::from_str(&line).unwrap_or_default());
+                    let _ = (&s).write_all(b"{\"type\":\"saved\",\"title\":\"DiskBackup Google Client\",\"updated\":false}\n");
+                }
+            }
+        });
+    }
+    let g = Arc::new(Mutex::new(google::Google::default()));
+    let api = google::serve(g.clone());
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_olo-diskbackup"));
+    cmd.arg("--agent-setup-done").arg(&file).stdout(Stdio::piped()).stderr(Stdio::null());
+    sandboxed(&mut cmd, &base, &api);
+    cmd.env("OLO_KEYCHAIN_SOCKET", &sock);
+    let mut child = cmd.spawn().unwrap();
+    let mut out = BufReader::new(child.stdout.take().unwrap());
+    let mut said = String::new();
+    let url = loop {
+        let mut line = String::new();
+        assert!(out.read_line(&mut line).unwrap() > 0, "no address said: {said}");
+        said.push_str(&line);
+        if let Some(u) = line.trim().strip_prefix(&format!("{api}/auth?")) {
+            break u.to_owned();
+        }
+    };
+    assert!(said.contains("Kept in Passwords as “DiskBackup Google Client”"), "{said}");
+    let kept = asked.lock().unwrap().clone();
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    assert_eq!(kept[0]["type"], "keep_secret");
+    assert_eq!(kept[0]["title"], "DiskBackup Google Client");
+    assert!(kept[0]["secret"].as_str().unwrap().contains("123.apps.googleusercontent.com"));
+    let param = |k: &str| google::unescape(url.split(&format!("{k}=")).nth(1).unwrap().split('&').next().unwrap());
+    let (state, redirect) = (param("state"), param("redirect_uri"));
+    let mut s = TcpStream::connect(redirect.trim_start_matches("http://")).unwrap();
+    s.write_all(format!("GET /?state={state}&code=the-code HTTP/1.1\r\nHost: x\r\n\r\n").as_bytes()).unwrap();
+    let mut page = String::new();
+    s.read_to_string(&mut page).unwrap();
+    let mut rest = String::new();
+    out.read_to_string(&mut rest).unwrap();
+    assert!(child.wait().unwrap().success(), "{rest}");
+    assert!(rest.contains("Backing up to Google Drive (me@example.com)") && rest.contains("DiskBackup is set up"), "{rest}");
+    let settings: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(base.join("run/diskbackup-settings.json")).unwrap()).unwrap();
+    assert_eq!(settings["target"]["kind"], "google-drive");
+    let _ = std::fs::remove_dir_all(base);
+}

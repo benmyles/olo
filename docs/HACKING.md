@@ -6049,7 +6049,13 @@ as keys.
 ## AI features (crates/ai, apps/smart-tile, Preferences ▸ AI)
 
 Preferences ▸ AI (`olo-preferences ai`) holds `Settings::ai`
-(`AiSettings`). Each feature is an `AiFeature { enabled, model, effort }`,
+(`AiSettings`). Its Claude Code box is the model (`CLAUDE_MODELS`: Opus
+5.5 by default, Sonnet 5.5, Haiku 5.5, Fable 5.1) and effort (`AI_EFFORTS`,
+Claude Code's own levels; Medium by default) Olo starts Claude Code with
+for a task in a Terminal window (`AiSettings::claude_code`: `claude
+--model … --effort …`; DiskBackup's Agent Setup; Ben, 2026-11-08: "have
+the claude code model selectable in the ai prefs, default to opus 5.5 on
+medium"). Each feature is an `AiFeature { enabled, model, effort }`,
 the model one of `AI_MODELS` and the effort one of `AI_EFFORTS`; the
 panel's `feature()` draws its switch and choosers, so the next feature
 is a struct field and a BBox: Smart Tiling, and Emoji (the emoji
@@ -12978,9 +12984,12 @@ Ben, 2026-11-07: "we should have each user setup their own desktop app
 person to make their own sign-in for an app like this, so the window
 walks them through it, a numbered step at a time, each with Open for its
 page (Google Cloud's: make a project; turn on the Drive API; set up its
-sign-in, Audience External; add the `drive.file` scope; publish it, or
-Google signs it out every 7 days; make a Desktop app client and
-download its JSON); then the client given (Choose File… for the JSON, or
+sign-in, Audience Internal for a Google Workspace account, which needs
+no publishing and never signs out, External for a Gmail one; add the
+`drive.file` scope; publish an External one, which Google now lets only
+with a homepage and a privacy-policy address, or it signs it out every
+7 days; make a Desktop app client and download its JSON; the agent of
+Agent Setup found the publishing rule, 2026-11-08); then the client given (Choose File… for the JSON, or
 its ID and secret typed: the secret a password field) and Sign In with
 Google: the browser to the consent page (Copy Address if it didn't
 open), the answer taken, the folder found or made, the backup there
@@ -12999,6 +13008,41 @@ browser, then the service backs up to it (`serve_google`, ignored,
 serves the fake for trying the window by hand). The layout review no
 longer counts a button's default ring as crowded lines, however wide the
 button (`layout_review::crowded_lines`).
+
+**Agent Setup** (`agent_setup.rs`; the setup window's Let an Agent Do
+It…; Ben, 2026-11-08: "an "Agent Setup" feature to disk backup where an
+agent can do the google drive oauth/app setup"): an agent does the steps.
+The person chooses the Google account's login from Passwords (its
+`Shares` items: those that say Google, else every login; no secrets
+read). DiskBackup starts its agent screen (`diskbackup-setup`; `olo-screen
+start` unless it's running) and shares the login with it (`SetShares`,
+besides what the screen has: `shared_too`). Then it opens a Terminal
+window running Claude Code (`olo-terminal -w DIR -e claude …`), with
+Preferences ▸ AI's Claude Code model and effort (`AiSettings::claude_code`:
+Opus 5.5 on Medium by default). It starts in a folder of its own
+(`$XDG_STATE_HOME/olo/diskbackup-agent-setup`, the task kept there as
+TASK.md; Claude Code asks once whether to trust it, and the home folder
+would be far more than the task needs). It may read the screens'
+pictures and ~/Downloads without asking (`--add-dir`), and run `olo-screen`
+and the done command (`--allowedTools`); `--no-chrome` keeps it off the
+person's own Chrome. The task (`brief`): the screen, how to sign in with
+the shared login there without seeing or typing its password (Olo's
+Chrome's Autofill with Passwords, or `op … | pbcopy` and ⌘V), the six
+steps, and the finish: `olo-diskbackup --agent-setup-done CLIENT_FILE
+--screen NAME`, run in the background. That keeps the client in Passwords
+("DiskBackup Google Client"), signs DiskBackup in with Google's consent
+page opened on the agent's screen (`olo-screen run NAME olo-chrome URL`)
+for the agent to allow, sets DiskBackup up (`set_up_drive`), prints how it
+went for the agent, and tells DiskBackup's window (forwarded
+`--agent-setup-done`), which says it's set up. The person follows along
+in Terminal and can talk to the agent there. Tests:
+`OLO_DISKBACKUP_AGENT_SCREEN` (another screen), `OLO_DISKBACKUP_AGENT_COMMAND`
+(a stand-in for `claude`), `OLO_KEYCHAIN_SOCKET` (a stand-in Passwords),
+and `OLO_DISKBACKUP_AGENT_CHECK_ONLY` (the done command stops once
+signed in: nothing made in the real Drive with a test's key, which would
+clash with the person's own setup later). `tests/set_up_drive.rs`'s
+`agent_setup_done` runs the done command against the fake Google and a
+stand-in Passwords.
 
 **Restore** (`restore.rs`; File ▸ Restore…, ⌘R, or Restore… beside Back
 Up Now): the snapshots newest first; the chosen one's folders browsed as

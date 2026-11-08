@@ -26,6 +26,8 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "ai", tab: "", group: "Emoji", name: "Thinking", role: "ComboBox" },
     Setting { panel: "ai", tab: "", group: "Agent Screens", name: "Keep up to", role: "ComboBox" },
     Setting { panel: "ai", tab: "", group: "Agent Screens", name: "For", role: "ComboBox" },
+    Setting { panel: "ai", tab: "", group: "Claude Code", name: "Model", role: "ComboBox" },
+    Setting { panel: "ai", tab: "", group: "Claude Code", name: "Thinking", role: "ComboBox" },
     Setting { panel: "appearance", tab: "", group: "Theme", name: "Light", role: "RadioButton" },
     Setting { panel: "appearance", tab: "", group: "Theme", name: "Dark", role: "RadioButton" },
     Setting { panel: "appearance", tab: "", group: "Theme", name: "Automatic", role: "RadioButton" },

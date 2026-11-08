@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Preferences ▸ AI: Claude Code's model
+
+*13:40* — The model and thinking Olo starts Claude Code with for a task (DiskBackup's Agent Setup): Opus 5.5 on Medium by default.
+
+![Preferences ▸ AI: Claude Code's model](2026-11-08/134047-preferences-ai-claude-code-s-model.png)
+
+### DiskBackup: Agent Setup
+
+*13:40* — Back Up to Google Drive ▸ Let an Agent Do It…: choose the Google account's login from Passwords; DiskBackup starts an agent screen, shares the login with it, and opens Claude Code in a Terminal window to make Google's sign-in for DiskBackup there, then hand it back (olo-diskbackup --agent-setup-done), with the consent page allowed on the agent's screen. Tried for real: the agent did the steps in 9 minutes.
+
+![DiskBackup: Agent Setup](2026-11-08/134046-diskbackup-agent-setup.png)
+
 ### Move to Window, for every tab
 
 *12:44* — A tab's menu, and a tab group's, has Move to Window ▸ with the app's other windows by title: the kit's Menu::move_to_window. Terminal's tabs and tab groups move there (a group stays a group), and the window they leave closes if nothing's left; a window's own tab (here StyledEdit's) joins the other window's group.

@@ -1585,7 +1585,31 @@ pub struct AiSettings {
     /// (0: for ever).
     pub screen_history_mb: u32,
     pub screen_history_days: u32,
+    /// Claude Code, when Olo starts it for a task in a Terminal window
+    /// (DiskBackup's Agent Setup): its model and effort.
+    pub claude_code: ClaudeCode,
 }
+
+/// The model and effort Olo starts Claude Code with (`claude --model
+/// MODEL --effort EFFORT`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ClaudeCode {
+    /// A model id ([`CLAUDE_MODELS`]).
+    pub model: String,
+    /// An effort id ([`AI_EFFORTS`]: Claude Code's own levels).
+    pub effort: String,
+}
+
+impl Default for ClaudeCode {
+    /// Ben, 2026-11-08: "default to opus 5.5 on medium".
+    fn default() -> Self {
+        ClaudeCode { model: CLAUDE_MODELS[0].0.into(), effort: "medium".into() }
+    }
+}
+
+/// Claude's models Claude Code can be started with: id, name.
+pub const CLAUDE_MODELS: &[(&str, &str)] = &[("claude-opus-5-5", "Opus 5.5"), ("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-haiku-5-5", "Haiku 5.5"), ("claude-fable-5-1", "Fable 5.1")];
 
 impl Default for AiSettings {
     fn default() -> Self {
@@ -1599,6 +1623,7 @@ impl Default for AiSettings {
             ask: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "low".into() },
             screen_history_mb: 512,
             screen_history_days: 30,
+            claude_code: ClaudeCode::default(),
         }
     }
 }

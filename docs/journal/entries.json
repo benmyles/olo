@@ -3724,5 +3724,17 @@
   "title": "Move to Window, for every tab",
   "caption": "A tab's menu, and a tab group's, has Move to Window \u25b8 with the app's other windows by title: the kit's Menu::move_to_window. Terminal's tabs and tab groups move there (a group stays a group), and the window they leave closes if nothing's left; a window's own tab (here StyledEdit's) joins the other window's group.",
   "image": "2026-11-08/124414-move-to-window-for-every-tab.png"
+ },
+ {
+  "time": "2026-11-08T13:40:46",
+  "title": "DiskBackup: Agent Setup",
+  "caption": "Back Up to Google Drive \u25b8 Let an Agent Do It\u2026: choose the Google account's login from Passwords; DiskBackup starts an agent screen, shares the login with it, and opens Claude Code in a Terminal window to make Google's sign-in for DiskBackup there, then hand it back (olo-diskbackup --agent-setup-done), with the consent page allowed on the agent's screen. Tried for real: the agent did the steps in 9 minutes.",
+  "image": "2026-11-08/134046-diskbackup-agent-setup.png"
+ },
+ {
+  "time": "2026-11-08T13:40:47",
+  "title": "Preferences \u25b8 AI: Claude Code's model",
+  "caption": "The model and thinking Olo starts Claude Code with for a task (DiskBackup's Agent Setup): Opus 5.5 on Medium by default.",
+  "image": "2026-11-08/134047-preferences-ai-claude-code-s-model.png"
  }
 ]
