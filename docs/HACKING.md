@@ -2009,7 +2009,10 @@ event reaches it.
   moving a pixel redraws the layer, not the cards, legends and figures
   around it (Activity Monitor's CPU section: 4.2 ms a frame to 1.4).
 - `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
-  `StringView::size(points)` (a title's or lead's size, its row grown to
+  `StringView::cut(true)` (one line as wide as it's given, not as its
+  text, cut short with "…" and its whole in a tip and to agents: a path
+  that changes as work goes on, DiskBackup's "Now: …", mustn't make its
+  window taller or wider), `StringView::size(points)` (a title's or lead's size, its row grown to
   fit), `StringView::beside(points)` (on the baseline of the text of
   that size beside it in its row: a small one centred by itself sits a
   point higher than the plain text beside it; a table's small column
@@ -12899,11 +12902,31 @@ in layers; done so far, **the engine** (crates/diskbackup):
   worth at once, so the network never sees a burst at full speed.
 
 **The service** (apps/diskbackup, `olo-diskbackup --service`; olo-session
-runs it in the logged-in session): the whole process at the CPU's and the
-disks' idle priority (SCHED_IDLE, the idle I/O class: anything else that
-wants them goes first); asleep until a backup is due (`every_minutes`
-after the last), its settings change (inotify) or it's asked on its
-socket (`olo_protocol::diskbackup::Request`: Back Up Now, Stop, Tidy); waits
+runs it in the logged-in session): every thread at the priority chosen
+(`Settings::priority`, This Computer ▸ Back up): Idle (SCHED_IDLE and
+the idle I/O class: anything else that wants them goes first; the
+default), Low (SCHED_BATCH, nice 19, best-effort I/O 7) or Normal
+(SCHED_OTHER, nice 0, best-effort 4); a change follows at once when it
+lowers it, and when it raises it (the session's `RLIMIT_NICE` is 0: an
+unprivileged process can't) the service ends with 0, to be started again
+by olo-session at the session's own priority and lowered from there.
+Asleep until a backup is due (`every_minutes` after the last; never, if
+`automatic` is off: Back Up Now only, and Doctor says so only after a
+week), its settings change (inotify) or it's asked on its socket
+(`olo_protocol::diskbackup::Request`: Back Up Now, Stop, Tidy,
+Snapshots, Delete, Erase All). `Snapshots` lists this backup's snapshots
+(`SnapshotInfo`: when, files, size, new and changed, stored, how long),
+`Delete { snapshots }` forgets those (the exclusive lock) and tidies at
+once, `EraseAll` deletes everything the store holds (its config last:
+stopped half way, it's still a backup) and makes a new one there with
+the same key (`Doing::Erasing`, its progress files of all). A backup's
+plan: the last snapshot's totals ("about", `Progress::estimated`), or,
+for the first, a count of what there is first (`backup::count`, the
+same walk without reading: `Stage::Counting`); then `Stage::Reading`
+(bytes and files against those totals, the file it's at, `uploaded`:
+what it has sent) and `Stage::Saving` (its trees and the snapshot). A
+backup the person stopped says `STOPPED` (`Last::stopped`): said calmly,
+never as trouble (DiskBackup, Deskbar, Doctor). Waits
 for power on battery unless allowed (`on_battery`), looking again every
 five minutes then. A backup holds a shared lock, reads the index again if
 another computer changed it, and takes unchanged files from the last snapshot
@@ -12930,34 +12953,58 @@ Olo Doctor's fix), `--snapshots`, `--restore SNAPSHOT PATH [TO]` (a shared lock,
 for a tidy under way), `--tidy` (asked of the service if it runs, else
 done there), `--set KEY=VALUE…` (enabled, battery, every, upload,
 download, paths, exclude, groups, hourly, daily, weekly, monthly),
-`--groups`. For tests, `OLO_DISKBACKUP_DIR` keeps its settings, state and
+`--groups`, `--delete SNAPSHOT…` (an id's start is enough), `--erase-all
+--yes`, `--set automatic=on|off`, `--set priority=idle|low|normal`. For
+tests, `OLO_DISKBACKUP_DIR` keeps its settings, state and
 socket apart and `OLO_DISKBACKUP_KEY` gives the key. Checked so (a
 sandbox HOME, a folder target): set up, the first backup at once (9
 files, node_modules left out), a change and Back Up Now (1 changed,
 nothing new), the older version restored, 5 MB new at a 500 KB/s upload
 limit in 10.06 s; its scheduling policy 5 (SCHED_IDLE).
 
-**The app** (`olo-diskbackup` with no arguments; `app.rs`; one window,
-three columns so it fits a 1280 × 800 screen): the backup (what the
-service is doing and did, live from its state file, followed by inotify:
-nothing ticks while nothing happens, times shown as clock times; Back Up
-Now or Stop), where backups go (Choose a Folder…: a backup there already
-opened with this computer's key, else a new one and a key), the key
-(Keep Key in Passwords: the keychain's `KeepSecret`, a Password item
-"DiskBackup Key" with a note saying what it is, synced to 1Password like
-any; Passwords started if it isn't running, unlocked if it asks), what's
-backed up (folders added and removed), what's left out (each group named
-for what it leaves out, its folders under it: Ben, "right now it looks
-like you're asking if i want to leave out the actual source code of all
-those langs"; the person's own patterns in a box of their own), when (every
-15 minutes to a day, on battery or not), how long snapshots are kept
-(hourly for 12 hours to a week, daily for 7 to 90 days, weekly for 4 to
-52 weeks, monthly for 6 months to forever; none for any), and how fast
-(upload and download limits). The status says what the backups take
-there and the last tidy that did something; Show in Deskbar puts DiskBackup's
-item in Deskbar's tray (see Deskbar: its glyph, its menu). Every change is written to the settings, which the service
-follows at once. The keychain's `Secrets` reads an Olo program's secrets
-back by title (another computer's setup, next).
+**The app** (`olo-diskbackup` with no arguments; `app.rs`, its window
+in `window.rs`; Ben, 2026-11-08: "improve the ux in diskbackup … it's
+complicated and not intuitive"; "where are the settings for limiting
+up/down speed and resource usage and knowing exactly what's being backed
+up now what the plan is what's still remaining"; "i should also be able
+to choose if i even want auto backups … clear out / remove old backups to
+start fresh"). Not set up, it asks one question, where backups go (A Disk
+or Folder, Google Drive: side by side), and says what happens then. Set
+up, a header says whether your files are safe (`headline`: "Backed up
+12 minutes ago", "Backup stopped", "The backup … didn't finish" in red,
+where to and when next, the last one's figures) beside Restore… and Back
+Up Now (Stop while it runs); while a backup runs, the file it's at is
+the header's second line (`StringView::cut`) and the whole width under
+it the plan: a bar of bytes against the plan's ("of about" when
+estimated), files of files, time left (`how_far`: once 2% and ten
+seconds are done), what's new, what's sent and how fast, against the
+upload limit; each folder's turn (✓ ▸ ○) when there are several; erasing,
+a bar of what's deleted. A slim reminder when the key is only on this
+computer (Keep Key in Passwords). Then five tabs: **Schedule** (When to
+Back Up: Automatically, every 15 minutes to a day, or Only when I click
+Back Up Now; on battery or not; Backups Kept: one an hour, a day, a week,
+a month, for how long, said plainly as a sentence, `keep_words`),
+**Files** (the folders, added and removed, and what the last backup
+held; Leave Out: each group a check box named for what it leaves out,
+its folders in its tip, and the person's own patterns, how they go in
+the field's tip), **Backups** (every snapshot: When, Files, New, Size,
+Took; Restore… opens the Restore window; those chosen, one or
+several, deleted with Delete N Backups…, asked first; Erase All
+Backups…, asked first, saying whether a fresh one starts at once),
+**Speed & Resources** (Network: upload and download limits; This
+Computer: the priority, each level explained) and **Destination** (where
+backups go, Choose Another Folder…, Google Drive…; the key; Show
+DiskBackup in Deskbar). The window follows the chosen tab's height
+(`WindowOptions::fixed`): every tab fits 1280 × 800 while a backup runs
+(712 points at most, measured). Every change is written to the settings,
+which the service follows at once, and is a step for Edit ▸ Undo. Live
+from the state file (inotify: nothing ticks while nothing happens); the
+snapshots asked again when a backup, delete or erase ends. Keep Key in
+Passwords: the keychain's `KeepSecret`, a Password item "DiskBackup Key"
+with a note saying what it is, synced to 1Password like any; Passwords
+started if it isn't running, unlocked if it asks. The keychain's
+`Secrets` reads an Olo program's secrets back by title (another
+computer's setup, next).
 
 **Tracker's ticks and versions**: the service answers on its socket from
 a reader of this computer's snapshots' trees (`Repo::tree_reader`: where

@@ -26,7 +26,7 @@ use std::{
 use std::os::unix::ffi::OsStrExt;
 
 use olo_diskbackup::{Id, Options, Progress, Repo, Snapshot, backup, exclude::Excludes, keep, prune};
-use olo_protocol::diskbackup::{Doing, Keep, Last, Reply, Request, Settings, State, Target, Tidied};
+use olo_protocol::diskbackup::{Doing, Keep, Last, Priority, Reply, Request, Settings, SnapshotInfo, Stage, State, Target, Tidied};
 
 use crate::target::{self, Limits};
 
@@ -34,7 +34,40 @@ enum Event {
     Settings,
     Now,
     Tidy,
+    /// Delete these backups (and free what only they took).
+    Delete(Vec<Id>),
+    /// Delete every backup there, and start again.
+    Erase,
 }
+
+/// What the loop was asked meanwhile (as it waited, or backed up).
+#[derive(Default)]
+struct Asked {
+    now: bool,
+    tidy: bool,
+    delete: Vec<Id>,
+    erase: bool,
+}
+
+impl Asked {
+    /// `e`, noted; false if the events are over (the service ends).
+    fn note(&mut self, e: Result<Event, mpsc::RecvTimeoutError>) -> bool {
+        match e {
+            Ok(Event::Now) => self.now = true,
+            Ok(Event::Tidy) => self.tidy = true,
+            Ok(Event::Delete(ids)) => self.delete.extend(ids),
+            Ok(Event::Erase) => self.erase = true,
+            Ok(Event::Settings) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return false,
+        }
+        true
+    }
+}
+
+/// A priority asked for that this process can't take (a lower one can't
+/// be raised again: only a new process can): it ends once it's not busy,
+/// and olo-session starts it again, at the session's, then this one.
+static RESTART: AtomicBool = AtomicBool::new(false);
 
 /// What's kept between runs of the service (in the state folder).
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -80,6 +113,33 @@ fn publish(o: &Opened) {
     if let Ok(mut l) = LOOKUP.lock() {
         *l = Some(Arc::new(Lookup { reader: o.repo.tree_reader(), snapshots }));
     }
+}
+
+/// This computer's backups, newest first (as opened: the backup not
+/// opened yet, none).
+fn snapshot_list() -> Reply {
+    let lookup = LOOKUP.lock().ok().and_then(|l| l.clone());
+    let snapshots = lookup
+        .map(|l| {
+            l.snapshots
+                .iter()
+                .rev()
+                .map(|(id, s)| SnapshotInfo {
+                    id: id.hex(),
+                    time: s.time,
+                    files: s.summary.files,
+                    bytes: s.summary.bytes,
+                    new_files: s.summary.new_files,
+                    changed_files: s.summary.changed_files,
+                    new_bytes: s.summary.new_bytes,
+                    stored_bytes: s.summary.stored_bytes,
+                    seconds: s.summary.seconds,
+                    unreadable: s.summary.errors.len() as u64,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Reply::Snapshots { snapshots }
 }
 
 /// Which of `dir`'s files are backed up as they are now.
@@ -145,7 +205,10 @@ pub fn run() -> ExitCode {
         tracing::info!("diskbackup: the service is running already (process {})", st.pid);
         return ExitCode::SUCCESS;
     }
-    gentle();
+    let mut priority = Settings::load().priority;
+    if !set_priority(priority) {
+        tracing::info!("diskbackup: can't take the priority {priority:?} (only lower ones): from the session's");
+    }
     let (tx, rx) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let limits = Arc::new(Limits::new());
@@ -153,8 +216,13 @@ pub fn run() -> ExitCode {
     let _watch = olo_kit_base::watch::watch([Settings::path()], {
         let (tx, limits) = (Mutex::new(tx.clone()), limits.clone());
         move |_| {
-            // (Speed limits at once, a backup running or not.)
-            limits.follow(&Settings::load());
+            // (Speed limits, and the priority, at once: a backup running or
+            // not.)
+            let s = Settings::load();
+            limits.follow(&s);
+            if !set_priority(s.priority) {
+                RESTART.store(true, Relaxed);
+            }
             let _ = tx.lock().map(|t| t.send(Event::Settings));
         }
     });
@@ -162,8 +230,7 @@ pub fn run() -> ExitCode {
     let mut forgotten = k.forgotten;
     let mut st = State { pid: std::process::id(), last: k.last, last_ok: k.last_ok, tidied: k.tidied, size: k.size, snapshots: k.snapshots, ..State::default() };
     let mut open: Option<Opened> = None;
-    let mut now_asked = false;
-    let mut tidy_asked = false;
+    let mut asked = Asked::default();
     let save = |st: &State, forgotten: u32| {
         let k = Kept { last: st.last.clone(), last_ok: st.last_ok, tidied: st.tidied.clone(), size: st.size, snapshots: st.snapshots, forgotten };
         if let Some(dir) = kept_path().parent() {
@@ -174,7 +241,29 @@ pub fn run() -> ExitCode {
     loop {
         let settings = Settings::load();
         limits.follow(&settings);
+        // A priority this process can't take: ended, to be started again
+        // at it (olo-session restarts its services).
+        if RESTART.load(Relaxed) {
+            tracing::info!("diskbackup: starting again for the priority {:?}", settings.priority);
+            break;
+        }
+        if settings.priority != priority {
+            priority = settings.priority;
+        }
         st.target = settings.target.describe();
+        // Deleting, and starting fresh: asked, whatever the schedule.
+        if settings.target != Target::None && (asked.erase || !asked.delete.is_empty()) {
+            cancel.store(false, Relaxed);
+            if std::mem::take(&mut asked.erase) {
+                asked.delete.clear();
+                erase_all(&settings, &mut st, &mut open, &limits, &cancel);
+            } else {
+                let ids = std::mem::take(&mut asked.delete);
+                delete(&settings, &mut st, &mut open, &limits, &cancel, &ids, &mut forgotten);
+            }
+            save(&st, forgotten);
+            continue;
+        }
         if let Err(why) = ready(&settings) {
             st.doing = Doing::Waiting { why: why.clone() };
             st.next = None;
@@ -182,11 +271,8 @@ pub fn run() -> ExitCode {
             // On battery: look again in a while (power coming back has no
             // event of ours yet); else when something changes.
             let wait = if why.contains("battery") { Duration::from_secs(300) } else { Duration::from_secs(u64::MAX / 4) };
-            match rx.recv_timeout(wait) {
-                Ok(Event::Now) => now_asked = true,
-                Ok(Event::Tidy) => tidy_asked = true,
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                _ => {}
+            if !asked.note(rx.recv_timeout(wait)) {
+                break;
             }
             continue;
         }
@@ -196,7 +282,7 @@ pub fn run() -> ExitCode {
         {
             tracing::info!("diskbackup: can't open the backup yet: {e}");
         }
-        if std::mem::take(&mut tidy_asked) {
+        if std::mem::take(&mut asked.tidy) {
             cancel.store(false, Relaxed);
             match opened(&settings, &mut open, &limits) {
                 Ok(_) => tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten),
@@ -206,20 +292,30 @@ pub fn run() -> ExitCode {
             continue;
         }
         let now = now();
-        let due = if now_asked { now } else { st.last.as_ref().map_or(now, |l| l.time + settings.every_minutes.max(1) as i64 * 60) };
+        // Only when asked (Back Up Now): no next one, until it is.
+        let due = if asked.now {
+            Some(now)
+        } else if settings.automatic {
+            Some(st.last.as_ref().map_or(now, |l| l.time + settings.every_minutes.max(1) as i64 * 60))
+        } else {
+            None
+        };
         st.doing = Doing::Idle;
-        st.next = Some(due);
+        st.next = due;
         let _ = st.save();
+        let Some(due) = due else {
+            if !asked.note(rx.recv_timeout(Duration::from_secs(u64::MAX / 4))) {
+                break;
+            }
+            continue;
+        };
         if due > now {
-            match rx.recv_timeout(Duration::from_secs((due - now) as u64)) {
-                Ok(Event::Now) => now_asked = true,
-                Ok(Event::Tidy) => tidy_asked = true,
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                _ => {}
+            if !asked.note(rx.recv_timeout(Duration::from_secs((due - now) as u64))) {
+                break;
             }
             continue;
         }
-        now_asked = false;
+        asked.now = false;
         cancel.store(false, Relaxed);
         if once(&settings, &mut st, &mut open, &limits, &cancel, &mut forgotten) && tidy_due(st.tidied.as_ref(), open.as_ref().is_some_and(|o| o.repo.damaged_index_files() > 0)) {
             cancel.store(false, Relaxed);
@@ -279,7 +375,16 @@ fn reporting<T>(st: &mut State, doing: Doing, progress: &Progress, f: impl FnOnc
                     p.files = progress.files.load(Relaxed);
                     p.bytes = progress.bytes.load(Relaxed);
                     p.new_bytes = progress.new_bytes.load(Relaxed);
+                    p.uploaded = progress.uploaded.load(Relaxed);
                     p.current = progress.current.lock().map(|c| c.clone()).unwrap_or_default();
+                    p.total_files = progress.total_files.load(Relaxed);
+                    p.total_bytes = progress.total_bytes.load(Relaxed);
+                    p.estimated = progress.estimated.load(Relaxed);
+                    p.stage = match progress.stage.load(Relaxed) {
+                        olo_diskbackup::backup::COUNTING => Stage::Counting,
+                        olo_diskbackup::backup::SAVING => Stage::Saving,
+                        _ => Stage::Reading,
+                    };
                 }
                 let _ = now.save();
             }
@@ -430,6 +535,16 @@ fn back_up(settings: &Settings, open: &mut Option<Opened>, limits: &Limits, canc
     let paths = settings.paths.iter().map(|p| target::expand(p)).filter(|p| p.exists()).collect();
     let opts = Options { paths, excludes: &excludes, host, one_file_system: settings.one_file_system };
     let parent = o.parent.as_ref().map(|(id, s)| (*id, s));
+    // The plan: the last backup's size to go by (it changes little), else
+    // counted first.
+    match parent {
+        Some((_, s)) => {
+            progress.total_files.store(s.summary.files, Relaxed);
+            progress.total_bytes.store(s.summary.bytes, Relaxed);
+            progress.estimated.store(true, Relaxed);
+        }
+        None => olo_diskbackup::backup::count(&opts, cancel, progress).map_err(|e| e.to_string())?,
+    }
     let host = opts.host.clone();
     let (id, snapshot) = backup(&mut o.repo, &opts, parent, cancel, progress).map_err(|e| e.to_string())?;
     let summary = snapshot.summary.clone();
@@ -457,20 +572,130 @@ pub fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
-/// The whole process at the idle priority, the CPU's and the disks':
-/// anything else that wants them goes first (threads made after inherit).
-fn gentle() {
-    // SAFETY: plain syscalls on this thread and process.
-    unsafe {
-        let p = libc::sched_param { sched_priority: 0 };
-        if libc::sched_setscheduler(0, libc::SCHED_IDLE, &p) != 0 {
-            tracing::info!("diskbackup: can't take the idle CPU priority: {}", std::io::Error::last_os_error());
-        }
-        // ioprio_set(IOPRIO_WHO_PROCESS, this, IOPRIO_CLASS_IDLE << 13).
-        if libc::syscall(libc::SYS_ioprio_set, 1, 0, 3 << 13) != 0 {
-            tracing::info!("diskbackup: can't take the idle disk priority: {}", std::io::Error::last_os_error());
+/// Every thread of ours at `p`'s priority, the CPU's and the disks'
+/// (threads made after inherit it). False if one couldn't be raised: a
+/// process can lower its priority but not raise it again (the session's
+/// RLIMIT_NICE is 0), so then it's started anew.
+fn set_priority(p: Priority) -> bool {
+    let (policy, nice, io) = match p {
+        // The CPU's idle class; the disks' idle class.
+        Priority::Idle => (libc::SCHED_IDLE, None, 3 << 13),
+        // Batch, nice 19; the disks' best-effort class, its lowest level.
+        Priority::Low => (libc::SCHED_BATCH, Some(19), (2 << 13) | 7),
+        // As any program.
+        Priority::Normal => (libc::SCHED_OTHER, Some(0), (2 << 13) | 4),
+    };
+    let tids: Vec<i32> = std::fs::read_dir("/proc/self/task").map(|rd| rd.flatten().filter_map(|e| e.file_name().to_str()?.parse().ok()).collect()).unwrap_or_default();
+    let mut ok = true;
+    for tid in tids {
+        // SAFETY: plain syscalls on our own threads.
+        unsafe {
+            let param = libc::sched_param { sched_priority: 0 };
+            if libc::sched_setscheduler(tid, policy, &param) != 0 {
+                ok = false;
+            }
+            if let Some(n) = nice
+                && libc::setpriority(libc::PRIO_PROCESS, tid as libc::id_t, n) != 0
+            {
+                ok = false;
+            }
+            // ioprio_set(IOPRIO_WHO_PROCESS, tid, class << 13 | level).
+            if libc::syscall(libc::SYS_ioprio_set, 1, tid, io) != 0 {
+                ok = false;
+            }
         }
     }
+    ok
+}
+
+/// Delete backups `ids` (asked for in the window), and free what only
+/// they took (a tidy, as the daily one).
+fn delete(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, ids: &[Id], forgotten: &mut u32) {
+    let o = match opened(settings, open, limits) {
+        Ok(o) => o,
+        Err(e) => {
+            tracing::warn!("diskbackup: can't delete backups: {e}");
+            return;
+        }
+    };
+    match o.repo.lock(true) {
+        Ok(lock) => {
+            let mut gone = 0;
+            for id in ids {
+                match o.repo.forget(id) {
+                    Ok(()) => gone += 1,
+                    Err(e) => tracing::warn!("diskbackup: deleting backup {}: {e}", id.hex()),
+                }
+            }
+            tracing::info!("diskbackup: {gone} backups deleted, as asked");
+            // (The next backup goes by the newest left, not one gone.)
+            if o.parent.as_ref().is_some_and(|(p, _)| ids.contains(p)) {
+                let host = host();
+                o.parent = o.repo.snapshots().ok().and_then(|all| all.into_iter().rfind(|(_, s)| s.host == host));
+            }
+            drop(lock);
+            publish(o);
+        }
+        Err(e) => {
+            tracing::warn!("diskbackup: can't delete backups now: {e}");
+            return;
+        }
+    }
+    tidy(settings, st, open, cancel, forgotten);
+}
+
+/// Every backup there deleted (this computer's and any other's: they share
+/// it), and a new, empty one made with the same key, to start fresh. Said
+/// as it goes (Erasing: so many of so many).
+fn erase_all(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool) {
+    let progress = Progress::default();
+    let result = reporting(st, Doing::Erasing, &progress, || -> Result<(), String> {
+        let o = opened(settings, open, limits)?;
+        let store = o.repo.store().clone();
+        let lock = o.repo.lock(true).map_err(|e| e.to_string())?;
+        let names: Vec<String> = store.list("").map_err(|e| e.to_string())?.into_iter().map(|(n, _)| n).filter(|n| !n.starts_with("locks/")).collect();
+        progress.total_files.store(names.len() as u64, Relaxed);
+        // The config last: until it goes, it's still a backup (a stop half
+        // way leaves one with fewer snapshots, not a broken one).
+        let (config, rest): (Vec<String>, Vec<String>) = names.into_iter().partition(|n| n == "config");
+        for name in rest.iter().chain(&config) {
+            if cancel.load(Relaxed) {
+                return Err(olo_protocol::diskbackup::STOPPED.into());
+            }
+            if let Ok(mut c) = progress.current.lock() {
+                *c = name.clone();
+            }
+            store.delete(name).map_err(|e| format!("{name}: {e}"))?;
+            progress.files.fetch_add(1, Relaxed);
+        }
+        drop(lock);
+        *open = None;
+        if let Ok(mut l) = LOOKUP.lock() {
+            *l = None;
+        }
+        // Its index's copy in the cache is of the backup gone.
+        let _ = std::fs::remove_dir_all(target::cache());
+        Repo::init(store, target::key()?, Some(target::cache())).map_err(|e| e.to_string())?;
+        Ok(())
+    });
+    match result {
+        Ok(()) => {
+            tracing::info!("diskbackup: every backup erased; starting fresh");
+            st.snapshots = 0;
+            st.size = Some(0);
+            st.last = None;
+            st.last_ok = None;
+            st.tidied = None;
+        }
+        Err(e) => {
+            tracing::warn!("diskbackup: erasing: {e}");
+            *open = None;
+            st.last = Some(Last { time: now(), error: Some(format!("erasing every backup didn't finish: {e}")), ..Default::default() });
+        }
+    }
+    st.doing = Doing::Idle;
+    st.progress = None;
+    let _ = st.save();
 }
 
 /// The socket: Back Up Now and Stop.
@@ -501,6 +726,18 @@ fn listen(tx: mpsc::Sender<Event>, cancel: Arc<AtomicBool>) {
                 }
                 Ok(Request::Marks { dir }) => marks(&dir),
                 Ok(Request::Versions { path }) => versions(&path),
+                Ok(Request::Snapshots) => snapshot_list(),
+                Ok(Request::Delete { snapshots }) => {
+                    let ids: Vec<Id> = snapshots.iter().filter_map(|h| Id::from_hex(h)).collect();
+                    let _ = tx.send(Event::Delete(ids));
+                    Reply::Ok
+                }
+                Ok(Request::EraseAll) => {
+                    // (A backup under way stops first.)
+                    cancel.store(true, Relaxed);
+                    let _ = tx.send(Event::Erase);
+                    Reply::Ok
+                }
                 Err(e) => Reply::Error { message: e.to_string() },
             };
             let _ = (&conn).write_all(format!("{}\n", serde_json::to_string(&reply).unwrap_or_default()).as_bytes());

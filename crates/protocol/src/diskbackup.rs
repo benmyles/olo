@@ -67,6 +67,10 @@ pub struct Settings {
     pub exclude_groups: Option<Vec<String>>,
     /// The person's own patterns left out (`~/Videos/raw`, `**/*.iso`).
     pub excludes: Vec<String>,
+    /// Back up on a schedule (every `every_minutes`); off, only when asked
+    /// (Back Up Now). Ben, 2026-11-08: "i should also be able to choose if
+    /// i even want auto backups or only when i click backup".
+    pub automatic: bool,
     /// How often, minutes.
     pub every_minutes: u32,
     pub keep: Keep,
@@ -76,6 +80,9 @@ pub struct Settings {
     pub download_kbs: u64,
     /// Back up on battery too (else it waits for power).
     pub on_battery: bool,
+    /// How much a backup gives way to the person's own work (the CPU's and
+    /// the disks' priority).
+    pub priority: Priority,
     /// Stay on each folder's own disk (not into what's mounted inside).
     pub one_file_system: bool,
     /// The key is kept in Passwords too (the app keeps it there: so the
@@ -93,11 +100,13 @@ impl Default for Settings {
             paths: vec!["~".into()],
             exclude_groups: None,
             excludes: Vec::new(),
+            automatic: true,
             every_minutes: 60,
             keep: Keep::default(),
             upload_kbs: 0,
             download_kbs: 0,
             on_battery: true,
+            priority: Priority::Idle,
             one_file_system: true,
             key_in_passwords: false,
             in_deskbar: true,
@@ -128,6 +137,34 @@ impl Settings {
     }
 }
 
+/// How much a backup gives way to whatever else the computer does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Priority {
+    /// Only what nothing else wants (the CPU's and the disks' idle class):
+    /// never in the way, slowest while you work.
+    #[default]
+    Idle,
+    /// Below your work, but steadily (nice 19, the disks' lowest
+    /// best-effort level).
+    Low,
+    /// As any program (a backup done soonest).
+    Normal,
+}
+
+impl Priority {
+    pub const ALL: [Priority; 3] = [Priority::Idle, Priority::Low, Priority::Normal];
+
+    /// As the window says it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Priority::Idle => "Only when the computer is idle",
+            Priority::Low => "Gently, below my own work",
+            Priority::Normal => "At full speed",
+        }
+    }
+}
+
 /// What the service is doing.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(tag = "doing", rename_all = "kebab-case")]
@@ -143,6 +180,8 @@ pub enum Doing {
     Restoring,
     /// Letting go of snapshots past keeping, and what only they used.
     Pruning,
+    /// Every backup there deleted (Erase All Backups), to start fresh.
+    Erasing,
 }
 
 /// A backup or restore under way.
@@ -158,6 +197,25 @@ pub struct Progress {
     pub uploaded: u64,
     /// The file being read (or written).
     pub current: String,
+    /// The whole of it: the files and bytes there are to go through (the
+    /// last backup's, so `estimated`; or counted first, for the first).
+    pub total_files: u64,
+    pub total_bytes: u64,
+    pub estimated: bool,
+    pub stage: Stage,
+}
+
+/// Where a backup is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Stage {
+    /// Counting what there is (the first backup: nothing to go by).
+    Counting,
+    /// Going through the files, reading what's new.
+    #[default]
+    Reading,
+    /// The folders' lists and the snapshot written.
+    Saving,
 }
 
 /// The last backup that ended.
@@ -177,6 +235,17 @@ pub struct Last {
     pub seconds: f64,
     /// Files that couldn't be read.
     pub unreadable: u64,
+}
+
+/// What [`Last::error`] says when the person stopped it (Stop, `--stop`):
+/// not a failure.
+pub const STOPPED: &str = "stopped";
+
+impl Last {
+    /// Stopped by the person (not failed: said calmly, not as trouble).
+    pub fn stopped(&self) -> bool {
+        self.error.as_deref() == Some(STOPPED)
+    }
 }
 
 /// The last tidy: snapshots past keeping let go of, and the space only
@@ -260,6 +329,33 @@ pub enum Request {
     /// The versions of `path` (absolute) this computer's snapshots kept
     /// (Tracker's Older Versions…).
     Versions { path: String },
+    /// This computer's backups (snapshots), newest first.
+    Snapshots,
+    /// Delete these backups (snapshot ids, hex), and free the space only
+    /// they took.
+    Delete { snapshots: Vec<String> },
+    /// Delete every backup there (this computer's and any other's) and
+    /// start again, empty, with the same key.
+    EraseAll,
+}
+
+/// One backup (`Reply::Snapshots`).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SnapshotInfo {
+    /// Its id, in hex.
+    pub id: String,
+    /// When it was taken, seconds since 1970.
+    pub time: i64,
+    pub files: u64,
+    pub bytes: u64,
+    pub new_files: u64,
+    pub changed_files: u64,
+    pub new_bytes: u64,
+    pub stored_bytes: u64,
+    pub seconds: f64,
+    /// Files it couldn't read.
+    pub unreadable: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -280,6 +376,9 @@ pub enum Reply {
     },
     Versions {
         versions: Vec<Version>,
+    },
+    Snapshots {
+        snapshots: Vec<SnapshotInfo>,
     },
 }
 

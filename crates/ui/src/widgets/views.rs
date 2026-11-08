@@ -17,6 +17,7 @@ pub struct StringView {
     color: Option<Hsla>,
     height: f32,
     wrap: bool,
+    cut: bool,
     size: f32,
     /// The size of the text it sits beside, whose baseline it's drawn on.
     beside: Option<f32>,
@@ -24,7 +25,7 @@ pub struct StringView {
 
 impl StringView {
     pub fn new(text: impl Into<SharedString>) -> StringView {
-        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, size: style::PLAIN_SIZE, beside: None }
+        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, cut: false, size: style::PLAIN_SIZE, beside: None }
     }
 
     /// On the baseline of a line of `size` points centred in the same
@@ -55,6 +56,15 @@ impl StringView {
     /// A paragraph: wrapped to the width it's given, as tall as it takes.
     pub fn wrap(mut self, on: bool) -> Self {
         self.wrap = on;
+        self
+    }
+
+    /// One line as wide as it's given (not as its text), cut short with
+    /// "…" when that's too narrow, its whole in a tip (and to agents): a
+    /// path that changes as work goes on, which mustn't make its window
+    /// taller or wider.
+    pub fn cut(mut self, on: bool) -> Self {
+        self.cut = on;
         self
     }
 
@@ -99,6 +109,22 @@ impl RenderOnce for StringView {
             return d.child(self.text).child(said).into_any_element();
         }
         let size = self.size;
+        if self.cut {
+            let (text, dim, color) = (self.text, self.dim, self.color);
+            return canvas(
+                |_, _, _| {},
+                move |b, _, window, cx| {
+                    let p = theme::palette(cx);
+                    let ink = color.unwrap_or_else(|| if dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
+                    let r = style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink, b.size.width);
+                    agent::record(window, cx, agent::Node::label(text.clone(), r));
+                },
+            )
+            .w_full()
+            .min_w_0()
+            .h(px(self.height))
+            .into_any_element();
+        }
         let w = f32::from(style::text_width(window, self.text.clone(), size, style::ui_font(weight))).ceil();
         let (text, dim, color, height, beside) = (self.text, self.dim, self.color, self.height, self.beside);
         canvas(

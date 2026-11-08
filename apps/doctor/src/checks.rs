@@ -623,15 +623,25 @@ fn diskbackup(roots: &Roots, r: &mut Report) {
             fix: start("Resume Backups", &["olo-diskbackup", "--set", "enabled=on"]),
         });
     } else {
-        // Nothing whole for three days, or three of its intervals.
-        let overdue = (3 * 86_400).max(3 * 60 * settings.every_minutes as i64);
+        // Nothing whole for three days, or three of its intervals; backing
+        // up only when asked, a week (advice: it's the person's to do).
+        let manual = !settings.automatic;
+        let overdue = if manual { 7 * 86_400 } else { (3 * 86_400).max(3 * 60 * settings.every_minutes as i64) };
         let since = state.last_ok.map(|t| now - t);
-        if since.is_none_or(|s| s > overdue) && state.doing == olo_protocol::diskbackup::Doing::Idle {
+        if manual && since.is_some_and(|s| s > overdue) && state.doing == olo_protocol::diskbackup::Doing::Idle {
+            r.findings.push(Finding {
+                id: "diskbackup:overdue".into(),
+                severity: Severity::Advice,
+                title: format!("Not backed up for {} days", since.unwrap_or_default() / 86_400),
+                detail: format!("DiskBackup backs up to {} when you ask it to, and hasn't for a while.", settings.target.describe()),
+                fix: start("Back Up Now", &["olo-diskbackup", "--now"]),
+            });
+        } else if !manual && since.is_none_or(|s| s > overdue) && state.doing == olo_protocol::diskbackup::Doing::Idle {
             let when = match since {
                 Some(s) => format!("for {} days", s / 86_400),
                 None => "yet".into(),
             };
-            let why = state.last.as_ref().and_then(|l| l.error.clone()).map(|e| format!(" The last didn't finish: {e}.")).unwrap_or_default();
+            let why = state.last.as_ref().filter(|l| !l.stopped()).and_then(|l| l.error.clone()).map(|e| format!(" The last didn't finish: {e}.")).unwrap_or_default();
             r.findings.push(Finding {
                 id: "diskbackup:overdue".into(),
                 severity: Severity::Problem,

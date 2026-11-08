@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### DiskBackup's Backups tab: every snapshot, delete some or erase all
+
+*15:18* — Choose one or several backups and delete them (asked first; the space only they took is freed at once), or Erase All Backups to start fresh.
+
+![DiskBackup's Backups tab: every snapshot, delete some or erase all](2026-11-08/151843-diskbackup-s-backups-tab-every-snapshot-delete-s.png)
+
+### DiskBackup, redesigned: what it's doing now, its plan, every setting
+
+*15:18* — Ben asked for an intuitive, full-featured backup app. A header says whether your files are safe; while a backup runs, the file it's at, a bar of bytes against the plan, files, time left, what's new and sent against the upload limit. Five tabs: Schedule (automatic or only when you click Back Up Now; what's kept, said plainly), Files, Backups, Speed & Resources (upload and download limits; the priority: idle, gently or full speed), Destination. Fits 1280×800 while backing up.
+
+![DiskBackup, redesigned: what it's doing now, its plan, every setting](2026-11-08/151842-diskbackup-redesigned-what-it-s-doing-now-its-pl.png)
+
 ### Preferences ▸ AI: Claude Code's model
 
 *13:40* — The model and thinking Olo starts Claude Code with for a task (DiskBackup's Agent Setup): Opus 5.5 on Medium by default.

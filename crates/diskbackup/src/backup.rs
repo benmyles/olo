@@ -10,7 +10,7 @@ use std::{
     path::{Component, Path, PathBuf},
     sync::{
         Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering::Relaxed},
+        atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering::Relaxed},
     },
     time::Instant,
 };
@@ -30,8 +30,57 @@ pub struct Progress {
     pub bytes: AtomicU64,
     /// New content read so far (before compression).
     pub new_bytes: AtomicU64,
+    /// What went up to the store so far (compressed and sealed).
+    pub uploaded: AtomicU64,
     /// The file being read.
     pub current: Mutex<String>,
+    /// What there is to go through (`count`'s, or a caller's estimate).
+    pub total_files: AtomicU64,
+    pub total_bytes: AtomicU64,
+    /// The totals are the last backup's, not counted.
+    pub estimated: AtomicBool,
+    /// `COUNTING`, `READING` or `SAVING`.
+    pub stage: AtomicU8,
+}
+
+/// `Progress::stage`s.
+pub const COUNTING: u8 = 0;
+pub const READING: u8 = 1;
+pub const SAVING: u8 = 2;
+
+/// What `opts` would back up, counted (files, and their bytes) into
+/// `progress`'s totals as it goes: a first backup's plan, with nothing
+/// before it to go by. Only the folders' entries are read (no file's
+/// content), with the backup's own rules (left out, one file system).
+pub fn count(opts: &Options, cancel: &AtomicBool, progress: &Progress) -> Result<()> {
+    progress.stage.store(COUNTING, Relaxed);
+    fn walk(dir: &Path, dev: u64, opts: &Options, cancel: &AtomicBool, progress: &Progress) -> Result<()> {
+        if cancel.load(Relaxed) {
+            return Err(Error::Cancelled);
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return Ok(()) };
+        for e in rd.flatten() {
+            let p = e.path();
+            let Ok(md) = std::fs::symlink_metadata(&p) else { continue };
+            let ft = md.file_type();
+            if !(ft.is_file() || ft.is_dir()) || opts.excludes.excluded(&p, ft.is_dir()) {
+                continue;
+            }
+            if ft.is_file() {
+                progress.total_files.fetch_add(1, Relaxed);
+                progress.total_bytes.fetch_add(md.len(), Relaxed);
+            } else if !(opts.one_file_system && md.dev() != dev) {
+                walk(&p, dev, opts, cancel, progress)?;
+            }
+        }
+        Ok(())
+    }
+    for p in &opts.paths {
+        if let Ok(md) = std::fs::symlink_metadata(p) {
+            walk(p, md.dev(), opts, cancel, progress)?;
+        }
+    }
+    Ok(())
 }
 
 pub struct Options<'a> {
@@ -48,6 +97,9 @@ struct Walk<'a, 'r> {
     opts: &'a Options<'a>,
     cancel: &'a AtomicBool,
     progress: &'a Progress,
+    /// What the store had been sent before (so `progress.uploaded` is this
+    /// backup's).
+    stored_from: u64,
     summary: Summary,
     /// What files are read into (one for all).
     buf: Vec<u8>,
@@ -58,7 +110,8 @@ struct Walk<'a, 'r> {
 pub fn backup(repo: &mut Repo, opts: &Options, parent: Option<(Id, &Snapshot)>, cancel: &AtomicBool, progress: &Progress) -> Result<(Id, Snapshot)> {
     let started = Instant::now();
     let stored = repo.stored;
-    let mut w = Walk { repo, opts, cancel, progress, summary: Summary::default(), buf: Vec::new() };
+    progress.stage.store(READING, Relaxed);
+    let mut w = Walk { repo, opts, cancel, progress, stored_from: stored, summary: Summary::default(), buf: Vec::new() };
     // Packs read back from their own lists as the index was read (an index
     // file damaged): named in an index file of their own now, so the next
     // to read it needn't.
@@ -88,6 +141,7 @@ pub fn backup(repo: &mut Repo, opts: &Options, parent: Option<(Id, &Snapshot)>, 
             return Err(e);
         }
     };
+    progress.stage.store(SAVING, Relaxed);
     let mut summary = w.summary;
     summary.stored_bytes = repo.stored - stored;
     summary.seconds = started.elapsed().as_secs_f64();
@@ -253,7 +307,7 @@ impl Walk<'_, '_> {
             }
         };
         let mut content = Vec::new();
-        let (repo, cancel, progress) = (&mut *self.repo, self.cancel, self.progress);
+        let (repo, cancel, progress, stored_from) = (&mut *self.repo, self.cancel, self.progress, self.stored_from);
         let mut new_bytes = 0u64;
         // What stops the backup (not the file's own fault).
         let mut fatal = None;
@@ -269,6 +323,7 @@ impl Walk<'_, '_> {
             if new {
                 new_bytes += chunk.len() as u64;
                 progress.new_bytes.fetch_add(chunk.len() as u64, Relaxed);
+                progress.uploaded.store(repo.stored.saturating_sub(stored_from), Relaxed);
             }
             content.push(id);
             Ok(())

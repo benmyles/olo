@@ -31,7 +31,14 @@
 //!   computer's snapshots past keeping forgotten, and the space only they
 //!   used freed (with the backup to itself: not while one runs). Asked of
 //!   the service if it's running (its state says how it went), else here.
-//! - `--set KEY=VALUE…`: `enabled`, `battery`, `deskbar` (on/off), `every`
+//! - `--delete SNAPSHOT…`: those backups deleted (ids, or their starts, as
+//!   `--snapshots` lists them), and the space only they took freed, as
+//!   the window's Backups ▸ Delete… does (asked of the service).
+//! - `--erase-all --yes`: every backup there deleted, to start fresh
+//!   (File ▸ Erase All Backups…).
+//! - `--set KEY=VALUE…`: `enabled`, `automatic`, `battery`, `deskbar`
+//!   (on/off; `automatic` off: only when asked, `--now`), `priority`
+//!   (`idle`, `low` or `normal`), `every`
 //!   (minutes), `upload`, `download` (KB/s, 0 for no limit), `paths`
 //!   (comma-separated), `exclude` (a pattern, added), `groups`
 //!   (comma-separated ids; `--groups` lists them), `hourly`, `daily`,
@@ -44,6 +51,7 @@ mod restore;
 mod service;
 mod target;
 mod versions;
+mod window;
 
 const APP_ID: &str = "olo.diskbackup";
 
@@ -73,6 +81,14 @@ fn main() -> ExitCode {
             Some("--set-up-drive") => set_up_drive_cli(&args[1..]),
             Some("--agent-setup-done") => agent_setup_done(&args[1..]),
             Some("--snapshots") => snapshots(),
+            Some("--delete") if args.len() > 1 => delete_cli(&args[1..]),
+            Some("--erase-all") => {
+                if args.iter().any(|a| a == "--yes") {
+                    ask(Request::EraseAll).map(|()| println!("Erasing every backup; the next one starts afresh (--status says how it goes)."))
+                } else {
+                    Err("--erase-all deletes every backup there, for good: add --yes".into())
+                }
+            }
             Some("--restore") => match (args.get(1), args.get(2)) {
                 (Some(snap), Some(path)) => restore_cli(snap, path, args.get(3)),
                 _ => Err("--restore SNAPSHOT PATH [TO]".into()),
@@ -101,7 +117,7 @@ fn main() -> ExitCode {
             Some(path) => versions_cli(path),
             None => Err("--versions PATH".into()),
         },
-            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --set-up-drive [CLIENT_FILE | ID SECRET] | --agent-setup-done [CLIENT_FILE] [--screen NAME] | --snapshots | --restore SNAPSHOT PATH [TO] | --marks DIR | --versions PATH | --keep-key | --tidy | --set KEY=VALUE… | --groups"
+            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --set-up-drive [CLIENT_FILE | ID SECRET] | --agent-setup-done [CLIENT_FILE] [--screen NAME] | --snapshots | --delete SNAPSHOT… | --erase-all --yes | --restore SNAPSHOT PATH [TO] | --marks DIR | --versions PATH | --keep-key | --tidy | --set KEY=VALUE… | --groups"
                 .into()),
         };
     match r {
@@ -398,6 +414,27 @@ fn agent_setup_done(a: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Backups deleted by id (or an id's start), by the service.
+fn delete_cli(wanted: &[String]) -> Result<(), String> {
+    let all = match olo_protocol::diskbackup::call(&Request::Snapshots)? {
+        olo_protocol::diskbackup::Reply::Snapshots { snapshots } => snapshots,
+        other => return Err(format!("the service answered {other:?}")),
+    };
+    let mut ids = Vec::new();
+    for w in wanted {
+        let found: Vec<&olo_protocol::diskbackup::SnapshotInfo> = all.iter().filter(|s| s.id.starts_with(w.as_str())).collect();
+        match found.as_slice() {
+            [one] => ids.push(one.id.clone()),
+            [] => return Err(format!("no backup {w}")),
+            _ => return Err(format!("{w} is the start of more than one backup's id")),
+        }
+    }
+    let n = ids.len();
+    ask(Request::Delete { snapshots: ids })?;
+    println!("{} deleted; the space only they took is being freed.", if n == 1 { "1 backup".to_owned() } else { format!("{n} backups") });
+    Ok(())
+}
+
 fn snapshots() -> Result<(), String> {
     let (_, repo) = open()?;
     for (id, s) in repo.snapshots().map_err(|e| e.to_string())? {
@@ -510,6 +547,15 @@ fn set(pairs: &[String]) -> Result<(), String> {
         match k {
             "enabled" => s.enabled = flag()?,
             "battery" => s.on_battery = flag()?,
+            "automatic" => s.automatic = flag()?,
+            "priority" => {
+                s.priority = match v {
+                    "idle" => olo_protocol::diskbackup::Priority::Idle,
+                    "low" => olo_protocol::diskbackup::Priority::Low,
+                    "normal" => olo_protocol::diskbackup::Priority::Normal,
+                    _ => return Err(format!("priority={v}? idle, low or normal")),
+                }
+            }
             "every" => s.every_minutes = number()?.clamp(5, 7 * 24 * 60) as u32,
             "upload" => s.upload_kbs = number()?,
             "download" => s.download_kbs = number()?,
