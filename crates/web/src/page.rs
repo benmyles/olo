@@ -31,6 +31,9 @@ pub enum Phase {
 pub enum ResourceKind {
     Stylesheet,
     Image,
+    /// A script (classic or module) or a `<link rel=preload>` for one: only
+    /// ever fetched ahead (`prefetch`), its load the host's.
+    Script,
     /// A `@font-face` source: WOFF2, WOFF, TrueType or OpenType bytes.
     Font,
 }
@@ -326,7 +329,7 @@ pub fn load_resources(
 ) -> Result<Page> {
     load_assets(source, host, scope, shaper, painter, viewport, cancel, progress, |kind, base, href| match kind {
         ResourceKind::Stylesheet => resource(base, href).map(|s| s.map(|s| Resource::Stylesheet(s, None))),
-        ResourceKind::Image | ResourceKind::Font => Ok(None),
+        ResourceKind::Image | ResourceKind::Font | ResourceKind::Script => Ok(None),
     })
 }
 /// Typed worker resources. Decoded image allocations are retained across restyle;
@@ -1661,6 +1664,8 @@ fn gather(
     let mut base = None;
     let mut style_nodes = Vec::new();
     let mut image_nodes = Vec::new();
+    // Scripts and preloads, fetched ahead with the sheets (by kind).
+    let mut ahead: Vec<(ResourceKind, String)> = Vec::new();
     let mut inline_backgrounds: Vec<Arc<str>> = Vec::new();
     while let Some(node) = next {
         if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
@@ -1706,7 +1711,14 @@ fn gather(
                         resource_issues += 1;
                     }
                 }
-                Some("script") => scripts += 1,
+                Some("script") => {
+                    scripts += 1;
+                    if let Some(src) = doc.attribute(node, "src")?.map(str::trim).filter(|s| !s.is_empty())
+                        && doc.attribute(node, "nomodule")?.is_none()
+                    {
+                        ahead.push((ResourceKind::Script, src.to_owned()));
+                    }
+                }
                 Some("title") => {
                     for child in doc.children(node)? {
                         if let Some(value) = doc.value(child)? {
@@ -1732,7 +1744,37 @@ fn gather(
                 links.push((base.clone(), href.to_owned()));
             }
         }
+        // Preloads by what they are (`as`), and module preloads.
+        for &node in &style_nodes {
+            if doc.name(node)? != Some("link") {
+                continue;
+            }
+            let rel = doc.attribute(node, "rel")?.unwrap_or("").to_ascii_lowercase();
+            let Some(href) = doc.attribute(node, "href")? else { continue };
+            let kind = if rel.split_ascii_whitespace().any(|r| r == "modulepreload") {
+                Some(ResourceKind::Script)
+            } else if rel.split_ascii_whitespace().any(|r| r == "preload") {
+                match doc.attribute(node, "as")?.map(|a| a.trim().to_ascii_lowercase()).as_deref() {
+                    Some("script") => Some(ResourceKind::Script),
+                    Some("style") => Some(ResourceKind::Stylesheet),
+                    Some("font") => Some(ResourceKind::Font),
+                    Some("image") => Some(ResourceKind::Image),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            if let Some(kind) = kind {
+                ahead.push((kind, href.to_owned()));
+            }
+        }
         prefetch(ResourceKind::Stylesheet, &links);
+        for kind in [ResourceKind::Script, ResourceKind::Stylesheet, ResourceKind::Font, ResourceKind::Image] {
+            let items: Vec<(Option<String>, String)> = ahead.iter().filter(|(k, _)| *k == kind).map(|(_, h)| (base.clone(), h.clone())).collect();
+            if !items.is_empty() {
+                prefetch(kind, &items);
+            }
+        }
         let images: Vec<(Option<String>, String)> = image_nodes.iter().filter_map(|&n| crate::srcset::choose(&doc, n, &media, cancel).map(|c| (base.clone(), c.url))).collect();
         prefetch(ResourceKind::Image, &images);
     }

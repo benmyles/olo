@@ -163,6 +163,7 @@ fn start(src: String, parent: url::Url, size: [u32; 2], made: Arc<Mutex<Made>>, 
                         }
                     }
                     page::ResourceKind::Font => None,
+                    page::ResourceKind::Script => None,
                 })
             };
             // Its scripts, run once before it renders (a realm of its own,

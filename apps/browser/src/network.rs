@@ -45,11 +45,84 @@ impl Deref for Cancel {
 }
 pub struct Loader {
     client: Client,
+    /// The network's: two threads that only wait on sockets (what is
+    /// received is decoded, parsed and laid out on threads of its own). A
+    /// fetch started ahead goes on while the page's thread does its work.
     runtime: tokio::runtime::Runtime,
     /// Fetched subresources by URL, for the page's second pass (its
     /// scripts), the next page sharing them, and a visit back: bytes as
     /// received, with the media type, status and the URL they came from.
-    cache: std::sync::Mutex<SessionCache>,
+    cache: Arc<std::sync::Mutex<SessionCache>>,
+    /// Fetches started ahead (the preload scanner's), by URL: a load that
+    /// wants one joins it rather than fetching it again.
+    inflight: Arc<std::sync::Mutex<std::collections::HashMap<String, Inflight>>>,
+    /// How many fetches started ahead go at once.
+    permits: Arc<tokio::sync::Semaphore>,
+    /// Pictures fetched ahead, decoded on the CPU pool as they arrive (side
+    /// by side, off the page's thread), by URL.
+    decoding: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<Decoding>>>>,
+    /// What stops the fetches started ahead: the document's, not one render
+    /// request's (the page asks to render again while they are under way;
+    /// they stop when another document loads).
+    ahead: std::sync::Mutex<(Cancel, Option<Url>)>,
+}
+/// A picture being decoded ahead: its result once there.
+#[derive(Default)]
+struct Decoding {
+    result: std::sync::Mutex<Option<Decoded>>,
+    ready: std::sync::Condvar,
+}
+enum Decoded {
+    Image(Arc<olo_web::image::Image>),
+    /// Not decoded ahead (an SVG, a failure, a cancellation): the load
+    /// does it itself, as before.
+    Itself,
+}
+impl Decoding {
+    fn set(&self, decoded: Decoded) {
+        *self.result.lock().unwrap() = Some(decoded);
+        self.ready.notify_all();
+    }
+}
+/// A raster picture's decoding (on the CPU pool's threads): within the
+/// default limits, the page's budget applied when it takes it.
+fn decode_raster(bytes: &[u8], cancel: Option<&AtomicBool>) -> page::Result<Arc<olo_web::image::Image>> {
+    let raster = olo_images::raster::decode(bytes, olo_images::raster::Limits::default(), cancel)?;
+    let (w, h) = raster.pixels.dimensions();
+    Ok(olo_web::image::Image::from_rgba(w, h, raster.pixels.into_raw(), Default::default(), cancel)?)
+}
+/// A fetch under way or done: its response (any status), or None when it
+/// failed or was cancelled.
+type Inflight = Arc<tokio::sync::OnceCell<Option<Arc<CachedResponse>>>>;
+/// Fetches started ahead going at once (the server's HTTP/2 connection
+/// takes them together).
+const PREFETCHES: usize = 24;
+/// One fetch, kept whatever its status (an image served with a 404 still
+/// shows).
+async fn fetch_once(client: Client, url: Url, initiator: Url, limit: usize, flag: Arc<AtomicBool>, kind: Kind) -> Option<Arc<CachedResponse>> {
+    let started = Instant::now();
+    if olo_web::env_on!("OLO_FETCH_DEBUG") {
+        eprintln!("  ahead {url} started on {:?}", std::thread::current().name());
+    }
+    let fetched = get(&client, url.clone(), Some(initiator), limit, flag, &mut |_| {}, kind, false, None).await;
+    if olo_web::env_on!("OLO_FETCH_DEBUG") {
+        eprintln!("  ahead {url} done in {:.0} ms ({})", started.elapsed().as_secs_f64() * 1000., if fetched.is_ok() { "ok" } else { "failed" });
+    }
+    let fetched = fetched.ok()?;
+    Some(Arc::new(CachedResponse { url: fetched.url, bytes: fetched.bytes, mime: fetched.mime, status: fetched.status.unwrap_or(200) }))
+}
+/// A successful response into the session cache.
+fn remember(cache: &std::sync::Mutex<SessionCache>, requested: &str, response: &Arc<CachedResponse>) {
+    if !(200..300).contains(&response.status) {
+        return;
+    }
+    let mut cache = cache.lock().unwrap();
+    if cache.bytes + response.bytes.len() > SESSION_CACHE_BYTES {
+        cache.entries.clear();
+        cache.bytes = 0;
+    }
+    cache.bytes += response.bytes.len();
+    cache.entries.insert(requested.to_owned(), response.clone());
 }
 #[derive(Default)]
 struct SessionCache {
@@ -84,8 +157,12 @@ impl Loader {
                 .timeout(Duration::from_secs(60))
                 .user_agent(olo_js::USER_AGENT)
                 .build()?,
-            runtime: tokio::runtime::Builder::new_current_thread().enable_all().build()?,
+            runtime: tokio::runtime::Builder::new_multi_thread().worker_threads(2).thread_name("browser-net").enable_all().build()?,
             cache: Default::default(),
+            inflight: Default::default(),
+            permits: Arc::new(tokio::sync::Semaphore::new(PREFETCHES)),
+            decoding: Default::default(),
+            ahead: Default::default(),
         })
     }
     fn navigation(source: &str, cwd: Option<&std::path::Path>) -> page::Result<Url> {
@@ -100,12 +177,17 @@ impl Loader {
         Ok(Url::parse(&format!("https://{source}"))?)
     }
     pub fn document(&self, source: &str, cwd: Option<&std::path::Path>, cancel: &Cancel, progress: impl FnMut(usize)) -> page::Result<Resource> {
-        self.fetch(Self::navigation(source, cwd)?, None, HTML_LIMIT, cancel, progress, Kind::Document)
+        let url = Self::navigation(source, cwd)?;
+        self.forget_ahead(&url);
+        self.fetch(url, None, HTML_LIMIT, cancel, progress, Kind::Document)
     }
     /// A document a form posts to: its body (of `kind`), what the server
     /// answers (a redirect after it goes on as a GET).
     pub fn document_post(&self, source: &str, from: &str, kind: &str, body: &[u8], cancel: &Cancel) -> page::Result<Resource> {
         let url = Url::parse(source)?;
+        // (A post's answer is another document, even at the same URL.)
+        self.ahead.lock().unwrap().1 = None;
+        self.forget_ahead(&url);
         // From the page that posted it (its origin and referrer go with it,
         // as Chrome sends them; servers check them against forgery).
         let initiator = Url::parse(from).ok().filter(|u| matches!(u.scheme(), "http" | "https"));
@@ -223,6 +305,12 @@ impl Loader {
             progress(bytes.len());
             bytes
         } else {
+            // Decoded ahead, within the page's budget: taken as it is.
+            if let Some(image) = self.decoded(&url, cancel)
+                && image.payload_bytes() <= remaining
+            {
+                return Ok(image);
+            }
             // Whatever its status: a picture served with a 404 (a search
             // engine's stand-in icon) shows, as in Chrome; one that isn't a
             // picture fails to decode below.
@@ -301,6 +389,29 @@ impl Loader {
             check_url(&url, initiator)?;
             return Ok(Resource { url: c.url.clone(), bytes: c.bytes.clone(), mime: c.mime.clone(), status: Some(c.status), document_encoding: None });
         }
+        // Started ahead: joined (waited for, or done here first if it is
+        // still queued).
+        let started = if cacheable { self.inflight.lock().unwrap().get(url.as_str()).cloned() } else { None };
+        if let Some(cell) = started
+            && let Some(initiator) = initiator
+        {
+            check_url(&url, Some(initiator))?;
+            let got = self.runtime.block_on(async {
+                let work = cell.get_or_init(|| fetch_once(self.client.clone(), url.clone(), initiator.clone(), limit, cancel.flag.clone(), kind));
+                tokio::select! { biased; _ = cancel.signal.cancelled() => None, response = work => Some(response.clone()) }
+            });
+            self.inflight.lock().unwrap().remove(url.as_str());
+            match got {
+                None => return Err("Cancelled".into()),
+                Some(Some(c)) => {
+                    remember(&self.cache, url.as_str(), &c);
+                    progress(c.bytes.len());
+                    return Ok(Resource { url: c.url.clone(), bytes: c.bytes.clone(), mime: c.mime.clone(), status: Some(c.status), document_encoding: None });
+                }
+                // It failed: fetched again below, its error said there.
+                Some(None) => {}
+            }
+        }
         let requested = url.clone();
         let fetched = self.fetch_uncached(url, initiator, limit, cancel, &mut progress, kind, allow_file)?;
         if cacheable && fetched.status.is_some_and(|s| (200..300).contains(&s)) {
@@ -332,58 +443,111 @@ impl Loader {
             page::ResourceKind::Stylesheet => Kind::Stylesheet,
             page::ResourceKind::Image => Kind::Image,
             page::ResourceKind::Font => Kind::Font,
+            page::ResourceKind::Script => Kind::Script,
         };
         let limit = match kind {
             Kind::Stylesheet => CSS_LIMIT,
             Kind::Image => IMAGE_LIMIT,
+            Kind::Script => SCRIPT_LIMIT,
             _ => FONT_LIMIT,
         };
-        let mut urls = Vec::new();
-        {
-            let cache = self.cache.lock().unwrap();
-            for (base, href) in items {
-                let Ok(url) = base.as_deref().and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href) else { continue };
-                if !matches!(url.scheme(), "http" | "https") || cache.entries.contains_key(url.as_str()) || urls.contains(&url) || check_url(&url, Some(&document.url)).is_err() {
+        let urls: Vec<Url> = items.iter().filter_map(|(base, href)| base.as_deref().and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href).ok()).collect();
+        self.start(document, kind, limit, urls, cancel);
+    }
+    /// Start fetching these in the background, at most `PREFETCHES` at
+    /// once, without waiting: the loads that want them join them.
+    fn start(&self, document: &Resource, kind: Kind, limit: usize, urls: Vec<Url>, cancel: &Cancel) {
+        let initiator = document.url.clone();
+        for url in urls {
+            if !matches!(url.scheme(), "http" | "https") || check_url(&url, Some(&initiator)).is_err() || self.cache.lock().unwrap().entries.contains_key(url.as_str()) {
+                continue;
+            }
+            let cell: Inflight = {
+                let mut inflight = self.inflight.lock().unwrap();
+                if inflight.contains_key(url.as_str()) {
                     continue;
                 }
-                urls.push(url);
-            }
-        }
-        if urls.is_empty() {
-            return;
-        }
-        let initiator = document.url.clone();
-        let flag = cancel.flag.clone();
-        self.runtime.block_on(async {
-            let semaphore = Arc::new(tokio::sync::Semaphore::new(12));
-            let mut tasks = tokio::task::JoinSet::new();
-            for url in urls {
-                let client = self.client.clone();
-                let initiator = initiator.clone();
-                let flag = flag.clone();
-                let semaphore = semaphore.clone();
-                tasks.spawn(async move {
-                    let Ok(_permit) = semaphore.acquire().await else { return None };
-                    get(&client, url.clone(), Some(initiator), limit, flag, &mut |_| {}, kind, false, None).await.ok().map(|r| (url, r))
-                });
-            }
-            let work = async {
-                while let Some(result) = tasks.join_next().await {
-                    if let Ok(Some((requested, fetched))) = result
-                        && fetched.status.is_some_and(|s| (200..300).contains(&s))
-                    {
-                        let mut cache = self.cache.lock().unwrap();
-                        if cache.bytes + fetched.bytes.len() > SESSION_CACHE_BYTES {
-                            cache.entries.clear();
-                            cache.bytes = 0;
-                        }
-                        cache.bytes += fetched.bytes.len();
-                        cache.entries.insert(requested.to_string(), Arc::new(CachedResponse { url: fetched.url, bytes: fetched.bytes, mime: fetched.mime, status: fetched.status.unwrap_or(200) }));
-                    }
-                }
+                let cell = Inflight::default();
+                inflight.insert(url.to_string(), cell.clone());
+                cell
             };
-            tokio::select! { biased; _ = cancel.signal.cancelled() => {}, _ = work => {} }
-        });
+            let (client, cache, inflight, permits) = (self.client.clone(), self.cache.clone(), self.inflight.clone(), self.permits.clone());
+            let _ = cancel;
+            let ahead = self.ahead.lock().unwrap().0.clone();
+            let (initiator, flag, signal) = (initiator.clone(), ahead.flag.clone(), ahead.signal.clone());
+            // A picture: decoded on the CPU pool once it arrives.
+            let decoding = matches!(kind, Kind::Image).then(|| {
+                let d = Arc::new(Decoding::default());
+                self.decoding.lock().unwrap().insert(url.to_string(), d.clone());
+                d
+            });
+            let undecoded = decoding.clone();
+            self.runtime.spawn(async move {
+                let work = async {
+                    let Ok(_permit) = permits.acquire_owned().await else { return };
+                    let response = cell.get_or_init(|| fetch_once(client, url.clone(), initiator, limit, flag.clone(), kind)).await;
+                    if let Some(d) = &decoding {
+                        match response {
+                            Some(r) if !looks_like_svg(&r.bytes) => {
+                                let (r, d, flag) = (r.clone(), d.clone(), flag.clone());
+                                rayon::spawn(move || d.set(decode_raster(&r.bytes, Some(&flag)).map_or(Decoded::Itself, Decoded::Image)));
+                            }
+                            _ => d.set(Decoded::Itself),
+                        }
+                    }
+                    // Kept: in the cache when it succeeded (no longer under
+                    // way), else for the load that wants it (a 404's picture).
+                    if let Some(r) = response
+                        && (200..300).contains(&r.status)
+                    {
+                        remember(&cache, url.as_str(), r);
+                        inflight.lock().unwrap().remove(url.as_str());
+                    }
+                };
+                tokio::select! { biased; _ = signal.cancelled() => {
+                    if let Some(d) = undecoded {
+                        d.set(Decoded::Itself);
+                    }
+                }, _ = work => {} }
+            });
+        }
+    }
+    /// What the last page started ahead and never took (failed fetches,
+    /// pictures decoded for it): let go when another document loads.
+    fn forget_ahead(&self, url: &Url) {
+        {
+            let mut ahead = self.ahead.lock().unwrap();
+            // The same document again (a render asked for anew): its
+            // fetches go on.
+            if ahead.1.as_ref() == Some(url) {
+                return;
+            }
+            std::mem::take(&mut ahead.0).cancel();
+            ahead.1 = Some(url.clone());
+        }
+        self.decoding.lock().unwrap().retain(|_, d| d.result.lock().unwrap().is_none());
+        self.inflight.lock().unwrap().retain(|_, cell| !cell.initialized());
+    }
+    /// A picture decoded ahead, waited for (its fetch and decoding go on
+    /// elsewhere), or None when there is none to take or it wasn't.
+    fn decoded(&self, url: &Url, cancel: &Cancel) -> Option<Arc<olo_web::image::Image>> {
+        let d = self.decoding.lock().unwrap().remove(url.as_str())?;
+        let mut result = d.result.lock().unwrap();
+        while result.is_none() {
+            if cancel.load(Ordering::Relaxed) {
+                return None;
+            }
+            result = d.ready.wait_timeout(result, Duration::from_millis(50)).unwrap().0;
+        }
+        match result.take() {
+            Some(Decoded::Image(image)) => Some(image),
+            _ => None,
+        }
+    }
+    /// Start fetching a page's scripts ahead (its external classic and
+    /// module scripts, its preloads), as the preload scanner does.
+    pub fn prefetch_scripts(&self, document: &Resource, urls: Vec<Url>, cancel: &Cancel) {
+        self.start(document, Kind::Script, SCRIPT_LIMIT, urls, cancel);
     }
 }
 /// One GET (redirects followed, 20 at most), or a local file read.
@@ -791,6 +955,62 @@ mod tests {
         let plain = loader.document(&format!("{base}/plain"), None, &cancel, |_| {}).unwrap().take_html(&cancel).unwrap();
         assert!(plain.contains("&lt;script>&amp;literal"));
         server.join().unwrap();
+    }
+    #[test]
+    fn resources_fetched_ahead_go_together_once_and_a_load_joins_them() {
+        // Each answer 200 ms late, on threads of its own: six scripts and
+        // a sheet started ahead take one wait, not seven; each asked once.
+        let socket = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", socket.local_addr().unwrap());
+        let asked = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = asked.clone();
+        thread::spawn(move || {
+            for stream in socket.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let seen = seen.clone();
+                thread::spawn(move || {
+                    let mut request = Vec::new();
+                    let mut b = [0u8];
+                    while !request.ends_with(b"\r\n\r\n") && stream.read(&mut b).unwrap_or(0) == 1 {
+                        request.push(b[0]);
+                    }
+                    let path = String::from_utf8_lossy(&request).split_ascii_whitespace().nth(1).unwrap_or("").to_owned();
+                    seen.lock().unwrap().push(path.clone());
+                    if path != "/page" {
+                        thread::sleep(Duration::from_millis(200));
+                    }
+                    let (kind, body) = if path.ends_with(".css") {
+                        ("text/css", "a{}")
+                    } else if path.ends_with(".js") {
+                        ("text/javascript", "1")
+                    } else {
+                        ("text/html", "<p>")
+                    };
+                    let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                });
+            }
+        });
+        let loader = Loader::new().unwrap();
+        let cancel = Cancel::default();
+        let doc = loader.document(&format!("{base}/page"), None, &cancel, |_| {}).unwrap();
+        let started = Instant::now();
+        let scripts: Vec<Url> = (0..6).map(|i| Url::parse(&format!("{base}/s{i}.js")).unwrap()).collect();
+        loader.prefetch_scripts(&doc, scripts.clone(), &cancel);
+        loader.prefetch(&doc, page::ResourceKind::Stylesheet, &[(None, "/t.css".into())], &cancel);
+        // Started ahead: nothing waited for yet.
+        assert!(started.elapsed() < Duration::from_millis(100), "{:?}", started.elapsed());
+        // A render asked for anew (the same document) lets them go on.
+        let _ = loader.document(&format!("{base}/page"), None, &Cancel::default(), |_| {}).unwrap();
+        // The loads join them: the sheet and every script in about one wait.
+        assert_eq!(loader.stylesheet(&doc, None, "/t.css", &cancel, |_| {}).unwrap().source(), "a{}");
+        for url in scripts {
+            assert_eq!(loader.script(&doc, url, &cancel, |_| {}).unwrap(), "1");
+        }
+        assert!(started.elapsed() < Duration::from_millis(600), "{:?}", started.elapsed());
+        let asked = asked.lock().unwrap().clone();
+        for path in ["/t.css", "/s0.js", "/s5.js"] {
+            assert_eq!(asked.iter().filter(|p| *p == path).count(), 1, "{asked:?}");
+        }
     }
     #[test]
     fn cancellation_wakes_a_pending_response() {

@@ -1249,6 +1249,7 @@ fn render(
                             url.and_then(|u| loader.font(&light, u, &cancel, |_| {}).ok()).map(page::Resource::Font)
                         }
                         page::ResourceKind::Image => None,
+                        page::ResourceKind::Script => None,
                     })
                 };
                 if c.page.refresh(&doc, Some(&cancel), &mut resource)? && olo_web::env_on!("OLO_BROWSER_TIMING") {
@@ -1499,6 +1500,7 @@ fn render(
                                 url.and_then(|u| loader.font(&light, u, &cancel, |_| {}).ok()).map(page::Resource::Font)
                             }
                             page::ResourceKind::Image => None,
+                            page::ResourceKind::Script => None,
                         })
                     };
                     let refresh_started = Instant::now();

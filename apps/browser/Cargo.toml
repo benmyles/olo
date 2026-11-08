@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+# Decoding fetched pictures side by side, off the page's thread.
+rayon = "1"
 olo-crash.workspace = true
 olo-ui.workspace = true
 olo-theme.workspace = true
@@ -19,7 +21,7 @@ olo-js = { path = "../../crates/js" }
 serde.workspace = true
 serde_json.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "http2", "gzip", "brotli", "deflate", "zstd"] }
-tokio = { version = "1", features = ["rt", "net", "time", "macros"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "time", "macros", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 url = "2"
 encoding_rs = "0.8"

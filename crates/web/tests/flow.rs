@@ -943,7 +943,7 @@ fn an_inline_block_of_items_wraps_them_at_min_content_and_columns_share_by_max_c
     // (The test font's glyphs are 20 px wide.)
     let c = cache(&mut e, &s, t);
     let l = fit(&mut e, &s, c, 600., 1);
-    let (a, b, table) = (rect(&d, &l, "a"), rect(&d, &l, "b"), rect(&d, &l, "t"));
+    let (b, table) = (rect(&d, &l, "b"), rect(&d, &l, "t"));
     // (At least its columns' min-content: 102 + 142 + spacing here, wider
     // than the 200 px it asks for, as Chrome lays it out.)
     assert_eq!(table.width, 102. + 142. + 6., "{table:?}");

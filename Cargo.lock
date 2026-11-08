@@ -7514,6 +7514,7 @@ dependencies = [
  "olo-xdg",
  "percent-encoding",
  "psl",
+ "rayon",
  "reqwest",
  "serde",
  "serde_json",

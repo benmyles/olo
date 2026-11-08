@@ -132,6 +132,7 @@ fn main() {
                     Ok(css) => Ok(Some(page::Resource::Stylesheet(olo_web::css::Syntax::parse(Arc::from(css), Default::default(), None)?, None))),
                     Err(_) => Ok(None),
                 },
+                page::ResourceKind::Script => Ok(None),
                 page::ResourceKind::Font => {
                     let file = dir.join("fonts").join(Path::new(name).file_name().unwrap_or_default());
                     Ok(std::fs::read(file).ok().map(|b| page::Resource::Font(Arc::from(b))))

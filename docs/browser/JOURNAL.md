@@ -6763,3 +6763,24 @@ the Guardian and old Reddit, looking for pages that fail outright:
 - **`FormData` bodies** for `fetch()`, `Request` and XHR go as
   `multipart/form-data` with a boundary (they went as `[object Object]`:
   Amazon's challenge posted one and was refused with 415).
+
+## 2026-11-08, evening: everything a page links, fetched together
+
+- **The network ran only while the page's thread waited on it** (a
+  current-thread runtime): nothing downloaded while it parsed, styled or
+  ran scripts. Two network threads now only wait on sockets, and what
+  the parse finds (style sheets, images, scripts, `<link rel=preload>`
+  and `modulepreload`) starts at once, 24 at a time, each fetch joined by
+  the load that wants it (never fetched twice).
+- **A page's scripts were fetched one after another**; they arrive
+  together now. Pictures fetched ahead are decoded on a CPU pool as they
+  arrive, side by side, off the page's thread (SVG, which needs the
+  page's fonts, as before).
+- Fetches started ahead belong to the document, not to one render request
+  (a request asked for anew cancelled them, and the page then fetched
+  everything itself, one at a time).
+- A local page whose 24 resources each answer 150 ms late: first render
+  325 → 165 ms, scripted render 1871 → 202 ms. Real pages, median of 4
+  (first / scripted, ms): BBC 1757 / 5468 → 936 / 2245, apple.com 529 /
+  1363 → 470 / 989, YouTube 736 / 1902 → 662 / 1668, GitHub 463 / 2319 →
+  492 / 2194.
