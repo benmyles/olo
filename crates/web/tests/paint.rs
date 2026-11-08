@@ -1033,3 +1033,28 @@ fn intrinsic_widths_and_column_flow_grids() {
     assert_eq!([25, 35, 65, 75].map(|x| pixel(&tile, x, 5)), [[255; 4], [255, 0, 0, 255], [255, 0, 0, 255], [255; 4]]);
     assert_eq!([10, 30, 50, 70].map(|x| pixel(&tile, x, 15)), [[255, 0, 0, 255], [0, 0, 255, 255], [0, 128, 0, 255], [255; 4]]);
 }
+#[test]
+fn a_grid_items_min_width_is_its_minimum_contribution() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    // Two 1fr columns of a 100px grid; the first item holds a 300px box.
+    // With min-width: 0 it stays 50px (the second item at 50); without,
+    // its column takes the box's width (as in Chrome).
+    let page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}.g{display:grid;grid-template-columns:repeat(2,1fr);width:100px;height:10px}.w{width:300px;height:10px}.b{background-color:blue;height:10px}</style><div class=g><div style=min-width:0><div class=w></div></div><div class=b></div></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let tile = render(&mut painter, &page.scene);
+    assert_eq!([40, 60].map(|x| pixel(&tile, x, 5)), [[255; 4], [0, 0, 255, 255]]);
+}

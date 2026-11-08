@@ -365,13 +365,29 @@ impl Job<'_> {
                 K::Auto => keyword(style, P::AlignItems),
                 k => k,
             };
+            // A grid item's minimum contribution (CSS Grid §11.5): its
+            // min-width when one is given (min-width: 0 contributes
+            // nothing), nothing for a scroll container, else its
+            // min-content size. GitHub's feature columns (min-width: 0) took
+            // their screenshots' widths and overflowed the page.
+            let mut minimum = w.min_content;
+            if grid && !text {
+                if !matches!(s.value(P::MinWidth), Value::Keyword(K::Auto)) {
+                    let given = used::length(s, P::MinWidth, None, Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
+                    let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
+                    minimum = if border_box { given } else { given + self.decoration_of(s, queries, width)? };
+                } else if !matches!(s.value(P::OverflowX), Value::Keyword(K::Visible | K::Clip)) {
+                    minimum = self.decoration_of(s, queries, width)?;
+                }
+                minimum = minimum.min(w.min_content);
+            }
             if items.len() >= self.limits.boxes {
                 return Err(Error::Limit);
             }
             items.push(Item {
                 id: child,
                 used: Used { width: 0., ..used },
-                contribution: (w.min_content + margin_x, w.max_content + margin_x),
+                contribution: (minimum + margin_x, w.max_content + margin_x),
                 cell: Cell { columns: (0, 1), rows: (0, 1) },
                 justify,
                 align,
@@ -564,6 +580,12 @@ impl Job<'_> {
         let maximum = used::length(s, P::MaxWidth, Some(area), None, queries, &mut self.scratch, self.cancel, self.scale)?.map(content);
         let minimum = used::length(s, P::MinWidth, Some(area), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.map(content).unwrap_or(0.);
         Ok(u.width.min(maximum.unwrap_or(f64::INFINITY)).max(minimum))
+    }
+    /// A box's horizontal padding and border.
+    fn decoration_of(&mut self, s: &crate::css::style::Style, queries: QueryBasis, width: f64) -> Result<f64> {
+        let pad = used::length(s, P::PaddingLeft, Some(width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.)
+            + used::length(s, P::PaddingRight, Some(width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)?.unwrap_or(0.);
+        Ok(pad.max(0.) + s.used_border_width(P::BorderLeftWidth)? + s.used_border_width(P::BorderRightWidth)?)
     }
     fn auto_tracks(&mut self, value: &Value, available: Option<f64>, queries: QueryBasis) -> Result<Vec<Track>> {
         let (tracks, _) = self.tracks(value, available, 0., queries, 1)?;

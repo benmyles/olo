@@ -44,6 +44,8 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   poster (an empty box); needs a native H.264 decoder.
 - [ ] Container queries (`@container`) — the `container` shorthand and
   units work now.
+- [ ] GitHub's "More ways" cards stay pinned (sticky, stacked) while the
+  page scrolls in Chrome; in Olo they scroll by.
 - [ ] `background-clip: text` (apple.com's gradient subhead).
 - [ ] Lazy images: `loading=lazy` ones never fire load (a browser loads
   them when scrolled to); one of GitHub's below the fold, given a load
