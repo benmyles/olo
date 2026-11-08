@@ -81,6 +81,8 @@ pub struct RuleSet {
     has_keys: selectors::HasKeys,
     invalidation: selectors::Invalidation,
     uses_empty: bool,
+    /// `@keyframes` by name (the last of a name).
+    keyframes: crate::css::animation::Library,
     /// Unique to this compilation: styles made with another rule set
     /// (their recorded rule ids point into it) are not reused with this.
     generation: u64,
@@ -115,6 +117,7 @@ pub struct SheetBuilder {
     media: Option<crate::css::media::Media>,
     media_dependent: bool,
     faces: Vec<crate::css::fonts::FontFace>,
+    keyframes: crate::css::animation::Library,
     /// `url()` images of `background-image` declarations, with the URL of
     /// the sheet each came from, in order; a page fetches them.
     backgrounds: Vec<(Arc<str>, Option<Arc<str>>)>,
@@ -136,6 +139,7 @@ impl SheetBuilder {
             media: None,
             media_dependent: false,
             faces: Vec::new(),
+            keyframes: Default::default(),
             backgrounds: Vec::new(),
             base: None,
             failed: false,
@@ -408,6 +412,14 @@ impl SheetBuilder {
                         self.faces.push(face);
                     }
                 }
+                StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("keyframes") || s.eq_ignore_ascii_case("-webkit-keyframes")) => {
+                    match crate::css::animation::parse_keyframes(syntax, &rule, cancelled) {
+                        Some((name, frames)) => {
+                            self.keyframes.insert(name, std::sync::Arc::new(frames));
+                        }
+                        None => self.issue(Issue::Invalid)?,
+                    }
+                }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("charset")) => {}
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("namespace")) => self.issue(Issue::Invalid)?,
                 StatementKind::AtRule => self.issue(Issue::AtRule(Arc::from(rule.name().unwrap_or(""))))?,
@@ -482,7 +494,7 @@ impl SheetBuilder {
         let invalidation = selectors.invalidation();
         let uses_empty = selectors.uses_empty();
         let generation = GENERATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues, has_keys, invalidation, uses_empty, generation })
+        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues, has_keys, invalidation, uses_empty, keyframes: self.keyframes, generation })
     }
 }
 fn fold_arc(s: Arc<str>) -> Arc<str> {
@@ -505,6 +517,10 @@ impl MatchScratch {
     }
 }
 impl RuleSet {
+    /// The `@keyframes` rules, by name.
+    pub fn keyframes(&self) -> &crate::css::animation::Library {
+        &self.keyframes
+    }
     pub fn state_mask(&self) -> u64 {
         self.selectors.state_mask()
     }

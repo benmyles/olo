@@ -1,0 +1,405 @@
+//! CSS Animations 1 at run time: `@keyframes` rules as their frames (each
+//! property's value as written), an element's animations sampled at a
+//! moment into declarations of the animation origin.
+//!
+//! Values are interpolated from their text, token by token against the
+//! next frame's: numbers and lengths of one unit directly, mixed units
+//! through `calc()`, colours in sRGB, functions (transforms, shadows,
+//! colours) argument by argument; values whose tokens do not pair (or
+//! that hold `var()`) switch at the midpoint, as discrete values do.
+use super::{
+    Component, Components, Kind, StatementKind, Syntax,
+    properties::{
+        Keyword, Property,
+        animation::{Easing, Item},
+    },
+};
+use std::{collections::HashMap, sync::Arc, sync::atomic::AtomicBool};
+
+/// One keyframe: its offset (0 to 1), its easing, and its declarations
+/// (property name, value text).
+#[derive(Clone, Debug)]
+pub struct Frame {
+    pub offset: f64,
+    pub easing: Option<Easing>,
+    pub values: Vec<(Arc<str>, Arc<str>)>,
+}
+/// A `@keyframes` rule's frames, by offset.
+#[derive(Clone, Debug, Default)]
+pub struct Keyframes {
+    pub frames: Vec<Frame>,
+}
+fn text_of(syntax: &Syntax, values: Components<'_>) -> String {
+    let mut parts = values.filter(|c| c.kind() != Kind::Whitespace);
+    let (Some(first), last) = (parts.next(), parts.last()) else { return String::new() };
+    let end = last.unwrap_or(first).span().end as usize;
+    syntax.source()[first.span().start as usize..end].to_owned()
+}
+/// A `@keyframes` (or `-webkit-keyframes`) rule's name and frames.
+pub fn parse_keyframes(syntax: &Syntax, rule: &super::Statement<'_>, cancelled: Option<&AtomicBool>) -> Option<(Arc<str>, Keyframes)> {
+    let name = rule.value().find(|c| matches!(c.kind(), Kind::Ident | Kind::String))?.text()?;
+    let mut frames = Vec::new();
+    for block in rule.block_contents(cancelled).ok()? {
+        if block.kind() != StatementKind::QualifiedRule {
+            continue;
+        }
+        let mut offsets = Vec::new();
+        for c in block.value().filter(|c| !matches!(c.kind(), Kind::Whitespace | Kind::Comma)) {
+            match c.kind() {
+                Kind::Ident if c.text()?.eq_ignore_ascii_case("from") => offsets.push(0.),
+                Kind::Ident if c.text()?.eq_ignore_ascii_case("to") => offsets.push(1.),
+                Kind::Percentage | Kind::IntegerPercentage => offsets.push(c.number()?.value / 100.),
+                _ => {}
+            }
+        }
+        let mut values = Vec::new();
+        let mut easing = None;
+        for d in block.block_contents(cancelled).ok()? {
+            if d.kind() != StatementKind::Declaration {
+                continue;
+            }
+            let Some(name) = d.name() else { continue };
+            let name = name.to_ascii_lowercase();
+            let value = text_of(syntax, d.value());
+            if name == "animation-timing-function" {
+                let parts: Vec<Component<'_>> = d.value().filter(|c| c.kind() != Kind::Whitespace).collect();
+                if let Ok(super::properties::Value::Animation(list)) = super::properties::animation::parse_list(super::properties::animation::Field::Easing, &parts)
+                    && let Some(Item::Easing(e)) = list.at(0)
+                {
+                    easing = Some(*e);
+                }
+                continue;
+            }
+            values.push((Arc::<str>::from(name), Arc::<str>::from(value)));
+        }
+        for offset in offsets.into_iter().filter(|o| (0. ..=1.).contains(o)) {
+            frames.push(Frame { offset, easing, values: values.clone() });
+        }
+    }
+    frames.sort_by(|a, b| a.offset.total_cmp(&b.offset));
+    Some((Arc::from(name), Keyframes { frames }))
+}
+/// One animation of an element, as its longhands' i-th entries give it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Spec {
+    pub name: Arc<str>,
+    /// Seconds.
+    pub duration: f64,
+    pub delay: f64,
+    /// Iterations; infinite as `f64::INFINITY`.
+    pub count: f64,
+    pub direction: Keyword,
+    pub fill: Keyword,
+    pub paused: bool,
+    pub easing: Easing,
+}
+/// Where an animation is at `elapsed` seconds since it started: its
+/// iteration progress (before easing) and whether it applies at all.
+pub fn progress(spec: &Spec, elapsed: f64) -> Option<(f64, f64)> {
+    let local = elapsed - spec.delay;
+    let backwards = matches!(spec.fill, Keyword::Backwards | Keyword::Both);
+    let forwards = matches!(spec.fill, Keyword::Forwards | Keyword::Both);
+    let active = spec.duration * spec.count;
+    let (iteration, p) = if local < 0. {
+        if !backwards {
+            return None;
+        }
+        (0., 0.)
+    } else if spec.duration <= 0. || local >= active {
+        if !forwards {
+            return None;
+        }
+        // The end: the last iteration's end (a fractional count ends inside).
+        let count = if spec.count.is_finite() { spec.count } else { 1. };
+        let last = (count.ceil() - 1.).max(0.);
+        let p = count - last;
+        (last, if p == 0. { 1. } else { p })
+    } else {
+        let i = (local / spec.duration).floor();
+        (i, local / spec.duration - i)
+    };
+    let reversed = match spec.direction {
+        Keyword::Reverse => true,
+        Keyword::Alternate => iteration % 2. == 1.,
+        Keyword::AlternateReverse => iteration % 2. == 0.,
+        _ => false,
+    };
+    Some((iteration, if reversed { 1. - p } else { p }))
+}
+/// Whether an animation still changes after `elapsed` seconds (else it holds).
+pub fn running(spec: &Spec, elapsed: f64) -> bool {
+    !spec.paused && spec.duration > 0. && (spec.count.is_infinite() || elapsed < spec.delay + spec.duration * spec.count)
+}
+/// The declarations (property, value text) an animation applies at
+/// iteration progress `p`: each property between the frames around `p`
+/// (an end with no frame for it holds the nearest one's value).
+pub fn sample(keyframes: &Keyframes, p: f64, easing: Easing) -> Vec<(Arc<str>, String)> {
+    let mut properties: Vec<&Arc<str>> = Vec::new();
+    for f in &keyframes.frames {
+        for (name, _) in &f.values {
+            if !properties.contains(&name) {
+                properties.push(name);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for name in properties {
+        let frames: Vec<(&Frame, &Arc<str>)> = keyframes.frames.iter().filter_map(|f| f.values.iter().find(|(n, _)| n == name).map(|(_, v)| (f, v))).collect();
+        let Some(&(first, first_value)) = frames.first() else { continue };
+        let before = frames.iter().rev().find(|(f, _)| f.offset <= p).copied();
+        let after = frames.iter().find(|(f, _)| f.offset > p).copied();
+        let value = match (before, after) {
+            (Some((a, va)), Some((b, vb))) => {
+                let span = b.offset - a.offset;
+                let local = if span > 0. { (p - a.offset) / span } else { 0. };
+                interpolate(va, vb, a.easing.unwrap_or(easing).at(local))
+            }
+            (Some((_, v)), None) => v.to_string(),
+            (None, Some(_)) => first_value.to_string(),
+            (None, None) => {
+                let _ = first;
+                continue;
+            }
+        };
+        out.push((name.clone(), value));
+    }
+    out
+}
+fn lerp(a: f64, b: f64, p: f64) -> f64 {
+    a + (b - a) * p
+}
+fn fmt(v: f64) -> String {
+    let r = (v * 10000.).round() / 10000.;
+    if r == r.trunc() { format!("{}", r as i64) } else { format!("{r}") }
+}
+const COLOR_FUNCTIONS: &[&str] = &["rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color"];
+struct NoContext;
+impl super::color::Context for NoContext {
+    fn scheme(&self) -> super::color::Scheme {
+        super::color::Scheme::Light
+    }
+}
+/// A colour token as sRGB 0-255 and alpha 0-1, when it is one.
+fn color_of(syntax: &Syntax, c: Component<'_>) -> Option<[f64; 4]> {
+    let plausible = match c.kind() {
+        Kind::Hash | Kind::IdHash => true,
+        Kind::Function => COLOR_FUNCTIONS.iter().any(|f| c.text().is_some_and(|t| t.eq_ignore_ascii_case(f))),
+        Kind::Ident => c.text().is_some_and(|t| !t.eq_ignore_ascii_case("none") && !t.eq_ignore_ascii_case("auto")),
+        _ => false,
+    };
+    if !plausible {
+        return None;
+    }
+    let span = c.span();
+    let text: Arc<str> = Arc::from(&syntax.source()[span.start as usize..span.end as usize]);
+    let one = Syntax::parse(text, Default::default(), None).ok()?;
+    let value = super::color::Value::parse(one.components(), Default::default(), None).ok()?;
+    let color = value.resolve(&NoContext, Default::default(), None).ok()?;
+    let [r, g, b, a] = color.srgb8_clipped();
+    Some([f64::from(r), f64::from(g), f64::from(b), f64::from(a) / 255.])
+}
+fn token_text<'a>(syntax: &'a Syntax, c: Component<'_>) -> &'a str {
+    let span = c.span();
+    &syntax.source()[span.start as usize..span.end as usize]
+}
+/// Two component lists interpolated, or None when they do not pair.
+fn pair(sa: &Syntax, a: Components<'_>, sb: &Syntax, b: Components<'_>, p: f64) -> Option<String> {
+    let a: Vec<Component<'_>> = a.filter(|c| c.kind() != Kind::Whitespace).collect();
+    let b: Vec<Component<'_>> = b.filter(|c| c.kind() != Kind::Whitespace).collect();
+    if a.len() != b.len() {
+        return None;
+    }
+    let mut out = String::new();
+    for (x, y) in a.iter().zip(&b) {
+        let piece = one(sa, *x, sb, *y, p)?;
+        if !out.is_empty() && x.kind() != Kind::Comma && !out.ends_with('(') {
+            out.push(' ');
+        }
+        out.push_str(&piece);
+        if x.kind() == Kind::Comma {
+            out.push(' ');
+        }
+    }
+    Some(out.replace(" ,", ","))
+}
+fn one(sa: &Syntax, x: Component<'_>, sb: &Syntax, y: Component<'_>, p: f64) -> Option<String> {
+    let num = |c: Component<'_>| c.number().map(|n| n.value);
+    let is_num = |c: Component<'_>| matches!(c.kind(), Kind::Number | Kind::Integer);
+    let is_dim = |c: Component<'_>| matches!(c.kind(), Kind::Dimension | Kind::IntegerDimension);
+    let is_pct = |c: Component<'_>| matches!(c.kind(), Kind::Percentage | Kind::IntegerPercentage);
+    if (x.kind() == Kind::Function && x.text().is_some_and(|t| t.eq_ignore_ascii_case("var"))) || (y.kind() == Kind::Function && y.text().is_some_and(|t| t.eq_ignore_ascii_case("var"))) {
+        return None;
+    }
+    if is_num(x) && is_num(y) {
+        return Some(fmt(lerp(num(x)?, num(y)?, p)));
+    }
+    if is_pct(x) && is_pct(y) {
+        return Some(format!("{}%", fmt(lerp(num(x)?, num(y)?, p))));
+    }
+    let length = |c: Component<'_>| is_dim(c) || is_pct(c) || is_num(c) && num(c) == Some(0.);
+    if length(x) && length(y) && (is_dim(x) || is_dim(y) || is_pct(x) || is_pct(y)) {
+        if is_dim(x) && is_dim(y) && x.unit()?.eq_ignore_ascii_case(y.unit()?) {
+            return Some(format!("{}{}", fmt(lerp(num(x)?, num(y)?, p)), x.unit()?));
+        }
+        let (tx, ty) = (token_text(sa, x), token_text(sb, y));
+        let zero = |t: &str, other: Component<'_>| if t == "0" { other.unit().map_or("0%".to_owned(), |u| format!("0{u}")) } else { t.to_owned() };
+        return Some(format!("calc({} * {} + {} * {})", zero(tx, y), fmt(1. - p), zero(ty, x), fmt(p)));
+    }
+    if let (Some(ca), Some(cb)) = (color_of(sa, x), color_of(sb, y)) {
+        let c: Vec<f64> = (0..4).map(|i| lerp(ca[i], cb[i], p)).collect();
+        return Some(format!("rgba({}, {}, {}, {})", fmt(c[0]), fmt(c[1]), fmt(c[2]), fmt(c[3])));
+    }
+    match (x.kind(), y.kind()) {
+        (Kind::Function, Kind::Function) if x.text()?.eq_ignore_ascii_case(y.text()?) => Some(format!("{}({})", x.text()?, pair(sa, x.children(), sb, y.children(), p)?)),
+        (Kind::Comma, Kind::Comma) => Some(",".to_owned()),
+        _ if token_text(sa, x).eq_ignore_ascii_case(token_text(sb, y)) => Some(token_text(sa, x).to_owned()),
+        _ => None,
+    }
+}
+/// `a` and `b` (value texts) at `p` between them.
+pub fn interpolate(a: &str, b: &str, p: f64) -> String {
+    if p <= 0. {
+        return a.to_owned();
+    }
+    if p >= 1. {
+        return b.to_owned();
+    }
+    let (Ok(sa), Ok(sb)) = (Syntax::parse(Arc::from(a), Default::default(), None), Syntax::parse(Arc::from(b), Default::default(), None)) else {
+        return if p < 0.5 { a } else { b }.to_owned();
+    };
+    pair(&sa, sa.components(), &sb, sb.components(), p).unwrap_or_else(|| if p < 0.5 { a } else { b }.to_owned())
+}
+/// An element's animations, from its computed `animation-*` lists.
+pub fn specs(style: &super::style::Style) -> Vec<Spec> {
+    use super::style::Value;
+    let list = |p: Property| match style.value(p) {
+        Value::Animation(a) => Some(a.clone()),
+        _ => None,
+    };
+    let Some(names) = list(Property::AnimationName) else { return Vec::new() };
+    let (durations, delays, counts, directions, fills, states, easings) = (
+        list(Property::AnimationDuration),
+        list(Property::AnimationDelay),
+        list(Property::AnimationIterationCount),
+        list(Property::AnimationDirection),
+        list(Property::AnimationFillMode),
+        list(Property::AnimationPlayState),
+        list(Property::AnimationTimingFunction),
+    );
+    let mut out = Vec::new();
+    for (i, name) in names.items().iter().enumerate() {
+        let Item::Name(name) = name else { continue };
+        let time = |l: &Option<super::properties::animation::Animations>| match l.as_ref().and_then(|l| l.at(i)) {
+            Some(Item::Time(t)) => *t,
+            _ => 0.,
+        };
+        let word = |l: &Option<super::properties::animation::Animations>, default: Keyword| match l.as_ref().and_then(|l| l.at(i)) {
+            Some(Item::Keyword(k)) => *k,
+            _ => default,
+        };
+        out.push(Spec {
+            name: name.clone(),
+            duration: time(&durations),
+            delay: time(&delays),
+            count: match counts.as_ref().and_then(|l| l.at(i)) {
+                Some(Item::Count(n)) => *n,
+                Some(Item::Infinite) => f64::INFINITY,
+                _ => 1.,
+            },
+            direction: word(&directions, Keyword::Normal),
+            fill: word(&fills, Keyword::None),
+            paused: word(&states, Keyword::Running) == Keyword::Paused,
+            easing: match easings.as_ref().and_then(|l| l.at(i)) {
+                Some(Item::Easing(e)) => *e,
+                _ => Easing::EASE,
+            },
+        });
+    }
+    out
+}
+/// The keyframes by name, the last rule of a name winning.
+pub type Library = HashMap<Arc<str>, Arc<Keyframes>>;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn values_interpolate_by_their_tokens() {
+        assert_eq!(interpolate("0", "1", 0.25), "0.25");
+        assert_eq!(interpolate("10px", "20px", 0.5), "15px");
+        assert_eq!(interpolate("translateY(24px) scale(1)", "translateY(0) scale(2)", 0.5), "translateY(calc(24px * 0.5 + 0px * 0.5)) scale(1.5)");
+        assert_eq!(interpolate("rgb(0, 113, 227)", "#f5f5f7", 1. / 3.), "rgba(81.6667, 157, 233.6667, 1)");
+        assert_eq!(interpolate("block", "none", 0.4), "block");
+        assert_eq!(interpolate("var(--a)", "var(--b)", 0.6), "var(--b)");
+    }
+    #[test]
+    fn progress_follows_delay_count_direction_and_fill() {
+        let spec = Spec { name: "x".into(), duration: 1., delay: 0.5, count: 2., direction: Keyword::Alternate, fill: Keyword::Forwards, paused: false, easing: Easing::Linear };
+        assert_eq!(progress(&spec, 0.25), None);
+        assert_eq!(progress(&spec, 0.75), Some((0., 0.25)));
+        assert_eq!(progress(&spec, 1.75), Some((1., 0.75)));
+        assert_eq!(progress(&spec, 9.), Some((1., 0.)));
+        assert!(!running(&spec, 9.));
+        let none = Spec { fill: Keyword::None, ..spec };
+        assert_eq!(progress(&none, 9.), None);
+    }
+}
+/// A page's CSS animations over time: when each element's animation
+/// started (its first frame), the moment rendered, and what was applied.
+#[derive(Clone, Debug, Default)]
+pub struct Timeline {
+    /// The page's clock, ms (the live page's frame time).
+    pub now_ms: f64,
+    starts: HashMap<(crate::dom::NodeId, Arc<str>, usize), f64>,
+    /// The elements given animated values at the last sample.
+    applied: Vec<crate::dom::NodeId>,
+    /// Some animation still changes: the page wants its next frame.
+    pub running: bool,
+}
+impl Timeline {
+    /// The animated declarations for the elements `styled` lists (each with
+    /// its style), at `now_ms`, and every element whose animated values
+    /// must be computed again (those animated now or at the last sample).
+    pub fn sample<'s>(
+        &mut self,
+        library: &Library,
+        styled: impl Iterator<Item = (crate::dom::NodeId, &'s super::style::Style)>,
+        cancelled: Option<&AtomicBool>,
+    ) -> (HashMap<crate::dom::NodeId, Vec<super::properties::Declaration>>, Vec<crate::dom::NodeId>) {
+        let mut out: HashMap<crate::dom::NodeId, Vec<super::properties::Declaration>> = HashMap::new();
+        self.running = false;
+        if library.is_empty() {
+            let touched = std::mem::take(&mut self.applied);
+            self.starts.clear();
+            return (out, touched);
+        }
+        let mut seen = std::collections::HashSet::new();
+        for (node, style) in styled {
+            for (i, spec) in specs(style).into_iter().enumerate() {
+                let Some(frames) = library.get(&spec.name) else { continue };
+                let key = (node, spec.name.clone(), i);
+                let start = *self.starts.entry(key.clone()).or_insert(self.now_ms);
+                seen.insert(key);
+                let elapsed = (self.now_ms - start).max(0.) / 1000.;
+                self.running |= running(&spec, elapsed);
+                let Some((_, p)) = progress(&spec, elapsed) else { continue };
+                for (name, value) in sample(frames, p, spec.easing) {
+                    let text: Arc<str> = Arc::from(format!("{name}:{value}"));
+                    let Ok(syntax) = Syntax::parse(text, Default::default(), cancelled) else { continue };
+                    let Ok(d) = syntax.one_declaration(cancelled) else { continue };
+                    if let Ok(declaration) = super::properties::Declaration::compile(&d, Default::default(), cancelled) {
+                        out.entry(node).or_default().push(declaration);
+                    }
+                }
+            }
+        }
+        self.starts.retain(|k, _| seen.contains(k));
+        let mut touched: Vec<crate::dom::NodeId> = out.keys().copied().collect();
+        for n in std::mem::take(&mut self.applied) {
+            if !out.contains_key(&n) {
+                touched.push(n);
+            }
+        }
+        self.applied = out.keys().copied().collect();
+        (out, touched)
+    }
+}

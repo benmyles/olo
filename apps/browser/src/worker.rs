@@ -469,9 +469,9 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     // message; nothing due, nothing to wait for.
                     // Until its next timer, or its next frame when it waits for
                     // one (animation frames, a change or a canvas to show).
-                    let wait = cached.as_ref().and_then(|c| c.live.as_ref()).and_then(|l| {
+                    let wait = cached.as_ref().and_then(|c| c.live.as_ref().map(|l| (c, l))).and_then(|(c, l)| {
                         let paced = l.paced_at.is_some_and(|t| t.elapsed() < Duration::from_millis(250));
-                        let frame = (!paced && (l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty())).then_some(l.next_frame_ms).filter(|_| !hidden(l));
+                        let frame = (!paced && (l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty() || c.page.animating())).then_some(l.next_frame_ms).filter(|_| !hidden(l));
                         let due = match (l.next_due_ms, frame) {
                             (Some(a), Some(b)) => Some(a.min(b)),
                             (a, b) => a.or(b),
@@ -750,7 +750,7 @@ fn render(
         let revision = live.realm.revision();
         // The document changed, a readback is in flight, or a canvas was
         // drawn on (its drawing shows only through a render).
-        if revision != live.rendered || live.render_again || live.realm.canvases_dirty() {
+        if revision != live.rendered || live.render_again || live.realm.canvases_dirty() || c.page.animating() {
             if !frame {
                 // Changes between frames show at the next frame.
                 live.render_due = true;
@@ -809,7 +809,10 @@ fn render(
             // A readback still in flight shows at the next render: soon.
             // A readback in flight shows at the next frame.
             live.render_again = live.realm.canvases_pending();
+            c.page.set_time(now_ms);
             c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&cancel), |_, _| {})?;
+            // CSS animations still running: the next frame renders again.
+            live.render_again |= c.page.animating();
             if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
                 eprintln!(
                     "  live render: revision {} -> {} in {:.0} ms (snapshot {snapshot_ms:.1}, canvases {canvases_ms:.1}, rerender {:.1})",
@@ -1718,7 +1721,7 @@ fn render(
         fallbacks: page.fallbacks.to_string(),
         tiles,
         animating: {
-            let animating = cached.live.as_ref().is_some_and(|l| l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty());
+            let animating = cached.page.animating() || cached.live.as_ref().is_some_and(|l| l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty());
             if animating && let Some(live) = cached.live.as_mut() {
                 live.waiting_since.get_or_insert_with(Instant::now);
             }

@@ -156,8 +156,13 @@ impl Job<'_> {
             let compressible = percentage(P::Width, &mut self.scratch)? || percentage(P::MaxWidth, &mut self.scratch)?;
             inline::IntrinsicWidths { min_content: if compressible { 0. } else { w }, max_content: w }
         } else {
-            let row = super::flow::is_row_flex(s) || super::container_flow::is_table_row(s);
-            let wrap = row && !matches!(s.value(P::FlexWrap), Value::Keyword(K::Nowrap)) && !super::container_flow::is_table_row(s);
+            // A grid flowing its items into columns of their own (no
+            // columns templated) is as wide as they are side by side.
+            let column_grid = super::container_flow::is_grid(s)
+                && matches!(s.value(P::GridAutoFlow), Value::Keyword(K::Column | K::ColumnDense))
+                && matches!(s.value(P::GridTemplateColumns), Value::Keyword(K::None));
+            let row = super::flow::is_row_flex(s) || super::container_flow::is_table_row(s) || column_grid;
+            let wrap = !column_grid && row && !matches!(s.value(P::FlexWrap), Value::Keyword(K::Nowrap)) && !super::container_flow::is_table_row(s);
             let gap = if row && !matches!(s.value(P::ColumnGap), Value::Keyword(K::Normal)) { len(P::ColumnGap, Some(0.), &mut self.scratch)?.unwrap_or(0.).max(0.) } else { 0. };
             let (mut sum_min, mut sum_max, mut max_min, mut max_max, mut count) = (0f64, 0f64, 0f64, 0f64, 0usize);
             let mut next = b.first_child;

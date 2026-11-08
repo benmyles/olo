@@ -165,6 +165,7 @@ impl Job<'_> {
         let horizontal = positioned::solve(x, self.scale)?;
         let vertical = positioned::solve(y, self.scale)?;
         u.width = horizontal.size;
+        u.apply_aspect(s);
         u.margin.left = horizontal.margin[0];
         u.margin.right = horizontal.margin[1];
         if y.size.is_some() || y.inset.iter().all(Option::is_some) {

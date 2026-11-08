@@ -155,7 +155,11 @@ impl Used {
             Value::Keyword(K::Normal) => false,
             Value::Keyword(K::InlineSize) => true,
             Value::Keyword(K::Size) => {
-                h = Some(h.unwrap_or(0.));
+                // Size containment: no content height. A flex or grid item's
+                // height waits for its ratio (`apply_aspect`, after its width).
+                if flex.is_none() {
+                    h = Some(h.unwrap_or(0.));
+                }
                 true
             }
             _ => return Err(Error::Invalid),
@@ -197,6 +201,10 @@ impl Used {
     pub fn apply_aspect(&mut self, s: &Style) {
         if self.height.is_none() {
             self.height = aspect_height(s, self.width, self.padding, self.border);
+        }
+        // A size container without a ratio has no content height.
+        if self.height.is_none() && matches!(s.value(P::ContainerType), Value::Keyword(K::Size)) {
+            self.height = Some(0.);
         }
     }
 }

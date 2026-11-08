@@ -34,9 +34,16 @@ GitHub's homepage, open (seen against Chrome at 1000 × 700):
 
 apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
 
-- [ ] CSS animations (`@keyframes`, `animation`): apple.com's ribbon stays
-  at its first colour (blue; Chrome animates it to light grey after
-  2.4 s); GitHub's 207 keyframes rules.
+- [x] CSS animations (`@keyframes`, `animation`): apple.com's ribbon, the
+  headings GitHub fades in. Values interpolate from their text (calc,
+  sRGB, functions argument by argument); `var()` values switch at the
+  midpoint. Open: transitions (`transition`), animations on pages
+  without scripts (no live clock: they stay at their start),
+  `getComputedStyle` of animated values, `animation-composition`.
+- [ ] Video (`<video>`): GitHub's hero product film is an MP4 with no
+  poster (an empty box); needs a native H.264 decoder.
+- [ ] Container queries (`@container`) — the `container` shorthand and
+  units work now.
 - [ ] `background-clip: text` (apple.com's gradient subhead).
 - [ ] Lazy images: `loading=lazy` ones never fire load (a browser loads
   them when scrolled to); one of GitHub's below the fold, given a load

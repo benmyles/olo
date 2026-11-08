@@ -51,6 +51,7 @@ pub(super) enum Expansion {
     ListStyle,
     Font,
     Animation,
+    Container,
 }
 macro_rules! keyword_registry {
     ($($id:ident => $name:literal),* $(,)?) => {
@@ -434,6 +435,7 @@ shorthand_registry! {
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
     BorderTop, "border-top", [BorderTopWidth,BorderTopStyle,BorderTopColor], Border;
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;
+    Container, "container", [ContainerType], Container;
     Flex, "flex", [FlexGrow,FlexShrink,FlexBasis], Flex;
     FlexFlow, "flex-flow", [FlexDirection,FlexWrap], Unordered;
     // font resets its longhands and the feature settings (font-variant,

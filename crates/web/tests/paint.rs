@@ -949,3 +949,87 @@ fn a_z_index_inside_a_positioned_auto_box_rises_above_later_positioned_siblings(
     assert_eq!(pixel(&tile, 50, 10), [255, 0, 0, 255]);
     assert_eq!(pixel(&tile, 50, 30), [0, 0, 255, 255]);
 }
+#[test]
+fn the_container_shorthand_makes_a_query_container() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    // 50cqw of a 60px inline-size container: 30px; of a named-only one
+    // (not a size container): of the viewport, 50px.
+    let page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}.c{container:card / inline-size;width:60px}.d{container:card;width:60px}.c div,.d div{width:50cqw;height:10px;background-color:red}</style><div class=c><div></div></div><div class=d><div></div></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let tile = render(&mut painter, &page.scene);
+    assert_eq!([(25, 5), (35, 5), (45, 15), (55, 15)].map(|(x, y)| pixel(&tile, x, y)[1]), [0, 255, 0, 255]);
+}
+#[test]
+fn a_patched_element_keeps_its_descendant_rules_and_pseudo_elements() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // An attribute no selector reads changes on #x: its style is patched,
+    // matched again, with the rules reaching it through its ancestors.
+    let mut page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}.outer #x{padding-top:20px;background-color:green}html:not([dir=rtl]) #x::after{content:'';display:block;height:20px;background-color:blue}</style><div class=outer><div id=x></div></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    for i in 0..2 {
+        let mut doc = page.document.clone();
+        let body = doc.children(doc.root()).unwrap().last().unwrap();
+        let body = doc.children(body).unwrap().last().unwrap();
+        let outer = doc.children(body).unwrap().last().unwrap();
+        let x = doc.first_child(outer).unwrap().unwrap();
+        doc.set_attribute(x, "data-n", &i.to_string()).unwrap();
+        page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+        let tile = render(&mut painter, &page.scene);
+        assert_eq!(pixel(&tile, 50, 10), [0, 128, 0, 255], "after change {i}");
+        assert_eq!(pixel(&tile, 50, 30), [0, 0, 255, 255], "after change {i}");
+    }
+}
+#[test]
+fn intrinsic_widths_and_column_flow_grids() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    // A max-content block centred by its auto margins (40px of 100); a
+    // column-flow grid as wide as its items side by side, each in a column.
+    let page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}.f{width:max-content;margin:0 auto;background-color:red;height:10px}.f i{display:inline-block;width:40px;height:10px}.g{display:grid;grid-auto-flow:column;width:max-content;height:10px}.g div{width:20px}</style><div class=f><i></i></div><div class=g><div style=background-color:red></div><div style=background-color:blue></div><div style=background-color:green></div></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let tile = render(&mut painter, &page.scene);
+    assert_eq!([25, 35, 65, 75].map(|x| pixel(&tile, x, 5)), [[255; 4], [255, 0, 0, 255], [255, 0, 0, 255], [255; 4]]);
+    assert_eq!([10, 30, 50, 70].map(|x| pixel(&tile, x, 15)), [[255, 0, 0, 255], [0, 0, 255, 255], [0, 128, 0, 255], [255; 4]]);
+}

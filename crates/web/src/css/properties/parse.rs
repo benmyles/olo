@@ -177,6 +177,23 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 Expansion::TextDecoration => text_decoration(&parts, limits, cancelled),
                 Expansion::ListStyle => list_style(&parts, limits, cancelled),
                 Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
+                // `container: <name>+ [/ <type>]?`: the type (names wait for
+                // @container queries); a name alone is a normal container.
+                Expansion::Container => {
+                    let slash = parts.iter().position(|c| c.character() == Some('/'));
+                    let names = &parts[..slash.unwrap_or(parts.len())];
+                    if names.is_empty() || names.iter().any(|c| c.kind() != Kind::Ident) {
+                        return Err(Error::Invalid);
+                    }
+                    let kind = match slash {
+                        Some(i) => match &parts[i + 1..] {
+                            [c] => component(properties[0].grammar(), *c, limits, cancelled)?,
+                            _ => return Err(Error::Invalid),
+                        },
+                        None => Value::Keyword(Keyword::Normal),
+                    };
+                    Ok(smallvec::smallvec![Assignment { property: properties[0], value: kind }])
+                }
                 Expansion::Grid | Expansion::Radius | Expansion::Background | Expansion::Font | Expansion::Animation => unreachable!("these shorthands parse before part collection"),
                 Expansion::Border => border(&parts, properties, limits, cancelled),
                 Expansion::Quad | Expansion::Repeat => {

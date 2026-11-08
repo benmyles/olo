@@ -19,6 +19,10 @@ pub struct JobOptions<'a> {
     /// siblings and parent's style are unchanged since keeps its style
     /// without matching or computing.
     pub previous: Option<&'a StyleTree>,
+    /// Declarations of the animation origin by element (its running CSS
+    /// animations sampled now): applied after its inline style, so they
+    /// win over normal author declarations and lose to important ones.
+    pub animated: Option<&'a std::collections::HashMap<NodeId, Vec<p::Declaration>>>,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct JobLimits {
@@ -1106,6 +1110,30 @@ impl<'a> Job<'a> {
         std::mem::swap(&mut job.tree, tree);
         result
     }
+    /// The ancestor filter made of `node`'s ancestors (outside quirks mode,
+    /// where the walk keeps none).
+    fn fill_ancestors(&mut self, node: NodeId) -> Result<()> {
+        self.ancestors = Default::default();
+        if self.options.quirks {
+            return Ok(());
+        }
+        let mut hashes: SmallVec<[u64; 8]> = SmallVec::new();
+        let mut at = self.document.parent(node).map_err(Error::Dom)?;
+        while let Some(a) = at {
+            if self.document.node_type(a).map_err(Error::Dom)? == NodeType::Element {
+                hashes.clear();
+                let name = self.document.name(a).map_err(Error::Dom)?.unwrap_or("");
+                let id = self.document.attribute(a, "id").map_err(Error::Dom)?;
+                let classes = self.document.attribute(a, "class").map_err(Error::Dom)?.unwrap_or("");
+                selectors::AncestorFilter::element_hashes(name, id, classes, &mut hashes);
+                for &h in &hashes {
+                    self.ancestors.insert(h);
+                }
+            }
+            at = self.document.parent(a).map_err(Error::Dom)?;
+        }
+        Ok(())
+    }
     fn patch_inner<H: Host>(&mut self, nodes: &[(NodeId, bool)], host: &mut impl FnMut(NodeId) -> H) -> Result<Option<Patched>> {
         let mut undo: Vec<(usize, Style, Option<Arc<[(u32, selectors::Specificity)]>>)> = Vec::new();
         let result = self.patch_in_place(nodes, host, &mut undo);
@@ -1193,6 +1221,10 @@ impl<'a> Job<'a> {
                 return Ok(Err(format!("<{}> has no rules recorded", name(self, node))));
             }
             let h = host(node);
+            // The ancestor filter holds this element's ancestors, as the
+            // walk would have it: its selectors (and its pseudo-elements')
+            // with a descendant part are judged by it.
+            self.fill_ancestors(node)?;
             let (mut style, matched) = self.compute_element(node, parent, parent_box, &h, previous_matched)?;
             let old = &self.tree.styles[i].style;
             let same = old.same_as(&style);
@@ -1287,6 +1319,9 @@ impl<'a> Job<'a> {
                     Err(error) => return Err(Error::Property(error)),
                 }
             }
+        }
+        if let Some(animated) = self.options.animated.and_then(|a| a.get(&node)) {
+            inline.extend(animated.iter().cloned());
         }
         let parent = parent.map(|i| &self.tree.styles[i].style);
         let root = self.root.map(|i| &self.tree.styles[i].style);

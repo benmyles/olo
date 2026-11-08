@@ -1289,6 +1289,51 @@ impl<'a> Job<'a> {
                     used.margin.right = specified_right;
                 }
             }
+            // An intrinsic width (min-content, max-content, fit-content):
+            // the content's, within min- and max-width, auto margins then
+            // sharing what is left (CSS Sizing 3 §3.1).
+            if let Value::Keyword(keyword @ (K::MinContent | K::MaxContent | K::FitContent)) = style.value(P::Width) {
+                let keyword = *keyword;
+                let (widths, _) = self.intrinsic_content_of(id, queries, parent.width, 0, true)?;
+                let extra = used.padding.horizontal() + used.border.horizontal();
+                let margin = |p: P, job: &mut Self| -> Result<Option<f64>> {
+                    if matches!(style.value(p), Value::Keyword(K::Auto)) {
+                        Ok(None)
+                    } else {
+                        Ok(Some(used::length(style, p, Some(parent.width), Some(0.), queries, &mut job.scratch, job.cancel, job.scale)?.unwrap_or(0.)))
+                    }
+                };
+                let (left, right) = (margin(P::MarginLeft, self)?, margin(P::MarginRight, self)?);
+                let available = (parent.width - extra - left.unwrap_or(0.) - right.unwrap_or(0.)).max(0.);
+                let mut w = match keyword {
+                    K::MinContent => widths.min_content,
+                    K::MaxContent => widths.max_content,
+                    _ => widths.max_content.min(available).max(widths.min_content),
+                };
+                let border_box = matches!(style.value(P::BoxSizing), Value::Keyword(K::BorderBox));
+                let content = |v: f64| (v - if border_box { extra } else { 0. }).max(0.);
+                if let Some(max) = used::length(style, P::MaxWidth, Some(parent.width), None, queries, &mut self.scratch, self.cancel, self.scale)? {
+                    w = w.min(content(max));
+                }
+                if let Some(min) = used::length(style, P::MinWidth, Some(parent.width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale)? {
+                    w = w.max(content(min));
+                }
+                used.width = used::grid(w, self.scale);
+                let free = parent.width - used.width - extra - left.unwrap_or(0.) - right.unwrap_or(0.);
+                (used.margin.left, used.margin.right) = match (left, right) {
+                    (None, None) => (used::grid((free / 2.).max(0.), self.scale), (free / 2.).max(0.)),
+                    (None, Some(r)) if !parent.rtl => (free.max(0.), r),
+                    (Some(l), None) => (l, free.max(0.)),
+                    (None, Some(r)) => (free.max(0.), r),
+                    (Some(l), Some(r)) => {
+                        if parent.rtl {
+                            (l + free, r)
+                        } else {
+                            (l, r + free)
+                        }
+                    }
+                };
+            }
             if float_left.is_some() {
                 // A float is a formatting context of its own, shrink-to-fit
                 // wide unless sized, its auto margins zero (CSS 2.2 §10.3.5).
@@ -1758,6 +1803,7 @@ impl<'a> Job<'a> {
             }
         };
         used.width = used::grid(used.width, self.scale);
+        used.apply_aspect(style);
         Ok(Some(used))
     }
     pub fn step(&mut self, budget: usize) -> Result<Progress> {

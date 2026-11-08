@@ -47,6 +47,9 @@ pub struct Page {
     rendered_interaction: Interaction,
     /// Elements whose `transform` has animated: painted as moved layers.
     animated: std::collections::HashSet<crate::dom::NodeId>,
+    /// Its CSS animations: started when, at which moment (see
+    /// `set_time`), still changing.
+    timeline: css::animation::Timeline,
     pub document: Document,
     pub scene: Arc<paint::Scene>,
     pub title: String,
@@ -537,7 +540,7 @@ impl Measurer {
             None => Defaults::new(host, Default::default(), cancel)?,
         };
         let snapshot = interaction::Snapshot::new(doc, Interaction::default(), cancel);
-        let options = || style::JobOptions { quirks: self.quirks, states: Some(&snapshot), previous: None, generation: self.rules.generation() };
+        let options = || style::JobOptions { quirks: self.quirks, states: Some(&snapshot), previous: None, generation: self.rules.generation(), animated: None };
         // A patch over the previous styles: in place when nothing else
         // holds them, else over a copy.
         let mut patched: Option<(style::Patched, Option<Arc<StyleTree>>)> = None;
@@ -1348,6 +1351,7 @@ pub fn finish_with(
         );
     }
     let previous = previous.filter(|p| rules_reused || p.cache().tree().styles().generation() == rules.generation());
+    let mut timeline = css::animation::Timeline::default();
     let (scene, stylesheet_issues, fallbacks) = render(
         &doc,
         images.as_ref(),
@@ -1364,12 +1368,14 @@ pub fn finish_with(
         previous,
         None,
         &mut Default::default(),
+        &mut timeline,
         &mut progress,
     )?;
     Ok(Page {
         images,
         rendered_interaction: Interaction::default(),
         animated: Default::default(),
+        timeline,
         document: doc,
         scene,
         title,
@@ -1391,6 +1397,15 @@ pub fn finish_with(
     })
 }
 impl Page {
+    /// The moment (ms on the page's clock) its next render shows its CSS
+    /// animations at.
+    pub fn set_time(&mut self, now_ms: f64) {
+        self.timeline.now_ms = now_ms;
+    }
+    /// Some CSS animation still changes: render again at the next frame.
+    pub fn animating(&self) -> bool {
+        self.timeline.running
+    }
     /// Follow a later revision's stylesheets (see `Measurer::refresh`):
     /// returns whether the rules were made again.
     pub fn refresh(&mut self, doc: &Document, cancel: Option<&AtomicBool>, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<bool> {
@@ -1482,6 +1497,7 @@ impl Page {
             Some(&previous),
             patchable_scene,
             &mut self.animated,
+            &mut self.timeline,
             &mut progress,
         )?;
         self.rendered_interaction = self.interaction;
@@ -1555,6 +1571,7 @@ impl Page {
             None,
             None,
             &mut self.animated,
+            &mut self.timeline,
             &mut progress,
         )?;
         self.rendered_interaction = self.interaction;
@@ -1824,6 +1841,7 @@ fn render(
     previous: Option<&layout::Layout>,
     previous_scene: Option<&Arc<paint::Scene>>,
     animated: &mut std::collections::HashSet<crate::dom::NodeId>,
+    timeline: &mut css::animation::Timeline,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
     // The previous layout's styles stand in only while they were computed
@@ -1852,6 +1870,16 @@ fn render(
     let mut patched: Option<style::Patched> = None;
     let mut styles = None;
     let mut relayout = false;
+    // CSS animations at the timeline's moment, from the previous styles'
+    // animation lists (a new animation starts the frame after it appears).
+    let (mut animation_values, mut animation_nodes) = match previous_styles {
+        Some(p) if !rules.keyframes().is_empty() => timeline.sample(rules.keyframes(), styled_elements(doc, p), cancel),
+        _ => {
+            timeline.running = false;
+            (Default::default(), Vec::new())
+        }
+    };
+    let unchanged = previous_revision.is_some_and(|r| doc.changes_since(r).is_some_and(|c| c.is_empty()));
     if let (Some(p), Some(_)) = (previous_styles, previous_scene)
         && let Ok(Patchable { nodes, relayout: text_changed }) = patchable(doc, rules, p.document_revision())
     {
@@ -1859,7 +1887,7 @@ fn render(
         let copying = std::time::Instant::now();
         let mut tree = p.clone();
         let copied_ms = copying.elapsed().as_secs_f64() * 1000.;
-        let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation() };
+        let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation(), animated: Some(&animation_values) };
         if let Some(result) = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)? {
             patched = Some(result);
             styles = Some(Arc::new(tree));
@@ -1868,17 +1896,55 @@ fn render(
             eprintln!("  render style: copy {copied_ms:.2} ms, patch {:.2} ms, {} nodes", copying.elapsed().as_secs_f64() * 1000. - copied_ms, nodes.len());
         }
     }
-    let styles = match styles {
+    let mut styles = match styles {
         Some(styles) => styles,
         None => {
-            let mut job =
-                style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), previous: previous_styles, generation: rules.generation() }, Default::default(), cancel)?;
+            let mut job = style::Job::new(
+                doc,
+                rules,
+                defaults.clone(),
+                style::JobOptions { quirks, states: Some(&snapshot), previous: previous_styles, generation: rules.generation(), animated: Some(&animation_values) },
+                Default::default(),
+                cancel,
+            )?;
             while !job.step(128, |_| host)?.finished {
                 progress(Phase::Styles, job.progress().styled)
             }
             Arc::new(job.finish()?)
         }
     };
+    // A first render (no styles before): its animations from its own styles.
+    if previous_styles.is_none() && !rules.keyframes().is_empty() {
+        (animation_values, animation_nodes) = timeline.sample(rules.keyframes(), styled_elements(doc, &styles), cancel);
+    }
+    // The animated elements styled with their values now (the patch above
+    // left those the document did not change as they were).
+    if !animation_nodes.is_empty() {
+        let mut tree = (*styles).clone();
+        // Matched again (a few elements): their pseudo-elements' rules are
+        // not among the ones recorded for them.
+        let nodes: Vec<(crate::dom::NodeId, bool)> = animation_nodes.iter().map(|&n| (n, true)).collect();
+        let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation(), animated: Some(&animation_values) };
+        if let Some(result) = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)? {
+            styles = Arc::new(tree);
+            patched = match patched {
+                Some(mut p) => {
+                    p.geometry_kept &= result.geometry_kept;
+                    p.changed += result.changed;
+                    p.pseudos += result.pseudos;
+                    for n in result.nodes {
+                        if !p.nodes.contains(&n) {
+                            p.nodes.push(n);
+                        }
+                    }
+                    Some(p)
+                }
+                // Nothing else changed: the animation is the whole patch.
+                None if unchanged => Some(result),
+                None => None,
+            };
+        }
+    }
     if let Some(t) = timing {
         stamps[0] = t.elapsed().as_secs_f64() * 1000.;
     }
@@ -2076,6 +2142,21 @@ fn render(
     Ok((scene, recorded.issues, fallbacks))
 }
 
+/// The document's elements with their styles in `tree`, in tree order.
+fn styled_elements<'t>(doc: &'t Document, tree: &'t style::StyleTree) -> impl Iterator<Item = (crate::dom::NodeId, &'t style::Style)> + 't {
+    let mut next = Some(doc.root());
+    std::iter::from_fn(move || {
+        while let Some(node) = next {
+            next = next_node(doc, node).ok().flatten();
+            if doc.node_type(node).ok() == Some(NodeType::Element)
+                && let Some(style) = tree.snapshot(node)
+            {
+                return Some((node, style));
+            }
+        }
+        None
+    })
+}
 pub(crate) fn next_node(doc: &Document, node: crate::dom::NodeId) -> Result<Option<crate::dom::NodeId>> {
     if let Some(child) = doc.first_child(node)? {
         return Ok(Some(child));

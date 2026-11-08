@@ -184,7 +184,7 @@ fn item(field: Field, c: &Component<'_>) -> Option<Item> {
     }
 }
 /// One longhand's list.
-pub(super) fn parse_list(field: Field, parts: &[Component<'_>]) -> Result<Value> {
+pub(crate) fn parse_list(field: Field, parts: &[Component<'_>]) -> Result<Value> {
     let mut out = Vec::new();
     for group in groups(parts) {
         let [c] = group.as_slice() else { return Err(Error::Invalid) };

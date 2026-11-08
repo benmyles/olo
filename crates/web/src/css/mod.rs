@@ -2,6 +2,7 @@
 //! property grammars or implement cascade/layout. All long APIs are worker-only.
 mod bytes;
 pub use bytes::{ByteDecoder, ByteOptions, ByteParseError, ByteSyntax, EncodingChoice, EncodingSource, encoding};
+pub mod animation;
 pub mod cascade;
 pub mod color;
 pub mod fonts;

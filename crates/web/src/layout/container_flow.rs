@@ -404,6 +404,7 @@ impl Job<'_> {
                 let mut u = Used::flex(s, area, height, queries, &mut self.scratch, self.cancel, self.scale)?;
                 u.margin = Edges::default();
                 u.width = used::grid((area - u.padding.horizontal() - u.border.horizontal()).max(0.), self.scale);
+                u.apply_aspect(s);
                 // Cells align vertically by their vertical-align.
                 item.align = match s.value(P::VerticalAlign) {
                     Value::Keyword(K::Middle) => K::Center,
@@ -419,9 +420,6 @@ impl Job<'_> {
             let auto_columns = self.auto_tracks(style.value(P::GridAutoColumns), Some(width), queries)?;
             let auto_rows = self.auto_tracks(style.value(P::GridAutoRows), height, queries)?;
             let flow_column = matches!(keyword(style, P::GridAutoFlow), K::Column | K::ColumnDense);
-            if flow_column {
-                self.note("grid-auto-flow: column placed as rows", id);
-            }
             let explicit_columns = columns.len();
             for item in &mut items {
                 let c = cache.tree.get(item.id).ok_or(Error::Invalid)?;
@@ -432,7 +430,19 @@ impl Job<'_> {
                     item.cell = Cell { columns: (usize::MAX, 1), rows: (usize::MAX, 1) };
                 }
             }
-            let (column_count, row_count) = place(&mut items, explicit_columns, explicit_rows.len(), self.cancel)?;
+            // Column flow: placed as row flow is, with the axes swapped.
+            let (column_count, row_count) = if flow_column {
+                for item in &mut items {
+                    std::mem::swap(&mut item.cell.columns, &mut item.cell.rows);
+                }
+                let (rows, columns) = place(&mut items, explicit_rows.len(), explicit_columns, self.cancel)?;
+                for item in &mut items {
+                    std::mem::swap(&mut item.cell.columns, &mut item.cell.rows);
+                }
+                (columns, rows)
+            } else {
+                place(&mut items, explicit_columns, explicit_rows.len(), self.cancel)?
+            };
             // auto-fit: repeated tracks no item occupies collapse away, their
             // gaps with them (CSS Grid 2 §7.2.3.2).
             if let Some((first, last)) = fit_columns {
@@ -499,6 +509,11 @@ impl Job<'_> {
                     u.width = self.clamp_width(s, &u, area, queries)?;
                 }
                 u.width = used::grid(u.width.max(0.), self.scale);
+                // An automatic height from `aspect-ratio` and the settled width
+                // (GitHub's feature visuals, size containers with a ratio).
+                if !text {
+                    u.apply_aspect(s);
+                }
                 item.used = u;
             }
             Kind::Grid { columns: sizes, rows, align_content: keyword(style, P::AlignContent), justify_content }
@@ -528,6 +543,9 @@ impl Job<'_> {
                     u.width = self.clamp_width(s, &u, width, queries)?;
                 }
                 u.width = used::grid(u.width.max(0.), self.scale);
+                if !text {
+                    u.apply_aspect(s);
+                }
                 item.used = u;
             }
             Kind::ColumnFlex { reverse: matches!(style.value(P::FlexDirection), Value::Keyword(K::ColumnReverse)), justify: keyword(style, P::JustifyContent) }
