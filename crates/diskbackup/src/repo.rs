@@ -375,6 +375,52 @@ impl Repo {
         Ok(())
     }
 
+    /// A pack's own list of what it holds (its sealed header, at its end,
+    /// before the header's length): two small reads, not the pack.
+    pub(crate) fn pack_header(&self, id: &Id, size: u64) -> Result<Vec<Entry>> {
+        let name = pack_name(id);
+        if size < 4 {
+            return Err(Error::Damaged(format!("{name} is short")));
+        }
+        let tail = self.store.get_range(&name, size - 4, 4)?;
+        let len = u32::from_le_bytes([tail[0], tail[1], tail[2], tail[3]]) as u64;
+        if len + 4 > size {
+            return Err(Error::Damaged(format!("{name}'s list doesn't fit")));
+        }
+        let sealed = self.store.get_range(&name, size - 4 - len, len)?;
+        let plain = self.key.open(&sealed).ok_or_else(|| Error::Damaged(format!("{name}'s list doesn't open")))?;
+        decode(&plain)
+    }
+
+    /// Packs no index names (an index file lost; another computer's
+    /// backup not named yet), read back from their own lists and named
+    /// again in an index file: how many.
+    pub fn find_lost(&mut self) -> Result<usize> {
+        self.check_lock()?;
+        let named: HashSet<Id> = self.packs.iter().copied().collect();
+        let mut found = Vec::new();
+        for (name, size) in self.store.list("data")? {
+            let Some(id) = name.rsplit('/').next().and_then(Id::from_hex) else { continue };
+            if named.contains(&id) {
+                continue;
+            }
+            if let Ok(entries) = self.pack_header(&id, size) {
+                self.add_pack(id, &entries);
+                found.push((id, entries));
+            }
+        }
+        if !found.is_empty() {
+            let name = self.put_index(&found)?;
+            self.index_files.insert(name);
+        }
+        Ok(found.len())
+    }
+
+    /// A pack taken into the index here (not yet named in the store's).
+    pub(crate) fn take_pack(&mut self, pack: Id, entries: &[Entry]) {
+        self.add_pack(pack, entries);
+    }
+
     /// A whole pack (a tree pack's from the cache, if it's there whole).
     pub(crate) fn pack_bytes(&self, id: &Id, trees: bool) -> Result<Vec<u8>> {
         let name = pack_name(id);

@@ -13,6 +13,29 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+(Nothing: the next is the first not started.)
+
+## Not started (highest priority first)
+
+- **Undo everywhere it makes sense** (Ben, 2026-11-07: "tracker needs to
+  support undo for file/folder renames/moves/etc and also we need
+  generally and unviversally to support undo in all olo apps where it
+  makes sense"). Done so far: the kit's way (`olo_ui::undo`: named
+  steps, runs merged, Edit ▸ Undo/Redo with the profile's keys, a
+  window without a menu bar given ⌘Z by its Frame, agents and the
+  palette finding them among the app's menus); Tracker (files, and the
+  desktop's icons dragged or cleaned up),
+  Preferences (every panel's settings) and Passwords (items changed,
+  made, deleted; not the Archive, which nothing takes an item out of
+  yet) on it. Left, each app looked at for what should undo and put on
+  it: StyledEdit's and the Viewer's own undo (and text fields') matched
+  to it or moved onto it; Deskbar's moves;
+  Terminal's tab and pane changes (a closed tab can't come back with its
+  process: say so); app_server's ⌃⌘Z window arrangement matched (named,
+  Redo); and the rest (Notes, DeskCalc's tape, …).
+
+## Done, waiting for Ben to try or confirm
+
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for
   continuous, minimal impact (in terms of cpu/mem/network usage -- it
@@ -76,32 +99,14 @@ something nobody here has is in "Blocked", with what it waits for.
   cloud with a tick before it), in every theme; Google Drive (each
   person's own Desktop app OAuth client, the app walking them through
   making it; resumable uploads, backoff, speed limits; tested against a
-  Google of our own, not yet against Google itself). Next: trying it
-  against Google for real (Ben's project); following changes (fanotify) rather
+  Google of our own); a lost index healed (packs read back from their own
+  lists, in tidying and before a backup). Left for Ben: go through Back
+  Up To ▸ Google Drive… with a Google account of his (the steps' wording
+  is from Google's current docs, not yet tried on the console itself),
+  and choose where his own backups go. Later: following changes (fanotify) rather
   than walking (an unchanged walk of 100,000 files is 0.4 s, so not yet
   pressing); a repair for a damaged index (made again from the packs'
   own lists).
-
-## Not started (highest priority first)
-
-- **Undo everywhere it makes sense** (Ben, 2026-11-07: "tracker needs to
-  support undo for file/folder renames/moves/etc and also we need
-  generally and unviversally to support undo in all olo apps where it
-  makes sense"). Done so far: the kit's way (`olo_ui::undo`: named
-  steps, runs merged, Edit ▸ Undo/Redo with the profile's keys, a
-  window without a menu bar given ⌘Z by its Frame, agents and the
-  palette finding them among the app's menus); Tracker (files, and the
-  desktop's icons dragged or cleaned up),
-  Preferences (every panel's settings) and Passwords (items changed,
-  made, deleted; not the Archive, which nothing takes an item out of
-  yet) on it. Left, each app looked at for what should undo and put on
-  it: StyledEdit's and the Viewer's own undo (and text fields') matched
-  to it or moved onto it; Deskbar's moves;
-  Terminal's tab and pane changes (a closed tab can't come back with its
-  process: say so); app_server's ⌃⌘Z window arrangement matched (named,
-  Redo); and the rest (Notes, DeskCalc's tape, …).
-
-## Done, waiting for Ben to try or confirm
 
 - **Voice Processing's delay: Ben to choose the default noise model**
   (Ben, 2026-11-07: "we need that to be way more optimized so that it is

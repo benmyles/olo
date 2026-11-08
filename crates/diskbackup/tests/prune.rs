@@ -205,3 +205,72 @@ fn stopped_backup_goes_on() {
     same(&src, &out);
     let _ = std::fs::remove_dir_all(base);
 }
+
+/// The index lost (every file of it, store and cache): a tidy reads each
+/// pack's own list, keeps what the snapshot uses, names it again, and
+/// lets go of nothing that's used; the backup restores whole after.
+#[test]
+fn index_lost_found_again() {
+    let base = temp("lost");
+    let src = base.join("home");
+    std::fs::create_dir_all(src.join("docs")).unwrap();
+    std::fs::write(src.join("docs/a.bin"), noise(30 << 20, 7)).unwrap();
+    std::fs::write(src.join("docs/note.txt"), "keep me").unwrap();
+    let store_dir = base.join("store");
+    let store: Arc<dyn Store> = Arc::new(LocalStore::new(&store_dir));
+    let key = Key::generate();
+    let mut repo = Repo::init(store.clone(), key.clone(), Some(base.join("cache"))).unwrap();
+    let excludes = Excludes::none();
+    let opts = Options { paths: vec![src.clone()], excludes: &excludes, host: "test".into(), one_file_system: true };
+    let (cancel, progress) = (AtomicBool::new(false), Progress::default());
+    backup(&mut repo, &opts, None, &cancel, &progress).unwrap();
+    drop(repo);
+    let packs_before = store.list("data").unwrap().len();
+    for (name, _) in store.list("index").unwrap() {
+        store.delete(&name).unwrap();
+    }
+    let _ = std::fs::remove_dir_all(base.join("cache"));
+
+    let mut repo = Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap();
+    assert_eq!(repo.blobs(), 0, "nothing named");
+    let lock = repo.lock(true).unwrap();
+    let pruned = prune(&mut repo, &cancel, &progress).unwrap();
+    drop(lock);
+    eprintln!("{pruned:?}");
+    assert_eq!(pruned.missing, 0, "{pruned:?}");
+    assert_eq!(pruned.packs_found as usize, packs_before, "{pruned:?}");
+    assert_eq!(store.list("data").unwrap().len(), packs_before, "none let go of");
+
+    let repo = Repo::open(store.clone(), key, Some(base.join("cache2"))).unwrap();
+    let (_, s) = repo.snapshots().unwrap().pop().unwrap();
+    let out = base.join("out");
+    restore(&repo, &s.tree, &src, &out, &cancel, &progress).unwrap();
+    same(&src, &out);
+    let _ = std::fs::remove_dir_all(base);
+}
+
+/// The index lost, then a backup: its parent's tree not found, the packs
+/// read back from their own lists, so what's unchanged isn't sent again.
+#[test]
+fn index_lost_then_back_up() {
+    let base = temp("lost-backup");
+    let src = base.join("home");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("a.bin"), noise(30 << 20, 8)).unwrap();
+    let store: Arc<dyn Store> = Arc::new(LocalStore::new(base.join("store")));
+    let key = Key::generate();
+    let mut repo = Repo::init(store.clone(), key.clone(), None).unwrap();
+    let excludes = Excludes::none();
+    let opts = Options { paths: vec![src.clone()], excludes: &excludes, host: "test".into(), one_file_system: true };
+    let (cancel, progress) = (AtomicBool::new(false), Progress::default());
+    let (id, s) = backup(&mut repo, &opts, None, &cancel, &progress).unwrap();
+    drop(repo);
+    for (name, _) in store.list("index").unwrap() {
+        store.delete(&name).unwrap();
+    }
+    let mut repo = Repo::open(store.clone(), key, None).unwrap();
+    let (_, s2) = backup(&mut repo, &opts, Some((id, &s)), &cancel, &progress).unwrap();
+    assert!(s2.summary.new_bytes < 1 << 20, "not sent again: {:?}", s2.summary);
+    assert_eq!(s2.summary.unchanged_files, 1, "{:?}", s2.summary);
+    let _ = std::fs::remove_dir_all(base);
+}

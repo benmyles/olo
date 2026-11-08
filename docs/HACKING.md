@@ -12444,8 +12444,14 @@ in layers; done so far, **the engine** (crates/diskbackup):
   is used goes; one 30% unused, or one of eight or more small ones (a
   backup's last, partly filled), has what's used copied into new packs
   (sealed as it was: only checked whole) and goes; a blob kept twice kept
-  once, in the pack most used; packs no index names (a backup stopped
-  before naming them) go. Only the index files naming a pack that goes
+  once, in the pack most used. A pack no index names (a backup stopped
+  before naming it, an index file lost) is read back from its own list
+  first (`Repo::pack_header`: two small reads at its end) and taken into
+  the index before the snapshots are walked, so what they use in it is
+  kept and named again, and only one nothing uses goes (one whose list
+  won't open, too): a lost index loses nothing. A backup whose parent's
+  tree isn't in the index does the same first (`Repo::find_lost`), so
+  what's unchanged isn't sent again. Only the index files naming a pack that goes
   are written again (and small ones, eight or more, put together), then
   they go, then the packs: stopped anywhere, nothing is lost. The cache's
   copies of what's gone go too.

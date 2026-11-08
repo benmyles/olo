@@ -60,7 +60,17 @@ pub fn backup(repo: &mut Repo, opts: &Options, parent: Option<(Id, &Snapshot)>, 
     let stored = repo.stored;
     let mut w = Walk { repo, opts, cancel, progress, summary: Summary::default(), buf: Vec::new() };
     let parent_root = match parent {
-        Some((_, s)) => Some(w.repo.tree(&s.tree)?),
+        Some((_, s)) => match w.repo.tree(&s.tree) {
+            Ok(t) => Some(t),
+            // Not in the index (an index file lost?): the packs no index
+            // names read back from their own lists, and again; else
+            // everything read as new.
+            Err(Error::Damaged(_)) => {
+                let _ = w.repo.find_lost();
+                w.repo.tree(&s.tree).ok()
+            }
+            Err(e) => return Err(e),
+        },
         None => None,
     };
     let root = match w.ancestors(Path::new("/"), parent_root.as_ref(), &opts.paths) {
