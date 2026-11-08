@@ -2614,6 +2614,19 @@ fn render_once(
         // next frame (sampled from these styles).
         timeline.running = true;
     }
+    // Scripts' animations (Web Animations: `element.animate()`) over the
+    // CSS ones: their declarations come after.
+    if !doc.script_animations().is_empty() || timeline.script_applied() {
+        let (values, touched) = timeline.sample_script(doc.script_animations(), cancel);
+        for (node, mut declarations) in values {
+            animation_values.entry(node).or_default().append(&mut declarations);
+        }
+        for n in touched {
+            if !animation_nodes.contains(&n) {
+                animation_nodes.push(n);
+            }
+        }
+    }
     // The animated elements styled with their values now (the patch above
     // left those the document did not change as they were).
     if !animation_nodes.is_empty() {

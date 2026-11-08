@@ -382,8 +382,47 @@ pub struct Document {
     shadow_hosts: Arc<NodeMap<NodeId>>,
     /// Custom elements their definition has upgraded (`:defined`).
     defined: Arc<NodeSet>,
+    /// The animations scripts made (`element.animate()`), in the order
+    /// they were made: what the page samples over the CSS ones.
+    script_animations: Arc<Vec<ScriptAnimation>>,
     name_bytes: usize,
     limits: Limits,
+}
+/// An animation a script made (Web Animations 1: `element.animate()`), as
+/// the page samples it: its element, keyframes and timing on the page's
+/// clock. Plain data (the page compiles it); the script keeps the
+/// Animation object, its events and promises.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScriptAnimation {
+    pub id: u64,
+    pub node: NodeId,
+    /// Its keyframes in offset order (0 to 1, each given or distributed),
+    /// each with its easing and its declarations (property, value text).
+    pub frames: Arc<[ScriptFrame]>,
+    /// Milliseconds: its iteration's duration, its delay and end delay.
+    pub duration: f64,
+    pub delay: f64,
+    pub end_delay: f64,
+    /// Iterations (infinite as `f64::INFINITY`), from `iteration_start`.
+    pub iterations: f64,
+    /// `normal`, `reverse`, `alternate` or `alternate-reverse`.
+    pub direction: Arc<str>,
+    /// `none`, `forwards`, `backwards`, `both` or `auto`.
+    pub fill: Arc<str>,
+    /// Its timing function, as CSS spells one.
+    pub easing: Arc<str>,
+    /// When its current time was 0, on the page's clock (ms), at `rate`.
+    pub start_ms: f64,
+    pub rate: f64,
+    /// Paused at this current time (ms), instead of following the clock.
+    pub held_ms: Option<f64>,
+}
+/// One keyframe of a `ScriptAnimation`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScriptFrame {
+    pub offset: f64,
+    pub easing: Option<Arc<str>>,
+    pub values: Vec<(Arc<str>, Arc<str>)>,
 }
 
 impl std::fmt::Debug for Document {
@@ -432,6 +471,7 @@ impl Document {
             shadows: Arc::new(Default::default()),
             shadow_hosts: Arc::new(Default::default()),
             defined: Arc::new(Default::default()),
+            script_animations: Arc::new(Vec::new()),
             name_bytes: 0,
             limits,
         })
@@ -510,6 +550,39 @@ impl Document {
     /// offsets as they are.
     pub fn scroll_serial(&self) -> u64 {
         self.scroll_serial
+    }
+    /// The animations scripts made, in the order they were made.
+    pub fn script_animations(&self) -> &[ScriptAnimation] {
+        &self.script_animations
+    }
+    /// A script's animation made, played, paused or retimed (the one of
+    /// its id replaced, keeping its place): its element restyles.
+    pub fn set_script_animation(&mut self, animation: ScriptAnimation) -> Result<()> {
+        self.node_type(animation.node)?;
+        let node = animation.node;
+        let list = Arc::make_mut(&mut self.script_animations);
+        match list.iter_mut().find(|a| a.id == animation.id) {
+            Some(a) if *a == animation => return Ok(()),
+            Some(a) => *a = animation,
+            None => {
+                // At most a few thousand: a page making them without end
+                // loses its oldest.
+                if list.len() >= 4096 {
+                    list.remove(0);
+                }
+                list.push(animation);
+            }
+        }
+        self.bump_with(Change::Style(node))
+    }
+    /// A script's animation gone (cancelled, or finished without a fill).
+    pub fn remove_script_animation(&mut self, id: u64) -> Result<()> {
+        let Some(at) = self.script_animations.iter().position(|a| a.id == id) else { return Ok(()) };
+        let node = Arc::make_mut(&mut self.script_animations).remove(at).node;
+        if self.node_type(node).is_ok() {
+            self.bump_with(Change::Style(node))?;
+        }
+        Ok(())
     }
     /// A control's state (None: as its attributes say).
     pub fn control(&self, id: NodeId) -> Option<&ControlState> {

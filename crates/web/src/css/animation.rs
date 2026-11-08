@@ -412,6 +412,42 @@ pub struct Timeline {
     transitions: HashMap<(crate::dom::NodeId, Property), Running>,
     /// The elements given transitioned values at the last sample.
     transitioned: Vec<crate::dom::NodeId>,
+    /// Scripts' animations compiled (keyframes and timing), by id, with the
+    /// frames they were compiled from.
+    scripted: HashMap<u64, (Arc<[crate::dom::ScriptFrame]>, Arc<Keyframes>, Spec)>,
+    /// The elements scripts' animations gave values at the last sample.
+    script_applied: Vec<crate::dom::NodeId>,
+}
+/// A timing function as CSS spells one (`ease-in-out`, `cubic-bezier(...)`,
+/// `steps(4, end)`), or none when it isn't one.
+fn easing_of(text: &str) -> Option<Easing> {
+    let source: Arc<str> = Arc::from(format!("animation-timing-function:{text}"));
+    let syntax = Syntax::parse(source, Default::default(), None).ok()?;
+    let d = syntax.one_declaration(None).ok()?;
+    let parts: Vec<Component<'_>> = d.value().filter(|c| c.kind() != Kind::Whitespace).collect();
+    match super::properties::animation::parse_list(super::properties::animation::Field::Easing, &parts) {
+        Ok(super::properties::Value::Animation(list)) => match list.at(0) {
+            Some(Item::Easing(e)) => Some(*e),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+/// A script's animation as keyframes and a timing the CSS machinery samples.
+fn compile_script(a: &crate::dom::ScriptAnimation) -> (Arc<Keyframes>, Spec) {
+    let frames = a.frames.iter().map(|f| Frame { offset: f.offset.clamp(0., 1.), easing: f.easing.as_deref().and_then(easing_of), values: f.values.clone() }).collect();
+    let keyword = |text: &str, choices: &[(&str, Keyword)], default: Keyword| choices.iter().find(|(n, _)| *n == text).map_or(default, |(_, k)| *k);
+    let spec = Spec {
+        name: Arc::from(""),
+        duration: (a.duration / 1000.).max(0.),
+        delay: a.delay / 1000.,
+        count: if a.iterations.is_nan() { 1. } else { a.iterations.max(0.) },
+        direction: keyword(&a.direction, &[("reverse", Keyword::Reverse), ("alternate", Keyword::Alternate), ("alternate-reverse", Keyword::AlternateReverse)], Keyword::Normal),
+        fill: keyword(&a.fill, &[("forwards", Keyword::Forwards), ("backwards", Keyword::Backwards), ("both", Keyword::Both)], Keyword::None),
+        paused: a.held_ms.is_some(),
+        easing: easing_of(&a.easing).unwrap_or(Easing::Linear),
+    };
+    (Arc::new(Keyframes { frames }), spec)
 }
 impl Timeline {
     /// The animation events since the last call (animationstart,
@@ -502,6 +538,55 @@ impl Timeline {
         }
         self.transitioned = out.keys().copied().collect();
         (out, touched)
+    }
+    /// The declarations scripts' animations (`element.animate()`) apply at
+    /// `now_ms`, by element, sampled as CSS animations are, and every
+    /// element whose values must be computed again (animated now or at the
+    /// last sample). Each animation's time is its own: its start on the
+    /// page's clock and its rate, or the time it is paused at.
+    pub fn sample_script(&mut self, animations: &[crate::dom::ScriptAnimation], cancelled: Option<&AtomicBool>) -> (crate::dom::NodeMap<Vec<super::properties::Declaration>>, Vec<crate::dom::NodeId>) {
+        let mut out: crate::dom::NodeMap<Vec<super::properties::Declaration>> = Default::default();
+        self.scripted.retain(|id, _| animations.iter().any(|a| a.id == *id));
+        for a in animations {
+            let compiled = match self.scripted.get(&a.id) {
+                Some((frames, keyframes, spec)) if Arc::ptr_eq(frames, &a.frames) => (keyframes.clone(), spec.clone()),
+                _ => {
+                    let (keyframes, spec) = compile_script(a);
+                    self.scripted.insert(a.id, (a.frames.clone(), keyframes.clone(), spec.clone()));
+                    (keyframes, spec)
+                }
+            };
+            let (keyframes, mut spec) = compiled;
+            // Timing that changed with the frames the same (paused, a new
+            // rate) is read anew each sample.
+            spec.paused = a.held_ms.is_some();
+            let current_ms = a.held_ms.unwrap_or((self.now_ms - a.start_ms) * a.rate);
+            let elapsed = current_ms / 1000.;
+            if !spec.paused && spec.duration > 0. && (spec.count.is_infinite() || if a.rate >= 0. { elapsed < spec.delay + spec.duration * spec.count } else { elapsed > 0. }) {
+                self.running = true;
+            }
+            let Some((_, p)) = progress(&spec, elapsed) else { continue };
+            for (name, value) in sample(&keyframes, p, spec.easing) {
+                let text: Arc<str> = Arc::from(format!("{name}:{value}"));
+                let Ok(syntax) = Syntax::parse(text, Default::default(), cancelled) else { continue };
+                let Ok(d) = syntax.one_declaration(cancelled) else { continue };
+                if let Ok(declaration) = super::properties::Declaration::compile(&d, Default::default(), cancelled) {
+                    out.entry(a.node).or_default().push(declaration);
+                }
+            }
+        }
+        let mut touched: Vec<crate::dom::NodeId> = out.keys().copied().collect();
+        for n in std::mem::take(&mut self.script_applied) {
+            if !out.contains_key(&n) {
+                touched.push(n);
+            }
+        }
+        self.script_applied = out.keys().copied().collect();
+        (out, touched)
+    }
+    /// Whether scripts' animations applied values at the last sample.
+    pub fn script_applied(&self) -> bool {
+        !self.script_applied.is_empty()
     }
     /// The animated declarations for the elements `styled` lists (each with
     /// its style), at `now_ms`, and every element whose animated values

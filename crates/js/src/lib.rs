@@ -1744,6 +1744,8 @@ const NATIVES: &[&str] = &[
     "loadImage",
     "fetchAsync",
     "cookie",
+    "animationSet",
+    "animationRemove",
     "structuredClone",
     "workerStart",
     "workerPost",
@@ -1923,6 +1925,45 @@ pub(crate) fn bytes_array<'s>(scope: &mut v8::PinScope<'s, '_>, bytes: Vec<u8>, 
         ByteKind::I32 => v8::Int32Array::new(scope, buffer, 0, len / 4).map_or_else(|| v8::undefined(scope).into(), |a| a.into()),
         ByteKind::F32 => v8::Float32Array::new(scope, buffer, 0, len / 4).map_or_else(|| v8::undefined(scope).into(), |a| a.into()),
     }
+}
+/// A Web Animation from its JSON (see the `animationSet` native).
+fn script_animation(node: NodeId, text: &str) -> Option<olo_web::dom::ScriptAnimation> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let num = |k: &str, d: f64| v.get(k).and_then(serde_json::Value::as_f64).unwrap_or(d);
+    let word = |k: &str, d: &str| -> Arc<str> { Arc::from(v.get(k).and_then(serde_json::Value::as_str).unwrap_or(d)) };
+    let frames: Vec<olo_web::dom::ScriptFrame> = v
+        .get("frames")?
+        .as_array()?
+        .iter()
+        .take(256)
+        .filter_map(|f| {
+            Some(olo_web::dom::ScriptFrame {
+                offset: f.get("offset")?.as_f64()?,
+                easing: f.get("easing").and_then(serde_json::Value::as_str).map(Arc::from),
+                values: f.get("values")?.as_array()?.iter().take(64).filter_map(|p| Some((Arc::<str>::from(p.get(0)?.as_str()?), Arc::<str>::from(p.get(1)?.as_str()?)))).collect(),
+            })
+        })
+        .collect();
+    let iterations = match v.get("iterations") {
+        Some(serde_json::Value::String(s)) if s == "Infinity" => f64::INFINITY,
+        Some(n) => n.as_f64().unwrap_or(1.),
+        None => 1.,
+    };
+    Some(olo_web::dom::ScriptAnimation {
+        id: v.get("id")?.as_f64()? as u64,
+        node,
+        frames: Arc::from(frames),
+        duration: num("duration", 0.),
+        delay: num("delay", 0.),
+        end_delay: num("endDelay", 0.),
+        iterations,
+        direction: word("direction", "normal"),
+        fill: word("fill", "auto"),
+        easing: word("easing", "linear"),
+        start_ms: num("startMs", 0.),
+        rate: num("rate", 1.),
+        held_ms: v.get("heldMs").and_then(serde_json::Value::as_f64),
+    })
 }
 /// A request body argument: a typed array's (or buffer's) bytes as they
 /// are, a string's as UTF-8 (gzip from a CompressionStream must not pass
@@ -2300,6 +2341,24 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         "setDefined" => {
             if let Some(n) = node(scope, 0) {
                 let _ = state.borrow_mut().document.set_defined(n);
+            }
+        }
+        // animationSet(element, json): a Web Animation (element.animate())
+        // for the page to sample: {id, frames: [{offset, easing, values:
+        // [[property, value]]}], duration, delay, endDelay, iterations,
+        // direction, fill, easing, startMs, rate, heldMs}.
+        "animationSet" => {
+            if let Some(n) = node(scope, 0) {
+                let text = arg_string(scope, &args, 1);
+                if let Some(animation) = script_animation(n, &text) {
+                    let _ = state.borrow_mut().document.set_script_animation(animation);
+                }
+            }
+        }
+        "animationRemove" => {
+            let id = args.get(0).number_value(scope).unwrap_or(-1.);
+            if id >= 0. {
+                let _ = state.borrow_mut().document.remove_script_animation(id as u64);
             }
         }
         // shadowHost(node) → the host when node is a shadow root, else null.

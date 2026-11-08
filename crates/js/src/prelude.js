@@ -568,7 +568,7 @@
     focus() { focusElement(this); }, blur() { if (activeElement === this) focusElement(null); }, select() { caretOf.set(this, this.value.length); }, setSelectionRange(a) { caretOf.set(this, Math.max(0, Math.min(Number(a) || 0, this.value.length))); }, scrollIntoView() {}, scrollTo(x, y) { if (typeof x === 'object' && x) { const o = N.scrollOffset(this); y = x.top ?? o[1]; x = x.left ?? o[0]; } scrollElement(this, Number(x) || 0, Number(y) || 0); }, scrollBy(x, y) { const o = N.scrollOffset(this); if (typeof x === 'object' && x) { y = x.top || 0; x = x.left || 0; } scrollElement(this, o[0] + (Number(x) || 0), o[1] + (Number(y) || 0)); }, scroll(x, y) { this.scrollTo(x, y); },
     click() { const el = this; if (N.attr(el, 'disabled') != null && ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(N.nodeName(el))) return; activate(el, () => { const ev = Object.assign(new MouseEvent('click', { bubbles: true, cancelable: true }), { isTrusted: false }); dispatch(el, ev); return ev; }); },
     submit() { if (N.nodeName(this) === 'FORM') submitForm(this, null, false); }, reset() { if (N.nodeName(this) === 'FORM') for (const c of N.query(this, 'input,textarea', true)) N.setControlValue(c, N.nodeName(c) === 'TEXTAREA' ? N.textContent(c) : (N.attr(c, 'value') || '')); }, requestSubmit(submitter) { if (N.nodeName(this) === 'FORM') submitForm(this, submitter || null, true); }, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
-    animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), null); a.play(); return a; },
+    animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), global.document.timeline); if (options && typeof options === 'object' && options.id != null) a.id = String(options.id); a.play(); return a; },
     getAnimations() { return animations.filter((a) => a.effect && a.effect.target === this && a.playState !== 'idle'); },
     attachShadow(init) {
       // A declarative shadow root (the parser's) is claimed once, emptied
@@ -1672,33 +1672,187 @@
   global.__olo_fetchStart = (url, method, body, headers) => new Promise((resolve, reject) => { const id = N.fetchAsync(url, method, body, headers || ''); if (id == null) reject(new TypeError('no network')); else fetches.set(id, { resolve, reject }); });
   global.__olo_fetched = (id, ok, status, contentType, bytes, urlOrError) => { const p = fetches.get(id); if (!p) return; fetches.delete(id); if (ok) p.resolve({ status, contentType, body: bytes, url: urlOrError }); else p.reject(new TypeError(String(urlOrError))); };
   global.Notification = class Notification extends EventTargetCtor { constructor() { super(); } static get permission() { return 'default'; } static requestPermission() { return Promise.resolve('denied'); } close() {} };
-  // Web Animations on the virtual clock. Nothing is interpolated: when an
-  // animation finishes, a forward fill writes its last keyframe to the
-  // element's inline style (its resting state, which is what is painted);
-  // infinite animations leave the element as it was.
+  // Web Animations 1 on the page's clock (performance.now()): each
+  // animation's keyframes and timing go to the engine (N.animationSet),
+  // which samples them each frame as it does CSS animations, over them;
+  // here its state, time, events and promises. A filling animation stays
+  // applied once finished, as in browsers (not written into the inline
+  // style); a newer one filling the same properties replaces it.
   const animations = [];
+  let nextAnimationId = 1;
+  const kebabProperty = (name) => (name === 'cssFloat' ? 'float' : name === 'cssOffset' ? 'offset' : name.startsWith('--') ? name : name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()));
+  const timingDefaults = { delay: 0, endDelay: 0, fill: 'auto', iterationStart: 0, iterations: 1, duration: 'auto', direction: 'normal', easing: 'linear', composite: 'replace' };
+  // Keyframes in either form as [{offset, easing, values: [[property, value]]}].
+  const normalizeKeyframes = (target, keyframes) => {
+    let list = [];
+    if (keyframes == null) return [];
+    if (Array.isArray(keyframes) || typeof keyframes[Symbol.iterator] === 'function') {
+      for (const k of keyframes) { const values = []; for (const key of Object.keys(k || {})) { if (key === 'offset' || key === 'easing' || key === 'composite') continue; values.push([kebabProperty(key), String(k[key])]); } list.push({ offset: k && k.offset != null ? Number(k.offset) : null, easing: k && k.easing ? String(k.easing) : null, values, given: { offset: k && k.offset != null ? Number(k.offset) : null, values: values.slice() } }); }
+    } else if (typeof keyframes === 'object') {
+      // Property-indexed: each property's list spread over its own frames.
+      const byOffset = new Map();
+      const offsets = keyframes.offset != null ? [].concat(keyframes.offset) : null;
+      const easings = keyframes.easing != null ? [].concat(keyframes.easing) : null;
+      for (const key of Object.keys(keyframes)) {
+        if (key === 'offset' || key === 'easing' || key === 'composite') continue;
+        const values = [].concat(keyframes[key]);
+        values.forEach((v, i) => {
+          const offset = offsets && offsets[i] != null ? Number(offsets[i]) : values.length === 1 ? 1 : i / (values.length - 1);
+          let frame = byOffset.get(offset);
+          if (!frame) { frame = { offset, easing: easings ? String(easings[Math.min(i, easings.length - 1)]) : null, values: [], given: { offset: offsets && offsets[i] != null ? offset : null, values: [] } }; byOffset.set(offset, frame); }
+          frame.values.push([kebabProperty(key), String(v)]); frame.given.values.push([kebabProperty(key), String(v)]);
+        });
+      }
+      list = [...byOffset.values()].sort((a, b) => a.offset - b.offset);
+    }
+    if (!list.length) return [];
+    // Missing offsets: the first 0, the last 1, the rest spread evenly.
+    if (list.length === 1 && list[0].offset == null) list[0].offset = 1;
+    if (list[0].offset == null) list[0].offset = 0;
+    if (list.length > 1 && list[list.length - 1].offset == null) list[list.length - 1].offset = 1;
+    for (let i = 1; i < list.length - 1; i++) {
+      if (list[i].offset != null) continue;
+      let j = i; while (list[j].offset == null) j++;
+      const a = list[i - 1].offset, b = list[j].offset;
+      for (let k = i; k < j; k++) list[k].offset = a + (b - a) * (k - i + 1) / (j - i + 1);
+    }
+    // A property without a frame at 0 or 1 starts or ends at its value now.
+    const props = new Set(); for (const f of list) for (const [n] of f.values) props.add(n);
+    let computed = null;
+    const now = (n) => { if (!computed && target && N.nodeType(target) === 1) computed = global.getComputedStyle(target); const v = computed ? computed.getPropertyValue(n) : ''; return v || null; };
+    for (const n of props) {
+      const has = (o) => list.some((f) => f.offset === o && f.values.some(([m]) => m === n));
+      if (!has(0)) { const v = now(n); if (v != null) { let f = list.find((x) => x.offset === 0); if (!f) { f = { offset: 0, easing: null, values: [] }; list.unshift(f); } f.values.push([n, v]); } }
+      if (!has(1)) { const v = now(n); if (v != null) { let f = list.find((x) => x.offset === 1); if (!f) { f = { offset: 1, easing: null, values: [] }; list.push(f); } f.values.push([n, v]); } }
+    }
+    return list;
+  };
   class KeyframeEffect {
-    constructor(target, keyframes, options) { this.target = target; if (typeof options === 'number') options = { duration: options }; this._options = Object.assign({ duration: 0, delay: 0, endDelay: 0, iterations: 1, fill: 'auto', easing: 'linear', direction: 'normal', composite: 'replace' }, options || {}); this._keyframes = Array.isArray(keyframes) ? keyframes : keyframes ? Object.keys(keyframes).map((k) => ({ [k]: keyframes[k] })) : []; this.pseudoElement = (options && options.pseudoElement) || null; }
-    getKeyframes() { if (!Array.isArray(this._keyframes) || this._keyframes.length === 0) return []; return this._keyframes.map((f) => ({ ...f })); }
-    setKeyframes(k) { this._keyframes = Array.isArray(k) ? k : []; }
-    getTiming() { return { ...this._options }; } getComputedTiming() { const t = this.getTiming(); const d = Number(t.duration) || 0; const it = t.iterations === Infinity ? Infinity : (Number(t.iterations) || 1); return { ...t, activeDuration: d * it, endTime: t.delay + d * it + (t.endDelay || 0), localTime: null, progress: null, currentIteration: null }; }
-    updateTiming(t) { Object.assign(this._options, t || {}); }
-    _last() { const frames = this._keyframes; if (!frames.length) return null; const last = Array.isArray(frames) ? frames[frames.length - 1] : frames; const out = {}; for (const k of Object.keys(last)) { if (k === 'offset' || k === 'easing' || k === 'composite') continue; const v = Array.isArray(last[k]) ? last[k][last[k].length - 1] : last[k]; if (v != null) out[k] = v; } return out; }
+    constructor(target, keyframes, options) {
+      if (target instanceof KeyframeEffect) { const o = target; this.target = o.target; this._frames = o._frames; this._options = { ...o._options }; this.pseudoElement = o.pseudoElement; return; }
+      if (typeof options === 'number') options = { duration: options };
+      this.target = target || null;
+      this._options = Object.assign({}, timingDefaults, options || {});
+      this.pseudoElement = (options && options.pseudoElement) || null;
+      this.composite = this._options.composite;
+      this._frames = normalizeKeyframes(this.target, keyframes);
+    }
+    // The keyframes as given (not those added for a property's value now).
+    getKeyframes() { return this._frames.filter((f) => f.given).map((f) => { const o = { offset: f.given.offset, easing: f.easing || 'linear', composite: 'auto', computedOffset: f.offset }; for (const [n, v] of f.given.values) o[n.startsWith('--') ? n : n.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v; return o; }); }
+    setKeyframes(k) { this._frames = normalizeKeyframes(this.target, k); if (this._animation) this._animation._sync(); }
+    getTiming() { const t = { ...this._options }; delete t.composite; delete t.pseudoElement; delete t.id; return t; }
+    _duration() { const d = Number(this._options.duration); return Number.isFinite(d) && d > 0 ? d : 0; }
+    _iterations() { const n = this._options.iterations; return n === Infinity ? Infinity : Math.max(0, Number(n) || 0); }
+    _activeDuration() { const it = this._iterations(); const d = this._duration(); return it === Infinity ? (d ? Infinity : 0) : d * it; }
+    _endTime() { return Math.max(0, (Number(this._options.delay) || 0) + this._activeDuration() + (Number(this._options.endDelay) || 0)); }
+    getComputedTiming() {
+      const t = this.getTiming(); const a = this._animation; const local = a ? a.currentTime : null;
+      const delay = Number(t.delay) || 0, active = this._activeDuration(), d = this._duration();
+      let progress = null, iteration = null;
+      if (local != null) {
+        const inActive = local - delay;
+        if (inActive >= 0 && inActive < active) { const it = d ? inActive / d : 0; iteration = Math.floor(it); progress = it - iteration; }
+        else if (inActive >= active && /forwards|both/.test(t.fill)) { iteration = Math.max(0, Math.ceil(this._iterations()) - 1); progress = 1; }
+        else if (inActive < 0 && /backwards|both/.test(t.fill)) { iteration = 0; progress = 0; }
+      }
+      return { ...t, duration: d, activeDuration: active, endTime: this._endTime(), localTime: local, progress, currentIteration: iteration };
+    }
+    updateTiming(t) { Object.assign(this._options, t || {}); if (this._animation) { this._animation._sync(); this._animation._schedule(); } }
   }
   class Animation extends EventTargetCtor {
-    constructor(effect, timeline) { super(); this.effect = effect || null; this.timeline = timeline || null; this.id = ''; this.playState = 'idle'; this.playbackRate = 1; this.startTime = null; this.currentTime = null; this.pending = false; this.onfinish = null; this.oncancel = null; this.onremove = null; this.replaceState = 'active'; this._timer = 0; this._makeFinished(); this.ready = Promise.resolve(this); }
+    constructor(effect, timeline) {
+      super();
+      this.effect = effect || null; if (this.effect) this.effect._animation = this;
+      this.timeline = timeline === undefined ? global.document.timeline : timeline;
+      this.id = ''; this._rate = 1; this._start = null; this._hold = null; this._state = 'idle';
+      this.onfinish = null; this.oncancel = null; this.onremove = null; this.replaceState = 'active'; this._timer = 0; this._uid = nextAnimationId++; this._sent = false;
+      this._makeFinished(); this.ready = Promise.resolve(this);
+    }
     _makeFinished() { this.finished = new Promise((resolve, reject) => { this._resolve = resolve; this._reject = reject; }); this.finished.catch(() => {}); }
-    play() { if (this.playState === 'finished' || this.playState === 'idle' || this.playState === 'paused') { if (this.playState === 'finished') this._makeFinished(); this.playState = 'running'; this.startTime = performanceNow(); this.currentTime = 0; const t = this.effect ? this.effect.getComputedTiming() : { endTime: 0 }; if (!animations.includes(this)) animations.push(this); clearTimeout(this._timer); if (t.endTime === Infinity) return; this._timer = setTimeout(() => this._finish(), Math.max(0, t.endTime)); } }
-    pause() { if (this.playState === 'running') { this.playState = 'paused'; clearTimeout(this._timer); } }
-    reverse() { this.play(); }
-    updatePlaybackRate(r) { this.playbackRate = r; }
+    get playState() { return this._state; }
+    get pending() { return false; }
+    get playbackRate() { return this._rate; }
+    set playbackRate(r) { this.updatePlaybackRate(r); }
+    get startTime() { return this._start; }
+    set startTime(t) { this._hold = null; this._start = t == null ? null : Number(t); this._state = this._start == null ? 'idle' : 'running'; this._sync(); this._schedule(); }
+    get currentTime() { if (this._hold != null) return this._hold; if (this._start == null) return null; return (performanceNow() - this._start) * this._rate; }
+    set currentTime(t) { t = Number(t); if (this._state === 'running') this._start = performanceNow() - t / this._rate; else { this._hold = t; if (this._state === 'idle' || this._state === 'finished') this._state = 'paused'; } this._sync(); this._schedule(); }
+    _end() { return this.effect ? this.effect._endTime() : 0; }
+    _fills() { const f = this.effect ? this.effect._options.fill : 'none'; return f === 'forwards' || f === 'both'; }
+    // The engine's copy: its frames and timing, now.
+    _sync() {
+      const e = this.effect; const el = e && e.target;
+      if (!e || !el || N.nodeType(el) !== 1 || this._state === 'idle' || (this._state === 'finished' && !this._fills()) || !e._frames.length) { if (this._sent) { N.animationRemove(this._uid); this._sent = false; } return; }
+      const o = e._options; const iterations = e._iterations();
+      N.animationSet(el, JSON.stringify({ id: this._uid, frames: e._frames.map((f) => ({ offset: f.offset, easing: f.easing, values: f.values })), duration: e._duration(), delay: Number(o.delay) || 0, endDelay: Number(o.endDelay) || 0, iterations: iterations === Infinity ? 'Infinity' : iterations, direction: String(o.direction), fill: String(o.fill), easing: String(o.easing), startMs: this._start == null ? 0 : this._start, rate: this._rate, heldMs: this._hold }));
+      this._sent = true;
+    }
+    // Its finish, when it will come: a timer then.
+    _schedule() {
+      clearTimeout(this._timer);
+      if (this._state !== 'running') return;
+      const end = this._end(); const t = this.currentTime;
+      if (end === Infinity) return;
+      const remaining = this._rate > 0 ? (end - t) / this._rate : this._rate < 0 ? t / -this._rate : Infinity;
+      if (remaining === Infinity) return;
+      this._timer = setTimeout(() => this._finishIfDone(), Math.max(0, remaining));
+    }
+    _finishIfDone() { if (this._state !== 'running') return; const t = this.currentTime; if ((this._rate > 0 && t >= this._end()) || (this._rate < 0 && t <= 0)) this._finished(); else this._schedule(); }
+    _finished() {
+      this._hold = this._rate < 0 ? 0 : this._end(); this._start = null; this._state = 'finished';
+      this._sync();
+      if (this._fills()) this._replaceOthers();
+      this._resolve(this);
+      const ev = new Event('finish'); ev.currentTime = this._hold; ev.timelineTime = performanceNow(); dispatch(this, ev);
+      if (!this._fills()) { const i = animations.indexOf(this); if (i >= 0) animations.splice(i, 1); }
+    }
+    // Older filling animations of its element whose properties it covers
+    // are removed (Web Animations 1 §5.5: an element filling forever would
+    // keep them all).
+    _replaceOthers() {
+      const el = this.effect && this.effect.target; if (!el) return;
+      const mine = new Set(); for (const f of this.effect._frames) for (const [n] of f.values) mine.add(n);
+      for (const a of animations.slice()) {
+        if (a === this || a._state !== 'finished' || a.replaceState !== 'active' || !a.effect || a.effect.target !== el || a._uid > this._uid) continue;
+        const theirs = new Set(); for (const f of a.effect._frames) for (const [n] of f.values) theirs.add(n);
+        if ([...theirs].every((n) => mine.has(n))) { a.replaceState = 'removed'; if (a._sent) { N.animationRemove(a._uid); a._sent = false; } const i = animations.indexOf(a); if (i >= 0) animations.splice(i, 1); dispatch(a, new Event('remove')); }
+      }
+    }
+    play() {
+      const end = this._end(); const t = this.currentTime;
+      if (this._state === 'finished' || this._state === 'idle' || t == null || (this._rate > 0 && (t < 0 || t >= end)) || (this._rate < 0 && (t <= 0 || t > end))) {
+        if (this._state === 'finished') this._makeFinished();
+        this._hold = this._rate < 0 ? end : 0;
+      }
+      if (this._hold != null) { this._start = performanceNow() - this._hold / (this._rate || 1); this._hold = null; }
+      this._state = 'running';
+      if (!animations.includes(this)) animations.push(this);
+      this._sync(); this._schedule();
+    }
+    pause() { if (this._state === 'idle' && this._hold == null) this._hold = this._rate < 0 ? this._end() : 0; else if (this._state === 'running') this._hold = this.currentTime; this._start = null; this._state = 'paused'; clearTimeout(this._timer); if (!animations.includes(this)) animations.push(this); this._sync(); }
+    reverse() { const t = this.currentTime; this._rate = -this._rate; if (t != null && this._state === 'running') this._start = performanceNow() - t / this._rate; this.play(); }
+    updatePlaybackRate(r) { r = Number(r); const t = this.currentTime; this._rate = r; if (this._state === 'running' && t != null && r) this._start = performanceNow() - t / r; this._sync(); this._schedule(); }
     persist() { this.replaceState = 'persisted'; }
-    commitStyles() { const last = this.effect && this.effect._last(); const el = this.effect && this.effect.target; if (!last || !el || N.nodeType(el) !== 1) return; const style = el.style; for (const k of Object.keys(last)) { try { style[k] = String(last[k]); } catch (e) {} } }
-    _finish() { if (this.playState !== 'running') return; clearTimeout(this._timer); this.playState = 'finished'; const t = this.effect ? this.effect.getComputedTiming() : null; this.currentTime = t ? t.endTime : 0; const fill = t && t.fill; if (fill === 'forwards' || fill === 'both') this.commitStyles(); const i = animations.indexOf(this); if (i >= 0 && !(fill === 'forwards' || fill === 'both')) animations.splice(i, 1); this._resolve(this); const ev = new Event('finish'); ev.currentTime = this.currentTime; ev.timelineTime = performanceNow(); dispatch(this, ev); }
-    finish() { if (this.playState === 'idle') return; if (this.playState !== 'running') { this.playState = 'running'; } this._finish(); }
-    cancel() { if (this.playState === 'idle') return; clearTimeout(this._timer); const was = this.playState; this.playState = 'idle'; this.currentTime = null; this.startTime = null; const i = animations.indexOf(this); if (i >= 0) animations.splice(i, 1); if (was !== 'finished') { this._reject(new DOMException('The user aborted a request.', 'AbortError')); this._makeFinished(); } dispatch(this, new Event('cancel')); }
+    commitStyles() {
+      const e = this.effect; const el = e && e.target; if (!el || N.nodeType(el) !== 1 || !e._frames.length) return;
+      // The values at its end (or start), where it rests: what a filling
+      // animation shows once finished.
+      const at = this._rate < 0 ? e._frames[0] : e._frames[e._frames.length - 1];
+      for (const [n, v] of at.values) { try { el.style.setProperty(n, v); } catch (err) {} }
+    }
+    finish() { if (this._rate === 0 || (this._rate > 0 && this._end() === Infinity)) throw new DOMException('Cannot finish an infinite animation.', 'InvalidStateError'); if (!animations.includes(this)) animations.push(this); this._finished(); }
+    cancel() {
+      if (this._state === 'idle') return;
+      clearTimeout(this._timer);
+      const was = this._state; this._state = 'idle'; this._start = null; this._hold = null;
+      this._sync();
+      const i = animations.indexOf(this); if (i >= 0) animations.splice(i, 1);
+      if (was !== 'finished') { this._reject(new DOMException('The user aborted a request.', 'AbortError')); this._makeFinished(); }
+      dispatch(this, new Event('cancel'));
+    }
   }
-  global.Animation = Animation; global.KeyframeEffect = KeyframeEffect; global.AnimationEffect = KeyframeEffect; global.DocumentTimeline = class DocumentTimeline { constructor() { this.currentTime = performanceNow(); } }; global.AnimationTimeline = global.DocumentTimeline;
+  global.Animation = Animation; global.KeyframeEffect = KeyframeEffect; global.AnimationEffect = KeyframeEffect;
+  global.DocumentTimeline = class DocumentTimeline { get currentTime() { return performanceNow(); } }; global.AnimationTimeline = global.DocumentTimeline;
   global.CSS = { supports: (p, v) => { const text = v === undefined ? String(p) : String(p) + ':' + String(v); return !/\b(anchor|@container|scroll-timeline)\b/.test(text); }, escape: (s) => String(s).replace(/([^\w-])/g, '\\$1'), px: (v) => v + 'px', registerProperty() {}, paintWorklet: { addModule: () => Promise.resolve() }, highlights: new Map() };
   // CSSOM sheets (CSSOM §6): a <style>'s sheet holds its rules as text;
   // insertRule and deleteRule (styled-components and emotion add every
