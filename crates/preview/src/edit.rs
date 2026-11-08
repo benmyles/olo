@@ -36,6 +36,20 @@ pub enum Op {
 }
 
 impl Op {
+    /// What a step of it is called (Edit ▸ Undo *Rotate Left*).
+    pub fn name(&self) -> &'static str {
+        match self {
+            Op::RotateLeft => "Rotate Left",
+            Op::RotateRight => "Rotate Right",
+            Op::FlipHorizontal => "Flip Horizontal",
+            Op::FlipVertical => "Flip Vertical",
+            Op::Crop { .. } => "Crop",
+            Op::Resize { .. } => "Resize",
+        }
+    }
+}
+
+impl Op {
     pub fn apply(&self, img: &DynamicImage) -> DynamicImage {
         match *self {
             Op::RotateLeft => img.rotate270(),
@@ -141,6 +155,15 @@ impl Editor {
 
     pub fn can_undo(&self) -> bool {
         !self.ops.is_empty()
+    }
+
+    /// What Undo and Redo would take back, by name (Edit ▸ Undo Crop).
+    pub fn undo_name(&self) -> Option<&'static str> {
+        self.ops.last().map(Op::name)
+    }
+
+    pub fn redo_name(&self) -> Option<&'static str> {
+        self.undone.last().map(Op::name)
     }
 
     pub fn can_redo(&self) -> bool {

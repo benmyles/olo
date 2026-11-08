@@ -27,9 +27,10 @@ something nobody here has is in "Blocked", with what it waits for.
   desktop's icons dragged or cleaned up),
   Preferences (every panel's settings) and Passwords (items changed,
   made, deleted; not the Archive, which nothing takes an item out of
-  yet) on it. Left, each app looked at for what should undo and put on
-  it: StyledEdit's and the Viewer's own undo (and text fields') matched
-  to it or moved onto it; Deskbar's moves;
+  yet) on it; StyledEdit's and the Viewer's own (pictures, videos,
+  PDFs) named as it names them, and text fields' typing undone a run at
+  a time. Left, each app looked at for what should undo and put on
+  it: Deskbar's moves;
   Terminal's tab and pane changes (a closed tab can't come back with its
   process: say so); app_server's ⌃⌘Z window arrangement matched (named,
   Redo); and the rest (Notes, DeskCalc's tape, …).

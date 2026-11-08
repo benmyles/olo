@@ -889,13 +889,7 @@ impl Doc {
                 // Editing: its steps, undone and done again, and its tools.
                 Some(e) => {
                     let busy = e.exporting.is_some();
-                    Menu::new("Edit")
-                        .item("Undo", "edit-undo")
-                        .key("z")
-                        .enabled(e.can_undo() && !busy)
-                        .item("Redo", "edit-redo")
-                        .shift_key("z")
-                        .enabled(e.can_redo() && !busy)
+                    olo_ui::undo::edit_items_as(Menu::new("Edit"), e.undo_name().filter(|_| !busy), e.redo_name().filter(|_| !busy), ("edit-undo", "edit-redo"))
                         .separator()
                         .item("Cut", "edit-cut")
                         .key("x")
@@ -957,17 +951,11 @@ impl Doc {
             );
         }
         if picture {
-            menus.push(Menu::new("Edit").item("Undo", "undo").key("z").enabled(editor.is_some_and(|e| e.can_undo())).item("Redo", "redo").shift_key("z").enabled(editor.is_some_and(|e| e.can_redo())));
+            menus.push(olo_ui::undo::edit_items_named(Menu::new("Edit"), editor.and_then(|e| e.undo_name()), editor.and_then(|e| e.redo_name())));
         }
         if let Some(v) = pdf {
             menus.push(
-                Menu::new("Edit")
-                    .item("Undo", "undo")
-                    .key("z")
-                    .enabled(v.can_undo())
-                    .item("Redo", "redo")
-                    .shift_key("z")
-                    .enabled(v.can_redo())
+                olo_ui::undo::edit_items_named(Menu::new("Edit"), v.undo_name(), v.redo_name())
                     .separator()
                     .item("Copy", "copy")
                     .key("c")

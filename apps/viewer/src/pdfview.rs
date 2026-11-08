@@ -144,8 +144,8 @@ pub struct PdfView {
     editor: Option<(Entity<TextField>, Vec<Subscription>)>,
     drag: Option<Drag>,
     stroke: Vec<[f32; 2]>,
-    undo: Vec<Model>,
-    redo: Vec<Model>,
+    undo: Vec<(String, Model)>,
+    redo: Vec<(String, Model)>,
     /// An edit session pushed its undo snapshot already.
     snapshot_taken: bool,
     pub current_page: usize,
@@ -576,8 +576,9 @@ impl PdfView {
 
     // ---- editing ---------------------------------------------------------
 
-    fn push_undo(&mut self) {
-        self.undo.push(self.model.clone());
+    /// The document as it is now kept for Undo, the step named `name`.
+    fn push_undo(&mut self, name: &str) {
+        self.undo.push((name.to_owned(), self.model.clone()));
         if self.undo.len() > 200 {
             self.undo.remove(0);
         }
@@ -592,10 +593,20 @@ impl PdfView {
         !self.redo.is_empty()
     }
 
+    /// What Undo and Redo would take back, by name (text being typed and
+    /// not yet a step: Typing).
+    pub fn undo_name(&self) -> Option<&str> {
+        self.undo.last().map(|(n, _)| n.as_str()).or_else(|| self.editing_changed().then_some("Typing"))
+    }
+
+    pub fn redo_name(&self) -> Option<&str> {
+        self.redo.last().map(|(n, _)| n.as_str())
+    }
+
     pub fn undo(&mut self, cx: &mut Context<Self>) {
         self.end_editing(cx);
-        if let Some(m) = self.undo.pop() {
-            self.redo.push(std::mem::replace(&mut self.model, m));
+        if let Some((name, m)) = self.undo.pop() {
+            self.redo.push((name, std::mem::replace(&mut self.model, m)));
             self.sel = None;
         }
         cx.notify();
@@ -603,8 +614,8 @@ impl PdfView {
 
     pub fn redo(&mut self, cx: &mut Context<Self>) {
         self.end_editing(cx);
-        if let Some(m) = self.redo.pop() {
-            self.undo.push(std::mem::replace(&mut self.model, m));
+        if let Some((name, m)) = self.redo.pop() {
+            self.undo.push((name, std::mem::replace(&mut self.model, m)));
             self.sel = None;
         }
         cx.notify();
@@ -618,7 +629,7 @@ impl PdfView {
         if let (Some(Sel::Mark(i)), None) = (self.sel, self.editing)
             && i < self.model.marks.len()
         {
-            self.push_undo();
+            self.push_undo("Delete");
             self.model.marks.remove(i);
             self.sel = None;
             cx.notify();
@@ -637,7 +648,7 @@ impl PdfView {
                     && field.value != Value::Text(text.clone())
                 {
                     if !self.snapshot_taken {
-                        self.push_undo();
+                        self.push_undo("Typing");
                     }
                     self.model.fields[f].value = Value::Text(text);
                 }
@@ -649,7 +660,7 @@ impl PdfView {
                 if text.trim().is_empty() {
                     // An empty text box goes away (undoably, if it had text).
                     if !old.is_empty() && !self.snapshot_taken {
-                        self.push_undo();
+                        self.push_undo("Delete");
                     }
                     self.model.marks.remove(i);
                     self.sel = None;
@@ -657,7 +668,7 @@ impl PdfView {
                 }
                 if *old != text {
                     if !self.snapshot_taken {
-                        self.push_undo();
+                        self.push_undo("Typing");
                     }
                     let mark = &mut self.model.marks[i];
                     let h = pdfdoc::text_mark_height(&text, size, mark.rect[2] - mark.rect[0]);
@@ -705,7 +716,7 @@ impl PdfView {
             TextFieldEvent::Changed => {
                 let now = e.read(cx).text().to_owned();
                 if now != v.buffer && !v.snapshot_taken {
-                    v.undo.push(v.model.clone());
+                    v.undo.push(("Typing".into(), v.model.clone()));
                     v.redo.clear();
                     v.snapshot_taken = true;
                 }
@@ -731,13 +742,13 @@ impl PdfView {
             (FieldKind::Check, Value::State(s)) => {
                 let on = field.widgets[w].on.clone();
                 let new = if s.is_some() { None } else { on };
-                self.push_undo();
+                self.push_undo("Check");
                 self.model.fields[f].value = Value::State(new);
             }
             (FieldKind::Radio, _) => {
                 let on = field.widgets[w].on.clone();
                 if field.value != Value::State(on.clone()) {
-                    self.push_undo();
+                    self.push_undo("Choice");
                     self.model.fields[f].value = Value::State(on);
                 }
             }
@@ -801,7 +812,7 @@ impl PdfView {
         let inv = invert(&g.transform);
         let p = apply(&inv, (centre[0] - pr.x0) / self.zoom, (centre[1] - pr.y0) / self.zoom);
         let rect = [p[0] - width / 2.0, p[1] - height / 2.0, p[0] + width / 2.0, p[1] + height / 2.0];
-        self.push_undo();
+        self.push_undo("Signature");
         self.model.marks.push(Mark { id: None, page, rect, color: self.ink, kind: MarkKind::Ink { strokes, width: 1.6, signature: true } });
         self.sel = Some(Sel::Mark(self.model.marks.len() - 1));
         self.tool = Tool::Select;
@@ -960,7 +971,7 @@ impl PdfView {
             Tool::Select => {
                 if let Some((i, corner)) = self.corner_at(page, pr, at) {
                     self.end_editing(cx);
-                    self.push_undo();
+                    self.push_undo("Resize");
                     self.drag = Some(Drag::Resize { mark: i, corner, start: self.model.marks[i].rect });
                 } else if let Some(i) = self.mark_at(page, pr, at) {
                     if self.editing != Some(Editing::Mark(i)) {
@@ -970,7 +981,7 @@ impl PdfView {
                     if e.click_count >= 2 && matches!(self.model.marks[i].kind, MarkKind::Text { .. }) {
                         self.start_mark_text(i, window, cx);
                     } else {
-                        self.push_undo();
+                        self.push_undo("Move");
                         self.drag = Some(Drag::Move { mark: i, start: self.model.marks[i].rect, grab: self.user_point(page, pr, at), moved: false });
                     }
                 } else {
@@ -1002,7 +1013,7 @@ impl PdfView {
                         {
                             let value = Value::Text(export.clone());
                             if v.model.fields[fi].value != value {
-                                v.push_undo();
+                                v.push_undo("Choice");
                                 v.model.fields[fi].value = value;
                                 cx.notify();
                             }
@@ -1017,7 +1028,7 @@ impl PdfView {
                 if let Some((export, _)) = options.get(row) {
                     let value = Value::Text(export.clone());
                     if field.value != value {
-                        self.push_undo();
+                        self.push_undo("Choice");
                         self.model.fields[fi].value = value;
                         cx.notify();
                     }
@@ -1169,7 +1180,7 @@ impl PdfView {
         let size = 12.0;
         let width = 180.0f32.min(g.size.0 - ((at[0] - pr.x0) / self.zoom) - 8.0).max(60.0);
         let h = pdfdoc::text_mark_height("", size, width);
-        self.push_undo();
+        self.push_undo("Text Box");
         self.snapshot_taken = true;
         self.model.marks.push(Mark { id: None, page, rect: [u[0], u[1] - h / 2.0, u[0] + width, u[1] + h / 2.0], color: self.ink, kind: MarkKind::Text { text: String::new(), size } });
         let i = self.model.marks.len() - 1;
@@ -1197,7 +1208,7 @@ impl PdfView {
         let rect = [x0 - pad, y0 - pad, x1 + pad, y1 + pad];
         let (w, h) = (rect[2] - rect[0], rect[3] - rect[1]);
         let stroke = pts.iter().map(|p| [(p[0] - rect[0]) / w, (p[1] - rect[1]) / h]).collect();
-        self.push_undo();
+        self.push_undo("Drawing");
         self.model.marks.push(Mark { id: None, page, rect, color: self.ink, kind: MarkKind::Ink { strokes: vec![stroke], width, signature: false } });
     }
 

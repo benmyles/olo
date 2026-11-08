@@ -2168,8 +2168,18 @@ event reaches it.
   took them (a text field's ⌘Z is its own). Agents and the command
   palette find Undo and Redo among the app's menus (the bar's, or
   `agent::set_menus`). Tracker (files: undo.rs) and Preferences
-  (settings: undo.rs) use it; what's left is in TODO ("Undo everywhere
-  it makes sense").
+  (settings: undo.rs) use it. An app that keeps its steps its own way
+  names them alike with `undo::edit_items_named(menu, undo, redo)` (each
+  the next step's name, None for none; `edit_items_as` with commands of
+  its own): StyledEdit's document (each step named by the command that
+  made it, `Doc::name_next`, else by the edit: Typing, Delete, Move,
+  Replace All, Table…), the Viewer's picture edits (`Op::name`: Rotate
+  Left, Crop…), its video edits (Cut, Add Mark, Trim, Mute…) and its
+  PDFs' (Typing, Check, Choice, Move, Resize, Drawing, Signature…); their
+  toolbars' tips are the menus', so they say it too. A text field's own
+  Undo takes back a run of typing at once (letters typed where the last
+  went, within 1.5 s: one step, a space starting the next), as the kit's
+  runs do. What's left is in TODO ("Undo everywhere it makes sense").
 - `WindowOptions::floating()`: the xdg-toplevel-tag `floating`, so
   app_server floats it over auto-tiled windows. `child()`: the window
   belongs to the app's window that has the keyboard (its xdg parent:

@@ -317,6 +317,8 @@ struct State {
     paras: Vec<Para>,
     /// Selection to restore.
     selection: Range<usize>,
+    /// What to call it (Edit ▸ Undo *Typing*).
+    name: String,
 }
 
 /// What an edit did to the text: bytes `removed` became `inserted` bytes
@@ -355,6 +357,8 @@ pub struct Doc {
     clip: Option<(String, Vec<Run>)>,
     undo: Vec<State>,
     redo: Vec<State>,
+    /// The next step's name, as the command making it says (`name_next`).
+    naming: Option<String>,
     last_edit: Option<(EditKind, Instant, usize)>,
     /// Bumped on every change (for layout caching and "edited").
     pub generation: u64,
@@ -454,6 +458,7 @@ impl Doc {
             clip: None,
             undo: Vec::new(),
             redo: Vec::new(),
+            naming: None,
             last_edit: None,
             generation: 1,
             saved_generation: 1,
@@ -595,7 +600,7 @@ impl Doc {
         if changed == self.paras {
             return;
         }
-        self.push_undo(selection.start..selection.start, 0, selection);
+        self.push_undo(selection.start..selection.start, 0, selection, "Paragraph");
         self.last_edit = None;
         self.paras = changed;
         self.redo.clear();
@@ -607,7 +612,7 @@ impl Doc {
     pub fn set_kind(&mut self, range: Range<usize>, selection: Range<usize>, kind: Kind) {
         let r = self.paras_in(range.clone());
         let bytes = self.para_range(r.start).start..self.para_range(r.end - 1).end;
-        self.push_undo(selection.start..selection.start, 0, selection);
+        self.push_undo(selection.start..selection.start, 0, selection, "Paragraph Style");
         self.last_edit = None;
         for p in &mut self.paras[r] {
             p.kind = kind;
@@ -697,7 +702,13 @@ impl Doc {
         if joins {
             self.extend_undo(removed.clone(), inserted.len());
         } else {
-            self.push_undo(removed.clone(), inserted.len(), selection);
+            let name = match kind {
+                EditKind::Typing => "Typing",
+                EditKind::Deleting => "Delete",
+                EditKind::Other if inserted.is_empty() => "Delete",
+                EditKind::Other => "Typing",
+            };
+            self.push_undo(removed.clone(), inserted.len(), selection, name);
         }
         self.last_edit = Some((kind, Instant::now(), p + inserted.len()));
         self.splice(removed, inserted);
@@ -772,7 +783,7 @@ impl Doc {
         let (first, last) = (ranges.first()?, ranges.last()?);
         let removed = first.start..last.end;
         let inserted = removed.len() + ranges.len() * with.len() - ranges.iter().map(|r| r.len()).sum::<usize>();
-        self.push_undo(removed.clone(), inserted, selection);
+        self.push_undo(removed.clone(), inserted, selection, if ranges.len() > 1 { "Replace All" } else { "Replace" });
         self.last_edit = None;
         self.typing = None;
         for r in ranges.iter().rev() {
@@ -784,11 +795,12 @@ impl Doc {
     }
 
     /// Before bytes `removed` become `inserted` bytes: a step to undo it.
-    fn push_undo(&mut self, removed: Range<usize>, inserted: usize, selection: Range<usize>) {
+    fn push_undo(&mut self, removed: Range<usize>, inserted: usize, selection: Range<usize>, name: &str) {
         // (Text alone, source code's or Markdown's, has no paragraph
         // settings to keep: a long one's aren't copied for each step.)
         let paras = if self.edits.is_some() { Vec::new() } else { self.paras.clone() };
-        self.undo.push(State { at: removed.start, now: inserted, was: self.text[removed].to_owned(), runs: self.runs.clone(), paras, selection });
+        let name = self.naming.take().unwrap_or_else(|| name.to_owned());
+        self.undo.push(State { at: removed.start, now: inserted, was: self.text[removed].to_owned(), runs: self.runs.clone(), paras, selection, name });
         // Plenty, without keeping every keystroke of a long session.
         if self.undo.len() > 500 {
             self.undo.remove(0);
@@ -819,7 +831,7 @@ impl Doc {
             self.typing = Some((range.start, style));
             return;
         }
-        self.push_undo(range.start..range.start, 0, selection);
+        self.push_undo(range.start..range.start, 0, selection, "Style");
         self.last_edit = None;
         let start = split_at(&mut self.runs, range.start);
         let end = split_at(&mut self.runs, range.end);
@@ -843,7 +855,7 @@ impl Doc {
         let clip = self.clip.take();
         self.copied(from.clone());
         let region = from.start.min(to)..from.end.max(to);
-        self.push_undo(region.clone(), region.len(), selection);
+        self.push_undo(region.clone(), region.len(), selection, "Move");
         self.last_edit = None;
         self.typing = None;
         self.splice(from.clone(), "");
@@ -866,6 +878,21 @@ impl Doc {
 
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
+    }
+
+    /// The step the command about to run makes, named (Edit ▸ Undo *Bold*)
+    /// in place of what the edit would call it; `None` again after.
+    pub fn name_next(&mut self, name: Option<&str>) {
+        self.naming = name.map(str::to_owned);
+    }
+
+    /// What Undo and Redo would take back, by name.
+    pub fn undo_name(&self) -> Option<&str> {
+        self.undo.last().map(|s| s.name.as_str())
+    }
+
+    pub fn redo_name(&self) -> Option<&str> {
+        self.redo.last().map(|s| s.name.as_str())
     }
 
     pub fn can_redo(&self) -> bool {
@@ -897,6 +924,7 @@ impl Doc {
             runs: std::mem::replace(&mut self.runs, s.runs),
             paras: if text_only { Vec::new() } else { std::mem::replace(&mut self.paras, s.paras) },
             selection,
+            name: s.name,
         };
         self.note_edit(&removed, &s.was);
         self.text.replace_range(removed.clone(), &s.was);
@@ -925,7 +953,7 @@ impl Doc {
         style.picture = Some(pic);
         style.link = None;
         let ch = PICTURE.to_string();
-        self.push_undo(range.clone(), ch.len(), selection);
+        self.push_undo(range.clone(), ch.len(), selection, "Insert Picture");
         self.last_edit = None;
         let clip = self.clip.take();
         self.typing = Some((range.start, style));
@@ -968,7 +996,7 @@ impl Doc {
     pub fn replace_paras(&mut self, ranges: &[Range<usize>], with: &str, selection: Range<usize>, after: impl Fn(&Doc) -> Range<usize>, set: impl Fn(usize, &mut Para)) -> Option<Change> {
         let change = if ranges.iter().all(|r| r.is_empty()) && with.is_empty() {
             // Only the paragraphs: a step of its own still.
-            self.push_undo(selection.start..selection.start, 0, selection);
+            self.push_undo(selection.start..selection.start, 0, selection, "Table");
             self.redo.clear();
             self.generation += 1;
             Change { removed: 0..0, inserted: 0 }
@@ -1268,6 +1296,31 @@ mod tests {
         assert_eq!(lens(&d), [(5, false)]);
         d.redo(0..5);
         assert_eq!(lens(&d), [(5, true)]);
+    }
+
+    /// Each step named: typing, a command's own (Bold), a deletion; the
+    /// names going back and forth with Undo and Redo, and a name given
+    /// for one step only.
+    #[test]
+    fn steps_are_named() {
+        let mut d = Doc::new(String::new(), None);
+        d.edit(0..0, "h", 0..0);
+        d.edit(1..1, "i", 1..1);
+        assert_eq!(d.undo_name(), Some("Typing"));
+        d.name_next(Some("Bold"));
+        d.restyle(0..2, 0..2, |s| *s = bold());
+        d.name_next(None);
+        assert_eq!(d.undo_name(), Some("Bold"));
+        d.edit(1..2, "", 2..2);
+        assert_eq!(d.undo_name(), Some("Delete"));
+        d.undo(1..1);
+        assert_eq!((d.undo_name(), d.redo_name()), (Some("Bold"), Some("Delete")));
+        d.undo(2..2);
+        assert_eq!((d.undo_name(), d.redo_name()), (Some("Typing"), Some("Bold")));
+        d.redo(2..2);
+        assert_eq!(d.redo_name(), Some("Delete"));
+        d.edit(2..2, "!", 2..2);
+        assert_eq!(d.undo_name(), Some("Typing"), "a name given once, not kept");
     }
 
     #[test]

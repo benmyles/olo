@@ -370,6 +370,8 @@ impl editor::Document for Styled<'_> {
 
     fn replace(&mut self, range: Range<usize>, text: &str, selection: Range<usize>) {
         self.doc.edit(range, text, selection);
+        // (A paste's name taken: none left for what's typed next.)
+        self.doc.name_next(None);
         self.sync();
     }
 
@@ -922,6 +924,17 @@ impl DocView {
         if !self.mode.is_styled() && style_command {
             return;
         }
+        // The step it makes, named for it (Edit ▸ Undo Bold); a paste's
+        // name is taken by the paste, which comes after.
+        self.doc.name_next(step_name(command));
+        self.doc_command(command, window, cx);
+        if command != "paste" {
+            self.doc.name_next(None);
+        }
+    }
+
+    /// The document's part of `command`: undo, the clipboard, styles.
+    fn doc_command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
         let selection = self.bytes();
         let bytes = selection.clone();
         let restyle = |d: &mut DocView, f: &dyn Fn(&mut Style)| {
@@ -1073,6 +1086,30 @@ impl DocView {
         }
         cx.notify();
     }
+}
+
+/// What the step a command makes is called (Edit ▸ Undo *Bold*); None:
+/// what the edit calls it.
+fn step_name(command: &str) -> Option<&'static str> {
+    Some(match command {
+        "cut" => "Cut",
+        "clear" => "Delete",
+        "paste" => "Paste",
+        "bold" => "Bold",
+        "italic" => "Italic",
+        "underline" => "Underline",
+        "strikeout" => "Strikeout",
+        "indent-more" | "indent-less" => "Indent",
+        "list-bullet" | "list-number" => "List",
+        c if c.starts_with("align-") => "Alignment",
+        c if c.starts_with("kind:") => "Paragraph Style",
+        c if c.starts_with("size:") => "Size",
+        c if c.starts_with("color:") => "Color",
+        c if c.starts_with("family:") => "Font",
+        c if c.starts_with("table:") => "Table",
+        c if c.starts_with("picture:") => "Picture Size",
+        _ => return None,
+    })
 }
 
 /// Font ▸ Size, checking the size where the selection starts.
@@ -1236,13 +1273,8 @@ fn doc_menus(app: &Common, d: &DocView, ink: gpui::Hsla) -> Vec<Menu> {
         .key("q");
     // The picture selected, alone.
     let picked = picture_selected(&d.doc, d.bytes());
-    let edit = Menu::new("Edit")
-        .item("Undo", "undo")
-        .key("z")
-        .enabled(editable && d.doc.can_undo())
-        .item("Redo", "redo")
-        .shift_key("z")
-        .enabled(editable && d.doc.can_redo())
+    // (Each step named, as every app's: Undo Typing, Redo Bold.)
+    let edit = olo_ui::undo::edit_items_named(Menu::new("Edit"), d.doc.undo_name().filter(|_| editable), d.doc.redo_name().filter(|_| editable))
         .separator()
         .item("Cut", "cut")
         .key("x")
