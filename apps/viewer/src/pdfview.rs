@@ -585,14 +585,6 @@ impl PdfView {
         self.redo.clear();
     }
 
-    pub fn can_undo(&self) -> bool {
-        !self.undo.is_empty() || self.editing_changed()
-    }
-
-    pub fn can_redo(&self) -> bool {
-        !self.redo.is_empty()
-    }
-
     /// What Undo and Redo would take back, by name (text being typed and
     /// not yet a step: Typing).
     pub fn undo_name(&self) -> Option<&str> {

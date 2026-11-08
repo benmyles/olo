@@ -876,10 +876,6 @@ impl Doc {
         self.clip = Some((text, runs[start..end].to_vec()));
     }
 
-    pub fn can_undo(&self) -> bool {
-        !self.undo.is_empty()
-    }
-
     /// The step the command about to run makes, named (Edit ▸ Undo *Bold*)
     /// in place of what the edit would call it; `None` again after.
     pub fn name_next(&mut self, name: Option<&str>) {
@@ -893,10 +889,6 @@ impl Doc {
 
     pub fn redo_name(&self) -> Option<&str> {
         self.redo.last().map(|s| s.name.as_str())
-    }
-
-    pub fn can_redo(&self) -> bool {
-        !self.redo.is_empty()
     }
 
     /// Step back; returns the selection to show and what changed.
@@ -1288,7 +1280,7 @@ mod tests {
         assert_eq!(d.text(), "hello");
         d.undo(5..5);
         assert_eq!(d.text(), "");
-        assert!(!d.can_undo());
+        assert!(d.undo_name().is_none());
         d.redo(0..0);
         assert_eq!(d.text(), "hello");
         d.restyle(0..5, 0..5, |s| *s = bold());

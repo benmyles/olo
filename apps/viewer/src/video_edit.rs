@@ -189,14 +189,6 @@ impl VideoEdit {
         self.note = None;
     }
 
-    pub fn can_undo(&self) -> bool {
-        !self.undo.is_empty()
-    }
-
-    pub fn can_redo(&self) -> bool {
-        !self.redo.is_empty()
-    }
-
     /// What Undo and Redo would take back, by name.
     pub fn undo_name(&self) -> Option<&str> {
         self.undo.last().map(|(n, _)| n.as_str())
