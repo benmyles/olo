@@ -98,10 +98,10 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   inserts, `<picture>` sources changed, `noscript.innerHTML` as text),
   no touch handlers (it served the tablet page), inline-level absolute
   boxes at their place in the line, SVGs with only a viewBox fill the
-  width, a moved layer clipped on one axis shows. Open: `backdrop-filter`
-  (its nav: the page shows sharp through it; the fixed layer is
-  composited apart from the page, so the blur belongs in the window's
-  compositor), a space collapsed across an absolute box in a line (2 px),
+  width, a moved layer clipped on one axis shows. `backdrop-filter` on
+  fixed and sticky boxes blurs on the GPU (JOURNAL 2026-11-08; open: on
+  boxes painted with the page, filter functions other than blur and
+  saturate). Open: a space collapsed across an absolute box in a line (2 px),
   its iPhone Duo subhead animation, inline backgrounds.
 - [x] Lazy images' timer loop: web-vitals' capturing window `load`
   listener got every image's load event (load events don't reach the

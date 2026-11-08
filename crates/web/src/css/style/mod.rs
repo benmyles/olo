@@ -239,6 +239,7 @@ pub enum Value {
     Radius(p::Radius),
     Images(p::Images<color::Computed>),
     Shadows(p::Shadows<color::Computed>),
+    Filters(p::Filters),
     Sizes(p::Sizes),
     Positions(p::Positions),
     Repeats(p::Repeats),
@@ -264,6 +265,7 @@ impl Value {
             (Self::Radius(a), Self::Radius(b)) => a.same(b),
             (Self::Images(a), Self::Images(b)) => a.same(b),
             (Self::Shadows(a), Self::Shadows(b)) => a.same(b),
+            (Self::Filters(a), Self::Filters(b)) => a.same(b),
             (Self::Sizes(a), Self::Sizes(b)) => a.same(b),
             (Self::Positions(a), Self::Positions(b)) => a.same(b),
             (Self::Repeats(a), Self::Repeats(b)) => a.same(b),
@@ -291,6 +293,7 @@ impl Value {
             Self::Radius(r) => r.reserved_bytes(),
             Self::Images(i) => i.reserved_bytes(),
             Self::Shadows(s) => s.reserved_bytes(),
+            Self::Filters(f) => f.reserved_bytes(),
             Self::Sizes(s) => s.reserved_bytes(),
             Self::Positions(p) => p.reserved_bytes(),
             Self::Repeats(r) => r.reserved_bytes(),
@@ -380,6 +383,7 @@ fn paint_only(p: Property) -> bool {
             | P::BorderBottomColor
             | P::BorderLeftColor
             | P::BoxShadow
+            | P::BackdropFilter
             | P::Visibility
             | P::ZIndex
             | P::PointerEvents

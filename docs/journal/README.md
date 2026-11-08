@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: backdrop-filter on the GPU
+
+*03:08* — Top Olo, bottom Chrome: a fixed rounded header with backdrop-filter: saturate(180%) blur(10px) over stripes and text; within 1-4 of 255 of Chrome's pixels.
+
+![Browser: backdrop-filter on the GPU](2026-11-08/030857-browser-backdrop-filter-on-the-gpu.png)
+
 ### Browser: apple.com's Upgrade video plays
 
 *02:46* — The Upgrade tile's video, played by the page's script once it scrolls into view, ends on the Watch as in Chrome; Olo showed its start frame (an iPhone) before load() was honoured.

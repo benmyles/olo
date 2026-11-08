@@ -3994,5 +3994,11 @@
   "title": "Browser: apple.com's Upgrade video plays",
   "caption": "The Upgrade tile's video, played by the page's script once it scrolls into view, ends on the Watch as in Chrome; Olo showed its start frame (an iPhone) before load() was honoured.",
   "image": "2026-11-08/024615-browser-apple-com-s-upgrade-video-plays.png"
+ },
+ {
+  "time": "2026-11-08T03:08:57",
+  "title": "Browser: backdrop-filter on the GPU",
+  "caption": "Top Olo, bottom Chrome: a fixed rounded header with backdrop-filter: saturate(180%) blur(10px) over stripes and text; within 1-4 of 255 of Chrome's pixels.",
+  "image": "2026-11-08/030857-browser-backdrop-filter-on-the-gpu.png"
  }
 ]

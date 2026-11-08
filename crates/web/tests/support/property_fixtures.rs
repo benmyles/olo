@@ -44,9 +44,16 @@ fn compare(value: &Value, expected: &Json, property: &str) -> Check {
     let expected = expected.as_str().ok_or_else(|| unsupported("non-string scalar reference"))?;
     match value {
         Value::Tracks(_) | Value::GridLine(_) => Err(unsupported("grid value reference")),
-        Value::Radius(_) | Value::Images(_) | Value::Shadows(_) | Value::Sizes(_) | Value::Positions(_) | Value::Repeats(_) | Value::Transforms(_) | Value::Features(_) | Value::Content(_) => {
-            Err(unsupported("decoration value reference"))
-        }
+        Value::Radius(_)
+        | Value::Images(_)
+        | Value::Shadows(_)
+        | Value::Filters(_)
+        | Value::Sizes(_)
+        | Value::Positions(_)
+        | Value::Repeats(_)
+        | Value::Transforms(_)
+        | Value::Features(_)
+        | Value::Content(_) => Err(unsupported("decoration value reference")),
         Value::Numeric(n) => {
             let (reference, suffix) = scalar(expected).ok_or_else(|| unsupported("noncanonical numeric reference or relative host"))?;
             if suffix == "%" {

@@ -178,9 +178,26 @@ fn shader(image: &Image<crate::css::color::Computed>, current: crate::css::color
             let length = (w * sin).abs() + (h * cos).abs();
             let (cx, cy) = (area.x + w / 2., area.y + h / 2.);
             let dir = (sin, -cos);
-            let start = to_device(cx - dir.0 * length / 2., cy - dir.1 * length / 2.);
-            let end = to_device(cx + dir.0 * length / 2., cy + dir.1 * length / 2.);
-            let stops = gradient_stops(used_stops(stops, current, length));
+            let mut used = used_stops(stops, current, length);
+            // A repeating gradient repeats from its first stop to its last
+            // (CSS Images 3 §3.4), not over the whole line: the line is
+            // that span, its stops placed across it.
+            let (mut from, mut to) = (0f64, 1f64);
+            if *repeating && used.len() >= 2 {
+                let (f, l) = (f64::from(used[0].0), f64::from(used[used.len() - 1].0));
+                if l - f > 1e-6 {
+                    (from, to) = (f, l);
+                    for stop in &mut used {
+                        stop.0 = ((f64::from(stop.0) - f) / (l - f)) as f32;
+                    }
+                }
+            }
+            let along = |t: f64| (cx - dir.0 * length / 2. + dir.0 * length * t, cy - dir.1 * length / 2. + dir.1 * length * t);
+            let (sx, sy) = along(from);
+            let (ex, ey) = along(to);
+            let start = to_device(sx, sy);
+            let end = to_device(ex, ey);
+            let stops = gradient_stops(used);
             if stops.len() < 2 {
                 return None;
             }

@@ -158,6 +158,29 @@ struct ShaderImageTrianglesData {
     b_image_triangles: gpu::BufferPiece,
 }
 
+/// Olo: a backdrop pass's (see `shaders.wgsl`, backdrops).
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct BackdropParams {
+    bounds: PodBounds,
+    content_mask: PodBounds,
+    region: PodBounds,
+    corner_radii: [f32; 4],
+    direction: [f32; 2],
+    sigma: f32,
+    saturation: f32,
+    saturate_first: f32,
+    pad: [f32; 3],
+}
+
+#[derive(blade_macros::ShaderData)]
+struct ShaderBackdropData {
+    globals: GlobalParams,
+    backdrop_locals: BackdropParams,
+    t_backdrop: gpu::TextureView,
+    s_backdrop: gpu::Sampler,
+}
+
 #[derive(blade_macros::ShaderData)]
 struct ShaderSurfacesData {
     globals: GlobalParams,
@@ -194,6 +217,8 @@ pub(super) struct BladePipelines {
     poly_sprites: gpu::RenderPipeline,
     image_triangles: gpu::RenderPipeline,
     surfaces: gpu::RenderPipeline,
+    backdrop_blur: gpu::RenderPipeline,
+    backdrops: gpu::RenderPipeline,
 }
 
 impl BladePipelines {
@@ -211,6 +236,7 @@ impl BladePipelines {
         );
         shader.check_struct_size::<GlobalParams>();
         shader.check_struct_size::<SurfaceParams>();
+        shader.check_struct_size::<BackdropParams>();
         shader.check_struct_size::<Quad>();
         shader.check_struct_size::<Shadow>();
         shader.check_struct_size::<PathRasterizationVertex>();
@@ -436,6 +462,44 @@ impl BladePipelines {
                     multisample_state: gpu::MultisampleState::default(),
                 })
             });
+            // Olo: a blur pass writes its texels as they are (no blending).
+            let blur_targets = [gpu::ColorTargetState {
+                format: surface_info.format,
+                blend: None,
+                write_mask: gpu::ColorWrites::default(),
+            }];
+            let backdrop_blur = s.spawn(move || {
+                gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+                    name: "backdrop blur",
+                    data_layouts: &[&ShaderBackdropData::layout()],
+                    vertex: shader.at("vs_backdrop"),
+                    vertex_fetches: &[],
+                    primitive: gpu::PrimitiveState {
+                        topology: gpu::PrimitiveTopology::TriangleStrip,
+                        ..Default::default()
+                    },
+                    depth_stencil: None,
+                    fragment: Some(shader.at("fs_backdrop_blur")),
+                    color_targets: &blur_targets,
+                    multisample_state: gpu::MultisampleState::default(),
+                })
+            });
+            let backdrops = s.spawn(move || {
+                gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+                    name: "backdrops",
+                    data_layouts: &[&ShaderBackdropData::layout()],
+                    vertex: shader.at("vs_backdrop"),
+                    vertex_fetches: &[],
+                    primitive: gpu::PrimitiveState {
+                        topology: gpu::PrimitiveTopology::TriangleStrip,
+                        ..Default::default()
+                    },
+                    depth_stencil: None,
+                    fragment: Some(shader.at("fs_backdrop")),
+                    color_targets,
+                    multisample_state: gpu::MultisampleState::default(),
+                })
+            });
             let made = |p: std::thread::ScopedJoinHandle<gpu::RenderPipeline>| {
                 p.join().expect("a pipeline made")
             };
@@ -451,6 +515,8 @@ impl BladePipelines {
                 poly_sprites: made(poly_sprites),
                 image_triangles: made(image_triangles),
                 surfaces: made(surfaces),
+                backdrop_blur: made(backdrop_blur),
+                backdrops: made(backdrops),
             }
         })
     }
@@ -485,6 +551,10 @@ pub struct BladeRenderer {
     /// window resizes; most windows never draw a path, and these are
     /// window-sized (the multisampled one four times over).
     path_targets: Option<PathTargets>,
+    /// Olo: two window-sized textures for backdrops' blurs (CSS
+    /// `backdrop-filter`), made the first time a frame has one, dropped
+    /// with the path targets.
+    backdrop_targets: Option<[(gpu::Texture, gpu::TextureView); 2]>,
     /// Olo: for LCD subpixel glyphs, made the first time a frame has
     /// some (only where the GPU blends with a second source).
     subpixel_sprites: Option<Arc<gpu::RenderPipeline>>,
@@ -620,7 +690,8 @@ impl BladeRenderer {
     ) -> anyhow::Result<Self> {
         let surface_config = gpu::SurfaceConfig {
             size: config.size,
-            usage: gpu::TextureUsage::TARGET,
+            // Olo: COPY, for backdrops to copy what was drawn.
+            usage: gpu::TextureUsage::TARGET | gpu::TextureUsage::COPY,
             display_sync: gpu::DisplaySync::Recent,
             color_space: gpu::ColorSpace::Srgb,
             allow_exclusive_full_screen: false,
@@ -686,6 +757,7 @@ impl BladeRenderer {
             #[cfg(target_os = "macos")]
             core_video_texture_cache,
             path_targets: None,
+            backdrop_targets: None,
             subpixel_sprites: None,
             rendering_parameters,
             gamut: crate::Gamut::Srgb,
@@ -1242,6 +1314,173 @@ impl BladeRenderer {
         self.subpixel_sprites = Some(pipeline);
     }
 
+    /// Olo: the textures backdrops are blurred in, made if not yet.
+    fn backdrop_targets(&mut self) -> [(gpu::Texture, gpu::TextureView); 2] {
+        if let Some(targets) = self.backdrop_targets {
+            return targets;
+        }
+        let format = self.surface.info().format;
+        let size = self.surface_config.size;
+        let targets = [
+            create_path_intermediate_texture(&self.gpu, format, size.width, size.height),
+            create_path_intermediate_texture(&self.gpu, format, size.width, size.height),
+        ];
+        self.backdrop_targets = Some(targets);
+        targets
+    }
+
+    /// Olo: a backdrop (CSS `backdrop-filter`): what the frame holds under
+    /// it copied, blurred one way then the other in two passes of its own,
+    /// then drawn back where it shows (rounded, clipped, saturated) in a
+    /// pass over the frame that `draw` goes on with.
+    fn draw_backdrop(
+        &mut self,
+        backdrop: &crate::scene::Backdrop,
+        frame: &gpu::Frame,
+        globals: GlobalParams,
+    ) {
+        let size = self.surface_config.size;
+        let shown = backdrop.bounds.intersect(&backdrop.content_mask.bounds);
+        let reach = (backdrop.sigma.max(0.) * 3.).ceil().min(192.);
+        let clamp_x = |v: f32| v.clamp(0., size.width as f32);
+        let clamp_y = |v: f32| v.clamp(0., size.height as f32);
+        let (x0, x1) = (
+            clamp_x(shown.origin.x.0.floor()),
+            clamp_x((shown.origin.x.0 + shown.size.width.0).ceil()),
+        );
+        let (y0, y1) = (
+            clamp_y(shown.origin.y.0.floor()),
+            clamp_y((shown.origin.y.0 + shown.size.height.0).ceil()),
+        );
+        if x1 <= x0 || y1 <= y0 {
+            return;
+        }
+        // What the blur reads: the shown area and as far as it reaches,
+        // within its clip (what is outside it, the window's own drawing
+        // around a page, is not behind it).
+        let mask = &backdrop.content_mask.bounds;
+        let (mx0, mx1) = (
+            clamp_x(mask.origin.x.0.floor()),
+            clamp_x((mask.origin.x.0 + mask.size.width.0).ceil()),
+        );
+        let (my0, my1) = (
+            clamp_y(mask.origin.y.0.floor()),
+            clamp_y((mask.origin.y.0 + mask.size.height.0).ceil()),
+        );
+        let (gx0, gx1, gy0, gy1) = (
+            (x0 - reach).max(mx0),
+            (x1 + reach).min(mx1),
+            (y0 - reach).max(my0),
+            (y1 + reach).min(my1),
+        );
+        let [(a, a_view), (b, b_view)] = self.backdrop_targets();
+        self.command_encoder.init_texture(a);
+        self.command_encoder.init_texture(b);
+        {
+            let mut transfer = self.command_encoder.transfer("backdrop copy");
+            let at = |texture: gpu::Texture| gpu::TexturePiece {
+                texture,
+                mip_level: 0,
+                array_layer: 0,
+                origin: [gx0 as u32, gy0 as u32, 0],
+            };
+            transfer.copy_texture_to_texture(
+                at(frame.texture()),
+                at(a),
+                gpu::Extent {
+                    width: (gx1 - gx0) as u32,
+                    height: (gy1 - gy0) as u32,
+                    depth: 1,
+                },
+            );
+        }
+        let bounds = |x0: f32, y0: f32, x1: f32, y1: f32| PodBounds {
+            origin: [x0, y0],
+            size: [x1 - x0, y1 - y0],
+        };
+        let params = |region: PodBounds, direction: [f32; 2]| BackdropParams {
+            bounds: backdrop.bounds.into(),
+            content_mask: backdrop.content_mask.bounds.into(),
+            region,
+            corner_radii: [
+                backdrop.corner_radii.top_left.0,
+                backdrop.corner_radii.top_right.0,
+                backdrop.corner_radii.bottom_right.0,
+                backdrop.corner_radii.bottom_left.0,
+            ],
+            direction,
+            sigma: backdrop.sigma,
+            saturation: backdrop.saturation,
+            saturate_first: if backdrop.saturate_first { 1. } else { 0. },
+            pad: [0.; 3],
+        };
+        // Across (the rows the second pass reads), then down (the area shown).
+        for (name, source, target, region, direction) in [
+            (
+                "backdrop blur across",
+                a_view,
+                b_view,
+                bounds(x0, gy0, x1, gy1),
+                [1., 0.],
+            ),
+            (
+                "backdrop blur down",
+                b_view,
+                a_view,
+                bounds(x0, y0, x1, y1),
+                [0., 1.],
+            ),
+        ] {
+            let mut pass = self.command_encoder.render(
+                name,
+                gpu::RenderTargetSet {
+                    colors: &[gpu::RenderTarget {
+                        view: target,
+                        init_op: gpu::InitOp::Load,
+                        finish_op: gpu::FinishOp::Store,
+                    }],
+                    depth_stencil: None,
+                },
+            );
+            let mut encoder = pass.with(&self.pipelines.backdrop_blur);
+            let mut p = params(region, direction);
+            // The blur fills its region whole; it reads within what was copied.
+            p.content_mask = bounds(gx0, gy0, gx1, gy1);
+            encoder.bind(
+                0,
+                &ShaderBackdropData {
+                    globals,
+                    backdrop_locals: p,
+                    t_backdrop: source,
+                    s_backdrop: self.atlas_sampler,
+                },
+            );
+            encoder.draw(0, 4, 0, 1);
+        }
+        let mut pass = self.command_encoder.render(
+            "main",
+            gpu::RenderTargetSet {
+                colors: &[gpu::RenderTarget {
+                    view: frame.texture_view(),
+                    init_op: gpu::InitOp::Load,
+                    finish_op: gpu::FinishOp::Store,
+                }],
+                depth_stencil: None,
+            },
+        );
+        let mut encoder = pass.with(&self.pipelines.backdrops);
+        encoder.bind(
+            0,
+            &ShaderBackdropData {
+                globals,
+                backdrop_locals: params(bounds(x0, y0, x1, y1), [0., 0.]),
+                t_backdrop: a_view,
+                s_backdrop: self.atlas_sampler,
+            },
+        );
+        encoder.draw(0, 4, 0, 1);
+    }
+
     /// The textures paths are drawn into, made if not yet.
     fn path_targets(&mut self) -> PathTargets {
         if let Some(targets) = self.path_targets {
@@ -1268,6 +1507,12 @@ impl BladeRenderer {
     }
 
     fn destroy_path_targets(&mut self) {
+        if let Some(targets) = self.backdrop_targets.take() {
+            for (texture, view) in targets {
+                self.gpu.destroy_texture(texture);
+                self.gpu.destroy_texture_view(view);
+            }
+        }
         if let Some(targets) = self.path_targets.take() {
             self.gpu.destroy_texture(targets.texture);
             self.gpu.destroy_texture_view(targets.view);
@@ -1584,6 +1829,25 @@ impl BladeRenderer {
                         },
                     );
                     encoder.draw(0, 3, 0, triangles.len() as u32);
+                }
+                // Olo: each ends the pass, blurs what it drew, draws it
+                // back, and the frame goes on in a new pass.
+                PrimitiveBatch::Backdrops(backdrops) => {
+                    drop(pass);
+                    for backdrop in backdrops {
+                        self.draw_backdrop(backdrop, &frame, globals);
+                    }
+                    pass = self.command_encoder.render(
+                        "main",
+                        gpu::RenderTargetSet {
+                            colors: &[gpu::RenderTarget {
+                                view: frame.texture_view(),
+                                init_op: gpu::InitOp::Load,
+                                finish_op: gpu::FinishOp::Store,
+                            }],
+                            depth_stencil: None,
+                        },
+                    );
                 }
                 PrimitiveBatch::Surfaces(surfaces) => {
                     let mut _encoder = pass.with(&self.pipelines.surfaces);

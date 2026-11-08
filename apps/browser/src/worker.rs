@@ -158,6 +158,80 @@ pub struct LayerTiles {
     /// A video's picture as decoded (where it shows), made RGB and
     /// scaled by the window's GPU instead of tiles.
     pub yuv: Option<(paint::DeviceRect, Arc<olo_ui::gpui::YuvFrame>)>,
+    /// What shows under this layer's boxes with a `backdrop-filter`,
+    /// blurred, before its tiles (each its border box in the layer's
+    /// device coordinates, its corner radii in CSS px, the blur's standard
+    /// deviation in CSS px, the saturation).
+    pub backdrops: Vec<(paint::DeviceRect, [f32; 4], f32, f32, bool)>,
+}
+/// The boxes with a `backdrop-filter` blur, fixed (None) or under a
+/// sticky root, in the layer coordinates of either (device pixels).
+fn backdrop_boxes(layout: &layout::Layout, scale: f64) -> Vec<(Option<layout::BoxId>, (paint::DeviceRect, [f32; 4], f32, f32, bool))> {
+    use olo_web::css::{
+        properties::{Filter, Property as P},
+        style::Value,
+    };
+    let tree = layout.cache().tree();
+    let mut out = Vec::new();
+    let mut fixed = None;
+    let mut stickies = None;
+    for (id, b) in tree.iter() {
+        let Some(s) = tree.style(id) else { continue };
+        let Value::Filters(filters) = s.value(P::BackdropFilter) else { continue };
+        let constant = |n: &olo_web::css::properties::Numeric| n.expression().constant().map_or(0., |q| q.value);
+        let sigma: f64 = filters.0.iter().map(|f| if let Filter::Blur(n) = f { constant(n) } else { 0. }).sum();
+        let saturation: f64 = filters.0.iter().map(|f| if let Filter::Saturate(v) = f { *v } else { 1. }).product();
+        // In their order: a saturate() before the blur() saturates first.
+        let first = |blur: bool| filters.0.iter().position(|f| matches!((f, blur), (Filter::Blur(_), true) | (Filter::Saturate(_), false)));
+        let saturate_first = matches!((first(false), first(true)), (Some(s), Some(b)) if s < b);
+        if sigma <= 0. && (saturation - 1.).abs() < 1e-6 {
+            continue;
+        }
+        // Only one that shows: visible, and not faded out by its own
+        // opacity or an ancestor's (apple.com's menu curtain, a full-window
+        // blur, waits at opacity 0).
+        if matches!(s.value(P::Visibility), Value::Keyword(olo_web::css::properties::Keyword::Hidden | olo_web::css::properties::Keyword::Collapse)) {
+            continue;
+        }
+        let mut opacity = 1f64;
+        let mut at = Some(id);
+        while let Some(a) = at {
+            opacity *= tree.style(a).and_then(|st| st.value(P::Opacity).scalar()).unwrap_or(1.).clamp(0., 1.);
+            at = tree.get(a).and_then(|x| x.parent);
+        }
+        if opacity <= 0. {
+            continue;
+        }
+        let Some(outer) = layout.bounds(id) else { continue };
+        let fixed = fixed.get_or_insert_with(|| layout.fixed_boxes());
+        let stickies = stickies.get_or_insert_with(|| layout.sticky());
+        // Its layer: the fixed one, or its nearest sticky ancestor's.
+        let layer = if fixed.get(id.index()).copied().unwrap_or(false) {
+            None
+        } else {
+            let mut at = Some(id);
+            let mut root = None;
+            while let Some(a) = at {
+                if stickies.iter().any(|st| st.root == a) {
+                    root = Some(a);
+                    break;
+                }
+                at = tree.get(a).and_then(|x| x.parent);
+            }
+            match root {
+                Some(r) => Some(r),
+                None => continue,
+            }
+        };
+        let _ = b;
+        let radii = olo_web::paint::decoration::radii(s, outer).map(|r| r[0].min(r[1]).max(0.) as f32);
+        let x = (outer.x * scale).round() as i32;
+        let y = (outer.y * scale).round() as i32;
+        let rect =
+            paint::DeviceRect { x, y, width: (((outer.x + outer.width) * scale).round() as i32 - x).max(0) as u32, height: (((outer.y + outer.height) * scale).round() as i32 - y).max(0) as u32 };
+        out.push((layer, (rect, radii, sigma as f32, saturation as f32, saturate_first)));
+    }
+    out
 }
 pub enum Reply {
     Status(u64, String),
@@ -1737,13 +1811,14 @@ fn render(
     let same_paint = cached.paint_identity == Some(identity);
     let previous_signatures = std::mem::take(&mut cached.tile_signatures);
     let mut signatures: HashMap<(usize, i32, i32), Option<u64>> = HashMap::with_capacity(previous_signatures.len());
+    let backdrop_boxes = backdrop_boxes(scene.layout(), scale);
     for (si, stratum) in scene.strata().iter().enumerate() {
         if let paint::LayerKind::Surface(_) = stratum.kind {
             // A live surface: its image shown as it is, scrolled with the
             // page, kept by its identity (no tiles to paint: what is around
             // it stays as it was while it changes).
             let Some((shown_at, image)) = scene.surface(si) else {
-                layers.push(LayerTiles { mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                layers.push(LayerTiles { backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                 continue;
             };
             let device = |r: olo_web::layout::Rect| {
@@ -1756,7 +1831,7 @@ fn render(
             let clip = shown_at.clip.map(|c| device(c));
             let visible = clip.is_none_or(|(cx, cy, cw, ch)| x < cx + cw && cx < x + width && y < cy + ch && cy < y + height);
             if width <= 0 || height <= 0 || !visible {
-                layers.push(LayerTiles { mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                layers.push(LayerTiles { backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                 continue;
             }
             let inside = clip.is_none_or(|(cx, cy, cw, ch)| x >= cx && y >= cy && x + width <= cx + cw && y + height <= cy + ch);
@@ -1769,7 +1844,7 @@ fn render(
             // A video's picture as decoded: the window's GPU shows it.
             if let Some(frame) = image.source().and_then(|s| s.clone().downcast::<olo_ui::gpui::YuvFrame>().ok()) {
                 total += 1;
-                layers.push(LayerTiles { mask, yuv: Some((region, frame)), shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: true });
+                layers.push(LayerTiles { backdrops: Vec::new(), mask, yuv: Some((region, frame)), shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: true });
                 continue;
             }
             // A frame in a shared texture: the window shows the texture.
@@ -1777,7 +1852,7 @@ fn render(
                 shown_shared.push(key);
                 total += 1;
                 let scaled = image.width() != region.width || image.height() != region.height;
-                layers.push(LayerTiles { mask, yuv: None, shared: Some((region, key, premultiplied)), placement: Placement::Page, tiles: Vec::new(), scaled });
+                layers.push(LayerTiles { backdrops: Vec::new(), mask, yuv: None, shared: Some((region, key, premultiplied)), placement: Placement::Page, tiles: Vec::new(), scaled });
                 continue;
             }
             *clock = clock.wrapping_add(1);
@@ -1799,7 +1874,7 @@ fn render(
             };
             total += 1;
             let scaled = image.width() != region.width || image.height() != region.height;
-            layers.push(LayerTiles { mask, yuv: None, shared: None, placement: Placement::Page, tiles: vec![(region, shown)], scaled });
+            layers.push(LayerTiles { backdrops: Vec::new(), mask, yuv: None, shared: None, placement: Placement::Page, tiles: vec![(region, shown)], scaled });
             continue;
         }
         let (x0, y0, x1, y1) = match stratum.kind {
@@ -1818,14 +1893,14 @@ fn render(
                     sy1 = sy1.min(((c.y + c.height) * scale).ceil() as i32);
                 }
                 if sx1 <= sx0 || sy1 <= sy0 {
-                    layers.push(LayerTiles { mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                    layers.push(LayerTiles { backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                     continue;
                 }
                 ((sx0 - dx).div_euclid(256) * 256, (sy0 - dy).div_euclid(256) * 256, sx1 - dx, sy1 - dy)
             }
             paint::LayerKind::Fixed | paint::LayerKind::Sticky(_) => {
                 let Some(extent) = scene.stratum_extent(si) else {
-                    layers.push(LayerTiles { mask: None, yuv: None, shared: None, placement: Placement::Fixed, tiles: Vec::new(), scaled: false });
+                    layers.push(LayerTiles { backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Fixed, tiles: Vec::new(), scaled: false });
                     continue;
                 };
                 let (limit_x, limit_y) = if stratum.kind == paint::LayerKind::Fixed { (f64::from(r.key.width), f64::from(r.key.height)) } else { (f64::INFINITY, f64::INFINITY) };
@@ -1959,7 +2034,13 @@ fn render(
             }
         }
         if si > 0 {
-            layers.push(LayerTiles { mask: None, yuv: None, shared: None, placement, tiles: layer_tiles, scaled: false });
+            // Its boxes' backdrops, under its tiles.
+            let backdrops = match stratum.kind {
+                paint::LayerKind::Fixed => backdrop_boxes.iter().filter(|(l, _)| l.is_none()).map(|(_, b)| *b).collect(),
+                paint::LayerKind::Sticky(root) => backdrop_boxes.iter().filter(|(l, _)| *l == Some(root)).map(|(_, b)| *b).collect(),
+                _ => Vec::new(),
+            };
+            layers.push(LayerTiles { backdrops, mask: None, yuv: None, shared: None, placement, tiles: layer_tiles, scaled: false });
         }
     }
     TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);

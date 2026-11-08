@@ -4546,6 +4546,36 @@ impl Window {
         });
     }
 
+    /// Olo: what has been painted under `bounds` so far, blurred (`sigma`,
+    /// the standard deviation) and saturated (1 as it is), rounded by
+    /// `corner_radii`: CSS `backdrop-filter`, on the GPU. What is painted
+    /// after it goes over it.
+    /// The filters apply in their order: `saturate_first`, saturated then
+    /// blurred, as `saturate() blur()` has it.
+    pub fn paint_backdrop(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        sigma: Pixels,
+        saturation: f32,
+        saturate_first: bool,
+    ) {
+        self.invalidator.debug_assert_paint();
+        let scale_factor = self.scale_factor();
+        let content_mask = self.content_mask().scale(scale_factor);
+        self.next_frame
+            .scene
+            .insert_primitive(crate::scene::Backdrop {
+                order: 0,
+                bounds: bounds.scale(scale_factor),
+                content_mask,
+                corner_radii: corner_radii.scale(scale_factor),
+                sigma: f32::from(sigma) * scale_factor,
+                saturation,
+                saturate_first,
+            });
+    }
+
     /// Paint a surface into the scene for the next frame at the current z-index.
     ///
     /// This method should only be called as part of the paint phase of element drawing.

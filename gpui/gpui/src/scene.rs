@@ -46,6 +46,7 @@ pub(crate) struct Scene {
     pub(crate) polychrome_sprites: Vec<PolychromeSprite>,
     pub(crate) image_triangles: Vec<ImageTriangle>,
     pub(crate) surfaces: Vec<PaintSurface>,
+    pub(crate) backdrops: Vec<Backdrop>,
 }
 
 impl Scene {
@@ -65,6 +66,7 @@ impl Scene {
         self.polychrome_sprites.clear();
         self.image_triangles.clear();
         self.surfaces.clear();
+        self.backdrops.clear();
     }
 
     pub fn len(&self) -> usize {
@@ -142,6 +144,10 @@ impl Scene {
             Primitive::Surface(surface) => {
                 surface.order = order;
                 self.surfaces.push(surface.clone());
+            }
+            Primitive::Backdrop(backdrop) => {
+                backdrop.order = order;
+                self.backdrops.push(backdrop.clone());
             }
         }
         self.paint_operations
@@ -267,7 +273,10 @@ impl Scene {
                     Primitive::Sector(x) => by_mask(&x.content_mask),
                     Primitive::MonochromeSprite(x) => by_mask(&x.content_mask),
                     Primitive::PolychromeSprite(x) => by_mask(&x.content_mask),
-                    Primitive::Path(_) | Primitive::ImageTriangle(_) | Primitive::Surface(_) => {
+                    Primitive::Path(_)
+                    | Primitive::ImageTriangle(_)
+                    | Primitive::Surface(_)
+                    | Primitive::Backdrop(_) => {
                         return Movable { x: false, y: false };
                     }
                 },
@@ -342,7 +351,8 @@ impl Scene {
                         }
                         Primitive::Path(_)
                         | Primitive::ImageTriangle(_)
-                        | Primitive::Surface(_) => {}
+                        | Primitive::Surface(_)
+                        | Primitive::Backdrop(_) => {}
                     }
                     self.insert_primitive(p);
                 }
@@ -399,6 +409,7 @@ impl Scene {
             .sort_by_key(|sprite| (sprite.order, texture_key(&sprite.tile)));
         self.image_triangles.sort_by_key(|triangle| triangle.order);
         self.surfaces.sort_by_key(|surface| surface.order);
+        self.backdrops.sort_by_key(|backdrop| backdrop.order);
     }
 
     /// Olo: a big quad wholly under opaque quads drawn after it isn't
@@ -578,6 +589,9 @@ impl Scene {
             surfaces: &self.surfaces,
             surfaces_start: 0,
             surfaces_iter: self.surfaces.iter().peekable(),
+            backdrops: &self.backdrops,
+            backdrops_start: 0,
+            backdrops_iter: self.backdrops.iter().peekable(),
         }
     }
 }
@@ -602,6 +616,7 @@ pub(crate) enum PrimitiveKind {
     PolychromeSprite,
     ImageTriangle,
     Surface,
+    Backdrop,
 }
 
 /// Olo: which ways what a range painted can be moved ([`Scene::movable`]).
@@ -647,6 +662,7 @@ pub(crate) enum Primitive {
     PolychromeSprite(PolychromeSprite),
     ImageTriangle(ImageTriangle),
     Surface(PaintSurface),
+    Backdrop(Backdrop),
 }
 
 impl Primitive {
@@ -662,6 +678,7 @@ impl Primitive {
             Primitive::PolychromeSprite(sprite) => &sprite.bounds,
             Primitive::ImageTriangle(triangle) => &triangle.bounds,
             Primitive::Surface(surface) => &surface.bounds,
+            Primitive::Backdrop(backdrop) => &backdrop.bounds,
         }
     }
 
@@ -677,6 +694,7 @@ impl Primitive {
             Primitive::PolychromeSprite(sprite) => &sprite.content_mask,
             Primitive::ImageTriangle(triangle) => &triangle.content_mask,
             Primitive::Surface(surface) => &surface.content_mask,
+            Primitive::Backdrop(backdrop) => &backdrop.content_mask,
         }
     }
 }
@@ -719,6 +737,9 @@ struct BatchIterator<'a> {
     surfaces: &'a [PaintSurface],
     surfaces_start: usize,
     surfaces_iter: Peekable<slice::Iter<'a, PaintSurface>>,
+    backdrops: &'a [Backdrop],
+    backdrops_start: usize,
+    backdrops_iter: Peekable<slice::Iter<'a, Backdrop>>,
 }
 
 impl<'a> Iterator for BatchIterator<'a> {
@@ -759,6 +780,10 @@ impl<'a> Iterator for BatchIterator<'a> {
             (
                 self.surfaces_iter.peek().map(|s| s.order),
                 PrimitiveKind::Surface,
+            ),
+            (
+                self.backdrops_iter.peek().map(|b| b.order),
+                PrimitiveKind::Backdrop,
             ),
         ];
         orders_and_kinds.sort_by_key(|(order, kind)| (order.unwrap_or(u32::MAX), *kind));
@@ -943,6 +968,13 @@ impl<'a> Iterator for BatchIterator<'a> {
                     &self.surfaces[surfaces_start..surfaces_end],
                 ))
             }
+            // One at a time: each blurs what was drawn before it.
+            PrimitiveKind::Backdrop => {
+                let start = self.backdrops_start;
+                self.backdrops_iter.next();
+                self.backdrops_start = start + 1;
+                Some(PrimitiveBatch::Backdrops(&self.backdrops[start..start + 1]))
+            }
         }
     }
 }
@@ -975,6 +1007,7 @@ pub(crate) enum PrimitiveBatch<'a> {
         triangles: &'a [ImageTriangle],
     },
     Surfaces(&'a [PaintSurface]),
+    Backdrops(&'a [Backdrop]),
 }
 
 #[derive(Default, Debug, Clone)]
@@ -1276,6 +1309,29 @@ pub(crate) struct PaintSurface {
     /// Olo: a video's picture, its planes as decoded (`Window::paint_yuv`).
     #[cfg(not(target_os = "macos"))]
     pub frame: std::sync::Arc<crate::YuvFrame>,
+}
+
+/// Olo: what was drawn under `bounds` before it, shown blurred and
+/// saturated (CSS `backdrop-filter: blur() saturate()`), rounded by its
+/// corners (`Window::paint_backdrop`).
+#[derive(Default, Debug, Clone)]
+pub(crate) struct Backdrop {
+    pub order: DrawOrder,
+    pub bounds: Bounds<ScaledPixels>,
+    pub content_mask: ContentMask<ScaledPixels>,
+    pub corner_radii: Corners<ScaledPixels>,
+    /// The blur's standard deviation, in device pixels.
+    pub sigma: f32,
+    /// 1 leaves colours as they are, 0 grey.
+    pub saturation: f32,
+    /// Saturated before it is blurred (`saturate() blur()`), else after.
+    pub saturate_first: bool,
+}
+
+impl From<Backdrop> for Primitive {
+    fn from(backdrop: Backdrop) -> Self {
+        Primitive::Backdrop(backdrop)
+    }
 }
 
 impl From<PaintSurface> for Primitive {

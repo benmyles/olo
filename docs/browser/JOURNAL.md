@@ -6484,3 +6484,18 @@ journal).
   now runs the media element load algorithm for a loaded video: back to
   its start, paused, `loadstart` … `canplaythrough` again. The video plays
   to its end (the Watch), as in Chrome.
+- **`backdrop-filter`, on the GPU.** A fixed or sticky box with
+  `backdrop-filter: blur() saturate()` (apple.com's nav, frosted headers)
+  shows what is under it blurred: gpui has a backdrop primitive that ends
+  the frame's pass, copies what was drawn under it, blurs it in two
+  separable Gaussian passes (reading only within its clip, as Chrome
+  clamps at the page's edge), and draws it back rounded, clipped and
+  saturated; the box's own layer goes over it. The functions apply in
+  their order (`saturate(180%) blur(10px)` saturates first; blurring first
+  came out too saturated). A test page matches Chrome to within 1-4 of 255
+  at 1× and 2×; boxes not shown (hidden, opacity 0 through an ancestor:
+  apple.com's menu curtain) blur nothing. Also: repeating gradients repeat
+  over their first-to-last stop span (stripes from
+  `repeating-linear-gradient(90deg, red 0 20px, blue 20px 40px)` were one
+  colour), and `saturate()` parses. Open: a backdrop on a box painted
+  with the page (not fixed or sticky), the other filter functions.

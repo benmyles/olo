@@ -611,6 +611,80 @@ pub(super) fn parse_repeats(parts: &[Component<'_>]) -> Result<Value> {
     }
     Ok(Value::Repeats(Repeats(out.into())))
 }
+/// A `backdrop-filter` function: `blur()` (its standard deviation) and
+/// `saturate()` shown; the others kept, to be said not to be.
+#[derive(Clone, Debug)]
+pub enum Filter {
+    Blur(Numeric),
+    Saturate(f64),
+    Other,
+}
+#[derive(Clone, Debug)]
+pub struct Filters(pub Arc<[Filter]>);
+impl Filters {
+    pub(crate) fn reserved_bytes(&self) -> usize {
+        self.0.len() * size_of::<Filter>() + self.0.iter().map(|f| if let Filter::Blur(n) = f { bytes(n) } else { 0 }).sum::<usize>()
+    }
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        self.0.len() == other.0.len()
+            && self.0.iter().zip(other.0.iter()).all(|(a, b)| match (a, b) {
+                (Filter::Blur(x), Filter::Blur(y)) => x.same(y),
+                (Filter::Saturate(x), Filter::Saturate(y)) => x == y,
+                (Filter::Other, Filter::Other) => true,
+                _ => false,
+            })
+    }
+    pub fn computed(&self, numeric: &impl math::Context, math: math::Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
+        let mut out = Vec::with_capacity(self.0.len());
+        for f in self.0.iter() {
+            check(cancelled)?;
+            out.push(match f {
+                Filter::Blur(n) => Filter::Blur(n.computed(numeric, false, math, cancelled)?),
+                other => other.clone(),
+            });
+        }
+        Ok(Self(out.into()))
+    }
+}
+/// `backdrop-filter`: `none | <filter-function>+` (Filter Effects 2 §2).
+pub(super) fn parse_filters(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
+    if let [c] = parts
+        && is(*c, "none")
+    {
+        return Ok(Value::Keyword(Keyword::None));
+    }
+    let mut out = Vec::new();
+    for c in parts {
+        check(cancelled)?;
+        if c.kind() != Kind::Function {
+            return Err(Error::Invalid);
+        }
+        let name = c.text().unwrap_or("").to_ascii_lowercase();
+        let args: Vec<Component<'_>> = c.children().filter(|a| a.kind() != Kind::Whitespace).collect();
+        out.push(match name.as_str() {
+            "blur" => match args.as_slice() {
+                [] => Filter::Blur(Numeric::scalar(0., math::Dimension::Length, Range::Nonnegative)),
+                [a] => Filter::Blur(Numeric::compile(*a, NumericKind::Length, Range::Nonnegative, limits, cancelled)?),
+                _ => return Err(Error::Invalid),
+            },
+            "saturate" => match args.as_slice() {
+                [] => Filter::Saturate(1.),
+                [a] if matches!(a.kind(), Kind::Number | Kind::Integer) => Filter::Saturate(a.number().ok_or(Error::Invalid)?.value.max(0.)),
+                [a] if matches!(a.kind(), Kind::Percentage | Kind::IntegerPercentage) => Filter::Saturate(a.number().ok_or(Error::Invalid)?.value.max(0.) / 100.),
+                _ => return Err(Error::Invalid),
+            },
+            "brightness" | "contrast" | "grayscale" | "hue-rotate" | "invert" | "opacity" | "sepia" | "drop-shadow" | "url" => Filter::Other,
+            _ => return Err(Error::Invalid),
+        });
+        if out.len() > 32 {
+            return Err(Error::Limit);
+        }
+    }
+    if out.is_empty() {
+        return Err(Error::Invalid);
+    }
+    Ok(Value::Filters(Filters(out.into())))
+}
 /// `box-shadow`: `none | <shadow>#`.
 pub(super) fn parse_shadows(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     if let [c] = parts
@@ -796,4 +870,30 @@ pub(super) fn parse_background(parts: &[Component<'_>], properties: &[Property],
         out.push(Assignment { property, value });
     }
     Ok(out)
+}
+#[cfg(test)]
+mod filter_tests {
+    use super::*;
+    use crate::css::{Syntax, properties::Declaration};
+    fn filters(text: &str) -> Option<(Property, Vec<Filter>)> {
+        let syntax = Syntax::parse(Arc::from(text), Default::default(), None).unwrap();
+        let d = syntax.one_declaration(None).unwrap();
+        let Declaration::Known { values, .. } = Declaration::compile(&d, Default::default(), None).ok()? else { return None };
+        let a = values.first()?;
+        match &a.value {
+            Value::Filters(f) => Some((a.property, f.0.to_vec())),
+            _ => None,
+        }
+    }
+    #[test]
+    fn backdrop_filters_keep_blur_and_saturate_in_order() {
+        let (p, f) = filters("backdrop-filter: saturate(180%) blur(20px)").unwrap();
+        assert_eq!(p, Property::BackdropFilter);
+        assert!(matches!(f[0], Filter::Saturate(s) if (s - 1.8).abs() < 1e-9));
+        assert!(matches!(&f[1], Filter::Blur(n) if n.expression().constant().is_some_and(|q| q.value == 20.)));
+        let (p, f) = filters("-webkit-backdrop-filter: saturate(1.5) brightness(1.1)").unwrap();
+        assert_eq!(p, Property::BackdropFilter);
+        assert!(matches!(f[0], Filter::Saturate(s) if (s - 1.5).abs() < 1e-9) && matches!(f[1], Filter::Other));
+        assert!(filters("backdrop-filter: blur(4px) wobble(2)").is_none());
+    }
 }

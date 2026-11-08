@@ -618,7 +618,8 @@ impl Render for Browser {
             Option<(olo_web::paint::DeviceRect, u64, bool)>,
             Option<(olo_web::paint::DeviceRect, [f32; 4])>,
             Option<(olo_web::paint::DeviceRect, Arc<gpui::YuvFrame>)>,
-        )> = self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone(), l.shared, l.mask, l.yuv.clone())).collect();
+            Vec<(olo_web::paint::DeviceRect, [f32; 4], f32, f32, bool)>,
+        )> = self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone(), l.shared, l.mask, l.yuv.clone(), l.backdrops.clone())).collect();
         let shared_requests = std::mem::take(&mut self.shared_requests);
         let shared_retired = std::mem::take(&mut self.shared_retired);
         let made_shared: std::rc::Rc<std::cell::RefCell<Vec<u64>>> = Default::default();
@@ -738,7 +739,7 @@ impl Render for Browser {
                             size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
                         )
                     };
-                    for (placement, scaled, layer_tiles, shared, mask, yuv) in &layers {
+                    for (placement, scaled, layer_tiles, shared, mask, yuv, backdrops) in &layers {
                         // A surface cut to its clip and rounded, on the GPU.
                         let content_mask = mask.as_ref().map(|(clip, _)| gpui::ContentMask { bounds: page_rect(clip) });
                         let corners = mask.as_ref().map_or(Default::default(), |(_, r)| gpui::Corners { top_left: px(r[0]), top_right: px(r[1]), bottom_right: px(r[2]), bottom_left: px(r[3]) });
@@ -783,6 +784,17 @@ impl Render for Browser {
                                 size(px((f64::from(c.width) / scale) as f32), px((f64::from(c.height) / scale) as f32)),
                             ),
                         });
+                        // What shows under its `backdrop-filter` boxes, blurred
+                        // (on the GPU), placed as its tiles are, under them.
+                        for (r, radii, sigma, saturation, saturate_first) in backdrops {
+                            let y = f64::from(if scrolled { r.y + my - scroll } else { r.y }) / scale + dy;
+                            let b = Bounds::new(
+                                point(bounds.left() + px((f64::from(r.x + mx) / scale) as f32), bounds.top() + px(y as f32)),
+                                size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
+                            );
+                            let corners = gpui::Corners { top_left: px(radii[0]), top_right: px(radii[1]), bottom_right: px(radii[2]), bottom_left: px(radii[3]) };
+                            window.paint_backdrop(b, corners, px(*sigma), *saturation, *saturate_first);
+                        }
                         window.with_content_mask(mask, |window| {
                             for (r, image) in layer_tiles {
                                 let y = f64::from(if scrolled { r.y + my - scroll } else { r.y }) / scale + dy;

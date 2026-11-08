@@ -1649,3 +1649,98 @@ fn fs_surface(input: SurfaceVarying) -> @location(0) vec4<f32> {
     let distance = quad_sdf(input.position.xy, surface_locals.bounds, surface_locals.corner_radii);
     return blend_color(vec4<f32>(rgb.rgb, 1.0), saturate(0.5 - distance));
 }
+
+// --- backdrops (Olo: CSS backdrop-filter) --- //
+
+struct BackdropParams {
+    // Where it shows, its clip, and the area a pass draws (device px).
+    bounds: Bounds,
+    content_mask: Bounds,
+    region: Bounds,
+    corner_radii: Corners,
+    // A blur pass's direction ((1, 0) or (0, 1)); the composite's (0, 0).
+    direction: vec2<f32>,
+    sigma: f32,
+    saturation: f32,
+    // 1: saturate before blurring (`saturate() blur()`), in the first
+    // pass's reads; else after, in the composite.
+    saturate_first: f32,
+    pad0: f32,
+    pad1: f32,
+    pad2: f32,
+}
+
+var<uniform> backdrop_locals: BackdropParams;
+
+// CSS saturate() (Filter Effects 1 §10.1.1's matrix), clamped.
+fn backdrop_saturate(c: vec3<f32>, s: f32) -> vec3<f32> {
+    let m = mat3x3<f32>(
+        vec3<f32>(0.213 + 0.787 * s, 0.213 - 0.213 * s, 0.213 - 0.213 * s),
+        vec3<f32>(0.715 - 0.715 * s, 0.715 + 0.285 * s, 0.715 - 0.715 * s),
+        vec3<f32>(0.072 - 0.072 * s, 0.072 - 0.072 * s, 0.072 + 0.928 * s),
+    );
+    return clamp(m * c, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+var t_backdrop: texture_2d<f32>;
+var s_backdrop: sampler;
+
+struct BackdropVarying {
+    @builtin(position) position: vec4<f32>,
+    @location(3) clip_distances: vec4<f32>,
+}
+
+@vertex
+fn vs_backdrop(@builtin(vertex_index) vertex_id: u32) -> BackdropVarying {
+    let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
+    var out = BackdropVarying();
+    out.position = to_device_position(unit_vertex, backdrop_locals.region);
+    out.clip_distances = distance_from_clip_rect(unit_vertex, backdrop_locals.region, backdrop_locals.content_mask);
+    return out;
+}
+
+// One direction of a separable Gaussian (the standard deviation `sigma`),
+// out to three of them, from what was drawn (copied into `t_backdrop`).
+@fragment
+fn fs_backdrop_blur(input: BackdropVarying) -> @location(0) vec4<f32> {
+    let size = vec2<f32>(textureDimensions(t_backdrop, 0));
+    let sigma = max(backdrop_locals.sigma, 0.01);
+    let reach = min(ceil(sigma * 3.0), 192.0);
+    var sum = vec4<f32>(0.0);
+    var total = 0.0;
+    // Reads stay within what it may see (`content_mask`, here the area
+    // copied within its clip): its edge pixels repeat beyond it.
+    let lo = backdrop_locals.content_mask.origin + vec2<f32>(0.5);
+    let hi = backdrop_locals.content_mask.origin + backdrop_locals.content_mask.size - vec2<f32>(0.5);
+    for (var i = -reach; i <= reach; i = i + 1.0) {
+        let w = exp(-0.5 * i * i / (sigma * sigma));
+        let at = clamp(input.position.xy + backdrop_locals.direction * i, lo, hi) / size;
+        var texel = textureSampleLevel(t_backdrop, s_backdrop, at, 0.0);
+        // Saturated before the blur (the first pass, across, reads the frame).
+        if (backdrop_locals.saturate_first > 0.5 && backdrop_locals.direction.x > 0.5) {
+            texel = vec4<f32>(backdrop_saturate(texel.rgb, backdrop_locals.saturation), texel.a);
+        }
+        sum = sum + w * texel;
+        total = total + w;
+    }
+    return sum / total;
+}
+
+// The blurred backdrop over what was drawn, saturated, rounded and clipped.
+@fragment
+fn fs_backdrop(input: BackdropVarying) -> @location(0) vec4<f32> {
+    if (any(input.clip_distances < vec4<f32>(0.0))) {
+        return vec4<f32>(0.0);
+    }
+    let size = vec2<f32>(textureDimensions(t_backdrop, 0));
+    let color = textureSampleLevel(t_backdrop, s_backdrop, input.position.xy / size, 0.0);
+    var rgb = color.rgb;
+    if (backdrop_locals.saturate_first < 0.5) {
+        rgb = backdrop_saturate(rgb, backdrop_locals.saturation);
+    }
+    let distance = quad_sdf(input.position.xy, backdrop_locals.bounds, backdrop_locals.corner_radii);
+    let coverage = saturate(0.5 - distance);
+    if (globals.premultiplied_alpha != 0u) {
+        return vec4<f32>(rgb * coverage, color.a * coverage);
+    }
+    return vec4<f32>(rgb, coverage);
+}
