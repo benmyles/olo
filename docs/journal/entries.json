@@ -3676,5 +3676,17 @@
   "title": "Olo after Setup on a fresh Fedora, in use",
   "caption": "Tracker on Home, StyledEdit, Olo Doctor (two suggestions, no other desktop's daemons) and Preferences switched to dark.",
   "image": "2026-11-08/084127-olo-after-setup-on-a-fresh-fedora-in-use.png"
+ },
+ {
+  "time": "2026-11-08T09:33:17",
+  "title": "Olo's boot splash on a Fedora 45 that Olo Setup set up",
+  "caption": "In the installer check's VM, booting as a stock install does (rhgb quiet): Plymouth shows Olo's theme, the wordmark, the four icons and Starting Olo\u2026. Not seen in that VM before: its text install had left the serial console and no rhgb.",
+  "image": "2026-11-08/093317-olo-s-boot-splash-on-a-fedora-45-that-olo-setup-.png"
+ },
+ {
+  "time": "2026-11-08T09:33:18",
+  "title": "Where Olo's login screen can't show, GDM's takes the seat",
+  "caption": "A GPU Olo can't draw on (the VM's plain virtio GPU): after Olo's splash, GDM's login screen, started by systemd through olo-login's OnFailure=. Before, SELinux kept olo-login from starting it and the screen stayed on the console.",
+  "image": "2026-11-08/093318-where-olo-s-login-screen-can-t-show-gdm-s-takes-.png"
  }
 ]

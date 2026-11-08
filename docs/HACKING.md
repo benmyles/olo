@@ -3261,11 +3261,20 @@ from logging in):
 * **It steps aside where it can't show.** Its greeter's session ending
   three times in a row before the greeter ever connected (no GPU Olo
   can render on, a broken install) hands the seat to the computer's
-  other login screen for this boot (GDM, else SDDM, else the text
-  console's login), notes why in `/run/olo-login/handed-over` (Olo
-  Doctor says so) and exits 75, which its unit doesn't restart
-  (`RestartPreventExitStatus=75`); the next boot tries again
-  (`hand_over`).
+  other login screen for this boot: olo-login notes why in
+  `/run/olo-login/handed-over` (Olo Doctor says so) and exits 75, which
+  its unit doesn't restart (`RestartPreventExitStatus=75`), and the
+  unit's `OnFailure=gdm.service sddm.service` has systemd start
+  whichever is installed (also when olo-login keeps failing); the next
+  boot tries Olo's again (`hand_over`). systemd starts it, not
+  olo-login: to SELinux olo-login is a display manager (`xdm_t`), which
+  may start only display managers' own units (`xdm_unit_file_t`) and
+  may not even look at GDM's (`systemd_unit_file_t` on Fedora 45) or
+  getty's, so its own start found none and a stock Fedora 45 with a GPU
+  Olo can't draw on stayed on the console (found in the installer
+  check's VM with a plain virtio GPU, 2026-11-08; now GDM's login
+  screen there 6 s after Olo's splash). Olo Doctor's "older version"
+  finding counts an installed unit that isn't the build's.
 
 **The boot splash** (app_server `plymouth.rs`): `olo-app-server
 --plymouth-theme DIR [--scale S]` makes a theme for Plymouth's two-step

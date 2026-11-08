@@ -12,11 +12,20 @@ After=getty@tty1.service kmsconvt@tty1.service
 # The boot's splash handed over as GDM does: olo-login tells Plymouth to
 # let go of the screen and, once the login screen shows, to quit leaving
 # its picture there (so no console flashes between); Plymouth's own quit
-# isn't run. Gone either way if olo-login fails.
+# isn't run.
 Conflicts=plymouth-quit.service
 After=plymouth-quit.service
 After=rc-local.service plymouth-start.service systemd-user-sessions.service
-OnFailure=plymouth-quit.service
+# Olo's login screen couldn't show (daemon.rs, hand_over: no GPU it can
+# draw on), or keeps failing: the computer's other login screen takes the
+# seat for this boot, whichever is installed, started by systemd.
+# olo-login itself may not (to SELinux it's a display manager, xdm_t,
+# which may neither start those units nor look at their files: on a
+# stock Fedora 45 its own start found none, and the screen stayed on the
+# console). Each takes the splash over as it starts; olo-login has let go
+# of it by then. (Not plymouth-quit too: GDM's unit conflicts with it,
+# and systemd queues each of these alone.)
+OnFailure=gdm.service sddm.service
 
 [Service]
 ExecStart=/usr/local/libexec/olo/olo-login --daemon --programs /usr/local/libexec/olo --vt 1

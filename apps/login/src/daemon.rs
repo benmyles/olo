@@ -512,21 +512,18 @@ fn way_here(way: Way) -> bool {
 
 /// Olo's login screen can't show here (its session ended `tries` times
 /// in a row before its greeter ever came: no GPU Olo can render on, a
-/// broken install), so nobody would get in: the seat goes to the
-/// computer's other login screen for this boot (GDM, else SDDM, else the
-/// text console's login), and olo-login steps aside, saying why
-/// (`HANDED_OVER_NOTE`, which Olo Doctor reads). The next boot tries
+/// broken install), so nobody would get in: olo-login steps aside for
+/// this boot, saying why (`HANDED_OVER_NOTE`, which Olo Doctor reads),
+/// and its unit's `OnFailure=` has systemd give the seat to the
+/// computer's other login screen (GDM, else SDDM). Not started from here:
+/// to SELinux olo-login is a display manager (`xdm_t`), which may neither
+/// start those units nor look at their files, so on a stock Fedora 45 it
+/// found none and the screen stayed on the console. The next boot tries
 /// Olo's again. Never returns.
 fn hand_over(tries: u32) -> ! {
     let why = format!("Olo's login screen didn't show {tries} times in a row; the login screen was handed to another for this boot.");
     eprintln!("olo-login: {why}");
     let _ = std::fs::create_dir_all("/run/olo-login");
     let _ = std::fs::write(HANDED_OVER_NOTE, format!("{why}\n"));
-    for other in ["gdm.service", "sddm.service", "getty@tty1.service"] {
-        if Path::new("/usr/lib/systemd/system").join(other.replace("@tty1", "@")).exists() && olo_system::systemd::start_stop(other, true).is_ok() {
-            eprintln!("olo-login: {other} has the seat");
-            break;
-        }
-    }
     std::process::exit(HANDED_OVER)
 }
