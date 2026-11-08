@@ -1073,6 +1073,15 @@
       return;
     }
     if (isSubmitter(control)) { const form = formOf(control); if (form) submitForm(form, control, true); return; }
+    // A link not cancelled: followed (a `javascript:` one runs its code;
+    // one to download is left; one for another window opens here).
+    if (tag === 'A' && N.attr(control, 'href') != null) {
+      const href = N.attr(control, 'href');
+      if (/^\s*javascript:/i.test(href)) { try { (0, eval)(decodeURIComponent(href.replace(/^\s*javascript:/i, ''))); } catch (e) { reportError(e); } return; }
+      if (N.attr(control, 'download') != null) return;
+      navigate(href);
+      return;
+    }
     if ((tag === 'BUTTON' || tag === 'INPUT') && typeOf(control) === 'reset') { const form = formOf(control); if (form) for (const c of N.query(form, 'input,textarea', true)) { const v = N.nodeName(c) === 'TEXTAREA' ? N.textContent(c) : (N.attr(c, 'value') || ''); N.setControlValue(c, v); } }
   };
   // Event handler IDL attributes (HTML §8.1.8.2): `onclick` and the rest,
@@ -1095,10 +1104,13 @@
     define(Object.getPrototypeOf(documentNode), common.concat(['readystatechange', 'visibilitychange', 'fullscreenchange', 'pointerlockchange']));
     define(global, common.concat(windowOnly));
   }
+  // CSS animation and transition events (transitionrun, -start, -end,
+  // -cancel carry the property's name).
   global.__olo_animationEvent = (el, type, name, elapsed) => {
-    const Ctor = global.AnimationEvent || Event;
+    const transition = type.startsWith('transition');
+    const Ctor = (transition ? global.TransitionEvent : global.AnimationEvent) || Event;
     const ev = new Ctor(type, { bubbles: true, cancelable: false, composed: true });
-    try { Object.defineProperty(ev, 'animationName', { value: name }); Object.defineProperty(ev, 'elapsedTime', { value: elapsed }); Object.defineProperty(ev, 'pseudoElement', { value: '' }); } catch (e) {}
+    try { Object.defineProperty(ev, transition ? 'propertyName' : 'animationName', { value: name }); Object.defineProperty(ev, 'elapsedTime', { value: elapsed }); Object.defineProperty(ev, 'pseudoElement', { value: '' }); } catch (e) {}
     ev.isTrusted = true;
     dispatch(el, ev);
   };
@@ -1260,7 +1272,8 @@
   };
   global.IntersectionObserverEntry = class IntersectionObserverEntry {};
   // A synchronous fetch (XMLHttpRequest in synchronous mode): bytes.
-  const fetchSync = (url, method, body) => (/^(data|blob):/.test(url) ? global.__olo_fetchInline(url) : N.fetchSync(url, method, body));
+  const fetchSync = (url, method, body, headers) => (/^(data|blob):/.test(url) ? global.__olo_fetchInline(url) : N.fetchSync(url, method, body, headers || ''));
+  const headerLines = (h) => Object.entries(h || {}).map(([k, v]) => k + ': ' + v).join('\n');
   class XMLHttpRequest extends EventTargetCtor {
     constructor() { super(); this.readyState = 0; this.status = 0; this.statusText = ''; this.responseText = ''; this.response = ''; this.responseType = ''; this.responseURL = ''; this.responseXML = null; this.timeout = 0; this.withCredentials = false; this.upload = new EventTargetCtor(); this._headers = {}; this.onreadystatechange = null; this.onload = null; this.onerror = null; this.onabort = null; this.ontimeout = null; this.onprogress = null; this.onloadend = null; this.onloadstart = null; }
     open(method, url, async) { this._method = String(method || 'GET').toUpperCase(); this._url = resolveURL(String(url)); this._sync = async === false; this.readyState = 1; this._change(); }
@@ -1282,10 +1295,10 @@
     _fail() { this.readyState = 4; this.status = 0; this._change(); dispatch(this, new ProgressEvent('error')); dispatch(this, new ProgressEvent('loadend')); }
     send(body) {
       const payload = body == null ? '' : typeof body === 'string' ? body : body instanceof URLSearchParams ? body.toString() : (body instanceof Blob || body instanceof ArrayBuffer || ArrayBuffer.isView(body)) ? new TextDecoder().decode(body instanceof Blob ? body._bytes : body) : String(body);
-      if (this._sync) { try { this._finish(fetchSync(this._url, this._method, payload)); } catch (e) { this._fail(); } return; }
+      if (this._sync) { try { this._finish(fetchSync(this._url, this._method, payload, headerLines(this._headers))); } catch (e) { this._fail(); } return; }
       dispatch(this, new ProgressEvent('loadstart'));
       if (/^(data|blob):/.test(this._url)) { setTimeout(() => { try { this._finish(global.__olo_fetchInline(this._url)); } catch (e) { this._fail(); } }, 0); return; }
-      global.__olo_fetchStart(this._url, this._method, payload).then((r) => this._finish(r), () => this._fail());
+      global.__olo_fetchStart(this._url, this._method, payload, headerLines(this._headers)).then((r) => this._finish(r), () => this._fail());
     }
   }
   XMLHttpRequest.UNSENT = 0; XMLHttpRequest.OPENED = 1; XMLHttpRequest.HEADERS_RECEIVED = 2; XMLHttpRequest.LOADING = 3; XMLHttpRequest.DONE = 4;
@@ -1328,7 +1341,7 @@
   global.SharedWorker = class SharedWorker extends EventTargetCtor { constructor() { super(); throw new DOMException('Shared workers are not available', 'NotSupportedError'); } };
   // fetch: the browser fetches, off this thread, and answers by id.
   const fetches = new Map();
-  global.__olo_fetchStart = (url, method, body) => new Promise((resolve, reject) => { const id = N.fetchAsync(url, method, body); if (id == null) reject(new TypeError('no network')); else fetches.set(id, { resolve, reject }); });
+  global.__olo_fetchStart = (url, method, body, headers) => new Promise((resolve, reject) => { const id = N.fetchAsync(url, method, body, headers || ''); if (id == null) reject(new TypeError('no network')); else fetches.set(id, { resolve, reject }); });
   global.__olo_fetched = (id, ok, status, contentType, bytes, urlOrError) => { const p = fetches.get(id); if (!p) return; fetches.delete(id); if (ok) p.resolve({ status, contentType, body: bytes, url: urlOrError }); else p.reject(new TypeError(String(urlOrError))); };
   global.Notification = class Notification extends EventTargetCtor { constructor() { super(); } static get permission() { return 'default'; } static requestPermission() { return Promise.resolve('denied'); } close() {} };
   // Web Animations on the virtual clock. Nothing is interpolated: when an

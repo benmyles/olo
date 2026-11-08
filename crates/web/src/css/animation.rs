@@ -319,6 +319,56 @@ pub fn specs(style: &super::style::Style) -> Vec<Spec> {
 }
 /// The keyframes by name, the last rule of a name winning.
 pub type Library = HashMap<Arc<str>, Arc<Keyframes>>;
+/// What an element's `transition-*` lists say of one property: its
+/// duration and delay (seconds) and easing, when it transitions at all.
+pub fn transition_of(style: &super::style::Style, property: Property) -> Option<(f64, f64, Easing)> {
+    use super::style::Value;
+    let list = |p: Property| match style.value(p) {
+        Value::Animation(a) => Some(a.clone()),
+        _ => None,
+    };
+    let properties = list(Property::TransitionProperty)?;
+    let durations = list(Property::TransitionDuration)?;
+    // Nothing lasts: no transition (the common case, read first).
+    if durations.items().iter().all(|d| matches!(d, Item::Time(t) if *t <= 0.)) {
+        return None;
+    }
+    let (delays, easings) = (list(Property::TransitionDelay), list(Property::TransitionTimingFunction));
+    let name = property.as_str();
+    // The last entry naming it (or `all`) wins.
+    let i = properties.items().iter().rposition(|p| matches!(p, Item::Name(n) if &**n == "all" || &**n == name))?;
+    let duration = match durations.at(i) {
+        Some(Item::Time(t)) => *t,
+        _ => 0.,
+    };
+    let delay = match delays.as_ref().and_then(|l| l.at(i)) {
+        Some(Item::Time(t)) => *t,
+        _ => 0.,
+    };
+    let easing = match easings.as_ref().and_then(|l| l.at(i)) {
+        Some(Item::Easing(e)) => *e,
+        _ => Easing::EASE,
+    };
+    (duration > 0.).then_some((duration, delay, easing))
+}
+/// Whether two value texts interpolate (else a change is discrete and
+/// doesn't transition).
+pub fn interpolable(a: &str, b: &str) -> bool {
+    let (Ok(sa), Ok(sb)) = (Syntax::parse(Arc::from(a), Default::default(), None), Syntax::parse(Arc::from(b), Default::default(), None)) else { return false };
+    pair(&sa, sa.components(), &sb, sb.components(), 0.5).is_some_and(|mid| mid != a && mid != b)
+}
+/// One running transition (CSS Transitions 1 §3): a property going from
+/// the value it showed when it changed to its new one.
+#[derive(Clone, Debug)]
+struct Running {
+    from: Arc<str>,
+    to: Arc<str>,
+    start_ms: f64,
+    duration: f64,
+    delay: f64,
+    easing: Easing,
+    started: bool,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,6 +408,10 @@ pub struct Timeline {
     phases: HashMap<(crate::dom::NodeId, Arc<str>, usize), u8>,
     /// Events since the last `take_events`: element, type, name, elapsed s.
     events: Vec<(crate::dom::NodeId, &'static str, Arc<str>, f64)>,
+    /// The running transitions, by element and property.
+    transitions: HashMap<(crate::dom::NodeId, Property), Running>,
+    /// The elements given transitioned values at the last sample.
+    transitioned: Vec<crate::dom::NodeId>,
 }
 impl Timeline {
     /// The animation events since the last call (animationstart,
@@ -367,6 +421,88 @@ impl Timeline {
     }
 }
 impl Timeline {
+    /// The property changed from `from` (the value it showed) to `to`: a
+    /// transition starts, unless one already runs to `to`; one running to
+    /// another value is replaced (cancelled), and a change back to where it
+    /// shows needs none.
+    #[allow(clippy::too_many_arguments)]
+    pub fn transition(&mut self, node: crate::dom::NodeId, property: Property, from: String, to: String, duration: f64, delay: f64, easing: Easing) {
+        let key = (node, property);
+        if let Some(r) = self.transitions.get(&key) {
+            if *r.to == *to {
+                return;
+            }
+            self.events.push((node, "transitioncancel", Arc::from(property.as_str()), ((self.now_ms - r.start_ms) / 1000. - r.delay).max(0.)));
+            self.transitions.remove(&key);
+        }
+        if from == to || !interpolable(&from, &to) {
+            return;
+        }
+        let name: Arc<str> = Arc::from(property.as_str());
+        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+            eprintln!("  transition {node:?} {name}: {from} -> {to} over {duration} s after {delay} s at {} ms", self.now_ms);
+        }
+        self.events.push((node, "transitionrun", name.clone(), 0.));
+        if delay <= 0. {
+            self.events.push((node, "transitionstart", name, 0.));
+        }
+        self.transitions.insert(key, Running { from: Arc::from(from), to: Arc::from(to), start_ms: self.now_ms, duration, delay, easing, started: delay <= 0. });
+        self.running = true;
+    }
+    /// How many transitions run.
+    pub fn transition_count(&self) -> usize {
+        self.transitions.len()
+    }
+    /// Whether this property of this element is transitioning (its value
+    /// now is the transition's, not its own).
+    pub fn transitioning(&self, node: crate::dom::NodeId, property: Property) -> bool {
+        self.transitions.contains_key(&(node, property))
+    }
+    /// Where a running transition goes.
+    pub fn transition_end(&self, node: crate::dom::NodeId, property: Property) -> Option<&str> {
+        self.transitions.get(&(node, property)).map(|r| &*r.to)
+    }
+    /// The transitioned declarations at `now_ms`, by element, and every
+    /// element whose values must be computed again (transitioned now or at
+    /// the last sample); a transition done is dropped (its element takes
+    /// its own value again), with its `transitionend`.
+    pub fn sample_transitions(&mut self, cancelled: Option<&AtomicBool>) -> (HashMap<crate::dom::NodeId, Vec<super::properties::Declaration>>, Vec<crate::dom::NodeId>) {
+        let mut out: HashMap<crate::dom::NodeId, Vec<super::properties::Declaration>> = HashMap::new();
+        let now = self.now_ms;
+        let mut done = Vec::new();
+        for (&(node, property), r) in self.transitions.iter_mut() {
+            let elapsed = ((now - r.start_ms) / 1000.).max(0.);
+            let local = elapsed - r.delay;
+            if local >= r.duration {
+                done.push((node, property, r.duration));
+                continue;
+            }
+            if local >= 0. && !r.started {
+                r.started = true;
+                self.events.push((node, "transitionstart", Arc::from(property.as_str()), 0.));
+            }
+            let value = if local <= 0. { r.from.to_string() } else { interpolate(&r.from, &r.to, r.easing.at(local / r.duration)) };
+            let text: Arc<str> = Arc::from(format!("{}:{value}", property.as_str()));
+            let Ok(syntax) = Syntax::parse(text, Default::default(), cancelled) else { continue };
+            let Ok(d) = syntax.one_declaration(cancelled) else { continue };
+            if let Ok(declaration) = super::properties::Declaration::compile(&d, Default::default(), cancelled) {
+                out.entry(node).or_default().push(declaration);
+            }
+        }
+        for (node, property, duration) in done {
+            self.transitions.remove(&(node, property));
+            self.events.push((node, "transitionend", Arc::from(property.as_str()), duration));
+        }
+        self.running |= !self.transitions.is_empty();
+        let mut touched: Vec<crate::dom::NodeId> = out.keys().copied().collect();
+        for n in std::mem::take(&mut self.transitioned) {
+            if !out.contains_key(&n) {
+                touched.push(n);
+            }
+        }
+        self.transitioned = out.keys().copied().collect();
+        (out, touched)
+    }
     /// The animated declarations for the elements `styled` lists (each with
     /// its style), at `now_ms`, and every element whose animated values
     /// must be computed again (those animated now or at the last sample).
@@ -391,7 +527,13 @@ impl Timeline {
                 let start = *self.starts.entry(key.clone()).or_insert(self.now_ms);
                 seen.insert(key.clone());
                 let elapsed = (self.now_ms - start).max(0.) / 1000.;
-                self.running |= running(&spec, elapsed);
+                // One that shows nothing (its element hidden, unless it is
+                // what it animates) asks for no frames: its clock goes on,
+                // and it shows where it is once its element does (apple.com's
+                // hidden bag spinner rendered the page 120 times a second).
+                let shows = !matches!(style.value(Property::Visibility), super::style::Value::Keyword(Keyword::Hidden | Keyword::Collapse))
+                    || frames.frames.iter().any(|f| f.values.iter().any(|(n, _)| &**n == "visibility"));
+                self.running |= shows && running(&spec, elapsed);
                 // Its events: start once the delay is over, end once it is done.
                 let phase = self.phases.entry(key.clone()).or_insert(0);
                 if *phase < 1 && elapsed >= spec.delay {

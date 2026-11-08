@@ -126,6 +126,18 @@ impl Loader {
         let (text, _, _) = encoding.decode(&resource.bytes);
         Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), text.into_owned(), resource.url.to_string()))
     }
+    /// A script's request with its method, headers (`name: value` lines)
+    /// and body (fetch(), XMLHttpRequest): status, content type, bytes,
+    /// final URL. Not cached.
+    pub fn request(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
+        let outgoing = Outgoing::new(method, headers, body)?;
+        let mut progress = |_| {};
+        let resource = self.runtime.block_on(async {
+            let work = get(&self.client, url, Some(initiator.clone()), SCRIPT_LIMIT, cancel.flag.clone(), &mut progress, Kind::Fetch, false, Some(&outgoing));
+            tokio::select! { biased; _ = cancel.signal.cancelled() => Err("Cancelled".into()), result = work => result }
+        })?;
+        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string()))
+    }
     /// A fetch() for scripts: status, content type, bytes, final URL.
     pub fn bytes(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
         let resource = self.fetch(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Fetch)?;
@@ -249,7 +261,7 @@ impl Loader {
     #[allow(clippy::too_many_arguments)]
     fn fetch_uncached(&self, url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, progress: &mut impl FnMut(usize), kind: Kind, allow_file: bool) -> page::Result<Resource> {
         self.runtime.block_on(async {
-            let work = get(&self.client, url, initiator.cloned(), limit, cancel.flag.clone(), progress, kind, allow_file);
+            let work = get(&self.client, url, initiator.cloned(), limit, cancel.flag.clone(), progress, kind, allow_file, None);
             tokio::select! { biased; _ = cancel.signal.cancelled() => Err("Cancelled".into()), result = work => result }
         })
     }
@@ -294,7 +306,7 @@ impl Loader {
                 let semaphore = semaphore.clone();
                 tasks.spawn(async move {
                     let Ok(_permit) = semaphore.acquire().await else { return None };
-                    get(&client, url.clone(), Some(initiator), limit, flag, &mut |_| {}, kind, false).await.ok().map(|r| (url, r))
+                    get(&client, url.clone(), Some(initiator), limit, flag, &mut |_| {}, kind, false, None).await.ok().map(|r| (url, r))
                 });
             }
             let work = async {
@@ -318,8 +330,72 @@ impl Loader {
 }
 /// One GET (redirects followed, 20 at most), or a local file read.
 #[allow(clippy::too_many_arguments)]
-async fn get(client: &Client, mut url: Url, initiator: Option<Url>, limit: usize, cancel: Arc<AtomicBool>, progress: &mut impl FnMut(usize), kind: Kind, allow_file: bool) -> page::Result<Resource> {
+/// A script's request: its method, the headers it may set, its body.
+struct Outgoing {
+    method: reqwest::Method,
+    headers: Vec<(header::HeaderName, header::HeaderValue)>,
+    body: Vec<u8>,
+}
+impl Outgoing {
+    fn new(method: &str, headers: &str, body: &[u8]) -> page::Result<Self> {
+        let method = reqwest::Method::from_bytes(method.trim().to_ascii_uppercase().as_bytes()).map_err(|_| "Invalid request method")?;
+        if matches!(method.as_str(), "CONNECT" | "TRACE" | "TRACK") {
+            return Err("Forbidden request method".into());
+        }
+        // Fetch §2.2.2: headers a page may not set.
+        const FORBIDDEN: &[&str] = &[
+            "accept-charset",
+            "accept-encoding",
+            "access-control-request-headers",
+            "access-control-request-method",
+            "connection",
+            "content-length",
+            "cookie",
+            "cookie2",
+            "date",
+            "dnt",
+            "expect",
+            "host",
+            "keep-alive",
+            "origin",
+            "referer",
+            "set-cookie",
+            "te",
+            "trailer",
+            "transfer-encoding",
+            "upgrade",
+            "user-agent",
+            "via",
+        ];
+        let mut out = Vec::new();
+        for line in headers.lines() {
+            let Some((name, value)) = line.split_once(':') else { continue };
+            let name = name.trim().to_ascii_lowercase();
+            if FORBIDDEN.contains(&name.as_str()) || name.starts_with("proxy-") || name.starts_with("sec-") {
+                continue;
+            }
+            if let (Ok(n), Ok(v)) = (header::HeaderName::from_bytes(name.as_bytes()), header::HeaderValue::from_str(value.trim())) {
+                out.push((n, v));
+            }
+        }
+        Ok(Self { method, headers: out, body: body.to_vec() })
+    }
+}
+#[allow(clippy::too_many_arguments)]
+async fn get(
+    client: &Client,
+    mut url: Url,
+    initiator: Option<Url>,
+    limit: usize,
+    cancel: Arc<AtomicBool>,
+    progress: &mut impl FnMut(usize),
+    kind: Kind,
+    allow_file: bool,
+    outgoing: Option<&Outgoing>,
+) -> page::Result<Resource> {
     let initiator = initiator.as_ref();
+    // A redirect may turn the request into a GET (below).
+    let mut method = outgoing.map_or(reqwest::Method::GET, |o| o.method.clone());
     {
         {
             {
@@ -359,12 +435,29 @@ async fn get(client: &Client, mut url: Url, initiator: Option<Url>, limit: usize
                         );
                         return Ok(Resource { url, bytes, mime, status: None, document_encoding: None });
                     }
-                    let mut request = client.get(url.clone());
+                    let mut request = client.request(method.clone(), url.clone());
                     if let Some(referrer) = initiator.and_then(|from| referrer(from, &url)) {
                         request = request.header(header::REFERER, referrer);
                     }
-                    let mut response = request
-                        .header(
+                    let mut accept = true;
+                    if let Some(o) = outgoing {
+                        for (n, v) in &o.headers {
+                            // After a redirect to GET, the body's type goes with it.
+                            if method == reqwest::Method::GET && o.method != reqwest::Method::GET && n == header::CONTENT_TYPE {
+                                continue;
+                            }
+                            accept &= n != header::ACCEPT;
+                            request = request.header(n, v);
+                        }
+                        if !matches!(method, reqwest::Method::GET | reqwest::Method::HEAD) {
+                            if let Some(origin) = initiator.filter(|i| matches!(i.scheme(), "http" | "https")) {
+                                request = request.header(header::ORIGIN, origin.origin().ascii_serialization());
+                            }
+                            request = request.body(o.body.clone());
+                        }
+                    }
+                    if accept {
+                        request = request.header(
                             header::ACCEPT,
                             match kind {
                                 Kind::Document => "text/html,text/plain;q=0.9,*/*;q=0.1",
@@ -374,13 +467,18 @@ async fn get(client: &Client, mut url: Url, initiator: Option<Url>, limit: usize
                                 Kind::Script => "*/*",
                                 Kind::Fetch => "*/*",
                             },
-                        )
-                        .send()
-                        .await?;
+                        );
+                    }
+                    let mut response = request.send().await?;
                     let status = response.status();
                     if matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308)
                         && let Some(location) = response.headers().get(header::LOCATION)
                     {
+                        // Fetch §4.4: a 303 (not after a HEAD), or a 301 or 302
+                        // after a POST, goes on as a GET without its body.
+                        if status.as_u16() == 303 && method != reqwest::Method::HEAD || matches!(status.as_u16(), 301 | 302) && method == reqwest::Method::POST {
+                            method = reqwest::Method::GET;
+                        }
                         let location = location.to_str()?;
                         let mut target = url.join(location)?;
                         if !location.contains('#') {

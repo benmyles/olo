@@ -190,6 +190,7 @@
     const req = input instanceof Request ? input : new Request(input, init);
     if (req.signal && req.signal.aborted) return reject(new DOMException('The operation was aborted.', 'AbortError'));
     if (/^(data|blob):/.test(req.url)) { try { resolve(response(global.__olo_fetchInline(req.url))); } catch (e) { reject(new TypeError('Failed to fetch: ' + (e && e.message || e))); } return; }
-    global.__olo_fetchStart(req.url, req.method, req._bodyString()).then((r) => resolve(response(r)), (e) => reject(new TypeError('Failed to fetch: ' + (e && e.message || e))));
+    const lines = []; if (req.headers && req.headers.forEach) req.headers.forEach((v, k) => lines.push(k + ': ' + v));
+    global.__olo_fetchStart(req.url, req.method, req._bodyString(), lines.join('\n')).then((r) => resolve(response(r)), (e) => reject(new TypeError('Failed to fetch: ' + (e && e.message || e))));
   });
 })(globalThis);

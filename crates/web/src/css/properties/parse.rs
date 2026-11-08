@@ -119,7 +119,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
     // components (comma groups).
     let animation = match name {
         Name::Longhand(property) => matches!(property.grammar(), Grammar::Animation(_)),
-        Name::Shorthand(shorthand) => matches!(shorthand.expansion(), Expansion::Animation),
+        Name::Shorthand(shorthand) => matches!(shorthand.expansion(), Expansion::Animation | Expansion::Transition),
     };
     if animation {
         let parts: Vec<Component<'_>> = values.clone().filter(|c| c.kind() != Kind::Whitespace).collect();
@@ -137,6 +137,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 let Grammar::Animation(field) = property.grammar() else { return Err(Error::Invalid) };
                 Ok(smallvec::smallvec![Assignment { property, value: super::animation::parse_list(field, &parts)? }])
             }
+            Name::Shorthand(shorthand) if matches!(shorthand.expansion(), Expansion::Transition) => super::animation::parse_transition(&parts),
             Name::Shorthand(_) => super::animation::parse_shorthand(&parts),
         };
     }
@@ -196,7 +197,9 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                     };
                     Ok(smallvec::smallvec![Assignment { property: properties[0], value: name }, Assignment { property: properties[1], value: kind }])
                 }
-                Expansion::Grid | Expansion::Radius | Expansion::Background | Expansion::Font | Expansion::Animation => unreachable!("these shorthands parse before part collection"),
+                Expansion::Grid | Expansion::Radius | Expansion::Background | Expansion::Font | Expansion::Animation | Expansion::Transition => {
+                    unreachable!("these shorthands parse before part collection")
+                }
                 Expansion::Border => border(&parts, properties, limits, cancelled),
                 Expansion::Quad | Expansion::Repeat => {
                     if parts.len() > properties.len() {

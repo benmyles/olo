@@ -1203,3 +1203,71 @@ fn background_clip_text_paints_the_backgrounds_through_the_glyphs() {
     let reds = (0..50).flat_map(|y| (0..100).map(move |x| (x, y))).filter(|&(x, y)| pixel(&t, x, y) == [255, 0, 0, 255]).count();
     assert_eq!(reds, 0);
 }
+
+#[test]
+fn a_transitioned_property_eases_to_its_new_value_and_says_so() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // apple.com's search field focuses on transitionend; menus fade.
+    let mut page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}#d{height:20px;background:rgb(0,0,255);opacity:0;transition:opacity 1s linear, transform .5s}#d.on{opacity:1;transform:translateX(40px)}</style><div id=d></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let div = {
+        let mut stack = vec![page.document.root()];
+        let mut found = None;
+        while let Some(n) = stack.pop() {
+            if page.document.attribute(n, "id").ok().flatten() == Some("d") {
+                found = Some(n);
+            }
+            stack.extend(page.document.children(n).unwrap());
+        }
+        found.unwrap()
+    };
+    let opacity = |page: &olo_web::page::Page| {
+        let l = page.scene.layout();
+        let tree = l.cache().tree();
+        let (id, _) = tree.iter().find(|(_, b)| b.node == div).unwrap();
+        tree.style(id).unwrap().value(olo_web::css::properties::Property::Opacity).scalar().unwrap()
+    };
+    page.set_time(1000.);
+    let mut doc = page.document.clone();
+    doc.set_attribute(div, "class", "on").unwrap();
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    assert_eq!(opacity(&page), 0., "it starts where it was");
+    assert!(page.animating());
+    let kinds = |page: &mut olo_web::page::Page| page.take_animation_events().into_iter().map(|(_, k, n, _)| format!("{k} {n}")).collect::<Vec<_>>();
+    assert_eq!(kinds(&mut page).len(), 4, "run and start for opacity and transform");
+    for (t, want) in [(1250., 0.25), (1500., 0.5)] {
+        page.set_time(t);
+        page.rerender(page.document.clone(), Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+        assert!((opacity(&page) - want).abs() < 0.02, "at {t}: {}", opacity(&page));
+    }
+    assert_eq!(kinds(&mut page), ["transitionend transform"]);
+    page.set_time(2100.);
+    page.rerender(page.document.clone(), Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    assert_eq!(opacity(&page), 1.);
+    assert_eq!(kinds(&mut page), ["transitionend opacity"]);
+    page.set_time(2200.);
+    page.rerender(page.document.clone(), Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    assert!(!page.animating(), "done");
+    // Back, halfway: it turns around from where it is.
+    let mut doc = page.document.clone();
+    doc.set_attribute(div, "class", "").unwrap();
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    page.set_time(2700.);
+    page.rerender(page.document.clone(), Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    assert!((opacity(&page) - 0.5).abs() < 0.02, "{}", opacity(&page));
+}

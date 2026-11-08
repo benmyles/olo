@@ -79,7 +79,7 @@
       if (!N.runScript(new TextDecoder().decode(r.body), url)) throw new Error('importScripts: ' + url + ' failed');
     }
   };
-  global.__olo_fetchStart = (url, method, body) => new Promise((resolve, reject) => { try { resolve(N.fetchSync(url, method, body)); } catch (e) { reject(e); } });
+  global.__olo_fetchStart = (url, method, body, headers) => new Promise((resolve, reject) => { try { resolve(N.fetchSync(url, method, body, headers || '')); } catch (e) { reject(e); } });
   // Environment
   const url = new URL(N.url());
   global.location = { href: url.href, protocol: url.protocol, host: url.host, hostname: url.hostname, port: url.port, pathname: url.pathname, search: url.search, hash: url.hash, origin: url.origin, toString: () => url.href };

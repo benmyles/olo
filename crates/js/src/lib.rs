@@ -96,7 +96,8 @@ pub struct Fetched {
     pub url: String,
 }
 /// Fetches a URL (method, body) for scripts; the browser supplies one.
-pub type Fetcher = Box<dyn FnMut(&str, &str, &str) -> Result<Fetched, String>>;
+/// (url, method, body, headers as `name: value` lines).
+pub type Fetcher = Box<dyn FnMut(&str, &str, &str, &str) -> Result<Fetched, String>>;
 /// An image already decoded for the page, by absolute URL (no I/O); the
 /// browser supplies one. Images it doesn't have are requested
 /// (`Realm::take_image_requests`) and delivered (`Realm::image_loaded`)
@@ -113,7 +114,7 @@ pub enum RequestKind {
     /// An `img` element's image, decoded.
     Image,
     /// A fetch() or XMLHttpRequest: the bytes.
-    Text { method: String, body: String },
+    Text { method: String, body: String, headers: String },
 }
 /// What a request got.
 pub enum Loaded {
@@ -2376,10 +2377,11 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             let url = arg_string(scope, &args, 0);
             let method = arg_string(scope, &args, 1);
             let body = arg_string(scope, &args, 2);
+            let headers = if args.length() > 3 && args.get(3).is_string() { arg_string(scope, &args, 3) } else { String::new() };
             let result = {
                 let mut s = state.borrow_mut();
                 match s.fetcher.as_mut() {
-                    Some(f) => f(&url, if method.is_empty() { "GET" } else { &method }, &body),
+                    Some(f) => f(&url, if method.is_empty() { "GET" } else { &method }, &body, &headers),
                     None => Err("no network for scripts".into()),
                 }
             };
@@ -2407,6 +2409,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             let url = arg_string(scope, &args, 0);
             let method = arg_string(scope, &args, 1);
             let body = arg_string(scope, &args, 2);
+            let headers = if args.length() > 3 && args.get(3).is_string() { arg_string(scope, &args, 3) } else { String::new() };
             let mut s = state.borrow_mut();
             if s.fetcher.is_none() {
                 rv.set_null();
@@ -2414,7 +2417,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 let id = s.next_request;
                 s.next_request += 1;
                 s.in_flight.insert(id, None);
-                s.requests.push(Request { id, url, kind: RequestKind::Text { method: if method.is_empty() { "GET".into() } else { method }, body } });
+                s.requests.push(Request { id, url, kind: RequestKind::Text { method: if method.is_empty() { "GET".into() } else { method }, body, headers } });
                 rv.set(v8::Number::new(scope, id as f64).into());
             }
         }

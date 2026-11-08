@@ -17,7 +17,8 @@ use std::{
 
 /// Fetches a URL (method, body) for a worker, on its own thread; the
 /// browser supplies one.
-pub type SharedFetcher = Arc<dyn Fn(&str, &str, &str) -> Result<Fetched, String> + Send + Sync>;
+/// (url, method, body, headers as `name: value` lines).
+pub type SharedFetcher = Arc<dyn Fn(&str, &str, &str, &str) -> Result<Fetched, String> + Send + Sync>;
 /// Called from a worker's thread when it posted something, so the page's
 /// loop runs soon.
 pub type Waker = Arc<dyn Fn() + Send + Sync>;
@@ -98,7 +99,7 @@ fn run(
     // The script first: a worker that cannot load reports an error.
     let source = match source {
         Some(s) => s,
-        None => match fetcher(&url, "GET", "") {
+        None => match fetcher(&url, "GET", "", "") {
             Ok(f) if f.status < 400 => String::from_utf8_lossy(&f.body).into_owned(),
             Ok(f) => {
                 let _ = tx.send(FromWorker::Error(format!("worker script {url}: HTTP {}", f.status)));
@@ -264,8 +265,9 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
             let url = arg_string(scope, &args, 0);
             let method = arg_string(scope, &args, 1);
             let body = arg_string(scope, &args, 2);
+            let headers = if args.length() > 3 && args.get(3).is_string() { arg_string(scope, &args, 3) } else { String::new() };
             let fetcher = state.borrow().fetcher.clone();
-            match fetcher(&url, if method.is_empty() { "GET" } else { &method }, &body) {
+            match fetcher(&url, if method.is_empty() { "GET" } else { &method }, &body, &headers) {
                 Ok(fetched) => {
                     let object = v8::Object::new(scope);
                     let pairs: [(&str, v8::Local<v8::Value>); 4] = [

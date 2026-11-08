@@ -71,6 +71,8 @@ struct Browser {
     labels: Vec<worker::Label>,
     /// The element with the page's focus (agents see it focused).
     page_focus: Option<olo_web::dom::NodeId>,
+    /// The page's scripts run (see `worker::Reply::Content::live`).
+    live: bool,
     /// The page's scroll containers, as the last render had them.
     scroll_areas: Arc<[worker::ScrollArea]>,
     status: String,
@@ -151,6 +153,7 @@ impl Browser {
             labels: Vec::new(),
             scroll_areas: Arc::from([]),
             page_focus: None,
+            live: false,
             status: "Loading…".into(),
             blocked_action: None,
             scroll: (scroll * f64::from(window.scale_factor())).round() as i32,
@@ -355,8 +358,12 @@ impl Browser {
         }
         if phase == 2 {
             self.interaction.active = None;
+            // A page whose scripts run hears the click first and follows
+            // the link itself unless they cancel it (apple.com's search
+            // button opens its panel in place of going to its href).
             if let Some(link) = link
                 && self.pressed.take() == Some(link.node)
+                && !self.live
             {
                 self.activate(link, window, cx);
                 return;
@@ -455,9 +462,10 @@ impl Browser {
                 let (document, navigation) = self.snapshot_identity;
                 self.document_snapshot = serde_json::json!({"url":self.history.current().url,"navigation":navigation,"document":document,"fallbacks":self.fallbacks}).to_string().into();
             }
-            worker::Reply::Content { id, labels, extent, scroll, interaction_mask, document, target, focus_targets, scroll_areas, page_focus } if id == self.id => {
+            worker::Reply::Content { id, labels, extent, scroll, interaction_mask, document, target, focus_targets, scroll_areas, page_focus, live } if id == self.id => {
                 self.labels = labels;
                 self.page_focus = page_focus;
+                self.live = live;
                 self.scroll_areas = scroll_areas;
                 self.interaction_mask = interaction_mask;
                 self.extent = extent;
@@ -987,9 +995,20 @@ fn main() {
             if message.is::<worker::Reply>() {
                 let reply = *message.downcast::<worker::Reply>().unwrap();
                 if let worker::Reply::Navigate { id, url, replace } = reply {
-                    // The page's own navigation (a script, a form): as a link's,
-                    // replacing the history entry when it asked to.
-                    if let Some(v) = messages.borrow().as_ref()
+                    // The page's own navigation (a script, a form, a link it
+                    // let be followed): as a link's, replacing the history
+                    // entry when it asked to; only to the web or, from a
+                    // local page, local files.
+                    let from_file = messages.borrow().as_ref().is_some_and(|v| v.read(cx).history.current().url.starts_with("file:"));
+                    let allowed = url::Url::parse(&url).is_ok_and(|u| matches!(u.scheme(), "http" | "https") || u.scheme() == "file" && from_file);
+                    if !allowed {
+                        if let Some(v) = messages.borrow().as_ref() {
+                            v.update(cx, |v, cx| {
+                                v.status = "This link's URL scheme is not supported yet".into();
+                                cx.notify();
+                            });
+                        }
+                    } else if let Some(v) = messages.borrow().as_ref()
                         && let Some(handle) = handle
                         && v.read(cx).id == id
                     {

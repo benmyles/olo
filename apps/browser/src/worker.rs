@@ -178,6 +178,9 @@ pub enum Reply {
         scroll_areas: Arc<[ScrollArea]>,
         /// The element with the page's focus (its scripts' activeElement).
         page_focus: Option<olo_web::dom::NodeId>,
+        /// The page's scripts are running: a click on a link is theirs to
+        /// cancel, and their realm follows it when they don't.
+        live: bool,
     },
     Batch(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
     /// The page's layers above its base tiles, in paint order (later page
@@ -356,14 +359,13 @@ impl Loads {
                         let svg = |bytes: &[u8]| olo_web::svg_image::rasterize(bytes, &host, &this.scope, this.key.scale, Some(&this.cancel)).map_err(|e| format!("SVG image: {e}").into());
                         this.loader.image(&this.document, url, 64 << 20, &this.cancel, |_| {}, &svg).map(olo_js::Loaded::Image).map_err(|e| e.to_string())
                     }
-                    olo_js::RequestKind::Text { method, .. } => {
-                        if method != "GET" {
-                            return Err(format!("{method} requests are not supported yet"));
-                        }
-                        this.loader
-                            .bytes(&this.document.url, url, &this.cancel)
-                            .map(|(status, content_type, body, url)| olo_js::Loaded::Text(olo_js::Fetched { status, content_type, body, url }))
-                            .map_err(|e| e.to_string())
+                    olo_js::RequestKind::Text { method, body, headers } => {
+                        let fetched = if method == "GET" && headers.is_empty() {
+                            this.loader.bytes(&this.document.url, url, &this.cancel)
+                        } else {
+                            this.loader.request(&this.document.url, url, method, headers, body.as_bytes(), &this.cancel)
+                        };
+                        fetched.map(|(status, content_type, body, url)| olo_js::Loaded::Text(olo_js::Fetched { status, content_type, body, url })).map_err(|e| e.to_string())
                     }
                 });
                 if timing {
@@ -384,12 +386,14 @@ impl Loads {
     /// What workers fetch with, on their threads.
     fn worker_fetcher(&self) -> olo_js::SharedFetcher {
         let this = self.clone();
-        Arc::new(move |url: &str, method: &str, _body: &str| {
-            if method != "GET" {
-                return Err(format!("{method} requests are not supported yet"));
-            }
+        Arc::new(move |url: &str, method: &str, body: &str, headers: &str| {
             let url = url::Url::parse(url).map_err(|e| e.to_string())?;
-            this.loader.bytes(&this.document.url, url, &this.cancel).map(|(status, content_type, body, url)| olo_js::Fetched { status, content_type, body, url }).map_err(|e| e.to_string())
+            let fetched = if method == "GET" && headers.is_empty() {
+                this.loader.bytes(&this.document.url, url, &this.cancel)
+            } else {
+                this.loader.request(&this.document.url, url, method, headers, body.as_bytes(), &this.cancel)
+            };
+            fetched.map(|(status, content_type, body, url)| olo_js::Fetched { status, content_type, body, url }).map_err(|e| e.to_string())
         })
     }
     fn waker(&self) -> olo_js::Waker {
@@ -1190,13 +1194,14 @@ fn render(
             let fetcher: olo_js::Fetcher = {
                 let cancel = live_cancel.clone();
                 let loader = loader.clone();
-                Box::new(move |url: &str, method: &str, _body: &str| {
-                    if method != "GET" {
-                        return Err(format!("{method} requests are not supported yet"));
-                    }
+                Box::new(move |url: &str, method: &str, body: &str, headers: &str| {
                     let url = url::Url::parse(url).map_err(|e| e.to_string())?;
-                    let (status, content_type, body, final_url) = loader.text(&fetch_document, url, &cancel).map_err(|e| e.to_string())?;
-                    Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url })
+                    if method == "GET" && headers.is_empty() {
+                        let (status, content_type, body, final_url) = loader.text(&fetch_document, url, &cancel).map_err(|e| e.to_string())?;
+                        return Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url });
+                    }
+                    let (status, content_type, body, final_url) = loader.request(&fetch_document, url, method, headers, body.as_bytes(), &cancel).map_err(|e| e.to_string())?;
+                    Ok(olo_js::Fetched { status, content_type, body, url: final_url })
                 })
             };
             // Measurements lay the document out with the styles and fonts
@@ -1690,6 +1695,7 @@ fn render(
             .map(|s| ScrollArea { node: s.node, rect: s.rect, fixed: s.fixed, offset: s.offset, max: s.max(), user: s.user })
             .collect(),
         page_focus: cached.live.as_ref().and_then(|l| l.realm.focused()),
+        live: cached.live.is_some(),
     });
     let stickies = scene.layout().sticky();
     let mut tiles = Vec::new();

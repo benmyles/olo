@@ -285,12 +285,7 @@ const INERT: &[&str] = &[
     "tab-size",
     "text-size-adjust",
     "touch-action",
-    "transition",
     "transition-behavior",
-    "transition-delay",
-    "transition-duration",
-    "transition-property",
-    "transition-timing-function",
     "user-select",
     "will-change",
 ];

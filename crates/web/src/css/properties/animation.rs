@@ -1,5 +1,6 @@
 //! CSS Animations 1 values: the `animation-*` longhands, each a comma list
-//! (one entry per animation), and the `animation` shorthand split into them.
+//! (one entry per animation), and the `animation` shorthand split into them;
+//! CSS Transitions 1's `transition-*` lists and `transition` the same way.
 use super::*;
 use crate::css::{Component, Kind};
 
@@ -14,6 +15,8 @@ pub enum Field {
     Fill,
     PlayState,
     Easing,
+    /// `transition-property`: a property's name, `all` or `none`.
+    Property,
 }
 /// An easing function (CSS Easing 1): linear, a cubic Bézier, or steps.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -181,6 +184,11 @@ fn item(field: Field, c: &Component<'_>) -> Option<Item> {
         Field::Fill => keyword_of(c, FILLS).map(Item::Keyword),
         Field::PlayState => keyword_of(c, STATES).map(Item::Keyword),
         Field::Easing => easing(c).map(Item::Easing),
+        Field::Property => match c.kind() {
+            Kind::Ident if c.text()?.eq_ignore_ascii_case("none") => Some(Item::None),
+            Kind::Ident => Some(Item::Name(Arc::from(c.text()?.to_ascii_lowercase()))),
+            _ => None,
+        },
     }
 }
 /// One longhand's list.
@@ -249,10 +257,55 @@ pub(super) fn parse_shorthand(parts: &[Component<'_>]) -> Result<Assignments> {
     }
     Ok(LONGHANDS.iter().zip(lists).map(|((property, _), list)| Assignment { property: *property, value: Value::Animation(Animations(list.into())) }).collect())
 }
+/// The `transition` longhands in the shorthand's order of their lists.
+pub const TRANSITION_LONGHANDS: [(Property, Field); 4] =
+    [(Property::TransitionProperty, Field::Property), (Property::TransitionDuration, Field::Duration), (Property::TransitionTimingFunction, Field::Easing), (Property::TransitionDelay, Field::Delay)];
+/// `transition`: each comma group's parts in any order, the first time its
+/// duration and the second its delay, an easing its timing function, a
+/// name its property (`allow-discrete`, `transition-behavior`'s, ignored).
+pub(super) fn parse_transition(parts: &[Component<'_>]) -> Result<Assignments> {
+    let mut lists: [Vec<Item>; 4] = Default::default();
+    for group in groups(parts) {
+        let mut slots: [Option<Item>; 4] = Default::default();
+        for c in &group {
+            if let Some(t) = time(c) {
+                match (&slots[1], &slots[3]) {
+                    (None, _) => slots[1] = Some(Item::Time(t.max(0.))),
+                    (Some(_), None) => slots[3] = Some(Item::Time(t)),
+                    _ => return Err(Error::Invalid),
+                }
+            } else if let Some(e) = easing(c).filter(|_| slots[2].is_none()) {
+                slots[2] = Some(Item::Easing(e));
+            } else if c.kind() == Kind::Ident && c.text().is_some_and(|t| t.eq_ignore_ascii_case("allow-discrete") || t.eq_ignore_ascii_case("normal")) {
+            } else if let Some(i) = item(Field::Property, c).filter(|_| slots[0].is_none()) {
+                slots[0] = Some(i);
+            } else {
+                return Err(Error::Invalid);
+            }
+        }
+        let defaults = [Item::Name(Arc::from("all")), Item::Time(0.), Item::Easing(Easing::EASE), Item::Time(0.)];
+        for (i, (slot, default)) in slots.into_iter().zip(defaults).enumerate() {
+            lists[i].push(slot.unwrap_or(default));
+        }
+    }
+    Ok(TRANSITION_LONGHANDS.iter().zip(lists).map(|((property, _), list)| Assignment { property: *property, value: Value::Animation(Animations(list.into())) }).collect())
+}
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::css::{Syntax, properties::Declaration};
+    #[test]
+    fn the_transition_shorthand_splits_by_kind_and_order() {
+        let v = longhands("transition: opacity .3s ease-out, transform 200ms cubic-bezier(0.4, 0, 0.6, 1) 80ms, color 1s");
+        let get = |p| v.iter().find(|(q, _)| *q == p).unwrap().1.clone();
+        assert_eq!(get(Property::TransitionProperty), [Item::Name("opacity".into()), Item::Name("transform".into()), Item::Name("color".into())]);
+        assert_eq!(get(Property::TransitionDuration), [Item::Time(0.3), Item::Time(0.2), Item::Time(1.)]);
+        assert_eq!(get(Property::TransitionDelay), [Item::Time(0.), Item::Time(0.08), Item::Time(0.)]);
+        assert_eq!(get(Property::TransitionTimingFunction)[0], Item::Easing(Easing::Bezier([0., 0., 0.58, 1.])));
+        assert_eq!(longhands("transition: all 0.2s")[0].1, [Item::Name("all".into())]);
+        assert_eq!(longhands("transition-property: none")[0], (Property::TransitionProperty, vec![Item::None]));
+        assert_eq!(longhands("-webkit-transition-duration: 300ms")[0], (Property::TransitionDuration, vec![Item::Time(0.3)]));
+    }
     fn longhands(text: &str) -> Vec<(Property, Vec<Item>)> {
         let syntax = Syntax::parse(Arc::from(text), Default::default(), None).unwrap();
         let d = syntax.one_declaration(None).unwrap();

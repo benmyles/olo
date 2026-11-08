@@ -56,7 +56,7 @@ fn modules_import_bare_names_through_the_import_map() {
             Source::External(u) => panic!("external script {u}"),
         })
         .collect();
-    let fetcher: olo_js::Fetcher = Box::new(|url: &str, _: &str, _: &str| {
+    let fetcher: olo_js::Fetcher = Box::new(|url: &str, _: &str, _: &str, _: &str| {
         let body = match url {
             "https://cdn.test/react.js" => "export const name = 'react';",
             "https://cdn.test/lib/math.js" => "export const twice = n => n * 2;",
@@ -404,4 +404,36 @@ console.log(document.querySelector('noscript').innerHTML, document.querySelector
     let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
     realm.run_page(&scripts);
     assert_eq!(realm.report().console, [r#"[log] <picture><source srcset="a.jpg"></picture> a > b {} <p>t</p> 1 &lt; 2"#]);
+}
+#[test]
+fn a_clicked_link_is_followed_unless_the_page_cancels_it() {
+    // apple.com's search button is a link to /us/search whose click
+    // handler opens a panel in its place.
+    use olo_js::{Input, InputKind};
+    let page = r#"<a id=s href="/us/search"><span id=si>Search</span></a><a id=l href="/mac/">Mac</a><a id=j href="javascript:console.log('ran')">J</a><script>
+document.getElementById('s').addEventListener('click', (e) => { e.preventDefault(); console.log('panel'); });
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let (si, l, j) = (find(&parsed.document, "si"), find(&parsed.document, "l"), find(&parsed.document, "j"));
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., buttons: 0, modifiers: 0 };
+    let click = |realm: &mut Realm, n| {
+        realm.input(&at(InputKind::Down), Some(n));
+        realm.input(&at(InputKind::Up), Some(n));
+    };
+    click(&mut realm, si);
+    assert_eq!(realm.take_navigation(), None, "cancelled");
+    click(&mut realm, j);
+    assert_eq!(realm.take_navigation(), None, "javascript: runs, goes nowhere");
+    click(&mut realm, l);
+    assert_eq!(realm.take_navigation(), Some(("https://example.test/mac/".to_owned(), false)));
+    assert_eq!(realm.report().console, ["[log] panel", "[log] ran"]);
 }

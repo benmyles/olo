@@ -250,7 +250,7 @@ pub enum Value {
     Oblique(f64),
 }
 impl Value {
-    fn same(&self, other: &Self) -> bool {
+    pub fn same(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Keyword(a), Self::Keyword(b)) => a == b,
             (Self::Numeric(a), Self::Numeric(b)) | (Self::FitContent(a), Self::FitContent(b)) => a.same(b),

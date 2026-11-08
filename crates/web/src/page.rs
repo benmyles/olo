@@ -822,6 +822,23 @@ pub fn computed_value(style: &css::style::Style, p: css::properties::Property) -
     {
         Some(match style.value(p) {
             Value::Keyword(k) => k.as_str().to_owned(),
+            Value::Numeric(n) if n.expression().constant().is_none_or(|q| q.ty.kind() == Some(css::math::Dimension::Percentage)) => numeric_text(n)?,
+            Value::Transforms(t) if t.0.is_empty() => "none".into(),
+            Value::Transforms(t) => {
+                t.0.iter()
+                    .map(|f| {
+                        use css::properties::TransformFunction as F;
+                        Some(match f {
+                            F::Translate(x, y) => format!("translate({}, {})", numeric_text(x)?, numeric_text(y)?),
+                            F::Scale(x, y) => format!("scale({}, {})", trim(*x), trim(*y)),
+                            F::Rotate(a) => format!("rotate({}deg)", trim(a.expression().constant()?.value)),
+                            F::Skew(x, y) => format!("skew({}deg, {}deg)", trim(x.expression().constant()?.value), trim(y.expression().constant()?.value)),
+                            F::Matrix(m) => format!("matrix({})", m.iter().map(|v| trim(*v)).collect::<Vec<_>>().join(", ")),
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?
+                    .join(" ")
+            }
             value @ Value::Numeric(_) => {
                 let v = value.scalar()?;
                 match p {
@@ -881,6 +898,33 @@ pub fn computed_value(style: &css::style::Style, p: css::properties::Property) -
             _ => return None,
         })
     }
+}
+/// A computed length-percentage as text: `12px`, `50%`, or
+/// `calc(50% + 12px)` (its percentage and length parts found by resolving
+/// it against two bases: it is linear in the percentage).
+fn numeric_text(n: &css::properties::Numeric) -> Option<String> {
+    struct Basis(f64);
+    impl css::math::Context for Basis {
+        fn factor(&self, unit: css::math::RelativeUnit) -> css::math::Result<f64> {
+            if unit == css::math::RelativeUnit::Percentage { Ok(self.0 / 100.) } else { Err(css::math::Error::ContextUnavailable) }
+        }
+    }
+    if let Some(q) = n.expression().constant() {
+        return Some(match q.ty.kind() {
+            Some(css::math::Dimension::Percentage) => format!("{}%", trim(q.value)),
+            Some(css::math::Dimension::Number) => trim(q.value),
+            _ => format!("{}px", trim(q.value)),
+        });
+    }
+    let mut scratch = css::math::Scratch::default();
+    let at = |b: f64, scratch: &mut css::math::Scratch| n.resolve(&Basis(b), scratch, Default::default(), None).ok();
+    let length = at(0., &mut scratch)?;
+    let percent = at(100., &mut scratch)? - length;
+    Some(match (percent == 0., length == 0.) {
+        (true, _) => format!("{}px", trim(length)),
+        (false, true) => format!("{}%", trim(percent)),
+        (false, false) => format!("calc({}% + {}px)", trim(percent), trim(length)),
+    })
 }
 /// A number as CSS serialises it: no trailing zeros, at most 3 decimals.
 fn trim(v: f64) -> String {
@@ -2185,6 +2229,37 @@ fn render_once(
             Arc::new(job.finish()?)
         }
     };
+    // CSS transitions (CSS Transitions 1 §3): an element restyled whose
+    // transitioned property's value changed goes from the value it showed
+    // (its previous style's, mid-transition included) to its new one.
+    if let Some(p) = previous_styles {
+        let all;
+        let nodes: &[crate::dom::NodeId] = match &patched {
+            Some(patch) => &patch.nodes,
+            None if unchanged => &[],
+            None => {
+                all = styled_elements(doc, &styles).map(|(n, _)| n).collect::<Vec<_>>();
+                &all
+            }
+        };
+        let before = timeline.transition_count();
+        start_transitions(timeline, nodes, p, &styles);
+        if timing.is_some() && (before > 0 || timeline.transition_count() > 0) {
+            eprintln!("  transitions: {} running, {} restyled elements looked at", timeline.transition_count(), nodes.len());
+        }
+        let (values, touched) = timeline.sample_transitions(cancel);
+        for (node, mut declarations) in values {
+            // Animations win over transitions: their declarations later.
+            let entry = animation_values.entry(node).or_default();
+            declarations.append(entry);
+            *entry = declarations;
+        }
+        for n in touched {
+            if !animation_nodes.contains(&n) {
+                animation_nodes.push(n);
+            }
+        }
+    }
     // A first render (no styles before): its animations from its own styles.
     if previous_styles.is_none() && !rules.keyframes().is_empty() {
         (animation_values, animation_nodes) = timeline.sample(rules.keyframes(), styled_elements(doc, &styles), cancel);
@@ -2422,6 +2497,75 @@ fn render_once(
 }
 
 /// The document's elements with their styles in `tree`, in tree order.
+/// Transitions for these restyled elements: each transitioned property
+/// whose computed value differs from the previous style's starts one (see
+/// `Timeline::transition`); `transition-property: all` compares every
+/// longhand. Elements without transitions cost one lookup.
+fn start_transitions(timeline: &mut css::animation::Timeline, nodes: &[crate::dom::NodeId], before: &style::StyleTree, after: &style::StyleTree) {
+    use css::properties::{Display, Property as P};
+    use css::style::Value;
+    for &node in nodes {
+        let (Some(old), Some(new)) = (before.snapshot(node), after.snapshot(node)) else { continue };
+        if matches!(new.value(P::Display), Value::Display(Display::None)) || matches!(old.value(P::Display), Value::Display(Display::None)) {
+            continue;
+        }
+        let Value::Animation(names) = new.value(P::TransitionProperty) else { continue };
+        if matches!(new.value(P::TransitionDuration), Value::Animation(d) if d.items().iter().all(|d| matches!(d, css::properties::animation::Item::Time(t) if *t <= 0.))) {
+            continue;
+        }
+        let every = names.items().iter().any(|n| matches!(n, css::properties::animation::Item::Name(n) if &**n == "all"));
+        let listed: Vec<P> = if every {
+            P::ALL.iter().copied().filter(|&p| !old.value(p).same(new.value(p))).collect()
+        } else {
+            names
+                .items()
+                .iter()
+                .filter_map(|n| if let css::properties::animation::Item::Name(n) = n { css::properties::Name::parse(n) } else { None })
+                .flat_map(|n| n.properties().iter().copied())
+                .collect()
+        };
+        for property in listed {
+            if matches!(property, P::TransitionProperty | P::TransitionDuration | P::TransitionDelay | P::TransitionTimingFunction | P::Display) {
+                continue;
+            }
+            let Some((duration, delay, easing)) = css::animation::transition_of(new, property) else { continue };
+            let (Some(mut from), Some(mut to)) = (computed_value(old, property), computed_value(new, property)) else { continue };
+            // `none` as a transform list is the other list's identity (CSS
+            // Transforms 1 §9): translate(0, 0), scale(1, 1)...
+            if property == P::Transform {
+                let identity = |s: &style::Style| match s.value(P::Transform) {
+                    Value::Transforms(t) => identity_of(t),
+                    _ => None,
+                };
+                if from == "none" && to != "none" {
+                    from = identity(new).unwrap_or(from);
+                } else if to == "none" && from != "none" {
+                    to = identity(old).unwrap_or(to);
+                }
+            }
+            if timeline.transition_end(node, property) == Some(to.as_str()) || from == to && !timeline.transitioning(node, property) {
+                continue;
+            }
+            timeline.transition(node, property, from, to, duration, delay, easing);
+        }
+    }
+}
+/// A transform list's identity, function by function, as text.
+fn identity_of(t: &css::properties::Transforms) -> Option<String> {
+    use css::properties::TransformFunction as F;
+    (!t.0.is_empty()).then(|| {
+        t.0.iter()
+            .map(|f| match f {
+                F::Translate(..) => "translate(0px, 0px)",
+                F::Scale(..) => "scale(1, 1)",
+                F::Rotate(_) => "rotate(0deg)",
+                F::Skew(..) => "skew(0deg, 0deg)",
+                F::Matrix(_) => "matrix(1, 0, 0, 1, 0, 0)",
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    })
+}
 fn styled_elements<'t>(doc: &'t Document, tree: &'t style::StyleTree) -> impl Iterator<Item = (crate::dom::NodeId, &'t style::Style)> + 't {
     let mut next = Some(doc.root());
     std::iter::from_fn(move || {
