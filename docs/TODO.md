@@ -2292,6 +2292,22 @@ people.
 
 ## Done (most recently finished first)
 
+- ~~**Lock screens and screen savers of ended agent screens lingered**~~
+  (found 2026-11-07: eleven olo-lock and an olo-screensaver, 54 MB, of
+  an agent screen gone a day). *Done* (8ba75305, fe1e1fcb):
+  - A program app_server hands its connection (`WAYLAND_SOCKET`) ends
+    where others re-execute (upgrade, compositor gone): re-executed it
+    came back headless and stayed for ever.
+  - GPUI keeps a `quit()` asked for while launching (calloop's `run`
+    dropped it).
+  - The saver ends with nothing to cover.
+  - An agent screen is never idle (it had locked itself after an
+    in-place restart).
+  - Lock screens use the fingerprint reader, security key and camera
+    only in the person's own session (`olo_system::env::at_the_computer`).
+  - The twelve still running end by themselves at the next Upgrade
+    (tried with old binaries in a sandbox).
+
 - ~~**Undo everywhere it makes sense**~~ (Ben, 2026-11-07: "we need
   generally and unviversally to support undo in all olo apps where it
   makes sense"). *Done* (a75a4ce1, e6e5c222, 29d87d5d, 777d905e, 9fd4da67, ad442f3e,
