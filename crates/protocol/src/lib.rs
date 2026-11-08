@@ -2319,6 +2319,10 @@ pub struct OverviewPane {
     pub workspace: u32,
     /// The workspace showing.
     pub current: bool,
+    /// The New Workspace pane (`workspace`: the empty one it stands for):
+    /// a window dragged onto it goes there.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub new: bool,
     pub frame: Frame,
 }
 

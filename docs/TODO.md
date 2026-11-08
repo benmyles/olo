@@ -20,9 +20,6 @@ something nobody here has is in "Blocked", with what it waits for.
 Leftovers found in finished entries (2026-11-08 audit: each checked
 against the code, still not there):
 
-- **The overview: drag a window to another workspace; add a workspace**
-  (its "Not yet", done 2026-10-28): a window dragged onto another
-  workspace's pane moves there; a pane at the end adds a workspace.
 - **Passwords' SSH agent: allow with a touch or a look** (its "Left",
   done 2026-11-05): the Allow for a terminal session's first signature
   also answered by a security key's touch or face unlock, as unlocking
@@ -2359,6 +2356,13 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The overview: drag a window to another workspace; add a
+  workspace**~~ (its "Not yet", 2026-10-28). *Done* (2026-11-08): a
+  window dragged onto another workspace's pane (any display's) goes
+  there; New Workspace, a pane at the side of each display's, takes one
+  to an empty workspace (made if every one has windows), and a click on
+  it shows one; the overview stays out and lays itself out again.
 
 - ~~**Always on Top, from a window's menu**~~ (the window menu's "Not
   yet", 2026-10-28). *Done* (2026-11-08): the tab's menu's Always on Top

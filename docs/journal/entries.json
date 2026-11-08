@@ -3634,5 +3634,11 @@
   "title": "Always on Top, from a window's menu",
   "caption": "A window's tab menu has Always on Top: kept above the others (its dialogs over it still, picture in picture over it), across a reload; agents set it with set_on_top.",
   "image": "2026-11-08/024204-always-on-top-from-a-window-s-menu.png"
+ },
+ {
+  "time": "2026-11-08T02:55:28",
+  "title": "The overview: windows dragged between workspaces, and New Workspace",
+  "caption": "In the overview (\u2303Space) a window dragged onto another workspace's pane goes there, and onto New Workspace (the strip at the side) to an empty one, made if every one has windows; the overview stays out and lays itself out again. A click on New Workspace shows an empty one.",
+  "image": "2026-11-08/025528-the-overview-windows-dragged-between-workspaces-.png"
  }
 ]

@@ -5072,6 +5072,22 @@ The window chosen (under the pointer, else picked with the arrows, at
 first the focused one) is ringed in the focus colour with its title on a
 tooltip's plate at its foot.
 
+A window dragged (the left button held past `DRAG_START`, 4 points:
+less is a click) follows the pointer over everything, the pane under it
+ringed (over the windows: the one dragged would hide it), and let go
+over another workspace's pane goes there (`move_to_display_workspace`,
+another display's too, a step Undo takes back); over its own, or
+nothing, it glides back. Each display has a New Workspace pane, a plus
+in it, in a strip at the side (`NEW_STRIP` of its width, at most
+`NEW_MOST`, so the workspaces keep their room); it stands for the first
+empty workspace there, or one past the last, which `workspace_count`
+then makes room for. A window let go on it goes there; a click on it
+shows it and leaves. Either way the overview stays out and lays itself
+out again (`overview_relayout`), each window gliding from where it was
+in it (`Cell::prev`, `Overview::moved_at`); its own moves don't make it
+step aside (`Overview::moving`). Agents read the pane as
+`OverviewPane::new` and drag with `synthetic` down, moves and up.
+
 A click on a window, its letter or Return makes it the active window on
 its workspace (`close_overview(Some)`, which `restore`s it); Esc, its
 shortcut again or a click on nothing leaves everything as it was. Keys go to it before

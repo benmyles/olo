@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### The overview: windows dragged between workspaces, and New Workspace
+
+*02:55* — In the overview (⌃Space) a window dragged onto another workspace's pane goes there, and onto New Workspace (the strip at the side) to an empty one, made if every one has windows; the overview stays out and lays itself out again. A click on New Workspace shows an empty one.
+
+![The overview: windows dragged between workspaces, and New Workspace](2026-11-08/025528-the-overview-windows-dragged-between-workspaces-.png)
+
 ### Always on Top, from a window's menu
 
 *02:42* — A window's tab menu has Always on Top: kept above the others (its dialogs over it still, picture in picture over it), across a reload; agents set it with set_on_top.
