@@ -870,7 +870,7 @@ impl<'a> BuildJob<'a> {
                         if display == Display::Contents {
                             continue;
                         }
-                        if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline)) {
+                        if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline | Keyword::Middle | Keyword::Top | Keyword::Bottom)) {
                             self.note("vertical-align on image", node);
                         }
                         if position == Keyword::Relative {
@@ -980,7 +980,7 @@ impl<'a> BuildJob<'a> {
                             if position != Keyword::Static {
                                 self.note("positioned inline", node);
                             }
-                            if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline | Keyword::Middle)) {
+                            if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline | Keyword::Middle | Keyword::Top | Keyword::Bottom)) {
                                 self.note("vertical-align on an atomic inline", node);
                             }
                             self.atomic(node, container, matches!(inner, Inner::Flex | Inner::Grid), false)?;

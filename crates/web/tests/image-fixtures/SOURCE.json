@@ -9,20 +9,20 @@
     "https://skia.googlesource.com/skia/+/main/src/core/SkPixmapDraw.cpp"
   ],
   "files": {
-    "chrome-1.25.json": "cb2730d9d438a80fb2941e09efa9cd624268705899220dad2a5aad8f963fb532",
-    "chrome-1.5.json": "2b03b729348e6a5ecd5dd1f38ed0337df54a3b5ea8e37e1d30e8127b1de85631",
-    "chrome-1.75.json": "c3fcd7b991cc3f255b861383f464bd7557763223e83883af90e338d6dbdc3484",
-    "chrome-1.json": "1185481aaf01b040aeec3e03fc9dccf603e04ea5c41eab738641e9968f1464b9",
-    "chrome-2.json": "899bc9f2a89226dcfd0623e0d01aace1d624e3ed21851ee7a6398157cf15c557",
-    "generate.py": "0f2d565b8ea3cd4945ee1d2e98ac7138d29da4a54896c824b558b122e5716d5f",
-    "inputs.json": "630f2422dae7c3975173c59e01c9cc17bc09b71be119155cf7fededd213cf749",
+    "chrome-1.25.json": "f48d9b4b1701ee1f31d843c649fb9ffb17146bd7c1d876e23e2acb03d396e530",
+    "chrome-1.5.json": "d60e259650482d62ea464508a0112442d1e15784cc7817d0b23f8549f0e148be",
+    "chrome-1.75.json": "07bb84fd9101bf5d70f6d0d6de1f15efce9df89ed68fbb0403e0d1bcaa0264a5",
+    "chrome-1.json": "bbf670bbecafccf90e7d5816b745b83bc41620b7551affafa344e408d4bc87c8",
+    "chrome-2.json": "d004416111e08c90258fff93d57227b0d266c8ca460c24b02b9210f2e5d6bbed",
+    "generate.py": "2b45f48f8287201430fcbcdd1a0694a6398130894d8476dde2410dddc9f997cb",
+    "inputs.json": "dd9df04930e6225c25ead86acc45f825862a080b8c100304c890bef38d35acd0",
     "probe.html": "f18c6193ed1218178a7510e25eb0f2d6b5af5bc5201e177038433883b53f79fb",
     "serve.py": "f93b10e433a21df9704b7c5bd1c4d72523f99ee28097f26acf6ac0a9decfff19"
   },
   "coverage": {
     "observations": 300,
-    "matching": 285,
-    "unsupported": 15,
+    "matching": 300,
+    "unsupported": 0,
     "website_passes": 0
   },
   "font": {

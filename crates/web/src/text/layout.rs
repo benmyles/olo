@@ -11,7 +11,7 @@ use super::{
 };
 use index::{End, Index, Window};
 pub use intrinsic::{IntrinsicJob, IntrinsicProgress, IntrinsicWidths};
-pub use objects::{Object, ObjectFragment};
+pub use objects::{Align as ObjectAlign, Object, ObjectFragment};
 use smallvec::SmallVec;
 use spacing::Spaces;
 pub use spacing::{Side, Spacing};
@@ -1303,6 +1303,8 @@ impl<'a> Job<'a> {
             descent = descent.max(d);
             if objects.placeholders_only(&self.fragments[first..], self.text.prepared.text(), collapses(self.text.whitespace)) {
                 (ascent, descent, phantom) = (0., 0., true);
+            } else {
+                objects.align_line(self.lines.len(), &mut ascent, &mut descent);
             }
         }
         if ![ascent, descent].iter().all(|v| v.is_finite()) {

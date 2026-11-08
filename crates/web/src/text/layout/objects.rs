@@ -12,6 +12,20 @@ pub struct Object {
     /// An absolutely positioned box's place in the line (no size): a line
     /// holding only these (and collapsible space) is no line box.
     pub placeholder: bool,
+    /// `vertical-align: top` or `bottom`: against the line box (its
+    /// ascent and descent its height's split, as baseline-aligned).
+    pub align: Align,
+}
+/// Where an object sits in its line.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Align {
+    /// By its baseline (`ascent` above the line's), `middle` included.
+    #[default]
+    Baseline,
+    /// Its top at the line box's top.
+    Top,
+    /// Its bottom at the line box's bottom.
+    Bottom,
 }
 /// A placed atomic item. Its vertical origin is the line baseline minus ascent.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -98,8 +112,10 @@ impl Objects {
                 if self.placed.len() >= limits.fragments {
                     return Err(Error::Limit);
                 }
-                ascent = ascent.max(o.ascent);
-                descent = descent.max(o.descent);
+                if o.align == Align::Baseline {
+                    ascent = ascent.max(o.ascent);
+                    descent = descent.max(o.descent);
+                }
                 self.placed.push(ObjectFragment { at: o.at, line, x: f.x, advance: o.advance, ascent: o.ascent, descent: o.descent });
             }
         }
@@ -107,6 +123,39 @@ impl Objects {
             return Err(Error::Invalid);
         }
         Ok((ascent, descent))
+    }
+    /// The line box's final extents (`ascent`, `descent`) grown for its
+    /// top- and bottom-aligned objects taller than it, and those objects
+    /// placed against it (CSS 2.2 §10.8.1).
+    pub fn align_line(&mut self, line: usize, ascent: &mut f64, descent: &mut f64) {
+        let Ok(line) = u32::try_from(line) else { return };
+        let start = self.placed.partition_point(|p| p.line < line);
+        for i in start..self.placed.len() {
+            if self.placed[i].line != line {
+                break;
+            }
+            let Some(o) = self.at(self.placed[i].at) else { continue };
+            let height = o.ascent + o.descent;
+            match o.align {
+                Align::Baseline => continue,
+                Align::Top => *descent = descent.max(height - *ascent),
+                Align::Bottom => *ascent = ascent.max(height - *descent),
+            }
+        }
+        for i in start..self.placed.len() {
+            if self.placed[i].line != line {
+                break;
+            }
+            let Some(o) = self.at(self.placed[i].at) else { continue };
+            let height = o.ascent + o.descent;
+            let a = match o.align {
+                Align::Baseline => continue,
+                Align::Top => *ascent,
+                Align::Bottom => height - *descent,
+            };
+            self.placed[i].ascent = a;
+            self.placed[i].descent = height - a;
+        }
     }
     /// Whether these fragments are placeholders and collapsible space
     /// only, with a placeholder among them: the line is then zero-height

@@ -1747,7 +1747,7 @@ impl<'a> Job<'a> {
             let at = boundary(prepared, raw)?;
             // An absolutely positioned box's place: no room in the line.
             if b.absolute {
-                objects.push(inline::Object { at, advance: 0., ascent: 0., descent: 0., placeholder: true });
+                objects.push(inline::Object { at, advance: 0., ascent: 0., descent: 0., placeholder: true, align: inline::ObjectAlign::Baseline });
                 image_geometry.push((child, Geometry::default(), at));
                 continue;
             }
@@ -1778,14 +1778,21 @@ impl<'a> Job<'a> {
                 && matches!(s.value(P::Display), Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flow | crate::css::properties::Inner::FlowRoot, .. }))
                 && matches!(s.value(P::OverflowX), Value::Keyword(K::Visible))
                 && matches!(s.value(P::OverflowY), Value::Keyword(K::Visible));
-            let ascent = if middle && matches!(b.kind, BoxKind::InlineVector { .. } | BoxKind::Block { .. }) {
+            // middle: its midpoint at the baseline plus half the parent's
+            // x-height; top and bottom: against the line box (CSS 2.2 §10.8.1).
+            let align = match s.value(P::VerticalAlign) {
+                Value::Keyword(K::Top) => inline::ObjectAlign::Top,
+                Value::Keyword(K::Bottom) => inline::ObjectAlign::Bottom,
+                _ => inline::ObjectAlign::Baseline,
+            };
+            let ascent = if middle {
                 (height + style.font().metrics.ex) / 2.
             } else if inline_block && let Some(baseline) = self.last_baseline(child, 0)? {
                 baseline + margin.top
             } else {
                 height
             };
-            objects.push(inline::Object { at, advance: g.border_box.width + margin.horizontal(), ascent, descent: height - ascent, placeholder: false });
+            objects.push(inline::Object { at, advance: g.border_box.width + margin.horizontal(), ascent, descent: height - ascent, placeholder: false, align });
             image_geometry.push((child, g, at));
         }
         Ok((objects, image_geometry))

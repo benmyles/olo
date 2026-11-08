@@ -360,3 +360,19 @@ fn cells_fill_their_row_and_align_their_content_in_it() {
     let t = l.bounds(text).unwrap();
     assert!((t.y - (a.y + (a.height - 18.) / 2.)).abs() < 1., "{t:?} in {a:?}");
 }
+#[test]
+fn atomic_inlines_align_to_the_line_box_top_bottom_and_middle() {
+    // Chrome's numbers: a 40 px inline-block sets a line of 45; the 10 px
+    // boxes top at 0, bottom at 35; a second line whose top-aligned 40 px
+    // box makes it 40 tall.
+    let p = load(
+        "body{line-height:20px}p{margin:0 0 10px}span.b{display:inline-block;width:20px;height:40px}span.s{display:inline-block;width:10px;height:10px}</style><p id=p1>x<span class=b id=b1></span><span class=s id=t style='vertical-align:top'></span>y<span class=s id=o style='vertical-align:bottom'></span>z</p><p id=p2>text <span class=b id=b2 style='vertical-align:top'></span> end</p>",
+        1.,
+    );
+    let y = |id: &str| rect(&p, id).y;
+    assert_eq!(rect(&p, "p1").height, 45.);
+    assert_eq!(y("t"), 0.);
+    assert_eq!(y("o"), 35.);
+    assert_eq!(rect(&p, "p2").height, 40.);
+    assert_eq!(y("b2"), y("p2"));
+}

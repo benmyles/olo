@@ -417,7 +417,7 @@ fn independent_chrome_intrinsic_constraints_display_and_dimension_hints() {
             supported += 1;
         }
     }
-    assert_eq!((supported, unsupported), (285, 15));
+    assert_eq!((supported, unsupported), (300, 0));
     assert!(failures.is_empty(), "{} geometry differences:\n{}", failures.len(), failures.join("\n"));
 }
 #[test]
