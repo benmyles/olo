@@ -593,9 +593,10 @@ something nobody here has is in "Blocked", with what it waits for.
   2026-11-07: app_server restarting (an upgrade's reload, a crash) still cut
   every stream ("Connection lost mid-response"): the kit re-executed the
   pool at once when the compositor went. It now hands over first (35ee3e09;
-  a tunnel across `tsession reload` broke before, held after). *Left*: the
-  next upgrades on the machine with no agent's answer cut (the first may
-  still be, run by the old pool).
+  a tunnel across `tsession reload` broke before, held after). *Left*
+  (Ben's upgrades, seen as they happen): the next upgrades on the
+  machine with no agent's answer cut (the first may still be, run by
+  the old pool).
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
   show the credit cards in the olo context menu for filling". Olo's
@@ -851,8 +852,8 @@ something nobody here has is in "Blocked", with what it waits for.
     2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
     Haiku cursors as an XCursor theme for programs that draw their own
     pointer; Olo's icons in the look as the icon theme, for the
-    freedesktop names it has pictures for). Left, both waiting on Olo
-    itself: `contrast` (once Olo has a high-contrast look) and
+    freedesktop names it has pictures for). Not followed, as Olo has
+    nothing for them to follow: `contrast` (once Olo has a high-contrast look) and
     `text-scaling-factor` (once Olo has a text size of its own; today
     the kit's text is one size, `fonts::PLAIN_SIZE`, which GTK already
     gets as its font size, so there is nothing to scale to).
@@ -1944,15 +1945,15 @@ something nobody here has is in "Blocked", with what it waits for.
     surface GTK had let go of); the NVIDIA GPU woke as the session
     reloaded; a headless app_server crashed on exit in libnvidia-eglcore's
     thread-exit destructor (its dmabuf-check thread had NVIDIA's EGL in
-    it: glvnd asks `10_nvidia.json` before Mesa's). Left: each found
-    and fixed.
+    it: glvnd asks `10_nvidia.json` before Mesa's). Each found and
+    fixed.
   - Windows fit what they show: `WindowOptions::fits_content` in the
     kit (every alert and dialog, Preferences' panels, Drive Setup's forms,
     the network sheet), `TabView::grows`, whole-panel scroll views gone,
     Display side by side, Performance in two tabs; the lint on a
     1280 × 800 screen, following windows that resize themselves;
-    `ui-lint --screen`; the rule in CLAUDE.md and HACKING. Left: the
-    live lint's findings on every app at 1280 × 800: none (2026-11-05:
+    `ui-lint --screen`; the rule in CLAUDE.md and HACKING. The live
+    lint's findings on every app at 1280 × 800: none (2026-11-05:
     `--screen 2560x1600` at 2×, 1920x1200 at 1.5× and 1280x800 at 1×
     all clean; the lint now opens apps at the first scale asked for
     when 2× isn't one, as 1280x800 opened at 2× was 640 × 400 points).
