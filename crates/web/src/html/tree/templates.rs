@@ -1,15 +1,14 @@
 //! Static template insertion modes, and declarative shadow roots
 //! (`<template shadowrootmode>`). Content patching, custom-element
 //! reactions and script execution remain separate.
-use super::{Builder, Insertion, ParseError, Result, Tag, Token, Tokenizer};
+use super::{Builder, Insertion, Result, Tag, Token, Tokenizer};
 
 impl<'a> Builder<'a> {
     pub(super) fn start_template(&mut self, tag: &mut Tag<'a>) -> Result<()> {
         let declarative =
             self.fragment_context.is_none() && tag.attributes.iter().any(|a| a.name == "shadowrootmode" && (a.value.eq_ignore_ascii_case("open") || a.value.eq_ignore_ascii_case("closed")));
-        if tag.attributes.iter().any(|a| a.name == "for") {
-            return Err(ParseError::Unsupported("template content patching"));
-        }
+        // (`<template for>`, the proposed content patching, is an ordinary
+        // template here, as in Chrome: Reddit's pages have it.)
         self.formatting_marker()?;
         self.insert(tag)?;
         // A declarative shadow root (HTML §13.2.6.4.7): parsed as a
