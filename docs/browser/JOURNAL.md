@@ -6361,3 +6361,12 @@ journal).
   messages end in "…" now). Its README logo came light on dark: the realm
   chose picture sources for a light page. Its `<relative-time>` dates
   need shadow DOM (TODO).
+- **Inset shadows, text-overflow: ellipsis, vertical-align on atomic
+  inlines.** Inset box-shadows paint (the padding box less its moved,
+  shrunk hole, blurred); four test boxes match Chrome. Lines running past
+  a clipping block with `text-overflow: ellipsis` end in "…" (GitHub's
+  commit messages). `vertical-align: top | bottom | middle` on
+  inline-blocks and images: the image fixtures' 15 alignment cases now
+  match their Chrome observations at five scales (all 300 pass). Layout
+  on GitHub's page, localized: 4.4-4.7 ms before these, 4.7-4.8 ms after
+  (one warm-up run aside).
