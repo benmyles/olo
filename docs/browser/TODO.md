@@ -41,9 +41,9 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 - [ ] A page's tiles are painted one after another on its thread (about
   0.25 ms each at 1×; a full repaint at 2× is some 100 tiles): paint
   them side by side on the CPU pool.
-- [ ] A page's first module graph is fetched with a thread per module
-  waiting on the network (`modules::fetch_all`): start them as tasks
-  (the page waits for the graph either way).
+- [x] A page's first module graph was fetched with a thread per module
+  waiting on the network (`modules::fetch_all`): they start as tasks on
+  the network runtime (the page waits for the graph either way).
 - [ ] `crypto.subtle.digest` and HMAC compute on the page's thread
   (their promises are settled at once): on the CPU pool for large inputs.
 

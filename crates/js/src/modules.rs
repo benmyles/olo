@@ -211,10 +211,33 @@ fn fetch(state: &Rc<RefCell<State>>, url: &str) -> Result<String, String> {
     }
     Ok(String::from_utf8_lossy(&fetched.body).into_owned())
 }
-/// Several modules' sources, fetched together on threads of their own
-/// when the realm has a fetcher that allows it (a graph's imports load
-/// side by side, not one after another), else in turn.
+/// Several modules' sources, fetched together (a graph's imports load
+/// side by side, not one after another): started on the browser's network
+/// runtime when it gives a starter, else on threads of their own with its
+/// shared fetcher, else in turn.
 fn fetch_all(state: &Rc<RefCell<State>>, urls: &[String]) -> Vec<Result<String, String>> {
+    let text = |fetched: Result<crate::Fetched, String>, url: &str| -> Result<String, String> {
+        let fetched = fetched?;
+        if fetched.status >= 400 {
+            return Err(format!("{url} answered {}", fetched.status));
+        }
+        Ok(String::from_utf8_lossy(&fetched.body).into_owned())
+    };
+    // Started together on the browser's network runtime, waited for here.
+    let starter = state.borrow().worker_starter.clone();
+    if let Some(start) = starter.filter(|_| urls.len() > 1) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        for (i, url) in urls.iter().enumerate() {
+            let tx = tx.clone();
+            start(url.clone(), "GET".into(), Vec::new(), crate::SCRIPT_DESTINATION.into(), Box::new(move |result| drop(tx.send((i, result)))));
+        }
+        drop(tx);
+        let mut out: Vec<Result<String, String>> = urls.iter().map(|_| Err("a module fetch was dropped".into())).collect();
+        while let Ok((i, result)) = rx.recv() {
+            out[i] = text(result, &urls[i]);
+        }
+        return out;
+    }
     let shared = state.borrow().worker_fetcher.clone();
     let Some(shared) = shared.filter(|_| urls.len() > 1) else {
         return urls.iter().map(|u| fetch(state, u)).collect();
