@@ -276,6 +276,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub pointer_track: crate::cursor::Track,
     /// When `tick` last did its work (at most every `TICK`).
     pub last_tick: Option<std::time::Instant>,
+    /// A tick put off by `desktop::TICK`, due at `last_tick` + TICK.
+    pub tick_owed: bool,
     pub seat_name: String,
     pub seat: Seat<AnvilState<BackendData>>,
     pub clock: Clock<Monotonic>,
@@ -1249,6 +1251,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             input_counts: Default::default(),
             last_wheel: None,
             last_tick: None,
+            tick_owed: false,
             seat_name,
             seat,
             pointer,
@@ -1700,7 +1703,7 @@ pub trait Backend {
     /// What `outputs` (all, for None) show may have changed: a display
     /// resting after frames with nothing new (`render::IDLE_FRAMES`)
     /// looks again at once (paced to its rate) rather than at its next
-    /// `render::IDLE_POLL`.
+    /// `render::rest_for`.
     fn wake(&mut self, _outputs: Option<&[Output]>) {}
     fn early_import(&mut self, surface: &WlSurface);
     fn update_led_state(&mut self, led_state: LedState);

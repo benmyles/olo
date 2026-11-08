@@ -38,6 +38,12 @@ pub struct Joined {
     pub worn: crate::shell::tiling::Arrangement,
 }
 
+/// `tick` at most this often (once a frame of the fastest display: a
+/// change still goes out within a frame). Every turn of the loop was 500
+/// times a second with a video call on, each rebuilding the window infos
+/// and groups whether anything changed or not: 5% of a core (2026-11-01).
+const TICK: std::time::Duration = std::time::Duration::from_millis(8);
+
 impl Joined {
     /// Untouched since: still at the group's frame (`frame`, where it is
     /// now) and arranged as the group was (`arrangement`, its own now: not
@@ -654,20 +660,27 @@ impl<B: Backend + 'static> AnvilState<B> {
         infos
     }
 
+    /// How long the event loop may sleep with nothing coming: until a
+    /// tick put off by `TICK` is due, else auto-tiling's or the safety
+    /// net's (`auto_tiling`).
+    pub fn loop_timeout(&self) -> std::time::Duration {
+        match self.last_tick.filter(|_| self.tick_owed) {
+            Some(last) => (last + TICK).saturating_duration_since(std::time::Instant::now()).max(std::time::Duration::from_millis(1)),
+            None => self.auto_loop_timeout(),
+        }
+    }
+
     /// Called once per loop iteration: drop dead windows and tell
     /// subscribers (Deskbar) when the window list changed.
     pub fn tick(&mut self) {
-        // After every turn of the loop was 500 times a second with a
-        // video call on, each rebuilding the window infos and groups
-        // whether anything changed or not: 5% of a core (2026-11-01).
-        // At most once a frame of the fastest display: a change still
-        // goes out within a frame.
-        const TICK: std::time::Duration = std::time::Duration::from_millis(8);
         let t = std::time::Instant::now();
         if self.last_tick.is_some_and(|last| t.duration_since(last) < TICK) {
+            // Owed: the loop wakes for it when it's due (`loop_timeout`).
+            self.tick_owed = true;
             return;
         }
         self.last_tick = Some(t);
+        self.tick_owed = false;
         self.parked.0.borrow_mut().retain(|w| w.alive());
         self.sync_groups();
         crate::render::part("tick: groups", t);

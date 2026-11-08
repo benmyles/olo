@@ -29,15 +29,6 @@ something nobody here has is in "Blocked", with what it waits for.
   Preferences' changes, Passwords' edits, Deskbar's and the desktop's
   moves, Terminal's tab and pane changes, and the rest.
 
-- **A resting display still looks every 100 ms** (found 2026-11-07,
-  looking into the Intel GPU): `render::IDLE_POLL`, the safety net for
-  changes that don't wake a display (`Backend::wake`). An idle
-  headless session's app_server: 0.3% of a core, 16 wakeups a second,
-  each look gathering and comparing every element (strace: timerfd armed
-  ~100 ms each time). Find what changes without waking (keep_warm's
-  pixel, timers not hooked up), wake for each, then make the poll a long
-  safety net (seconds) or none; measure idle before and after.
-
 - **Voice Processing's delay: Ben to choose the default noise model**
   (Ben, 2026-11-07: "we need that to be way more optimized so that it is
   not introducing any kind of noticeable lag"; "get rid of the remaining

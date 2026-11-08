@@ -564,16 +564,37 @@ const ON: u8 = 2;
 const OFF: u8 = 3;
 
 /// Frames in a row with nothing new after which a display rests: it
-/// looks again only every `IDLE_POLL`, or at once when woken
+/// looks again only after `rest_for`, or at once when woken
 /// (`Backend::wake`: a commit on it, input, a request, the windows
 /// changing). Looking costs gathering every element on it and comparing
 /// them: done 120 times a second for each display, it kept an idle
 /// app_server at a fifth of a core. Few, as what comes next wakes it
 /// anyway: a blinking cursor's frame was followed by twelve looks.
 pub const IDLE_FRAMES: u32 = 3;
-/// How often a resting display looks anyway, for what changed without
-/// waking it (`keep_warm`'s pixel, a timer of ours not hooked up).
-pub const IDLE_POLL: std::time::Duration = std::time::Duration::from_millis(100);
+/// How long a resting display waits before it looks anyway (unless
+/// woken): while the desktop is in use, until `keep_warm`'s pixel is due
+/// (a second at most); then `IDLE_SAFETY`, a safety net for something
+/// that changed without waking it (none found: a headless shell session
+/// used for minutes, windows opened, tiled, dragged, typed in, menus,
+/// tips, the overview, the switcher, a volume key, 2026-11-07; the debug
+/// line "a resting display found something new" says where). Before, it
+/// looked every 100 ms, whatever: ten looks a second a display, each
+/// gathering and comparing everything on it.
+pub fn rest_for() -> std::time::Duration {
+    WARM.with(|w| {
+        let w = w.borrow();
+        let now = std::time::Instant::now();
+        if now - w.drawn <= WARM_FOR {
+            // (A hair after it's due, so the look changes it.)
+            (w.bumped + WARM_EVERY).saturating_duration_since(now).max(std::time::Duration::from_millis(20)) + std::time::Duration::from_millis(2)
+        } else {
+            IDLE_SAFETY
+        }
+    })
+}
+
+/// A resting display's look when nothing at all is due (`rest_for`).
+pub const IDLE_SAFETY: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// A frame was drawn (`drew`: anything at all): unless it was the
 /// screens' frames for `keep_warm`'s pixel (any in the few milliseconds

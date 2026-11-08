@@ -159,7 +159,12 @@ like pixel alignment is.
 
    A display with nothing new rests (`render::IDLE_FRAMES`, both
    backends): after 3 looks in a row that found no damage it looks
-   only every 100 ms (`IDLE_POLL`), and at once when woken
+   again only when woken, or when `render::rest_for` says: while the
+   desktop is in use (two minutes after anything drew) when the
+   keep-warm pixel is due, once a second, and then only every 10 s, a
+   safety net (it was every 100 ms whatever; a bare headless session
+   idle 10 wakeups a second, 0.2% of a core, now 2 while warm and 1
+   after, 0.0%; with Deskbar 15 → 5). At once when woken
    (`Backend::wake`, paced a quarter of a frame after its last look):
    a commit wakes the displays its window is on (every display for a
    popup, a layer or the pointer; none for a window showing nowhere),
@@ -175,8 +180,15 @@ like pixel alignment is.
    (on a real display, a DRM test commit too): 120 a second for each of
    two displays kept an idle app_server at a fifth of a core. Something
    new of ours that shows without a wake shows at the next look, up to
-   100 ms late: wake for it (at debug level the log says "a resting
-   display found something new at its look"). The keep-warm pixel
+   10 s late: wake for it (at debug level, `app_server::headless=debug`
+   or `app_server::udev=debug`, the log says "a resting display found
+   something new at its look", with where, headless). None was found
+   in minutes of a headless shell session used every way (2026-11-07).
+   The event loop sleeps until something comes (clients, input, the
+   displays' timers, other threads' channels), or `loop_timeout`: a
+   `tick` put off by its 8 ms throttle, auto-tiling's half-second look
+   while it's in use, else a second as a safety net (it woke every 16
+   ms on real displays, every 100 headless, whatever happened). The keep-warm pixel
    alone doesn't wake a resting display. `OLO_REST=off` looks every
    frame, as before, and `{"type":"set_resting","on":false}` at run
    time. Woken looks come no sooner than a frame after the last, aimed at
