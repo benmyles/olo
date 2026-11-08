@@ -78,6 +78,22 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **DiskBackup, redesigned** (Ben, 2026-11-08: "generally improve the
+  ux in diskbackup … where are the settings for limiting up/down speed
+  and resource usage and knowing exactly what's being backed up now what
+  the plan is what's still remaining … choose if i even want auto
+  backups or only when i click backup … clear out / remove old backups
+  to start fresh"). Done (30a80ef6): one question until it's set up;
+  a header saying whether your files are safe, and while it runs the
+  file it's at, a bar against the plan, files, time left, what's new and
+  sent against the limit; tabs Schedule (automatic, or only when you
+  click Back Up Now; what's kept), Files, Backups (every snapshot;
+  delete some, erase all to start fresh), Speed & Resources (upload and
+  download limits; idle, gently or full speed), Destination. Checked in
+  a sandbox (deleting, erasing, manual mode, the priorities), every tab
+  fitting 1280 × 800 while backing up, the review clean at 1×, 1.5× and
+  2×. Left (Ben): upgrade, then open DiskBackup and try it.
+
 - **DiskBackup: Agent Setup, and Claude Code's model** (Ben, 2026-11-08:
   "add an "Agent Setup" feature to disk backup where an agent can do the
   google drive oauth/app setup …"; "have the claude code model
