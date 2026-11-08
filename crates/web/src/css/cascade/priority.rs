@@ -8,6 +8,10 @@ pub enum Origin {
     Animation,
     Transition,
 }
+/// An element's own tree's encapsulation (see `Rule::context` in
+/// `sheets.rs`): an outer tree's `::part()` rules are below it, its shadow
+/// tree's `:host` and `::slotted()` rules above.
+pub const ORDINARY: u16 = 1;
 /// Global source/declaration order and rule identity are supplied by the
 /// stylesheet set/host. Layer is the nested-layer postorder rank; MAX is the
 /// implicit outer layer. Encapsulation/proximity are host metadata only.
@@ -26,7 +30,18 @@ pub struct Priority {
 }
 impl Default for Priority {
     fn default() -> Self {
-        Self { origin: Origin::Author, important: false, encapsulation: 0, inline: false, layer: u32::MAX, specificity: Default::default(), proximity: u32::MAX, order: 0, declaration: 0, rule: 0 }
+        Self {
+            origin: Origin::Author,
+            important: false,
+            encapsulation: ORDINARY,
+            inline: false,
+            layer: u32::MAX,
+            specificity: Default::default(),
+            proximity: u32::MAX,
+            order: 0,
+            declaration: 0,
+            rule: 0,
+        }
     }
 }
 impl Priority {
@@ -51,7 +66,7 @@ impl Priority {
     }
     pub(super) fn eligible_after(self, from: Self, wide: variables::Wide) -> Result<bool> {
         use variables::Wide as W;
-        if self.encapsulation != 0 || from.encapsulation != 0 {
+        if self.encapsulation != ORDINARY || from.encapsulation != ORDINARY {
             return Err(Error::Unsupported("encapsulation rollback host"));
         }
         Ok(match wide {

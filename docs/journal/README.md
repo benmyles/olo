@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: Shoelace with ::part(), as Chrome
+
+*03:33* — Left Olo, right Chrome: shoelace.style's dialog, its header hidden and its call to action coloured from outside through ::part().
+
+![Browser: Shoelace with ::part(), as Chrome](2026-11-08/033301-browser-shoelace-with-part-as-chrome.png)
+
 ### Browser: Shoelace's dialog, a styled web component
 
 *03:28* — shoelace.style's sl-dialog, a Lit component styled from its shadow tree's adopted sheets: centred over a dimmed page, its buttons Shoelace's own.

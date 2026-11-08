@@ -4012,5 +4012,11 @@
   "title": "Browser: Shoelace's dialog, a styled web component",
   "caption": "shoelace.style's sl-dialog, a Lit component styled from its shadow tree's adopted sheets: centred over a dimmed page, its buttons Shoelace's own.",
   "image": "2026-11-08/032849-browser-shoelace-s-dialog-a-styled-web-component.png"
+ },
+ {
+  "time": "2026-11-08T03:33:01",
+  "title": "Browser: Shoelace with ::part(), as Chrome",
+  "caption": "Left Olo, right Chrome: shoelace.style's dialog, its header hidden and its call to action coloured from outside through ::part().",
+  "image": "2026-11-08/033301-browser-shoelace-with-part-as-chrome.png"
  }
 ]

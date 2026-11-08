@@ -45,12 +45,17 @@ pub trait Tree {
     fn assigned_slot(&self, _node: Self::Node) -> Result<Option<Self::Node>> {
         Ok(None)
     }
+    /// The host of the shadow tree `node` is in (`::part()`).
+    fn part_host(&self, _node: Self::Node) -> Result<Option<Self::Node>> {
+        Ok(None)
+    }
     /// The cascade scopes `node` takes rules from (see `RuleSet`): the
     /// shadow tree it is in (None: the document's), the one it hosts
-    /// (`:host` rules), the one its slot is in (`::slotted()` rules), each
-    /// as `scope_key` names a shadow root.
-    fn scopes(&self, _node: Self::Node) -> Result<[Option<u64>; 3]> {
-        Ok([None; 3])
+    /// (`:host` rules), the one its slot is in (`::slotted()` rules), and
+    /// the one its tree's host is in (`::part()` rules; meaningful only in
+    /// a shadow tree), each as `scope_key` names a shadow root.
+    fn scopes(&self, _node: Self::Node) -> Result<[Option<u64>; 4]> {
+        Ok([None; 4])
     }
 }
 /// A shadow root's key in cascade scopes.
@@ -109,9 +114,14 @@ impl Tree for DomTree<'_> {
     fn assigned_slot(&self, node: NodeId) -> Result<Option<NodeId>> {
         Ok(self.document.assigned_slot(node)?)
     }
-    fn scopes(&self, node: NodeId) -> Result<[Option<u64>; 3]> {
+    fn part_host(&self, node: NodeId) -> Result<Option<NodeId>> {
+        Ok(self.document.shadow_scope(node).and_then(|root| self.document.shadow_host(root)))
+    }
+    fn scopes(&self, node: NodeId) -> Result<[Option<u64>; 4]> {
         let slot = self.document.assigned_slot(node)?.and_then(|s| self.document.shadow_scope(s));
-        Ok([self.document.shadow_scope(node).map(scope_key), self.document.shadow_root(node).map(scope_key), slot.map(scope_key)])
+        let own = self.document.shadow_scope(node);
+        let outer = own.and_then(|root| self.document.shadow_host(root)).and_then(|host| self.document.shadow_scope(host));
+        Ok([own.map(scope_key), self.document.shadow_root(node).map(scope_key), slot.map(scope_key), outer.map(scope_key)])
     }
     fn first_child(&self, node: NodeId) -> Result<Option<NodeId>> {
         Ok(self.document.first_child(node)?)
@@ -463,6 +473,7 @@ impl<'a, T: Tree> Machine<'a, '_, T> {
                     Relation::Next => (self.previous_element(frame.node)?, Axis::Single),
                     Relation::Later => (self.previous_element(frame.node)?, Axis::Previous),
                     Relation::Slotted => (self.tree.assigned_slot(frame.node)?, Axis::Single),
+                    Relation::Part => (self.tree.part_host(frame.node)?, Axis::Single),
                     Relation::None => return Err(Error::Invalid),
                 };
                 if let Some(node) = candidate {

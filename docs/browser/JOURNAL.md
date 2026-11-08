@@ -6515,3 +6515,11 @@ journal).
   Both come from the same walk now. The dialog shows centred over a
   dimmed page, its buttons and the sidebar's as Shoelace draws them.
   Open: its primary button is light blue where Chrome's is orange.
+- **`::part()`.** Shoelace's page restyles its dialog's parts from
+  outside (`#wa-dialog::part(header) { display: none }`, the call to
+  action's orange through `.wa-pro-cta::part(base)`). `host::part(name)`
+  matches the elements of the host's shadow tree whose `part` names them
+  (pseudo-classes may follow, `::part(base):hover`); such a rule comes
+  from the outer tree and wins over the shadow tree's own (the shadow
+  context's encapsulation: an outer `::part()` 0, an element's own tree 1,
+  `:host`/`::slotted()` 2). The page's dialog now matches Chrome's.

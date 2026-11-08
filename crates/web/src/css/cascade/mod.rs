@@ -260,7 +260,7 @@ impl<'a> Cascade<'a> {
     }
     fn rollback(&self, from: usize, wide: variables::Wide) -> Result<Option<usize>> {
         let priority = self.entries[from].priority;
-        if priority.encapsulation != 0 {
+        if priority.encapsulation != priority::ORDINARY {
             return Err(Error::Unsupported("encapsulation rollback host"));
         }
         for i in self.range(from) {
@@ -282,7 +282,7 @@ impl<'a> Cascade<'a> {
     }
     fn rollback_pair(&self, from: usize, wide: variables::Wide, physical: std::ops::Range<usize>, logical: std::ops::Range<usize>) -> Result<Option<usize>> {
         let priority = self.entries[from].priority;
-        if priority.encapsulation != 0 {
+        if priority.encapsulation != priority::ORDINARY {
             return Err(Error::Unsupported("encapsulation rollback host"));
         }
         let mut candidates = [None; 2];

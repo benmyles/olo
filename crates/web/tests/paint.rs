@@ -1650,7 +1650,7 @@ fn a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted() {
     // tree wins); the slotted span takes `::slotted(span)`'s.
     let mut page = olo_web::page::load(
         Arc::from(
-            "<!doctype html><style>body{margin:0}p{margin:0;height:10px;background-color:red}#h{background-color:blue}span{display:block;height:10px}</style>\
+            "<!doctype html><style>body{margin:0}p{margin:0;height:10px;background-color:red}#h{background-color:blue}span{display:block;height:10px}#h::part(tail){background-color:rgb(255,0,255)}</style>\
              <div id=h><span>s</span></div><p id=outer></p>",
         ),
         &host,
@@ -1681,6 +1681,10 @@ fn a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted() {
     doc.append_child(root, p).unwrap();
     let slot = doc.create_element("slot", olo_web::dom::Namespace::Html).unwrap();
     doc.append_child(root, slot).unwrap();
+    // A part the document styles: its rule wins over the shadow tree's own.
+    let tail = doc.create_element("p", olo_web::dom::Namespace::Html).unwrap();
+    doc.set_attribute(tail, "part", "tail").unwrap();
+    doc.append_child(root, tail).unwrap();
     page.refresh(&doc, None, &mut |_, _, _| Ok(None)).unwrap();
     page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     let tile = render(&mut painter, &page.scene);
@@ -1688,7 +1692,8 @@ fn a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted() {
     assert_eq!(pixel(&tile, 50, 10), [0, 0, 255, 255], "the host's padding, the document's background");
     assert_eq!(pixel(&tile, 50, 25), [0, 128, 0, 255], "the shadow tree's p");
     assert_eq!(pixel(&tile, 50, 35), [0, 255, 255, 255], "the slotted span");
-    assert_eq!(pixel(&tile, 50, 45), [255, 0, 0, 255], "the document's p");
+    assert_eq!(pixel(&tile, 50, 45), [255, 0, 255, 255], "the part, as the document styles it");
+    assert_eq!(pixel(&tile, 50, 55), [255, 0, 0, 255], "the document's p");
 }
 #[test]
 fn a_class_that_selectors_reach_from_restyles_what_they_reach() {

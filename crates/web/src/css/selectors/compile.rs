@@ -243,6 +243,40 @@ impl Compiler<'_> {
             // `slot::slotted(<compound>)`: the elements assigned to the slot
             // that match the compound (CSS Scoping 1 §3.2.2), the subject,
             // a step from its slot; nothing may follow it.
+            // `host::part(<ident>+)`: the elements of the host's shadow tree
+            // whose `part` names them all (CSS Shadow Parts 1), the subject,
+            // a step from the host; pseudo-classes may follow (`:hover`).
+            if !pseudo && part_ahead(&input) {
+                self.bump(&mut input)?;
+                self.bump(&mut input)?;
+                let function = self.bump(&mut input)?;
+                let mut tests = SmallVec::new();
+                let part = self.symbol("part")?;
+                for name in function.children().filter(|c| c.kind() != Kind::Whitespace) {
+                    if name.kind() != Kind::Ident {
+                        return Err(Error::Invalid);
+                    }
+                    let value = self.symbol(name.text().unwrap())?;
+                    let failure = self.failure(value)?;
+                    self.test(&mut tests, Test::Attr { ns: NONE, name: part, value, failure, op: AttrOp::Includes, case: Case::Sensitive })?;
+                }
+                if tests.is_empty() {
+                    return Err(Error::Invalid);
+                }
+                let mut spec = Specificity { types: 1, ..Default::default() };
+                while input.clone().next().is_some_and(|c| c.kind() == Kind::Colon) && !slotted_ahead(&input) && !part_ahead(&input) {
+                    self.bump(&mut input)?;
+                    let (t, s, is_pseudo) = self.pseudo(&mut input, ctx, false)?;
+                    if is_pseudo {
+                        return Err(Error::Unsupported("pseudo-element after ::part()"));
+                    }
+                    self.test(&mut tests, t)?;
+                    spec = spec.add(s);
+                }
+                specificity = specificity.add(spec);
+                steps.push(self.store_step(tests, Relation::Part, ANY, false)?);
+                pseudo = true;
+            }
             if !pseudo && slotted_ahead(&input) {
                 self.bump(&mut input)?;
                 self.bump(&mut input)?;
@@ -413,8 +447,9 @@ impl Compiler<'_> {
                     self.test(&mut tests, t)?;
                     Specificity { classes: 1, ..Default::default() }
                 }
-                // `::slotted(…)` starts a step of its own (see `complex`).
-                Kind::Colon if slotted_ahead(input) => break,
+                // `::slotted(…)` and `::part(…)` start a step of their own
+                // (see `complex`).
+                Kind::Colon if slotted_ahead(input) || part_ahead(input) => break,
                 Kind::Colon => {
                     self.bump(input)?;
                     let (t, s, is_pseudo) = self.pseudo(input, ctx, pseudo)?;
@@ -694,6 +729,13 @@ impl Compiler<'_> {
         }
     }
 }
+/// Whether `::part(` comes next.
+fn part_ahead(input: &Components<'_>) -> bool {
+    let mut look = input.clone();
+    look.next().is_some_and(|c| c.kind() == Kind::Colon)
+        && look.next().is_some_and(|c| c.kind() == Kind::Colon)
+        && look.next().is_some_and(|c| c.kind() == Kind::Function && c.text().is_some_and(|t| t.eq_ignore_ascii_case("part")))
+}
 /// Whether `::slotted(` comes next.
 fn slotted_ahead(input: &Components<'_>) -> bool {
     let mut look = input.clone();
@@ -764,17 +806,18 @@ impl RuleCompiler {
     /// (`:host` in a subject) and whether elements slotted into it
     /// (`::slotted()`): what the cascade asks of the elements outside a
     /// shadow tree its rules reach.
-    pub(crate) fn shadow_context(&self, list: u32) -> (bool, bool) {
-        let Some(out) = &self.out else { return (false, false) };
-        let Some(l) = out.lists.get(list as usize) else { return (false, false) };
-        let (mut host, mut slotted) = (false, false);
+    pub(crate) fn shadow_context(&self, list: u32) -> (bool, bool, bool) {
+        let Some(out) = &self.out else { return (false, false, false) };
+        let Some(l) = out.lists.get(list as usize) else { return (false, false, false) };
+        let (mut host, mut slotted, mut part) = (false, false, false);
         for &i in &out.links[l.links.start as usize..l.links.end as usize] {
             let complex = &out.complexes[i as usize];
             let Some(last) = complex.steps.end.checked_sub(1).map(|i| &out.steps[i as usize]) else { continue };
             host |= out.tests[last.tests.start as usize..last.tests.end as usize].iter().any(|t| matches!(t, Test::Host(_)));
             slotted |= matches!(last.relation, Relation::Slotted);
+            part |= matches!(last.relation, Relation::Part);
         }
-        (host, slotted)
+        (host, slotted, part)
     }
     pub(crate) fn new() -> Self {
         Self {

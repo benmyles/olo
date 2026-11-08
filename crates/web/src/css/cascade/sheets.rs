@@ -30,20 +30,26 @@ struct Rule {
     scope: Option<u64>,
     host: bool,
     slotted: bool,
+    /// It addresses parts of shadow trees hosted in its own (`::part()`).
+    part: bool,
 }
 const NO_CONTAINER: u32 = u32::MAX;
 impl Rule {
     /// Whether it applies to an element taking rules from `scopes`
     /// (`selectors::Tree::scopes`), and at what shadow encapsulation (CSS
-    /// Cascade 5 §6.1, context): its own tree's rules and the user agent's
-    /// at 0; its shadow tree's `:host` and `::slotted()` rules at 1, which
-    /// its own tree's normal declarations win over. The document's author
-    /// rules don't reach into shadow trees.
-    fn context(&self, scopes: &[Option<u64>; 3]) -> Option<u16> {
-        if self.origin == Origin::UserAgent || self.scope == scopes[0] {
+    /// Cascade 5 §6.1, context; for normal declarations the lower wins):
+    /// an outer tree's `::part()` rules at 0; its own tree's rules and the
+    /// user agent's at 1; its shadow tree's `:host` and `::slotted()` rules
+    /// at 2. The document's author rules don't reach into shadow trees
+    /// otherwise.
+    fn context(&self, scopes: &[Option<u64>; 4]) -> Option<u16> {
+        if self.part && scopes[0].is_some() && self.scope == scopes[3] {
             return Some(0);
         }
-        (self.scope.is_some() && (self.host && self.scope == scopes[1] || self.slotted && self.scope == scopes[2])).then_some(1)
+        if self.origin == Origin::UserAgent || self.scope == scopes[0] {
+            return Some(1);
+        }
+        (self.scope.is_some() && (self.host && self.scope == scopes[1] || self.slotted && self.scope == scopes[2])).then_some(2)
     }
 }
 /// An `@container` rule's condition (CSS Conditional 5 §2): the name of
@@ -436,8 +442,9 @@ impl SheetBuilder {
                         return Err(Error::Limit);
                     }
                     let order = self.rules.len() as u64;
-                    let (host, slotted) = if self.scope.is_some() { self.selector_compiler.shadow_context(selector) } else { (false, false) };
-                    self.rules.push(Rule { selector, declarations: declarations.into_boxed_slice(), origin, layer: parent, order, container: self.container, scope: self.scope, host, slotted });
+                    let (host, slotted, part) = self.selector_compiler.shadow_context(selector);
+                    let (host, slotted) = if self.scope.is_some() { (host, slotted) } else { (false, false) };
+                    self.rules.push(Rule { selector, declarations: declarations.into_boxed_slice(), origin, layer: parent, order, container: self.container, scope: self.scope, host, slotted, part });
                 }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("layer")) => {
                     let empty = rule.value().all(|c| c.kind() == Kind::Whitespace);
@@ -766,7 +773,7 @@ impl RuleSet {
         let scopes = tree.scopes(node).map_err(Error::Selectors)?;
         for &(id, specificity) in matched {
             let rule = self.rules.get(id as usize).ok_or(Error::Invalid)?;
-            let encapsulation = rule.context(&scopes).unwrap_or(0);
+            let encapsulation = rule.context(&scopes).unwrap_or(1);
             for (declaration, d) in rule.declarations.iter().enumerate() {
                 builder.add(
                     d,

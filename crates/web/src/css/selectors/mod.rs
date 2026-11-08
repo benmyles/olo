@@ -181,6 +181,8 @@ enum Relation {
     Later,
     /// `slot::slotted(x)`: from the slotted element to its slot.
     Slotted,
+    /// `host::part(name)`: from an element in a shadow tree to its host.
+    Part,
 }
 #[derive(Clone, Copy)]
 enum AttrOp {
