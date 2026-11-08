@@ -7471,7 +7471,9 @@ Screens' Export Video uses too).
   name as it's typed ("1 of 4 recordings"). Play and a double click (the
   Viewer), Edit (the Viewer's editor), Show in Tracker, Rename… (a
   dialog; the extension kept, a name taken refused) and Delete (to the
-  Trash). What each is and its picture are read on a worker, 64 at a
+  Trash), each taken back by ⌘Z (put back from the Trash, named as it
+  was) and done again by ⇧⌘Z (`olo_ui::undo::keys`: the window has no
+  menu bar). What each is and its picture are read on a worker, 64 at a
   time, as they're needed, and kept; the folder is followed (inotify),
   so a recording made, renamed or deleted anywhere shows at once. A
   recording is known by Olo's mark, not its name: the recorder, the trim

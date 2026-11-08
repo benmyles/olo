@@ -9,7 +9,8 @@
 //! (its length and pixels, `olo_preview::video::probe`) and its picture
 //! (`picture_at`, a tenth in) are made on a worker as they're needed and
 //! kept; the folder is followed (inotify), so a new recording, a rename
-//! or a deletion elsewhere shows at once. `olo-screenshot --recordings`
+//! or a deletion elsewhere shows at once. ⌘Z undoes a Delete (put back
+//! from the Trash) or a Rename…, ⇧⌘Z redoes it. `olo-screenshot --recordings`
 //! prints the same list as JSON, for agents.
 
 use std::{
@@ -130,7 +131,25 @@ fn read(path: &Path, scale: f32) -> (Option<f64>, Option<(u32, u32)>, Option<Arc
     (seconds, pixels, image)
 }
 
+/// What Undo takes back here.
+#[derive(Debug, Clone)]
+enum Change {
+    /// Deleted: where it was, and where it is in the Trash.
+    Trashed {
+        from: PathBuf,
+        at: PathBuf,
+    },
+    /// Put back from the Trash (Redo deletes it again).
+    PutBack(PathBuf),
+    Renamed {
+        from: PathBuf,
+        to: PathBuf,
+    },
+}
+
 struct Library {
+    /// Undo and Redo (⌘Z, ⇧⌘Z: the window has no menu bar).
+    history: olo_ui::undo::History<Change>,
     all: Vec<Recording>,
     /// The rows shown (indexes into `all`), as found and sorted.
     shown: Vec<usize>,
@@ -254,11 +273,10 @@ impl Library {
             "show" => {
                 let _ = olo_ui::tracker::open(&path);
             }
-            "delete" => {
-                if let Err(e) = crate::after::to_trash(&path) {
-                    eprintln!("olo-screenshot: couldn't move {} to the Trash: {e}", path.display());
-                }
-            }
+            "delete" => match crate::after::to_trash(&path) {
+                Ok(at) => self.history.done("Delete", Change::Trashed { from: path, at }),
+                Err(e) => eprintln!("olo-screenshot: couldn't move {} to the Trash: {e}", path.display()),
+            },
             "rename" => {
                 let me = cx.entity();
                 cx.defer(move |cx| {
@@ -268,6 +286,32 @@ impl Library {
             _ => {}
         }
         let _ = window;
+    }
+}
+
+impl Library {
+    /// ⌘Z (`redo` false) or ⇧⌘Z: a Delete or a Rename… taken back, or
+    /// done again. (The folder is followed: the list shows it.)
+    fn undo_redo(&mut self, redo: bool, cx: &mut Context<Self>) {
+        use olo_ui::undo::Purpose;
+        let Some(step) = (if redo { self.history.take_redo() } else { self.history.take_undo() }) else { return };
+        let purpose = if redo { Purpose::Redo } else { Purpose::Undo };
+        let done = match step.change {
+            Change::Trashed { at, .. } => olo_xdg::trash::put_back(&at).map(Change::PutBack),
+            Change::PutBack(path) => crate::after::to_trash(&path).map(|at| Change::Trashed { from: path, at }),
+            Change::Renamed { from, to } => {
+                if from.exists() {
+                    Err(std::io::Error::other(format!("“{}” is taken", from.file_name().unwrap_or_default().to_string_lossy())))
+                } else {
+                    std::fs::rename(&to, &from).map(|()| Change::Renamed { from: to, to: from })
+                }
+            }
+        };
+        match done {
+            Ok(change) => self.history.record(purpose, step.name, change),
+            Err(e) => eprintln!("olo-screenshot: couldn't {} {}: {e}", if redo { "redo" } else { "undo" }, step.name),
+        }
+        cx.notify();
     }
 }
 
@@ -434,7 +478,8 @@ impl Rename {
                     cx.notify();
                     return;
                 }
-                let _ = &self.library;
+                let from = self.path.clone();
+                self.library.update(cx, |l, _| l.history.done("Rename", Change::Renamed { from, to }));
             }
         }
         window.remove_window();
@@ -510,7 +555,18 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
                 cx.notify();
             })
             .detach();
-            Library { all: Vec::new(), shown: Vec::new(), pictures: HashMap::new(), asked: HashMap::new(), dropped: Vec::new(), list: list_model, search, _watch: watch, scale: 0.0 }
+            Library {
+                history: Default::default(),
+                all: Vec::new(),
+                shown: Vec::new(),
+                pictures: HashMap::new(),
+                asked: HashMap::new(),
+                dropped: Vec::new(),
+                list: list_model,
+                search,
+                _watch: watch,
+                scale: 0.0,
+            }
         });
         let messages = library.clone();
         olo_ui::message_handler(cx, move |m, cx| {
@@ -524,7 +580,11 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
         });
         library.update(cx, |l, cx| l.message(Msg::Changed, cx));
         let view = library.clone();
-        olo_ui::open_window(cx, WindowOptions::new("Recordings", 760.0, 520.0).min_size(560.0, 360.0).keep_size("recordings"), move |_, _| view);
+        olo_ui::open_window(cx, WindowOptions::new("Recordings", 760.0, 520.0).min_size(560.0, 360.0).keep_size("recordings"), move |window, cx| {
+            let keys = view.clone();
+            olo_ui::undo::keys(window, cx, move |redo, _, cx| keys.update(cx, |l, cx| l.undo_redo(redo, cx)));
+            view
+        });
     });
     std::process::ExitCode::SUCCESS
 }
