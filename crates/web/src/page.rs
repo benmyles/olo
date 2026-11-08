@@ -473,9 +473,18 @@ impl Measurer {
         if let Some((id, revision)) = self.checked
             && id == doc.id()
             && doc.changes_since(revision).is_some_and(|changes| {
+                // A sheet's element is a <style> or <link>: only changes to
+                // one, to the text in one, or children that may be one
+                // (elements put in) can change the sheets. (GitHub's
+                // scripts change text every frame: the walk of the page
+                // and the hash of all its CSS ran each frame.)
+                let sheet = |n: crate::dom::NodeId| matches!(doc.name(n), Ok(Some("style" | "link")));
                 changes.iter().all(|(_, c)| match c {
-                    crate::dom::Change::Style(_) => true,
+                    crate::dom::Change::Style(_) | crate::dom::Change::Control(_) => true,
                     crate::dom::Change::Attribute { name, .. } => !matches!(&**name, "href" | "rel" | "media" | "type" | "disabled" | "integrity"),
+                    crate::dom::Change::Text { node, .. } => !doc.parent(*node).ok().flatten().is_some_and(sheet),
+                    crate::dom::Change::Children { node, elements: false } => !sheet(*node),
+                    crate::dom::Change::Node(node) => !sheet(*node),
                     _ => false,
                 })
             })
@@ -1122,9 +1131,12 @@ fn sheet_identities(doc: &Document) -> Result<(Vec<(crate::dom::NodeId, u64)>, O
     // scoped sheets), and those inside them in turn.
     let mut roots: Vec<crate::dom::NodeId> = Vec::new();
     let mut walking: Vec<crate::dom::NodeId> = Vec::new();
+    // Past the document, in shadow trees.
+    let mut in_shadow = false;
     loop {
         let Some(node) = next.or_else(|| {
             let root = roots.pop()?;
+            in_shadow = true;
             walking = doc.children(root).map(|c| c.collect::<Vec<_>>()).unwrap_or_default();
             walking.reverse();
             walking.pop()
@@ -1157,7 +1169,7 @@ fn sheet_identities(doc: &Document) -> Result<(Vec<(crate::dom::NodeId, u64)>, O
             }
         }
         // In the document, its order; in a shadow tree, depth first.
-        if doc.shadow_scope(node).is_none() {
+        if !in_shadow {
             next = next_node(doc, node)?;
         } else {
             if let Ok(children) = doc.children(node) {
