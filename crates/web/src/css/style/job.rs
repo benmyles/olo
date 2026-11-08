@@ -22,10 +22,10 @@ pub struct JobOptions<'a> {
     /// Declarations of the animation origin by element (its running CSS
     /// animations sampled now): applied after its inline style, so they
     /// win over normal author declarations and lose to important ones.
-    pub animated: Option<&'a std::collections::HashMap<NodeId, Vec<p::Declaration>>>,
+    pub animated: Option<&'a crate::dom::NodeMap<Vec<p::Declaration>>>,
     /// Query containers' content-box sizes (CSS px) as the last layout had
     /// them, for `@container` rules; a container not in it answers nothing.
-    pub containers: Option<&'a std::collections::HashMap<NodeId, [f64; 2]>>,
+    pub containers: Option<&'a crate::dom::NodeMap<[f64; 2]>>,
     /// Query containers whose size changed since `previous` was styled:
     /// what they hold is matched again (their `@container` rules), the rest
     /// kept as `previous` has it.
@@ -328,14 +328,14 @@ pub struct Job<'a> {
 }
 struct Incremental<'a> {
     tree: &'a StyleTree,
-    nodes: std::collections::HashSet<NodeId>,
+    nodes: crate::dom::NodeSet,
     /// Elements whose inline style changed and nothing else: their own
     /// values recompute, what selectors match does not.
-    style_only: std::collections::HashSet<NodeId>,
-    children: std::collections::HashSet<NodeId>,
+    style_only: crate::dom::NodeSet,
+    children: crate::dom::NodeSet,
     /// Nodes with a change somewhere below them (ancestors-or-self of the
     /// changed): a reused element outside this set keeps its whole subtree.
-    below: std::collections::HashSet<NodeId>,
+    below: crate::dom::NodeSet,
     /// So far, every change is paint-only over an unchanged structure.
     geometry_kept: bool,
     /// Why not, when not (diagnostics).
@@ -394,8 +394,8 @@ impl<'a> Job<'a> {
                     return None;
                 }
                 let changes = document.changes_since(tree.revision)?;
-                let mut nodes = std::collections::HashSet::new();
-                let mut children = std::collections::HashSet::new();
+                let mut nodes = crate::dom::NodeSet::default();
+                let mut children = crate::dom::NodeSet::default();
                 // With :has() in the rules, an element's style can change
                 // with its descendants: the ancestors of a change that could
                 // take part in a :has() argument (by the keys the arguments
@@ -405,14 +405,14 @@ impl<'a> Job<'a> {
                 let uses_has = !has_keys.is_empty();
                 let uses_empty = rules.uses_empty();
                 let invalidation = rules.invalidation();
-                let mut style_only = std::collections::HashSet::new();
+                let mut style_only = crate::dom::NodeSet::default();
                 // The descendants (and later siblings' subtrees) an
                 // attribute change can reach through selectors.
-                let invalidate = |n: NodeId, keys: Vec<String>, nodes: &mut std::collections::HashSet<NodeId>| {
+                let invalidate = |n: NodeId, keys: Vec<String>, nodes: &mut crate::dom::NodeSet| {
                     let (down, beside) = invalidation.reach_of(keys.iter().cloned());
                     let before = nodes.len();
-                    let diagnose = std::env::var_os("OLO_STYLE_TIMING").is_some();
-                    let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut std::collections::HashSet<NodeId>| {
+                    let diagnose = crate::env_on!("OLO_STYLE_TIMING");
+                    let mut walk = |root: NodeId, reach: &selectors::Reach, nodes: &mut crate::dom::NodeSet| {
                         if reach.is_empty() {
                             return;
                         }
@@ -495,7 +495,7 @@ impl<'a> Job<'a> {
                     }
                     keys
                 };
-                let dirty_ancestors = |n: NodeId, nodes: &mut std::collections::HashSet<NodeId>| {
+                let dirty_ancestors = |n: NodeId, nodes: &mut crate::dom::NodeSet| {
                     let mut at = document.parent(n).ok().flatten();
                     while let Some(a) = at {
                         if !nodes.insert(a) {
@@ -505,7 +505,7 @@ impl<'a> Job<'a> {
                     }
                 };
                 let mut geometry_kept = true;
-                if std::env::var_os("OLO_STYLE_TIMING").is_some() {
+                if crate::env_on!("OLO_STYLE_TIMING") {
                     let name = |n: NodeId| document.name(n).ok().flatten().unwrap_or("?").to_owned();
                     let listed: Vec<String> = changes
                         .iter()
@@ -615,7 +615,7 @@ impl<'a> Job<'a> {
                     }
                 }
                 let why_not = (!geometry_kept).then(|| "the document's structure or text changed".to_owned());
-                let mut below = std::collections::HashSet::new();
+                let mut below = crate::dom::NodeSet::default();
                 for &n in nodes.iter().chain(&children).chain(&style_only) {
                     let mut at = Some(n);
                     while let Some(a) = at {
@@ -1109,7 +1109,7 @@ impl<'a> Job<'a> {
             } else {
                 style.share_with(&inc.tree.styles[i].style);
             }
-            if !same && std::env::var_os("OLO_STYLE_DIFF").is_some() {
+            if !same && crate::env_on!("OLO_STYLE_DIFF") {
                 eprintln!(
                     "style differs: <{} class={:?}> {}",
                     self.document.name(node).map_err(Error::Dom)?.unwrap_or("?"),

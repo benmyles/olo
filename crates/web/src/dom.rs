@@ -57,6 +57,8 @@ impl std::hash::Hasher for NodeHasher {
 }
 /// A map keyed by nodes, hashed with `NodeHasher`.
 pub type NodeMap<V> = std::collections::HashMap<NodeId, V, std::hash::BuildHasherDefault<NodeHasher>>;
+/// A set of nodes, hashed with `NodeHasher`.
+pub type NodeSet = std::collections::HashSet<NodeId, std::hash::BuildHasherDefault<NodeHasher>>;
 
 impl NodeId {
     pub fn document(&self) -> u64 {
@@ -367,19 +369,19 @@ pub struct Document {
     /// Form controls' current state, apart from their attributes (HTML's
     /// value and checkedness: what the person typed or ticked), shared
     /// with snapshots.
-    controls: Arc<HashMap<NodeId, ControlState>>,
+    controls: Arc<NodeMap<ControlState>>,
     /// Scroll containers' offsets (CSS px, x then y), shared with
     /// snapshots. Outside the change log: scrolling restyles and lays out
     /// nothing, it only moves what the box shows (`scroll_serial` tells a
     /// painter it moved).
-    scrolls: Arc<HashMap<NodeId, [f64; 2]>>,
+    scrolls: Arc<NodeMap<[f64; 2]>>,
     scroll_serial: u64,
     /// Shadow roots by host, and hosts by shadow root (DOM §4.2.2): each a
     /// fragment, rendered in its host's place (the composed tree).
-    shadows: Arc<HashMap<NodeId, NodeId>>,
-    shadow_hosts: Arc<HashMap<NodeId, NodeId>>,
+    shadows: Arc<NodeMap<NodeId>>,
+    shadow_hosts: Arc<NodeMap<NodeId>>,
     /// Custom elements their definition has upgraded (`:defined`).
-    defined: Arc<std::collections::HashSet<NodeId>>,
+    defined: Arc<NodeSet>,
     name_bytes: usize,
     limits: Limits,
 }
@@ -424,12 +426,12 @@ impl Document {
             owned_bytes: 0,
             names: Arc::new(Vec::new()),
             atoms: Arc::new(HashMap::new()),
-            controls: Arc::new(HashMap::new()),
-            scrolls: Arc::new(HashMap::new()),
+            controls: Arc::new(Default::default()),
+            scrolls: Arc::new(Default::default()),
             scroll_serial: 0,
-            shadows: Arc::new(HashMap::new()),
-            shadow_hosts: Arc::new(HashMap::new()),
-            defined: Arc::new(std::collections::HashSet::new()),
+            shadows: Arc::new(Default::default()),
+            shadow_hosts: Arc::new(Default::default()),
+            defined: Arc::new(Default::default()),
             name_bytes: 0,
             limits,
         })

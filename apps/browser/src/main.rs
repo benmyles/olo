@@ -685,7 +685,7 @@ impl Render for Browser {
                         let mut textures = Vec::new();
                         for _ in 0..3 {
                             let made = window.create_shared_texture(w, h);
-                            if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                            if olo_web::env_on!("OLO_BROWSER_TIMING") {
                                 eprintln!(
                                     "  shared: made {:?} (window GPU {:02x?}, canvas GPU {:02x?})",
                                     made.as_ref().map(|(id, t)| (id.0, t.memory_size)),
@@ -1076,7 +1076,7 @@ fn main() {
         return;
     }
     let limits = page_limits();
-    if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+    if olo_web::env_on!("OLO_BROWSER_TIMING") {
         eprintln!("Browser: limits {limits:?}");
     }
     olo_xdg::scope::confine_self(APP_ID, limits);

@@ -450,7 +450,7 @@ impl Selectors {
                 self.compound_invalidation_keys(step_index, 0, &mut keys, &mut keyless, &mut unknown);
                 let (map, any) = if sibling { (&mut out.siblings, &mut out.any_siblings) } else { (&mut out.descendants, &mut out.any_descendants) };
                 if keyless {
-                    if std::env::var_os("OLO_STYLE_TIMING").is_some() {
+                    if crate::env_on!("OLO_STYLE_TIMING") {
                         let step = &self.steps[step_index as usize];
                         let kinds: Vec<String> = self.tests[step.tests.start as usize..step.tests.end as usize]
                             .iter()

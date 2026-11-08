@@ -442,7 +442,7 @@ impl Loads {
     /// Start every load the scripts asked for since the last time.
     fn dispatch(&self, realm: &mut olo_js::Realm) {
         for request in realm.take_requests() {
-            let timing = std::env::var_os("OLO_BROWSER_TIMING").is_some();
+            let timing = olo_web::env_on!("OLO_BROWSER_TIMING");
             if timing {
                 eprintln!("  requested: {}", request.url);
             }
@@ -502,7 +502,7 @@ impl Loads {
 impl Drop for Live {
     fn drop(&mut self) {
         self.cancel.cancel();
-        if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+        if olo_web::env_on!("OLO_BROWSER_TIMING") {
             eprintln!("  live: the page's realm let go");
         }
     }
@@ -637,7 +637,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     });
                     if wait.is_none()
                         && pending.is_empty()
-                        && std::env::var_os("OLO_BROWSER_TIMING").is_some()
+                        && olo_web::env_on!("OLO_BROWSER_TIMING")
                         && let Some(l) = cached.as_ref().and_then(|c| c.live.as_ref())
                         && (l.render_due || l.wants_frame || l.render_again)
                     {
@@ -804,7 +804,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                 let started = Instant::now();
                                 let host = PageHost::new(c.page.scope(), &r.key);
                                 let repainted = c.page.repaint(&host, &mut painter, Some(&r.cancel));
-                                if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                                if olo_web::env_on!("OLO_BROWSER_TIMING") {
                                     eprintln!("  box scroll: scene in {:.2} ms", started.elapsed().as_secs_f64() * 1000.);
                                 }
                                 match repainted {
@@ -824,7 +824,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             if let Some(live) = cached.as_mut().and_then(|c| c.live.as_mut()) {
                                 let mut released = Vec::new();
                                 for (node, textures) in list {
-                                    if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                                    if olo_web::env_on!("OLO_BROWSER_TIMING") {
                                         eprintln!("  shared: {} textures given for a canvas", textures.len());
                                     }
                                     released.extend(live.realm.provide_shared(node, textures));
@@ -918,7 +918,7 @@ fn render(
         // frames, visibilitychange) until the window asks for frames again.
         let is_hidden = hidden(live);
         if is_hidden != live.hidden {
-            if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            if olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!("  live: the page is {}", if is_hidden { "hidden (its window sends no frames)" } else { "shown" });
             }
             live.hidden = is_hidden;
@@ -952,7 +952,7 @@ fn render(
             return Ok(());
         }
         live.loads.dispatch(&mut live.realm);
-        if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+        if olo_web::env_on!("OLO_BROWSER_TIMING") {
             for line in live.realm.take_console() {
                 eprintln!("  live console: {line}");
             }
@@ -992,7 +992,7 @@ fn render(
                 Some([(c.width * scale).round() as u32, (c.height * scale).round() as u32])
             };
             let step = live.players.step(&mut live.realm, loader, &base, &live.cancel, &shown);
-            if step.changed && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            if step.changed && olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!("  videos: a picture in {:.1} ms", started.elapsed().as_secs_f64() * 1000.);
             }
             media_changed = step.changed;
@@ -1001,7 +1001,7 @@ fn render(
             let realm = &live.realm;
             let wake = live.loads.waker();
             let (framed, _) = live.frames.step(revision, || Some(realm.snapshot()), loader, &base, c.page.scope(), &r.key, &shown, &wake);
-            if framed && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            if framed && olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!("  frames: a picture came");
             }
             media_changed |= framed;
@@ -1018,7 +1018,7 @@ fn render(
         live.stats.1 += advanced.spent_ms;
         live.ticks += advanced.ticks;
         live.max_ticks = live.max_ticks.max(advanced.ticks);
-        if live.stats.4.elapsed() >= Duration::from_secs(2) && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+        if live.stats.4.elapsed() >= Duration::from_secs(2) && olo_web::env_on!("OLO_BROWSER_TIMING") {
             let (advances, js, renders, render_ms, since) = live.stats;
             let report = live.realm.report();
             let (gl_calls, gl_seconds) = live.realm.take_gl_stats();
@@ -1034,7 +1034,7 @@ fn render(
             live.max_ticks = 0;
             live.stats = (0, 0., 0, 0., Instant::now());
             // OLO_JS_PROFILE: where the natives' time went, the top ten.
-            if std::env::var_os("OLO_JS_PROFILE").is_some() {
+            if olo_web::env_on!("OLO_JS_PROFILE") {
                 let profile = olo_js::take_native_profile();
                 let total: f64 = profile.iter().map(|p| p.2).sum();
                 let calls: u64 = profile.iter().map(|p| p.1).sum();
@@ -1048,7 +1048,7 @@ fn render(
         let focus = live.realm.focused().or(c.page.interaction.focus.filter(|_| live.realm.focused().is_some()));
         let focus_moved = live.realm.focused().is_some() && focus != c.page.interaction.focus || live.realm.focused().is_none() && live.had_focus;
         if focus_moved {
-            if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            if olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!("  live: the page's focus moved to {:?}", live.realm.focused());
             }
             c.page.interaction.focus = live.realm.focused();
@@ -1058,7 +1058,7 @@ fn render(
         // drawn on (its drawing shows only through a render).
         if revision != live.rendered || live.render_again || live.render_due || live.realm.canvases_dirty() || c.page.animating() || media_changed || focus_moved {
             // OLO_RENDER_TRACE: why each live render happens.
-            if std::env::var_os("OLO_RENDER_TRACE").is_some() {
+            if olo_web::env_on!("OLO_RENDER_TRACE") {
                 eprintln!(
                     "  render because:{}{}{}{}{}{}{}",
                     if revision != live.rendered { " document" } else { "" },
@@ -1104,26 +1104,26 @@ fn render(
                         page::ResourceKind::Image => None,
                     })
                 };
-                if c.page.refresh(&doc, Some(&cancel), &mut resource)? && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                if c.page.refresh(&doc, Some(&cancel), &mut resource)? && olo_web::env_on!("OLO_BROWSER_TIMING") {
                     eprintln!("  live render: stylesheets changed, rules remade");
                 }
             }
             let host = PageHost::new(c.page.scope(), &r.key);
             let before_canvases = Instant::now();
-            if std::env::var_os("OLO_CANVAS_DEBUG").is_some() {
+            if olo_web::env_on!("OLO_CANVAS_DEBUG") {
                 eprintln!("  canvases before render: {}", live.realm.canvas_states());
             }
             let mut canvases = live.realm.canvases();
             canvases.extend(live.players.images());
             canvases.extend(live.frames.images());
-            if media_changed && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            if media_changed && olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!("  live render with {} bound pictures (videos {})", canvases.len(), live.players.images().len());
             }
             // Canvases whose frame is in a shared texture: refused below if
             // the scene can't show them as a surface.
             live.shared_frames = canvases.iter().filter_map(|(n, i)| i.shared_texture().map(|(k, _)| (*n, k))).collect();
             let wanted = live.realm.shared_wanted();
-            if !wanted.is_empty() && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            if !wanted.is_empty() && olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!("  shared: wanted for {} canvases ({:?})", wanted.len(), wanted.iter().map(|w| (w.1, w.2)).collect::<Vec<_>>());
             }
             if !wanted.is_empty() {
@@ -1144,7 +1144,7 @@ fn render(
             if !swapped {
                 c.page.set_time(now_ms);
                 c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&cancel), |_, _| {})?;
-            } else if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            } else if olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!("  live: new pictures swapped in");
             }
             // CSS animations still running: the next frame renders again.
@@ -1155,7 +1155,7 @@ fn render(
                 let events: Vec<(olo_web::dom::NodeId, &str, &str, f64)> = events.iter().map(|(n, k, name, t)| (*n, *k, &**name, *t)).collect();
                 live.realm.animation_events(&events);
             }
-            if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            if olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!(
                     "  live render: revision {} -> {} in {:.0} ms (snapshot {snapshot_ms:.1}, canvases {canvases_ms:.1}, rerender {:.1})",
                     live.rendered,
@@ -1191,7 +1191,7 @@ fn render(
             live.usage.gpu_ms += live.realm.take_gpu_ms();
             live.usage.frames += 1;
             if let Some(divisor) = live.usage.review() {
-                if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                if olo_web::env_on!("OLO_BROWSER_TIMING") {
                     eprintln!("  usage: the page draws every {divisor} frames");
                 }
             }
@@ -1334,7 +1334,7 @@ fn render(
                 let loader = loader.clone();
                 let light = document.light();
                 let mut measurer = measurer;
-                let timing = std::env::var_os("OLO_BROWSER_TIMING").is_some();
+                let timing = olo_web::env_on!("OLO_BROWSER_TIMING");
                 Box::new(move |doc: &olo_web::dom::Document, previous: Option<page::Measured>| {
                     let call = Instant::now();
                     // Stylesheets the scripts added since: the rules follow.
@@ -1809,7 +1809,7 @@ fn render(
         cached.label_cache = Some((cached.page.scene.clone(), Instant::now(), (band.y, band.y + band.height), (r.key.width, r.key.height), labels.clone()));
         labels
     };
-    if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+    if pass == Pass::Live && olo_web::env_on!("OLO_BROWSER_TIMING") {
         eprintln!("  content: focus targets {targets_ms:.2} ms, labels {:.2} ms ({} labels)", before_labels.elapsed().as_secs_f64() * 1000., labels.len());
     }
     proxy.send(Reply::Content {
@@ -1993,7 +1993,7 @@ fn render(
                 let tile_rect = layout::Rect { x: f64::from(x) / scale, y: f64::from(y) / scale, width: 256. / scale, height: 256. / scale };
                 // A tile painted from the same commands over the same images,
                 // styles and texts is the same tile: kept across re-renders.
-                let signature = if si == 0 && std::env::var_os("OLO_TILE_DEBUG").is_some() {
+                let signature = if si == 0 && olo_web::env_on!("OLO_TILE_DEBUG") {
                     // Name the first command that changed since the last paint of this tile.
                     let (signature, parts) = scene.tile_signature_parts(tile_rect, Some(&r.cancel))?;
                     let previous = tile_parts.insert((x, y), parts.clone());
@@ -2096,7 +2096,7 @@ fn render(
     if let Some(live) = cached.live.as_mut() {
         for (node, key) in std::mem::take(&mut live.shared_frames) {
             if !shown_shared.contains(&key) {
-                if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                if olo_web::env_on!("OLO_BROWSER_TIMING") {
                     let surfaces: Vec<String> = (0..scene.strata().len()).filter_map(|i| scene.surface(i).map(|(_, im)| format!("{:?}", im.shared_texture()))).collect();
                     eprintln!("  shared: refusing key {key}: the scene's surfaces show {surfaces:?}, frames {:?}", shown_shared);
                 }
@@ -2105,11 +2105,11 @@ fn render(
             }
         }
     }
-    if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() && !layers.is_empty() {
+    if pass == Pass::Live && olo_web::env_on!("OLO_BROWSER_TIMING") && !layers.is_empty() {
         eprintln!("  layers: {} ({} tiles)", layers.len(), layers.iter().map(|l| l.tiles.len()).sum::<usize>());
     }
     proxy.send(Reply::Layers(r.id, layers));
-    if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+    if pass == Pass::Live && olo_web::env_on!("OLO_BROWSER_TIMING") {
         eprintln!("  tiles: {repainted} of {total} repainted in {:.1} ms", painting.elapsed().as_secs_f64() * 1000.);
     }
     proxy.send(Reply::Ready {

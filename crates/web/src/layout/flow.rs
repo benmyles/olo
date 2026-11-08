@@ -486,7 +486,7 @@ impl<'a> PrepareJob<'a> {
             return Ok(text.clone());
         }
         // OLO_LAYOUT_DEBUG: why a text is prepared again.
-        if std::env::var_os("OLO_LAYOUT_DEBUG").is_some() && self.previous.is_some() {
+        if crate::env_on!("OLO_LAYOUT_DEBUG") && self.previous.is_some() {
             let shared = key.as_ref().and_then(|key| self.shared.get(key));
             let why = match shared {
                 None => "no shared text with this key".to_owned(),
@@ -669,7 +669,7 @@ pub struct Layout {
     /// The size of each query container (`container-type`), by its
     /// element: worked out once, kept by every restyle over the same
     /// geometry (a container's type is not paint-only).
-    containers: std::sync::OnceLock<Arc<std::collections::HashMap<crate::dom::NodeId, [f64; 2]>>>,
+    containers: std::sync::OnceLock<Arc<crate::dom::NodeMap<[f64; 2]>>>,
 }
 /// See `Layout::derived`.
 struct Derived {
@@ -699,9 +699,9 @@ pub(super) struct Stored {
 /// since (with their ancestors): what `Job::reuse` can take from.
 pub(super) struct Reuse<'a> {
     layout: &'a Layout,
-    dirty: &'a std::collections::HashSet<crate::dom::NodeId>,
+    dirty: &'a crate::dom::NodeSet,
     /// Its block boxes by node, in tree order.
-    by_node: HashMap<crate::dom::NodeId, smallvec::SmallVec<[BoxId; 2]>>,
+    by_node: crate::dom::NodeMap<smallvec::SmallVec<[BoxId; 2]>>,
 }
 impl Layout {
     pub fn device_scale(&self) -> f64 {
@@ -859,11 +859,11 @@ impl Layout {
     }
     /// The content-box size of each query container (an inline-size
     /// one's height 0: its queries can't see it), by its element.
-    pub fn container_sizes(&self) -> Arc<std::collections::HashMap<crate::dom::NodeId, [f64; 2]>> {
+    pub fn container_sizes(&self) -> Arc<crate::dom::NodeMap<[f64; 2]>> {
         self.containers
             .get_or_init(|| {
                 let tree = &self.cache.tree;
-                let mut sizes = std::collections::HashMap::new();
+                let mut sizes = crate::dom::NodeMap::default();
                 for (id, b) in tree.iter() {
                     if !matches!(b.kind, BoxKind::Block { .. }) || sizes.contains_key(&b.node) {
                         continue;
@@ -1106,7 +1106,7 @@ impl<'a> Job<'a> {
             cache,
             limits,
             cancel,
-            profiling: std::env::var_os("OLO_WEB_TIMING").is_some(),
+            profiling: crate::env_on!("OLO_WEB_TIMING"),
             stored: vec![None; geometry.len()],
             previous: None,
             reuse_roots: Vec::new(),
@@ -1163,8 +1163,8 @@ impl<'a> Job<'a> {
     /// of every block subtree that holds none of the `dirty` nodes
     /// (the changed ones and their ancestors) and is laid out under the
     /// same inputs as before.
-    pub fn with_previous(mut self, previous: &'a Layout, dirty: &'a std::collections::HashSet<crate::dom::NodeId>) -> Self {
-        let mut by_node: HashMap<crate::dom::NodeId, smallvec::SmallVec<[BoxId; 2]>> = HashMap::new();
+    pub fn with_previous(mut self, previous: &'a Layout, dirty: &'a crate::dom::NodeSet) -> Self {
+        let mut by_node: crate::dom::NodeMap<smallvec::SmallVec<[BoxId; 2]>> = Default::default();
         for (id, b) in previous.cache.tree.iter() {
             if matches!(b.kind, BoxKind::Block { .. }) {
                 by_node.entry(b.node).or_default().push(id);
@@ -1228,7 +1228,7 @@ impl<'a> Job<'a> {
         let mut copied: Vec<(BoxId, BoxId)> = Vec::new();
         self.refused[7] += 1;
         // OLO_LAYOUT_DEBUG: why a subtree that is not dirty differs.
-        let debug = std::env::var_os("OLO_LAYOUT_DEBUG").is_some();
+        let debug = crate::env_on!("OLO_LAYOUT_DEBUG");
         let why = |what: &str, a: BoxId| {
             if debug {
                 eprintln!("  reuse refused: {what} at {:?} {:?} (under {:?})", new_tree.get(a).map(|b| b.node), new_tree.get(a).map(|b| b.kind), new_tree.get(child).map(|b| b.node));

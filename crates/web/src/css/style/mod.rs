@@ -722,7 +722,7 @@ impl Style {
         for p in Property::ALL {
             let (a, b) = (self.value(*p), other.value(*p));
             if !a.same(b) {
-                if std::env::var_os("OLO_STYLE_DIFF").is_some() {
+                if crate::env_on!("OLO_STYLE_DIFF") {
                     out.push(format!("{} ({a:?} → {b:?})", p.as_str()));
                 } else {
                     out.push(p.as_str().to_string());

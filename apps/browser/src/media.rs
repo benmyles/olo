@@ -250,7 +250,7 @@ impl Player {
                 self.image = Some(image);
                 changed = true;
                 if !self.told_ready {
-                    if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                    if olo_web::env_on!("OLO_BROWSER_TIMING") {
                         eprintln!("  video {}: first picture {w}x{h} shown at {ow}x{oh}, {:.1} s", self.src, duration);
                     }
                     self.told_ready = true;

@@ -48,7 +48,7 @@ pub struct Page {
     /// Elements whose `transform` has animated: painted as moved layers.
     animated: std::collections::HashSet<crate::dom::NodeId>,
     /// Query containers' sizes as the last layout had them (`@container`).
-    containers: std::collections::HashMap<crate::dom::NodeId, [f64; 2]>,
+    containers: crate::dom::NodeMap<[f64; 2]>,
     /// Its CSS animations: started when, at which moment (see
     /// `set_time`), still changing.
     timeline: css::animation::Timeline,
@@ -69,6 +69,8 @@ pub struct Page {
     sheets: Vec<Sheet>,
     base_scope: Scope,
     sheet_ids: Vec<(crate::dom::NodeId, u64)>,
+    /// The document and revision the sheets were last looked for at.
+    sheets_checked: Option<(u64, u64)>,
     media: css::media::Media,
     /// Whether any stylesheet has `@media` rules, so only such pages recompile.
     pub media_dependent: bool,
@@ -378,7 +380,7 @@ pub fn prepare_scripted(
         doc = run(first_doc, quirks, measurer)?;
         let started = std::time::Instant::now();
         let second = gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load, &mut prefetch, Some(&first))?;
-        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+        if crate::env_on!("OLO_WEB_TIMING") {
             let differing = first.sheets.iter().zip(&second.sheets).filter(|(x, y)| x.1 != y.1 || x.2 != y.2 || x.0.source() != y.0.source()).count();
             eprintln!(
                 "scripted gather: {:.0} ms; sheets {} before, {} after, {} differ; rules {}",
@@ -389,7 +391,7 @@ pub fn prepare_scripted(
                 if second.rules_reused { "reused" } else { "recompiled" }
             );
         }
-        if std::env::var_os("OLO_SHEET_DEBUG").is_some() {
+        if crate::env_on!("OLO_SHEET_DEBUG") {
             for (i, (x, o, u, _)) in second.sheets.iter().enumerate() {
                 let was = first.sheets.iter().position(|(y, p, v, _)| p == o && v == u && y.source() == x.source());
                 eprintln!("  sheet {i}: {:?} {} bytes, before at {was:?}", u.as_deref().map(|u| u.rsplit('/').next().unwrap_or(u)), x.source().len());
@@ -470,31 +472,13 @@ impl Measurer {
     pub fn refresh(&mut self, doc: &Document, cancel: Option<&AtomicBool>, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<bool> {
         // Since the last look, only inline styles and attributes no sheet
         // follows changed: the sheets are as they were, without a walk.
-        if let Some((id, revision)) = self.checked
-            && id == doc.id()
-            && doc.changes_since(revision).is_some_and(|changes| {
-                // A sheet's element is a <style> or <link>: only changes to
-                // one, to the text in one, or children that may be one
-                // (elements put in) can change the sheets. (GitHub's
-                // scripts change text every frame: the walk of the page
-                // and the hash of all its CSS ran each frame.)
-                let sheet = |n: crate::dom::NodeId| matches!(doc.name(n), Ok(Some("style" | "link")));
-                changes.iter().all(|(_, c)| match c {
-                    crate::dom::Change::Style(_) | crate::dom::Change::Control(_) => true,
-                    crate::dom::Change::Attribute { name, .. } => !matches!(&**name, "href" | "rel" | "media" | "type" | "disabled" | "integrity"),
-                    crate::dom::Change::Text { node, .. } => !doc.parent(*node).ok().flatten().is_some_and(sheet),
-                    crate::dom::Change::Children { node, elements: false } => !sheet(*node),
-                    crate::dom::Change::Node(node) => !sheet(*node),
-                    _ => false,
-                })
-            })
-        {
+        if sheets_unchanged(doc, self.checked) {
             self.checked = Some((doc.id(), doc.revision()));
             return Ok(false);
         }
         let (ids, base, nodes) = sheet_identities(doc)?;
         self.checked = Some((doc.id(), doc.revision()));
-        if std::env::var_os("OLO_SHEET_DEBUG").is_some() {
+        if crate::env_on!("OLO_SHEET_DEBUG") {
             eprintln!(
                 "  refresh: {} sheet elements ({} in shadow trees), {}",
                 nodes.len(),
@@ -513,7 +497,7 @@ impl Measurer {
         let (rules, _, faces, _) = compile(&sheets, self.media, cancel)?;
         let compiled_at = started.elapsed();
         let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel)?;
-        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+        if crate::env_on!("OLO_WEB_TIMING") {
             eprintln!(
                 "  measurer sheets: {} ({} KB) loaded in {:.0} ms, compiled in {:.0} ms, fonts {:.0} ms",
                 sheets.len(),
@@ -1149,6 +1133,35 @@ fn load_sheets(
 /// style/link element with a hash of what matters (its attributes, its
 /// text), and the base URL. Changed identities mean the rules must be
 /// made again.
+/// Whether nothing since `checked` (a document and revision the sheets
+/// were looked for at) could change the stylesheets: only inline styles,
+/// attributes no sheet follows, text outside sheets and children that
+/// can't be one changed. (GitHub's scripts change text every frame: the
+/// walk of the page and the hash of all its CSS ran each frame.)
+fn sheets_unchanged(doc: &Document, checked: Option<(u64, u64)>) -> bool {
+    if let Some((id, revision)) = checked
+        && id == doc.id()
+        && doc.changes_since(revision).is_some_and(|changes| {
+            // A sheet's element is a <style> or <link>: only changes to
+            // one, to the text in one, or children that may be one
+            // (elements put in) can change the sheets. (GitHub's
+            // scripts change text every frame: the walk of the page
+            // and the hash of all its CSS ran each frame.)
+            let sheet = |n: crate::dom::NodeId| matches!(doc.name(n), Ok(Some("style" | "link")));
+            changes.iter().all(|(_, c)| match c {
+                crate::dom::Change::Style(_) | crate::dom::Change::Control(_) => true,
+                crate::dom::Change::Attribute { name, .. } => !matches!(&**name, "href" | "rel" | "media" | "type" | "disabled" | "integrity"),
+                crate::dom::Change::Text { node, .. } => !doc.parent(*node).ok().flatten().is_some_and(sheet),
+                crate::dom::Change::Children { node, elements: false } => !sheet(*node),
+                crate::dom::Change::Node(node) => !sheet(*node),
+                _ => false,
+            })
+        })
+    {
+        return true;
+    }
+    false
+}
 fn sheet_identities(doc: &Document) -> Result<(Vec<(crate::dom::NodeId, u64)>, Option<String>, Vec<crate::dom::NodeId>)> {
     use std::hash::{Hash, Hasher};
     let mut ids = Vec::new();
@@ -1529,7 +1542,7 @@ pub fn finish_with(
     // The scripts' last measurement serves when it was styled with these
     // very rules (an earlier preparation's, or the same compilation again,
     // from the compiled-rules cache).
-    if std::env::var_os("OLO_WEB_TIMING").is_some()
+    if crate::env_on!("OLO_WEB_TIMING")
         && let Some(p) = previous
     {
         eprintln!(
@@ -1541,7 +1554,7 @@ pub fn finish_with(
     }
     let previous = previous.filter(|p| rules_reused || p.cache().tree().styles().generation() == rules.generation());
     let mut timeline = css::animation::Timeline::default();
-    let mut containers = std::collections::HashMap::new();
+    let mut containers = crate::dom::NodeMap::default();
     let (scene, stylesheet_issues, fallbacks) = render(
         &doc,
         images.as_ref(),
@@ -1588,6 +1601,7 @@ pub fn finish_with(
         resource_issues,
         base_scope,
         sheet_ids,
+        sheets_checked: None,
     })
 }
 impl Page {
@@ -1603,7 +1617,7 @@ impl Page {
     /// the caller renders.
     pub fn swap_pictures(&mut self, pictures: &[(crate::dom::NodeId, Arc<crate::image::Image>)], cancel: Option<&AtomicBool>) -> bool {
         let why = |w: &str| {
-            if std::env::var_os("OLO_WEB_TIMING").is_some() {
+            if crate::env_on!("OLO_WEB_TIMING") {
                 eprintln!("swap pictures: no, {w}");
             }
             false
@@ -1665,8 +1679,16 @@ impl Page {
     /// Follow a later revision's stylesheets (see `Measurer::refresh`):
     /// returns whether the rules were made again.
     pub fn refresh(&mut self, doc: &Document, cancel: Option<&AtomicBool>, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<bool> {
+        // Nothing that could change the sheets since the last look: no
+        // walk of the document (it ran on every render while apple.com
+        // loaded).
+        if sheets_unchanged(doc, self.sheets_checked) {
+            self.sheets_checked = Some((doc.id(), doc.revision()));
+            return Ok(false);
+        }
+        self.sheets_checked = Some((doc.id(), doc.revision()));
         let (ids, base, nodes) = sheet_identities(doc)?;
-        if std::env::var_os("OLO_SHEET_DEBUG").is_some() {
+        if crate::env_on!("OLO_SHEET_DEBUG") {
             eprintln!("  page refresh: {} sheet elements, {}", nodes.len(), if ids == self.sheet_ids { "as before" } else { "changed" });
         }
         if ids == self.sheet_ids {
@@ -1746,7 +1768,7 @@ impl Page {
         let patchable_scene = rematch.is_some().then_some(&previous_scene);
         let before_render = std::time::Instant::now();
         let restyle: Vec<crate::dom::NodeId> = if rematch.is_none() { vec![doc.root()] } else { Vec::new() };
-        if std::env::var_os("OLO_WEB_TIMING").is_some() && interaction_changed {
+        if crate::env_on!("OLO_WEB_TIMING") && interaction_changed {
             match &rematch {
                 Some(r) => eprintln!("rerender: the interaction changed: {} elements matched again", r.len()),
                 None => eprintln!("rerender: the interaction changed ({:?} -> {:?}): every element matched again", self.rendered_interaction, self.interaction),
@@ -1859,7 +1881,7 @@ impl Page {
         let Some(rematch) = interaction_rematch(&self.document, &self.rules, self.rendered_interaction, self.interaction, self.interaction_mask) else {
             return self.restyle(host, shaper, painter, viewport, cancel, progress);
         };
-        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+        if crate::env_on!("OLO_WEB_TIMING") {
             eprintln!("restyle: the interaction changed: {} elements matched again", rematch.len());
         }
         let previous_scene = self.scene.clone();
@@ -2070,13 +2092,13 @@ fn check_reuse(
 /// altered, with their ancestors (a block subtree under none of them lays
 /// out as before, see `layout::Job::with_previous`); None when the
 /// changes are not known.
-fn dirty_nodes(doc: &Document, revision: u64) -> Option<std::collections::HashSet<crate::dom::NodeId>> {
+fn dirty_nodes(doc: &Document, revision: u64) -> Option<crate::dom::NodeSet> {
     use crate::dom::Change;
     let changes = doc.changes_since(revision)?;
     if changes.len() > 4096 {
         return None;
     }
-    let mut dirty = std::collections::HashSet::new();
+    let mut dirty = crate::dom::NodeSet::default();
     let mut nodes = Vec::with_capacity(changes.len());
     for (_, change) in changes {
         nodes.push(match change {
@@ -2088,7 +2110,7 @@ fn dirty_nodes(doc: &Document, revision: u64) -> Option<std::collections::HashSe
     Some(dirty)
 }
 /// `nodes` and their ancestors into `dirty`.
-fn dirty_ancestors(doc: &Document, nodes: &[crate::dom::NodeId], dirty: &mut std::collections::HashSet<crate::dom::NodeId>) {
+fn dirty_ancestors(doc: &Document, nodes: &[crate::dom::NodeId], dirty: &mut crate::dom::NodeSet) {
     for &node in nodes {
         let mut at = Some(node);
         while let Some(n) = at {
@@ -2320,7 +2342,7 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
     Ok(Patchable { nodes, relayout })
 }
 /// Query containers' content-box sizes in a layout (CSS px), by element.
-fn container_sizes(layout: &layout::Layout) -> std::collections::HashMap<crate::dom::NodeId, [f64; 2]> {
+fn container_sizes(layout: &layout::Layout) -> crate::dom::NodeMap<[f64; 2]> {
     (*layout.container_sizes()).clone()
 }
 /// `render_once`, again when a query container's size came out other than
@@ -2345,7 +2367,7 @@ fn render(
     previous_scene: Option<&Arc<paint::Scene>>,
     animated: &mut std::collections::HashSet<crate::dom::NodeId>,
     timeline: &mut css::animation::Timeline,
-    containers: &mut std::collections::HashMap<crate::dom::NodeId, [f64; 2]>,
+    containers: &mut crate::dom::NodeMap<[f64; 2]>,
     restyle: &[crate::dom::NodeId],
     rematch: &[(crate::dom::NodeId, bool)],
     mut progress: impl FnMut(Phase, usize),
@@ -2383,7 +2405,7 @@ fn render(
         // What the containers whose size changed hold is matched again; the
         // rest of this pass's styles and boxes are kept.
         let resized: Vec<crate::dom::NodeId> = sizes.iter().filter(|(n, s)| containers.get(n) != Some(s)).map(|(n, _)| *n).collect();
-        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+        if crate::env_on!("OLO_WEB_TIMING") {
             eprintln!("render: {} of {} query containers sized anew: what they hold styled again", resized.len(), sizes.len());
         }
         *containers = sizes;
@@ -2431,7 +2453,7 @@ fn render_once(
     previous_scene: Option<&Arc<paint::Scene>>,
     animated: &mut std::collections::HashSet<crate::dom::NodeId>,
     timeline: &mut css::animation::Timeline,
-    containers: &std::collections::HashMap<crate::dom::NodeId, [f64; 2]>,
+    containers: &crate::dom::NodeMap<[f64; 2]>,
     resized: &[crate::dom::NodeId],
     rematch: &[(crate::dom::NodeId, bool)],
     mut progress: impl FnMut(Phase, usize),
@@ -2676,7 +2698,7 @@ fn render_once(
         Some(_) if relayout => "text changed",
         Some(p) if p.device_scale() != viewport.scale => "another scale",
         Some(p) => {
-            if std::env::var_os("OLO_WEB_TIMING").is_some() {
+            if crate::env_on!("OLO_WEB_TIMING") {
                 let count = |s: Option<&Arc<crate::image::Set>>| s.map(|s| s.bound_nodes().count() as i64).unwrap_or(-1);
                 eprintln!("  layout not kept: {} images bound before, {} now", count(p.cache().tree().images()), count(images));
             }

@@ -92,7 +92,7 @@ impl Frames {
         {
             self.scanned = Some(revision);
             self.found = iframes(&doc, base);
-            if std::env::var_os("OLO_BROWSER_TIMING").is_some() && !self.found.is_empty() {
+            if olo_web::env_on!("OLO_BROWSER_TIMING") && !self.found.is_empty() {
                 eprintln!("  frames: {} iframes, shown at {:?}", self.found.len(), self.found.iter().map(|(n, _)| shown(*n)).collect::<Vec<_>>());
             }
             self.frames.retain(|n, f| self.found.iter().any(|(m, src)| m == n && *src == f.src));
@@ -218,13 +218,13 @@ fn start(src: String, parent: url::Url, size: [u32; 2], made: Arc<Mutex<Made>>, 
         })();
         *made.lock().unwrap() = match result {
             Ok(image) => {
-                if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                if olo_web::env_on!("OLO_BROWSER_TIMING") {
                     eprintln!("Browser frame {src}: rendered at {}x{}", size[0], size[1]);
                 }
                 Made::Done(image)
             }
             Err(e) => {
-                if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                if olo_web::env_on!("OLO_BROWSER_TIMING") {
                     eprintln!("Browser frame {src}: {e}");
                 }
                 Made::Settled

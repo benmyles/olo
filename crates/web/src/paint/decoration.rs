@@ -328,7 +328,7 @@ pub(super) fn raster(
     let radii = radii(s, outer);
     let Some(border_path) = path(outer, &radii, scale, region) else { return Ok(()) };
     let current = s.used_color(P::Color)?;
-    let profiling = std::env::var_os("OLO_TILE_PROFILE").is_some();
+    let profiling = crate::env_on!("OLO_TILE_PROFILE");
     let now = || if profiling { Some(std::time::Instant::now()) } else { None };
     // Outer shadows, last declared first, each outside the border box.
     let started = now();

@@ -576,7 +576,7 @@ impl SheetBuilder {
                 }
             }
         }
-        if std::env::var_os("OLO_STYLE_TIMING").is_some() {
+        if crate::env_on!("OLO_STYLE_TIMING") {
             let biggest = |b: &Buckets| b.classes.values().chain(b.types.values()).map(Vec::len).max().unwrap_or(0);
             let mut kinds: HashMap<String, usize> = HashMap::new();
             for &i in &index.element.universal {
@@ -909,7 +909,7 @@ impl RuleSet {
             let Some(encapsulation) = rule.context(&scopes) else { continue };
             matcher.set_rule_scope(rule.scope);
             let (matched, progress) = matcher.matches(rule.selector, match_limits.work.min(limits.work.saturating_sub(work))).map_err(Error::Selectors)?;
-            if progress.steps > 40 && std::env::var_os("OLO_STYLE_TIMING").is_some() {
+            if progress.steps > 40 && crate::env_on!("OLO_STYLE_TIMING") {
                 eprintln!("    costly match: <{}> {} steps for {}", name.local_name, progress.steps, self.selectors.subject_summary(rule.selector));
             }
             scratch.progress.compounds += progress.compounds;

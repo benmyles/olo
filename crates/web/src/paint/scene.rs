@@ -683,7 +683,7 @@ impl Scene {
             // needs the scene built.
             let opacity = s.value(P::Opacity).scalar().unwrap_or(1.).clamp(0., 1.) as f32;
             let refused = |why: &str| {
-                if std::env::var_os("OLO_WEB_TIMING").is_some() {
+                if crate::env_on!("OLO_WEB_TIMING") {
                     eprintln!("  scene patch refused: {why} (opacity {opacity})");
                 }
             };
@@ -1947,7 +1947,7 @@ impl<'a> BuildJob<'a> {
                     let transformed = if layered { parent_transform } else { self.transform_of(id, s, outer, parent_transform)? };
                     if transformed != parent_transform {
                         // OLO_TRANSFORM_DEBUG: which boxes paint through a matrix.
-                        if std::env::var_os("OLO_TRANSFORM_DEBUG").is_some() {
+                        if crate::env_on!("OLO_TRANSFORM_DEBUG") {
                             eprintln!(
                                 "  transform on <{} class={:?}>: {:?}",
                                 self.doc.name(b.node).ok().flatten().unwrap_or("?"),
@@ -2235,7 +2235,7 @@ impl<'a> BuildJob<'a> {
                     let clip = &self.clips[c.clip as usize];
                     clip.transform == NONE && clip.radii.is_none_or(|r| surface_corners(shown, clip.rect, &r).is_some())
                 });
-            if c.surface && !surface && std::env::var_os("OLO_SURFACE_DEBUG").is_some() {
+            if c.surface && !surface && crate::env_on!("OLO_SURFACE_DEBUG") {
                 let clip = (c.clip != NONE).then(|| (self.clips[c.clip as usize].rect, self.clips[c.clip as usize].transform, self.clips[c.clip as usize].radii.is_some()));
                 let groups: Vec<(f32, bool)> = std::iter::successors((c.group != NONE).then_some(c.group), |&g| (self.groups[g as usize].parent != NONE).then(|| self.groups[g as usize].parent))
                     .map(|g| (self.groups[g as usize].opacity, self.groups[g as usize].mask.is_some()))

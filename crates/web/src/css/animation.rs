@@ -439,7 +439,7 @@ impl Timeline {
             return;
         }
         let name: Arc<str> = Arc::from(property.as_str());
-        if std::env::var_os("OLO_WEB_TIMING").is_some() {
+        if crate::env_on!("OLO_WEB_TIMING") {
             eprintln!("  transition {node:?} {name}: {from} -> {to} over {duration} s after {delay} s at {} ms", self.now_ms);
         }
         self.events.push((node, "transitionrun", name.clone(), 0.));
@@ -466,8 +466,8 @@ impl Timeline {
     /// element whose values must be computed again (transitioned now or at
     /// the last sample); a transition done is dropped (its element takes
     /// its own value again), with its `transitionend`.
-    pub fn sample_transitions(&mut self, cancelled: Option<&AtomicBool>) -> (HashMap<crate::dom::NodeId, Vec<super::properties::Declaration>>, Vec<crate::dom::NodeId>) {
-        let mut out: HashMap<crate::dom::NodeId, Vec<super::properties::Declaration>> = HashMap::new();
+    pub fn sample_transitions(&mut self, cancelled: Option<&AtomicBool>) -> (crate::dom::NodeMap<Vec<super::properties::Declaration>>, Vec<crate::dom::NodeId>) {
+        let mut out: crate::dom::NodeMap<Vec<super::properties::Declaration>> = Default::default();
         let now = self.now_ms;
         let mut done = Vec::new();
         for (&(node, property), r) in self.transitions.iter_mut() {
@@ -511,8 +511,8 @@ impl Timeline {
         library: &Library,
         styled: impl Iterator<Item = (crate::dom::NodeId, &'s super::style::Style)>,
         cancelled: Option<&AtomicBool>,
-    ) -> (HashMap<crate::dom::NodeId, Vec<super::properties::Declaration>>, Vec<crate::dom::NodeId>) {
-        let mut out: HashMap<crate::dom::NodeId, Vec<super::properties::Declaration>> = HashMap::new();
+    ) -> (crate::dom::NodeMap<Vec<super::properties::Declaration>>, Vec<crate::dom::NodeId>) {
+        let mut out: crate::dom::NodeMap<Vec<super::properties::Declaration>> = Default::default();
         self.running = false;
         if library.is_empty() {
             let touched = std::mem::take(&mut self.applied);
@@ -534,7 +534,7 @@ impl Timeline {
                 let shows = !matches!(style.value(Property::Visibility), super::style::Value::Keyword(Keyword::Hidden | Keyword::Collapse))
                     || frames.frames.iter().any(|f| f.values.iter().any(|(n, _)| &**n == "visibility"));
                 self.running |= shows && running(&spec, elapsed);
-                if shows && running(&spec, elapsed) && std::env::var_os("OLO_RENDER_TRACE").is_some() {
+                if shows && running(&spec, elapsed) && crate::env_on!("OLO_RENDER_TRACE") {
                     eprintln!("  animation runs: {node:?} {} ({} s x {})", spec.name, spec.duration, spec.count);
                 }
                 // Its events: start once the delay is over, end once it is done.
