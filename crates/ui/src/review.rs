@@ -37,7 +37,7 @@ thread_local! {
 }
 
 /// Whether `window`'s drawing is being recorded.
-fn recording(window: &Window) -> bool {
+pub(crate) fn recording(window: &Window) -> bool {
     PENDING.with(|p| p.borrow().as_ref().is_some_and(|p| p.windows.contains_key(&window.window_handle().window_id())))
 }
 
@@ -152,6 +152,12 @@ pub fn pane(window: &Window, b: Bounds<Pixels>) {
     });
 }
 
+/// `b` is a control's frame, round its agent rect (a text field's well):
+/// what the eye goes by in a row of controls.
+pub fn frame(window: &Window, b: Bounds<Pixels>) {
+    with_parts(window, |parts, _| parts.frames.push(kb(b)));
+}
+
 /// `b` is a scroll view's viewport: what it cuts is scrolled out of
 /// sight, not cut off. (ScrollView and ColumnListView say it.)
 pub fn scroll_area(window: &Window, b: Bounds<Pixels>) {
@@ -226,7 +232,14 @@ fn controls(window: &Window) -> Vec<Control> {
                 return None;
             }
             let at = Bounds { origin: n.bounds.origin + *moved, size: n.bounds.size };
-            Some(Control { rect: kb(at), clip: n.clip.map_or(whole, kb), role: n.role.to_owned(), name: n.name.as_ref().map(|s| s.to_string()).unwrap_or_default(), clickable: n.clickable })
+            Some(Control {
+                rect: kb(at),
+                clip: n.clip.map_or(whole, kb),
+                role: n.role.to_owned(),
+                name: n.name.as_ref().map(|s| s.to_string()).unwrap_or_default(),
+                clickable: n.clickable,
+                element: n.element.clone(),
+            })
         })
         .collect()
 }

@@ -11,6 +11,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Browser: GitHub's video on the GPU](2026-11-08/014959-browser-github-s-video-on-the-gpu.png)
 
+### Security Keys: a key with a PIN
+
+*00:53* — A security key with a PIN set is set up with it (asked once, not kept): the key's PIN beside the account password, a wrong one said with the tries left. Its Remove works beside Face Unlock's (the two Remove buttons had one id and lost their clicks).
+
+![Security Keys: a key with a PIN](2026-11-08/005344-security-keys-a-key-with-a-pin.png)
+
+### Notifications: Undo Clear All and Forget
+
+*00:33* — The History window's Edit ▸ Undo brings back what Clear All or Forget took, where it was (closed at its app by now); Redo forgets it again.
+
+![Notifications: Undo Clear All and Forget](2026-11-08/003340-notifications-undo-clear-all-and-forget.png)
+
+### DiskBackup: Edit ▸ Undo for its settings
+
+*00:27* — Each settings change in DiskBackup's window is a step named for what it changed (Leave Out, Keep, Speed, Patterns typed as one run); Undo puts back only that, leaving what the service or a setup changed since.
+
+![DiskBackup: Edit ▸ Undo for its settings](2026-11-08/002700-diskbackup-edit-undo-for-its-settings.png)
+
+### Disk Usage: Undo Move to Trash
+
+*00:20* — Edit ▸ Undo puts what Disk Usage moved to the Trash back where it was (its sizes back in the chart); Redo moves it again. Deleting for good still says it can't be undone.
+
+![Disk Usage: Undo Move to Trash](2026-11-08/002025-disk-usage-undo-move-to-trash.png)
+
 ## 2026-11-07
 
 ### Browser: GitHub's file list
@@ -19,11 +43,35 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Browser: GitHub's file list](2026-11-07/224906-browser-github-s-file-list.png)
 
+### DiskBackup: Back Up to Google Drive, walked through
+
+*22:34* — Google asks each person to make their own sign-in for an app like DiskBackup, so DiskBackup walks them through it: six steps in Google Cloud, each with Open for its page, then the client's file (or its ID and secret) and Sign In with Google. A client kept in Passwords skips the steps on another computer.
+
+![DiskBackup: Back Up to Google Drive, walked through](2026-11-07/223440-diskbackup-back-up-to-google-drive-walked-throug.png)
+
 ### Browser: inline backgrounds
 
 *22:23* — Olo (left) and Chrome (right): code with padding, mark, a highlight wrapping two lines, a bigger code.
 
 ![Browser: inline backgrounds](2026-11-07/222333-browser-inline-backgrounds.png)
+
+### Tracker's list view: one edge at its foot
+
+*21:54* — The count bar under the list view no longer draws its etched edge: the list's own sunken frame (its focus ring inside) edges it, and the two had stacked four lines in three points (tsession review: crowded lines, at 1× and 2×). Light and dark, 2× and 1×.
+
+![Tracker's list view: one edge at its foot](2026-11-07/215408-tracker-s-list-view-one-edge-at-its-foot.png)
+
+### DiskBackup's own icon, in every theme
+
+*21:54* — A hard drive with a cloud before it, a green tick on the cloud (backed up, safe elsewhere), in place of Preferences ▸ Backup's drive and arrow (top row of each band: DiskBackup; under it, Backup's), at 64 and 16 px on the light, dark and night panels.
+
+![DiskBackup's own icon, in every theme](2026-11-07/215408-diskbackup-s-own-icon-in-every-theme.png)
+
+### Tracker: DiskBackup's ticks and Older Versions
+
+*21:40* — Files whose current version is backed up wear a green tick, in every view and on the desktop (a changed file loses it until the next backup). A file's Older Versions… opens DiskBackup's Versions window: each version kept, the one there now said; Restore keeps both or replaces.
+
+![Tracker: DiskBackup's ticks and Older Versions](2026-11-07/214008-tracker-diskbackup-s-ticks-and-older-versions.png)
 
 ### Browser: apple.com's search, used
 

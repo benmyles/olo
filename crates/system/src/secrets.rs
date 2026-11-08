@@ -66,9 +66,13 @@ pub const SECRETS_KEY: Kept = Kept { label: "Olo Secrets", attributes: &[("appli
 /// with no one there; the key itself is kept in Passwords too).
 pub const DISKBACKUP_KEY: Kept = Kept { label: "Olo DiskBackup", attributes: &[("application", "olo"), ("purpose", "diskbackup-key")], what: "DiskBackup", carry: Carry::Anywhere };
 
+/// DiskBackup's sign-in to Google Drive: the person's own OAuth client
+/// and its refresh token (JSON), for the service.
+pub const DISKBACKUP_GOOGLE: Kept = Kept { label: "Olo DiskBackup Google Drive", attributes: &[("application", "olo"), ("purpose", "diskbackup-google")], what: "DiskBackup", carry: Carry::Anywhere };
+
 /// Every secret Olo keeps in the keyring. One added anywhere goes here,
 /// or a backup leaves it behind.
-pub const KEPT: &[Kept] = &[PASSWORDS_KEY, POOL_KEY, GITHUB, TELEGRAM_API, TELEGRAM_SESSION, SECRETS_KEY, DISKBACKUP_KEY];
+pub const KEPT: &[Kept] = &[PASSWORDS_KEY, POOL_KEY, GITHUB, TELEGRAM_API, TELEGRAM_SESSION, SECRETS_KEY, DISKBACKUP_KEY, DISKBACKUP_GOOGLE];
 
 fn service(conn: &Connection) -> Result<Proxy<'_>> {
     Proxy::new(conn, DEST, ROOT, SERVICE)

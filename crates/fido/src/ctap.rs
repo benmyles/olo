@@ -39,6 +39,11 @@ pub const ERR_KEEPALIVE_CANCEL: u8 = 0x2D;
 pub const ERR_USER_ACTION_TIMEOUT: u8 = 0x2F;
 pub const ERR_OPERATION_DENIED: u8 = 0x27;
 pub const ERR_PIN_REQUIRED: u8 = 0x36;
+pub const ERR_PIN_INVALID: u8 = 0x31;
+pub const ERR_PIN_BLOCKED: u8 = 0x32;
+pub const ERR_PIN_AUTH_INVALID: u8 = 0x33;
+pub const ERR_PIN_AUTH_BLOCKED: u8 = 0x34;
+pub const ERR_PIN_POLICY_VIOLATION: u8 = 0x37;
 pub const ERR_UNSUPPORTED_EXTENSION: u8 = 0x16;
 /// CTAPHID's: the key is busy with another channel's request.
 pub const HID_ERR_BUSY: u8 = 0x06;

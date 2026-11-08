@@ -271,7 +271,12 @@ hand-written baseline trained on every run the trainer has kept
 make_default_model -- --ignored --nocapture`, which writes the file), so
 it runs before anyone trains (the Touch tab's check is on by default),
 training starts from it, and the person's model is kept only if it
-does at least as well. Runs kept before the window started at the touch
+does at least as well. The person's training learns from their newest
+runs on that kind of pad, today's and up to seven earlier
+(`olo_palm::kept_runs`, both the folder now and the old `olo/olo/palm`),
+not today's alone: one sitting's hands overfit it (run 1 judged by a
+model of run 2 lost 8.3% of its fingers). Eight runs of 100 contacts
+train in about 2 s, one in 0.27 s. Runs kept before the window started at the touch
 (a bare list) are made over as the tracker follows contacts now
 (`Run::on_the_glass`: the hovering frames dropped, age, growth and peaks
 counted from the first touching one), and the runs are made to show

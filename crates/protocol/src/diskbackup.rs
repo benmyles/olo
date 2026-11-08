@@ -254,11 +254,64 @@ pub enum Request {
     /// Tidy now (not waiting for the daily one): snapshots past keeping
     /// let go of, and the space only they took freed.
     Tidy,
+    /// Which of folder `dir`'s files (absolute) are backed up as they are
+    /// now, in this computer's newest snapshot (Tracker's ticks).
+    Marks { dir: String },
+    /// The versions of `path` (absolute) this computer's snapshots kept
+    /// (Tracker's Older Versions…).
+    Versions { path: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Reply {
     Ok,
-    Error { message: String },
+    Error {
+        message: String,
+    },
+    Marks {
+        /// The folder is in what's backed up (and the newest snapshot has
+        /// it).
+        covered: bool,
+        /// Its files whose current version that snapshot holds, by name.
+        backed_up: Vec<String>,
+        /// When that snapshot was taken, seconds since 1970.
+        time: i64,
+    },
+    Versions {
+        versions: Vec<Version>,
+    },
+}
+
+/// One version of a file the backups kept (`Reply::Versions`), newest
+/// first.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Version {
+    /// The newest snapshot holding it (its id, in hex), and its time.
+    pub snapshot: String,
+    pub time: i64,
+    /// The oldest snapshot's time holding it.
+    pub first: i64,
+    pub size: u64,
+    /// Its modified time then, ns since 1970.
+    pub mtime: i64,
+    /// What's there now is this version.
+    pub current: bool,
+}
+
+/// `request` to the service, its reply (the service not running: an
+/// error saying so).
+pub fn call(request: &Request) -> Result<Reply, String> {
+    use std::io::{BufRead, Write};
+    let mut s = std::os::unix::net::UnixStream::connect(socket()).map_err(|_| "the DiskBackup service isn't running".to_string())?;
+    let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(10)));
+    s.write_all(format!("{}\n", serde_json::to_string(request).unwrap_or_default()).as_bytes()).map_err(|e| e.to_string())?;
+    let mut line = String::new();
+    std::io::BufReader::new(&s).read_line(&mut line).map_err(|e| e.to_string())?;
+    match serde_json::from_str::<Reply>(&line) {
+        Ok(Reply::Error { message }) => Err(message),
+        Ok(r) => Ok(r),
+        Err(e) => Err(e.to_string()),
+    }
 }

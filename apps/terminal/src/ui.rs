@@ -1345,6 +1345,19 @@ impl Terminal {
     /// What was done to window `id`'s tab strip.
     fn strip_action(&mut self, id: WindowId, action: StripAction, window: &mut Window, cx: &mut Cx) {
         let side = self.settings.side_tabs;
+        // (A tab or a group dragged along the strip: a step to undo.)
+        let moved = match &action {
+            StripAction::Move { .. } => Some(("Move Tab", self.tab_order(id))),
+            StripAction::MoveGroup { .. } => Some(("Move Group", self.tab_order(id))),
+            _ => None,
+        };
+        self.strip_did(id, action, side, window, cx);
+        if let Some((name, before)) = moved {
+            self.tabs_moved(id, before, name);
+        }
+    }
+
+    fn strip_did(&mut self, id: WindowId, action: StripAction, side: bool, window: &mut Window, cx: &mut Cx) {
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         match action {
             StripAction::Select(i) => {

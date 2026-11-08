@@ -9,6 +9,11 @@
 //!    filled), what's used in it is copied into new packs (still sealed:
 //!    nothing opened but to check it's whole) and it goes. A blob kept
 //!    twice is kept once, in the pack most used.
+//!
+//! A pack no index names (a backup stopped before naming it, an index file
+//! lost) is read back from its own list first, so what the snapshots still
+//! use in it is kept, and it's named again; only one nothing uses goes.
+//!
 //! 3. The index files naming a pack that goes are written again (the rest
 //!    stay as they are: no index rewritten to drop nothing); then they go;
 //!    then the packs. Stopped anywhere, nothing is lost: what was written
@@ -49,6 +54,14 @@ pub struct Pruned {
     /// Blobs a snapshot uses that aren't anywhere (damage: the next backup
     /// puts back what it still has).
     pub missing: u64,
+    /// Packs no index named that the snapshots still use, read back from
+    /// their own lists and named again.
+    #[serde(default)]
+    pub packs_found: u64,
+    /// Index files that didn't open or read (damaged), let go of once
+    /// their packs were named again.
+    #[serde(default)]
+    pub index_files_damaged: u64,
     pub seconds: f64,
 }
 
@@ -90,6 +103,8 @@ struct Pack {
     /// What's kept of it (used, and not kept elsewhere).
     keep: Vec<Entry>,
     trees: bool,
+    /// Named in no index: read back from its own list.
+    found: bool,
 }
 
 fn run(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Pruned> {
@@ -99,30 +114,23 @@ fn run(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Prun
     let stop = || if cancel.load(Relaxed) { Err(Error::Cancelled) } else { Ok(()) };
     let mut out = Pruned::default();
 
-    // 1. What the snapshots use.
-    say(progress, "Looking at what the snapshots use");
-    let mut used: HashSet<Id> = HashSet::new();
-    let mut todo: Vec<Id> = repo.snapshots()?.iter().map(|(_, s)| s.tree).collect();
-    while let Some(t) = todo.pop() {
-        if !used.insert(t) {
-            continue;
-        }
-        stop()?;
-        let tree = repo.tree(&t)?;
-        progress.files.fetch_add(1, Relaxed);
-        for n in tree.nodes {
-            used.extend(n.content);
-            todo.extend(n.subtree);
-        }
-    }
-
-    // 2. The index as the store has it, and the packs there.
+    // 1. The index as the store has it, and the packs there.
     say(progress, "Looking at what's kept");
     let index_files = repo.store.list("index")?;
     let mut files: Vec<(String, Packs)> = Vec::new();
     let mut by_pack: HashMap<Id, Vec<Entry>> = HashMap::new();
+    // (One that doesn't open or read names nothing: its packs are found
+    // below, read back from their own lists, and it goes at the end.)
+    let mut damaged: Vec<&String> = Vec::new();
     for (name, _) in &index_files {
-        let packs: Vec<(Id, Vec<Entry>)> = decode(&repo.cached(name)?)?;
+        let packs: Vec<(Id, Vec<Entry>)> = match repo.cached(name).and_then(|plain| decode(&plain)) {
+            Ok(packs) => packs,
+            Err(Error::Damaged(_)) => {
+                damaged.push(name);
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
         for (p, es) in &packs {
             by_pack.entry(*p).or_default().extend_from_slice(es);
         }
@@ -140,8 +148,47 @@ fn run(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Prun
         entries.sort_by_key(|e| e.offset);
         entries.dedup_by_key(|e| e.offset);
         let trees = entries.iter().all(|e| e.flags & TREE != 0);
-        packs.push(Pack { id, size: *size, entries, keep: Vec::new(), trees });
+        packs.push(Pack { id, size: *size, entries, keep: Vec::new(), trees, found: false });
     }
+    // Packs no index names (a backup stopped before naming them; an index
+    // file lost): each read back from its own list, and taken into the
+    // index here, so what the snapshots still use in them is found below
+    // (and kept), never let go of with the rest. One whose list is
+    // damaged is nobody's; one that couldn't be fetched (the network) stops
+    // the tidying, to be tried again, rather than be let go of.
+    let named: HashSet<Id> = packs.iter().map(|p| p.id).collect();
+    let mut unreadable: Vec<(Id, u64)> = Vec::new();
+    for (id, size) in present.iter().filter(|(id, _)| !named.contains(id)) {
+        stop()?;
+        match repo.pack_header(id, *size) {
+            Ok(mut entries) => {
+                entries.sort_by_key(|e| e.offset);
+                let trees = entries.iter().all(|e| e.flags & TREE != 0);
+                repo.take_pack(*id, &entries);
+                packs.push(Pack { id: *id, size: *size, entries, keep: Vec::new(), trees, found: true });
+            }
+            Err(Error::Damaged(_)) => unreadable.push((*id, *size)),
+            Err(e) => return Err(e),
+        }
+    }
+
+    // 2. What the snapshots use.
+    say(progress, "Looking at what the snapshots use");
+    let mut used: HashSet<Id> = HashSet::new();
+    let mut todo: Vec<Id> = repo.snapshots()?.iter().map(|(_, s)| s.tree).collect();
+    while let Some(t) = todo.pop() {
+        if !used.insert(t) {
+            continue;
+        }
+        stop()?;
+        let tree = repo.tree(&t)?;
+        progress.files.fetch_add(1, Relaxed);
+        for n in tree.nodes {
+            used.extend(n.content);
+            todo.extend(n.subtree);
+        }
+    }
+
     // Each used blob kept once: in the pack most used, first.
     let used_of = |p: &Pack| p.entries.iter().filter(|e| used.contains(&e.id)).map(|e| e.len as u64).sum::<u64>();
     packs.sort_by_cached_key(|p| std::cmp::Reverse((used_of(p) as u128 * 1_000_000 / p.size.max(1) as u128, p.id.0)));
@@ -167,17 +214,18 @@ fn run(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Prun
     if small.len() >= SMALL_COUNT {
         repack.extend(small);
     }
-    // In no index (a backup stopped before naming them, a tidy before):
-    // nobody's, with the backup held.
-    let indexed: HashSet<Id> = packs.iter().map(|p| p.id).chain(gone.iter().copied()).collect();
-    let unindexed: Vec<(Id, u64)> = present.iter().filter(|(id, _)| !indexed.contains(id)).map(|(id, s)| (*id, *s)).collect();
+    // Found again and kept: named in the index written below.
+    let found: Vec<usize> = (0..packs.len()).filter(|i| packs[*i].found && !delete.contains(i) && !repack.contains(i)).collect();
+    out.packs_found = found.len() as u64;
+    out.index_files_damaged = damaged.len() as u64;
+    let unindexed = unreadable;
     // The index files to write again: those naming a pack that goes (or is
     // gone), and the small ones once there are many.
     let going: HashSet<Id> = delete.iter().chain(repack.iter()).map(|i| packs[*i].id).chain(gone.iter().copied()).collect();
     let small_files: Vec<usize> = files.iter().enumerate().filter(|(_, (_, ps))| ps.iter().map(|(_, es)| es.len()).sum::<usize>() < INDEX_FILE / 4).map(|(i, _)| i).collect();
     let rewrite: HashSet<usize> =
         files.iter().enumerate().filter(|(i, (_, ps))| ps.iter().any(|(p, _)| going.contains(p)) || (small_files.len() >= SMALL_COUNT && small_files.contains(i))).map(|(i, _)| i).collect();
-    if going.is_empty() && unindexed.is_empty() && rewrite.is_empty() {
+    if going.is_empty() && unindexed.is_empty() && rewrite.is_empty() && found.is_empty() && damaged.is_empty() {
         out.size = stored_size(repo)?;
         out.seconds = started.elapsed().as_secs_f64();
         return Ok(out);
@@ -230,6 +278,7 @@ fn run(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Prun
         })
         .filter(|(_, es)| !es.is_empty())
         .collect();
+    all.extend(found.iter().map(|i| (packs[*i].id, packs[*i].keep.clone())).filter(|(_, es)| !es.is_empty()));
     all.extend(new_packs);
     let mut written: HashSet<String> = HashSet::new();
     let mut batch: Vec<(Id, Vec<Entry>)> = Vec::new();
@@ -252,8 +301,7 @@ fn run(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Prun
 
     // 5. The old index files, then the packs (nothing names them now).
     say(progress, "Letting go of what isn't used");
-    for i in &rewrite {
-        let name = &files[*i].0;
+    for name in rewrite.iter().map(|i| &files[*i].0).chain(damaged.iter().copied()) {
         if !written.contains(name) {
             repo.check_exclusive()?;
             repo.store.delete(name)?;

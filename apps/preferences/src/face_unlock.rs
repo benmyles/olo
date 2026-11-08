@@ -62,7 +62,7 @@ fn sources() -> Option<(PathBuf, PathBuf, PathBuf)> {
 /// `olo-faced ARGS` as root, through polkit (its first line of output
 /// starting "error: " is what went wrong).
 fn as_root(faced: &Path, args: &[&str]) -> Result<(), String> {
-    if std::env::var_os("OLO_REAL_SESSION").is_none() || std::env::var_os("OLO_SCREEN").is_some() {
+    if !olo_system::env::at_the_computer() {
         return Err("Face unlock is installed only in the person's own session (polkit asks there).".into());
     }
     let out = std::process::Command::new("pkexec").arg("--disable-internal-agent").arg(faced).args(args).output().map_err(|e| e.to_string())?;
@@ -217,8 +217,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let link = st.link;
     ui.bbox("Face Unlock", |ui| {
         ui.note("A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.");
+        // (Ids of their own: the Security Keys box beside has a Set Up…
+        // and a Remove too, and buttons with one id lose their clicks.)
         let ask = |ui: &mut Ui, what: Asking, label: &'static str| {
             Button::new(label)
+                .id(format!("face-{label}"))
                 .enabled(!busy)
                 .on_click(act(ui, move |st, window, cx| {
                     st.asking = Some(what);
@@ -244,7 +247,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 ui.add(StringView::new(format!("Set up ({} looks).", s.enrolled)).wrap(true));
                 if st.asking.is_none() {
                     let (again, forget) = (ask(ui, Asking::Enroll, "Set Up Again…"), ask(ui, Asking::Forget, "Forget…"));
-                    ui.add(buttons(vec![again, forget, Button::new("Remove").enabled(!busy).on_click(move |_, _| drop(link.tx.send(Request::Uninstall))).into_any_element()]));
+                    ui.add(buttons(vec![again, forget, Button::new("Remove").id("face-remove").enabled(!busy).on_click(move |_, _| drop(link.tx.send(Request::Uninstall))).into_any_element()]));
                 }
             }
         }

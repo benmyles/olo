@@ -137,6 +137,13 @@ impl DeskCalc {
         self.field.update(cx, |f, cx| f.set_text(text, cx));
     }
 
+    /// The line made `text` as a step Undo takes back (a key pressed,
+    /// Clear, a result), as typing in it is.
+    fn put(&mut self, text: String, cx: &mut Context<Self>) {
+        self.settings.expression = text.clone();
+        self.field.update(cx, |f, cx| f.replace_all(&text, cx));
+    }
+
     fn field_event(&mut self, field: &Entity<TextField>, event: &TextFieldEvent, _: &mut Window, cx: &mut Context<Self>) {
         match event {
             TextFieldEvent::Typed(typed) => {
@@ -148,7 +155,7 @@ impl DeskCalc {
                 // Typing a digit over a result starts a new expression.
                 let starts = typed.chars().next().is_some_and(|ch| ch.is_ascii_digit() || ch == '.' || ch == '(');
                 if self.shows_result && starts {
-                    self.show(typed.to_string(), cx);
+                    self.put(typed.to_string(), cx);
                 }
                 self.shows_result = false;
                 self.error = None;
@@ -192,7 +199,7 @@ impl DeskCalc {
                 self.settings.history.push(text);
                 let over = self.settings.history.len().saturating_sub(HISTORY);
                 self.settings.history.drain(..over);
-                self.show(expr::format(v), cx);
+                self.put(expr::format(v), cx);
                 self.shows_result = true;
                 self.error = None;
             }
@@ -227,7 +234,7 @@ impl DeskCalc {
             k => e.push_str(k),
         }
         self.recall = None;
-        self.show(e, cx);
+        self.put(e, cx);
         cx.notify();
     }
 
@@ -253,10 +260,17 @@ impl DeskCalc {
         cx.notify();
     }
 
-    /// The keypad's context menu, as in Haiku.
-    fn menu(&self) -> Menu {
+    /// The keypad's context menu, as in Haiku (Undo and Redo first: the
+    /// line's, keys and results too).
+    fn menu(&self, cx: &gpui::App) -> Menu {
         let s = &self.settings;
+        let f = self.field.read(cx);
         Menu::new("DeskCalc")
+            .item("Undo", "undo")
+            .enabled(f.can_undo())
+            .item("Redo", "redo")
+            .enabled(f.can_redo())
+            .separator()
             .item("Copy", "copy")
             .item("Paste", "paste")
             .separator()
@@ -276,6 +290,11 @@ impl DeskCalc {
     /// The menu commands (for the command palette and agents).
     fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let keypad = match command {
+            "undo" | "redo" => {
+                self.field.update(cx, |f, cx| if command == "undo" { f.undo_step(window, cx) } else { f.redo_step(window, cx) });
+                self.shows_result = false;
+                return true;
+            }
             "copy" => {
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(self.settings.expression.clone()));
                 return true;
@@ -437,7 +456,8 @@ impl Render for DeskCalc {
                 MouseButton::Right,
                 cx.listener(|this, e: &MouseDownEvent, window, cx| {
                     let view = cx.entity();
-                    olo_ui::menu::context_menu(window, cx, this.menu(), e.position, move |command, window, cx| {
+                    let menu = this.menu(cx);
+                    olo_ui::menu::context_menu(window, cx, menu, e.position, move |command, window, cx| {
                         view.update(cx, |calc, cx| {
                             calc.command(command, window, cx);
                         });
@@ -532,7 +552,7 @@ fn main() {
         let calc_for_menus = calc.clone();
         agent::set_menus(
             cx,
-            move |cx| calc_for_menus.borrow().as_ref().map(|c| c.read(cx).menu().entries(APP_ID)).unwrap_or_default(),
+            move |cx| calc_for_menus.borrow().as_ref().map(|c| c.read(cx).menu(cx).entries(APP_ID)).unwrap_or_default(),
             move |command, cx| {
                 let Some(view) = calc.borrow().clone() else { return false };
                 let Some(handle) = handle else { return false };

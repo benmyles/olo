@@ -36,7 +36,77 @@ pub fn store(target: &Target, limits: &Limits) -> Result<Arc<dyn Store>, String>
             }
             Ok(Arc::new(Throttled { inner: LocalStore::new(path), up: limits.up.clone(), down: limits.down.clone() }))
         }
-        Target::GoogleDrive { .. } => Err("Google Drive isn't ready yet".into()),
+        Target::GoogleDrive { account, folder } => {
+            let g = google()?;
+            Ok(Arc::new(olo_diskbackup::drive::Drive::new(g.client, g.refresh_token, account.clone(), folder.clone(), limits.up.clone(), limits.down.clone(), endpoints())))
+        }
+    }
+}
+
+/// DiskBackup's sign-in to Google Drive: the person's own OAuth client,
+/// and the refresh token it was given.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Google {
+    pub client: olo_diskbackup::oauth::Client,
+    pub refresh_token: String,
+}
+
+/// Google's addresses (`OLO_DISKBACKUP_GOOGLE_API`: a test's own Google,
+/// its `/auth`, `/token` and APIs).
+pub fn endpoints() -> olo_diskbackup::oauth::Endpoints {
+    match std::env::var("OLO_DISKBACKUP_GOOGLE_API") {
+        Ok(base) => olo_diskbackup::oauth::Endpoints { auth: format!("{base}/auth"), token: format!("{base}/token"), api: base },
+        Err(_) => Default::default(),
+    }
+}
+
+/// The sign-in, from the login keyring (`OLO_DISKBACKUP_GOOGLE`: JSON,
+/// for tests).
+pub fn google() -> Result<Google, String> {
+    let text = match std::env::var("OLO_DISKBACKUP_GOOGLE") {
+        Ok(t) => t.into_bytes(),
+        Err(_) => match secrets::lookup(secrets::DISKBACKUP_GOOGLE.attributes) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => return Err("DiskBackup isn't signed in to Google Drive on this computer: set it up again (Back Up To ▸ Google Drive…)".into()),
+            Err(e) => return Err(format!("the keyring can't be read: {e}")),
+        },
+    };
+    serde_json::from_slice(&text).map_err(|_| "DiskBackup's Google sign-in in the keyring is damaged: set it up again".into())
+}
+
+/// Keep the sign-in in the login keyring.
+pub fn keep_google(g: &Google) -> Result<(), String> {
+    if std::env::var_os("OLO_DISKBACKUP_GOOGLE").is_some() {
+        return Ok(());
+    }
+    let json = serde_json::to_vec(g).unwrap_or_default();
+    secrets::store(secrets::DISKBACKUP_GOOGLE.label, secrets::DISKBACKUP_GOOGLE.attributes, &json).map_err(|e| format!("the keyring can't keep it: {e}"))
+}
+
+/// The OAuth client's item in Passwords (so another computer signs in
+/// without making one again).
+pub const CLIENT_TITLE: &str = "DiskBackup Google Client";
+
+/// The client kept in Passwords, if one is (Passwords started, unlocked
+/// if it asks). Blocks.
+pub fn client_in_passwords() -> Result<Option<olo_diskbackup::oauth::Client>, String> {
+    let request = olo_keychain::Request::Secrets { title: CLIENT_TITLE.into() };
+    match passwords(&request)? {
+        olo_keychain::Response::Secrets { ref values } => Ok(values.iter().find_map(|v| serde_json::from_str(v).ok())),
+        ref other => Err(format!("Passwords answered {other:?}")),
+    }
+}
+
+/// Keep the client in Passwords.
+pub fn keep_client(client: &olo_diskbackup::oauth::Client) -> Result<(), String> {
+    let request = olo_keychain::Request::KeepSecret {
+        title: CLIENT_TITLE.into(),
+        secret: serde_json::to_string(client).unwrap_or_default(),
+        note: "DiskBackup's own sign-in to Google Drive (a Desktop app OAuth client in your Google Cloud project). On another computer, DiskBackup signs in with it, without making another.".into(),
+    };
+    match passwords(&request)? {
+        olo_keychain::Response::Saved { .. } => Ok(()),
+        ref other => Err(format!("Passwords answered {other:?}")),
     }
 }
 

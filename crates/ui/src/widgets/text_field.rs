@@ -154,6 +154,9 @@ pub struct TextField {
     name: SharedString,
     undo: Vec<(String, Range<usize>)>,
     redo: Vec<(String, Range<usize>)>,
+    /// A run of typing (when, and where it got to): one undo step, as the
+    /// kit's runs are (`undo::History::done_merging`).
+    typed: Option<(std::time::Instant, usize)>,
     line: Option<ShapedLine>,
     /// Where the text was drawn (its left, the line's top and height).
     drawn: Option<Bounds<Pixels>>,
@@ -215,6 +218,7 @@ impl TextField {
             align: Align::Left,
             name: SharedString::default(),
             undo: Vec::new(),
+            typed: None,
             redo: Vec::new(),
             line: None,
             drawn: None,
@@ -399,6 +403,33 @@ impl TextField {
         cx.notify();
     }
 
+    /// Replaces all the text as an undo step (the app's own edit of it: a
+    /// calculator's key, Clear), the caret at the end.
+    pub fn replace_all(&mut self, text: &str, cx: &mut Context<Self>) {
+        if text != self.text {
+            self.typed = None;
+            self.replace(0..self.text.len(), text, cx);
+        }
+    }
+
+    /// Its own Undo and Redo, for an app's menus (the palette, agents):
+    /// what ⌘Z and ⇧⌘Z do in it.
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    pub fn undo_step(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.undo(&Undo, window, cx);
+    }
+
+    pub fn redo_step(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.redo(&Redo, window, cx);
+    }
+
     /// The caret to the end.
     pub fn caret_to_end(&mut self, cx: &mut Context<Self>) {
         self.move_to(self.text.len(), cx);
@@ -497,8 +528,13 @@ impl TextField {
             }
             None => new,
         };
+        // A letter typed where the last one went, soon after: the same
+        // step (a space starts the next, as words do).
+        let typing = range.is_empty() && new.chars().count() == 1 && !new.chars().any(char::is_whitespace);
+        let joins = typing && self.typed.is_some_and(|(t, at)| at == range.start && t.elapsed() < std::time::Duration::from_millis(1500));
+        self.typed = typing.then(|| (std::time::Instant::now(), range.start + new.len()));
         // (A password keeps no copies to undo to.)
-        if !self.password {
+        if !self.password && !joins {
             self.undo.push((self.text.clone(), self.selected.clone()));
             if self.undo.len() > UNDO {
                 self.undo.remove(0);
@@ -821,6 +857,7 @@ impl TextField {
     }
 
     fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
+        self.typed = None;
         if let Some((text, selected)) = self.undo.pop() {
             self.redo.push((std::mem::replace(&mut self.text, text), self.selected.clone()));
             self.selected = selected;

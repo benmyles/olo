@@ -463,7 +463,10 @@ impl HistoryWindow {
         }
         let selected = n.selected_unread();
         let pinned = n.view.selected.and_then(|id| n.history.newest(id)).map(|e| e.pinned);
-        let edit = Menu::new("Edit")
+        let edit = n
+            .steps
+            .edit_items(Menu::new("Edit"))
+            .separator()
             .item("Find", "find")
             .key("f")
             .separator()
@@ -483,6 +486,8 @@ impl HistoryWindow {
         match command {
             "close" => app.update(cx, |n, cx| n.close_history(cx)),
             "clear" => app.update(cx, |n, cx| n.clear_history(cx)),
+            "undo" => app.update(cx, |n, cx| n.undo_redo(false, cx)),
+            "redo" => app.update(cx, |n, cx| n.undo_redo(true, cx)),
             "find" => {
                 let f = self.search.read(cx).focus_handle(cx);
                 window.focus(&f);
@@ -1315,6 +1320,9 @@ impl Render for HistoryWindow {
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
+                // A status bar along the window's foot, as Tracker's count
+                // bar: its own ground, its own insets.
+                style::fill_rect(window, b, style::c(p.panel_background));
                 let at =
                     style::label(window, cx, b.left() + px(m::SPACING), b.center().y, Align::Left, status.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
                 agent::record(window, cx, agent::Node::label(status.clone(), at));
@@ -1511,13 +1519,15 @@ impl Notifications {
             .flatten()
             .and_then(|s| order.get(s + 1).or(s.checked_sub(1).and_then(|s| order.get(s))))
             .map(|&i| self.history.entries[i].id);
-        for &i in at.iter().rev() {
-            let Some(e) = self.history.entries.get(i).cloned() else { continue };
-            self.history.remove(i);
+        let gone = self.history.take_out(|i, _| at.binary_search(&i).is_err());
+        for (_, e) in &gone {
             if e.live {
                 self.take(cx, e.id);
                 self.bus(|b| b.closed(e.id, Reason::Dismissed));
             }
+        }
+        if !gone.is_empty() {
+            self.steps.done("Forget", crate::Gone::Forgot(gone));
         }
         if self.view.selected.is_some() {
             self.view.selected = next;

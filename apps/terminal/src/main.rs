@@ -28,6 +28,7 @@ mod sudo;
 mod sudo_wire;
 mod title_service;
 mod ui;
+mod undo;
 mod view;
 #[allow(dead_code)]
 mod wire;
@@ -637,6 +638,13 @@ pub(crate) enum Win {
 pub(crate) struct Terminal {
     link: client::Link,
     windows: HashMap<WindowId, Win>,
+    /// Edit ▸ Undo and Redo (undo.rs): tabs moved and closed, settings.
+    history: undo::Steps,
+    /// Tabs whose close an Undo or Redo asked for (asked first if busy):
+    /// what their step is when they close.
+    closing_as: HashMap<u64, olo_ui::undo::Purpose>,
+    /// A Redo moving a tab into a window of its own: its step's purpose.
+    detaching_as: Option<olo_ui::undo::Purpose>,
     settings: Settings,
     metrics: Option<Metrics>,
     /// The desktop's palette now (its look, its mode).
@@ -1175,6 +1183,7 @@ impl Terminal {
     /// Close the tab running `shell` (hanging it up); the window goes
     /// with its last tab.
     fn close_tab(&mut self, cx: &mut Cx, win: WindowId, shell: u64) {
+        let step = self.closing(win, shell);
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
         let Some(i) = t.position(shell) else { return };
         if t.tabs.len() == 1 {
@@ -1184,6 +1193,10 @@ impl Terminal {
         // Its group goes with its last tab.
         t.tidy();
         cx.redraw(win);
+        // (Undo brings a new shell there.)
+        if let Some(step) = step {
+            self.closed(shell, step);
+        }
     }
 
     /// Close a tab, asking first if something is running in it. `why`
@@ -1494,6 +1507,8 @@ impl Terminal {
     /// Tab `shell` into a window of its own (`torn` off the strip: under
     /// the pointer).
     fn detach(&mut self, cx: &mut Cx, win: WindowId, shell: u64, torn: bool) -> Option<WindowId> {
+        // (Undo puts it back where it was.)
+        let step = self.detaching(win, shell).filter(|_| matches!(self.windows.get(&win), Some(Win::Term(t)) if t.tabs.len() > 1));
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return None };
         let i = t.position(shell).filter(|_| t.tabs.len() > 1)?;
         let mut tab = t.take(i);
@@ -1511,6 +1526,9 @@ impl Terminal {
         let id = cx.open_window(options);
         self.windows.insert(id, Win::Term(Box::new(win)));
         self.auto_group(cx, id);
+        if let Some(step) = step {
+            self.detached(step);
+        }
         Some(id)
     }
 }
@@ -2149,7 +2167,9 @@ impl Terminal {
                 .enabled(several)
                 .item("Quit", "quit")
                 .shift_key("q"),
-            Menu::new("Edit")
+            self.history
+                .edit_items(Menu::new("Edit"))
+                .separator()
                 .item("Copy", "copy")
                 .shift_key("c")
                 .enabled(has_selection)
@@ -2183,9 +2203,37 @@ impl Terminal {
     }
 
     pub(crate) fn command(&mut self, cx: &mut Cx, window: WindowId, command: &str) {
-        if !matches!(self.windows.get(&window), Some(Win::Term(_))) || self.repo_command(cx, window, command) || self.group_command(cx, window, command) {
+        if !matches!(self.windows.get(&window), Some(Win::Term(_))) || self.repo_command(cx, window, command) {
             return;
         }
+        // Groups made, renamed, left: a step putting the tabs back.
+        let order = self.tab_order(window);
+        if self.group_command(cx, window, command) {
+            self.tabs_moved(window, order, "Group");
+            return;
+        }
+        if command == "undo" || command == "redo" {
+            return self.undo_redo(cx, command == "redo");
+        }
+        // The settings a command changes: a step putting them back.
+        let named = match command {
+            "bigger" | "smaller" | "default-size" => Some("Text Size"),
+            c if c.starts_with("size-") => Some("Text Size"),
+            "tabs-top" | "tabs-side" => Some("Tabs"),
+            "sudo-window" => Some("sudo Passwords in a Window"),
+            c if c.starts_with("scheme-") || c.starts_with("colors-") => Some("Colors"),
+            _ => None,
+        };
+        if let Some(name) = named {
+            let before = self.kept();
+            self.run_command(cx, window, command);
+            self.settings_changed(before, name);
+            return;
+        }
+        self.run_command(cx, window, command);
+    }
+
+    fn run_command(&mut self, cx: &mut Cx, window: WindowId, command: &str) {
         let Some(Win::Term(t)) = self.windows.get_mut(&window) else { return };
         match command {
             "new" => {
@@ -2816,6 +2864,9 @@ fn main() {
             let mut t = Terminal {
                 link,
                 windows: HashMap::new(),
+                history: Default::default(),
+                closing_as: HashMap::new(),
+                detaching_as: None,
                 settings: Settings::load(),
                 metrics: None,
                 look: look.clone(),

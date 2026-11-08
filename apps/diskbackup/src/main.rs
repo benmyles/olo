@@ -4,15 +4,29 @@
 //!   backups go, what, when, how fast, the key.
 //! - `--restore-window`: the app's Restore window (Deskbar's Restore
 //!   Files…).
+//! - `--versions-window PATH`: the app's window of `PATH`'s versions, to
+//!   put one back (Tracker's Older Versions…).
+//! - `--marks DIR`: which of `DIR`'s files are backed up as they are now
+//!   (Tracker's ticks; asked of the service).
+//! - `--versions PATH`: the versions of `PATH` the backups kept.
 //! - `--service`: run the service (olo-session does, in a real session).
 //! - `--status [--json]`: what it's doing, has done, and its settings.
 //! - `--now`, `--stop`: back up now; stop what's under way.
 //! - `--set-up-folder PATH`: back up to a folder (a disk of its own): a key
 //!   made (or the keyring's, for a backup there already), kept in the
 //!   login keyring, and backing up turned on.
+//! - `--set-up-drive [CLIENT_FILE | CLIENT_ID CLIENT_SECRET]`: back up to
+//!   Google Drive with the person's own OAuth client (its downloaded JSON,
+//!   or its ID and secret; none: the one Passwords keeps): the browser
+//!   sent to Google to sign in (its address printed too), then as
+//!   `--set-up-folder`. Making the client: the app's Google Drive… walks
+//!   through it.
 //! - `--snapshots`: every snapshot there.
 //! - `--restore SNAPSHOT PATH [TO]`: put `PATH` back as it was in
 //!   `SNAPSHOT` (`latest`, or the start of its id), where it was or `TO`.
+//! - `--keep-key`: the key kept in Passwords (started if it isn't
+//!   running; unlocked if it asks), as the app's Keep Key in Passwords
+//!   does (Olo Doctor's fix).
 //! - `--tidy`: now, not waiting for the service's daily one: this
 //!   computer's snapshots past keeping forgotten, and the space only they
 //!   used freed (with the backup to itself: not while one runs). Asked of
@@ -24,9 +38,11 @@
 //!   `weekly`, `monthly` (how many of each to keep).
 
 mod app;
+mod drive_setup;
 mod restore;
 mod service;
 mod target;
+mod versions;
 
 const APP_ID: &str = "olo.diskbackup";
 
@@ -53,12 +69,20 @@ fn main() -> ExitCode {
                 Some(p) => set_up_folder(p),
                 None => Err("--set-up-folder PATH".into()),
             },
+            Some("--set-up-drive") => set_up_drive_cli(&args[1..]),
             Some("--snapshots") => snapshots(),
             Some("--restore") => match (args.get(1), args.get(2)) {
                 (Some(snap), Some(path)) => restore_cli(snap, path, args.get(3)),
                 _ => Err("--restore SNAPSHOT PATH [TO]".into()),
             },
             Some("--tidy") => tidy(),
+        Some("--keep-key") => app::keep_in_passwords().and_then(|()| {
+            let mut s = Settings::load();
+            s.key_in_passwords = true;
+            s.save().map_err(|e| e.to_string())?;
+            println!("DiskBackup's key is kept in Passwords (“{}”).", target::KEY_TITLE);
+            Ok(())
+        }),
             Some("--set") => set(&args[1..]),
             Some("--groups") => {
                 for g in olo_diskbackup::exclude::GROUPS {
@@ -66,8 +90,16 @@ fn main() -> ExitCode {
                 }
                 Ok(())
             }
-            None | Some("--restore-window") => return app_main(),
-            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --snapshots | --restore SNAPSHOT PATH [TO] | --tidy | --set KEY=VALUE… | --groups"
+            None | Some("--restore-window") | Some("--versions-window") => return app_main(),
+        Some("--marks") => match args.get(1) {
+            Some(dir) => marks_cli(dir),
+            None => Err("--marks DIR".into()),
+        },
+        Some("--versions") => match args.get(1) {
+            Some(path) => versions_cli(path),
+            None => Err("--versions PATH".into()),
+        },
+            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --set-up-drive [CLIENT_FILE | ID SECRET] | --snapshots | --restore SNAPSHOT PATH [TO] | --marks DIR | --versions PATH | --keep-key | --tidy | --set KEY=VALUE… | --groups"
                 .into()),
         };
     match r {
@@ -169,8 +201,8 @@ fn app_main() -> ExitCode {
         let proxy = olo_ui::proxy(cx);
         olo_ui::instance::listen(APP_ID, proxy.clone());
         let disk = cx.new(|_| app::Disk::new(proxy));
-        let restore = args.iter().any(|a| a == "--restore-window");
-        disk.update(cx, |d, cx| if restore { d.open_restore(cx) } else { d.open(cx) });
+        let cwd = std::env::current_dir().ok();
+        disk.update(cx, |d, cx| d.launched(&args, cwd.as_deref(), cx));
         let messages = disk.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
         // (Back as it was after an upgrade: its window.)
@@ -180,16 +212,7 @@ fn app_main() -> ExitCode {
 }
 
 pub(crate) fn ask(r: Request) -> Result<(), String> {
-    use std::io::{BufRead, Write};
-    let mut s = std::os::unix::net::UnixStream::connect(olo_protocol::diskbackup::socket()).map_err(|_| "the service isn't running".to_string())?;
-    s.write_all(format!("{}\n", serde_json::to_string(&r).unwrap_or_default()).as_bytes()).map_err(|e| e.to_string())?;
-    let mut line = String::new();
-    std::io::BufReader::new(&s).read_line(&mut line).map_err(|e| e.to_string())?;
-    match serde_json::from_str::<Reply>(&line) {
-        Ok(Reply::Ok) => Ok(()),
-        Ok(Reply::Error { message }) => Err(message),
-        Err(e) => Err(e.to_string()),
-    }
+    olo_protocol::diskbackup::call(&r).map(|_| ())
 }
 
 /// The repository as the settings say, opened.
@@ -209,6 +232,43 @@ pub(crate) fn set_up_folder(path: &str) -> Result<(), String> {
     let limits = target::Limits::new();
     let t = Target::Folder { path: dir.display().to_string() };
     let store = target::store(&t, &limits)?;
+    set_up(t, store, &dir.display().to_string())
+}
+
+/// Sign in to Google with `client` (its consent page given to `open`: the
+/// browser); blocks until Google answers, or `cancel`.
+pub(crate) fn sign_in(client: &olo_diskbackup::oauth::Client, cancel: &AtomicBool, open: impl FnOnce(&str)) -> Result<olo_diskbackup::oauth::SignedIn, String> {
+    client.check()?;
+    let client = olo_diskbackup::oauth::Client { id: client.id.trim().to_owned(), secret: client.secret.trim().to_owned() };
+    let s = olo_diskbackup::oauth::SignIn::start(&client, &target::endpoints()).map_err(|e| e.to_string())?;
+    open(s.url());
+    s.wait(&olo_diskbackup::oauth::agent(), cancel)
+}
+
+/// Back up to Google Drive, signed in: the sign-in kept in the keyring, the
+/// backups' folder found or made, the backup there opened or made; the
+/// client kept in Passwords too (for another computer), if it can be.
+pub(crate) fn set_up_drive(client: olo_diskbackup::oauth::Client, signed: olo_diskbackup::oauth::SignedIn) -> Result<String, String> {
+    let client = olo_diskbackup::oauth::Client { id: client.id.trim().to_owned(), secret: client.secret.trim().to_owned() };
+    let folder = olo_diskbackup::drive::Drive::folder(&client, &signed.refresh_token, &target::endpoints())?;
+    let g = target::Google { client, refresh_token: signed.refresh_token };
+    target::keep_google(&g)?;
+    let t = Target::GoogleDrive { account: signed.email.clone(), folder };
+    let store = target::store(&t, &target::Limits::new())?;
+    set_up(t, store, "Google Drive")?;
+    if std::env::var_os("OLO_DISKBACKUP_GOOGLE").is_none()
+        && let Err(e) = target::keep_client(&g.client)
+    {
+        tracing::info!("diskbackup: the Google client not kept in Passwords: {e}");
+    }
+    Ok(signed.email)
+}
+
+/// Back up to `t` (`store` its store; `said`, what it's called): a backup
+/// there already opened with this computer's key (or one Passwords keeps),
+/// else one made with it (or a new key); the key kept in the keyring, the
+/// settings saying `t`, backing up on.
+fn set_up(t: Target, store: std::sync::Arc<dyn olo_diskbackup::Store>, said: &str) -> Result<(), String> {
     // A backup there already: the keyring's key must open it.
     let key = match Repo::open(store.clone(), target::key().unwrap_or_else(|_| Key::generate()), None) {
         Ok(r) => r.key().clone(),
@@ -220,10 +280,10 @@ pub(crate) fn set_up_folder(path: &str) -> Result<(), String> {
         // Another computer's (or this one's, set up again): its key from
         // Passwords, which keeps every one DiskBackup made.
         Err(olo_diskbackup::Error::WrongKey) => {
-            let keys = target::keys_in_passwords().map_err(|e| format!("there's a backup in {} already: its key is needed, and Passwords couldn't give it ({e})", dir.display()))?;
+            let keys = target::keys_in_passwords().map_err(|e| format!("there's a backup in {said} already: its key is needed, and Passwords couldn't give it ({e})"))?;
             keys.into_iter()
                 .find_map(|k| Repo::open(store.clone(), k, None).ok().map(|r| r.key().clone()))
-                .ok_or_else(|| format!("there's a backup in {} already, and none of the keys in Passwords (“{}”) opens it", dir.display(), target::KEY_TITLE))?
+                .ok_or_else(|| format!("there's a backup in {said} already, and none of the keys in Passwords (“{}”) opens it", target::KEY_TITLE))?
         }
         Err(e) => return Err(e.to_string()),
     };
@@ -232,7 +292,28 @@ pub(crate) fn set_up_folder(path: &str) -> Result<(), String> {
     s.target = t;
     s.enabled = true;
     s.save().map_err(|e| e.to_string())?;
-    tracing::info!("backing up to {} (its key kept in the login keyring)", dir.display());
+    tracing::info!("backing up to {said} (its key kept in the login keyring)");
+    Ok(())
+}
+
+fn set_up_drive_cli(a: &[String]) -> Result<(), String> {
+    let client = match a {
+        [file] => olo_diskbackup::oauth::Client::from_json(&std::fs::read_to_string(target::expand(file)).map_err(|e| format!("{file}: {e}"))?)?,
+        [id, secret] => olo_diskbackup::oauth::Client { id: id.clone(), secret: secret.clone() },
+        [] => target::client_in_passwords()?.ok_or("no Google client is kept in Passwords: give its file (Download JSON), or its ID and secret")?,
+        _ => return Err("--set-up-drive [CLIENT_FILE | CLIENT_ID CLIENT_SECRET]".into()),
+    };
+    let cancel = AtomicBool::new(false);
+    let signed = sign_in(&client, &cancel, |url| {
+        println!("Sign in to Google in your browser (DiskBackup opened it), or open this:\n\n  {url}\n");
+        // (Not with a test's own Google: no browser.)
+        if std::env::var_os("OLO_DISKBACKUP_GOOGLE_API").is_none() {
+            let _ = olo_xdg::open::open(&olo_xdg::open::Target::Url(url.to_owned()));
+        }
+    })?;
+    println!("Signed in as {}; setting up…", signed.email);
+    let email = set_up_drive(client, signed)?;
+    println!("Backing up to Google Drive ({email}), in the folder “{}”.", olo_diskbackup::drive::FOLDER);
     Ok(())
 }
 
@@ -256,6 +337,47 @@ fn restore_cli(snap: &str, path: &str, to: Option<&String>) -> Result<(), String
     let _lock = target::lock_to_read(&repo, &cancel, |why| said.call_once(|| eprintln!("Waiting: {why}…"))).map_err(|e| e.to_string())?;
     olo_diskbackup::restore(&repo, &s.tree, &path, &to, &cancel, &progress).map_err(|e| e.to_string())?;
     println!("Put back {} as {} ({} files).", path.display(), to.display(), progress.files.load(std::sync::atomic::Ordering::Relaxed));
+    Ok(())
+}
+
+/// An absolute path for `p` (`~` the home folder; relative: here).
+fn absolute(p: &str) -> String {
+    let p = target::expand(p);
+    std::path::absolute(&p).unwrap_or(p).display().to_string()
+}
+
+fn marks_cli(dir: &str) -> Result<(), String> {
+    match olo_protocol::diskbackup::call(&Request::Marks { dir: absolute(dir) })? {
+        Reply::Marks { covered: false, .. } => println!("Not in the backups."),
+        Reply::Marks { backed_up, time, .. } => {
+            println!("Backed up as they are now (snapshot {}):", when(time));
+            for name in backed_up {
+                println!("  {name}");
+            }
+        }
+        r => return Err(format!("the service answered {r:?}")),
+    }
+    Ok(())
+}
+
+fn versions_cli(path: &str) -> Result<(), String> {
+    match olo_protocol::diskbackup::call(&Request::Versions { path: absolute(path) })? {
+        Reply::Versions { versions } if versions.is_empty() => println!("No versions kept."),
+        Reply::Versions { versions } => {
+            for v in versions {
+                println!(
+                    "{}  {}  modified {}, kept {} to {}{}",
+                    &v.snapshot[..12],
+                    mb(v.size),
+                    when(v.mtime / 1_000_000_000),
+                    when(v.first),
+                    when(v.time),
+                    if v.current { "  (what's there now)" } else { "" }
+                );
+            }
+        }
+        r => return Err(format!("the service answered {r:?}")),
+    }
     Ok(())
 }
 

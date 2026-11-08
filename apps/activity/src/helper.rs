@@ -62,7 +62,7 @@ pub fn way() -> Way {
     match std::env::var("OLO_ACTIVITY_HELPER").as_deref() {
         Ok("direct") => Way::Direct,
         Ok("off") => Way::Off,
-        _ if std::env::var_os("OLO_REAL_SESSION").is_some() && std::env::var_os("OLO_SCREEN").is_none() => Way::Pkexec,
+        _ if olo_system::env::at_the_computer() => Way::Pkexec,
         _ => Way::Off,
     }
 }

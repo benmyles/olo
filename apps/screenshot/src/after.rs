@@ -108,13 +108,13 @@ fn card_size(aspect: f32) -> (f32, f32) {
 }
 
 /// Move `path` to the Trash (freedesktop's: Tracker restores it).
-pub(crate) fn to_trash(path: &Path) -> std::io::Result<()> {
+pub(crate) fn to_trash(path: &Path) -> std::io::Result<PathBuf> {
     let (target, info) = olo_xdg::trash::trash_slot(path)?;
     let moved = std::fs::rename(path, &target).or_else(|_| std::fs::copy(path, &target).and_then(|_| std::fs::remove_file(path)));
     if moved.is_err() {
         let _ = std::fs::remove_file(&info);
     }
-    moved
+    moved.map(|()| target)
 }
 
 impl After {

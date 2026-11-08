@@ -225,9 +225,17 @@ impl RenderOnce for BBox {
                 // (What's in it must fit inside the frame's inset: on the
                 // device pixels layout puts its children on, which it
                 // rounds to; unrounded, a child flush with the inset read
-                // as a point past it at 1.25× and 1.75×.)
-                let on = |v: Pixels| style::snap_coord(window, v);
-                crate::review::container(window, Bounds::from_corners(point(on(frame.left() + px(pad)), frame.top()), point(on(frame.right() - px(pad)), on(frame.bottom() - px(pad)))));
+                // as a point past it at 1.25× and 1.75×. The inset, 14
+                // points, is a half pixel there, and layout puts a child
+                // either side of one: the box gets the outer side. Rounded
+                // as it came, 605.2 × 1.25 = 756.49994 went in, and
+                // DiskBackup's Key button read as 1.6 points out.)
+                let s = window.scale_factor();
+                let out = |v: Pixels, outward: f32| px((f32::from(v) * s + outward * 0.01).round() / s);
+                crate::review::container(
+                    window,
+                    Bounds::from_corners(point(out(frame.left() + px(pad), -1.0), frame.top()), point(out(frame.right() - px(pad), 1.0), out(frame.bottom() - px(pad), 1.0))),
+                );
                 // (Gaps in the top line for the label and the action, as
                 // far from them as from the frame's inset.)
                 let gaps = [label_w.map(|w| (frame.left() + px(pad - 4.0), frame.left() + px(pad + w + 4.0))), action_w.map(|w| (frame.right() - px(pad + w + 4.0), frame.right() - px(pad - 4.0)))];

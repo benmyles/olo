@@ -62,6 +62,31 @@ pub struct Arrangement {
 
 /// Where a window was before an arrangement moved it, all Undo Window
 /// Arrangement needs to put it back.
+/// The last window arrangement, for Undo and Redo Window Arrangement: its
+/// name (Edit-menu style: Undo Cascade), what kind it was, and whether it
+/// has been undone (Redo puts it again).
+#[derive(Clone, Debug)]
+pub struct Arranged {
+    pub name: String,
+    pub kind: ArrangedKind,
+    pub undone: bool,
+}
+
+#[derive(Clone, Debug)]
+pub enum ArrangedKind {
+    /// Windows placed (Tile All, Cascade, Fan Out, Show All, an
+    /// arranger's): `State::arranged` holds how they were.
+    Placed,
+    /// Auto-tiling's tiles changed (its own undo holds the tree).
+    Auto,
+    /// Auto-tiling turned off by undoing turning it on: Redo turns it on
+    /// again on that workspace's displays.
+    AutoOn(u32, Vec<String>),
+    /// Windows moved to another workspace or display (Deskbar's Move To,
+    /// the keys): where each was (display, workspace).
+    Moved(Vec<(WindowElement, Option<String>, u32)>),
+}
+
 #[derive(Clone, Debug)]
 pub struct Placed {
     window: WindowElement,
@@ -1586,11 +1611,107 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .collect()
     }
 
-    /// Keep how `windows` are now, for Undo Window Arrangement.
-    pub(super) fn remember_arrangement(&mut self, windows: &[WindowElement]) {
+    /// Keep how `windows` are now, for Undo Window Arrangement, the step
+    /// called `name` (Undo Cascade).
+    pub(super) fn remember_arrangement(&mut self, windows: &[WindowElement], name: &str) {
         self.auto_forget_undo();
         self.arranged = self.placed(windows);
         self.arranged_among = self.display_frames();
+        self.arrangement_step(name, ArrangedKind::Placed);
+    }
+
+    /// The last arrangement is now `name` (of `kind`), not undone: said to
+    /// those who show it (Deskbar's menu).
+    pub fn arrangement_step(&mut self, name: &str, kind: ArrangedKind) {
+        self.arrangement = Some(Arranged { name: name.to_owned(), kind, undone: false });
+        self.tell_arrangement();
+    }
+
+    /// What Undo and Redo Window Arrangement would do, by name.
+    pub fn arrangement_names(&self) -> (Option<String>, Option<String>) {
+        match &self.arrangement {
+            Some(a) if a.undone => (None, Some(a.name.clone())),
+            Some(a) => (Some(a.name.clone()), None),
+            None => (None, None),
+        }
+    }
+
+    fn tell_arrangement(&mut self) {
+        let (undo, redo) = self.arrangement_names();
+        self.ipc.broadcast(olo_protocol::Event::ArrangementUndoChanged { undo, redo });
+    }
+
+    /// `windows` about to move to another workspace or display: where each
+    /// is now kept as the step `name` (Undo Move to Workspace 2).
+    pub fn remember_moves(&mut self, windows: &[WindowElement], name: &str) {
+        let was = windows.iter().map(|w| (w.clone(), self.display_of(w).map(|o| o.name()), self.workspace_of(w))).collect();
+        self.auto_forget_undo();
+        self.arrangement_step(name, ArrangedKind::Moved(was));
+    }
+
+    /// Undo Window Arrangement (⌃⌘Z): the last arrangement taken back
+    /// (nothing if it's undone already: Redo puts it again).
+    pub fn undo_window_arrangement(&mut self) {
+        if self.arrangement.as_ref().is_some_and(|a| !a.undone) {
+            self.arrangement_back(true);
+        }
+    }
+
+    /// Redo Window Arrangement (⇧⌃⌘Z): the arrangement undone put again.
+    pub fn redo_window_arrangement(&mut self) {
+        if self.arrangement.as_ref().is_some_and(|a| a.undone) {
+            self.arrangement_back(false);
+        }
+    }
+
+    /// The last arrangement swapped with how things are (each kind keeps
+    /// what it takes back, and takes back to the other way after), now
+    /// `undone` or not.
+    fn arrangement_back(&mut self, undone: bool) {
+        let Some(mut a) = self.arrangement.take() else { return };
+        match std::mem::replace(&mut a.kind, ArrangedKind::Placed) {
+            ArrangedKind::Placed => {
+                self.undo_arrangement();
+                a.kind = ArrangedKind::Placed;
+            }
+            ArrangedKind::Auto => {
+                let turned_on = self.auto_turned_on_undo();
+                if !self.auto_undo() {
+                    return;
+                }
+                a.kind = match turned_on {
+                    Some((ws, outputs)) => ArrangedKind::AutoOn(ws, outputs),
+                    None => ArrangedKind::Auto,
+                };
+            }
+            // Redo of turning auto-tiling on: turning it on again (which is
+            // a step of its own, as it was).
+            ArrangedKind::AutoOn(ws, outputs) => {
+                for o in self.space.outputs().filter(|o| outputs.contains(&o.name())).cloned().collect::<Vec<_>>() {
+                    self.set_windowing_mode(olo_protocol::WindowingMode::AutoTiling, Some(ws), Some(o));
+                }
+                return;
+            }
+            ArrangedKind::Moved(was) => {
+                let now: Vec<(WindowElement, Option<String>, u32)> = was
+                    .iter()
+                    .filter(|(w, _, _)| self.space.elements().any(|e| e == w) || self.parked.0.borrow().contains(w))
+                    .map(|(w, _, _)| (w.clone(), self.display_of(w).map(|o| o.name()), self.workspace_of(w)))
+                    .collect();
+                for (w, output, ws) in &was {
+                    let to = output.as_ref().and_then(|n| self.space.outputs().find(|o| &o.name() == n).cloned());
+                    match to {
+                        Some(to) => self.move_to_display_workspace(w, &to, *ws),
+                        None => self.move_to_workspace(w, *ws),
+                    }
+                }
+                a.kind = ArrangedKind::Moved(now);
+            }
+        }
+        a.undone = undone;
+        info!(name = a.name, undone, "window arrangement taken back");
+        self.arrangement = Some(a);
+        self.tell_arrangement();
     }
 
     /// Every window the last arrangement moved back where and how big it
@@ -1646,7 +1767,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let (windows, kept) = self.windows_to_arrange(&output, keep);
         // (Remembered even if there is nothing to arrange: Undo then has
         // nothing to undo, rather than redoing the arrangement before.)
-        self.remember_arrangement(&windows);
+        self.remember_arrangement(&windows, "Fan Out");
         if windows.is_empty() {
             return;
         }
@@ -1718,7 +1839,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let Some(output) = self.active_output() else { return };
         let Some(area) = self.tile_area(&output) else { return };
         let mut windows = self.windows_on(&output);
-        self.remember_arrangement(&windows);
+        self.remember_arrangement(&windows, "Tile All");
         windows.sort_by_key(|w| {
             let g = self.space.element_geometry(w).unwrap_or_default();
             (g.loc.y + g.size.h / 2, g.loc.x + g.size.w / 2)
@@ -1763,7 +1884,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn zoom_all(&mut self) {
         let Some(output) = self.active_output() else { return };
         let windows: Vec<WindowElement> = self.windows_on(&output).into_iter().filter(resizable).collect();
-        self.remember_arrangement(&windows);
+        self.remember_arrangement(&windows, "Zoom All");
         if windows.is_empty() {
             return;
         }
@@ -1803,7 +1924,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 Some((w.clone(), (x, y, w2, h)))
             })
             .collect();
-        self.remember_arrangement(&windows);
+        self.remember_arrangement(&windows, "Arrangement");
         if placed.is_empty() {
             return 0;
         }
@@ -1827,7 +1948,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if windows.is_empty() {
             return false;
         }
-        self.remember_arrangement(&windows);
+        self.remember_arrangement(&windows, "Show All");
         windows.sort_by_key(|w| {
             let g = self.space.element_geometry(w).unwrap_or_default();
             (g.loc.y + g.size.h / 2, g.loc.x + g.size.w / 2)
@@ -1850,7 +1971,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let Some(output) = self.arranged_output(keep) else { return };
         let Some(area) = self.tile_area(&output) else { return };
         let (windows, kept) = self.windows_to_arrange(&output, keep);
-        self.remember_arrangement(&windows);
+        self.remember_arrangement(&windows, "Cascade");
         let n = windows.len() as i32;
         for (i, w) in windows.iter().enumerate() {
             let step = if n > 1 { CASCADE.min((area.size.h / 3) / (n - 1)).max(4) } else { 0 };

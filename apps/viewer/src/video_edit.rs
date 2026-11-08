@@ -126,8 +126,8 @@ pub struct VideoEdit {
     pub path: PathBuf,
     pub duration: f64,
     pub now: Edits,
-    undo: Vec<Edits>,
-    redo: Vec<Edits>,
+    undo: Vec<(String, Edits)>,
+    redo: Vec<(String, Edits)>,
     /// A stretch dragged out on the timeline (to cut).
     pub selection: Option<(f64, f64)>,
     /// The mark chosen (to delete).
@@ -182,32 +182,33 @@ impl VideoEdit {
         }
     }
 
-    /// The edits as they are now kept for Undo.
-    fn step(&mut self) {
-        self.undo.push(self.now.clone());
+    /// The edits as they are now kept for Undo, the step named `name`.
+    fn step(&mut self, name: &str) {
+        self.undo.push((name.to_owned(), self.now.clone()));
         self.redo.clear();
         self.note = None;
     }
 
-    pub fn can_undo(&self) -> bool {
-        !self.undo.is_empty()
+    /// What Undo and Redo would take back, by name.
+    pub fn undo_name(&self) -> Option<&str> {
+        self.undo.last().map(|(n, _)| n.as_str())
     }
 
-    pub fn can_redo(&self) -> bool {
-        !self.redo.is_empty()
+    pub fn redo_name(&self) -> Option<&str> {
+        self.redo.last().map(|(n, _)| n.as_str())
     }
 
     fn undo(&mut self) {
-        if let Some(e) = self.undo.pop() {
-            self.redo.push(std::mem::replace(&mut self.now, e));
+        if let Some((name, e)) = self.undo.pop() {
+            self.redo.push((name, std::mem::replace(&mut self.now, e)));
             self.selection = None;
             self.mark = None;
         }
     }
 
     fn redo(&mut self) {
-        if let Some(e) = self.redo.pop() {
-            self.undo.push(std::mem::replace(&mut self.now, e));
+        if let Some((name, e)) = self.redo.pop() {
+            self.undo.push((name, std::mem::replace(&mut self.now, e)));
             self.selection = None;
             self.mark = None;
         }
@@ -420,15 +421,15 @@ impl Doc {
             "edit-redo" => e.redo(),
             "edit-cut" => {
                 if let Some((a, b)) = e.selection.take().filter(|(a, b)| b - a >= SHORTEST) {
-                    e.step();
+                    e.step("Cut");
                     e.now.cut((a, b));
                 } else if let Some(k) = e.mark.take() {
-                    e.step();
+                    e.step("Delete Mark");
                     e.now.marks.remove(k);
                 }
             }
             "edit-add-mark" => {
-                e.step();
+                e.step("Add Mark");
                 let title = next_mark_title(&e.now.marks);
                 let at = e.now.marks.iter().position(|(t, _)| *t > now).unwrap_or(e.now.marks.len());
                 e.now.marks.insert(at, (now, title));
@@ -436,7 +437,7 @@ impl Doc {
             }
             "edit-delete-mark" => {
                 if let Some(k) = e.mark.take().filter(|&k| k < e.now.marks.len()) {
-                    e.step();
+                    e.step("Delete Mark");
                     e.now.marks.remove(k);
                 }
             }
@@ -448,7 +449,7 @@ impl Doc {
                         && w >= 16
                         && h >= 16
                     {
-                        e.step();
+                        e.step("Crop");
                         e.now.crop = Some([x, y, w, h]);
                     }
                 }
@@ -466,13 +467,13 @@ impl Doc {
             },
             "edit-crop-reset" => {
                 if e.now.crop.is_some() {
-                    e.step();
+                    e.step("Crop");
                     e.now.crop = None;
                 }
                 e.cropping = None;
             }
             "edit-mute" => {
-                e.step();
+                e.step(if e.now.mute { "Unmute" } else { "Mute" });
                 e.now.mute = !e.now.mute;
             }
             "edit-export" => {
@@ -803,10 +804,10 @@ impl Doc {
         let (a, b) = (x_of(e.now.trim.0), x_of(e.now.trim.1));
         e.mark = None;
         e.drag = Some(if (ev.position.x - b).abs() <= px(NEAR) {
-            e.step();
+            e.step("Trim");
             Drag::TrimEnd
         } else if (ev.position.x - a).abs() <= px(NEAR) {
-            e.step();
+            e.step("Trim");
             Drag::TrimStart
         } else {
             Drag::Select(e.time_at(ev.position.x))

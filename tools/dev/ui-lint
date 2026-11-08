@@ -50,6 +50,8 @@ def apps(home):
         ("Browser", ["olo-browser", "about:engine"], {}, False),
         ("DeskCalc", ["olo-deskcalc"], {}, False),
         ("Disk Usage", ["olo-disk-usage", home], {}, False),
+        # (Its settings, state and socket in the made-up home, not the person's.)
+        ("DiskBackup", ["olo-diskbackup"], {"OLO_DISKBACKUP_DIR": os.path.join(home, ".diskbackup")}, False),
         ("Doctor", ["olo-doctor"], {"OLO_DOCTOR_HELPER": "off"}, False),
         ("Logs", ["olo-logs"], {}, False),
         ("Passwords", ["olo-passwords"], {"OLO_PASSWORDS_KEYFILE": os.path.join(home, ".pw-key")}, False),

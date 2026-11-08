@@ -114,6 +114,9 @@ pub struct Notifications {
     /// When `notifications.json` was last read.
     settings_read: Option<SystemTime>,
     pub history: History,
+    /// Edit ▸ Undo and Redo in the History window: entries forgotten
+    /// (Clear All, Forget) put back.
+    pub steps: olo_ui::undo::History<Gone>,
     /// The History window, and what it shows.
     history_win: Option<WindowHandle<Frame>>,
     history_opening: bool,
@@ -126,6 +129,15 @@ pub struct Notifications {
     sharing: bool,
     /// The settings file and the screen shares, watched.
     _watches: Vec<Watch>,
+}
+
+/// What Undo takes back in the History window.
+#[derive(Debug, Clone)]
+pub enum Gone {
+    /// Entries forgotten, each with where it was.
+    Forgot(Vec<(usize, store::Entry)>),
+    /// Put back (Redo forgets them again): each by its id and time.
+    Back(Vec<(u32, u64)>),
 }
 
 /// The local time of day, in minutes.
@@ -725,7 +737,29 @@ impl Notifications {
         for id in live {
             self.bus(|b| b.closed(id, Reason::Dismissed));
         }
-        self.history.retain(kept);
+        let gone = self.history.take_out(|_, e| kept(e));
+        if !gone.is_empty() {
+            self.steps.done("Clear All", Gone::Forgot(gone));
+        }
+        self.publish(true);
+        cx.notify();
+    }
+
+    /// Edit ▸ Undo (`redo` false) or Redo in the History window: entries
+    /// forgotten put back (closed at their apps by now), or forgotten again.
+    pub fn undo_redo(&mut self, redo: bool, cx: &mut Context<Self>) {
+        use olo_ui::undo::Purpose;
+        let Some(step) = (if redo { self.steps.take_redo() } else { self.steps.take_undo() }) else { return };
+        let purpose = if redo { Purpose::Redo } else { Purpose::Undo };
+        let change = match step.change {
+            Gone::Forgot(gone) => {
+                let back = gone.iter().map(|(_, e)| (e.id, e.time)).collect();
+                self.history.put_back(gone);
+                Gone::Back(back)
+            }
+            Gone::Back(which) => Gone::Forgot(self.history.take_out(|_, e| !which.contains(&(e.id, e.time)))),
+        };
+        self.steps.record(purpose, step.name, change);
         self.publish(true);
         cx.notify();
     }
@@ -1064,6 +1098,7 @@ fn main() -> std::process::ExitCode {
                 told: None,
                 sharing: false,
                 _watches: watches,
+                steps: Default::default(),
             };
             app.refresh_sharing(cx);
             app.refresh_settings();

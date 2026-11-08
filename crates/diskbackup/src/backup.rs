@@ -59,8 +59,24 @@ pub fn backup(repo: &mut Repo, opts: &Options, parent: Option<(Id, &Snapshot)>, 
     let started = Instant::now();
     let stored = repo.stored;
     let mut w = Walk { repo, opts, cancel, progress, summary: Summary::default(), buf: Vec::new() };
+    // Packs read back from their own lists as the index was read (an index
+    // file damaged): named in an index file of their own now, so the next
+    // to read it needn't.
+    if w.repo.has_unnamed() {
+        let _ = w.repo.find_lost();
+    }
     let parent_root = match parent {
-        Some((_, s)) => Some(w.repo.tree(&s.tree)?),
+        Some((_, s)) => match w.repo.tree(&s.tree) {
+            Ok(t) => Some(t),
+            // Not in the index (an index file lost?): the packs no index
+            // names read back from their own lists, and again; else
+            // everything read as new.
+            Err(Error::Damaged(_)) => {
+                let _ = w.repo.find_lost();
+                w.repo.tree(&s.tree).ok()
+            }
+            Err(e) => return Err(e),
+        },
         None => None,
     };
     let root = match w.ancestors(Path::new("/"), parent_root.as_ref(), &opts.paths) {
@@ -276,6 +292,20 @@ impl Walk<'_, '_> {
         }
         Ok(true)
     }
+}
+
+/// `path` is as `kept` (a snapshot's node of it) says it was: its size,
+/// times and inode (so its content too, as a backup takes it).
+pub fn unchanged_since(kept: &Node, path: &Path) -> bool {
+    let Ok(md) = std::fs::symlink_metadata(path) else { return false };
+    let kind = if md.is_dir() {
+        Kind::Dir
+    } else if md.file_type().is_symlink() {
+        Kind::Symlink
+    } else {
+        Kind::File
+    };
+    node(&kept.name, &md, kind).unchanged(kept)
 }
 
 /// Opened for reading without changing its access time (where we may).

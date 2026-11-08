@@ -136,6 +136,10 @@ pub(crate) struct LinuxCommon {
     pub(crate) callbacks: PlatformHandlers,
     pub(crate) signal: LoopSignal,
     pub(crate) menus: Vec<OwnedMenu>,
+    /// Olo: quit asked for. The event loop's `run` clears a stop sent
+    /// before it starts, so a quit while launching (olo-lock with no
+    /// compositor to lock) was lost and the process idled for ever.
+    pub(crate) quitting: bool,
 }
 
 impl LinuxCommon {
@@ -162,6 +166,7 @@ impl LinuxCommon {
             callbacks,
             signal,
             menus: Vec::new(),
+            quitting: false,
         };
 
         (common, main_receiver)
@@ -211,7 +216,9 @@ impl<P: LinuxClient + 'static> Platform for P {
         util_floor();
         on_finish_launching();
 
-        LinuxClient::run(self);
+        if !self.with_common(|common| common.quitting) {
+            LinuxClient::run(self);
+        }
 
         let quit = self.with_common(|common| common.callbacks.quit.take());
         if let Some(mut fun) = quit {
@@ -223,7 +230,10 @@ impl<P: LinuxClient + 'static> Platform for P {
         if LinuxClient::linger_for_clipboard(self) {
             return;
         }
-        self.with_common(|common| common.signal.stop());
+        self.with_common(|common| {
+            common.quitting = true;
+            common.signal.stop();
+        });
     }
 
     fn compositor_name(&self) -> &'static str {

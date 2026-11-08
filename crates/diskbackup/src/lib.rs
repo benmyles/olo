@@ -35,9 +35,11 @@
 pub mod backup;
 pub mod chunker;
 pub mod crypto;
+pub mod drive;
 pub mod exclude;
 pub mod keep;
 pub mod lock;
+pub mod oauth;
 pub mod prune;
 pub mod repo;
 pub mod restore;
@@ -48,8 +50,8 @@ pub use backup::{Options, Progress, backup};
 pub use crypto::{Id, Key};
 pub use lock::Lock;
 pub use prune::{Pruned, prune};
-pub use repo::{Repo, Snapshot, Summary};
-pub use restore::restore;
+pub use repo::{Repo, Snapshot, Summary, TreeReader, Trees};
+pub use restore::{Version, restore, versions};
 pub use store::{Limit, LocalStore, Store, Throttled};
 pub use tree::{Kind, Node, Tree};
 

@@ -154,6 +154,8 @@ struct Shown {
     selected: bool,
     /// How far along a download being written is.
     progress: Option<f32>,
+    /// Backed up as it is now (DiskBackup's tick).
+    marked: bool,
 }
 
 /// A press in the icon view: where (in the window and the content), with
@@ -395,6 +397,12 @@ impl FolderWin {
             menu = fs::grouping_item(menu, self.selected_entries().first());
         }
         menu = menu.item("Get Info", "info").key("i").item("Edit Name", "rename").key("e").enabled(one).item("Duplicate", "duplicate").key("d").item("Create Link", "link");
+        // DiskBackup's versions of a file (Ben: "if you right click a file in
+        // tracker it should show older versions that you can restore").
+        if crate::backups::on() {
+            let file = one && self.selected_entries().first().is_some_and(|e| !e.is_dir);
+            menu = menu.item("Older Versions…", "older-versions").enabled(file);
+        }
         // A folder opens in Terminal itself.
         if self.selected_entries().iter().all(|e| e.is_dir) {
             menu = menu.item("Open in Terminal", "terminal-selected");
@@ -961,7 +969,8 @@ impl FolderWin {
                         .map(|i| {
                             let e = &f.entries[i];
                             let selected = f.list.selected.contains(&i);
-                            Shown { i, layout: items::layout_item(window, cell_at(i), e.label(), look, selected, e.is_link), icon: items::icon_of(e), selected, progress: e.progress() }
+                            let marked = crate::backups::backed_up(cx, &e.path);
+                            Shown { i, layout: items::layout_item(window, cell_at(i), e.label(), look, selected, e.is_link), icon: items::icon_of(e), selected, progress: e.progress(), marked }
                         })
                         .collect();
                     let editing = f.editing.as_ref().and_then(|r| layouts.iter().find(|s| f.entries[s.i].path == r.path)).map(|s| s.i);
@@ -984,6 +993,9 @@ impl FolderWin {
                         items::paint_item(window, cx, &s.layout, s.icon, s.selected || drop_on == Some(s.i), false, editing != Some(s.i), &p);
                         if let Some(done) = s.progress {
                             items::paint_progress(window, s.layout.icon, done, &p);
+                        }
+                        if s.marked {
+                            items::paint_mark(window, cx, s.layout.icon, &s.layout.name, &p);
                         }
                         drawn.push((s.i, s.layout));
                     }
@@ -1153,13 +1165,20 @@ impl FolderWin {
         };
         let free = self.free_space();
         let _ = cx;
+        // (The list view's own sunken frame edges it: an etched edge
+        // under that one too crowded the two, a line apart.)
+        let etched = self.view != ViewMode::List;
         canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
                 let line = style::hairline(window);
-                style::hline(window, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.3));
-                style::hline(window, b.left(), b.right(), b.top() + line, style::c(p.shine));
+                if etched {
+                    style::hline(window, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.3));
+                    style::hline(window, b.left(), b.right(), b.top() + line, style::c(p.shine));
+                } else {
+                    style::fill_rect(window, Bounds::from_corners(b.origin, point(b.right(), b.top() + line * 2.0)), style::c(p.panel_background));
+                }
                 // Below the two-line etched edge.
                 let under = Bounds::from_corners(point(b.left(), b.top() + line * 2.0), b.bottom_right());
                 style::fill_rect(window, under, style::c(p.panel_background));
@@ -1240,6 +1259,9 @@ pub fn name_cell(cell: &mut olo_ui::widgets::list::Cell, window: &mut Window, cx
     let b = cell.bounds;
     let icon = Bounds { origin: point(b.left() + px(m::CELL_INSET), b.center().y - px(items::MINI / 2.0)), size: size(px(items::MINI), px(items::MINI)) };
     olo_ui::icons::paint(window, icon, items::icon_of(e));
+    if crate::backups::backed_up(cx, &e.path) {
+        items::paint_mark(window, cx, icon, e.label(), &olo_ui::theme::palette(cx));
+    }
     let rest = Bounds::from_corners(point(icon.right() + px(m::MARK_GAP - m::CELL_INSET), b.top()), b.bottom_right());
     let saved = cell.bounds;
     cell.bounds = rest;

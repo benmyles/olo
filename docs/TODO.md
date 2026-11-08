@@ -13,6 +13,14 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+(Nothing: the next is the first not started.)
+
+## Not started (highest priority first)
+
+(Nothing yet.)
+
+## Done, waiting for Ben to try or confirm
+
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for
   continuous, minimal impact (in terms of cpu/mem/network usage -- it
@@ -68,35 +76,27 @@ something nobody here has is in "Blocked", with what it waits for.
   deleted or copied from, locks so two computers or a restore never
   collide, trees in packs the cache keeps, the index checkpointed every
   five minutes; the app's Keep box); Deskbar's item (what it's doing in
-a glyph, its menu: Back Up Now or Stop, Pause, Restore Files…). Next:
-Google Drive (needs an OAuth
-  client of Ben's: a Google Cloud project's "Desktop app" credentials;
-  the store's list with sizes, ranges, resumable uploads, rate limits);
-  Tracker, Doctor; DiskBackup's own icon (Preferences ▸
-  Backup's for now); following changes (fanotify) rather than walking
-  (an unchanged walk of 100,000 files is 0.4 s, so not yet pressing); a
-  repair for a damaged index (made again from the packs' own lists).
-
-## Not started (highest priority first)
-
-- **Undo everywhere it makes sense** (Ben, 2026-11-07: "tracker needs to
-  support undo for file/folder renames/moves/etc and also we need
-  generally and unviversally to support undo in all olo apps where it
-  makes sense"). Done so far: the kit's way (`olo_ui::undo`: named
-  steps, runs merged, Edit ▸ Undo/Redo with the profile's keys, a
-  window without a menu bar given ⌘Z by its Frame, agents and the
-  palette finding them among the app's menus); Tracker (files, and the
-  desktop's icons dragged or cleaned up),
-  Preferences (every panel's settings) and Passwords (items changed,
-  made, deleted; not the Archive, which nothing takes an item out of
-  yet) on it. Left, each app looked at for what should undo and put on
-  it: StyledEdit's and the Viewer's own undo (and text fields') matched
-  to it or moved onto it; Deskbar's moves;
-  Terminal's tab and pane changes (a closed tab can't come back with its
-  process: say so); app_server's ⌃⌘Z window arrangement matched (named,
-  Redo); and the rest (Notes, DeskCalc's tape, …).
-
-## Done, waiting for Ben to try or confirm
+  a glyph, its menu: Back Up Now or Stop, Pause, Restore Files…);
+  Tracker's ticks (files backed up as they are now) and Older Versions…
+  (DiskBackup's Versions window: Keep Both or Replace); Olo Doctor's
+  checks (not set up, not running, paused, nothing for days, the key
+  only here: each with DiskBackup's own fix); its own icon (a drive, a
+  cloud with a tick before it), in every theme; Google Drive (each
+  person's own Desktop app OAuth client, the app walking them through
+  making it; resumable uploads, backoff, speed limits; tested against a
+  Google of our own); a lost index healed (packs read back from their own
+  lists, in tidying and before a backup). Left for Ben: go through Back
+  Up To ▸ Google Drive… with a Google account of his (the steps' wording
+  is from Google's current docs, not yet tried on the console itself),
+  and choose where his own backups go. Following changes rather than
+  walking: decided against (2026-11-08). fanotify's whole-file-system
+  marks need root (CAP_SYS_ADMIN), and the service runs as the person;
+  inotify needs a watch per folder (about 100,000 for a home, about a
+  kilobyte of kernel memory each, past the default limit). An unchanged
+  walk of 100,000 files takes 0.4 s at idle priority once an hour. A
+  damaged index file is passed over and healed by itself
+  (its packs read back from their own lists, named again, the file let
+  go of when tidying).
 
 - **Voice Processing's delay: Ben to choose the default noise model**
   (Ben, 2026-11-07: "we need that to be way more optimized so that it is
@@ -107,9 +107,15 @@ Google Drive (needs an OAuth
   ▸ Noise model), 0 with noise suppression off; the "cycle a source fed
   by another stream is behind" was the old probe's (pw-record is
   scheduled asynchronously), not Olo's. Left: Ben to choose the default
-  once he's heard both (Try It compares them). tract still allocates
-  ~850 times a frame on the realtime thread (its tensors): a plan with
-  its buffers made once would take that away.
+  once he's heard both (Try It compares them). tract allocates ~850
+  times a frame on the realtime thread (each op's output tensors), but
+  that costs nothing measurable (2026-11-08, DeepFilterNet3, 3 runs
+  each): with mimalloc's thread-local free lists in place of glibc's,
+  a frame back to back was 239-252 µs against 244-249, and paced every
+  10 ms the median was 591-607 µs against 592-607, the tails noisy
+  either way. A frame's time is streaming the weights, not the heap, so
+  ops writing into buffers made once (a change to every op in tract)
+  isn't worth it.
 
 - **Preferences ▸ Deskbar's own icon** (with the image model's key Ben
   added, 2026-11-07): an upright grey panel with status lights and a
@@ -735,7 +741,7 @@ Google Drive (needs an OAuth
   /dev/video0 and 1) and an infrared one ("Integrated IR Camera",
   /dev/video2 and 3; UVC, interface 1.2), a camera HID interface (1.4:
   hidraw0) and a DFU one; Ben's account can open them (the video
-  group's ACL). Next: the IR node's formats (GREY or Y8 at what size),
+  group's ACL). Then (done 2026-11-05, below): the IR node's formats (GREY or Y8 at what size),
   its extension units' GUIDs and controls (UVC_GET_INFO, GET_LEN),
   which control lights the emitter, and what the HID interface reports
   (the shutter, perhaps).
@@ -1128,7 +1134,7 @@ Google Drive (needs an OAuth
   (hidraw, root's only), FIDO (hidraw, usage page 0xF1D0 usage 1:
   CTAPHID; the session's ACL already gives Ben read and write, so
   FIDO2 needs no root and no rule) and CCID (PIV, OpenPGP). So FIDO2's
-  `hmac-secret` is the way in. Next: `CTAPHID_INIT` and
+  `hmac-secret` is the way in. Then (done 2026-11-05, below): `CTAPHID_INIT` and
   `authenticatorGetInfo` (its extensions, PIN set or not), then the
   sealed-password design above.
   *Stray taps ignored* (Ben, 2026-11-04): "i have a habit of
@@ -1168,7 +1174,9 @@ Google Drive (needs an OAuth
   hmac-secret, no PIN set, a key agreement in protocol 2). *Left*: Ben's
   setup with his key (its two touches), then sudo, Passwords, polkit and
   the lock screen touched for real, and a stray touch and three in a row
-  in a text field; a key with a PIN that wants it (not asked for yet).
+  in a text field. A key with a PIN is set up with it too (2026-11-08:
+  asked once beside the password, tried headless with the software
+  key's PIN).
   Olo Doctor says when a key's FIDO node isn't the person's to open, and
   offers the rule (2026-11-05).
   *Setting up, with Ben's key* (2026-11-05): his first try "just kept
@@ -1260,7 +1268,7 @@ Google Drive (needs an OAuth
   (`ABS_MT_TOOL_TYPE`), tracking id and pressure (`ABS_MT_PRESSURE`):
   no contact size (`ABS_MT_TOUCH_MAJOR`/`MINOR`, `ABS_MT_WIDTH_*`),
   which the trainer draws and the palm model reads (the Mac's pad gives
-  it), so every contact is a point. Next: see what it sends for a palm
+  it), so every contact is a point. Then (done 2026-11-05, below): see what it sends for a palm
   (an evdev recording of palms, fingertips and a flat thumb: whether the
   firmware marks palms `MT_TOOL_PALM` itself, as libinput expects of
   such pads, what pressure a palm gives, and whether a palm comes as
@@ -1833,7 +1841,7 @@ Google Drive (needs an OAuth
     no pinches, so neither the screen's nor a touchpad's reached an Olo
     app), and Viewer zooms on it (tried headless: a picture zoomed about
     the fingers). Left: try it on the panel; the pen's pressure in
-    Olo's apps.
+    Olo's apps (blocked, see Blocked).
   - The panel: Samsung's ATNA panels are OLED (`OLED_PANELS`), so no
     stripes. VRR: Preferences ▸ Display ▸ "Variable refresh rate" for a
     display that has it, off by default (tried headless, simulated).
@@ -1898,7 +1906,7 @@ Google Drive (needs an OAuth
     follows its brightness unless set (80–600 cd/m²), and the
     brightness keys move it in HDR. Ben: "hdr looked good", SDR "about
     the same brightness now". Left: a real HDR grading (phone footage,
-    Ben's) looked at.
+    Ben's) looked at (blocked, see Blocked).
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole
@@ -1911,9 +1919,9 @@ Google Drive (needs an OAuth
     right-hand port (TC#4) it works. Lenovo's UCSI also says every
     partner is a DFP, so the kernel's `typec_displayport` refuses each
     (error -71); harmless here, the EC routes DisplayPort itself.
-    Left: tell the person when a display on USB-C gets no picture,
-    and why; free the Studio Display's second tunnel if the kernel
-    ever lets us.
+    Left (blocked, see Blocked): tell the person when a display on
+    USB-C gets no picture, and why; free the Studio Display's second
+    tunnel if the kernel ever lets us.
   - The touch filter never ran on the ThinkPad: libinput has no
     `BTN_MISC`, and the plugin unloaded at the first key pressed
     (fixed, with the test harness strict about evdev names).
@@ -2091,6 +2099,22 @@ password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
 people.
 
+- **The ThinkPad's leftovers that are work, not a try** (from its entry
+  above; each blocked on the hardware in hand or Ben's say):
+  - Saying when a display on USB-C gets no picture, and why: the Dell on
+    the left port, plugged in, to see what the kernel shows then (its
+    DP-alt is refused with -71 by Lenovo's UCSI, so nothing in
+    `/sys/class/typec` says a display is there; the guess needs the
+    real thing to check against).
+  - Freeing the Studio Display's second tunnel: the kernel's Thunderbolt
+    driver tunnels both its streams and offers no way to give one back.
+  - The pen's pressure in Olo's apps: the Wacom pen is there (app_server
+    serves tablet-v2; GPUI doesn't bind it yet, so in Olo's apps the pen
+    only points). No Olo app draws freehand yet: which should take
+    pressure (a markup tool in the Viewer or Screenshot?) is Ben's call,
+    and trying it needs the pen in hand.
+  - A real HDR grading looked at: Ben's phone footage.
+
 - **A USB 2 device in a Thunderbolt 5 port isn't seen** (found
   2026-11-04 with Ben's YubiKey): in the USB-C port on the Barlow Ridge
   Thunderbolt 5 controller (8086:5780 bridges, its xHCI 8086:5782 at
@@ -2239,11 +2263,11 @@ people.
   fingers made into clicks and every touch made low, which they never
   showed), and it runs untrained: 93.3% of palms kept back caught, no
   finger lost; each run by one made from the other only 86.0%/8.3% and
-  91.2%/0% (docs/TOUCHPAD.md). Next: run `make_default_model` again with
-  each run Ben keeps (the next one has low palms, thumbs and his shirt);
-  and the person's training learning from every run of theirs kept, not
-  only today's (one run on its own overfits that sitting: run 1 judged
-  by a model of run 2 loses 8.3% of its fingers).
+  91.2%/0% (docs/TOUCHPAD.md). Left (blocked on Ben's next runs): run
+  `make_default_model` again with each run Ben keeps (the next one has
+  low palms, thumbs and his shirt). Done (2026-11-08): the person's
+  training learns from their newest runs kept, today's and up to seven
+  earlier (`olo_palm::kept_runs`), not only today's.
 
 - **Olo's own login and boot** (Ben, 2026-11-01, for after the GPUI
   refactor is complete): replace GDM with an Olo-native display
@@ -2296,6 +2320,49 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Lock screens and screen savers of ended agent screens lingered**~~
+  (found 2026-11-07: eleven olo-lock and an olo-screensaver, 54 MB, of
+  an agent screen gone a day). *Done* (8ba75305, fe1e1fcb):
+  - A program app_server hands its connection (`WAYLAND_SOCKET`) ends
+    where others re-execute (upgrade, compositor gone): re-executed it
+    came back headless and stayed for ever.
+  - GPUI keeps a `quit()` asked for while launching (calloop's `run`
+    dropped it).
+  - The saver ends with nothing to cover.
+  - An agent screen is never idle (it had locked itself after an
+    in-place restart).
+  - Lock screens use the fingerprint reader, security key and camera
+    only in the person's own session (`olo_system::env::at_the_computer`).
+  - The twelve still running end by themselves at the next Upgrade
+    (tried with old binaries in a sandbox).
+
+- ~~**Undo everywhere it makes sense**~~ (Ben, 2026-11-07: "we need
+  generally and unviversally to support undo in all olo apps where it
+  makes sense"). *Done* (a75a4ce1, e6e5c222, 29d87d5d, 777d905e, 9fd4da67, ad442f3e,
+  bbfbf7e0): the kit's way (`olo_ui::undo`: named steps, runs merged,
+  Edit ▸ Undo and Redo with the profile's keys, ⌘Z for a window without
+  a menu bar, agents and the palette among the menus); Tracker,
+  Preferences and Passwords on it; StyledEdit's and the Viewer's own
+  (pictures, videos, PDFs) named as it names them; text fields' typing
+  a run at a time; DeskCalc's keys and results; app_server's window
+  arrangements named with a Redo (⇧⌃⌘Z), moves between workspaces among
+  them, Deskbar's menu naming them; Terminal's tabs and settings, a
+  closed tab back as a new shell (and said so), a tab moved into a
+  window of its own put back. Then (2026-11-08, 3c4a3c07, cc106a4d,
+  17146f7b, 5bd29e1c): Disk Usage's Move to Trash, DiskBackup's
+  settings, Screenshot's Recordings (Delete, Rename…) and Notifications'
+  History (Clear All, Forget). The rest have nothing of their own to
+  take back:
+  - Viewers, monitors and services: Activity, Logs, Notifications'
+    banners, the lock screen, the screen saver, the portal, the pool.
+  - Pickers and one-shot windows: emoji, the palette, the polkit agent,
+    the installer, login, rescue.
+  - Text fields, which undo as every field does (Telegram's and Slack's
+    composers).
+  - What can't be taken back, and says so: Drive Setup's formatting,
+    Delete for good, Empty Trash.
+  A new app's undo is the kit's way (HACKING "undo::History").
 
 - ~~**A resting display still looked every 100 ms**~~ (found
   2026-11-07, looking into the Intel GPU). *Done* (7af77a04): a resting
@@ -5901,7 +5968,8 @@ people.
      HACKING.
      *Begun* (olo-ui, HACKING "The GPUI kit"): run, windows, the theme,
      style primitives on device pixels, the agent tree and socket,
-     frame stats, TextField, menus as popups, floating, upgrades. Next:
+     frame stats, TextField, menus as popups, floating, upgrades. Then
+     (all since done, as below):
      the layout review for GPUI frames (`{"review":true}`), icons (the
      pre-scaled set, a texture pixel to a device pixel), the widgets
      (buttons, check boxes, radios, menu fields, sliders, BBox, string

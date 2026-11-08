@@ -216,7 +216,9 @@ impl Element for Control {
             window.with_element_opacity((!enabled).then_some(DISABLED_OPACITY), |window| paint(bounds, state, window, cx));
         }
         if let Some((role, name, checked)) = self.node.clone() {
-            agent::record(window, cx, agent::Node { role, name: Some(name), value: self.value.clone(), bounds, enabled, clickable: enabled, checked, focused, ..Default::default() });
+            // (Its id only while reviewing: `same-id`.)
+            let element = id.filter(|_| crate::review::recording(window)).map(|id| format!("{id:?}"));
+            agent::record(window, cx, agent::Node { role, name: Some(name), value: self.value.clone(), bounds, enabled, clickable: enabled, checked, focused, element, ..Default::default() });
         }
         if !enabled {
             return;

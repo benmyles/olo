@@ -172,6 +172,12 @@ pub enum Step {
         services: Vec<String>,
         in_use_by: Vec<String>,
     },
+    /// Start one of Olo's own programs (`olo-…`) with these arguments,
+    /// detached, as the person (never as root): its own command line
+    /// does the fix (`olo-diskbackup --now`).
+    StartProgram {
+        argv: Vec<String>,
+    },
 }
 
 impl Step {
@@ -211,6 +217,7 @@ impl Step {
             Step::MakeSystemUsers { config } => format!("Making the users {} names", config.display()),
             Step::SelinuxLabels { restore, .. } => format!("Labelling {} for SELinux", restore.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")),
             Step::RebuildInitramfs => "Making the start-up images again".into(),
+            Step::StartProgram { argv } => format!("Running {}", argv.join(" ")),
         }
     }
 
@@ -288,6 +295,15 @@ impl Step {
                 if unsafe { libc::kill(*pid, *signal) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) { Ok(()) } else { Err(failed(std::io::Error::last_os_error())) }
             }
             Step::RestartGpu { address, modules, services, in_use_by } => restart_gpu(address, modules, services, in_use_by),
+            Step::StartProgram { argv } => {
+                // (Olo's own, as the person: never another program, never root.)
+                // SAFETY: geteuid has no preconditions.
+                if argv.first().is_none_or(|p| !p.starts_with("olo-") || p.contains('/')) || unsafe { libc::geteuid() } == 0 {
+                    return Err(format!("{}: not one of Olo's programs, as you", self.describe()));
+                }
+                let argv: Vec<std::ffi::OsString> = argv.iter().map(Into::into).collect();
+                olo_xdg::open::spawn(&argv).map_err(failed)
+            }
             Step::AddShell { path } => add_shell(path).map_err(failed),
             Step::AddKernelArgument { arg } => add_kernel_argument(Path::new("/"), arg).map_err(failed),
             Step::TryShell { path } => try_shell(path),

@@ -32,6 +32,7 @@ use olo_ui::{
     icons,
     instance::{self, Launch},
     menu, metrics as m, style, theme, tracker,
+    undo::{History, Purpose},
     widgets::{Button, Column, ColumnListView, ListModel, SCROLL_BAR, open_alert},
 };
 use scan::{NodeId, ROOT, Scan};
@@ -45,12 +46,29 @@ const CHIP_HEIGHT: f32 = 20.0;
 enum Msg {
     Tick,
     Volumes(Vec<Volume>),
-    /// Moved to the Trash or deleted: what went, and what couldn't (name,
-    /// why).
+    /// Moved to the Trash or deleted: what went (and, moved to the Trash,
+    /// where it is there), and what couldn't (name, why).
     Removed {
         gone: Vec<NodeId>,
+        trashed: Vec<(NodeId, PathBuf)>,
         failed: Vec<(String, String)>,
     },
+    /// Put back from the Trash (Undo): each item and where it went, and
+    /// what couldn't be.
+    PutBack {
+        purpose: Purpose,
+        back: Vec<(NodeId, PathBuf)>,
+        failed: Vec<(String, String)>,
+    },
+}
+
+/// What Edit ▸ Undo takes back: items moved to the Trash (each and where
+/// it is there), or put back from it (Redo moves them again). Deleting
+/// for good says it can't be undone, and isn't.
+#[derive(Debug, Clone)]
+enum Step {
+    Trashed(Vec<(NodeId, PathBuf)>),
+    PutBack(Vec<NodeId>),
 }
 
 /// What comes back after an upgrade or reload.
@@ -91,6 +109,10 @@ struct DiskUsage {
     busy: Option<(String, Arc<AtomicBool>)>,
     /// To go back to once the scan has found them (after a reload).
     restore: Option<Saved>,
+    /// Edit ▸ Undo and Redo (this scan's: a new one forgets them).
+    history: History<Step>,
+    /// Why the move to the Trash under way was made (Redo's, or done).
+    removing_as: Option<Purpose>,
 }
 
 fn home() -> PathBuf {
@@ -150,6 +172,8 @@ impl DiskUsage {
         self.folder = ROOT;
         self.selected = None;
         self.collected.clear();
+        // (Its steps name the last scan's items.)
+        self.history.clear();
         self.list.update(cx, |l, _| l.state = Default::default());
         self.rows = (ROOT, u64::MAX, None, Vec::new());
         self.set_title(format!("DiskUsage: {}", display_path(&root)), cx);
@@ -249,13 +273,13 @@ impl DiskUsage {
         self.busy = Some((doing, stop.clone()));
         let proxy = Self::proxy(cx);
         std::thread::spawn(move || {
-            let (mut gone, mut failed) = (Vec::new(), Vec::new());
+            let (mut gone, mut trashed, mut failed) = (Vec::new(), Vec::new(), Vec::new());
             for (id, path, name) in paths {
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
                 let result = if trash {
-                    olo_xdg::trash::move_to_trash(&path).map(|_| ())
+                    olo_xdg::trash::move_to_trash(&path).map(|at| trashed.push((id, at)))
                 } else if std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir()) {
                     std::fs::remove_dir_all(&path)
                 } else {
@@ -268,9 +292,55 @@ impl DiskUsage {
                     Err(e) => failed.push((name, e.to_string())),
                 }
             }
-            proxy.send(Msg::Removed { gone, failed });
+            proxy.send(Msg::Removed { gone, trashed, failed });
         });
         cx.notify();
+    }
+
+    /// Edit ▸ Undo (`redo` false) or Redo: items moved to the Trash put
+    /// back (on a thread), or moved there again.
+    fn undo_redo(&mut self, redo: bool, cx: &mut Context<Self>) {
+        if self.busy.is_some() || self.scan.is_none() {
+            return;
+        }
+        let Some(step) = (if redo { self.history.take_redo() } else { self.history.take_undo() }) else { return };
+        let purpose = if redo { Purpose::Redo } else { Purpose::Undo };
+        match step.change {
+            Step::Trashed(items) => {
+                let stop = Arc::new(AtomicBool::new(false));
+                let what = if items.len() == 1 { "“".to_owned() + &items[0].1.file_name().unwrap_or_default().to_string_lossy() + "”" } else { format!("{} items", items.len()) };
+                self.busy = Some((format!("Putting {what} back…"), stop.clone()));
+                let proxy = Self::proxy(cx);
+                std::thread::spawn(move || {
+                    let (mut back, mut failed) = (Vec::new(), Vec::new());
+                    for (id, at) in items {
+                        if stop.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        match olo_xdg::trash::put_back(&at) {
+                            Ok(to) => back.push((id, to)),
+                            Err(e) => failed.push((at.file_name().unwrap_or_default().to_string_lossy().into_owned(), e.to_string())),
+                        }
+                    }
+                    proxy.send(Msg::PutBack { purpose, back, failed });
+                });
+            }
+            Step::PutBack(ids) => {
+                self.removing_as = Some(purpose);
+                self.remove(ids, true, cx);
+                if self.busy.is_none() {
+                    self.removing_as = None;
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    fn record(&mut self, purpose: Purpose, step: Step) {
+        match purpose {
+            Purpose::Do => self.history.done("Move to Trash", step),
+            p => self.history.record(p, "Move to Trash", step),
+        }
     }
 
     fn confirm_delete(&mut self, items: Vec<NodeId>, cx: &mut Context<Self>) {
@@ -310,6 +380,8 @@ impl DiskUsage {
         let target = self.context.take().or(self.selected);
         match command {
             "scan-home" => self.start_scan(home(), cx),
+            "undo" => self.undo_redo(false, cx),
+            "redo" => self.undo_redo(true, cx),
             "scan-folder" => {
                 let me = cx.entity();
                 cx.defer(move |cx| {
@@ -428,6 +500,7 @@ impl DiskUsage {
                 .key("w")
                 .item("Quit", "quit")
                 .key("q"),
+            self.history.edit_items(Menu::new("Edit")),
             Menu::new("Go").item("Enclosing Folder", "up").enabled(scanned && self.folder != ROOT).item("Volumes", "volumes").enabled(scanned),
             Menu::new("Item")
                 .item("Open", "open")
@@ -519,8 +592,12 @@ impl DiskUsage {
         match *msg {
             Msg::Tick => self.restore(),
             Msg::Volumes(v) => self.volumes = Some(v),
-            Msg::Removed { gone, failed } => {
+            Msg::Removed { gone, trashed, failed } => {
                 self.busy = None;
+                let purpose = self.removing_as.take().unwrap_or(Purpose::Do);
+                if !trashed.is_empty() {
+                    self.record(purpose, Step::Trashed(trashed));
+                }
                 if let Some(scan) = &self.scan {
                     let mut t = scan.tree.write().unwrap();
                     for &id in &gone {
@@ -540,6 +617,36 @@ impl DiskUsage {
                     let lines: Vec<String> = failed.iter().take(5).map(|(name, why)| format!("“{name}”: {why}.")).collect();
                     let more = if failed.len() > 5 { format!("\n…and {} more.", failed.len() - 5) } else { String::new() };
                     let message = format!("Some items couldn't be removed.\n{}{more}", lines.join("\n"));
+                    cx.defer(move |cx| {
+                        open_alert(cx, "DiskUsage", "stop", &message, &["OK"], |_, _| {});
+                    });
+                }
+                self.read_volumes(cx);
+            }
+            Msg::PutBack { purpose, back, failed } => {
+                self.busy = None;
+                let mut ids = Vec::new();
+                if let Some(scan) = &self.scan {
+                    let mut t = scan.tree.write().unwrap();
+                    for (id, to) in &back {
+                        // Back in its folder (under a new number if
+                        // something new had its name): shown there again.
+                        if to.parent() == t.path(*id).parent() {
+                            if let Some(name) = to.file_name() {
+                                t.nodes[*id as usize].name = name.to_string_lossy().into();
+                            }
+                            t.put_back(*id);
+                            ids.push(*id);
+                        }
+                    }
+                }
+                if !ids.is_empty() {
+                    self.record(purpose, Step::PutBack(ids));
+                }
+                if !failed.is_empty() {
+                    let lines: Vec<String> = failed.iter().take(5).map(|(name, why)| format!("“{name}”: {why}.")).collect();
+                    let more = if failed.len() > 5 { format!("\n…and {} more.", failed.len() - 5) } else { String::new() };
+                    let message = format!("Some items couldn't be put back.\n{}{more}", lines.join("\n"));
                     cx.defer(move |cx| {
                         open_alert(cx, "DiskUsage", "stop", &message, &["OK"], |_, _| {});
                     });
@@ -1230,6 +1337,8 @@ fn main() {
             context: None,
             busy: None,
             restore: None,
+            history: History::default(),
+            removing_as: None,
         });
         let view = app.clone();
         let window = olo_ui::open_window(cx, WindowOptions::new("DiskUsage", 780.0, 560.0).min_size(600.0, 440.0).keep_size("main"), move |_, _| view);

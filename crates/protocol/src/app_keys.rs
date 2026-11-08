@@ -122,6 +122,8 @@ pub const APP_KEYS: &[AppKey] = &[
     k("terminal.new-tab", TERMINAL, "new-tab", "New Tab", &["Cmd+T"], &["Ctrl+Shift+T"], &["Alt+T"]),
     k("terminal.close", TERMINAL, "close", "Close Tab", &["Cmd+W"], &["Ctrl+Shift+W"], &["Alt+W"]),
     k("terminal.quit", TERMINAL, "quit", "Quit", &["Cmd+Q"], &["Ctrl+Shift+Q"], &["Alt+Q"]),
+    k("terminal.undo", TERMINAL, "undo", "Undo", &["Cmd+Z"], &["Ctrl+Shift+Z"], &["Alt+Z"]),
+    k("terminal.redo", TERMINAL, "redo", "Redo", &["Shift+Cmd+Z"], &["Ctrl+Shift+Y"], &["Alt+Shift+Z"]),
     k("terminal.copy", TERMINAL, "copy", "Copy", &["Cmd+C"], &["Ctrl+Shift+C"], &["Alt+C"]),
     k("terminal.paste", TERMINAL, "paste", "Paste", &["Cmd+V"], &["Ctrl+Shift+V"], &["Alt+V"]),
     k("terminal.select-all", TERMINAL, "select-all", "Select All", &["Cmd+A"], &["Ctrl+Shift+A"], &["Alt+A"]),

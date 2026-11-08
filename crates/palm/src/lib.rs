@@ -677,6 +677,25 @@ pub fn keep_samples(dir: &std::path::Path, kind: Kind, contacts: &[Labelled]) ->
     Ok(path)
 }
 
+/// The runs kept in `dirs` (`keep_samples`) on a pad of `kind`, the
+/// newest `most` of them: how many, and their contacts as [`Tracker`]
+/// follows them now, oldest first. The person's training learns from
+/// these with the run just made: one run alone fits that sitting (run 1
+/// judged by a model of run 2 lost 8.3% of its fingers).
+pub fn kept_runs(dirs: &[std::path::PathBuf], kind: Kind, most: usize) -> (usize, Vec<Labelled>) {
+    let mut runs: Vec<(std::ffi::OsString, std::path::PathBuf)> = dirs
+        .iter()
+        .flat_map(|d| std::fs::read_dir(d).into_iter().flatten().flatten())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json") && e.file_name().to_string_lossy().starts_with("run-"))
+        .map(|e| (e.file_name(), e.path()))
+        .collect();
+    // (Named by the second they were kept: oldest first.)
+    runs.sort();
+    let mine: Vec<Vec<Labelled>> = runs.iter().filter_map(|(_, p)| Run::parse(&std::fs::read(p).ok()?)).filter(|r| Kind::from_id(&r.kind) == kind).map(|r| r.on_the_glass()).collect();
+    let newest = &mine[mine.len().saturating_sub(most)..];
+    (newest.len(), newest.iter().flatten().cloned().collect())
+}
+
 /// The model as the touch filter's configuration has it (a Lua table).
 pub fn lua(m: &PalmModel) -> String {
     let list = |v: &[f32]| v.iter().map(|x| format!("{x:e}")).collect::<Vec<_>>().join(", ");
@@ -702,6 +721,34 @@ pub fn lua(m: &PalmModel) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The runs kept, read back for the person's training: this kind of
+    /// pad's only, the newest `most`, oldest first; what isn't a run passed
+    /// over; and training on them with today's.
+    #[test]
+    fn kept_runs_read_back() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-palm-runs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |name: &str, kind: Kind, contacts: &[Labelled]| {
+            let bytes = serde_json::to_vec(&Run { from_touch: true, kind: kind.id().to_owned(), contacts: contacts.to_vec() }).unwrap();
+            std::fs::write(dir.join(name), bytes).unwrap();
+        };
+        let (a, b, c) = (made(1, 10), made(2, 12), made(3, 14));
+        run("run-100.json", Kind::MacBook, &a);
+        run("run-200.json", Kind::ThinkPad, &made(4, 6));
+        run("run-300.json", Kind::MacBook, &b);
+        run("run-400.json", Kind::MacBook, &c);
+        std::fs::write(dir.join("notes.json"), b"{}").unwrap();
+        let (n, all) = kept_runs(std::slice::from_ref(&dir), Kind::MacBook, 8);
+        assert_eq!((n, all.len()), (3, a.len() + b.len() + c.len()));
+        assert_eq!(all[0].frames, a[0].frames, "oldest first");
+        let (n, newest) = kept_runs(std::slice::from_ref(&dir), Kind::MacBook, 2);
+        assert_eq!((n, newest.len()), (2, b.len() + c.len()));
+        assert_eq!(kept_runs(std::slice::from_ref(&dir), Kind::ThinkPad, 8).0, 1);
+        assert_eq!(kept_runs(&[dir.join("none")], Kind::MacBook, 8).0, 0);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     /// Contacts like a MacBook pad's: fingers small, light and moving;
     /// palms large, heavier and still, near an edge; and some that are

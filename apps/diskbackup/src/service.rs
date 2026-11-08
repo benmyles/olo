@@ -23,6 +23,8 @@ use std::{
     time::Duration,
 };
 
+use std::os::unix::ffi::OsStrExt;
+
 use olo_diskbackup::{Id, Options, Progress, Repo, Snapshot, backup, exclude::Excludes, keep, prune};
 use olo_protocol::diskbackup::{Doing, Keep, Last, Reply, Request, Settings, State, Target, Tidied};
 
@@ -54,6 +56,80 @@ fn kept_path() -> std::path::PathBuf {
     }
 }
 
+/// What the socket answers Tracker from (`Request::Marks`, `Versions`):
+/// this computer's snapshots and a reader of their trees, made again after
+/// each backup and tidy (so it never waits for one to finish).
+struct Lookup {
+    reader: olo_diskbackup::TreeReader,
+    /// This computer's, oldest first.
+    snapshots: Vec<(Id, Snapshot)>,
+}
+
+static LOOKUP: Mutex<Option<Arc<Lookup>>> = Mutex::new(None);
+
+/// The lookup made again from `o`.
+fn publish(o: &Opened) {
+    let host = host();
+    let snapshots = match o.repo.snapshots() {
+        Ok(all) => all.into_iter().filter(|(_, s)| s.host == host).collect(),
+        Err(e) => {
+            tracing::warn!("diskbackup: snapshots for lookups: {e}");
+            return;
+        }
+    };
+    if let Ok(mut l) = LOOKUP.lock() {
+        *l = Some(Arc::new(Lookup { reader: o.repo.tree_reader(), snapshots }));
+    }
+}
+
+/// Which of `dir`'s files are backed up as they are now.
+fn marks(dir: &str) -> Reply {
+    let Some(l) = LOOKUP.lock().ok().and_then(|l| l.clone()) else { return Reply::Marks { covered: false, backed_up: Vec::new(), time: 0 } };
+    let Some((_, newest)) = l.snapshots.last() else { return Reply::Marks { covered: false, backed_up: Vec::new(), time: 0 } };
+    let dir = std::path::Path::new(dir);
+    let node = match olo_diskbackup::restore::find(&l.reader, &newest.tree, dir) {
+        Ok(n) => n,
+        Err(e) => return Reply::Error { message: e.to_string() },
+    };
+    let Some(sub) = node.filter(|n| n.kind == olo_diskbackup::Kind::Dir).and_then(|n| n.subtree) else {
+        return Reply::Marks { covered: false, backed_up: Vec::new(), time: newest.time };
+    };
+    let tree = match l.reader.get(&sub) {
+        Ok(t) => t,
+        Err(e) => return Reply::Error { message: e.to_string() },
+    };
+    let backed_up = tree
+        .nodes
+        .iter()
+        .filter(|n| n.kind != olo_diskbackup::Kind::Dir)
+        .filter(|n| olo_diskbackup::backup::unchanged_since(n, &dir.join(std::ffi::OsStr::from_bytes(&n.name))))
+        .map(|n| n.name_str().into_owned())
+        .collect();
+    Reply::Marks { covered: true, backed_up, time: newest.time }
+}
+
+/// The versions of `path` this computer's snapshots kept.
+fn versions(path: &str) -> Reply {
+    let Some(l) = LOOKUP.lock().ok().and_then(|l| l.clone()) else { return Reply::Versions { versions: Vec::new() } };
+    let path = std::path::Path::new(path);
+    match olo_diskbackup::versions(&l.reader, &l.snapshots, path) {
+        Ok(vs) => Reply::Versions {
+            versions: vs
+                .into_iter()
+                .map(|v| olo_protocol::diskbackup::Version {
+                    snapshot: v.snapshot.hex(),
+                    time: v.time,
+                    first: v.first,
+                    size: v.node.size,
+                    mtime: v.node.mtime,
+                    current: olo_diskbackup::backup::unchanged_since(&v.node, path),
+                })
+                .collect(),
+        },
+        Err(e) => Reply::Error { message: e.to_string() },
+    }
+}
+
 /// The repository open, for the target it's in, and the last snapshot of
 /// this computer's (what the next takes unchanged files from).
 struct Opened {
@@ -63,6 +139,12 @@ struct Opened {
 }
 
 pub fn run() -> ExitCode {
+    // One at a time (Doctor's Start It, olo-session's, by hand).
+    let st = State::load();
+    if st.pid != 0 && st.pid != std::process::id() && std::fs::read_to_string(format!("/proc/{}/comm", st.pid)).is_ok_and(|c| c.trim() == "olo-diskbackup") {
+        tracing::info!("diskbackup: the service is running already (process {})", st.pid);
+        return ExitCode::SUCCESS;
+    }
     gentle();
     let (tx, rx) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));
@@ -108,6 +190,12 @@ pub fn run() -> ExitCode {
             }
             continue;
         }
+        // Open (for Tracker's lookups) before the first backup is due.
+        if open.is_none()
+            && let Err(e) = opened(&settings, &mut open, &limits)
+        {
+            tracing::info!("diskbackup: can't open the backup yet: {e}");
+        }
         if std::mem::take(&mut tidy_asked) {
             cancel.store(false, Relaxed);
             match opened(&settings, &mut open, &limits) {
@@ -133,7 +221,7 @@ pub fn run() -> ExitCode {
         }
         now_asked = false;
         cancel.store(false, Relaxed);
-        if once(&settings, &mut st, &mut open, &limits, &cancel, &mut forgotten) && tidy_due(st.tidied.as_ref()) {
+        if once(&settings, &mut st, &mut open, &limits, &cancel, &mut forgotten) && tidy_due(st.tidied.as_ref(), open.as_ref().is_some_and(|o| o.repo.damaged_index_files() > 0)) {
             cancel.store(false, Relaxed);
             tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten);
         }
@@ -244,9 +332,10 @@ fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: 
     ok
 }
 
-/// Tidied a day ago or more (an hour, if it didn't finish), or never.
-fn tidy_due(t: Option<&Tidied>) -> bool {
-    t.is_none_or(|t| now() - t.time >= if t.error.is_some() { 3600 } else { 24 * 3600 })
+/// Tidied a day ago or more (an hour, if it didn't finish or there are
+/// `damaged` index files to let go of), or never.
+fn tidy_due(t: Option<&Tidied>, damaged: bool) -> bool {
+    t.is_none_or(|t| now() - t.time >= if t.error.is_some() || damaged { 3600 } else { 24 * 3600 })
 }
 
 /// Tidy: with the backup to itself (another computer using it: next
@@ -275,6 +364,7 @@ fn tidy(settings: &Settings, st: &mut State, open: &mut Option<Opened>, cancel: 
         prune(&mut o.repo, cancel, &progress).map(|p| (p, all.len() - forget.len()))
     });
     drop(lock);
+    publish(o);
     st.tidied = Some(match result {
         Ok((p, snapshots)) => {
             st.snapshots = snapshots as u32;
@@ -308,9 +398,13 @@ fn opened<'a>(settings: &Settings, open: &'a mut Option<Opened>, limits: &Limits
         let store = target::store(&settings.target, limits)?;
         let key = target::key()?;
         let repo = Repo::open(store, key, Some(target::cache())).map_err(|e| e.to_string())?;
+        if repo.damaged_index_files() > 0 {
+            tracing::warn!("diskbackup: {} index files are damaged: their packs read back from their own lists, and the files let go of at the next tidying", repo.damaged_index_files());
+        }
         let host = host();
         let parent = repo.snapshots().map_err(|e| e.to_string())?.into_iter().rfind(|(_, s)| s.host == host);
         *open = Some(Opened { target: settings.target.clone(), repo, parent });
+        publish(open.as_ref().expect("opened"));
     }
     Ok(open.as_mut().expect("opened"))
 }
@@ -350,6 +444,7 @@ fn back_up(settings: &Settings, open: &mut Option<Opened>, limits: &Limits, canc
         o.repo.forget(f).map_err(|e| e.to_string())?;
     }
     drop(lock);
+    publish(o);
     Ok(((all.len() - forget.len()) as u32, summary, forget.len() as u32))
 }
 
@@ -404,6 +499,8 @@ fn listen(tx: mpsc::Sender<Event>, cancel: Arc<AtomicBool>) {
                     let _ = tx.send(Event::Tidy);
                     Reply::Ok
                 }
+                Ok(Request::Marks { dir }) => marks(&dir),
+                Ok(Request::Versions { path }) => versions(&path),
                 Err(e) => Reply::Error { message: e.to_string() },
             };
             let _ = (&conn).write_all(format!("{}\n", serde_json::to_string(&reply).unwrap_or_default()).as_bytes());

@@ -30,6 +30,16 @@ pub fn manager_environment() -> Result<Vec<(String, String)>> {
     Ok(env.into_iter().filter_map(|kv| kv.split_once('=').map(|(k, v)| (k.to_owned(), v.to_owned()))).collect())
 }
 
+/// Whether this program runs in the person's own session, in front of
+/// the computer: a real one (`OLO_REAL_SESSION`: olo-session on a seat)
+/// and not an agent's screen (`OLO_SCREEN`). Only there does a program
+/// go across to root through polkit (which asks the person), or use what
+/// is the person's to touch: their fingerprint reader, security key and
+/// camera. A test session or an agent's screen has nobody in front of it.
+pub fn at_the_computer() -> bool {
+    std::env::var_os("OLO_REAL_SESSION").is_some() && std::env::var_os("OLO_SCREEN").is_none()
+}
+
 /// Where programs keep their temporary files (`TMPDIR`, and `TMP` and
 /// `TEMP` some read instead): on disk, not /tmp (Ben, 2026-11-05: "/tmp is
 /// often in memory and not a good place for apps to use as temp"). Olo

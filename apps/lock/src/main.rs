@@ -83,12 +83,23 @@ fn clock_text() -> (String, String) {
     (now.time(), now.date())
 }
 
+/// Whether the person's fingerprint reader, security key and camera are
+/// for this lock screen: only in their own session, in front of the
+/// computer, not a test session's or an agent screen's lock (an agent's
+/// screen that locked itself looked for the person's face whenever the
+/// agent moved its pointer, 2026-11-07). A test's own fake key or face
+/// service (`OLO_FIDO_SOFT`, `OLO_FACE_BUS`) is used anywhere.
+fn readers_here() -> bool {
+    static HERE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HERE.get_or_init(olo_system::env::at_the_computer)
+}
+
 impl Lock {
     fn start_fingerprint(&self, cx: &App) {
-        // Not in a test: `OLO_NO_FINGERPRINT`, or a debug build checking
-        // passwords with a private PAM service, leaves the reader (the
-        // person's own) alone.
-        if std::env::var_os("OLO_NO_FINGERPRINT").is_some() || cfg!(debug_assertions) && std::env::var_os("OLO_PAM_CONFDIR").is_some() {
+        // Not in a test: `OLO_NO_FINGERPRINT`, a debug build checking
+        // passwords with a private PAM service, or a session nobody sits
+        // at, leaves the reader (the person's own) alone.
+        if std::env::var_os("OLO_NO_FINGERPRINT").is_some() || cfg!(debug_assertions) && std::env::var_os("OLO_PAM_CONFDIR").is_some() || !readers_here() {
             return;
         }
         let (user, stop, proxy) = (self.user.clone(), self.finger_stop.clone(), olo_ui::proxy(cx));
@@ -116,7 +127,7 @@ impl Lock {
 
     /// Wait for a touch of a security key set up, unless already waiting.
     fn wait_for_key(&mut self, cx: &App) {
-        if self.key.is_some() || self.unlocking {
+        if self.key.is_some() || self.unlocking || !readers_here() && std::env::var_os("OLO_FIDO_SOFT").is_none() {
             return;
         }
         let (p, proxy) = (olo_ui::proxy(cx), olo_ui::proxy(cx));
@@ -133,7 +144,7 @@ impl Lock {
 
     /// Look for this user's face (olo-faced), on a thread.
     fn look(&mut self, cx: &App) {
-        if self.face_looking || self.unlocking || self.face_last.is_some_and(|t| t.elapsed() < FACE_EVERY) {
+        if self.face_looking || self.unlocking || self.face_last.is_some_and(|t| t.elapsed() < FACE_EVERY) || !readers_here() && std::env::var_os("OLO_FACE_BUS").is_none() {
             return;
         }
         self.face_looking = true;

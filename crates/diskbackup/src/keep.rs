@@ -1,7 +1,9 @@
-//! Which snapshots to keep: the newest of each of the last so many hours,
-//! days, weeks and months (in local time), and always the newest of all.
-//! A snapshot any rule keeps stays; the rest are forgotten (and what only
-//! they used goes at the next prune).
+//! Which snapshots to keep: every one from the last hour, then the newest
+//! of each of the last so many hours, days, weeks and months (in local
+//! time). A snapshot any rule keeps stays; the rest are forgotten (and what
+//! only they used goes at the next prune). (Every one from the last hour:
+//! a backup made a few minutes ago isn't let go of the moment another is
+//! made, Back Up Now in the same hour, say.)
 
 use crate::{crypto::Id, repo::Snapshot};
 
@@ -32,10 +34,9 @@ fn periods(t: i64) -> [i64; 4] {
 pub fn to_forget(snapshots: &[(Id, Snapshot)], policy: Policy) -> Vec<Id> {
     let mut by_time: Vec<&(Id, Snapshot)> = snapshots.iter().collect();
     by_time.sort_by_key(|s| std::cmp::Reverse(s.1.time));
-    let mut keep = vec![false; by_time.len()];
-    if !keep.is_empty() {
-        keep[0] = true;
-    }
+    // Every one within the hour before the newest (the newest too).
+    let newest = by_time.first().map_or(0, |s| s.1.time);
+    let mut keep: Vec<bool> = by_time.iter().map(|s| newest - s.1.time < 3600).collect();
     for (rule, count) in [policy.hourly, policy.daily, policy.weekly, policy.monthly].into_iter().enumerate() {
         let mut last = None;
         let mut taken = 0;
@@ -66,23 +67,27 @@ mod tests {
         (Id(id), Snapshot { time: t, host: "h".into(), paths: vec![], tree: Id::default(), parent: None, summary: Summary::default() })
     }
 
-    /// Every 20 minutes for 3 days: 24 hourly, 3 daily kept (the newest of
-    /// each), the rest forgotten; the newest always.
+    /// Every 20 minutes for 3 days: the last hour's, 24 hourly, 3 daily
+    /// kept (the newest of each), the rest forgotten.
     #[test]
     fn hourly_and_daily() {
         let start = 1_800_000_000 - 1_800_000_000 % 86_400;
         let all: Vec<(Id, Snapshot)> = (0..3 * 72).map(|k| snap(start + k * 1200)).collect();
         let forget = to_forget(&all, Policy { hourly: 24, daily: 7, weekly: 0, monthly: 0 });
         let kept: Vec<i64> = all.iter().filter(|(id, _)| !forget.contains(id)).map(|(_, s)| s.time).collect();
-        // 24 hours' newest, plus each earlier day's newest (2 more), at most.
-        assert!((24..=27).contains(&kept.len()), "{}", kept.len());
+        // 24 hours' newest, the last hour's (up to 2 more), each earlier
+        // day's newest (2 more), at most.
+        assert!((24..=29).contains(&kept.len()), "{}", kept.len());
         assert!(kept.contains(&all.last().unwrap().1.time));
-        // Nothing kept twice for one hour.
-        let mut hours: Vec<i64> = kept.iter().map(|t| periods(*t)[0]).collect();
+        // Nothing kept twice for one hour, but the last hour.
+        let newest = all.last().unwrap().1.time;
+        let mut hours: Vec<i64> = kept.iter().filter(|t| newest - **t >= 3600).map(|t| periods(*t)[0]).collect();
+        let n = hours.len();
         hours.dedup();
-        assert_eq!(hours.len(), kept.len());
-        // Keep nothing at all: still the newest.
+        assert_eq!(hours.len(), n);
+        // Keep nothing at all: still the last hour's (the newest, and the
+        // two before it, 20 and 40 minutes before).
         let forget = to_forget(&all, Policy { hourly: 0, daily: 0, weekly: 0, monthly: 0 });
-        assert_eq!(forget.len(), all.len() - 1);
+        assert_eq!(forget.len(), all.len() - 3);
     }
 }

@@ -225,7 +225,7 @@ pub(crate) fn run_tune(tuning: &Tuning) -> Result<String, String> {
     let json = serde_json::to_string(tuning).map_err(|e| e.to_string())?;
     // (Polkit asks for the password with Olo's agent: there's no way
     // across to root in process. In tests, as this user: nothing changes.)
-    let mut cmd = if std::env::var_os("OLO_REAL_SESSION").is_some() && std::env::var_os("OLO_SCREEN").is_none() {
+    let mut cmd = if olo_system::env::at_the_computer() {
         let mut c = Command::new("pkexec");
         c.arg("--disable-internal-agent").arg(&tune);
         c
@@ -394,8 +394,11 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
     };
     // (A row's name and four menus within the pane's box, each menu wide
     // enough for "Cooler and Quieter".)
-    const LABEL_W: f32 = 150.0;
-    const CELL_W: f32 = 146.0;
+    // (On the 4-point grid, as the gaps are: whole device pixels at every
+    // scale, 1.25× and 1.75× too; at 146 and 150 every cell started on a
+    // half pixel at 1.25× and the gaps came out 11.2 and 12.8.)
+    const LABEL_W: f32 = 152.0;
+    const CELL_W: f32 = 144.0;
     let plain = theme::palette(ui.cx).panel_text;
     ui.bbox("What Each Mode Sets", |ui| {
         // The columns: each mode, and running on battery (bold: in force).

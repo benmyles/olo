@@ -131,6 +131,22 @@ pub fn move_to_trash(path: &Path) -> std::io::Result<PathBuf> {
     }
 }
 
+/// Put `item` (in the Trash) back where it came from, by its .trashinfo:
+/// its folder made again if it has gone, and a number added to its name
+/// if something new has it now. Where it went.
+pub fn put_back(item: &Path) -> std::io::Result<PathBuf> {
+    if fs::symlink_metadata(item).is_err() {
+        return Err(std::io::Error::other(format!("“{}” isn't in the Trash any more", item.file_name().unwrap_or_default().to_string_lossy())));
+    }
+    let (origin, info) = trash_origin(item)?;
+    let dir = origin.parent().ok_or_else(|| std::io::Error::other("no folder to put it back in"))?;
+    fs::create_dir_all(dir)?;
+    let target = unique(dir, &origin.file_name().unwrap_or_default().to_string_lossy());
+    fs::rename(item, &target)?;
+    let _ = fs::remove_file(&info);
+    Ok(target)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

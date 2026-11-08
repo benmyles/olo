@@ -2189,8 +2189,22 @@ event reaches it.
   took them (a text field's ⌘Z is its own). Agents and the command
   palette find Undo and Redo among the app's menus (the bar's, or
   `agent::set_menus`). Tracker (files: undo.rs) and Preferences
-  (settings: undo.rs) use it; what's left is in TODO ("Undo everywhere
-  it makes sense").
+  (settings: undo.rs) use it. An app that keeps its steps its own way
+  names them alike with `undo::edit_items_named(menu, undo, redo)` (each
+  the next step's name, None for none; `edit_items_as` with commands of
+  its own): StyledEdit's document (each step named by the command that
+  made it, `Doc::name_next`, else by the edit: Typing, Delete, Move,
+  Replace All, Table…), the Viewer's picture edits (`Op::name`: Rotate
+  Left, Crop…), its video edits (Cut, Add Mark, Trim, Mute…) and its
+  PDFs' (Typing, Check, Choice, Move, Resize, Drawing, Signature…); their
+  toolbars' tips are the menus', so they say it too. A text field's own
+  Undo takes back a run of typing at once (letters typed where the last
+  went, within 1.5 s: one step, a space starting the next), as the kit's
+  runs do; an app's own edit of a field is a step too when it should be
+  (`TextField::replace_all`: DeskCalc's keys, Clear, a result, so ⌘Z
+  after = brings the sum back), and its Undo and Redo can be an app's
+  commands (`can_undo`, `undo_step`: DeskCalc's menu has them). What's
+  left is in TODO ("Undo everywhere it makes sense").
 - `WindowOptions::floating()`: the xdg-toplevel-tag `floating`, so
   app_server floats it over auto-tiled windows. `child()`: the window
   belongs to the app's window that has the keyboard (its xdg parent:
@@ -2670,7 +2684,15 @@ gone, as Deskbar did, or spin on a stored protocol error, as
 Notifications did, 2026-11-01; once told, the loop stops, so a program
 nobody re-executes, outside a session, ends rather than waking for ever
 on the dead socket); GPUI's connect waits up to 15 s for
-the compositor to be back. And it connects to app_server's direct
+the compositor to be back. A program app_server started on a
+connection it handed over (`WAYLAND_SOCKET`: the lock screen, the
+screen saver) can't make that connection again, so it ends instead,
+on an upgrade too, and app_server starts it again if it is still
+wanted (the lock screen while locked, within 2 s); re-executed, it
+came back with no compositor and stayed for ever (eleven lock
+screens of an ended agent screen, one per upgrade, 2026-11-07). A
+`cx.quit()` while launching ends the program on any backend (calloop's
+`run` clears a stop sent before it starts, so it used not to). And it connects to app_server's direct
 socket (`olo-<display>-direct`), not to
 `WAYLAND_DISPLAY`, which in a session is olo-wlproxy's: the proxy keeps
 outside programs' windows across a restart by replaying their objects
@@ -4002,7 +4024,12 @@ recorded otherwise.
     closer than `metrics::SECTION`,
     two spacings: the row ends its group, so what follows is a new
     section; as close as the rows above, the row reads as the start of
-    what follows, as Preferences ▸ Power ▸ Graphics' Screen Recordings did).
+    what follows, as Preferences ▸ Power ▸ Graphics' Screen Recordings did),
+    `same-id` (two controls with one element id: they share GPUI's state,
+    a press among it, so a click on either is lost; a kit Button's id is
+    its label unless given one, and Preferences ▸ Security's two Remove
+    buttons, in no element with an id, did nothing; the controls record
+    their ids only while a review records, so nothing else pays).
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off
@@ -5425,9 +5452,21 @@ arranging command (Tile All, Tile App, Cascade, Fan Out) first calls
 and part, and whether it was zoomed (fully or along one axis, and what
 unzooming would put back) (`Placed`, in `AnvilState::arranged`); Undo
 Window Arrangement (`undo_arrangement`, ⌃⌘Z) puts them back, a zoomed
-window zoomed again, and remembers what it replaced, so undoing again
-redoes. Agents run both with
-`{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"`.
+window zoomed again, and remembers what it replaced. The last
+arrangement is a named step (`State::arrangement`, `tiling::Arranged`),
+as an app's Edit ▸ Undo is: Cascade, Tile All, Zoom All, Fan Out, Show
+All, Arrangement (an arranger's), auto-tiling's (Auto-Tiling, Tile,
+Zoom, Balance Tiles, Move Tile, Resize Tiles), and windows moved to
+another workspace or display (Move to Workspace 2, Move to Display: the
+keys, Deskbar's Move To and Move All Windows To; `remember_moves` keeps
+each one's display and workspace). ⌃⌘Z undoes it (once: again does
+nothing), Redo Window Arrangement (⇧⌃⌘Z, `redo-arrangement`) puts it
+again; undoing turning auto-tiling on, Redo turns it on again. Deskbar's
+Window Arrangement menu names them (Undo Move to Workspace 3, Redo
+Cascade), from `Request::ArrangementUndo` and
+`Event::ArrangementUndoChanged`. Agents run them with
+`{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"` /
+`"redo-arrangement"`.
 
 Windowing modes (`shell/modes.rs`): each workspace of each display is
 Standard (windows stay where they are put; the default), Auto-Tiling or
@@ -6407,8 +6446,20 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   CTAPHID and CTAP2, its master secret in FILE so a credential made in
   one process opens in another) that touches itself
   `OLO_FIDO_SOFT_TOUCH_MS` (400) after it starts waiting, or never
-  ("never"); with the PAM stand-in (`OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE`),
-  `OLO_SUDO_REAL` and `OLO_POLKIT_HELPER` the whole thing runs headless.
+  ("never"), with a PIN if `OLO_FIDO_SOFT_PIN` is set (eight tries); with
+  the PAM stand-in (`OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE`, given to
+  `tsession run` itself: it doesn't pass them on), `OLO_SUDO_REAL` and
+  `OLO_POLKIT_HELPER` the whole thing runs headless.
+* **A key with a PIN**: setting it up asks for the PIN beside the
+  password, once (Preferences knows from the key's info). `olo_fido::pin::
+  token` gets a token for it (CTAP 2.1's with the make-credential
+  permission where the key offers `pinUvAuthToken`, else 2.0's
+  getPinToken), and makeCredential carries its proof. The secret after
+  needs no PIN: the `hmac-secret` assertion is made without user
+  verification at setup and at every touch alike, so it is the same
+  secret. A wrong PIN says how many tries are left. A key that wants
+  its PIN at every use (`alwaysUv`) is listed as unusable: a touch
+  couldn't stand for the password.
   `cargo run -p olo-fido --example info` asks every key plugged in what it
   is, without a touch; `--example touch` runs setting up's two touches on
   the first key plugged in (nothing kept, no password), every CTAPHID
@@ -7515,7 +7566,9 @@ Screens' Export Video uses too).
   name as it's typed ("1 of 4 recordings"). Play and a double click (the
   Viewer), Edit (the Viewer's editor), Show in Tracker, Rename… (a
   dialog; the extension kept, a name taken refused) and Delete (to the
-  Trash). What each is and its picture are read on a worker, 64 at a
+  Trash), each taken back by ⌘Z (put back from the Trash, named as it
+  was) and done again by ⇧⌘Z (`olo_ui::undo::keys`: the window has no
+  menu bar). What each is and its picture are read on a worker, 64 at a
   time, as they're needed, and kept; the folder is followed (inotify),
   so a recording made, renamed or deleted anywhere shows at once. A
   recording is known by Olo's mark, not its name: the recorder, the trim
@@ -8460,6 +8513,15 @@ with a fix, by id), `olo-doctor --fix all|ID…` (what the buttons do: root
 steps through the helper and pkexec, or, under sudo, run there with the
 scan made for the sudo user). What it looks for:
 
+- **DiskBackup** (`diskbackup`, from its settings and its service's
+  state file): not set up ("Nothing is backed up": said, no button,
+  since where backups go is the person's to choose); its service not
+  running (a problem: Start It); paused (Resume Backups); nothing whole
+  for three days or three of its intervals (a problem, the last's reason
+  said: Back Up Now); its key only in this computer's keyring (Keep Key
+  in Passwords); else when it last backed up, as fine. Each fix is
+  DiskBackup's own command line (`Step::StartProgram`: one of Olo's
+  programs, `olo-…`, started as the person, never as root).
 - **Input remappers** (keyd, xremap, Input Remapper, evremap, kmonad,
   Interception Tools): they grab the keyboards, and any mouse whose motion
   node has keys (a Logitech G309), and type through a virtual device, so
@@ -9486,7 +9548,10 @@ The freedesktop Trash helpers Tracker and DiskUsage share are
 `olo_xdg::trash`: `trash_slot` reserves a name and writes the
 .trashinfo, `trash_origin` reads it back, `move_to_trash` renames into
 the Trash when on the same volume (Tracker copies across volumes with
-progress instead). Tracker's Empty Trash is instant to see: the Trash's
+progress instead), `put_back` renames an item back where it came from
+(its folder made again, a number added if something new has its name:
+DiskUsage's Edit ▸ Undo Move to Trash, Redo moving it again; a new scan
+forgets the steps). Tracker's Empty Trash is instant to see: the Trash's
 `files` and `info` are swapped for empty folders (`renameat2`
 `RENAME_EXCHANGE`, so the paths always exist and the Trash icon and any
 Trash window change at once), and what was in them is deleted in
@@ -9494,6 +9559,24 @@ Trash window change at once), and what was in them is deleted in
 back (`ops::put_back`); one cut short is finished by the next.
 
 ## Terminal (apps/terminal)
+
+**Undo** (undo.rs, `olo_ui::undo`): Edit ▸ Undo and Redo for a window's
+tabs moved along the strip (Move Tab, Move Group) or into and out of
+groups (Group: their order and groups put back, by each tab's shell), a
+tab moved into a window of its own (torn off, or Move Tab to New Window;
+Undo puts it back where it was, in its group, from wherever it went,
+its window going if that was its last tab; Redo moves it out again), a
+tab closed, and Terminal's settings (Text Size, a run of Bigger one
+step; Colors; Tabs; sudo Passwords in a Window). A closed tab's process
+can't come back: Undo opens a new shell in its folder, where it was, in
+its group, and says so in its name (Undo Close Tab (as a New Shell));
+Redo closes that one again, asking first as any close does if something
+runs in it (`closing_as`). Its keys are Terminal's own in the profile
+(`terminal.undo`, `terminal.redo`: ⌘Z and ⇧⌘Z, Ctrl+Shift+Z and
+Ctrl+Shift+Y, Alt+Z and Alt+Shift+Z), so they never reach the shell.
+Checked headless: a tab opened in ~/work and closed, ⌘Z brings a new
+shell there in its place, ⇧⌘Z closes it again; a tab moved to a new
+window, ⌘Z, ⇧⌘Z, ⌘Z: 2, 1, 2, 1 windows.
 
 The shells don't run in Terminal: they run in **olo-termd**
 (`src/termd.rs`, a second binary of the same package), one per display,
@@ -11049,6 +11132,23 @@ private bus as DBUS_SESSION_BUS_ADDRESS).
 
 ## Tracker (apps/tracker)
 
+**DiskBackup's ticks** (`backups.rs`; Ben, 2026-11-07: "a green tick next
+to files if the most recent version is backed up … if you right click a
+file in tracker it should show older versions that you can restore"): a
+file whose current version this computer's newest snapshot holds wears a
+tick (`items::paint_mark`: a green disc at its icon's lower right, a
+white tick in it; said to agents as "Backed up: NAME"), in every view
+and on the desktop; folders don't (it would take walking them). Each
+folder shown is asked of DiskBackup's service (`Request::Marks`) on a
+thread of its own when it's first shown, when it changes, and when a
+backup finishes (one at a time a folder, asked again if it changed
+meanwhile); DiskBackup's state file, written every 2 s while it backs
+up, is looked at on the watch's thread, the UI told only when it went on
+or off or finished one (measured during a 3 GB backup: 0 frames, 0.0%
+of a core, its watch thread 1 wakeup/s). A file's menu has Older
+Versions… (while DiskBackup is set up), which opens DiskBackup's window
+of its versions (`olo-diskbackup --versions-window PATH`).
+
 On Olo's GPUI. The `Tracker` entity (main.rs) keeps the windows (each
 known by its view's entity id) and does what opens windows or touches
 files: opening folders (a folder's window on this workspace is brought
@@ -11158,7 +11258,13 @@ there moves the person's pointer or takes their focus. It runs the
 person's programs and files (their HOME), but with app_server settings
 of its own (`OLO_APP_SERVER_SETTINGS`, a copy of the person's at 1×
 unless asked, with no lock, screen saver, display sleep or system
-sleep), silent unless `--sound` (`PULSE_SERVER` pointed at nothing),
+sleep; app_server on a screen, `OLO_SCREEN` set, is never idle
+whatever its settings say: the "agent" screen once started its saver
+after an in-place restart and locked itself, 2026-11-07; it locks only
+when asked, `Request::Lock`, and its lock screen leaves the person's
+fingerprint reader, security key and camera alone, as everything
+outside their own session does: `olo_system::env::at_the_computer`),
+silent unless `--sound` (`PULSE_SERVER` pointed at nothing),
 without `DISPLAY` (X programs would show on the person's screen), and on
 a D-Bus session bus of its own (below, "A screen's own bus"). Screens
 are listed in `$XDG_RUNTIME_DIR/olo-screens/NAME.json` (the session's
@@ -12443,10 +12549,36 @@ in layers; done so far, **the engine** (crates/diskbackup):
 - **Restoring** (`restore.rs`): a file or folder of any snapshot put back
   anywhere, as it was (contents, permissions, modified times, links),
   each file written aside and renamed into place; `find` for browsing.
-- **Stores** (`store.rs`): `Store` (put whole, get, get a range, list,
-  delete); objects are written once under names of their content, so a
-  slow or eventually consistent store never shows half of one.
-  `LocalStore` (a folder) now; Google Drive next.
+- **Stores** (`store.rs`): `Store` (put whole, get, get a range, list
+  with sizes, delete); objects are written once under names of their
+  content, so a slow or eventually consistent store never shows half of
+  one. `LocalStore` (a folder) and `drive::Drive`.
+- **Google Drive** (`drive.rs`): the repository's objects as files of
+  one folder in My Drive ("Olo DiskBackup", found or made), named as the
+  repository names them (a Drive name may hold a slash), through Drive's
+  v3 API (ureq, rustls with the system's roots). Under 5 MiB in one
+  multipart request; above, resumably in 8 MiB pieces, a piece that fails
+  asked where it got to (`bytes */N`, its 308's Range) and gone on from
+  there (no redirect followed: a 308 followed is lost). Google's 429, a
+  rate limit's 403 and 5xx tried again up to 8 times, waiting 1 s to a
+  minute, doubling, a little at random; a 401 fetches the token again.
+  Every body paced by the speed limits as it's sent or read, 64 KiB at a
+  time (`Paced`, with its length: never chunked). Each file's id kept
+  from listings (a listing of a folder: `name contains 'index/'`, Drive's
+  prefix match), found by name if need be. Tested against a Google of
+  our own (`tests/support/google.rs`: a 429, a token run out, listings
+  two a page, an upload's first piece cut part way): put, replace, get,
+  ranges, list, delete, then a whole repository backed up (a 20 MiB file
+  resumably), restored from another `Repo`, and tidied.
+- **Signing in** (`oauth.rs`): each person's own OAuth client (a
+  "Desktop app" in a Google Cloud project of theirs: `Client`, from its
+  downloaded JSON or its ID and secret), Google's installed-app flow: the
+  consent page in the browser, the answer to `http://127.0.0.1:PORT` (a
+  port of its own each time), PKCE S256 and a state; the scopes
+  `drive.file` (only the files DiskBackup makes: non-sensitive, so no
+  review by Google) and `openid email` (whose Drive, said); the refresh
+  token kept. An External app left in Testing is signed out after 7 days
+  by Google: the setup has it published.
 - **`config`**: the format and chunking, sealed: opening it is how a key
   is known to be the right one (`Error::WrongKey`). The key, 32 random
   bytes (`Key::to_hex`), is kept by Olo Passwords, not in the store.
@@ -12460,17 +12592,31 @@ in layers; done so far, **the engine** (crates/diskbackup):
   went 20 minutes without refreshing (it slept) takes its lock as lost
   (`Error::LockLost`) and writes nothing more: what it wrote may have been
   tidied away meanwhile; the service opens the backup again and goes on.
-- **Keeping** (`keep.rs`): the newest snapshot of each of the last so
-  many hours, days, ISO weeks and months (local time; Settings' `keep`,
-  24/14/8/24 by default), and always the newest; each computer forgets
-  only its own (another's are its to keep).
+- **Keeping** (`keep.rs`): every snapshot from the last hour (a backup a
+  few minutes old isn't let go of when Back Up Now makes another), then
+  the newest of each of the last so many hours, days, ISO weeks and
+  months (local time; Settings' `keep`, 24/14/8/24 by default); each
+  computer forgets only its own (another's are its to keep).
 - **Tidying** (`prune.rs`): what every snapshot left uses (its trees,
   read once each from the cache, and their chunks); a pack nothing in it
   is used goes; one 30% unused, or one of eight or more small ones (a
   backup's last, partly filled), has what's used copied into new packs
   (sealed as it was: only checked whole) and goes; a blob kept twice kept
-  once, in the pack most used; packs no index names (a backup stopped
-  before naming them) go. Only the index files naming a pack that goes
+  once, in the pack most used. A pack no index names (a backup stopped
+  before naming it, an index file lost) is read back from its own list
+  first (`Repo::pack_header`: two small reads at its end) and taken into
+  the index before the snapshots are walked, so what they use in it is
+  kept and named again, and only one nothing uses goes (one whose list
+  is damaged, too; one that couldn't be fetched stops the tidying
+  instead): a lost index loses nothing. A backup whose parent's
+  tree isn't in the index does the same first (`Repo::find_lost`), so
+  what's unchanged isn't sent again. An index file that doesn't open or
+  read (damaged in the store) is passed over wherever the index is read
+  (`Repo::damaged_index_files`): the packs no index names are read back
+  from their own lists at once, in memory, so the backup still opens,
+  restores and dedups; the next backup names them in an index file of
+  its own; and tidying, due within the hour then, lets go of the damaged
+  file (`Pruned::index_files_damaged`). Only the index files naming a pack that goes
   are written again (and small ones, eight or more, put together), then
   they go, then the packs: stopped anywhere, nothing is lost. The cache's
   copies of what's gone go too.
@@ -12500,14 +12646,16 @@ the backup is tidied with the only lock (another computer using it: next
 time), `Doing::Pruning` in the state, then `State::tidied` (snapshots let
 go of since, bytes freed) and `State::size` (what the backups take there,
 grown by each backup since). A failed backup or tidy opens the backup
-again next time. Settings: `~/.config/olo/diskbackup.json`
+again next time. One service at a time: another started while one runs
+(Doctor's Start It, by hand) says so and exits. Settings: `~/.config/olo/diskbackup.json`
 (`olo_protocol::diskbackup::Settings`: target, paths, exclude groups and
 patterns, every, keep, speed limits, battery, one file system). The key:
 in the login keyring (`olo_system::secrets::DISKBACKUP_KEY`, which the
 settings backup carries too), where the service finds it with no one
 there; Passwords keeps it as well (the app, next). Command line:
 `--status [--json]`, `--now`, `--stop`, `--set-up-folder PATH`,
-`--snapshots`, `--restore SNAPSHOT PATH [TO]` (a shared lock, waiting
+`--keep-key` (the key kept in Passwords, as Keep Key in Passwords does:
+Olo Doctor's fix), `--snapshots`, `--restore SNAPSHOT PATH [TO]` (a shared lock, waiting
 for a tidy under way), `--tidy` (asked of the service if it runs, else
 done there), `--set KEY=VALUE…` (enabled, battery, every, upload,
 download, paths, exclude, groups, hourly, daily, weekly, monthly),
@@ -12539,6 +12687,53 @@ there and the last tidy that did something; Show in Deskbar puts DiskBackup's
 item in Deskbar's tray (see Deskbar: its glyph, its menu). Every change is written to the settings, which the service
 follows at once. The keychain's `Secrets` reads an Olo program's secrets
 back by title (another computer's setup, next).
+
+**Tracker's ticks and versions**: the service answers on its socket from
+a reader of this computer's snapshots' trees (`Repo::tree_reader`: where
+each tree is, read from the cache's tree packs, the last 512 kept),
+made again after it opens the backup (at start, not only at the first
+backup), after each backup and after each tidy, so it never waits for
+one to finish: `Request::Marks { dir }` (which of the folder's files
+the newest snapshot holds as they are now: `backup::unchanged_since`,
+by size, times and inode; 0.08 ms here), `Request::Versions { path }`
+(`restore::versions`: one for each content the file had, newest first,
+the newest and oldest snapshot keeping it, whether it's what's there
+now; 0.06 ms). `--marks DIR` and `--versions PATH` ask them from the
+command line. The **Versions window** (`versions.rs`;
+`--versions-window PATH`, Tracker's Older Versions…): Modified, Size,
+Backed Up, the one there now said; Restore (or Return) puts the chosen
+one back, asked Keep Both (beside it, named with when it was modified)
+or Replace, with a shared lock and its progress; it lists again when a
+backup finishes. Checked headless: a file changed loses its tick, gets
+it back after Back Up Now; its older version restored beside it.
+
+**Google Drive's setup** (`drive_setup.rs`; Back Up To ▸ Google Drive…;
+Ben, 2026-11-07: "we should have each user setup their own desktop app
+… have the app walk the user through how to do it"): Google asks each
+person to make their own sign-in for an app like this, so the window
+walks them through it, a numbered step at a time, each with Open for its
+page (Google Cloud's: make a project; turn on the Drive API; set up its
+sign-in, Audience External; add the `drive.file` scope; publish it, or
+Google signs it out every 7 days; make a Desktop app client and
+download its JSON); then the client given (Choose File… for the JSON, or
+its ID and secret typed: the secret a password field) and Sign In with
+Google: the browser to the consent page (Copy Address if it didn't
+open), the answer taken, the folder found or made, the backup there
+opened (this computer's key, the keys Passwords keeps) or made, the
+sign-in kept in the login keyring (`olo_system::secrets::DISKBACKUP_GOOGLE`)
+and the client in Passwords ("DiskBackup Google Client"): on another
+computer, Sign In with the One in Passwords skips the steps. As a tab of
+DiskBackup's frame it's as wide as that (640 points at least).
+`--set-up-drive [CLIENT_FILE | ID SECRET]` does the same from the
+command line (none: the client Passwords keeps), the consent page's
+address printed. For tests, `OLO_DISKBACKUP_GOOGLE_API` is a Google of
+our own (no browser opened; the window writes the address to
+`$OLO_DISKBACKUP_DIR/sign-in.url`) and `OLO_DISKBACKUP_GOOGLE` the
+sign-in; `tests/set_up_drive.rs` runs `--set-up-drive`, plays the
+browser, then the service backs up to it (`serve_google`, ignored,
+serves the fake for trying the window by hand). The layout review no
+longer counts a button's default ring as crowded lines, however wide the
+button (`layout_review::crowded_lines`).
 
 **Restore** (`restore.rs`; File ▸ Restore…, ⌘R, or Restore… beside Back
 Up Now): the snapshots newest first; the chosen one's folders browsed as

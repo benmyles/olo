@@ -121,6 +121,13 @@ pub struct Repo {
     tree_pack: Vec<bool>,
     /// The index files read.
     index_files: HashSet<String>,
+    /// Index files that don't open or don't read (damaged in the store):
+    /// passed over, their packs read back from their own lists instead,
+    /// and let go of when tidying.
+    damaged: HashSet<String>,
+    /// Packs read back from their own lists here and not yet named in an
+    /// index file in the store (`find_lost` names them).
+    unnamed: Vec<(Id, Vec<Entry>)>,
     /// The packs being filled.
     writers: [Writer; 2],
     pending: HashSet<Id>,
@@ -189,6 +196,8 @@ impl Repo {
             pack_no: HashMap::new(),
             tree_pack: Vec::new(),
             index_files: HashSet::new(),
+            damaged: HashSet::new(),
+            unnamed: Vec::new(),
             writers: Default::default(),
             pending: HashSet::new(),
             written: Vec::new(),
@@ -246,24 +255,45 @@ impl Repo {
     }
 
     /// The index as the store has it now: index files new since it was
-    /// read added; all read again if any went (someone tidied).
+    /// read added; all read again if any went (someone tidied). One that
+    /// doesn't open or read (damaged) is passed over, and the packs no
+    /// index names are read back from their own lists in its place: what
+    /// it named can still be restored, and isn't backed up again.
     pub fn refresh(&mut self) -> Result<()> {
         let names: Vec<String> = self.store.list("index")?.into_iter().map(|(n, _)| n).collect();
         let listed: HashSet<&String> = names.iter().collect();
         if !self.index_files.iter().all(|n| listed.contains(n)) {
             self.forget_index();
         }
+        self.damaged.retain(|n| listed.contains(n));
+        let mut damaged = false;
         for name in names {
-            if self.index_files.contains(&name) {
+            if self.index_files.contains(&name) || self.damaged.contains(&name) {
                 continue;
             }
-            let files: Vec<(Id, Vec<Entry>)> = decode(&self.cached(&name)?)?;
-            for (pack, entries) in files {
-                self.add_pack(pack, &entries);
+            match self.cached(&name).and_then(|plain| decode::<Vec<(Id, Vec<Entry>)>>(&plain)) {
+                Ok(files) => {
+                    for (pack, entries) in files {
+                        self.add_pack(pack, &entries);
+                    }
+                    self.index_files.insert(name);
+                }
+                Err(Error::Damaged(_)) => {
+                    self.damaged.insert(name);
+                    damaged = true;
+                }
+                Err(e) => return Err(e),
             }
-            self.index_files.insert(name);
+        }
+        if damaged {
+            self.read_lost()?;
         }
         Ok(())
+    }
+
+    /// Index files found damaged (passed over; tidying lets go of them).
+    pub fn damaged_index_files(&self) -> usize {
+        self.damaged.len()
     }
 
     /// The index read again, all of it.
@@ -278,6 +308,8 @@ impl Repo {
         self.pack_no.clear();
         self.tree_pack.clear();
         self.index_files.clear();
+        self.damaged.clear();
+        self.unnamed.clear();
         // (Packs gone up whose index hasn't yet.)
         for (pack, entries) in self.written.clone() {
             self.add_pack(pack, &entries);
@@ -375,6 +407,77 @@ impl Repo {
         Ok(())
     }
 
+    /// A pack's own list of what it holds (its sealed header, at its end,
+    /// before the header's length): two small reads, not the pack.
+    pub(crate) fn pack_header(&self, id: &Id, size: u64) -> Result<Vec<Entry>> {
+        let name = pack_name(id);
+        if size < 4 {
+            return Err(Error::Damaged(format!("{name} is short")));
+        }
+        let tail = self.store.get_range(&name, size - 4, 4)?;
+        let len = u32::from_le_bytes([tail[0], tail[1], tail[2], tail[3]]) as u64;
+        if len + 4 > size {
+            return Err(Error::Damaged(format!("{name}'s list doesn't fit")));
+        }
+        let sealed = self.store.get_range(&name, size - 4 - len, len)?;
+        let plain = self.key.open(&sealed).ok_or_else(|| Error::Damaged(format!("{name}'s list doesn't open")))?;
+        decode(&plain)
+    }
+
+    /// Packs no index names (an index file lost or damaged; another
+    /// computer's backup not named yet), read back from their own lists and
+    /// named again in an index file: how many.
+    pub fn find_lost(&mut self) -> Result<usize> {
+        self.check_lock()?;
+        self.read_lost()?;
+        let found = std::mem::take(&mut self.unnamed);
+        if !found.is_empty() {
+            match self.put_index(&found) {
+                // (Named by what it holds, it may be a damaged one's name:
+                // that one is whole again.)
+                Ok(name) => {
+                    self.damaged.remove(&name);
+                    self.index_files.insert(name);
+                }
+                Err(e) => {
+                    self.unnamed = found;
+                    return Err(e);
+                }
+            }
+        }
+        Ok(found.len())
+    }
+
+    /// Packs no index names read back from their own lists into the index
+    /// here (`unnamed` till an index file names them): how many.
+    fn read_lost(&mut self) -> Result<usize> {
+        let named: HashSet<Id> = self.packs.iter().copied().collect();
+        let mut n = 0;
+        for (name, size) in self.store.list("data")? {
+            let Some(id) = name.rsplit('/').next().and_then(Id::from_hex) else { continue };
+            if named.contains(&id) {
+                continue;
+            }
+            if let Ok(entries) = self.pack_header(&id, size) {
+                self.add_pack(id, &entries);
+                self.unnamed.push((id, entries));
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
+
+    /// Packs read back from their own lists and not yet named in the
+    /// store's index.
+    pub(crate) fn has_unnamed(&self) -> bool {
+        !self.unnamed.is_empty()
+    }
+
+    /// A pack taken into the index here (not yet named in the store's).
+    pub(crate) fn take_pack(&mut self, pack: Id, entries: &[Entry]) {
+        self.add_pack(pack, entries);
+    }
+
     /// A whole pack (a tree pack's from the cache, if it's there whole).
     pub(crate) fn pack_bytes(&self, id: &Id, trees: bool) -> Result<Vec<u8>> {
         let name = pack_name(id);
@@ -410,12 +513,14 @@ impl Repo {
     }
 
     fn unseal(&self, id: &Id, sealed: &[u8], flags: u8) -> Result<Vec<u8>> {
-        let body = self.key.open(sealed).ok_or_else(|| Error::Damaged(format!("blob {id:?} doesn't open")))?;
-        let plain = if flags & COMPRESSED != 0 { zstd::stream::decode_all(&body[..])? } else { body };
-        if self.key.id(&plain) != *id {
-            return Err(Error::Damaged(format!("blob {id:?} isn't what it was")));
-        }
-        Ok(plain)
+        unseal(&self.key, id, sealed, flags)
+    }
+
+    /// A reader of its trees that needs nothing of it after (for another
+    /// thread, while this one backs up): where each tree is, as now.
+    pub fn tree_reader(&self) -> TreeReader {
+        let trees = self.index.iter().filter(|(_, l)| l.flags & TREE != 0).map(|(id, l)| (*id, (self.packs[l.pack as usize], l.offset, l.len, l.flags))).collect();
+        TreeReader { key: self.key.clone(), store: self.store.clone(), cache: self.cache.clone(), trees, seen: Default::default() }
     }
 
     /// A pack being filled, up: its blobs then its sealed list of them (a
@@ -526,6 +631,72 @@ impl Repo {
     /// A tree, by id.
     pub fn tree(&self, id: &Id) -> Result<crate::Tree> {
         crate::Tree::decode(&self.get(id)?)
+    }
+}
+
+/// A blob opened: unsealed, decompressed, checked against its id.
+fn unseal(key: &Key, id: &Id, sealed: &[u8], flags: u8) -> Result<Vec<u8>> {
+    let body = key.open(sealed).ok_or_else(|| Error::Damaged(format!("blob {id:?} doesn't open")))?;
+    let plain = if flags & COMPRESSED != 0 { zstd::stream::decode_all(&body[..])? } else { body };
+    if key.id(&plain) != *id {
+        return Err(Error::Damaged(format!("blob {id:?} isn't what it was")));
+    }
+    Ok(plain)
+}
+
+/// What reads trees: a repository, or a [`TreeReader`] of one.
+pub trait Trees {
+    fn tree(&self, id: &Id) -> Result<crate::Tree>;
+}
+
+impl Trees for Repo {
+    fn tree(&self, id: &Id) -> Result<crate::Tree> {
+        Repo::tree(self, id)
+    }
+}
+
+/// A repository's trees, read from the cache's tree packs (the store's
+/// if the cache hasn't one), as they were when it was made
+/// ([`Repo::tree_reader`]); the last few hundred read kept.
+pub struct TreeReader {
+    key: Key,
+    store: Arc<dyn Store>,
+    cache: Option<PathBuf>,
+    /// Each tree's pack, place, length and flags.
+    trees: HashMap<Id, (Id, u32, u32, u8)>,
+    seen: std::sync::Mutex<HashMap<Id, Arc<crate::Tree>>>,
+}
+
+impl TreeReader {
+    /// The tree `id`, shared.
+    pub fn get(&self, id: &Id) -> Result<Arc<crate::Tree>> {
+        if let Some(t) = self.seen.lock().ok().and_then(|s| s.get(id).cloned()) {
+            return Ok(t);
+        }
+        let &(pack, offset, len, flags) = self.trees.get(id).ok_or_else(|| Error::Damaged(format!("no tree {id:?}")))?;
+        let name = pack_name(&pack);
+        let local = self.cache.as_ref().map(|c| c.join(&name)).and_then(|p| std::fs::File::open(p).ok()).and_then(|f| {
+            let mut out = vec![0u8; len as usize];
+            std::os::unix::fs::FileExt::read_exact_at(&f, &mut out, offset as u64).ok().map(|()| out)
+        });
+        let plain = match local.map(|sealed| unseal(&self.key, id, &sealed, flags)) {
+            Some(Ok(plain)) => plain,
+            _ => unseal(&self.key, id, &self.store.get_range(&name, offset as u64, len as u64)?, flags)?,
+        };
+        let tree = Arc::new(crate::Tree::decode(&plain)?);
+        if let Ok(mut seen) = self.seen.lock() {
+            if seen.len() >= 512 {
+                seen.clear();
+            }
+            seen.insert(*id, tree.clone());
+        }
+        Ok(tree)
+    }
+}
+
+impl Trees for TreeReader {
+    fn tree(&self, id: &Id) -> Result<crate::Tree> {
+        Ok((*self.get(id)?).clone())
     }
 }
 

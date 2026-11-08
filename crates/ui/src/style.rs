@@ -317,15 +317,26 @@ pub fn label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, ali
     paint_label(window, cx, x, center_y, align, &text, font_size, line)
 }
 
+/// Where a label `width` wide, aligned to `x` so, begins: on a device
+/// pixel. Right-aligned, it never runs past `x` (rounded down, not to the
+/// nearest: rounded up half a pixel, a slider's "Fast" and its values ran
+/// a point past their box at 1.25×).
+fn label_left(window: &Window, x: Pixels, width: Pixels, align: Align) -> Pixels {
+    match align {
+        Align::Left => snap_coord(window, x),
+        Align::Center => snap_coord(window, x - width / 2.0),
+        Align::Right => {
+            let s = window.scale_factor();
+            // (A hair over a whole pixel as it came is that pixel.)
+            px(((f32::from(x - width) * s) + 0.01).floor() / s)
+        }
+    }
+}
+
 /// A line shaped for [`label`], painted.
 #[allow(clippy::too_many_arguments)]
 fn paint_label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: &str, font_size: f32, line: gpui::ShapedLine) -> Bounds<Pixels> {
-    let left = match align {
-        Align::Left => x,
-        Align::Center => x - line.width / 2.0,
-        Align::Right => x - line.width,
-    };
-    let left = snap_coord(window, left);
+    let left = label_left(window, x, line.width, align);
     let baseline = snap_coord(window, center_y + px(font_size * CAP_HEIGHT / 2.0));
     let top = baseline - line.ascent;
     let height = line.ascent + line.descent;
@@ -488,14 +499,7 @@ pub fn label_fit(
 /// line, the capitals centred on `center_y`, the baseline on a pixel.
 pub fn label_runs(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: SharedString, font_size: f32, runs: &[TextRun]) -> Bounds<Pixels> {
     let line = window.text_system().shape_line(text.clone(), px(font_size), runs, None);
-    let left = snap_coord(
-        window,
-        match align {
-            Align::Left => x,
-            Align::Center => x - line.width / 2.0,
-            Align::Right => x - line.width,
-        },
-    );
+    let left = label_left(window, x, line.width, align);
     let baseline = snap_coord(window, center_y + px(font_size * CAP_HEIGHT / 2.0));
     let top = baseline - line.ascent;
     let height = line.ascent + line.descent;

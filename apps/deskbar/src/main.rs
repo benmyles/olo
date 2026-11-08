@@ -141,6 +141,8 @@ enum Msg {
     Workspace(u32, u32, Vec<DisplayWorkspace>),
     Status(status::Status),
     Power(olo_protocol::PowerStatus),
+    /// Undo and Redo Window Arrangement's names (None: nothing to).
+    Arrangement(Option<String>, Option<String>),
     Settings(Settings),
     Outputs(Vec<OutputInfo>),
     Installed(Installed),
@@ -260,6 +262,8 @@ struct Deskbar {
     /// Approving requests without asking until then (seconds since the
     /// epoch; app_server's approve.rs).
     approve_until: Option<u64>,
+    /// What Undo and Redo Window Arrangement would do, by name (app_server's).
+    arrangement: (Option<String>, Option<String>),
     /// The window turning it on, while it is open.
     approve: Option<Entity<approve::Ask>>,
     /// The newest unread notification seen (None until the first word
@@ -685,7 +689,12 @@ impl Deskbar {
             .item("Fan Out Others", "arrange:fan-out-others")
             .enabled(focused)
             .separator()
-            .item("Undo Window Arrangement", "arrange:undo-arrangement")
+            // (Named as an app's Edit ▸ Undo is: Undo Cascade, Redo Move
+            // to Workspace 2.)
+            .item(self.arrangement.0.as_ref().map_or("Undo Window Arrangement".into(), |n| format!("Undo {n}")), "arrange:undo-arrangement")
+            .enabled(self.arrangement.0.is_some())
+            .item(self.arrangement.1.as_ref().map_or("Redo Window Arrangement".into(), |n| format!("Redo {n}")), "arrange:redo-arrangement")
+            .enabled(self.arrangement.1.is_some())
             .separator()
             .item("Windows Preferences…", "pref:windows")
     }
@@ -1302,6 +1311,7 @@ impl Deskbar {
                 self.note_arrivals(&s);
                 self.status = s;
             }
+            Msg::Arrangement(undo, redo) => self.arrangement = (undo, redo),
             Msg::Power(p) => {
                 // (Nothing read for widgets nobody can see.)
                 self.live.pause(p.display_asleep || p.locked, &self.proxy);
@@ -3122,6 +3132,9 @@ fn watch_server(proxy: olo_ui::Proxy) {
                     if let Ok(Reply::Power { status }) = c.request(&Request::PowerStatus) {
                         proxy.send(Msg::Power(status));
                     }
+                    if let Ok(Reply::ArrangementUndo { undo, redo }) = c.request(&Request::ArrangementUndo) {
+                        proxy.send(Msg::Arrangement(undo, redo));
+                    }
                     if let Ok(Reply::Settings { settings }) = c.request(&Request::GetSettings) {
                         proxy.send(settings_msg(settings));
                     }
@@ -3129,7 +3142,7 @@ fn watch_server(proxy: olo_ui::Proxy) {
                         proxy.send(Msg::Outputs(outputs));
                     }
                     use olo_protocol::EventKind as K;
-                    if let Ok(events) = c.into_events_of(&[K::Windows, K::Workspace, K::Power, K::Settings, K::Outputs]) {
+                    if let Ok(events) = c.into_events_of(&[K::Windows, K::Workspace, K::Power, K::Settings, K::Outputs, K::ArrangementUndo]) {
                         // Displays that came while this was subscribing
                         // (after an upgrade they come one by one): asked
                         // again, now that what changes from here comes as
@@ -3144,6 +3157,7 @@ fn watch_server(proxy: olo_ui::Proxy) {
                                 Event::WindowsChanged { windows } => proxy.send(Msg::Windows(windows)),
                                 Event::WorkspaceChanged { current, count, displays } => proxy.send(Msg::Workspace(current, count, displays)),
                                 Event::PowerChanged { status } => proxy.send(Msg::Power(status)),
+                                Event::ArrangementUndoChanged { undo, redo } => proxy.send(Msg::Arrangement(undo, redo)),
                                 Event::SettingsChanged { settings } => proxy.send(settings_msg(settings)),
                                 Event::OutputsChanged { outputs } => proxy.send(Msg::Outputs(outputs)),
                                 _ => {}
@@ -3216,6 +3230,7 @@ fn main() {
                 confirm: None,
                 upgrade_ask: None,
                 approve_until: None,
+                arrangement: (None, None),
                 approve: None,
                 notes_seen: None,
                 shaking: HashMap::new(),

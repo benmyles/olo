@@ -139,7 +139,7 @@ impl<C> History<C> {
     /// `menu` with Undo and Redo (commands `undo` and `redo`), named for
     /// their steps, with the profile's keys.
     pub fn edit_items(&self, menu: Menu) -> Menu {
-        menu.item(self.undo_label(), "undo").key("z").enabled(self.can_undo()).item(self.redo_label(), "redo").shift_key("z").enabled(self.can_redo())
+        edit_items_named(menu, self.undo.last().map(|s| s.name.as_str()), self.redo.last().map(|s| s.name.as_str()))
     }
 
     /// Forget every step (what they'd take back is gone).
@@ -147,6 +147,22 @@ impl<C> History<C> {
         self.undo.clear();
         self.redo.clear();
     }
+}
+
+/// Edit ▸ Undo and Redo for an app that keeps its steps its own way (a
+/// document's, StyledEdit's): each step's name (None: nothing to take
+/// back; "": a step without one), as [`History::edit_items`] has them.
+pub fn edit_items_named(menu: Menu, undo: Option<&str>, redo: Option<&str>) -> Menu {
+    edit_items_as(menu, undo, redo, ("undo", "redo"))
+}
+
+/// [`edit_items_named`] with commands of the app's own (`edit-undo`).
+pub fn edit_items_as(menu: Menu, undo: Option<&str>, redo: Option<&str>, commands: (&str, &str)) -> Menu {
+    let label = |verb: &str, name: Option<&str>| match name {
+        Some(n) if !n.is_empty() => format!("{verb} {n}"),
+        _ => verb.to_owned(),
+    };
+    menu.item(label("Undo", undo), commands.0).key("z").enabled(undo.is_some()).item(label("Redo", redo), commands.1).shift_key("z").enabled(redo.is_some())
 }
 
 fn label<C>(verb: &str, step: Option<&Step<C>>) -> String {
