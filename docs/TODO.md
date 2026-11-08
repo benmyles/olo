@@ -32,9 +32,11 @@ something nobody here has is in "Blocked", with what it waits for.
   Clear, results: ⌘Z after = brings the sum back); app_server's window
   arrangements named, with a Redo (⇧⌃⌘Z), windows moved between
   workspaces among them (the keys', Deskbar's Move To), Deskbar's menu
-  naming them. Left, each app looked at for what should undo and put on
-  it: Terminal's tab and pane changes (a closed tab can't come back with
-  its process: say so); and the rest that may have something to undo.
+  naming them; Terminal's tabs (moved, grouped, closed: a closed one
+  comes back as a new shell in its folder, and Undo says so) and
+  settings. Left: a tab torn off into a window of its own isn't a step
+  yet; and the rest that may have something to undo, as each is next
+  worked on.
 
 ## Done, waiting for Ben to try or confirm
 
