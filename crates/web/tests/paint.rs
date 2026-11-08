@@ -1674,7 +1674,7 @@ fn a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted() {
     let h = h.unwrap();
     let root = doc.attach_shadow(h).unwrap();
     let style = doc.create_element("style", olo_web::dom::Namespace::Html).unwrap();
-    let css = doc.create_text(":host{display:block;padding-top:20px;background-color:yellow}p{margin:0;height:10px;background-color:green}::slotted(span){background-color:rgb(0,255,255)}").unwrap();
+    let css = doc.create_text(":host{display:block;padding-top:20px;background-color:yellow}p{margin:0;height:10px;background-color:green}::slotted(span){background-color:rgb(0,255,255)}i{display:block;height:10px;background-color:black}").unwrap();
     doc.append_child(style, css).unwrap();
     doc.append_child(root, style).unwrap();
     let p = doc.create_element("p", olo_web::dom::Namespace::Html).unwrap();
@@ -1685,6 +1685,10 @@ fn a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted() {
     let tail = doc.create_element("p", olo_web::dom::Namespace::Html).unwrap();
     doc.set_attribute(tail, "part", "tail").unwrap();
     doc.append_child(root, tail).unwrap();
+    // A host inside the shadow tree: the tree's `:host` rule is not its.
+    let inner = doc.create_element("i", olo_web::dom::Namespace::Html).unwrap();
+    doc.append_child(root, inner).unwrap();
+    doc.attach_shadow(inner).unwrap();
     page.refresh(&doc, None, &mut |_, _, _| Ok(None)).unwrap();
     page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     let tile = render(&mut painter, &page.scene);
@@ -1693,7 +1697,8 @@ fn a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted() {
     assert_eq!(pixel(&tile, 50, 25), [0, 128, 0, 255], "the shadow tree's p");
     assert_eq!(pixel(&tile, 50, 35), [0, 255, 255, 255], "the slotted span");
     assert_eq!(pixel(&tile, 50, 45), [255, 0, 255, 255], "the part, as the document styles it");
-    assert_eq!(pixel(&tile, 50, 55), [255, 0, 0, 255], "the document's p");
+    assert_eq!(pixel(&tile, 50, 55), [0, 0, 0, 255], "a host in the shadow tree, without the tree's :host rule");
+    assert_eq!(pixel(&tile, 50, 65), [255, 0, 0, 255], "the document's p");
 }
 #[test]
 fn a_class_that_selectors_reach_from_restyles_what_they_reach() {

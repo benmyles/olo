@@ -238,6 +238,13 @@ struct Machine<'a, 'k, T: Tree> {
     /// `:has()` results by (node, list), for the selectors of one element
     /// asking the same question (a walk of the whole subtree each).
     has: HashMap<(T::Node, u32), bool>,
+    /// The shadow tree the rule being matched is from (`scope_key`; None
+    /// for the document's), when the caller knows it: `:host` is then the
+    /// host of that tree only, not any shadow host (an element in a
+    /// shadow tree that hosts one of its own took its outer tree's
+    /// `:host` rules: Shoelace's caret icon, inside a button, was sized as
+    /// the button).
+    rule_scope: Option<Option<u64>>,
 }
 /// One element's matcher: every selector tested against the same subject,
 /// with the machine, its caches and the subject's name made once.
@@ -254,6 +261,11 @@ impl<'a, T: Tree> Matcher<'a, '_, T> {
         self.machine.tick(1)?;
         let result = self.machine.list(root, self.node, Context { anchor: None, pseudo: self.machine.options.pseudo, depth: 0 }, true)?;
         Ok((result, self.machine.progress))
+    }
+    /// The shadow tree (`scope_key`, None for the document) the rules
+    /// matched next are from, for `:host`.
+    pub fn set_rule_scope(&mut self, scope: Option<u64>) {
+        self.machine.rule_scope = Some(scope);
     }
 }
 /// An element's id and class tokens, hashed, read from its attributes once.
@@ -330,6 +342,7 @@ impl Selectors {
             keys,
             subject: Some((node, name)),
             has: HashMap::new(),
+            rule_scope: None,
         };
         Ok(Matcher { machine, node })
     }
@@ -362,6 +375,7 @@ impl Selectors {
             keys: &mut keys,
             subject: None,
             has: HashMap::new(),
+            rule_scope: None,
         };
         machine.tick(1)?;
         tree.content(root)?;
@@ -533,11 +547,13 @@ impl<'a, T: Tree> Machine<'a, '_, T> {
                     ctx.pseudo == Some(p)
                 }
                 Test::Host(list) => {
-                    self.tree.is_shadow_host(node)?
-                        && (list == NONE || {
-                            let child = self.child_context(ctx)?;
-                            self.list(list, node, child, false)?.is_some()
-                        })
+                    (match self.rule_scope {
+                        Some(scope) => scope.is_some() && self.tree.scopes(node)?[1] == scope,
+                        None => self.tree.is_shadow_host(node)?,
+                    }) && (list == NONE || {
+                        let child = self.child_context(ctx)?;
+                        self.list(list, node, child, false)?.is_some()
+                    })
                 }
                 Test::Logical { mode, list } => {
                     let child = self.child_context(ctx)?;

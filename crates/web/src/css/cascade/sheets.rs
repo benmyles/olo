@@ -907,6 +907,7 @@ impl RuleSet {
             check(cancelled)?;
             let rule = &self.rules[id as usize];
             let Some(encapsulation) = rule.context(&scopes) else { continue };
+            matcher.set_rule_scope(rule.scope);
             let (matched, progress) = matcher.matches(rule.selector, match_limits.work.min(limits.work.saturating_sub(work))).map_err(Error::Selectors)?;
             if progress.steps > 40 && std::env::var_os("OLO_STYLE_TIMING").is_some() {
                 eprintln!("    costly match: <{}> {} steps for {}", name.local_name, progress.steps, self.selectors.subject_summary(rule.selector));
