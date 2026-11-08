@@ -6476,3 +6476,11 @@ journal).
   `isConnected` through shadow roots. Its components render (buttons,
   icons, the theme switch); its dialog's fixed overlay is still laid
   out in the page (open).
+- **apple.com's Upgrade tile plays.** Its script calls `load()` on the
+  video once the tile scrolls into view and plays it on
+  `canplaythrough`. The realm reset the element's state on `load()` but
+  the player ignored it, so `readyState` stayed 0, no event came, and the
+  script took the video out, leaving its start frame (an iPhone). `load()`
+  now runs the media element load algorithm for a loaded video: back to
+  its start, paused, `loadstart` … `canplaythrough` again. The video plays
+  to its end (the Watch), as in Chrome.

@@ -74,7 +74,8 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   rasterises on the GPU). Inline elements' `opacity` paints now (glyphs,
   decorations and inline backgrounds at the product of their inline
   elements' opacities; where an element overlaps itself a group would
-  differ). Open: apple.com's "Hello, hello." word swap (scripted
+  differ). apple.com's Upgrade video plays (`load()` honoured). Open:
+  apple.com's "Hello, hello." word swap (scripted
   transform and opacity on inline-blocks) ends with both words showing,
   shifted.
 - [ ] GitHub's "More ways" cards stay pinned (sticky, stacked) while the

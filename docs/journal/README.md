@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: apple.com's Upgrade video plays
+
+*02:46* — The Upgrade tile's video, played by the page's script once it scrolls into view, ends on the Watch as in Chrome; Olo showed its start frame (an iPhone) before load() was honoured.
+
+![Browser: apple.com's Upgrade video plays](2026-11-08/024615-browser-apple-com-s-upgrade-video-plays.png)
+
 ### Browser: rounded inline backgrounds
 
 *02:01* — Left Olo, right Chrome: code, a pill-shaped span and a mark across two lines, each rounded where its box starts and ends, square at the line break.

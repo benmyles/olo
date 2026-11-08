@@ -3988,5 +3988,11 @@
   "title": "Browser: rounded inline backgrounds",
   "caption": "Left Olo, right Chrome: code, a pill-shaped span and a mark across two lines, each rounded where its box starts and ends, square at the line break.",
   "image": "2026-11-08/020121-browser-rounded-inline-backgrounds.png"
+ },
+ {
+  "time": "2026-11-08T02:46:15",
+  "title": "Browser: apple.com's Upgrade video plays",
+  "caption": "The Upgrade tile's video, played by the page's script once it scrolls into view, ends on the Watch as in Chrome; Olo showed its start frame (an iPhone) before load() was honoured.",
+  "image": "2026-11-08/024615-browser-apple-com-s-upgrade-video-plays.png"
  }
 ]

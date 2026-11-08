@@ -177,7 +177,20 @@ impl Player {
                 }
                 self.media.time = t;
             }
-            MediaCommand::Load => {}
+            // The media element load algorithm (HTML §4.8.11.5), for one
+            // already loaded: back to its start, paused, its readiness told
+            // again (apple.com's tiles call load() and wait for
+            // `canplaythrough` before playing; it never came, and the video
+            // was taken out).
+            MediaCommand::Load => {
+                self.wanted_playing = false;
+                self.told_ready = false;
+                self.media = Media { paused: true, ..Default::default() };
+                if let Some((v, _)) = &self.video {
+                    v.set_playing(false);
+                    v.seek(0.);
+                }
+            }
         }
     }
     /// Whether the picture or state changed, the events to fire, and when
@@ -251,6 +264,19 @@ impl Player {
                     }
                 }
             }
+        }
+        // Loaded again (`load()`) with its picture still shown: ready again.
+        if !self.told_ready
+            && let Some(image) = &self.image
+        {
+            self.told_ready = true;
+            let density = image.density();
+            self.media.width = (f64::from(image.width()) * density).round() as u32;
+            self.media.height = (f64::from(image.height()) * density).round() as u32;
+            self.media.duration = *duration;
+            self.media.ready = 4;
+            events.extend(["loadstart", "durationchange", "loadedmetadata", "loadeddata", "canplay", "canplaythrough"]);
+            changed = true;
         }
         let playing = video.playing();
         self.media.time = video.position();
