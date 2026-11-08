@@ -1585,7 +1585,9 @@ fn part_row(id: String, part: String, detail: String, on: bool, enabled: bool, t
         .h(px(PART_ROW))
         .pl(px(m::TEXT_INSET))
         .pr(px(m::SPACING))
-        .child(div().flex_1().min_w_0().child(CheckBox::new(part, on).id(id).enabled(enabled).on_toggle(toggle)))
+        // (The row's height, so its middle is the row's, where the detail's
+        // baseline is taken: 20 points in 26, it sat a pixel off at 1.25×.)
+        .child(div().flex_1().min_w_0().child(CheckBox::new(part, on).id(id).height(PART_ROW).enabled(enabled).on_toggle(toggle)))
         .child(detail)
         .into_any_element()
 }

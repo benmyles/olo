@@ -606,7 +606,9 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
             .flex_row()
             .items_center()
             .gap(px(m::SPACING * 3.0))
-            .child(CheckBox::new("Wi-Fi", status.wireless_enabled).enabled(status.wireless_hardware && !busy).on_toggle(move |on, _, _| {
+            // (As tall as the line beside it: their middles one, the two
+            // level at 1.25×.)
+            .child(CheckBox::new("Wi-Fi", status.wireless_enabled).height(m::CONTROL_HEIGHT).enabled(status.wireless_hardware && !busy).on_toggle(move |on, _, _| {
                 let _ = link.tx.send(Request::Wireless(on));
             }))
             .child(StringView::new(text).dim(true)),
@@ -1030,7 +1032,8 @@ fn details(ui: &mut Ui, st: &mut State, status: &Status) {
     }
     let names: Vec<SharedString> = status.devices.iter().map(|d| format!("{} ({})", d.interface, if d.kind == Kind::Wifi { "Wi-Fi" } else { "Ethernet" }).into()).collect();
     st.device = st.device.min(names.len() - 1);
-    const DIVIDER: f32 = 130.0;
+    // (On the 4-point grid, as Ethernet's.)
+    const DIVIDER: f32 = 132.0;
     let pick = ui.on_view(|v, i: usize, _, cx| {
         if let Some(st) = state_of(v) {
             st.device = i;

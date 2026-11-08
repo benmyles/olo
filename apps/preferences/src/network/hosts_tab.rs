@@ -14,7 +14,8 @@ use olo_ui::{
 use super::{Extra, Request, State, check, field, state_of};
 use crate::{PanelView, form::Ui};
 
-const DIVIDER: f32 = 90.0;
+// (On the 4-point grid, as Ethernet's.)
+const DIVIDER: f32 = 92.0;
 
 pub struct Edit {
     /// The entries as edited here, not yet saved.

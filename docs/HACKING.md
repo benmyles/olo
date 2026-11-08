@@ -6029,6 +6029,25 @@ every line and edge is a whole device pixel. This is how modern
 compositors and toolkits do it (KWin's pixel-grid snapping, Mutter,
 Chrome, GTK 4.16 text), and how Olo does it:
 
+- **Sizes in a row on the 4-point grid.** 4 points is a whole device
+  pixel at 1, 1.25, 1.5, 1.75 and 2×; 2 points only at 1, 1.5 and 2×. A
+  fixed width, a label column's divider, or an inset that the next thing
+  starts after, if it's off the 4-point grid, starts everything after it
+  on a half pixel at 1.25× and 1.75×. Layout and painting then round it
+  apart, a pixel at a time. Found so at 1.25× and 1.75×, and fixed
+  (2026-11-08):
+  - Power's grid of menus: gaps 11.2 and 12.8.
+  - Network's columns: a menu's text a pixel off a field's under it.
+  - Telegram's panes: laid out as roots of their own, a pixel past the
+    window.
+  - A 20-point check box centred beside a 24-point menu: their labels a
+    pixel off level. In a row, a check box takes the row's height (the
+    form's `row` does it).
+  - Right-aligned labels: `style::label` rounds their left edge down, so
+    they never run past their anchor.
+  - The review measures a text field by its frame.
+  `tools/dev/ui-lint --review --scales 1,1.25,1.5,1.75,2` checks every
+  app at all five.
 - **Clients draw at the device size.** Olo's GPUI asks app_server for
   wp-fractional-scale-v1 and wp-viewporter on every surface, draws into
   a buffer of `round(size × scale)` pixels and sets the viewport's

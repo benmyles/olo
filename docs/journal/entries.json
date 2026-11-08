@@ -3622,5 +3622,11 @@
   "title": "Security Keys: a key with a PIN",
   "caption": "A security key with a PIN set is set up with it (asked once, not kept): the key's PIN beside the account password, a wrong one said with the tries left. Its Remove works beside Face Unlock's (the two Remove buttons had one id and lost their clicks).",
   "image": "2026-11-08/005344-security-keys-a-key-with-a-pin.png"
+ },
+ {
+  "time": "2026-11-08T02:00:55",
+  "title": "Every app clean at 1.25\u00d7 and 1.75\u00d7",
+  "caption": "The layout review at 1.25\u00d7 and 1.75\u00d7 had found 26 errors and 10 near-misses across the apps, all there before: Power's grid (here, even now), boxes' insets, right-aligned labels, text fields in rows, Screen Saver's monitor stand, Telegram's panes, check boxes beside menus, Network's columns, About's wordmark. Every app and panel is clean at 1, 1.25, 1.5, 1.75 and 2\u00d7.",
+  "image": "2026-11-08/020055-every-app-clean-at-1-25-and-1-75.png"
  }
 ]

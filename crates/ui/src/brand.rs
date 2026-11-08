@@ -100,6 +100,18 @@ pub fn wordmark_centred(window: &mut Window, b: Bounds<Pixels>, dark: bool) -> D
 /// [`wordmark_centred`] in theme `theme` (its id): Preferences ▸ Themes
 /// shows each theme's.
 pub fn wordmark_centred_in(window: &mut Window, b: Bounds<Pixels>, dark: bool, theme: &str) -> Drawn {
+    wordmark_in(window, b, dark, theme, true)
+}
+
+/// [`wordmark_centred`], but at `b`'s left (on the pixel text there
+/// starts on), centred only up and down: over a line of text that starts
+/// where it does (About's version: centred, at 1.25× it started a pixel
+/// left of the line under it).
+pub fn wordmark_left(window: &mut Window, b: Bounds<Pixels>, dark: bool) -> Drawn {
+    wordmark_in(window, b, dark, olo_xdg::themes::current().id, false)
+}
+
+fn wordmark_in(window: &mut Window, b: Bounds<Pixels>, dark: bool, theme: &str, centred: bool) -> Drawn {
     let theme = olo_xdg::themes::resolve(theme).id;
     let src = match source(theme, dark) {
         None => {
@@ -124,7 +136,7 @@ pub fn wordmark_centred_in(window: &mut Window, b: Bounds<Pixels>, dark: bool, t
     };
     let (w, h) = (tw as f32 / scale, th as f32 / scale);
     let c = b.center();
-    let left = ((f32::from(c.x) * scale - tw as f32 / 2.0).round()) / scale;
+    let left = if centred { ((f32::from(c.x) * scale - tw as f32 / 2.0).round()) / scale } else { (f32::from(b.left()) * scale).round() / scale };
     let top = ((f32::from(c.y) - h / 2.0) * scale).round() / scale;
     let at = Bounds { origin: point(px(left), px(top)), size: size(px(w), px(h)) };
     let _ = window.paint_image(at, Corners::default(), image, 0, false);

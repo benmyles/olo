@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Every app clean at 1.25× and 1.75×
+
+*02:00* — The layout review at 1.25× and 1.75× had found 26 errors and 10 near-misses across the apps, all there before: Power's grid (here, even now), boxes' insets, right-aligned labels, text fields in rows, Screen Saver's monitor stand, Telegram's panes, check boxes beside menus, Network's columns, About's wordmark. Every app and panel is clean at 1, 1.25, 1.5, 1.75 and 2×.
+
+![Every app clean at 1.25× and 1.75×](2026-11-08/020055-every-app-clean-at-1-25-and-1-75.png)
+
 ### Security Keys: a key with a PIN
 
 *00:53* — A security key with a PIN set is set up with it (asked once, not kept): the key's PIN beside the account password, a wrong one said with the tries left. Its Remove works beside Face Unlock's (the two Remove buttons had one id and lost their clicks).

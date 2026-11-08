@@ -1230,17 +1230,19 @@ impl Render for Tg {
                 ));
             }
             _ => {
-                // The list, a grip, the conversation; on the 2-point grid,
-                // so the panes' edges are on device pixels at 1.5×.
+                // The list, a grip, the conversation; every pane's edges on
+                // device pixels, at every scale (on the 2-point grid they
+                // were at 1.5× only: at 1.25× the list's pane, laid out as a
+                // root of its own, ran a pixel past the window).
                 let fw = f32::from(full.size.width);
                 let lw = (self.list_width.clamp(list::MIN_WIDTH, (fw - 320.0).max(list::MIN_WIDTH)) / 2.0).round() * 2.0;
-                let left = Bounds { origin: full.origin, size: size(px(lw), full.size.height) };
+                let left = style::snap(window, Bounds { origin: full.origin, size: size(px(lw), full.size.height) });
                 let rx = style::snap_coord(window, px(lw) + style::hairline(window));
-                let right = Bounds::from_corners(point(rx, full.origin.y), full.bottom_right());
+                let right = style::snap(window, Bounds::from_corners(point(rx, full.origin.y), full.bottom_right()));
                 // Changes on their way to Telegram: a line under the list.
                 let (pending, total, waiting) = self.sync;
                 self.list_rect = if pending > 0 {
-                    let line = Bounds::from_corners(point(left.origin.x, left.bottom() - px(SYNC_H)), left.bottom_right());
+                    let line = Bounds::from_corners(point(left.origin.x, style::snap_coord(window, left.bottom() - px(SYNC_H))), left.bottom_right());
                     let done = total.saturating_sub(pending) as f32 / total.max(1) as f32;
                     let label = if pending == 1 { "Sending a change to Telegram…".to_owned() } else { format!("Sending {pending} changes to Telegram…") };
                     let trailing = match (&self.status, waiting) {
@@ -1275,7 +1277,7 @@ impl Render for Tg {
                     // The conversation over its composer, as tall as its
                     // text (up to eight lines).
                     let (_, composer_h, _) = conv::composer_size(self, f32::from(right.size.width), window, cx);
-                    let split = right.bottom() - px(composer_h);
+                    let split = style::snap_coord(window, right.bottom() - px(composer_h));
                     self.conv_rect = Bounds::from_corners(right.origin, point(right.right(), split));
                     self.composer_rect = Bounds::from_corners(point(right.origin.x, split), right.bottom_right());
                     for (kind, p) in &self.panes {

@@ -217,7 +217,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 s.fade_minutes = c;
             }
         });
-        let fade = CheckBox::new("Fade notifications away over", s.fade).on_toggle(set(ui, |s, v| s.fade = v));
+        // (As tall as the menu beside it: their labels level at 1.25×.)
+        let fade = CheckBox::new("Fade notifications away over", s.fade).height(m::CONTROL_HEIGHT).on_toggle(set(ui, |s, v| s.fade = v));
         ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(fade).child(MenuField::new("fade-minutes", names, i).width(110.0).enabled(s.fade).on_change(on)));
         let strip = s.clone();
         ui.add(canvas(|_, _, _| {}, move |b, _, window, cx| fade_strip(window, cx, b, &strip)).w_full().h(px(10.0 + style::SMALL_SIZE + 4.0)));
