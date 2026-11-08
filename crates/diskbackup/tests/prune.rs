@@ -38,6 +38,18 @@ fn size(store: &dyn Store) -> u64 {
     store.list("").unwrap().iter().filter(|(n, _)| !n.starts_with("locks/")).map(|(_, s)| s).sum()
 }
 
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for e in std::fs::read_dir(from).unwrap().flatten() {
+        let (f, t) = (e.path(), to.join(e.file_name()));
+        if e.file_type().unwrap().is_dir() {
+            copy_dir(&f, &t)
+        } else {
+            std::fs::copy(&f, &t).unwrap();
+        }
+    }
+}
+
 fn same(a: &Path, b: &Path) {
     for e in std::fs::read_dir(a).unwrap() {
         let e = e.unwrap();
@@ -272,5 +284,101 @@ fn index_lost_then_back_up() {
     let (_, s2) = backup(&mut repo, &opts, Some((id, &s)), &cancel, &progress).unwrap();
     assert!(s2.summary.new_bytes < 1 << 20, "not sent again: {:?}", s2.summary);
     assert_eq!(s2.summary.unchanged_files, 1, "{:?}", s2.summary);
+    let _ = std::fs::remove_dir_all(base);
+}
+
+/// An index file damaged in the store (one that doesn't open, and one
+/// that opens but doesn't read): the backup still opens and restores,
+/// the packs it named read back from their own lists; the next backup
+/// names them again (nothing sent again), and tidying lets go of the
+/// damaged files with nothing lost.
+#[test]
+fn index_damaged_healed() {
+    let base = temp("damaged");
+    let src = base.join("home");
+    std::fs::create_dir_all(src.join("docs")).unwrap();
+    std::fs::write(src.join("docs/a.bin"), noise(30 << 20, 9)).unwrap();
+    std::fs::write(src.join("docs/note.txt"), "keep me").unwrap();
+    let store: Arc<dyn Store> = Arc::new(LocalStore::new(base.join("store")));
+    let key = Key::generate();
+    let mut repo = Repo::init(store.clone(), key.clone(), Some(base.join("cache"))).unwrap();
+    let excludes = Excludes::none();
+    let opts = Options { paths: vec![src.clone()], excludes: &excludes, host: "test".into(), one_file_system: true };
+    let (cancel, progress) = (AtomicBool::new(false), Progress::default());
+    let (id, s) = backup(&mut repo, &opts, None, &cancel, &progress).unwrap();
+    drop(repo);
+    let blobs = Repo::open(store.clone(), key.clone(), None).unwrap().blobs();
+    // Every index file damaged: the first's bytes flipped, the others
+    // sealed but not an index.
+    let index = store.list("index").unwrap();
+    assert!(!index.is_empty());
+    for (k, (name, _)) in index.iter().enumerate() {
+        let mut bytes = store.get(name).unwrap();
+        if k == 0 {
+            let n = bytes.len() / 2;
+            bytes[n] ^= 0x55;
+        } else {
+            bytes = key.seal(b"not an index");
+        }
+        store.put(name, &bytes).unwrap();
+    }
+    if index.len() == 1 {
+        // (The second kind too.)
+        store.put("index/0000000000000000000000000000000000000000000000000000000000000000", &key.seal(b"not an index")).unwrap();
+    }
+    let damaged = store.list("index").unwrap().len();
+
+    // A cache's good copy is read in place of the store's damaged one.
+    assert_eq!(Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap().damaged_index_files(), damaged - 1);
+    // Without: it opens (it used to fail), with everything there, restored
+    // whole.
+    let mut repo = Repo::open(store.clone(), key.clone(), None).unwrap();
+    assert_eq!(repo.damaged_index_files(), damaged);
+    assert_eq!(repo.blobs(), blobs, "every blob found again");
+    let out = base.join("out");
+    restore(&repo, &s.tree, &src, &out, &cancel, &progress).unwrap();
+    same(&src, &out);
+
+    // The next backup sends nothing again, and names the packs.
+    let lock = repo.lock(false).unwrap();
+    let (_, s2) = backup(&mut repo, &opts, Some((id, &s)), &cancel, &progress).unwrap();
+    drop(lock);
+    assert!(s2.summary.new_bytes < 1 << 20, "not sent again: {:?}", s2.summary);
+    drop(repo);
+    // (A copy of the store without the damaged files: the good index files
+    // name everything.)
+    let check = base.join("store-check");
+    copy_dir(&base.join("store"), &check);
+    // (Those still damaged: one written again may have the damaged one's
+    // name, an index file being named by what it holds.)
+    let still_damaged = |dir: &Path| -> Vec<PathBuf> {
+        std::fs::read_dir(dir.join("index")).unwrap().flatten().map(|e| e.path()).filter(|p| key.open(&std::fs::read(p).unwrap()).is_none_or(|plain| plain == b"not an index")).collect()
+    };
+    for p in still_damaged(&check) {
+        std::fs::remove_file(p).unwrap();
+    }
+    let repo = Repo::open(Arc::new(LocalStore::new(&check)), key.clone(), None).unwrap();
+    assert_eq!(repo.damaged_index_files(), 0);
+    assert!(repo.blobs() >= blobs, "named again in an index file: {} of {blobs}", repo.blobs());
+    drop(repo);
+
+    // Tidying lets go of the damaged files, and nothing else.
+    let packs = store.list("data").unwrap().len();
+    let still = still_damaged(&base.join("store")).len();
+    assert!(still >= damaged - 1);
+    let mut repo = Repo::open(store.clone(), key.clone(), None).unwrap();
+    let lock = repo.lock(true).unwrap();
+    let pruned = prune(&mut repo, &cancel, &progress).unwrap();
+    drop(lock);
+    assert_eq!(pruned.index_files_damaged as usize, still, "{pruned:?}");
+    assert!(still_damaged(&base.join("store")).is_empty(), "let go of");
+    assert_eq!(pruned.missing, 0, "{pruned:?}");
+    assert_eq!(store.list("data").unwrap().len(), packs, "no pack let go of: {pruned:?}");
+    let repo = Repo::open(store.clone(), key, Some(base.join("cache2"))).unwrap();
+    assert_eq!(repo.damaged_index_files(), 0);
+    let (_, s) = repo.snapshots().unwrap().pop().unwrap();
+    let out = base.join("out2");
+    restore(&repo, &s.tree, &src, &out, &cancel, &progress).unwrap();
+    same(&src, &out);
     let _ = std::fs::remove_dir_all(base);
 }

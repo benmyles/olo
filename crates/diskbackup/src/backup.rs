@@ -59,6 +59,12 @@ pub fn backup(repo: &mut Repo, opts: &Options, parent: Option<(Id, &Snapshot)>, 
     let started = Instant::now();
     let stored = repo.stored;
     let mut w = Walk { repo, opts, cancel, progress, summary: Summary::default(), buf: Vec::new() };
+    // Packs read back from their own lists as the index was read (an index
+    // file damaged): named in an index file of their own now, so the next
+    // to read it needn't.
+    if w.repo.has_unnamed() {
+        let _ = w.repo.find_lost();
+    }
     let parent_root = match parent {
         Some((_, s)) => match w.repo.tree(&s.tree) {
             Ok(t) => Some(t),

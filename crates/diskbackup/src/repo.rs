@@ -121,6 +121,13 @@ pub struct Repo {
     tree_pack: Vec<bool>,
     /// The index files read.
     index_files: HashSet<String>,
+    /// Index files that don't open or don't read (damaged in the store):
+    /// passed over, their packs read back from their own lists instead,
+    /// and let go of when tidying.
+    damaged: HashSet<String>,
+    /// Packs read back from their own lists here and not yet named in an
+    /// index file in the store (`find_lost` names them).
+    unnamed: Vec<(Id, Vec<Entry>)>,
     /// The packs being filled.
     writers: [Writer; 2],
     pending: HashSet<Id>,
@@ -189,6 +196,8 @@ impl Repo {
             pack_no: HashMap::new(),
             tree_pack: Vec::new(),
             index_files: HashSet::new(),
+            damaged: HashSet::new(),
+            unnamed: Vec::new(),
             writers: Default::default(),
             pending: HashSet::new(),
             written: Vec::new(),
@@ -246,24 +255,45 @@ impl Repo {
     }
 
     /// The index as the store has it now: index files new since it was
-    /// read added; all read again if any went (someone tidied).
+    /// read added; all read again if any went (someone tidied). One that
+    /// doesn't open or read (damaged) is passed over, and the packs no
+    /// index names are read back from their own lists in its place: what
+    /// it named can still be restored, and isn't backed up again.
     pub fn refresh(&mut self) -> Result<()> {
         let names: Vec<String> = self.store.list("index")?.into_iter().map(|(n, _)| n).collect();
         let listed: HashSet<&String> = names.iter().collect();
         if !self.index_files.iter().all(|n| listed.contains(n)) {
             self.forget_index();
         }
+        self.damaged.retain(|n| listed.contains(n));
+        let mut damaged = false;
         for name in names {
-            if self.index_files.contains(&name) {
+            if self.index_files.contains(&name) || self.damaged.contains(&name) {
                 continue;
             }
-            let files: Vec<(Id, Vec<Entry>)> = decode(&self.cached(&name)?)?;
-            for (pack, entries) in files {
-                self.add_pack(pack, &entries);
+            match self.cached(&name).and_then(|plain| decode::<Vec<(Id, Vec<Entry>)>>(&plain)) {
+                Ok(files) => {
+                    for (pack, entries) in files {
+                        self.add_pack(pack, &entries);
+                    }
+                    self.index_files.insert(name);
+                }
+                Err(Error::Damaged(_)) => {
+                    self.damaged.insert(name);
+                    damaged = true;
+                }
+                Err(e) => return Err(e),
             }
-            self.index_files.insert(name);
+        }
+        if damaged {
+            self.read_lost()?;
         }
         Ok(())
+    }
+
+    /// Index files found damaged (passed over; tidying lets go of them).
+    pub fn damaged_index_files(&self) -> usize {
+        self.damaged.len()
     }
 
     /// The index read again, all of it.
@@ -278,6 +308,8 @@ impl Repo {
         self.pack_no.clear();
         self.tree_pack.clear();
         self.index_files.clear();
+        self.damaged.clear();
+        self.unnamed.clear();
         // (Packs gone up whose index hasn't yet.)
         for (pack, entries) in self.written.clone() {
             self.add_pack(pack, &entries);
@@ -392,13 +424,35 @@ impl Repo {
         decode(&plain)
     }
 
-    /// Packs no index names (an index file lost; another computer's
-    /// backup not named yet), read back from their own lists and named
-    /// again in an index file: how many.
+    /// Packs no index names (an index file lost or damaged; another
+    /// computer's backup not named yet), read back from their own lists and
+    /// named again in an index file: how many.
     pub fn find_lost(&mut self) -> Result<usize> {
         self.check_lock()?;
+        self.read_lost()?;
+        let found = std::mem::take(&mut self.unnamed);
+        if !found.is_empty() {
+            match self.put_index(&found) {
+                // (Named by what it holds, it may be a damaged one's name:
+                // that one is whole again.)
+                Ok(name) => {
+                    self.damaged.remove(&name);
+                    self.index_files.insert(name);
+                }
+                Err(e) => {
+                    self.unnamed = found;
+                    return Err(e);
+                }
+            }
+        }
+        Ok(found.len())
+    }
+
+    /// Packs no index names read back from their own lists into the index
+    /// here (`unnamed` till an index file names them): how many.
+    fn read_lost(&mut self) -> Result<usize> {
         let named: HashSet<Id> = self.packs.iter().copied().collect();
-        let mut found = Vec::new();
+        let mut n = 0;
         for (name, size) in self.store.list("data")? {
             let Some(id) = name.rsplit('/').next().and_then(Id::from_hex) else { continue };
             if named.contains(&id) {
@@ -406,14 +460,17 @@ impl Repo {
             }
             if let Ok(entries) = self.pack_header(&id, size) {
                 self.add_pack(id, &entries);
-                found.push((id, entries));
+                self.unnamed.push((id, entries));
+                n += 1;
             }
         }
-        if !found.is_empty() {
-            let name = self.put_index(&found)?;
-            self.index_files.insert(name);
-        }
-        Ok(found.len())
+        Ok(n)
+    }
+
+    /// Packs read back from their own lists and not yet named in the
+    /// store's index.
+    pub(crate) fn has_unnamed(&self) -> bool {
+        !self.unnamed.is_empty()
     }
 
     /// A pack taken into the index here (not yet named in the store's).

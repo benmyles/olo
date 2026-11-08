@@ -221,7 +221,7 @@ pub fn run() -> ExitCode {
         }
         now_asked = false;
         cancel.store(false, Relaxed);
-        if once(&settings, &mut st, &mut open, &limits, &cancel, &mut forgotten) && tidy_due(st.tidied.as_ref()) {
+        if once(&settings, &mut st, &mut open, &limits, &cancel, &mut forgotten) && tidy_due(st.tidied.as_ref(), open.as_ref().is_some_and(|o| o.repo.damaged_index_files() > 0)) {
             cancel.store(false, Relaxed);
             tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten);
         }
@@ -332,9 +332,10 @@ fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: 
     ok
 }
 
-/// Tidied a day ago or more (an hour, if it didn't finish), or never.
-fn tidy_due(t: Option<&Tidied>) -> bool {
-    t.is_none_or(|t| now() - t.time >= if t.error.is_some() { 3600 } else { 24 * 3600 })
+/// Tidied a day ago or more (an hour, if it didn't finish or there are
+/// `damaged` index files to let go of), or never.
+fn tidy_due(t: Option<&Tidied>, damaged: bool) -> bool {
+    t.is_none_or(|t| now() - t.time >= if t.error.is_some() || damaged { 3600 } else { 24 * 3600 })
 }
 
 /// Tidy: with the backup to itself (another computer using it: next
@@ -397,6 +398,9 @@ fn opened<'a>(settings: &Settings, open: &'a mut Option<Opened>, limits: &Limits
         let store = target::store(&settings.target, limits)?;
         let key = target::key()?;
         let repo = Repo::open(store, key, Some(target::cache())).map_err(|e| e.to_string())?;
+        if repo.damaged_index_files() > 0 {
+            tracing::warn!("diskbackup: {} index files are damaged: their packs read back from their own lists, and the files let go of at the next tidying", repo.damaged_index_files());
+        }
         let host = host();
         let parent = repo.snapshots().map_err(|e| e.to_string())?.into_iter().rfind(|(_, s)| s.host == host);
         *open = Some(Opened { target: settings.target.clone(), repo, parent });

@@ -12507,9 +12507,16 @@ in layers; done so far, **the engine** (crates/diskbackup):
   first (`Repo::pack_header`: two small reads at its end) and taken into
   the index before the snapshots are walked, so what they use in it is
   kept and named again, and only one nothing uses goes (one whose list
-  won't open, too): a lost index loses nothing. A backup whose parent's
+  is damaged, too; one that couldn't be fetched stops the tidying
+  instead): a lost index loses nothing. A backup whose parent's
   tree isn't in the index does the same first (`Repo::find_lost`), so
-  what's unchanged isn't sent again. Only the index files naming a pack that goes
+  what's unchanged isn't sent again. An index file that doesn't open or
+  read (damaged in the store) is passed over wherever the index is read
+  (`Repo::damaged_index_files`): the packs no index names are read back
+  from their own lists at once, in memory, so the backup still opens,
+  restores and dedups; the next backup names them in an index file of
+  its own; and tidying, due within the hour then, lets go of the damaged
+  file (`Pruned::index_files_damaged`). Only the index files naming a pack that goes
   are written again (and small ones, eight or more, put together), then
   they go, then the packs: stopped anywhere, nothing is lost. The cache's
   copies of what's gone go too.

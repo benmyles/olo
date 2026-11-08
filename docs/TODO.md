@@ -90,8 +90,9 @@ something nobody here has is in "Blocked", with what it waits for.
   is from Google's current docs, not yet tried on the console itself),
   and choose where his own backups go. Later: following changes (fanotify) rather
   than walking (an unchanged walk of 100,000 files is 0.4 s, so not yet
-  pressing); a repair for a damaged index (made again from the packs'
-  own lists).
+  pressing). A damaged index file is passed over and healed by itself
+  (its packs read back from their own lists, named again, the file let
+  go of when tidying).
 
 - **Voice Processing's delay: Ben to choose the default noise model**
   (Ben, 2026-11-07: "we need that to be way more optimized so that it is
