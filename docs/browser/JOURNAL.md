@@ -6499,3 +6499,11 @@ journal).
   `repeating-linear-gradient(90deg, red 0 20px, blue 20px 40px)` were one
   colour), and `saturate()` parses. Open: a backdrop on a box painted
   with the page (not fixed or sticky), the other filter functions.
+- **apple.com and bbc.com at 1.5× and 2×, against Chrome at the same
+  device scale** (`scalecmp.sh`: Olo on an agent screen at that scale,
+  Chrome with that `deviceScaleFactor`, 1000 × 700 CSS px). apple.com's
+  top matches at both (its headline and gradient-clipped subhead pixel
+  for pixel at 2×; the only shift is Chrome's 15 px scrollbar). bbc.com
+  matches at both but for the advertisement slot (an iframe Olo leaves
+  empty) and a subscription banner Chrome showed. GitHub was serving
+  504s to both browsers at the time.

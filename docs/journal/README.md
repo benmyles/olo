@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: apple.com at 2x against Chrome
+
+*03:14* — Top Olo, bottom Chrome, both at a device scale of 2: the headline and the gradient-clipped subhead pixel for pixel.
+
+![Browser: apple.com at 2x against Chrome](2026-11-08/031456-browser-apple-com-at-2x-against-chrome.png)
+
 ### Browser: backdrop-filter on the GPU
 
 *03:08* — Top Olo, bottom Chrome: a fixed rounded header with backdrop-filter: saturate(180%) blur(10px) over stripes and text; within 1-4 of 255 of Chrome's pixels.

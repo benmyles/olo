@@ -4000,5 +4000,11 @@
   "title": "Browser: backdrop-filter on the GPU",
   "caption": "Top Olo, bottom Chrome: a fixed rounded header with backdrop-filter: saturate(180%) blur(10px) over stripes and text; within 1-4 of 255 of Chrome's pixels.",
   "image": "2026-11-08/030857-browser-backdrop-filter-on-the-gpu.png"
+ },
+ {
+  "time": "2026-11-08T03:14:56",
+  "title": "Browser: apple.com at 2x against Chrome",
+  "caption": "Top Olo, bottom Chrome, both at a device scale of 2: the headline and the gradient-clipped subhead pixel for pixel.",
+  "image": "2026-11-08/031456-browser-apple-com-at-2x-against-chrome.png"
  }
 ]
