@@ -533,6 +533,21 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                         };
                         due.map(|due| Duration::from_secs_f64((due / 1000. - l.started.elapsed().as_secs_f64()).max(0.)))
                     });
+                    if wait.is_none()
+                        && pending.is_empty()
+                        && std::env::var_os("OLO_BROWSER_TIMING").is_some()
+                        && let Some(l) = cached.as_ref().and_then(|c| c.live.as_ref())
+                        && (l.render_due || l.wants_frame || l.render_again)
+                    {
+                        eprintln!(
+                            "  live: idle with a render due (paced {:?} ago, due {}, wants {}, again {}, hidden {})",
+                            l.paced_at.map(|t| t.elapsed()),
+                            l.render_due,
+                            l.wants_frame,
+                            l.render_again,
+                            hidden(l)
+                        );
+                    }
                     let received = if let Some(m) = pending.pop_front() {
                         Some(m)
                     } else {
@@ -801,6 +816,9 @@ fn render(
         // frames, visibilitychange) until the window asks for frames again.
         let is_hidden = hidden(live);
         if is_hidden != live.hidden {
+            if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                eprintln!("  live: the page is {}", if is_hidden { "hidden (its window sends no frames)" } else { "shown" });
+            }
             live.hidden = is_hidden;
             live.realm.set_hidden(is_hidden);
         }

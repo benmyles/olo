@@ -303,10 +303,24 @@
     for (const el of N.query(node, 'script', true)) runScriptElement(el);
   };
   const nativeAppend = N.append, nativeInsertBefore = N.insertBefore, nativeRemove = N.remove, nativeSetInnerHTML = N.setInnerHTML;
-  N.append = (parent, node) => { disconnected(node); nativeAppend(parent, node); connected(node); runScriptsIn(node); };
-  N.insertBefore = (parent, node, ref) => { disconnected(node); nativeInsertBefore(parent, node, ref); connected(node); runScriptsIn(node); };
-  N.remove = (node) => { disconnected(node); nativeRemove(node); };
-  N.setInnerHTML = (node, markup) => { if (definitions.size) for (const c of N.childNodes(node)) disconnected(c); nativeSetInnerHTML(node, markup); if (definitions.size) for (const c of N.childNodes(node)) connected(c); if (markup.indexOf('<script') !== -1 && N.nodeType(node) === 1) for (const el of N.query(node, 'script', true)) started.add(el); };
+  // A <picture>'s sources changed (one inserted, removed or edited): its
+  // image chooses again and loads what it chose (HTML's "relevant
+  // mutations"; Apple's lazy pictures swap a placeholder source for the
+  // real ones).
+  const isPicture = (n) => n && N.nodeType(n) === 1 && N.nodeName(n) === 'PICTURE';
+  const pictureChanged = (picture) => { for (const c of N.childNodes(picture)) if (N.nodeType(c) === 1 && N.nodeName(c) === 'IMG') loadImageElement(c); };
+  // Images joining the document load (HTML loads an image when its
+  // element is made; one parsed from a script's markup, as Apple's lazy
+  // pictures are, would otherwise wait for a script to ask about it).
+  const loadImagesIn = (node) => {
+    if (N.nodeType(node) !== 1 || !N.isConnected(node)) return;
+    if (N.nodeName(node) === 'IMG') { if (!imageLoads.has(node)) loadImageElement(node); return; }
+    if (N.firstChild(node)) for (const el of N.query(node, 'img', true)) if (!imageLoads.has(el)) loadImageElement(el);
+  };
+  N.append = (parent, node) => { const from = N.parent(node); disconnected(node); nativeAppend(parent, node); connected(node); runScriptsIn(node); loadImagesIn(node); if (isPicture(from)) pictureChanged(from); if (isPicture(parent)) pictureChanged(parent); };
+  N.insertBefore = (parent, node, ref) => { const from = N.parent(node); disconnected(node); nativeInsertBefore(parent, node, ref); connected(node); runScriptsIn(node); loadImagesIn(node); if (isPicture(from)) pictureChanged(from); if (isPicture(parent)) pictureChanged(parent); };
+  N.remove = (node) => { const from = N.parent(node); disconnected(node); nativeRemove(node); if (isPicture(from)) pictureChanged(from); };
+  N.setInnerHTML = (node, markup) => { if (definitions.size) for (const c of N.childNodes(node)) disconnected(c); nativeSetInnerHTML(node, markup); if (isPicture(node)) pictureChanged(node); if (markup.indexOf('<img') !== -1) loadImagesIn(node); if (definitions.size) for (const c of N.childNodes(node)) connected(c); if (markup.indexOf('<script') !== -1 && N.nodeType(node) === 1) for (const el of N.query(node, 'script', true)) started.add(el); };
   for (const el of N.query(N.docRoot(), 'script', true)) started.add(el);
   for (const el of N.query(N.docRoot(), 'link', true)) linksLoaded.add(el);
   define(Node.prototype, {
@@ -590,10 +604,10 @@
     const src = Object.getOwnPropertyDescriptor(Element.prototype, 'src');
     define(Element.prototype, {
       src: { get: src.get, set(v) { src.set.call(this, v); if (N.nodeName(this) === 'IMG') loadImageElement(this); } },
-      srcset: { get() { return N.attr(this, 'srcset') || ''; }, set(v) { N.setAttr(this, 'srcset', String(v)); if (N.nodeName(this) === 'IMG') loadImageElement(this); } },
+      srcset: { get() { return N.attr(this, 'srcset') || ''; }, set(v) { N.setAttr(this, 'srcset', String(v)); if (N.nodeName(this) === 'IMG') loadImageElement(this); else if (N.nodeName(this) === 'SOURCE' && isPicture(N.parent(this))) pictureChanged(N.parent(this)); } },
     });
     const setAttribute = Element.prototype.setAttribute;
-    Element.prototype.setAttribute = function (name, value) { setAttribute.call(this, name, value); const n = String(name).toLowerCase(); if ((n === 'src' || n === 'srcset') && N.nodeName(this) === 'IMG') loadImageElement(this); };
+    Element.prototype.setAttribute = function (name, value) { setAttribute.call(this, name, value); const n = String(name).toLowerCase(); if ((n === 'src' || n === 'srcset' || n === 'sizes') && N.nodeName(this) === 'IMG') loadImageElement(this); else if ((n === 'srcset' || n === 'media' || n === 'sizes' || n === 'type') && N.nodeName(this) === 'SOURCE' && isPicture(N.parent(this))) pictureChanged(N.parent(this)); };
   }
   global.__olo_imageSizeOf = imageSizeOf; global.__olo_imagePixelSize = imagePixelSize;
   // Text and Comment

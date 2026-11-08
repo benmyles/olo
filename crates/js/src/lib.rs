@@ -2706,6 +2706,9 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                         s.next_request += 1;
                         s.in_flight.insert(id, Some(n));
                         s.image_latest.insert(n, id);
+                        if std::env::var_os("OLO_IMAGE_DEBUG").is_some() {
+                            eprintln!("  image: request {id} for {n:?}: {url}");
+                        }
                         s.requests.push(Request { id, url, kind: RequestKind::Image });
                     }
                     None => rv.set_null(),

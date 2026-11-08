@@ -338,3 +338,34 @@ setTimeout(() => { i.src = 'https://example.test/real.png'; }, 20);
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] load 4"]);
 }
+#[test]
+fn a_picture_a_script_makes_or_changes_loads_its_image() {
+    // apple.com: a lazy <picture> replaced by one parsed from its
+    // <noscript> markup, and a placeholder source swapped for real ones.
+    let page = r#"<div id=w></div><picture id=p><source srcset="data:image/gif;base64,R0lGODlhAQABAAAAACw=" media="(min-width:0px)"><img id=i src="https://example.test/static.png"></picture><script>
+const w = document.getElementById('w');
+w.innerHTML = '<picture><source srcset="https://example.test/made.png"><img alt=made></picture>';
+w.querySelector('img').addEventListener('load', () => console.log('made', w.querySelector('img').naturalWidth));
+const p = document.getElementById('p');
+p.firstElementChild.remove();
+const s = document.createElement('source');
+s.srcset = 'https://example.test/real.png';
+p.insertBefore(s, p.firstChild);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let lookup: olo_js::ImageLookup = Box::new(|_: &str| None);
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap().with_image_lookup(Some(lookup));
+    realm.run_page(&scripts);
+    realm.advance(10., std::time::Duration::from_secs(1));
+    let mut urls: Vec<String> = realm.take_requests().into_iter().map(|r| r.url).collect();
+    urls.sort();
+    assert_eq!(urls, ["https://example.test/made.png", "https://example.test/real.png"]);
+    assert_eq!(realm.report().errors, Vec::<String>::new());
+}
