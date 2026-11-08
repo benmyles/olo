@@ -121,6 +121,28 @@ pub struct StyleTree {
     /// Made from a previous tree whose every difference is paint-only, over
     /// an unchanged structure: a layout made for that tree serves this one.
     geometry_kept: bool,
+    /// The entries (elements, not pseudo-elements) with an animation
+    /// named, ascending: found once by a full job, kept by patches.
+    animated: Vec<u32>,
+    /// Likewise, those with a `backdrop-filter`.
+    backdrops: Vec<u32>,
+}
+/// Whether a style names an animation.
+fn names_animation(style: &Style) -> bool {
+    matches!(style.value(Property::AnimationName), Value::Animation(a) if a.items().iter().any(|i| matches!(i, crate::css::properties::animation::Item::Name(_))))
+}
+fn has_backdrop(style: &Style) -> bool {
+    matches!(style.value(Property::BackdropFilter), Value::Filters(f) if !f.0.is_empty())
+}
+/// `i` in or out of a kept list (ascending) as `holds` says.
+fn keep(list: &mut Vec<u32>, i: u32, holds: bool) {
+    match (list.binary_search(&i), holds) {
+        (Err(at), true) => list.insert(at, i),
+        (Ok(at), false) => {
+            list.remove(at);
+        }
+        _ => {}
+    }
 }
 /// What a box or text span takes its style from: an element, or one of its
 /// pseudo-elements.
@@ -173,13 +195,13 @@ impl StyleTree {
     /// styles, not a walk of the document (on GitHub's 5,000 nodes the
     /// walk took most of a millisecond each animation frame).
     pub fn animation_candidates(&self) -> impl Iterator<Item = (NodeId, &Style)> {
-        self.styles
-            .iter()
-            .filter(|s| {
-                s.pseudo.is_none()
-                    && matches!(s.style.value(super::Property::AnimationName), super::Value::Animation(a) if a.items().iter().any(|i| matches!(i, crate::css::properties::animation::Item::Name(_))))
-            })
-            .map(|s| (s.node, &s.style))
+        // (Kept, not scanned: every style's animation-name was read each
+        // frame, 7% of apple.com's scrolling.)
+        self.animated.iter().map(|&i| &self.styles[i as usize]).map(|s| (s.node, &s.style))
+    }
+    /// The elements with a `backdrop-filter`, kept as the animated ones.
+    pub fn backdrop_filtered(&self) -> impl Iterator<Item = (NodeId, &Style)> {
+        self.backdrops.iter().map(|&i| &self.styles[i as usize]).map(|s| (s.node, &s.style))
     }
     /// Whether `node` has a pseudo-element style (generated content).
     pub fn has_pseudos(&self, node: NodeId) -> bool {
@@ -616,6 +638,8 @@ impl<'a> Job<'a> {
                 styles: crate::chunked::Chunked::new(),
                 pseudos: Default::default(),
                 geometry_kept: false,
+                animated: Vec::new(),
+                backdrops: Vec::new(),
                 report: Report { stylesheet_issues: rules.issues().len(), ..Default::default() },
             },
         })
@@ -1221,6 +1245,13 @@ impl<'a> Job<'a> {
             Ok(Ok(patched)) => {
                 self.tree.revision = self.document.revision();
                 self.tree.geometry_kept = patched.geometry_kept;
+                // The animated entries, for those written over.
+                for &(i, _, _) in &undo {
+                    let element = self.tree.styles[i].pseudo.is_none();
+                    let (animates, backdrop) = (element && names_animation(&self.tree.styles[i].style), element && has_backdrop(&self.tree.styles[i].style));
+                    keep(&mut self.tree.animated, i as u32, animates);
+                    keep(&mut self.tree.backdrops, i as u32, backdrop);
+                }
                 if let Some(t) = &self.timing {
                     eprintln!(
                         "style patch: {} of {} elements changed ({} written) in {:.2} ms; geometry {}",
@@ -1632,6 +1663,8 @@ impl<'a> Job<'a> {
         for (_, i) in self.open.drain(..) {
             self.tree.styles[i].end = len;
         }
+        self.tree.animated = (0..len).filter(|&i| self.tree.styles[i as usize].pseudo.is_none() && names_animation(&self.tree.styles[i as usize].style)).collect();
+        self.tree.backdrops = (0..len).filter(|&i| self.tree.styles[i as usize].pseudo.is_none() && has_backdrop(&self.tree.styles[i as usize].style)).collect();
         // The previous tree's pseudo-elements must all be here again, else
         // one was lost (its element restyled without it): geometry changed.
         if let Some(inc) = &self.previous {

@@ -812,6 +812,12 @@ impl Render for Browser {
                     }
                     let shift = |st: &olo_web::layout::Sticky| st.offset(scroll_css, height_css);
                     for (text, r, link, image, fixed, sticky, control, node) in &labels {
+                        // The worker's labels reach past the viewport (they
+                        // serve the scroll near it): agents read what shows.
+                        let top = r.y - if *fixed { 0. } else { f64::from(scroll) / scale } + sticky.as_ref().map_or(0., shift);
+                        if top + r.height <= 0. || top >= height_css {
+                            continue;
+                        }
                         agent::record(
                             window,
                             cx,

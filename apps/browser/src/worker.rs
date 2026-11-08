@@ -175,7 +175,16 @@ fn backdrop_boxes(layout: &layout::Layout, scale: f64) -> Vec<(Option<layout::Bo
     let mut out = Vec::new();
     let mut fixed = None;
     let mut stickies = None;
+    // The styles keep which elements have one (every box's style was read
+    // each frame); their boxes, by a scan of node ids.
+    let filtered: Vec<olo_web::dom::NodeId> = tree.styles().backdrop_filtered().map(|(n, _)| n).collect();
+    if filtered.is_empty() {
+        return out;
+    }
     for (id, b) in tree.iter() {
+        if !filtered.contains(&b.node) || b.style_node.pseudo.is_some() {
+            continue;
+        }
         let Some(s) = tree.style(id) else { continue };
         let Value::Filters(filters) = s.value(P::BackdropFilter) else { continue };
         let constant = |n: &olo_web::css::properties::Numeric| n.expression().constant().map_or(0., |q| q.value);
@@ -304,6 +313,10 @@ struct Live {
     players: crate::media::Players,
     /// The page's `<iframe>`s, each rendered as a picture.
     frames: crate::frames::Frames,
+    /// The layout's boxes by element, for where videos and iframes show:
+    /// kept while the boxes are (the geometry's identity and their count),
+    /// made again only when they change (it was made each advance).
+    box_index: Option<(u64, usize, olo_web::dom::NodeMap<layout::BoxId>)>,
     /// A render is wanted although the document is unchanged (a canvas's
     /// readback was in flight at the last one).
     render_again: bool,
@@ -530,7 +543,9 @@ struct Cached {
     targets_revision: u64,
     /// The last labels: the scene they were made from, when, at which
     /// scroll and size.
-    label_cache: Option<(Arc<olo_web::paint::Scene>, Instant, i32, (u32, u32), Vec<Label>)>,
+    /// The labels made last: for that scene, when, the band of the page
+    /// they cover (CSS px, top and bottom), at that size.
+    label_cache: Option<(Arc<olo_web::paint::Scene>, Instant, (f64, f64), (u32, u32), Vec<Label>)>,
     /// The last scene's paint identity (and size) and its tiles'
     /// signatures, by stratum and place.
     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
@@ -951,29 +966,28 @@ fn render(
             let started = Instant::now();
             // Where each video shows, in device pixels (its content box).
             let layout = c.page.scene.layout().clone();
-            let index: HashMap<olo_web::dom::NodeId, layout::BoxId> = if live.players.is_empty() && live.frames.is_empty() && live.frames.scanned_at() == Some(live.realm.revision()) {
-                HashMap::new()
-            } else {
-                layout
-                    .cache()
-                    .tree()
-                    .iter()
-                    .filter(|(_, b)| {
-                        matches!(
-                            b.kind,
-                            layout::BoxKind::BlockImage { .. }
-                                | layout::BoxKind::InlineImage { .. }
-                                | layout::BoxKind::BlockReplaced { .. }
-                                | layout::BoxKind::InlineReplaced { .. }
-                                | layout::BoxKind::Block { .. }
-                        )
-                    })
-                    .map(|(id, b)| (b.node, id))
-                    .collect()
-            };
+            let needed = !(live.players.is_empty() && live.frames.is_empty() && live.frames.scanned_at() == Some(live.realm.revision()));
+            let boxes = layout.cache().tree().boxes().len();
+            if needed && !live.box_index.as_ref().is_some_and(|(identity, count, _)| *identity == layout.geometry_identity() && *count == boxes) {
+                let mut index = olo_web::dom::NodeMap::with_capacity_and_hasher(boxes / 4, Default::default());
+                for (id, b) in layout.cache().tree().iter() {
+                    if matches!(
+                        b.kind,
+                        layout::BoxKind::BlockImage { .. }
+                            | layout::BoxKind::InlineImage { .. }
+                            | layout::BoxKind::BlockReplaced { .. }
+                            | layout::BoxKind::InlineReplaced { .. }
+                            | layout::BoxKind::Block { .. }
+                    ) {
+                        index.insert(b.node, id);
+                    }
+                }
+                live.box_index = Some((layout.geometry_identity(), boxes, index));
+            }
+            let index = live.box_index.as_ref().map(|(_, _, i)| i);
             let scale = r.key.scale;
             let shown = |node: olo_web::dom::NodeId| -> Option<[u32; 2]> {
-                let g = layout.geometry(*index.get(&node)?)?;
+                let g = layout.geometry(*index?.get(&node)?)?;
                 let c = g.content_box();
                 Some([(c.width * scale).round() as u32, (c.height * scale).round() as u32])
             };
@@ -1411,6 +1425,7 @@ fn render(
                 had_focus: false,
                 players: Default::default(),
                 frames: Default::default(),
+                box_index: None,
                 render_again,
                 loads,
                 cancel: live_cancel.clone(),
@@ -1705,18 +1720,21 @@ fn render(
     let extent = scene.content_extent().height;
     let scroll = sought.map_or(r.scroll, |y| (y * r.key.scale).round().max(0.) as i32).clamp(0, max_scroll(&r.key, extent));
     let visible = layout::Rect { x: 0., y: f64::from(scroll) / r.key.scale, width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale };
-    // The labels (what agents read of the page) are kept for a tenth of a
-    // second while frames only move things (the same commands, scroll and
-    // size): an animation does not make them again sixty times a second.
-    let labels_stand = cached
-        .label_cache
-        .as_ref()
-        .is_some_and(|(scene, at, s, k, _)| scene.same_commands(&cached.page.scene) && at.elapsed() < Duration::from_millis(100) && *s == scroll && *k == (r.key.width, r.key.height));
+    // The labels (what agents read of the page, what the pointer is over)
+    // are made for a band of the page a viewport above and below what
+    // shows, in page coordinates, and kept for a tenth of a second while
+    // frames only move things (the same commands and size) and what shows
+    // stays inside the band: neither an animation nor scrolling makes them
+    // again every frame (apple.com's scrolling did, all its boxes read).
+    let band = layout::Rect { y: (visible.y - visible.height).max(0.), height: visible.height * 3., ..visible };
+    let labels_stand = cached.label_cache.as_ref().is_some_and(|(scene, at, (top, bottom), k, _)| {
+        scene.same_commands(&cached.page.scene) && at.elapsed() < Duration::from_millis(100) && visible.y >= *top && visible.y + visible.height <= *bottom && *k == (r.key.width, r.key.height)
+    });
     let labels = if labels_stand {
         cached.label_cache.as_ref().map(|c| c.4.clone()).unwrap_or_default()
     } else {
         let mut hits = Vec::new();
-        scene.query(visible, &mut hits, Some(&r.cancel))?;
+        scene.query(band, &mut hits, Some(&r.cancel))?;
         // The fixed layer's content lies in the viewport at the initial scroll.
         let viewport_rect = layout::Rect { x: 0., y: 0., width: visible.width, height: visible.height };
         let mut fixed_hits = Vec::new();
@@ -1745,8 +1763,8 @@ fn render(
         for i in 0..scene.strata().len() {
             if let Some(m) = scene.moved(i) {
                 let shown = match m.clip {
-                    Some(c) => intersect(visible, c),
-                    None => Some(visible),
+                    Some(c) => intersect(band, c),
+                    None => Some(band),
                 };
                 if let Some(shown) = shown {
                     let region = layout::Rect { x: shown.x - m.translate[0], y: shown.y - m.translate[1], width: shown.width, height: shown.height };
@@ -1787,8 +1805,8 @@ fn render(
             };
             labels.push(Label { image, text: text.into_owned().into(), rect, node, link, fixed, sticky, control: None });
         }
-        labels.extend(control_labels(page, scene, visible));
-        cached.label_cache = Some((cached.page.scene.clone(), Instant::now(), scroll, (r.key.width, r.key.height), labels.clone()));
+        labels.extend(control_labels(page, scene, band, visible));
+        cached.label_cache = Some((cached.page.scene.clone(), Instant::now(), (band.y, band.y + band.height), (r.key.width, r.key.height), labels.clone()));
         labels
     };
     if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
@@ -2269,7 +2287,9 @@ fn graphic_name(doc: &olo_web::dom::Document, node: olo_web::dom::NodeId, vector
 /// The page's form controls showing in `visible` (document coordinates),
 /// for agents: each with its role, name, value and checkedness (Chrome's
 /// accessibility tree has them; an agent fills a form through them).
-fn control_labels(page: &page::Page, scene: &paint::Scene, visible: layout::Rect) -> Vec<Label> {
+/// The form controls in `band` of the page (fixed ones where they show
+/// over `visible`), as labels.
+fn control_labels(page: &page::Page, scene: &paint::Scene, band: layout::Rect, visible: layout::Rect) -> Vec<Label> {
     let doc = &page.document;
     let layout = scene.layout();
     let tree = layout.cache().tree();
@@ -2349,7 +2369,7 @@ fn control_labels(page: &page::Page, scene: &paint::Scene, visible: layout::Rect
         rect.y -= shift[1];
         let is_fixed = fixed.get(id.index()).copied().unwrap_or(false);
         let shown = if is_fixed { layout::Rect { x: rect.x, y: rect.y + visible.y, ..rect } } else { rect };
-        if rect.width <= 0. || rect.height <= 0. || intersect(visible, shown).is_none() {
+        if rect.width <= 0. || rect.height <= 0. || intersect(if is_fixed { visible } else { band }, shown).is_none() {
             continue;
         }
         let label = attr(b.node, "aria-label")

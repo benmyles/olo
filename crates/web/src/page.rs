@@ -681,11 +681,17 @@ impl Measurer {
         phases[3] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1] - phases[2];
         let stages = std::array::from_fn(|i| (std::mem::take(&mut found[i]), redone[i]));
         layout.set_recorded(layout::Recorded::update(previous_record.as_deref(), stages, (issues, redone[0])));
-        // The index stands with the layout.
-        let index = match previous.as_mut().filter(|p| Arc::ptr_eq(&p.layout, &layout)) {
+        // The index stands with the boxes: the same layout, or one with new
+        // styles over the same boxes (a paint-only restyle keeps the
+        // geometry's identity); apple.com's scrolling rebuilt it 40 times
+        // a second.
+        let same_boxes = |p: &Measured| {
+            Arc::ptr_eq(&p.layout, &layout) || p.layout.geometry_identity() == layout.geometry_identity() && p.layout.cache().tree().boxes().len() == layout.cache().tree().boxes().len()
+        };
+        let index = match previous.as_mut().filter(|p| same_boxes(p)) {
             Some(p) => std::mem::take(&mut p.index),
             None => {
-                let mut index = std::collections::HashMap::with_capacity(layout.cache().tree().boxes().len());
+                let mut index = crate::dom::NodeMap::with_capacity_and_hasher(layout.cache().tree().boxes().len(), Default::default());
                 for (id, b) in layout.cache().tree().iter() {
                     if b.marker || b.style_node.pseudo.is_some() {
                         continue;
@@ -703,7 +709,7 @@ impl Measurer {
 /// One layout of the document, queried by node.
 pub struct Measured {
     layout: Arc<layout::Layout>,
-    index: std::collections::HashMap<crate::dom::NodeId, layout::BoxId>,
+    index: crate::dom::NodeMap<layout::BoxId>,
     revision: u64,
     viewport: layout::Viewport,
     phases: [f64; 6],
