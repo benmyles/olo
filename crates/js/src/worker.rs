@@ -28,6 +28,9 @@ const PRELUDE: &str = concat!(include_str!("shared.js"), "\n", include_str!("wor
 pub enum ToWorker {
     Message(Vec<u8>),
     Terminate,
+    /// A fetch the worker's scripts started (`fetch()`), answered from the
+    /// thread that did it: its number and what came.
+    Fetched(u32, Result<Fetched, String>),
 }
 pub enum FromWorker {
     Message(Vec<u8>),
@@ -49,7 +52,11 @@ impl Handle {
         let isolate = Arc::new(Mutex::new(None));
         let slot = isolate.clone();
         let name = url.rsplit('/').next().unwrap_or("worker").chars().take(15).collect::<String>();
-        std::thread::Builder::new().name(format!("worker-{name}")).spawn(move || run(url, source, fetcher, waker, user_agent, to_rx, from_tx, slot)).map_err(|e| format!("worker thread: {e}"))?;
+        let to_self = to_tx.clone();
+        std::thread::Builder::new()
+            .name(format!("worker-{name}"))
+            .spawn(move || run(url, source, fetcher, waker, user_agent, to_rx, to_self, from_tx, slot))
+            .map_err(|e| format!("worker thread: {e}"))?;
         Ok(Self { tx: to_tx, rx: from_rx, isolate })
     }
     pub fn post(&self, bytes: Vec<u8>) {
@@ -77,11 +84,14 @@ struct State {
     fetcher: SharedFetcher,
     waker: Option<Waker>,
     tx: Sender<FromWorker>,
+    /// The worker's own inbox: fetches answer through it.
+    to_self: Sender<ToWorker>,
+    next_fetch: u32,
     started: Instant,
     closed: bool,
 }
 type Shared = Rc<RefCell<State>>;
-const NATIVES: &[&str] = &["log", "postMessage", "fetchSync", "runScript", "now", "url", "userAgent", "close", "digest", "hmac", "randomBytes"];
+const NATIVES: &[&str] = &["log", "postMessage", "fetchSync", "fetchStart", "runScript", "now", "url", "userAgent", "close", "digest", "hmac", "randomBytes"];
 
 #[allow(clippy::too_many_arguments)]
 fn run(
@@ -91,11 +101,12 @@ fn run(
     waker: Option<Waker>,
     user_agent: String,
     rx: Receiver<ToWorker>,
+    to_self: Sender<ToWorker>,
     tx: Sender<FromWorker>,
     slot: Arc<Mutex<Option<v8::IsolateHandle>>>,
 ) {
     crate::runtime();
-    let state: Shared = Rc::new(RefCell::new(State { url: url.clone(), user_agent, fetcher: fetcher.clone(), waker, tx: tx.clone(), started: Instant::now(), closed: false }));
+    let state: Shared = Rc::new(RefCell::new(State { url: url.clone(), user_agent, fetcher: fetcher.clone(), waker, tx: tx.clone(), to_self, next_fetch: 0, started: Instant::now(), closed: false }));
     // The script first: a worker that cannot load reports an error.
     let source = match source {
         Some(s) => s,
@@ -149,6 +160,7 @@ fn run(
         };
         match message {
             Some(ToWorker::Message(bytes)) => worker.deliver(&bytes),
+            Some(ToWorker::Fetched(id, result)) => worker.fetched(id, result),
             Some(ToWorker::Terminate) => break,
             None => {
                 if next.is_none() {
@@ -204,6 +216,26 @@ impl Worker {
             }
         }
     }
+    /// A fetch the worker's scripts started came back: its promise settled.
+    fn fetched(&mut self, id: u32, result: Result<Fetched, String>) {
+        let state = self.state.clone();
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let global = context.global(tc);
+        let Some(name) = v8::String::new(tc, "__olo_fetched") else { return };
+        let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
+        let id = v8::Integer::new(tc, id as i32).into();
+        let args: [v8::Local<v8::Value>; 3] = match result {
+            Ok(fetched) => [id, fetched_object(tc, fetched), v8::null(tc).into()],
+            Err(e) => [id, v8::null(tc).into(), string(tc, &e)],
+        };
+        if f.call(tc, global.into(), &args).is_none() {
+            let error = exception_text(tc, "worker fetch");
+            let _ = state.borrow().tx.send(FromWorker::Error(error));
+        }
+    }
     /// A message from the page: a `message` event on the worker's scope.
     fn deliver(&mut self, bytes: &[u8]) {
         let state = self.state.clone();
@@ -237,6 +269,21 @@ fn install(scope: &mut v8::PinScope<'_, '_>) -> Result<(), String> {
     let key = v8::String::new(scope, "__olo").ok_or("string")?;
     global.set(scope, key.into(), natives.into());
     Ok(())
+}
+/// A fetch's answer as the prelude takes it: { status, contentType, body, url }.
+fn fetched_object<'s>(scope: &mut v8::PinScope<'s, '_>, fetched: Fetched) -> v8::Local<'s, v8::Value> {
+    let object = v8::Object::new(scope);
+    let pairs: [(&str, v8::Local<v8::Value>); 4] = [
+        ("status", v8::Integer::new(scope, i32::from(fetched.status)).into()),
+        ("contentType", string(scope, &fetched.content_type)),
+        ("body", crate::bytes_array(scope, fetched.body, crate::ByteKind::U8)),
+        ("url", string(scope, &fetched.url)),
+    ];
+    for (k, v) in pairs {
+        let key = v8::String::new(scope, k).unwrap();
+        object.set(scope, key.into(), v);
+    }
+    object.into()
 }
 fn arg_string(scope: &mut v8::PinScope, args: &v8::FunctionCallbackArguments, i: i32) -> String {
     let v = args.get(i);
@@ -278,6 +325,31 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
                     w();
                 }
             }
+        }
+        // fetchStart(url, method, body, headers): fetched on a thread of its
+        // own (the worker's event loop goes on); its number, answered as
+        // ToWorker::Fetched.
+        "fetchStart" => {
+            let url = arg_string(scope, &args, 0);
+            let method = arg_string(scope, &args, 1);
+            let body = crate::arg_body(scope, &args, 2);
+            let headers = if args.length() > 3 && args.get(3).is_string() { arg_string(scope, &args, 3) } else { String::new() };
+            let (fetcher, to_self, id) = {
+                let mut s = state.borrow_mut();
+                s.next_fetch = s.next_fetch.wrapping_add(1);
+                (s.fetcher.clone(), s.to_self.clone(), s.next_fetch)
+            };
+            let spawned = std::thread::Builder::new().name("worker-fetch".into()).spawn(move || {
+                let result = fetcher(&url, if method.is_empty() { "GET" } else { &method }, &body, &headers);
+                let _ = to_self.send(ToWorker::Fetched(id, result));
+            });
+            if spawned.is_err() {
+                let message = v8::String::new(scope, "no thread for the fetch").unwrap();
+                let exception = v8::Exception::error(scope, message);
+                scope.throw_exception(exception);
+                return;
+            }
+            rv.set(v8::Integer::new(scope, id as i32).into());
         }
         "fetchSync" => {
             let url = arg_string(scope, &args, 0);
