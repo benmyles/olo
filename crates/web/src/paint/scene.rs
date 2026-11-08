@@ -53,6 +53,15 @@ pub enum Primitive {
         /// `text_fills`), or NONE.
         fill: u32,
     },
+    /// One glyph of the font of a text's fragment's run, at its size, not
+    /// among the text's own (`text-overflow: ellipsis`'s "…").
+    Glyph {
+        owner: BoxId,
+        fragment: u32,
+        glyph: u16,
+        origin: Point,
+        color: [u8; 4],
+    },
 }
 #[derive(Clone, Debug)]
 pub struct Command {
@@ -252,8 +261,12 @@ impl Scene {
         &self.layout
     }
     pub fn node(&self, command: u32) -> Option<crate::dom::NodeId> {
-        if let Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } | Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } | Primitive::Fill { owner, .. } =
-            self.commands.get(command as usize)?.primitive
+        if let Primitive::Image { owner, .. }
+        | Primitive::Vector { owner, .. }
+        | Primitive::Decoration { owner, .. }
+        | Primitive::Border { owner, .. }
+        | Primitive::Fill { owner, .. }
+        | Primitive::Glyph { owner, .. } = self.commands.get(command as usize)?.primitive
         {
             self.layout.cache().tree().get(owner).map(|b| b.node)
         } else {
@@ -492,6 +505,14 @@ impl Scene {
                     color.hash(&mut h);
                     self.layout.text_layout(*owner).and_then(|t| t.fragment_identity(*fragment)).hash(&mut h);
                 }
+                Primitive::Glyph { owner, fragment, glyph, origin, color } => {
+                    6u8.hash(&mut h);
+                    glyph.hash(&mut h);
+                    origin.x.to_bits().hash(&mut h);
+                    origin.y.to_bits().hash(&mut h);
+                    color.hash(&mut h);
+                    self.layout.text_layout(*owner).and_then(|t| t.fragment_identity(*fragment)).hash(&mut h);
+                }
             }
             let part = h.finish();
             sub[4] = part;
@@ -504,6 +525,7 @@ impl Scene {
                     Primitive::Border { .. } => "border",
                     Primitive::Decoration { .. } => "decoration",
                     Primitive::Text { .. } => "text",
+                    Primitive::Glyph { .. } => "glyph",
                 },
                 sub,
                 id,
@@ -793,6 +815,7 @@ impl Scene {
                     Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } | Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } | Primitive::Fill { owner, .. } => {
                         Some(owner)
                     }
+                    Primitive::Glyph { owner, .. } => Some(owner),
                     Primitive::Text { .. } => None,
                 };
                 if ignored(node) || owner.and_then(|o| tree.style(o)).is_some_and(takes_none) {
@@ -1411,8 +1434,50 @@ impl<'a> BuildJob<'a> {
             image_owners.sort_unstable_by_key(|(node, _)| *node);
         }
 
+        // `text-overflow: ellipsis` on the block holding this text, when it
+        // clips: a line running past its end loses the glyphs that would
+        // cross "…", which goes there in the block's colour (CSS Overflow 3
+        // §3.1; GitHub's file list's commit messages).
+        let ellipsis = {
+            let parent = layout.cache().tree().get(id).and_then(|b| b.parent).and_then(|p| layout.cache().tree().style(p));
+            match parent {
+                Some(ps)
+                    if matches!(ps.value(P::TextOverflow), Value::Keyword(K::Ellipsis))
+                        && !matches!(ps.value(P::OverflowX), Value::Keyword(K::Visible))
+                        && ps.axes().direction != crate::css::style::Direction::Rtl =>
+                {
+                    Some((at.x + layout.geometry(id).ok_or(Error::Invalid)?.border_box.width, color(ps, P::Color)?))
+                }
+                _ => None,
+            }
+        };
         for (li, line) in text.lines().iter().enumerate() {
             check(self.cancel)?;
+            // Where this line's glyphs stop for its ellipsis: the "…" of the
+            // font of its first run (fragment, glyph, advance), and the x no
+            // kept glyph may pass.
+            let mut cut: Option<(u32, u16, usize, f64, f64, [u8; 4])> = None;
+            if let Some((right, ec)) = ellipsis {
+                let end = line
+                    .fragments
+                    .clone()
+                    .map(|fi| {
+                        let f = &text.fragments()[fi as usize];
+                        at.x + f.x + f.advance
+                    })
+                    .fold(f64::NEG_INFINITY, f64::max);
+                if end > right + 0.5
+                    && let Some(fi) = line.fragments.clone().find(|&fi| !text.fragments()[fi as usize].glyphs.is_empty())
+                    && let Some(run) = text.run(&text.fragments()[fi as usize])
+                    && let Ok(face) = run.font.selection().parsed()
+                    // A font without "…" gives three periods, as browsers do.
+                    && let Some((gid, count)) = face.glyph_index('\u{2026}').map(|g| (g, 1)).or_else(|| face.glyph_index('.').map(|g| (g, 3)))
+                {
+                    let advance = f64::from(face.glyph_hor_advance(gid).unwrap_or(0)) * run.size / f64::from(run.font.units_per_em());
+                    cut = Some((fi, gid.0, count, advance, right - advance * count as f64, ec));
+                }
+            }
+            let mut cut_x: Option<f64> = None;
             // Native text has subpixel x placement and a device-pixel baseline.
             // Retain the painted baseline in the scene so its index and agent
             // bounds agree with the actual glyph placement.
@@ -1482,6 +1547,17 @@ impl<'a> BuildJob<'a> {
                         return Err(Error::Limit);
                     }
                     let g = run.glyphs[gi as usize];
+                    if let Some((_, _, _, _, limit, _)) = cut {
+                        let left = at.x + f.x + pen as f64 * factor;
+                        if cut_x.is_some() || left + f64::from(g.x_advance) * factor > limit + 0.01 {
+                            if let Some((start, start_at, old, b, _, old_deco)) = segment.take() {
+                                self.segment(group, clip, id, fi, start..gi, start_at, old, b, old_deco, left, baseline, &run.font, run.size)?;
+                            }
+                            cut_x.get_or_insert(left.min(limit));
+                            pen += i64::from(g.x_advance);
+                            continue;
+                        }
+                    }
                     let mapping = prepared.mapping_at_output(g.cluster).ok_or(Error::Invalid)?;
                     let span = source.spans.get(mapping.span as usize).ok_or(Error::Invalid)?;
                     let (c, deco, shown) = match paint_color {
@@ -1559,6 +1635,16 @@ impl<'a> BuildJob<'a> {
                 if let Some((start, origin, c, b, _, deco)) = segment {
                     let end_x = at.x + f.x + pen as f64 * factor;
                     self.segment(group, clip, id, fi, start..f.glyphs.end, origin, c, b, deco, end_x, baseline, &run.font, run.size)?;
+                }
+            }
+            if let (Some((fi, glyph, count, advance, _, ec)), Some(x)) = (cut, cut_x)
+                && ec[3] != 0
+            {
+                let run_size = text.run(&text.fragments()[fi as usize]).map_or(16., |r| r.size);
+                for k in 0..count {
+                    let x = x + advance * k as f64;
+                    let bounds = Rect { x, y: baseline - run_size, width: advance, height: run_size * 1.25 };
+                    self.emit(group, true, bounds, Primitive::Glyph { owner: id, fragment: fi, glyph, origin: Point { x, y: baseline }, color: ec }, clip)?;
                 }
             }
         }

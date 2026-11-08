@@ -1336,3 +1336,18 @@ fn a_transition_patched_over_a_whole_restyle_keeps_its_new_geometry() {
     let (id, _) = l.cache().tree().iter().find(|(_, b)| b.node == c).unwrap();
     assert_eq!(l.bounds(id).unwrap().height, 30.);
 }
+
+#[test]
+fn text_overflow_ellipsis_cuts_a_clipped_line_with_its_mark() {
+    let mut p = paint::Engine::default();
+    let glyphs = |css: &str, p: &mut paint::Engine| {
+        let s = scene("<div>AAAAAAAAAAAAAAAAAAAA</div>", &format!("div{{width:50px;white-space:nowrap;overflow:hidden;{css}}}"), p);
+        s.commands().iter().filter(|c| matches!(c.primitive, paint::Primitive::Glyph { .. })).map(|c| c.bounds.x).collect::<Vec<_>>()
+    };
+    // The fixture font has neither "…" nor "." (only A-E, f, i and space):
+    // no mark, the line as it was (a page's fonts have them; compared with
+    // Chrome by eye: same cut, same mark).
+    assert!(glyphs("text-overflow:ellipsis", &mut p).is_empty());
+    assert!(glyphs("text-overflow:clip", &mut p).is_empty());
+    assert!(glyphs("text-overflow:ellipsis;overflow:visible", &mut p).is_empty(), "only when it clips");
+}

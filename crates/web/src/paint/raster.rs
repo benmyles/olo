@@ -180,7 +180,7 @@ impl Engine {
                 Primitive::Fill { .. } => 2,
                 Primitive::Border { .. } => 3,
                 Primitive::Decoration { .. } => 4,
-                Primitive::Text { .. } => 5,
+                Primitive::Text { .. } | Primitive::Glyph { .. } => 5,
             };
             let started = profile.map(|_| std::time::Instant::now());
             counts[kind] += 1;
@@ -285,6 +285,25 @@ impl Engine {
                     let o = c.bounds;
                     let inner = Rect { x: o.x + b.left, y: o.y + b.top, width: (o.width - b.left - b.right).max(0.), height: (o.height - b.top - b.bottom).max(0.) };
                     super::border::raster(out, o, inner, *colors, scale, region, mask.as_ref(), ct, cancel)?;
+                }
+                Primitive::Glyph { owner, fragment, glyph, origin, color } => {
+                    let text = scene.layout.text_layout(*owner).ok_or(Error::Invalid)?;
+                    let f = text.fragments().get(*fragment as usize).ok_or(Error::Invalid)?;
+                    let run = text.run(f).ok_or(Error::Invalid)?;
+                    let unit = run.size / f64::from(run.font.units_per_em());
+                    if let Some(path) = self.ink(&run.font, u32::from(*glyph), cancel)?.path {
+                        let t = Transform::from_row(
+                            (unit * scale) as f32,
+                            0.,
+                            0.,
+                            (-unit * scale) as f32,
+                            (origin.x * scale - f64::from(region.x)) as f32,
+                            (origin.y * scale - f64::from(region.y)) as f32,
+                        );
+                        if t.is_finite() && t.sx != 0. && t.sy != 0. {
+                            out.fill_path(&path, &paint(*color), FillRule::Winding, t.post_concat(ct), mask.as_ref());
+                        }
+                    }
                 }
                 Primitive::Text { owner, fragment, glyphs, origin, color, fill } => {
                     let text = scene.layout.text_layout(*owner).ok_or(Error::Invalid)?;
