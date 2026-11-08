@@ -63,8 +63,20 @@ touching Ben's reader or PAM; gcr's own handshake (it reads
 samples made as HACKING says (ffmpeg's testsrc2 through SVT-AV1,
 libvpx, NVENC; the JCT-VC stream remuxed): all pass, and the 4K60
 VP9 from make_4k60_y4m played by the Viewer to its end on Intel's
-GPU, nothing dropped. What's left needs Ben: in Blocked, "The
-ignored tests that need Ben".)
+GPU, nothing dropped. And the ones that looked as if they did need
+him but don't: Token Pool's three client tests (the real Claude Code
+and Codex, signed in with fake subscriptions, through the pool to a
+fake provider: every model request signed with the pool's token),
+DiskBackup's `serve_google` (its fake Google: the Google Drive setup
+window driven on an agent screen, sandboxed, from the client's ID
+through the sign-in to a backup in the fake Drive), `replay_capture`
+(Ben's ThinkPad capture in the repo, as raw events: 12,360 frames,
+none too big, libinput's touches always the filter's), the AirPods
+decoder against libfdk (a speech stream libfdk encoded with the
+AirPods' config, f8e63000: 82.6 dB SNR, 50 wanted) and the
+accessibility tree test on an agent screen (GTK's Text Editor, 30
+nodes). What's left needs Ben: in Blocked, "The ignored tests that
+need Ben".)
 
 - **Telegram's video stickers: their see-through parts on real ones**
   (2026-11-08; Done has the work): WebM stickers play, their alpha the
@@ -2209,26 +2221,19 @@ people.
   of his screen after the upgrade is their first there.
 
 - **The ignored tests that need Ben** (2026-11-08: every other one has
-  run; the waiting entries' audit note says how): each wants what only
-  he has.
+  run to a verdict, the waiting entries' audit note says how): each
+  wants what only he has.
   - His cameras: olo-face's `this_machines_units` opens every
     `/dev/video` node to find the infrared one (his rule: his cameras
     aren't opened without him).
-  - His accounts: Token Pool's
-    `claude_code_on_its_subscription_through_the_proxy`,
-    `codex_on_its_subscription_through_the_proxy` and
-    `codex_daemon_follows_the_pool` (the real Claude Code and Codex on
-    his subscriptions), DiskBackup's `serve_google` (his Google Drive).
   - His real PAM stack and reader: `live_wrong_password` against
     /etc/pam.d runs his face unlock (the IR camera) and counts toward
     faillock, and `live_start_and_stop` wakes his fingerprint reader;
     both pass against stand-ins (a PAM service of the test's own,
     fake-readers).
-  - Data on his other machines or devices: the MacBook's palm captures
-    (`on_real_hands`, `what_the_runs_dont_show`, `make_default_model`,
-    on the Mac), a raw capture of a pad for `replay_capture`
-    (OLO_TOUCH_CAPTURE, recorded at his pad), and an AirPods capture with
-    libfdk's decode of it (`decodes_a_capture_as_libfdk_does`).
+  - The MacBook's palm captures, on the Mac (`on_real_hands`,
+    `what_the_runs_dont_show`, `make_default_model`, which makes the
+    shipped model from them).
 
 - **The ThinkPad's leftovers that are work, not a try** (from its entry
   above; each blocked on the hardware in hand or Ben's say):
