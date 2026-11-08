@@ -2327,8 +2327,20 @@ people.
   arrangements named with a Redo (⇧⌃⌘Z), moves between workspaces among
   them, Deskbar's menu naming them; Terminal's tabs and settings, a
   closed tab back as a new shell (and said so), a tab moved into a
-  window of its own put back. Other apps' undo as each is next worked
-  on (the kit's way, HACKING "undo::History").
+  window of its own put back. Then (2026-11-08, 3c4a3c07, cc106a4d,
+  17146f7b, 5bd29e1c): Disk Usage's Move to Trash, DiskBackup's
+  settings, Screenshot's Recordings (Delete, Rename…) and Notifications'
+  History (Clear All, Forget). The rest have nothing of their own to
+  take back:
+  - Viewers, monitors and services: Activity, Logs, Notifications'
+    banners, the lock screen, the screen saver, the portal, the pool.
+  - Pickers and one-shot windows: emoji, the palette, the polkit agent,
+    the installer, login, rescue.
+  - Text fields, which undo as every field does (Telegram's and Slack's
+    composers).
+  - What can't be taken back, and says so: Drive Setup's formatting,
+    Delete for good, Empty Trash.
+  A new app's undo is the kit's way (HACKING "undo::History").
 
 - ~~**A resting display still looked every 100 ms**~~ (found
   2026-11-07, looking into the Intel GPU). *Done* (7af77a04): a resting
