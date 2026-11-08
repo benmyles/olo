@@ -10532,10 +10532,14 @@ put it away.
   (`olo_ai::ask_streaming`, the Responses API's text deltas, read from
   the JSON still being written with `olo_ai::partial_string`), then each
   snippet numbered in a sunken well, six lines of it at most with how
-  many more. Keys (`answer_key`; Return comes as the field's, which has
-  it before any listener: `copy_answer`): a number shows that snippet
-  whole, Return (or ⌘C) copies it (none shown: the only one, else the
-  answer's words; "Copied" in the foot), Escape goes back a step (the
+  many more, coloured as the editor colours its language (olo-syntax,
+  on the worker before the answer comes: `ask::colour`, each line's
+  stretches painted in the theme's `Palette::syntax`). Keys
+  (`answer_key`; Return comes as the field's, which has it before any
+  listener: `copy_answer`): a number shows that snippet whole and again
+  goes back, Return copies it (none shown: the only one, else the
+  answer's words) and puts the palette away, ⌘C copies and stays
+  ("Copied" in the foot), Escape goes back a step (the
   answer, then the palette to type something else; while it comes, it
   stops it: the reply let go of where it is), Space asks a follow-up
   in the same conversation (`olo_ai::Turn`s: each question and the JSON

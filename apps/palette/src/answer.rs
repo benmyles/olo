@@ -8,7 +8,10 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
 use olo_ui::{
-    gpui::{self, AnyElement, App, Bounds, Entity, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, ScrollWheelEvent, Styled as _, canvas, div, px},
+    gpui::{
+        self, AnyElement, App, Bounds, Entity, HighlightStyle, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, ScrollWheelEvent, Styled as _, StyledText, canvas, div,
+        px,
+    },
     metrics as m,
     style::{self, c},
     theme,
@@ -102,12 +105,12 @@ pub struct Laid {
 pub fn lay_out(a: &Answering, width: f32, most: f32, cx: &App) -> Laid {
     let mut blocks = Vec::new();
     match a.open.and_then(|i| a.snippets.get(i)) {
-        Some(s) => blocks.push(snippet_height(s.code.lines().count().max(1), false)),
+        Some(s) => blocks.push(snippet_height(s.lines().count().max(1), false)),
         None => {
             let words = if a.prose.is_empty() { a.status() } else { a.prose.clone() };
             blocks.push(paragraph_height(cx, &words, width));
             for s in &a.snippets {
-                let n = s.code.lines().count().max(1);
+                let n = s.lines().count().max(1);
                 blocks.push(snippet_height(n.min(PREVIEW), n > PREVIEW));
             }
         }
@@ -123,15 +126,30 @@ pub fn view(a: &Answering, laid: &Laid, at: Bounds<Pixels>, me: Entity<Palette>,
     let p = theme::palette(cx);
     let (text, dim) = (c(p.panel_text), style::disabled_text(&p));
     let snippet = |i: usize, s: &Snippet, whole: bool, h: f32| -> AnyElement {
-        let lines: Vec<&str> = s.code.lines().collect();
+        let lines: Vec<&str> = s.lines().collect();
         let shown = if whole { lines.len() } else { lines.len().min(PREVIEW) };
         let more = lines.len() - shown;
+        // Each line in its language's colours, the theme's as the editor's.
+        let line = |n: usize, l: &str| -> AnyElement {
+            if l.is_empty() {
+                return div().child(" ").into_any_element();
+            }
+            let marks: Vec<(std::ops::Range<usize>, HighlightStyle)> = s
+                .classes
+                .get(n)
+                .into_iter()
+                .flatten()
+                .filter(|(r, _)| r.end <= l.len() && l.is_char_boundary(r.start) && l.is_char_boundary(r.end))
+                .map(|(r, k)| (r.clone(), HighlightStyle { color: Some(c(p.syntax(*k))), ..Default::default() }))
+                .collect();
+            div().whitespace_nowrap().overflow_hidden().child(StyledText::new(l.to_string()).with_highlights(marks)).into_any_element()
+        };
         let code = div()
             .font_family(style::MONO_FONT)
             .text_size(px(style::MONO_SIZE))
             .line_height(px(mono_line()))
             .text_color(c(p.document_text))
-            .children(lines.iter().take(shown).map(|l| div().whitespace_nowrap().overflow_hidden().child(if l.is_empty() { " ".to_string() } else { l.to_string() })))
+            .children(lines.iter().take(shown).enumerate().map(|(n, l)| line(n, l)))
             .when(more > 0, |d| d.child(div().text_color(dim).child(format!("{more} more line{}", if more == 1 { "" } else { "s" }))));
         let title = if s.title.is_empty() { "Code".to_string() } else { s.title.clone() };
         let (said, value) = (title.clone(), s.code.clone());

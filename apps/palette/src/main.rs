@@ -765,13 +765,19 @@ impl Palette {
     }
 
     /// Return (or ⌘C) on an answer: the snippet shown copied, else the
-    /// only one, else the answer's words; said in the foot.
-    fn copy_answer(&mut self, cx: &mut Context<Self>) -> bool {
+    /// only one, else the answer's words; then with Return the palette
+    /// goes (Ben: "if i press enter to copy a snippet it should close the
+    /// command pallette too"), with ⌘C it stays and says so in the foot.
+    fn copy_answer(&mut self, close: bool, cx: &mut Context<Self>) -> bool {
         let Some(a) = self.answer.as_mut() else { return false };
         let Some((what, text)) = a.to_copy() else { return false };
         cx.write_to_clipboard(ClipboardItem::new_string(text));
-        a.copied = Some(what);
-        cx.notify();
+        if close {
+            self.hide(cx);
+        } else {
+            a.copied = Some(what);
+            cx.notify();
+        }
         true
     }
 
@@ -840,7 +846,7 @@ impl Palette {
                 });
                 self.query_text.clear();
             }
-            _ if copy => return self.copy_answer(cx) || true,
+            _ if copy => return self.copy_answer(false, cx) || true,
             "up" => a.scroll = (a.scroll - 3.0 * line).max(0.0),
             "down" => a.scroll += 3.0 * line,
             "pageup" => a.scroll = (a.scroll - 240.0).max(0.0),
@@ -848,7 +854,9 @@ impl Palette {
             n if n.len() == 1 && n.as_bytes()[0].is_ascii_digit() => {
                 let i = (n.as_bytes()[0] - b'0') as usize;
                 if i >= 1 && i <= a.snippets.len() {
-                    a.open = Some(i - 1);
+                    // (Its number again: back, as Escape; Ben: "pressing that
+                    // number again should also unzoom it".)
+                    a.open = if a.open == Some(i - 1) { None } else { Some(i - 1) };
                     a.scroll = 0.0;
                     a.copied = None;
                 }
@@ -1128,7 +1136,7 @@ fn main() {
                     match p.answer.as_ref().map(|a| a.following) {
                         Some(true) => return p.follow_up(cx),
                         Some(false) => {
-                            p.copy_answer(cx);
+                            p.copy_answer(true, cx);
                             return;
                         }
                         None => {}

@@ -27,6 +27,37 @@ pub struct Snippet {
     pub title: String,
     pub language: String,
     pub code: String,
+    /// Each line's coloured stretches (from the line's start), by its
+    /// language (`colour`; none for one Olo doesn't colour).
+    pub classes: Vec<Vec<(std::ops::Range<usize>, olo_ui::code::Class)>>,
+}
+
+impl Snippet {
+    /// Its lines (as `classes` has them).
+    pub fn lines(&self) -> std::str::Split<'_, char> {
+        self.code.split('\n')
+    }
+}
+
+/// `code`'s classes line by line, in `language` (a fence's word: "bash",
+/// "py"), as the editor colours it (olo-syntax). On the worker: a
+/// language's first parse makes its query, up to half a second.
+pub fn colour(language: &str, code: &str) -> Vec<Vec<(std::ops::Range<usize>, olo_ui::code::Class)>> {
+    let Some(lang) = olo_ui::code::by_name(language) else { return Vec::new() };
+    let mut h = olo_ui::code::syntax::Highlighter::new(lang);
+    if let Some(job) = h.job(code) {
+        h.done(job.run());
+    }
+    let mut at = 0;
+    code.split('\n')
+        .map(|line| {
+            let mut out = Vec::new();
+            h.classes(code, at..at + line.len(), &mut out);
+            at += line.len() + 1;
+            out.retain(|(_, c)| *c != olo_ui::code::Class::Plain);
+            out
+        })
+        .collect()
 }
 
 /// What the worker tells the palette, by the ask's number.
@@ -81,9 +112,10 @@ pub fn read(answer: &Value) -> (String, Vec<Snippet>) {
         .into_iter()
         .flatten()
         .filter_map(|s| {
-            let code = s["code"].as_str()?.replace('\t', "    ");
+            let code = s["code"].as_str()?.replace('\t', "    ").replace('\r', "");
             let code = code.trim_end().trim_start_matches('\n').to_owned();
-            (!code.trim().is_empty()).then(|| Snippet { title: s["title"].as_str().unwrap_or("").trim().to_owned(), language: s["language"].as_str().unwrap_or("").trim().to_lowercase(), code })
+            let language = s["language"].as_str().unwrap_or("").trim().to_lowercase();
+            (!code.trim().is_empty()).then(|| Snippet { title: s["title"].as_str().unwrap_or("").trim().to_owned(), classes: colour(&language, &code), language, code })
         })
         .take(SNIPPETS)
         .collect();
@@ -160,9 +192,21 @@ mod tests {
         let (prose, snippets) = read(&v);
         assert_eq!(prose, "Use ss.");
         assert_eq!(snippets.len(), 4);
-        assert_eq!(snippets[0], Snippet { title: "Listening ports".into(), language: "bash".into(), code: "ss -tulpn".into() });
+        assert_eq!((snippets[0].title.as_str(), snippets[0].language.as_str(), snippets[0].code.as_str()), ("Listening ports", "bash", "ss -tulpn"));
         assert_eq!(snippets[1].code, "    b");
         assert_eq!(snippets[3].title, "d");
+    }
+
+    /// A snippet is coloured as the editor colours its language, line by
+    /// line; one in a language Olo doesn't know is plain.
+    #[test]
+    fn snippets_are_coloured() {
+        use olo_ui::code::Class;
+        let lines = colour("bash", "# list them\nss -tulpn | grep \"LISTEN\"");
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].iter().any(|(r, c)| *c == Class::Comment && r.start == 0), "{lines:?}");
+        assert!(lines[1].iter().any(|(_, c)| *c == Class::String), "{lines:?}");
+        assert!(colour("klingon", "qapla'").is_empty());
     }
 
     /// The schema asks for the prose and the snippets, nothing else (as
