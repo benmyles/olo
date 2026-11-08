@@ -6703,3 +6703,22 @@ DuckDuckGo's HTML search (a POST form, no scripts) rendered unstyled:
   call (59 → 50 ns a call); tile signatures hash with foldhash, not
   SipHash; `scrollHeight` is one pass over the boxes, not an ancestor
   walk per box. Apple.com's scroll: tiles −13%, live renders −3%.
+
+## 2026-11-08, afternoon: fields, buttons, tables, quirks
+
+- **Text fields and buttons** are drawn as Chrome's theme draws them where
+  the page hasn't styled them: a 1 px #767676 border with 2 px corners
+  over the field's white or the button's grey, not the UA's 2 px inset
+  and outset bevels (Hacker News's login form now matches Chrome).
+- **`<meta name=color-scheme>`** is the root's `color-scheme` when its
+  sheets give none: a `light dark` page turns dark where the person
+  prefers dark, as in Chrome; links take `LinkText` (light blue in dark).
+- **Tables' row spacing**: `border-spacing` goes above the first row and
+  below the last too (CSS 2.2 §17.6.1), not only between rows: every
+  table's cells sat 2 px high, and its rows ended 2 px short.
+- **Quirks mode's UA rules** (HTML §15.3.6): a form's bottom margin (the
+  blank line after Hacker News's login button), tables taking their fonts
+  afresh, fields sized by their border box. `document.compatMode` says
+  `BackCompat` in quirks mode (it always said `CSS1Compat`).
+- **An inline element's `getBoundingClientRect()`** was zeros: it is the
+  union of its pieces on the lines (within 1 px of Chrome's heights).

@@ -673,7 +673,7 @@
     readyState: { get() { return readyState; } },
     URL: { get() { return N.url(); } }, documentURI: { get() { return N.url(); } }, referrer: { get() { return ''; } }, domain: { get() { return location.hostname; } },
     location: { get() { return global.location; } }, defaultView: { get() { return global; } },
-    characterSet: { get() { return 'UTF-8'; } }, charset: { get() { return 'UTF-8'; } }, inputEncoding: { get() { return 'UTF-8'; } }, contentType: { get() { return 'text/html'; } }, compatMode: { get() { return 'CSS1Compat'; } },
+    characterSet: { get() { return 'UTF-8'; } }, charset: { get() { return 'UTF-8'; } }, inputEncoding: { get() { return 'UTF-8'; } }, contentType: { get() { return 'text/html'; } }, compatMode: { get() { return N.compatMode(); } },
     hidden: { get() { return pageHidden; } }, visibilityState: { get() { return pageHidden ? 'hidden' : 'visible'; } }, hasFocus() { return !pageHidden; },
     activeElement: { get() { return activeElement && N.isConnected(activeElement) ? activeElement : this.body; } }, scrollingElement: { get() { return html(); } }, currentScript: { get() { return currentScript; } },
     doctype: { get() { for (const c of N.childNodes(documentNode)) if (N.nodeType(c) === 10) return c; return null; } },

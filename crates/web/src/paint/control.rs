@@ -88,9 +88,10 @@ pub(super) fn raster(out: &mut Pixmap, look: &ControlLook, bounds: Rect, scale: 
                 }
             }
         }
-        ControlKind::Menulist => {
+        ControlKind::Menulist | ControlKind::Field | ControlKind::Button => {
             let Some(r) = tiny_skia::Rect::from_ltrb(left, top, right, bottom) else { return };
-            let (border, radius) = (s, 1.5 * s);
+            // A select's corners are a little tighter than a field's or a button's.
+            let (border, radius) = (s, if look.kind == ControlKind::Menulist { 1.5 } else { 2.5 } * s);
             let inset = border * 0.2;
             if let Some(back) = tiny_skia::Rect::from_ltrb(r.left() + inset, r.top() + inset, r.right() - inset, r.bottom() - inset)
                 && let Some(path) = round_rect(back, radius)

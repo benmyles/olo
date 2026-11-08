@@ -32,6 +32,10 @@ pub enum ControlKind {
     /// An unstyled select's frame (its background and rounded border, in
     /// place of its CSS ones) in its bounds.
     Menulist,
+    /// An unstyled text field's or button's frame: its background in a
+    /// thin rounded border (Chrome's), in place of its CSS bevel.
+    Field,
+    Button,
 }
 /// A form control drawn as Chrome draws it: its kind and colours (its
 /// background, border, accent, and the mark on it: a check, an arrow).
@@ -1440,6 +1444,34 @@ impl<'a> BuildJob<'a> {
             Some(look @ ControlLook { kind: ControlKind::Checkbox { .. } | ControlKind::Radio { .. }, .. }) => {
                 return self.emit(group, text, outer, Primitive::Control { owner: id, look }, clip);
             }
+            // A field or a button the page has not styled (its UA border and
+            // background): drawn as Chrome's theme draws it.
+            Some(look @ ControlLook { kind: ControlKind::Field | ControlKind::Button, .. }) => {
+                let near = |a: [u8; 4], b: [u8; 4]| a.iter().zip(b).all(|(x, y)| x.abs_diff(y) <= 1);
+                let field = look.kind == ControlKind::Field;
+                let style = if field { K::Inset } else { K::Outset };
+                let sides =
+                    [(P::BorderTopStyle, P::BorderTopColor), (P::BorderRightStyle, P::BorderRightColor), (P::BorderBottomStyle, P::BorderBottomColor), (P::BorderLeftStyle, P::BorderLeftColor)];
+                let first = color(s, P::BorderTopColor)?;
+                let unstyled = [g.border_width.top, g.border_width.right, g.border_width.bottom, g.border_width.left].iter().all(|&w| (w - 2.).abs() < 0.01)
+                    && sides.iter().all(|&(st, c)| matches!(s.value(st), Value::Keyword(k) if *k == style) && color(s, c).is_ok_and(|c| c == first))
+                    // The UA's colours: a field's #767676 (#858585 dark), a button's
+                    // its text colour; and its background the UA's.
+                    && (if field { near(first, [0x76, 0x76, 0x76, 255]) || near(first, [0x85, 0x85, 0x85, 255]) } else { near(first, color(s, P::Color)?) })
+                    && {
+                        // Field, ButtonFace (light, dark), or a disabled field's faded one.
+                        let bg = color(s, P::BackgroundColor)?;
+                        let ua: &[[u8; 4]] = if field { &[[255; 4], [0x3b, 0x3b, 0x3b, 255], [239, 239, 239, 77], [59, 59, 59, 77]] } else { &[[0xef, 0xef, 0xef, 255], [0x6b, 0x6b, 0x6b, 255]] };
+                        ua.iter().any(|&u| near(bg, u))
+                    }
+                    && !decoration::rounded(&decoration::radii(s, outer))
+                    && !matches!(s.value(P::BackgroundImage), Value::Images(_))
+                    && !matches!(s.value(P::BoxShadow), Value::Shadows(_));
+                if unstyled {
+                    return self.emit(group, text, outer, Primitive::Control { owner: id, look }, clip);
+                }
+                return self.decorate_box(id, s, g, outer, group, clip, text);
+            }
             Some(look) => {
                 // A select the page has not styled is drawn as Chrome's theme
                 // draws it: a field's background in a rounded frame.
@@ -1486,11 +1518,14 @@ impl<'a> BuildJob<'a> {
             return Ok(None);
         }
         let kind = match self.doc.name(node)? {
-            Some("input") => match self.doc.attribute(node, "type")?.map(str::trim) {
-                Some(t) if t.eq_ignore_ascii_case("checkbox") => ControlKind::Checkbox { checked: self.doc.control_checked(node)? },
-                Some(t) if t.eq_ignore_ascii_case("radio") => ControlKind::Radio { checked: self.doc.control_checked(node)? },
-                _ => return Ok(None),
+            Some("input") => match self.doc.attribute(node, "type")?.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+                Some("checkbox") => ControlKind::Checkbox { checked: self.doc.control_checked(node)? },
+                Some("radio") => ControlKind::Radio { checked: self.doc.control_checked(node)? },
+                Some("submit" | "button" | "reset") => ControlKind::Button,
+                Some("hidden" | "image" | "range" | "color" | "file") => return Ok(None),
+                _ => ControlKind::Field,
             },
+            Some("button") => ControlKind::Button,
             // A drop-down (not a list box: `multiple`, or a size above one).
             Some("select") if self.doc.attribute(node, "multiple")?.is_none() && self.doc.attribute(node, "size")?.and_then(|v| v.trim().parse::<u32>().ok()).is_none_or(|n| n <= 1) => {
                 ControlKind::Arrow
@@ -1518,6 +1553,15 @@ impl<'a> BuildJob<'a> {
                 (fill, border, accent, mark) = ([0x36, 0x36, 0x36, 255], [0x4f, 0x4f, 0x4f, 255], [0x4f, 0x4f, 0x4f, 255], [0x36, 0x36, 0x36, 255]);
             } else {
                 (fill, border, accent, mark) = ([0xf8, 0xf8, 0xf8, 255], [0xd1, 0xd1, 0xd1, 255], [0xd1, 0xd1, 0xd1, 255], [0xed, 0xed, 0xed, 255]);
+            }
+        }
+        if matches!(kind, ControlKind::Field | ControlKind::Button) {
+            // Their background as the page's style has it (Field, ButtonFace,
+            // or faded when disabled); their border Chrome's, faded likewise.
+            fill = color(s, P::BackgroundColor)?;
+            border = if dark { [0x85, 0x85, 0x85, 255] } else { [0x76, 0x76, 0x76, 255] };
+            if disabled {
+                border[3] = 77;
             }
         }
         if kind == ControlKind::Arrow {

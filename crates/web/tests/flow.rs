@@ -892,12 +892,13 @@ fn tables_size_columns_from_cells_and_place_rows() {
     let c = cache(&mut e, &s, t);
     let l = fit(&mut e, &s, c, 600., 1);
     let (a, b, cc, table) = (rect(&d, &l, "a"), rect(&d, &l, "b"), rect(&d, &l, "c"), rect(&d, &l, "t"));
-    // Columns: AB = 40 + 2 padding, CDEF = 80 + 2; spacing 2 between and at the edges.
-    assert_eq!(a, layout::Rect { x: 2., y: 0., width: 42., height: 22. }, "{a:?}");
-    assert_eq!(b, layout::Rect { x: 46., y: 0., width: 82., height: 22. }, "{b:?}");
+    // Columns: AB = 40 + 2 padding, CDEF = 80 + 2; spacing 2 between and at
+    // the edges, rows likewise (above the first and below the last, as Chrome).
+    assert_eq!(a, layout::Rect { x: 2., y: 2., width: 42., height: 22. }, "{a:?}");
+    assert_eq!(b, layout::Rect { x: 46., y: 2., width: 82., height: 22. }, "{b:?}");
     assert_eq!((cc.x, cc.width), (2., 42. + 2. + 82.), "{cc:?}");
-    assert_eq!(cc.y, 24., "{cc:?}");
-    assert_eq!(table.width, 130., "{table:?}");
+    assert_eq!(cc.y, 26., "{cc:?}");
+    assert_eq!((table.width, table.height), (130., 2. + 22. + 2. + 22. + 2.), "{table:?}");
     // A table with a width stretches its columns to it.
     let (d, t) = tree("<table id=t style='width:400px'><tr><td id=a>A</td><td id=b>B</td></tr></table>", TABLE, &s, 1);
     let c = cache(&mut e, &s, t);

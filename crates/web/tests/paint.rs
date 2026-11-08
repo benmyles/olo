@@ -1888,3 +1888,20 @@ fn drop_shadow_draws_the_alpha_moved_under_the_box_and_later_functions_colour_bo
     let shadow = pixel(&t, 12, 32);
     assert!(shadow[0] == shadow[1] && shadow[1] == shadow[2] && shadow[0] < 64, "{shadow:?}");
 }
+
+#[test]
+fn unstyled_fields_and_buttons_draw_a_thin_rounded_frame_not_their_bevel() {
+    let mut p = paint::Engine::default();
+    let css = "input,button{display:inline-block;appearance:auto;width:20px;height:16px;margin:0;padding:0;font-size:10px;vertical-align:top}input{border:2px inset #767676;background-color:#fff}button{border:2px outset;color:#000;background-color:#efefef}.styled{border:2px solid red}div{height:20px}";
+    let s = scene("<div><input><button></button><input class=styled></div>", css, &mut p);
+    let t = render(&mut p, &s);
+    // Mid-height on the left edge: the 1 px border, then the field's white
+    // where the inset bevel's second pixel was.
+    assert_eq!(pixel(&t, 0, 10), [0x76, 0x76, 0x76, 255]);
+    assert_eq!(pixel(&t, 1, 10), [255; 4]);
+    // The button: its grey inside the border.
+    assert_eq!(pixel(&t, 24, 10), [0x76, 0x76, 0x76, 255]);
+    assert_eq!(pixel(&t, 25, 10), [0xef, 0xef, 0xef, 255]);
+    // Styled: its own border.
+    assert_eq!(pixel(&t, 49, 10), [255, 0, 0, 255]);
+}

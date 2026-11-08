@@ -1819,6 +1819,7 @@ const NATIVES: &[&str] = &[
     "historyChanged",
     "navigatePost",
     "openSelect",
+    "compatMode",
     "animationRemove",
     "structuredClone",
     "workerStart",
@@ -2218,6 +2219,11 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             let mut s = state.borrow_mut();
             s.navigation = Some((url, replace));
             s.navigation_post = None;
+        }
+        // compatMode(): the document's mode, as document.compatMode gives it.
+        "compatMode" => {
+            let quirks = state.borrow().config.quirks;
+            rv.set(string(scope, if quirks { "BackCompat" } else { "CSS1Compat" }).into());
         }
         // openSelect(select): the person pressed it; the window opens its menu.
         "openSelect" => {

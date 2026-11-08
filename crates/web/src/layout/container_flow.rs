@@ -376,10 +376,18 @@ impl Job<'_> {
         let total: f64 = widths.iter().sum::<f64>() + sx * (columns + 1) as f64;
         Ok((widths, total.max(room + sx * (columns + 1) as f64)))
     }
-    pub(super) fn finish_table(&mut self, id: BoxId) {
+    /// The table whose frame is closing is done with: the vertical spacing
+    /// below its last row (each row has its own above it), if it has rows.
+    pub(super) fn finish_table(&mut self, id: BoxId) -> f64 {
         if self.tables.last().is_some_and(|t| t.id == id) {
-            self.tables.pop();
+            let table = self.tables.pop();
+            if let Some(t) = table
+                && !t.columns.is_empty()
+            {
+                return t.spacing.1;
+            }
         }
+        0.
     }
     /// Start a grid or column-flex container for the block whose frame was
     /// just pushed: settle every item's width.
@@ -838,7 +846,9 @@ impl Job<'_> {
                     // A cell fills its row (its background and borders do);
                     // its content moves down by its vertical-align (CSS 2.2
                     // §17.5.3; GitHub's file list's row lines fell apart).
-                    g.border_box.y = 0.;
+                    // The vertical spacing is above it (the table's edge
+                    // and each row apart; the table adds the last below).
+                    g.border_box.y = spacing.1;
                     g.border_box.height = cell_height;
                     g.margin = Edges::default();
                     if dy > 0. {

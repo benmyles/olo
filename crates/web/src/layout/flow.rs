@@ -2153,7 +2153,11 @@ impl<'a> Job<'a> {
                     f.cursor = height;
                     f.pending = Strut::default();
                 }
-                self.finish_table(f.id);
+                let below = self.finish_table(f.id);
+                if below > 0. {
+                    f.cursor += f.pending.value() + below;
+                    f.pending = Strut::default();
+                }
                 // A formatting context root contains its floats (CSS 2.2 §10.6.7).
                 if f.bfc && !f.floats.is_empty() {
                     let bottom = f.floats.iter().map(|fb| fb.rect.y + fb.rect.height).fold(0f64, f64::max);

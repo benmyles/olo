@@ -261,7 +261,7 @@ pub const UA: &str = concat!(
     "thead{display:table-header-group;vertical-align:middle}tbody{display:table-row-group;vertical-align:middle}tfoot{display:table-footer-group;vertical-align:middle}",
     "tr{display:table-row;vertical-align:inherit}td,th{display:table-cell;vertical-align:inherit;padding:1px}th{font-weight:bold;text-align:center}",
     "body{margin:8px}html{color:CanvasText}",
-    ":any-link{color:#0000ee;text-decoration:underline}u,ins{text-decoration:underline}s,strike,del{text-decoration:line-through}abbr[title]{text-decoration:underline dotted}",
+    ":any-link{color:LinkText;text-decoration:underline}u,ins{text-decoration:underline}s,strike,del{text-decoration:line-through}abbr[title]{text-decoration:underline dotted}",
     "blockquote,figure,dl,ol,ul,menu,dir,p{margin-top:1em;margin-bottom:1em}blockquote,figure{margin-left:40px;margin-right:40px}",
     // <q>: its quotes from `quotes` (HTML §15.3.3).
     "q::before{content:open-quote}q::after{content:close-quote}",
@@ -510,7 +510,7 @@ impl Measurer {
             return Ok(false);
         }
         let started = std::time::Instant::now();
-        let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None, None)];
+        let mut sheets = ua_sheets(doc, self.quirks, cancel)?;
         let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel)?;
         sheets.extend(loaded);
         let loaded_at = started.elapsed();
@@ -707,13 +707,16 @@ impl Measurer {
         };
         phases[4] = started.elapsed().as_secs_f64() * 1000. - phases[..4].iter().sum::<f64>();
         phases[5] = started.elapsed().as_secs_f64() * 1000.;
-        Ok(Measured { layout, document_size: Default::default(), index, revision: doc.revision(), viewport, phases, defaults, path })
+        Ok(Measured { layout, document_size: Default::default(), inlines: Default::default(), index, revision: doc.revision(), viewport, phases, defaults, path })
     }
 }
 /// One layout of the document, queried by node.
 pub struct Measured {
     layout: Arc<layout::Layout>,
     document_size: std::sync::OnceLock<(f64, f64)>,
+    /// Inline elements' pieces in the paragraphs (text source, source range),
+    /// by element: made the first time one is measured.
+    inlines: std::sync::OnceLock<(crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>>, Vec<Option<layout::BoxId>>)>,
     index: crate::dom::NodeMap<layout::BoxId>,
     revision: u64,
     viewport: layout::Viewport,
@@ -746,9 +749,62 @@ impl Measured {
         let bounds = self.layout.bounds(id)?;
         Some((id, bounds, self.layout.geometry(id)?))
     }
-    /// The border box in page coordinates (getBoundingClientRect at scroll 0).
+    /// The border box in page coordinates (getBoundingClientRect at scroll 0);
+    /// an inline element's, the union of its pieces on the lines.
     pub fn border_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
-        self.geometry(node).map(|(_, r, _)| r)
+        self.geometry(node).map(|(_, r, _)| r).or_else(|| self.inline_box(node))
+    }
+    /// An inline element (one with no box of its own): the union of its
+    /// text's fragments on their lines, each a line's ascent and descent
+    /// tall, as Chrome measures one's content area.
+    fn inline_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
+        let tree = self.layout.cache().tree();
+        let (inlines, text_boxes) = self.inlines.get_or_init(|| {
+            let mut map: crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>> = Default::default();
+            let mut source = 0u32;
+            while tree.text_source(source).is_some() {
+                for b in tree.inline_boxes(source).unwrap_or(&[]) {
+                    map.entry(b.node).or_default().push((source, b.range.clone()));
+                }
+                source += 1;
+            }
+            // Each source's text box (what its lines are laid out in).
+            let mut boxes = vec![None; source as usize];
+            for (id, b) in tree.iter() {
+                if let layout::BoxKind::InlineContent { source } = b.kind
+                    && let Some(slot) = boxes.get_mut(source as usize)
+                {
+                    *slot = Some(id);
+                }
+            }
+            (map, boxes)
+        });
+        let mut union: Option<layout::Rect> = None;
+        for (source, range) in inlines.get(&node)? {
+            let Some(container) = text_boxes.get(*source as usize).copied().flatten() else { continue };
+            let (Some(text), Some(origin)) = (self.layout.text_layout(container), self.layout.bounds(container)) else { continue };
+            let content = self.layout.geometry(container).map_or((0., 0.), |g| {
+                let c = g.content_box();
+                (c.x - g.border_box.x, c.y - g.border_box.y)
+            });
+            for (i, line) in text.lines().iter().enumerate() {
+                let Some(baseline) = text.baseline(i) else { continue };
+                for f in &text.fragments()[line.fragments.start as usize..line.fragments.end as usize] {
+                    if f.source.end <= range.start || f.source.start >= range.end {
+                        continue;
+                    }
+                    let r = layout::Rect { x: origin.x + content.0 + f.x, y: origin.y + content.1 + baseline - line.ascent, width: f.advance, height: line.ascent + line.descent };
+                    union = Some(match union {
+                        None => r,
+                        Some(u) => {
+                            let (x, y) = (u.x.min(r.x), u.y.min(r.y));
+                            layout::Rect { x, y, width: (u.x + u.width).max(r.x + r.width) - x, height: (u.y + u.height).max(r.y + r.height) - y }
+                        }
+                    });
+                }
+            }
+        }
+        union
     }
     /// The padding box (clientWidth/clientHeight, clientTop/clientLeft).
     pub fn padding_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
@@ -1033,6 +1089,52 @@ pub type Sheet = (css::Syntax, Origin, Option<Arc<str>>, Option<u64>);
 // Within the cascade's work budget (16 M, a unit a source byte), with room
 // for the rules and declarations it ticks too.
 const CSS_BYTES: usize = 8 * 1024 * 1024;
+/// What the user agent's sheet adds in quirks mode (HTML §15.3.6 and the
+/// rendering section's quirks): a form's bottom margin, tables taking
+/// their fonts afresh, fields sized by their border box, aligned images'
+/// margins.
+const UA_QUIRKS: &str = concat!(
+    "form{margin-block-end:1em}",
+    "table{font-weight:initial;font-style:initial;font-size:initial;line-height:initial;white-space:initial;text-align:initial}",
+    "input:not([type=image i]),textarea{box-sizing:border-box}",
+    // (Their default sizes, as Chrome's intrinsic ones, still hold their
+    // padding and border inside: the UA's widths are of the content box.)
+    "input:not([type=checkbox i],[type=radio i],[type=image i],[type=submit i],[type=button i],[type=reset i],[type=hidden i]){width:185px}textarea{width:201px;height:42px}",
+    "img[align=left i]{margin-right:3px}img[align=right i]{margin-left:3px}",
+);
+/// The user agent's sheet, and the page's `<meta name=color-scheme>` as
+/// its root's `color-scheme` when its own sheets give none (HTML §4.2.5.4).
+fn ua_sheets(doc: &Document, quirks: bool, cancel: Option<&AtomicBool>) -> Result<Vec<Sheet>> {
+    let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None, None)];
+    if quirks {
+        sheets.push((css::Syntax::parse(Arc::from(UA_QUIRKS), Default::default(), cancel)?, Origin::UserAgent, None, None));
+    }
+    // The first such meta in the head (the document's first children).
+    let mut stack: Vec<crate::dom::NodeId> = doc.children(doc.root())?.collect();
+    let mut seen = 0;
+    while let Some(n) = stack.pop() {
+        seen += 1;
+        if seen > 4096 {
+            break;
+        }
+        match doc.name(n)? {
+            Some("meta") if doc.attribute(n, "name")?.is_some_and(|v| v.trim().eq_ignore_ascii_case("color-scheme")) => {
+                let content: String = doc.attribute(n, "content")?.unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '_')).collect();
+                if !content.trim().is_empty() {
+                    sheets.push((css::Syntax::parse(Arc::from(format!(":root{{color-scheme:{content}}}")), Default::default(), cancel)?, Origin::UserAgent, None, None));
+                }
+                break;
+            }
+            Some("html" | "head") => {
+                let mut kids: Vec<_> = doc.children(n)?.collect();
+                kids.reverse();
+                stack.extend(kids);
+            }
+            _ => {}
+        }
+    }
+    Ok(sheets)
+}
 /// The sheets a sheet `@import`s (CSS Cascade 5 §2), each before what
 /// imports it and under the import's `layer`, `supports()` and media
 /// conditions, fetched relative to the importing sheet: at most 4 deep and
@@ -1551,7 +1653,7 @@ fn gather(
     reuse: Option<&Prepared>,
 ) -> Result<Prepared> {
     progress(Phase::Styles, 0);
-    let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None, None)];
+    let mut sheets = ua_sheets(&doc, quirks, cancel)?;
     let mut next = Some(doc.root());
     let mut title = String::new();
     let mut scripts = 0;
@@ -1953,7 +2055,7 @@ impl Page {
         if ids == self.sheet_ids {
             return Ok(false);
         }
-        let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None, None)];
+        let mut sheets = ua_sheets(doc, self.quirks, cancel)?;
         let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel)?;
         sheets.extend(loaded);
         let (rules, dependent, faces, _) = compile(&sheets, self.media, cancel)?;
