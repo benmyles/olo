@@ -41,7 +41,11 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   were (classes, styles; no box-deciding property) keeps the box tree now
   (JOURNAL 2026-11-08, night); GitHub's are child-list changes (its
   animated demo panel inserting elements), which still rebuild the whole
-  tree (2-4.5 ms): rebuild only the changed subtrees.
+  tree (2-4.5 ms): typed text is rewritten in place now; element
+  insertions still rebuild. Per frame while scrolling (120 Hz, as
+  Chrome's): its animation's style patch 0.6-4 ms, tile signatures about
+  1.3 ms even when only a transform changed (only the tiles a transformed
+  element touches need looking at).
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.
