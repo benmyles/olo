@@ -280,6 +280,8 @@ pub struct PrepareJob<'a> {
     /// and controls are as they were takes its text from it by index,
     /// without computing a key.
     previous: Option<Arc<Cache>>,
+    /// Elements restyled in place in the previous preparation's styles.
+    restyled: std::collections::HashSet<crate::dom::NodeId>,
     shared: HashMap<TextKey, Arc<inline::Text>>,
     glyph_geometry_bytes: usize,
     fallbacks: Fallbacks,
@@ -300,6 +302,7 @@ impl<'a> PrepareJob<'a> {
             tree,
             texts: Vec::new(),
             previous: None,
+            restyled: Default::default(),
             shared: HashMap::new(),
             glyph_geometry_bytes: 0,
             fallbacks: Fallbacks::default(),
@@ -314,6 +317,13 @@ impl<'a> PrepareJob<'a> {
     }
     /// Start from an earlier preparation's texts: those whose identity is
     /// unchanged are kept, not shaped again.
+    /// The elements whose styles were patched in place in the previous
+    /// preparation's style tree: it holds their new styles now, so its
+    /// texts over them are not known to be the same (`unchanged_since`).
+    pub fn with_restyled(mut self, nodes: &[crate::dom::NodeId]) -> Self {
+        self.restyled = nodes.iter().copied().collect();
+        self
+    }
     pub fn with_previous(mut self, previous: &Arc<Cache>) -> Self {
         if self.shared.is_empty() && previous.shared.len() <= self.limits.cached_texts {
             self.shared = previous.shared.as_ref().clone();
@@ -328,6 +338,15 @@ impl<'a> PrepareJob<'a> {
         let (Some(old), Some(new)) = (old_tree.sources.get(index), self.tree.sources.get(index)) else { return false };
         if !(Arc::ptr_eq(&old.source, &new.source) || *old.source == *new.source) || old.spans.len() != new.spans.len() {
             return false;
+        }
+        if !self.restyled.is_empty() {
+            let restyled = |node: crate::dom::NodeId| self.restyled.contains(&node);
+            if self.tree.get(new.container).is_none_or(|b| restyled(b.style_node.node))
+                || new.spans.iter().any(|s| restyled(s.style_node.node))
+                || self.tree.inline_boxes(index as u32).is_some_and(|b| b.iter().any(|b| restyled(b.node)))
+            {
+                return false;
+            }
         }
         let (Some(container_old), Some(container_new)) = (old_tree.style(old.container), self.tree.style(new.container)) else { return false };
         if !container_old.same_as(container_new) {

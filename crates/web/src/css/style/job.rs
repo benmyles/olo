@@ -291,7 +291,7 @@ pub struct Patched {
     pub geometry_kept: bool,
     /// Elements whose style changed.
     pub changed: usize,
-    /// Those elements.
+    /// Those elements, and the hosts of the pseudo-elements that changed.
     pub nodes: Vec<NodeId>,
     /// Pseudo-elements whose style changed.
     pub pseudos: usize,
@@ -1435,6 +1435,11 @@ impl<'a> Job<'a> {
                 self.tree.report.value_fallbacks += usize::from(s.dependencies().fallbacks);
                 undo.push((at, std::mem::replace(&mut entry.style, s), entry.matched.clone()));
                 pseudos_changed += 1;
+                // Its host stands for it among the changed: its boxes and
+                // texts are within the host's.
+                if same && changed_nodes.last() != Some(&node) {
+                    changed_nodes.push(node);
+                }
             }
             if below {
                 // Its descendants, parents before children (the tree's

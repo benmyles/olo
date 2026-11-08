@@ -797,6 +797,9 @@ impl Measurer {
                 job = job.with_previous(p.layout.cache());
                 redone[2] = layout::Redone::Part;
             }
+            if let Some((p, None)) = &patched {
+                job = job.with_restyled(&p.nodes);
+            }
             while !job.step(4)?.finished {}
             found[2].merge(job.fallbacks());
             let cache = job.finish()?;
