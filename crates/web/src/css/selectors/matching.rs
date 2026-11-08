@@ -269,6 +269,14 @@ struct Machine<'a, 'k, T: Tree> {
     /// `:host` rules: Shoelace's caret icon, inside a button, was sized as
     /// the button).
     rule_scope: Option<Option<u64>>,
+    /// Whether a test met the subject itself that a sibling with the same
+    /// parent, name and attributes could answer differently (its place
+    /// among its siblings, its state, its descendants, being a host): when
+    /// none did, such a sibling matches the same rules (style sharing).
+    dependent: bool,
+    /// The tests met on the subject whose answer a like sibling must give
+    /// too to share its style: (test, answer).
+    recorded: SmallVec<[(u32, bool); 8]>,
 }
 /// One element's matcher: every selector tested against the same subject,
 /// with the machine, its caches and the subject's name made once.
@@ -285,6 +293,30 @@ impl<'a, T: Tree> Matcher<'a, '_, T> {
         self.machine.tick(1)?;
         let result = self.machine.list(root, self.node, Context { anchor: None, pseudo: self.machine.options.pseudo, depth: 0 }, true)?;
         Ok((result, self.machine.progress))
+    }
+    /// Whether any selector tested so far met a test on the subject that a
+    /// like sibling could answer otherwise (see `Machine::dependent`).
+    pub fn dependent(&self) -> bool {
+        self.machine.dependent
+    }
+    /// The tests met on the subject a like sibling must answer the same
+    /// for it to share the subject's style.
+    pub fn recorded(&self) -> &[(u32, bool)] {
+        &self.machine.recorded
+    }
+    /// Whether this subject answers `tests` as recorded on a like sibling
+    /// (its style then the sibling's).
+    pub fn answers(&mut self, tests: &[(u32, bool)]) -> Result<bool> {
+        let Some((node, element)) = self.machine.subject else { return Ok(false) };
+        let html = self.machine.options.html_document && element.namespace == HTML;
+        let ctx = Context { anchor: None, pseudo: self.machine.options.pseudo, depth: 0 };
+        for &(at, expected) in tests {
+            let mut pseudo = None;
+            if self.machine.test(at, node, element, ctx, html, &mut pseudo)? != expected {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
     /// The shadow tree (`scope_key`, None for the document) the rules
     /// matched next are from, for `:host`.
@@ -367,6 +399,8 @@ impl Selectors {
             subject: Some((node, name)),
             has: HashMap::new(),
             rule_scope: None,
+            dependent: false,
+            recorded: SmallVec::new(),
         };
         Ok(Matcher { machine, node })
     }
@@ -400,6 +434,8 @@ impl Selectors {
             subject: None,
             has: HashMap::new(),
             rule_scope: None,
+            dependent: false,
+            recorded: SmallVec::new(),
         };
         machine.tick(1)?;
         tree.content(root)?;
@@ -505,6 +541,10 @@ impl<'a, T: Tree> Machine<'a, '_, T> {
                     return Ok(true);
                 }
                 let relation = self.selectors.steps[frame.step as usize].relation;
+                // Its siblings: not a like sibling's.
+                if matches!(relation, Relation::Next | Relation::Later) && self.subject.is_some_and(|(subject, _)| subject == frame.node) {
+                    self.dependent = true;
+                }
                 let (candidate, axis) = match relation {
                     Relation::Child => (self.tree.parent(frame.node)?, Axis::Single),
                     Relation::Descendant => (self.tree.parent(frame.node)?, Axis::Parent),
@@ -542,73 +582,95 @@ impl<'a, T: Tree> Machine<'a, '_, T> {
         }
         let html = self.options.html_document && element.namespace == HTML;
         let mut pseudo = None;
+        let on_subject = self.subject.is_some_and(|(subject, _)| subject == node);
         for at in tests {
             self.tick(1)?;
             self.progress.tests += 1;
-            let matches = match self.selectors.tests[at as usize] {
-                Test::Type { ns, name } => self.namespace(ns, element.namespace) && (name == ANY || name_equal(self.selectors.symbol(name), element.local_name, html)),
-                Test::Id(id) if !self.options.quirks => {
-                    let (hash, symbol) = (self.selectors.symbol_hashes[id as usize], self.selectors.symbol(id));
-                    self.keys(node)?.id.is_some_and(|(h, s)| h == hash && s == symbol)
-                }
-                Test::Class(class) if !self.options.quirks => {
-                    let (hash, symbol) = (self.selectors.symbol_hashes[class as usize], self.selectors.symbol(class));
-                    self.keys(node)?.classes.iter().any(|&(h, s)| h == hash && s == symbol)
-                }
-                Test::Id(id) => self.word_attribute(node, "id", self.selectors.symbol(id), false, self.options.quirks)?,
-                Test::Class(class) => self.word_attribute(node, "class", self.selectors.symbol(class), true, self.options.quirks)?,
-                Test::Attr { ns, name, value, failure, op, case } => self.attribute(node, ns, name, value, failure, op, case, html)?,
-                Test::Structural(s) => self.structural(s, node, ctx)?,
-                Test::State(state) => {
-                    if !self.options.visited_style && state == State::Visited {
-                        false
-                    } else {
-                        self.tree.state(node, pseudo, if !self.options.visited_style && state == State::Link { State::AnyLink } else { state })?
+            // A test on the subject a like sibling could answer otherwise:
+            // its answer kept, for a sibling to share this style only if it
+            // answers the same (Servo's revalidation).
+            let revalidate = on_subject && matches!(self.selectors.tests[at as usize], Test::Structural(_) | Test::State(_) | Test::Nth(_) | Test::Dir(_) | Test::Logical { mode: Logical::Has, .. });
+            // `:host` answers by the rule's tree: not answered again apart.
+            if on_subject && matches!(self.selectors.tests[at as usize], Test::Host(_)) {
+                self.dependent = true;
+            }
+            let matches = self.test(at, node, element, ctx, html, &mut pseudo)?;
+            if revalidate {
+                if pseudo.is_none() && self.recorded.len() < 64 {
+                    if !self.recorded.contains(&(at, matches)) {
+                        self.recorded.push((at, matches));
                     }
+                } else {
+                    self.dependent = true;
                 }
-                Test::Pseudo(p) => {
-                    pseudo = Some(p);
-                    ctx.pseudo == Some(p)
-                }
-                Test::Host(list) => {
-                    (match self.rule_scope {
-                        Some(scope) => scope.is_some() && self.tree.scopes(node)?[1] == scope,
-                        None => self.tree.is_shadow_host(node)?,
-                    }) && (list == NONE || {
-                        let child = self.child_context(ctx)?;
-                        self.list(list, node, child, false)?.is_some()
-                    })
-                }
-                Test::Logical { mode, list } => {
-                    let child = self.child_context(ctx)?;
-                    match mode {
-                        Logical::Has => {
-                            if let Some(&known) = self.has.get(&(node, list)) {
-                                known
-                            } else {
-                                let result = self.has(list, node, child)?;
-                                if self.has.len() < 1024 {
-                                    self.has.insert((node, list), result);
-                                }
-                                result
-                            }
-                        }
-                        Logical::Is => self.list(list, node, child, false)?.is_some(),
-                        Logical::Not => self.list(list, node, child, false)?.is_none(),
-                    }
-                }
-                Test::Nth(id) => {
-                    let child = self.child_context(ctx)?;
-                    self.nth(id, node, child)?
-                }
-                Test::Lang { start, end } => self.language(node, start..end)?,
-                Test::Dir(rtl) => self.tree.direction(node)? == rtl,
-            };
+            }
             if !matches {
                 return Ok(false);
             }
         }
         Ok(true)
+    }
+    /// One test of a compound against an element.
+    fn test(&mut self, at: u32, node: T::Node, element: ElementName<'a>, ctx: Context<T::Node>, html: bool, pseudo: &mut Option<PseudoElement>) -> Result<bool> {
+        Ok(match self.selectors.tests[at as usize] {
+            Test::Type { ns, name } => self.namespace(ns, element.namespace) && (name == ANY || name_equal(self.selectors.symbol(name), element.local_name, html)),
+            Test::Id(id) if !self.options.quirks => {
+                let (hash, symbol) = (self.selectors.symbol_hashes[id as usize], self.selectors.symbol(id));
+                self.keys(node)?.id.is_some_and(|(h, s)| h == hash && s == symbol)
+            }
+            Test::Class(class) if !self.options.quirks => {
+                let (hash, symbol) = (self.selectors.symbol_hashes[class as usize], self.selectors.symbol(class));
+                self.keys(node)?.classes.iter().any(|&(h, s)| h == hash && s == symbol)
+            }
+            Test::Id(id) => self.word_attribute(node, "id", self.selectors.symbol(id), false, self.options.quirks)?,
+            Test::Class(class) => self.word_attribute(node, "class", self.selectors.symbol(class), true, self.options.quirks)?,
+            Test::Attr { ns, name, value, failure, op, case } => self.attribute(node, ns, name, value, failure, op, case, html)?,
+            Test::Structural(s) => self.structural(s, node, ctx)?,
+            Test::State(state) => {
+                if !self.options.visited_style && state == State::Visited {
+                    false
+                } else {
+                    self.tree.state(node, *pseudo, if !self.options.visited_style && state == State::Link { State::AnyLink } else { state })?
+                }
+            }
+            Test::Pseudo(p) => {
+                *pseudo = Some(p);
+                ctx.pseudo == Some(p)
+            }
+            Test::Host(list) => {
+                (match self.rule_scope {
+                    Some(scope) => scope.is_some() && self.tree.scopes(node)?[1] == scope,
+                    None => self.tree.is_shadow_host(node)?,
+                }) && (list == NONE || {
+                    let child = self.child_context(ctx)?;
+                    self.list(list, node, child, false)?.is_some()
+                })
+            }
+            Test::Logical { mode, list } => {
+                let child = self.child_context(ctx)?;
+                match mode {
+                    Logical::Has => {
+                        if let Some(&known) = self.has.get(&(node, list)) {
+                            known
+                        } else {
+                            let result = self.has(list, node, child)?;
+                            if self.has.len() < 1024 {
+                                self.has.insert((node, list), result);
+                            }
+                            result
+                        }
+                    }
+                    Logical::Is => self.list(list, node, child, false)?.is_some(),
+                    Logical::Not => self.list(list, node, child, false)?.is_none(),
+                }
+            }
+            Test::Nth(id) => {
+                let child = self.child_context(ctx)?;
+                self.nth(id, node, child)?
+            }
+            Test::Lang { start, end } => self.language(node, start..end)?,
+            Test::Dir(rtl) => self.tree.direction(node)? == rtl,
+        })
     }
     fn featureless(&mut self, tests: Range<u32>, node: T::Node, ctx: Context<T::Node>) -> Result<bool> {
         // Eligibility is compiled separately from boolean matching: a

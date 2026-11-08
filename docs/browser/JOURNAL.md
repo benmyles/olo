@@ -6897,3 +6897,22 @@ the Guardian and old Reddit, looking for pages that fail outright:
 - A page's tiles are painted side by side on the CPU pool (16 at a time,
   each pool thread a painter of its own): a repaint at 2× 0.30 → 0.21 ms
   a tile on GitHub.
+- **Styling MDN from scratch: 140 → 55 ms.** Three changes to selector
+  matching:
+  - **Rules indexed by the tree they belong to:** an element gathers
+    candidates from its own tree, the user agent's, and the trees it
+    hosts or is slotted into. Every copy of a component's sheet in every
+    shadow root was a candidate for every element (MDN's 1076 `.button`
+    rules). Candidates per element: 157 → 20.
+  - **Ancestor keys inside `:is()`** (CSS nesting's `&` makes them):
+    `:is(:is(.breadcrumbs li) a)` walked to the root for every `a`. The
+    keys every branch needs feed the ancestor filter now. Compound tests
+    1.48 million → 254,000.
+  - **Style sharing:** a sibling with the same parent, name and attributes
+    takes an earlier one's style when it answers the same the tests that
+    met the element itself (its state, its place, `:has()`): Servo's
+    revalidation. A quarter of MDN's elements.
+  
+  Matching 107 → 27 ms. MDN against Chrome: load 1.65–1.70 CPU s
+  (Chrome 1.1), scrolling 22% (Chrome 43–46%), 211 MB (Chrome 491–585).
+  GitHub is still behind: load 10.8 vs 8.5 CPU s, scrolling 72% vs 56%.

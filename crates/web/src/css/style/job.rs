@@ -301,6 +301,9 @@ pub struct Job<'a> {
     progress: Progress,
     failed: bool,
     scratch: cascade::MatchScratch,
+    /// Styles a like sibling may take (style sharing): recent elements
+    /// whose matching met nothing a sibling could answer otherwise.
+    sharing: Vec<Sharable>,
     tree: StyleTree,
     account: memory::Account,
     fonts: font_pool::FontPool,
@@ -341,7 +344,36 @@ struct Incremental<'a> {
     /// Why not, when not (diagnostics).
     why_not: Option<String>,
 }
+/// An element's style a later sibling with its parent, name and
+/// attributes takes without matching (Servo and Blink share styles so).
+struct Sharable {
+    parent: Option<usize>,
+    node: NodeId,
+    /// The tests met on it a sibling must answer the same.
+    recorded: Vec<(u32, bool)>,
+    style: Style,
+    matched: Arc<[(u32, selectors::Specificity)]>,
+}
+/// How many recent styles are kept for sharing.
+const SHARABLE: usize = 16;
+/// Whether `a` and `b` are alike to selectors and hints: the same name,
+/// namespace and attributes (in any order).
+fn alike(document: &Document, a: NodeId, b: NodeId) -> std::result::Result<bool, crate::dom::Error> {
+    if document.name(a)? != document.name(b)? || document.namespace(a)? != document.namespace(b)? {
+        return Ok(false);
+    }
+    let left: SmallVec<[(Option<crate::dom::AttributeNamespace>, &str, &str); 8]> = document.attributes_ns(a)?.map(|x| (x.namespace, x.local_name, x.value)).collect();
+    let mut count = 0usize;
+    for x in document.attributes_ns(b)? {
+        count += 1;
+        if count > left.len() || !left.iter().any(|&(n, l, v)| n == x.namespace && l == x.local_name && v == x.value) {
+            return Ok(false);
+        }
+    }
+    Ok(count == left.len())
+}
 struct Timing {
+    shared: usize,
     hints: f64,
     matching: f64,
     computing: f64,
@@ -358,7 +390,7 @@ struct Timing {
 }
 impl Default for Timing {
     fn default() -> Self {
-        Self { hints: 0., matching: 0., computing: 0., pseudo: 0., candidates: 0, elements: 0, copied: 0, copy: 0., started: std::time::Instant::now(), constructed: 0., visited: 0 }
+        Self { shared: 0, hints: 0., matching: 0., computing: 0., pseudo: 0., candidates: 0, elements: 0, copied: 0, copy: 0., started: std::time::Instant::now(), constructed: 0., visited: 0 }
     }
 }
 impl<'a> Job<'a> {
@@ -378,6 +410,7 @@ impl<'a> Job<'a> {
             progress: Progress::default(),
             failed: false,
             scratch: Default::default(),
+            sharing: Vec::new(),
             account: Default::default(),
             fonts: font_pool::FontPool::new(limits.font_cache_entries),
             timing: std::env::var_os("OLO_STYLE_TIMING").map(|_| {
@@ -1437,6 +1470,26 @@ impl<'a> Job<'a> {
         host: &impl Host,
         previous_matched: Option<Arc<[(u32, selectors::Specificity)]>>,
     ) -> Result<(Style, Arc<[(u32, selectors::Specificity)]>)> {
+        // A like sibling's style (same parent, name and attributes, and its
+        // match met nothing they could differ in): taken, not matched.
+        let parent_index = parent;
+        let animated = self.options.animated.is_some_and(|a| a.contains_key(&node));
+        let sharing = previous_matched.is_none() && !animated;
+        if sharing {
+            for i in (0..self.sharing.len()).rev() {
+                if self.sharing[i].parent == parent && alike(self.document, self.sharing[i].node, node).map_err(Error::Dom)? && {
+                    let dom = if let Some(states) = self.options.states { selectors::DomTree::with_states(self.document, states) } else { selectors::DomTree::new(self.document) };
+                    self.rules
+                        .answers_like(&dom, node, selectors::MatchOptions { quirks: self.options.quirks, ..Default::default() }, &self.sharing[i].recorded, self.limits.matching, self.cancelled)
+                        .map_err(Error::cascade)?
+                } {
+                    if let Some(t) = self.timing.as_mut() {
+                        t.shared += 1;
+                    }
+                    return Ok((self.sharing[i].style.clone(), self.sharing[i].matched.clone()));
+                }
+            }
+        }
         let clock = self.timing.as_ref().map(|_| std::time::Instant::now());
         self.containers_around(node)?;
         let mut hints = Vec::new();
@@ -1542,6 +1595,13 @@ impl<'a> Job<'a> {
         let mark_compute = clock.map(|c| c.elapsed().as_secs_f64()).unwrap_or(0.);
         if let Some(t) = self.timing.as_mut() {
             t.computing += mark_compute - mark_match;
+        }
+        // Kept for a like sibling when nothing in its match could differ.
+        if sharing && !self.scratch.dependent {
+            if self.sharing.len() >= SHARABLE {
+                self.sharing.remove(0);
+            }
+            self.sharing.push(Sharable { parent: parent_index, node, recorded: self.scratch.recorded.clone(), style: style.clone(), matched: matched.clone() });
         }
         Ok((style, matched))
     }
@@ -1678,9 +1738,10 @@ impl<'a> Job<'a> {
         }
         if let Some(t) = &self.timing {
             eprintln!(
-                "style timing: {} elements ({} reused), {} candidates ({:.1} per element; {} rejected, {} compounds, {} tests, {} steps): hints {:.1} ms, matching {:.1} ms, computing {:.1} ms, pseudo {:.1} ms; font cache {:?}",
-                t.elements + self.progress.reused,
+                "style timing: {} elements ({} reused, {} shared), {} candidates ({:.1} per element; {} rejected, {} compounds, {} tests, {} steps): hints {:.1} ms, matching {:.1} ms, computing {:.1} ms, pseudo {:.1} ms; font cache {:?}",
+                t.elements + self.progress.reused + t.shared,
                 self.progress.reused,
+                t.shared,
                 t.candidates,
                 t.candidates as f64 / t.elements.max(1) as f64,
                 self.scratch.progress.rejected,

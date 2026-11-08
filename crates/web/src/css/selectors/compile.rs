@@ -339,6 +339,38 @@ impl Compiler<'_> {
                 self.out.ancestor_hashes.push(hash);
             }
         }
+        // Inside `:is()` (CSS nesting's `&` makes them: MDN's
+        // `:is(:is(.breadcrumbs li) a)`): keys every branch needs among the
+        // subject's ancestors, else such selectors walked to the root for
+        // every element (a third of MDN's style time).
+        let mut extra: Vec<u64> = Vec::new();
+        for (i, step) in steps.iter().enumerate() {
+            let ancestor = steps.get(i + 1).is_some_and(|n| matches!(n.relation, Relation::Child | Relation::Descendant));
+            let subject = i + 1 == steps.len();
+            if !ancestor && !subject {
+                continue;
+            }
+            for test in &self.out.tests[step.tests.start as usize..step.tests.end as usize] {
+                if let Test::Logical { mode: Logical::Is, list } = *test
+                    && let Some(keys) = self.required_in(list, ancestor)
+                {
+                    for k in keys {
+                        if !extra.contains(&k) && extra.len() < 16 {
+                            extra.push(k);
+                        }
+                    }
+                }
+            }
+        }
+        for hash in extra {
+            if self.out.ancestor_hashes[ancestors_start as usize..].contains(&hash) {
+                continue;
+            }
+            if self.out.ancestor_hashes.len() >= NONE as usize {
+                return Err(Error::CompileLimit);
+            }
+            self.out.ancestor_hashes.push(hash);
+        }
         let ancestors = ancestors_start..self.out.ancestor_hashes.len() as u32;
         self.out.steps.extend(steps);
         let id = self.out.complexes.len() as u32;
@@ -375,6 +407,40 @@ impl Compiler<'_> {
             found = true;
         }
         Ok(found)
+    }
+    /// The ancestor keys every branch of the `:is()` list `list` needs:
+    /// each branch's own ancestors' keys, and its subject's when the
+    /// `:is()` is itself on an ancestor (`with_subject`); their
+    /// intersection. None when a branch leaves the tree (slotted, part).
+    fn required_in(&self, list: u32, with_subject: bool) -> Option<Vec<u64>> {
+        let l = self.out.lists.get(list as usize)?;
+        let mut common: Option<Vec<u64>> = None;
+        for &c in &self.out.links[l.links.start as usize..l.links.end as usize] {
+            let complex = self.out.complexes.get(c as usize)?;
+            if !matches!(complex.relative, Relation::None)
+                || self.out.steps[complex.steps.start as usize..complex.steps.end as usize].iter().any(|s| matches!(s.relation, Relation::Slotted | Relation::Part))
+            {
+                return None;
+            }
+            let mut keys: Vec<u64> = self.out.ancestor_hashes[complex.ancestors.start as usize..complex.ancestors.end as usize].to_vec();
+            if with_subject && let Some(last) = complex.steps.end.checked_sub(1).map(|i| &self.out.steps[i as usize]) {
+                for test in &self.out.tests[last.tests.start as usize..last.tests.end as usize] {
+                    match *test {
+                        Test::Type { name, .. } if name != ANY => keys.push(folded_hash(&self.out.symbols[name as usize])),
+                        Test::Id(n) | Test::Class(n) => keys.push(self.out.symbol_hashes[n as usize]),
+                        _ => {}
+                    }
+                }
+            }
+            common = Some(match common {
+                None => keys,
+                Some(mut c) => {
+                    c.retain(|k| keys.contains(k));
+                    c
+                }
+            });
+        }
+        common
     }
     fn combinator(&mut self, input: &mut Components<'_>) -> Result<Option<Relation>> {
         let relation = match input.clone().next().and_then(Component::character) {

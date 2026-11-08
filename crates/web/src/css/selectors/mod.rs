@@ -880,6 +880,54 @@ pub(crate) enum SubjectKey {
 impl Selectors {
     /// The kinds of tests in each branch's subject compound, for seeing why
     /// a rule is universal (diagnostics).
+    /// A selector list's complexes written out roughly (names, combinators),
+    /// for the timing log's costly matches.
+    pub(crate) fn describe(&self, root: u32) -> String {
+        self.links[self.lists[root as usize].links.start as usize..self.lists[root as usize].links.end as usize]
+            .iter()
+            .take(4)
+            .map(|&i| {
+                let complex = &self.complexes[i as usize];
+                let mut out = String::new();
+                for at in complex.steps.clone() {
+                    let step = &self.steps[at as usize];
+                    for t in &self.tests[step.tests.start as usize..step.tests.end as usize] {
+                        out.push_str(&match t {
+                            Test::Type { name, .. } => {
+                                if *name == ANY {
+                                    "*".to_owned()
+                                } else {
+                                    self.symbol(*name).to_owned()
+                                }
+                            }
+                            Test::Id(id) => format!("#{}", self.symbol(*id)),
+                            Test::Class(c) => format!(".{}", self.symbol(*c)),
+                            Test::Attr { name, .. } => format!("[{}]", self.symbol(*name)),
+                            Test::Structural(s) => format!(":{s:?}"),
+                            Test::State(s) => format!(":{s:?}"),
+                            Test::Pseudo(p) => format!("::{p:?}"),
+                            Test::Logical { mode, list } => format!(":{mode:?}({})", self.describe(*list)),
+                            Test::Nth(_) => ":nth".into(),
+                            Test::Lang { .. } => ":lang".into(),
+                            Test::Dir(_) => ":dir".into(),
+                            Test::Host(_) => ":host".into(),
+                        });
+                    }
+                    if at + 1 < complex.steps.end {
+                        out.push_str(match self.steps[at as usize].relation {
+                            Relation::Child => " > ",
+                            Relation::Descendant => " ",
+                            Relation::Next => " + ",
+                            Relation::Later => " ~ ",
+                            _ => " ? ",
+                        });
+                    }
+                }
+                out
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
     pub(crate) fn subject_summary(&self, root: u32) -> String {
         self.links[self.lists[root as usize].links.start as usize..self.lists[root as usize].links.end as usize]
             .iter()
