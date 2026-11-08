@@ -6558,3 +6558,33 @@ journal).
   "frameâ€™s"), and `frameborder="0"` takes an iframe's border away.
   Open: the embed's layout (its text column narrower than Chrome's, the
   logo missing), frames' input, live frames.
+
+## 2026-11-08, morning: YouTube, cookies, MutationObserver
+
+- **YouTube renders as Chrome does** (journal image). Its app ran into a
+  series of gaps, each now fixed for every site: `fetch()` read a
+  Request's public `url` (YouTube redefines it on a `data:` Request as a
+  probe, so Olo POSTed an empty body to its player API); a stamped
+  template arrives as a fragment, whose custom elements never connected;
+  `importNode`/`cloneNode` didn't upgrade custom elements; element
+  properties such as `as`, `value`, `label` lived on every element's
+  prototype, so Polymer skipped its own accessors (dom-repeat's `as`
+  looped); the parser's scripts and links were plain HTMLElements;
+  `<a>` had no `pathname`; Trusted Types policies were stubs; a working
+  MutationObserver was missing (Polymer's microtasks run on one: the guide
+  never computed); request bodies passed through text (YouTube gzips
+  them with CompressionStream); IntersectionObserverEntry's fields were
+  own properties, so YouTube's polyfill took over and polled.
+- **Cookies.** Olo sent and kept none. A jar (RFC 6265bis) serves every
+  request and `document.cookie`, with SameSite, Secure, HttpOnly, public
+  suffixes, credentials modes, and persistent cookies on disk (an Agent
+  Screen keeps its own). YouTube's theme cookie now holds: one load, dark,
+  instead of two ending light.
+- **Shoelace's caret icon.** A shadow tree's `:host` rules matched any
+  shadow host inside the tree: the caret (an icon inside a button) took
+  the button's sizing and grew to 150 px. `:host` is now the host of the
+  rule's own tree only.
+- **Idle.** Animations on elements that aren't displayed run no frames
+  (YouTube's hidden player spinners asked for 60 a second). YouTube idles
+  at 0.8% CPU (Chrome 1.0%; Olo was 15.8%).
+

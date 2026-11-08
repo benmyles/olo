@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: YouTube renders
+
+*05:37* — YouTube's app now runs to the end in Olo's browser: masthead, search, sign-in, the mini-guide and the feed nudge, in the dark theme the palette asks for, as Chrome shows it (it was a loading skeleton). It took fetch() keeping a Request's state in slots (YouTube probes it), template fragments connecting their custom elements, a working MutationObserver (Polymer's microtasks), request bodies as bytes (gzip), a cookie jar, and per-interface element properties.
+
+![Browser: YouTube renders](2026-11-08/053732-browser-youtube-renders.png)
+
 ### Browser: iframes render
 
 *03:59* — Top Olo, bottom Chrome: a page with an iframe of a styled child page; the iframe's document rendered at its size and its 2px inset border shaded as Chrome shades it.

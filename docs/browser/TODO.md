@@ -183,7 +183,7 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   `import()`), events from the person. Next: import maps and JSON
   modules, dynamic `import()` fetching off the thread, CSSOM
   (`insertRule`, `styleSheets`, CSS-in-JS in production builds),
-  cookies (none are sent or kept), streaming request bodies, `document.write` while
+  streaming request bodies, `document.write` while
   parsing, iframes, OffscreenCanvas, ResizeObserver with real sizes.
   IntersectionObserver follows the scroll and the layout (JOURNAL
   2026-11-08); createHTMLDocument makes a document (jQuery needs one).
@@ -312,7 +312,9 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   Web IDL innerHTML/setHTML APIs.
 - [ ] Declarative shadow roots, template content patching, inert owner-document/
   realm semantics and web-facing template APIs.
-- [ ] Complete network/encoding/cache/cookies with security and memory bounds.
+- [ ] Complete network/encoding/cache with security and memory bounds
+  (cookies: a jar, JOURNAL 2026-11-08 morning; open: the Cookie Store API,
+  partitioned cookies, clearing them from the UI).
   Initial in-process HTTP/HTTPS, bounded decoded bodies, redirects, native TLS
   roots, wakeable cancellation, HTML encoding prescan and linked CSS now work.
   Document base/order, CSS MIME/encoding, local-file and mixed-content boundaries
