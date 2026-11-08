@@ -10,11 +10,38 @@ const NONE: u32 = u32::MAX;
 #[derive(Clone, Copy, Debug)]
 pub struct Options {
     pub canvas: [u8; 4],
+    /// The person prefers dark: what a `color-scheme` allowing both uses.
+    pub dark: bool,
 }
 impl Default for Options {
     fn default() -> Self {
-        Self { canvas: [255; 4] }
+        Self { canvas: [255; 4], dark: false }
     }
+}
+/// What a form control drawn by the engine (`appearance: auto`) is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ControlKind {
+    Checkbox {
+        checked: bool,
+    },
+    Radio {
+        checked: bool,
+    },
+    /// A select's arrow: a chevron filling its bounds.
+    Arrow,
+    /// An unstyled select's frame (its background and rounded border, in
+    /// place of its CSS ones) in its bounds.
+    Menulist,
+}
+/// A form control drawn as Chrome draws it: its kind and colours (its
+/// background, border, accent, and the mark on it: a check, an arrow).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ControlLook {
+    pub kind: ControlKind,
+    pub fill: [u8; 4],
+    pub border: [u8; 4],
+    pub accent: [u8; 4],
+    pub mark: [u8; 4],
 }
 #[derive(Clone, Debug)]
 pub enum Primitive {
@@ -54,6 +81,11 @@ pub enum Primitive {
     Decoration {
         owner: BoxId,
         outer: Rect,
+    },
+    /// A form control the engine draws (`appearance: auto`) in its bounds.
+    Control {
+        owner: BoxId,
+        look: ControlLook,
     },
     Text {
         owner: BoxId,
@@ -374,6 +406,7 @@ impl Scene {
         | Primitive::Border { owner, .. }
         | Primitive::Fill { owner, .. }
         | Primitive::Wave { owner, .. }
+        | Primitive::Control { owner, .. }
         | Primitive::Glyph { owner, .. } = self.commands.get(command as usize)?.primitive
         {
             self.layout.cache().tree().get(owner).map(|b| b.node)
@@ -603,6 +636,10 @@ impl Scene {
                     thickness.to_bits().hash(&mut h);
                     wavelength.to_bits().hash(&mut h);
                 }
+                Primitive::Control { look, .. } => {
+                    8u8.hash(&mut h);
+                    look.hash(&mut h);
+                }
                 Primitive::Decoration { owner, outer } => {
                     4u8.hash(&mut h);
                     rect(*outer, &mut h);
@@ -643,6 +680,7 @@ impl Scene {
                     Primitive::Border { .. } => "border",
                     Primitive::Wave { .. } => "wave",
                     Primitive::Decoration { .. } => "decoration",
+                    Primitive::Control { .. } => "control",
                     Primitive::Text { .. } => "text",
                     Primitive::Glyph { .. } => "glyph",
                 },
@@ -961,6 +999,7 @@ impl Scene {
                     | Primitive::Decoration { owner, .. }
                     | Primitive::Border { owner, .. }
                     | Primitive::Fill { owner, .. }
+                    | Primitive::Control { owner, .. }
                     | Primitive::Wave { owner, .. } => Some(owner),
                     Primitive::Glyph { owner, .. } => Some(owner),
                     Primitive::Text { .. } => None,
@@ -1372,6 +1411,104 @@ impl<'a> BuildJob<'a> {
     }
     #[allow(clippy::too_many_arguments)]
     fn decorate(&mut self, id: BoxId, s: &Style, g: layout::Geometry, outer: Rect, group: (u32, u8), clip: u32, text: bool) -> Result<()> {
+        let look = self.control_look(id, s)?;
+        match look {
+            // A checkbox or radio drawn by the engine: its CSS background
+            // and border are not (as Chrome ignores them there).
+            Some(look @ ControlLook { kind: ControlKind::Checkbox { .. } | ControlKind::Radio { .. }, .. }) => {
+                return self.emit(group, text, outer, Primitive::Control { owner: id, look }, clip);
+            }
+            Some(look) => {
+                // A select the page has not styled is drawn as Chrome's theme
+                // draws it: a field's background in a rounded frame.
+                // (The UA sheet's colours, a disabled one's faded to 30%.)
+                let dark = look.fill[0] < 0x80;
+                let mut ua = if dark { ([0x6b, 0x6b, 0x6b, 255], [0x85, 0x85, 0x85, 255]) } else { ([0xef, 0xef, 0xef, 255], [0x76, 0x76, 0x76, 255]) };
+                if look.border == look.accent {
+                    ua = (if dark { [59, 59, 59, 77] } else { [239, 239, 239, 77] }, [ua.1[0], ua.1[1], ua.1[2], 77]);
+                }
+                let near = |a: [u8; 4], b: [u8; 4]| a.iter().zip(b).all(|(x, y)| x.abs_diff(y) <= 1);
+                let unstyled = near(color(s, P::BackgroundColor)?, ua.0)
+                    && [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor].iter().all(|&p| color(s, p).is_ok_and(|c| near(c, ua.1)))
+                    && [g.border_width.top, g.border_width.right, g.border_width.bottom, g.border_width.left].iter().all(|&w| w == g.border_width.top)
+                    && !decoration::rounded(&decoration::radii(s, outer))
+                    && !matches!(s.value(P::BackgroundImage), Value::Images(_))
+                    && !matches!(s.value(P::BoxShadow), Value::Shadows(_));
+                if unstyled {
+                    self.emit(group, text, outer, Primitive::Control { owner: id, look: ControlLook { kind: ControlKind::Menulist, ..look } }, clip)?;
+                } else {
+                    self.decorate_box(id, s, g, outer, group, clip, text)?;
+                }
+                // The arrow: a chevron centred in the select's end padding, its
+                // size following the font (as Chrome's, measured at 1× and 2×).
+                let k = s.value(P::FontSize).scalar().map_or(1., |f| f / (40. / 3.));
+                let (half, rise) = (4.4 * k, 7.6 * k);
+                let rtl = matches!(s.value(P::Direction), Value::Keyword(K::Rtl));
+                let cx = if rtl { outer.x + g.border_width.left + 7.9 * k } else { outer.x + outer.width - g.border_width.right - 7.9 * k };
+                let top = outer.y + outer.height / 2. - 5. * k;
+                let bounds = Rect { x: cx - half - 1.2 * k, y: top, width: 2. * (half + 1.2 * k), height: rise };
+                return self.emit(group, text, bounds, Primitive::Control { owner: id, look }, clip);
+            }
+            None => {}
+        }
+        self.decorate_box(id, s, g, outer, group, clip, text)
+    }
+    /// The look of a form control this box draws itself (`appearance` not
+    /// `none`): a checkbox, a radio button, a select's arrow.
+    fn control_look(&self, id: BoxId, s: &Style) -> Result<Option<ControlLook>> {
+        if matches!(s.value(P::Appearance), Value::Keyword(K::None)) {
+            return Ok(None);
+        }
+        let node = self.layout.cache().tree().get(id).ok_or(Error::Invalid)?.node;
+        if self.doc.namespace(node)? != Some(crate::dom::Namespace::Html) {
+            return Ok(None);
+        }
+        let kind = match self.doc.name(node)? {
+            Some("input") => match self.doc.attribute(node, "type")?.map(str::trim) {
+                Some(t) if t.eq_ignore_ascii_case("checkbox") => ControlKind::Checkbox { checked: self.doc.control_checked(node)? },
+                Some(t) if t.eq_ignore_ascii_case("radio") => ControlKind::Radio { checked: self.doc.control_checked(node)? },
+                _ => return Ok(None),
+            },
+            // A drop-down (not a list box: `multiple`, or a size above one).
+            Some("select") if self.doc.attribute(node, "multiple")?.is_none() && self.doc.attribute(node, "size")?.and_then(|v| v.trim().parse::<u32>().ok()).is_none_or(|n| n <= 1) => {
+                ControlKind::Arrow
+            }
+            _ => return Ok(None),
+        };
+        let disabled = self.doc.attribute(node, "disabled")?.is_some();
+        let preferred = if self.options.dark { crate::css::color::Scheme::Dark } else { crate::css::color::Scheme::Light };
+        let dark = match s.value(P::ColorScheme) {
+            Value::Keyword(k) => crate::css::style::used_scheme(*k, preferred) == crate::css::color::Scheme::Dark,
+            _ => false,
+        };
+        // Chrome's colours (light: #fff, #767676, #0075ff; dark: #3b3b3b,
+        // #858585, #99c8ff), disabled ones as its are, faded.
+        let (mut fill, mut border, mut accent) =
+            if dark { ([0x3b, 0x3b, 0x3b, 255], [0x85, 0x85, 0x85, 255], [0x99, 0xc8, 0xff, 255]) } else { ([255; 4], [0x76, 0x76, 0x76, 255], [0x00, 0x75, 0xff, 255]) };
+        if let Value::Color(_) = s.value(P::AccentColor) {
+            accent = color(s, P::AccentColor)?;
+        }
+        // The check on the accent: white on a dark one, dark on a light one.
+        let luma = |c: [u8; 4]| 0.2126 * f64::from(c[0]) + 0.7152 * f64::from(c[1]) + 0.0722 * f64::from(c[2]);
+        let mut mark = if luma(accent) > 160. { [0x3b, 0x3b, 0x3b, 255] } else { [255; 4] };
+        if disabled {
+            if dark {
+                (fill, border, accent, mark) = ([0x36, 0x36, 0x36, 255], [0x4f, 0x4f, 0x4f, 255], [0x4f, 0x4f, 0x4f, 255], [0x36, 0x36, 0x36, 255]);
+            } else {
+                (fill, border, accent, mark) = ([0xf8, 0xf8, 0xf8, 255], [0xd1, 0xd1, 0xd1, 255], [0xd1, 0xd1, 0xd1, 255], [0xed, 0xed, 0xed, 255]);
+            }
+        }
+        if kind == ControlKind::Arrow {
+            mark = color(s, P::Color)?;
+            // A disabled select's frame, as Chrome's theme fades it.
+            if disabled && !dark {
+                (fill, border) = ([0xfb, 0xfb, 0xfb, 255], [0xe0, 0xe0, 0xe0, 255]);
+            }
+        }
+        Ok(Some(ControlLook { kind, fill, border, accent, mark }))
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn decorate_box(&mut self, id: BoxId, s: &Style, g: layout::Geometry, outer: Rect, group: (u32, u8), clip: u32, text: bool) -> Result<()> {
         let radii = decoration::radii(s, outer);
         let images = matches!(s.value(P::BackgroundImage), Value::Images(_));
         let shadows = matches!(s.value(P::BoxShadow), Value::Shadows(_));

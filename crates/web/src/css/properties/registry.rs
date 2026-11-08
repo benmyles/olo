@@ -43,6 +43,8 @@ pub(super) enum Grammar {
     Counters(i64),
     /// `quotes`: `auto`, `none` or pairs of strings.
     Quotes,
+    /// `color-scheme`: the schemes an element allows, as one keyword.
+    ColorScheme,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Expansion {
@@ -116,6 +118,25 @@ keyword_registry! {
     FullWidth => "full-width",
     FullSizeKana => "full-size-kana",
     Anywhere => "anywhere",
+    // `color-scheme`'s.
+    Light => "light",
+    Dark => "dark",
+    LightDark => "light dark",
+    // `appearance`'s.
+    Checkbox => "checkbox",
+    Radio => "radio",
+    Menulist => "menulist",
+    MenulistButton => "menulist-button",
+    Listbox => "listbox",
+    Textfield => "textfield",
+    Searchfield => "searchfield",
+    Textarea => "textarea",
+    Button => "button",
+    PushButton => "push-button",
+    SquareButton => "square-button",
+    Meter => "meter",
+    ProgressBar => "progress-bar",
+    SliderHorizontal => "slider-horizontal",
     Auto => "auto",
     AutoPhrase => "auto-phrase",
     Balance => "balance",
@@ -277,6 +298,7 @@ macro_rules! property_registry {
     }
 }
 property_registry! {
+    AccentColor, "accent-color", Grammar::Color(&[Keyword::Auto]), "auto", true;
     AlignContent, "align-content", Grammar::Keywords(&[Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::SpaceBetween,Keyword::SpaceAround,Keyword::SpaceEvenly,Keyword::Baseline]), "normal", false;
     AlignItems, "align-items", Grammar::Keywords(&[Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Baseline]), "normal", false;
     AlignSelf, "align-self", Grammar::Keywords(&[Keyword::Auto,Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Baseline]), "auto", false;
@@ -288,6 +310,7 @@ property_registry! {
     AnimationName, "animation-name", Grammar::Animation(super::animation::Field::Name), "none", false;
     AnimationPlayState, "animation-play-state", Grammar::Animation(super::animation::Field::PlayState), "running", false;
     AnimationTimingFunction, "animation-timing-function", Grammar::Animation(super::animation::Field::Easing), "ease", false;
+    Appearance, "appearance", Grammar::Keywords(&[Keyword::None,Keyword::Auto,Keyword::Checkbox,Keyword::Radio,Keyword::Menulist,Keyword::MenulistButton,Keyword::Listbox,Keyword::Textfield,Keyword::Searchfield,Keyword::Textarea,Keyword::Button,Keyword::PushButton,Keyword::SquareButton,Keyword::Meter,Keyword::ProgressBar,Keyword::SliderHorizontal]), "none", false;
     AspectRatio, "aspect-ratio", Grammar::Ratio, "auto", false;
     BackdropFilter, "backdrop-filter", Grammar::Filters, "none", false;
     BackgroundClip, "background-clip", Grammar::Keywords(&[Keyword::BorderBox,Keyword::PaddingBox,Keyword::ContentBox,Keyword::Text]), "border-box", false;
@@ -323,6 +346,7 @@ property_registry! {
     ClipPath, "clip-path", Grammar::ClipPath, "none", false;
     ClipRule, "clip-rule", Grammar::Keywords(&[Keyword::Nonzero,Keyword::Evenodd]), "nonzero", true;
     Color, "color", Grammar::Color(&[]), "canvastext", true;
+    ColorScheme, "color-scheme", Grammar::ColorScheme, "normal", true;
     ColumnGap, "column-gap", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Normal]), "normal", false;
     ContainerName, "container-name", Grammar::ContainerName, "none", false;
     ContainerType, "container-type", Grammar::Keywords(&[Keyword::Normal,Keyword::InlineSize,Keyword::Size]), "normal", false;
@@ -477,7 +501,7 @@ shorthand_registry! {
     // and the not-yet-implemented unicode-bidi are excluded by definition.
     WebkitMask, "-webkit-mask", [MaskImage,MaskPosition,MaskSize,MaskRepeat], Background;
     WebkitTextDecoration, "-webkit-text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor,TextDecorationThickness], TextDecoration;
-    All, "all", [AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,AspectRatio,BackdropFilter,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerName,ContainerType,Content,CounterIncrement,CounterReset,CounterSet,Display,Fill,FillOpacity,FillRule,Filter,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,MixBlendMode,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Quotes,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TableLayout,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextDecorationThickness,TextBoxEdge,TextBoxTrim,TextOrientation,TextOverflow,TextTransform,TextUnderlineOffset,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,TransitionDelay,TransitionDuration,TransitionProperty,TransitionTimingFunction,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [AccentColor,AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,Appearance,AspectRatio,BackdropFilter,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColorScheme,ColumnGap,ContainerName,ContainerType,Content,CounterIncrement,CounterReset,CounterSet,Display,Fill,FillOpacity,FillRule,Filter,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,MixBlendMode,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Quotes,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TableLayout,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextDecorationThickness,TextBoxEdge,TextBoxTrim,TextOrientation,TextOverflow,TextTransform,TextUnderlineOffset,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,TransitionDelay,TransitionDuration,TransitionProperty,TransitionTimingFunction,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Animation, "animation", [AnimationName,AnimationDuration,AnimationTimingFunction,AnimationDelay,AnimationIterationCount,AnimationDirection,AnimationFillMode,AnimationPlayState], Animation;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
@@ -541,6 +565,13 @@ impl Name {
         if name.eq_ignore_ascii_case("font-stretch") {
             return Some(Self::Longhand(Property::FontWidth));
         }
+        if name.eq_ignore_ascii_case("-moz-appearance") {
+            return Some(Self::Longhand(Property::Appearance));
+        }
+        // The old name of overflow-wrap, still common on the web.
+        if name.eq_ignore_ascii_case("word-wrap") {
+            return Some(Self::Longhand(Property::OverflowWrap));
+        }
         if name.eq_ignore_ascii_case("grid-row-gap") {
             return Some(Self::Longhand(Property::RowGap));
         }
@@ -558,7 +589,7 @@ impl Name {
         // and their longhands: the standard ones.
         if name.len() > 8 && name[..8].eq_ignore_ascii_case("-webkit-") && {
             let rest = name[8..].to_ascii_lowercase();
-            rest.starts_with("animation") || rest.starts_with("transition") || rest == "backdrop-filter"
+            rest.starts_with("animation") || rest.starts_with("transition") || rest == "backdrop-filter" || rest == "appearance"
         } {
             return Self::parse(&name[8..]);
         }

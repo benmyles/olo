@@ -270,6 +270,8 @@ struct State {
     modules: modules::Modules,
     /// A navigation the page asked for (location, a form), not yet taken.
     navigation: Option<(String, bool)>,
+    /// The body the navigation posts (a form's): its media type and bytes.
+    navigation_post: Option<(String, Vec<u8>)>,
     /// The session history the page changed since last taken (pushState,
     /// replaceState, a traversal within the document).
     history: Vec<HistoryChange>,
@@ -439,6 +441,7 @@ impl Realm {
             in_flight: HashMap::new(),
             modules: modules::Modules::with_map(import_map),
             navigation: None,
+            navigation_post: None,
             history: Vec::new(),
             focused: None,
             media: HashMap::new(),
@@ -754,6 +757,11 @@ impl Realm {
     /// whether it replaces the current history entry).
     pub fn take_navigation(&self) -> Option<(String, bool)> {
         self.state.borrow_mut().navigation.take()
+    }
+    /// The body the navigation just taken posts, if it posts one: its
+    /// media type and bytes.
+    pub fn take_navigation_post(&self) -> Option<(String, Vec<u8>)> {
+        self.state.borrow_mut().navigation_post.take()
     }
     /// How the page moved its session history since the last call.
     pub fn take_history(&self) -> Vec<HistoryChange> {
@@ -1230,6 +1238,7 @@ impl State {
             in_flight: HashMap::new(),
             modules: Default::default(),
             navigation: None,
+            navigation_post: None,
             history: Vec::new(),
             focused: None,
             media: HashMap::new(),
@@ -1775,6 +1784,7 @@ const NATIVES: &[&str] = &[
     "cookie",
     "animationSet",
     "historyChanged",
+    "navigatePost",
     "animationRemove",
     "structuredClone",
     "workerStart",
@@ -2167,7 +2177,19 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         "navigate" => {
             let url = arg_string(scope, &args, 0);
             let replace = args.get(1).boolean_value(scope);
-            state.borrow_mut().navigation = Some((url, replace));
+            let mut s = state.borrow_mut();
+            s.navigation = Some((url, replace));
+            s.navigation_post = None;
+        }
+        // navigatePost(url, body, type): a form's POST, the page left for
+        // what the server answers.
+        "navigatePost" => {
+            let url = arg_string(scope, &args, 0);
+            let body = arg_body(scope, &args, 1);
+            let kind = arg_string(scope, &args, 2);
+            let mut s = state.borrow_mut();
+            s.navigation = Some((url, false));
+            s.navigation_post = Some((kind, body));
         }
         // historyChanged(url, kind, delta): the page's session history moved
         // ('push', 'replace', or 'go' by delta within the document), or (for
@@ -3207,6 +3229,21 @@ pub enum Source {
 /// document order, then async ones; `nomodule` scripts not at all, as in
 /// any browser with modules. Each entry says whether it is a module. An
 /// external URL is resolved against `base` with `url::Url`.
+/// The document has form controls (what a person types into, picks or
+/// presses to send a form): a page without scripts still needs a realm for
+/// them, since forms are run by its prelude.
+pub fn has_controls(doc: &Document) -> bool {
+    let mut stack = vec![doc.root()];
+    while let Some(n) = stack.pop() {
+        if doc.node_type(n) == Ok(NodeType::Element) && doc.namespace(n) == Ok(Some(Namespace::Html)) && matches!(doc.name(n), Ok(Some("input" | "textarea" | "select" | "button"))) {
+            return true;
+        }
+        if let Ok(children) = doc.children(n) {
+            stack.extend(children);
+        }
+    }
+    false
+}
 pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String, bool, NodeId)> {
     let page = base.to_owned();
     let base = url::Url::parse(base).ok();

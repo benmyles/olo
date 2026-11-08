@@ -1311,7 +1311,25 @@
     const entries = formEntries(form, submitter);
     if (method === 'dialog') return;
     if (method === 'get') { const u = new URL(action); u.search = new URLSearchParams(entries).toString(); navigate(u.href); return; }
-    log('warn', ['form ' + method.toUpperCase() + ' to ' + action + ' is not supported yet']);
+    // POST (HTML §4.10.21.3): the entries encoded as the form's enctype says.
+    if (method === 'post') {
+      const enctype = ((submitter && N.attr(submitter, 'formenctype')) || N.attr(form, 'enctype') || '').trim().toLowerCase();
+      const crlf = (v) => String(v).replace(/\r?\n|\r/g, '\r\n');
+      if (enctype === 'multipart/form-data') {
+        const boundary = '----OloFormBoundary' + Math.random().toString(36).slice(2, 14);
+        const quote = (v) => String(v).replace(/"/g, '%22').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+        let body = '';
+        for (const [name, value] of entries) body += '--' + boundary + '\r\nContent-Disposition: form-data; name="' + quote(name) + '"\r\n\r\n' + crlf(value) + '\r\n';
+        body += '--' + boundary + '--\r\n';
+        N.navigatePost(action, new TextEncoder().encode(body), 'multipart/form-data; boundary=' + boundary);
+      } else if (enctype === 'text/plain') {
+        N.navigatePost(action, new TextEncoder().encode(entries.map(([n, v]) => n + '=' + v + '\r\n').join('')), 'text/plain');
+      } else {
+        N.navigatePost(action, new TextEncoder().encode(new URLSearchParams(entries).toString()), 'application/x-www-form-urlencoded');
+      }
+      return;
+    }
+    log('warn', ['form ' + method.toUpperCase() + ' to ' + action + ' is not supported']);
   };
   // Implicit submission (Enter in a field): the form's first submit
   // button clicked, else the form submitted if it has one field.

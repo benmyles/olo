@@ -1,6 +1,7 @@
 //! Retained native page paint commands and bounded CPU raster tiles. Worker-only.
 //! Outline rasterization is not yet Chromium font rasterization or full CSS paint.
 mod border;
+mod control;
 pub mod decoration;
 mod glyph;
 mod image;
@@ -13,7 +14,7 @@ use crate::{css, dom, font, layout};
 pub use glyph::{CacheStats, Engine};
 pub use mipmap::ImageCacheStats;
 pub use raster::{DeviceRect, Tile};
-pub use scene::{BuildJob, Command, LayerKind, Moved, Options, Primitive, Progress, Scene, Scroller, Stratum, SurfaceShown};
+pub use scene::{BuildJob, Command, ControlKind, ControlLook, LayerKind, Moved, Options, Primitive, Progress, Scene, Scroller, Stratum, SurfaceShown};
 /// Draw a loaded SVG viewport into a surface through `transform` (its user
 /// units to device pixels), for rasterising an SVG as an image.
 pub(crate) fn raster_vector(

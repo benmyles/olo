@@ -242,14 +242,19 @@ pub const UA: &str = concat!(
     // grey with an outset one, text areas monospace; one line where a
     // field is, its text vertically centred by the field's layout.
     "video{object-fit:contain}",
-    "input,textarea,select,button{display:inline-block;font:13.3333px Arial,sans-serif;letter-spacing:normal;word-spacing:normal;text-align:start;color:#000;box-sizing:content-box}",
-    "input{padding:1px 2px;border:2px inset #767676;background-color:#fff;width:177px;white-space:pre;overflow:clip}",
+    "input,textarea,select,button{display:inline-block;font:13.3333px Arial,sans-serif;letter-spacing:normal;word-spacing:normal;text-align:start;color:FieldText;box-sizing:content-box}",
+    "input{padding:1px 2px;border:2px inset light-dark(#767676,#858585);background-color:Field;width:177px;white-space:pre;overflow:clip}",
     "input::placeholder,textarea::placeholder{color:#757575}",
-    "textarea{padding:2px;border:1px solid #767676;background-color:#fff;font-family:monospace;width:195px;height:36px;white-space:pre-wrap;overflow:auto}",
-    "select{border:1px solid #767676;border-radius:0;background-color:#efefef;padding:0 20px 0 4px;white-space:pre;color:#000}",
-    "input[type=submit],input[type=reset],input[type=button],button{padding:1px 6px;border:2px outset #000;background-color:#efefef;color:#000;width:auto;text-align:center;box-sizing:border-box}",
-    "input[type=checkbox],input[type=radio]{width:13px;height:13px;padding:0;border:0;margin:3px 3px 3px 4px;background-color:transparent;box-sizing:border-box}",
+    "textarea{padding:2px;border:1px solid light-dark(#767676,#858585);background-color:Field;font-family:monospace;width:195px;height:36px;white-space:pre-wrap;overflow:auto}",
+    "select{border:1px solid light-dark(#767676,#858585);border-radius:0;background-color:ButtonFace;padding:1px 16px 1px 4px;white-space:pre;color:FieldText;box-sizing:border-box}",
+    "input[type=submit],input[type=reset],input[type=button],button{padding:1px 6px;border:2px outset #000;background-color:ButtonFace;color:ButtonText;width:auto;text-align:center;box-sizing:border-box}",
+    "input[type=checkbox],input[type=radio]{width:13px;height:13px;padding:0;border:0;margin:3px 3px 3px 4px;background-color:transparent;box-sizing:border-box}input[type=radio]{margin:3px 3px 0 5px}",
     "input[type=hidden]{display:none!important}",
+    // Disabled controls, faded as Chrome's.
+    ":is(input,select,textarea,button):disabled{color:light-dark(rgba(16,16,16,.3),rgba(255,255,255,.3))}",
+    ":is(input,select,textarea):disabled{background-color:light-dark(rgba(239,239,239,.3),rgba(59,59,59,.3));border-color:light-dark(rgba(118,118,118,.3),rgba(133,133,133,.3))}",
+    // Controls the engine draws itself, as Chrome's (see paint::control).
+    "input,textarea,select,button,meter,progress{appearance:auto}",
     "li{display:list-item}ul,menu,dir{list-style-type:disc;padding-inline-start:40px;margin-block:1em}ol{list-style-type:decimal;padding-inline-start:40px;margin-block:1em}",
     ":is(ul,ol,menu,dir) :is(ul,ol,menu,dir){margin-block:0}:is(ol,ul,menu,dir) ul{list-style-type:circle}:is(ol,ul,menu,dir) :is(ol,ul,menu,dir) ul{list-style-type:square}",
     "table{display:table;border-spacing:2px;box-sizing:border-box}caption{display:table-caption;text-align:center}colgroup{display:table-column-group}col{display:table-column}",
@@ -272,6 +277,19 @@ pub const UA: &str = concat!(
     "iframe{border:2px inset}center{text-align:-webkit-center}",
     "input[type=hidden i]{display:none}",
 );
+/// What the scene is painted with: the canvas in the root element's colour
+/// scheme (dark under a dark `color-scheme`, as Chrome paints it), and the
+/// person's preferred scheme.
+fn paint_options(host: &impl Host, doc: &Document, layout: &layout::Layout) -> Result<paint::Options> {
+    let preferred = host.scheme();
+    let root = doc.children(doc.root())?.find(|&n| doc.node_type(n) == Ok(crate::dom::NodeType::Element));
+    let allowed = root.and_then(|r| layout.cache().tree().styles().snapshot(r)).map_or(css::properties::Keyword::Normal, |s| match s.value(css::properties::Property::ColorScheme) {
+        css::style::Value::Keyword(k) => *k,
+        _ => css::properties::Keyword::Normal,
+    });
+    let canvas = host.system_color(css::color::SystemColor::Canvas, css::style::used_scheme(allowed, preferred))?.srgb8_clipped();
+    Ok(paint::Options { canvas, dark: preferred == css::color::Scheme::Dark })
+}
 #[allow(clippy::too_many_arguments)] // Explicit worker resources, viewport, cancellation and progress.
 /// Room for what scripts draw and load on top of the page's own images.
 const SCRIPTED_IMAGE_LIMITS: crate::image::Limits = PAGE_IMAGE_LIMITS;
@@ -1696,8 +1714,8 @@ impl Page {
     /// The scene built again over the same layout, as the document's
     /// scroll offsets have it now.
     pub fn repaint(&mut self, host: &impl Host, painter: &mut paint::Engine, cancel: Option<&AtomicBool>) -> Result<()> {
-        let canvas = host.system_color(css::color::SystemColor::Canvas, host.scheme())?.srgb8_clipped();
-        let mut job = paint::BuildJob::new(&self.document, self.scene.layout().clone(), painter, paint::Options { canvas }, Default::default(), cancel)?.with_animated(self.animated.clone());
+        let options = paint_options(host, &self.document, self.scene.layout())?;
+        let mut job = paint::BuildJob::new(&self.document, self.scene.layout().clone(), painter, options, Default::default(), cancel)?.with_animated(self.animated.clone());
         while !job.step(256)?.finished {}
         self.scene = job.finish()?;
         Ok(())
@@ -2863,8 +2881,8 @@ fn render_once(
     let scene = match scene {
         Some(scene) => scene,
         None => {
-            let canvas = host.system_color(css::color::SystemColor::Canvas, host.scheme())?.srgb8_clipped();
-            let mut job = paint::BuildJob::new(doc, layout, painter, paint::Options { canvas }, Default::default(), cancel)?.with_animated(animated.clone());
+            let options = paint_options(host, doc, &layout)?;
+            let mut job = paint::BuildJob::new(doc, layout, painter, options, Default::default(), cancel)?.with_animated(animated.clone());
             while !job.step(32)?.finished {
                 progress(Phase::Paint, job.progress().boxes)
             }

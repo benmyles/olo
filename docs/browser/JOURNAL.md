@@ -6614,3 +6614,32 @@ journal).
   hasher, debug switches read once. GitHub: a video fading in stays a GPU
   surface (the processor converted each picture while it faded).
 
+
+## 2026-11-08, morning: forms post, controls drawn, `color-scheme`
+
+- **Forms POST.** A form with `method=post` said it wasn't supported. It
+  now posts its fields (urlencoded, `multipart/form-data`, `text/plain`)
+  with the page's Origin and Referer, and the answer is the next page in
+  the history; httpbin echoes every field as Chrome sends it (a textarea's
+  lines as CRLF, UTF-8 intact). A page without scripts got no realm, so
+  its forms were dead: one is made when the page has form controls. JSON,
+  CSS, scripts and other text documents show as text, as Chrome shows
+  them. Going back to a posted page loads it with GET (Chrome asks).
+- **Checkboxes, radio buttons and selects** were empty boxes (a fallback
+  on every form). They are drawn as Chrome's theme draws them, measured
+  against it at 2x: its colours, 2 px corners, the check and the radio's
+  dot, a select's chevron and rounded frame (only where the page hasn't
+  styled it, as Chrome), `accent-color`, disabled, dark; at device scale,
+  sharp at 1x, 1.5x and 2x. `appearance` (and `-webkit-appearance`) turns
+  them off. They sit on the baseline by their border box, as Chrome lines
+  them up (a radio has no bottom margin and dropped 3 px). Clicks toggle
+  them. Selects have Chrome's size (19 px tall, its inner padding).
+- **`color-scheme`** is honoured: an element's scheme is worked out before
+  its colours, and system colours, `light-dark()`, the canvas and form
+  controls follow it; text in the default colour turns light in a dark
+  one. Before, `light-dark()` followed Olo's own palette, so with Olo dark
+  every page that used it without asking for dark went dark (Chrome: light).
+- `word-wrap` (the old name of `overflow-wrap`, common) was dropped as
+  unknown.
+- **Cost:** none measurable (Stripe saved locally, median of 8 headless
+  renders: style 79.1 → 78.1 ms, paint 3.4 → 3.35 ms).

@@ -1,6 +1,7 @@
 //! Frozen computed styles over the implemented property registry. Worker-only;
 //! no layout, CSSOM, font selection/shaping, UA stylesheet or live invalidation.
 mod compute;
+pub use compute::used_scheme;
 mod context;
 mod coupled;
 mod font_pool;

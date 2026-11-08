@@ -57,6 +57,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 | Grammar::Filters
                 | Grammar::Counters(_)
                 | Grammar::Quotes
+                | Grammar::ColorScheme
         )
     {
         let parts: Vec<Component<'_>> = values.clone().filter(|c| c.kind() != Kind::Whitespace).collect();
@@ -81,6 +82,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             Grammar::Content => content::parse_content(&parts)?,
             Grammar::Counters(default) => content::parse_counters(&parts, default)?,
             Grammar::Quotes => content::parse_quotes(&parts)?,
+            Grammar::ColorScheme => color_scheme(&parts)?,
             Grammar::Filters => decoration::parse_filters(&parts, limits, cancelled)?,
             _ => decoration::parse_radius(&parts, limits, cancelled)?,
         };
@@ -459,6 +461,40 @@ fn text_box_edge(parts: &[Component<'_>]) -> Result<Value> {
     Ok(Value::Keyword(k))
 }
 /// `container-name: none | <custom-ident>+` (not `and`, `or`, `not`).
+/// `color-scheme: normal | [ light | dark | <custom-ident> ]+ && only?`,
+/// kept as the schemes it allows: `normal`, `light`, `dark`, or
+/// `light-dark` for both (the person's preference then chooses).
+fn color_scheme(parts: &[Component<'_>]) -> Result<Value> {
+    if let [c] = parts
+        && c.kind() == Kind::Ident
+        && c.text().is_some_and(|t| t.eq_ignore_ascii_case("normal"))
+    {
+        return Ok(Value::Keyword(Keyword::Normal));
+    }
+    let (mut light, mut dark, mut only) = (false, false, false);
+    for c in parts {
+        let name = if c.kind() == Kind::Ident { c.text().ok_or(Error::Invalid)? } else { return Err(Error::Invalid) };
+        if name.eq_ignore_ascii_case("light") {
+            light = true;
+        } else if name.eq_ignore_ascii_case("dark") {
+            dark = true;
+        } else if name.eq_ignore_ascii_case("only") {
+            if std::mem::replace(&mut only, true) {
+                return Err(Error::Invalid);
+            }
+        } else if ["normal", "none", "inherit", "initial", "unset", "revert", "default"].iter().any(|w| name.eq_ignore_ascii_case(w)) {
+            return Err(Error::Invalid);
+        }
+    }
+    Ok(Value::Keyword(match (light, dark) {
+        (true, true) => Keyword::LightDark,
+        (false, true) => Keyword::Dark,
+        (true, false) => Keyword::Light,
+        // Only names it does not know (or `only` alone): as `normal`.
+        (false, false) if parts.len() > usize::from(only) => Keyword::Normal,
+        _ => return Err(Error::Invalid),
+    }))
+}
 fn container_name(parts: &[Component<'_>]) -> Result<Value> {
     if let [c] = parts
         && c.kind() == Kind::Ident
@@ -630,7 +666,8 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
         | Grammar::Content
         | Grammar::Filters
         | Grammar::Counters(_)
-        | Grammar::Quotes => {
+        | Grammar::Quotes
+        | Grammar::ColorScheme => {
             unreachable!("parsed before part collection")
         }
         Grammar::Color(keywords) => {
@@ -714,7 +751,8 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
         | Grammar::Content
         | Grammar::Filters
         | Grammar::Counters(_)
-        | Grammar::Quotes => Err(Error::Invalid),
+        | Grammar::Quotes
+        | Grammar::ColorScheme => Err(Error::Invalid),
     }
 }
 fn wide(s: &str) -> Option<variables::Wide> {

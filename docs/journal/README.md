@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: form controls drawn as Chrome's, forms post
+
+*08:22* — Checkboxes, radio buttons and selects were empty boxes; they are now drawn as Chrome draws them (accent-color, disabled, dark color-scheme), sharp at every scale and lined up on the baseline as Chrome lines them up (left: Olo above Chrome at 2x). color-scheme is honoured: system colours, light-dark(), the canvas and controls follow it. Forms POST (urlencoded, multipart, text/plain), also on pages without scripts, and JSON answers show as text (right).
+
+![Browser: form controls drawn as Chrome's, forms post](2026-11-08/082241-browser-form-controls-drawn-as-chrome-s-forms-po.png)
+
 ### Browser: CSS filter blur and colours
 
 *07:01* — filter: blur() and the colour functions (grayscale, brightness, contrast, invert, sepia, hue-rotate, saturate, opacity) now draw, against Chrome within a few units at 1x, 1.5x and 2x, without seams between tiles: a wide blur renders the group's content around the tile at a fraction of the resolution, blurs it with three box passes and draws it back.

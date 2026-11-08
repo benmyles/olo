@@ -1852,6 +1852,8 @@ impl<'a> Job<'a> {
             };
             let ascent = if middle {
                 (height + style.font().metrics.ex) / 2.
+            } else if matches!(b.kind, BoxKind::InlineReplaced { toggle: true, .. }) && !matches!(s.value(P::Appearance), Value::Keyword(K::None)) {
+                margin.top + g.border_box.height
             } else if inline_block && let Some(baseline) = self.last_baseline(child, 0)? {
                 baseline + margin.top
             } else {

@@ -33,7 +33,7 @@ fn number(v: &Value) -> f64 {
 }
 #[test]
 fn registry_names_initial_values_and_inheritance_are_typed() {
-    assert_eq!(P::ALL.len(), 180);
+    assert_eq!(P::ALL.len(), 183);
     assert_eq!(p::Shorthand::ALL.len(), 51);
     for &property in P::ALL {
         assert!(Name::parse(property.as_str()).is_some());
@@ -46,6 +46,10 @@ fn registry_names_initial_values_and_inheritance_are_typed() {
     assert!(P::Color.inherited());
     assert!(P::FontSize.inherited());
     assert!(!P::Width.inherited());
+    // Legacy names Chrome still reads.
+    assert_eq!(Name::parse("word-wrap"), Some(Name::Longhand(P::OverflowWrap)));
+    assert_eq!(Name::parse("-webkit-appearance"), Some(Name::Longhand(P::Appearance)));
+    assert_eq!(Name::parse("Grid-Row-Gap"), Some(Name::Longhand(P::RowGap)));
     assert_eq!(parse("unknown-property", "red").unwrap_err(), Error::UnknownProperty);
     assert_eq!(parse("--", "red").unwrap_err(), Error::UnknownProperty);
     let s = syntax("MARGIN: 1PX 2px !ImPoRtAnT;");

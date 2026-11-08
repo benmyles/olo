@@ -42,6 +42,9 @@ struct Browser {
     navigation: u64,
     seek_anchor: bool,
     focus_scroll: Option<olo_web::dom::NodeId>,
+    /// What the document is posted with (a form's submission): only for the
+    /// navigation that sent it; going back to it, or reloading, gets it.
+    post: Option<Arc<worker::Post>>,
     focus_targets: Arc<navigation::FocusTargets>,
     document_snapshot: gpui::SharedString,
     snapshot_identity: (u64, u64),
@@ -156,6 +159,7 @@ impl Browser {
             navigation: 1,
             seek_anchor: !restoring,
             focus_scroll: None,
+            post: None,
             focus_targets: Arc::default(),
             document_snapshot: Default::default(),
             snapshot_identity: (0, 0),
@@ -240,6 +244,7 @@ impl Browser {
             fragment,
             seek_anchor: self.seek_anchor,
             focus_scroll: self.focus_scroll,
+            post: self.post.clone(),
         })));
         cx.notify();
     }
@@ -262,6 +267,7 @@ impl Browser {
         self.interaction = Default::default();
         self.pressed = None;
         self.blocked_action = None;
+        self.post = None;
         self.address.update(cx, |f, cx| f.set_text(entry.url.clone(), cx));
         if same {
             self.status = "Finding fragment…".into();
@@ -282,13 +288,19 @@ impl Browser {
         }
     }
     fn navigate(&mut self, url: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.navigate_with(url, None, window, cx);
+    }
+    /// Navigates, posting `post` when there is one (a form's submission:
+    /// always another document, even to the same URL).
+    fn navigate_with(&mut self, url: String, post: Option<Arc<worker::Post>>, window: &mut Window, cx: &mut Context<Self>) {
         self.history.scroll(self.css_scroll());
-        let same = self.document_ready && url.contains('#') && url.split('#').next() == self.history.current().url.split('#').next();
-        if url != self.history.current().url {
+        let same = post.is_none() && self.document_ready && url.contains('#') && url.split('#').next() == self.history.current().url.split('#').next();
+        if url != self.history.current().url || post.is_some() {
             self.history.push(url, self.cwd.clone(), same);
         }
         let entry = self.history.current().clone();
         self.begin_navigation(entry, same, true, window, cx);
+        self.post = post;
     }
     fn traverse(&mut self, delta: isize, window: &mut Window, cx: &mut Context<Self>) {
         self.history.scroll(self.css_scroll());
@@ -1149,7 +1161,7 @@ fn main() {
         olo_ui::message_handler(cx, move |message, cx| {
             if message.is::<worker::Reply>() {
                 let reply = *message.downcast::<worker::Reply>().unwrap();
-                if let worker::Reply::Navigate { id, url, replace } = reply {
+                if let worker::Reply::Navigate { id, url, replace, post } = reply {
                     // The page's own navigation (a script, a form, a link it
                     // let be followed): as a link's, replacing the history
                     // entry when it asked to; only to the web or, from a
@@ -1172,7 +1184,7 @@ fn main() {
                                 if replace {
                                     v.history.location(url.clone());
                                 }
-                                v.navigate(url, w, cx)
+                                v.navigate_with(url, post, w, cx)
                             })
                         });
                     }

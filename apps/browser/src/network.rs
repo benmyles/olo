@@ -102,6 +102,20 @@ impl Loader {
     pub fn document(&self, source: &str, cwd: Option<&std::path::Path>, cancel: &Cancel, progress: impl FnMut(usize)) -> page::Result<Resource> {
         self.fetch(Self::navigation(source, cwd)?, None, HTML_LIMIT, cancel, progress, Kind::Document)
     }
+    /// A document a form posts to: its body (of `kind`), what the server
+    /// answers (a redirect after it goes on as a GET).
+    pub fn document_post(&self, source: &str, from: &str, kind: &str, body: &[u8], cancel: &Cancel) -> page::Result<Resource> {
+        let url = Url::parse(source)?;
+        // From the page that posted it (its origin and referrer go with it,
+        // as Chrome sends them; servers check them against forgery).
+        let initiator = Url::parse(from).ok().filter(|u| matches!(u.scheme(), "http" | "https"));
+        let outgoing = Outgoing::new("POST", &format!("content-type: {kind}"), body)?;
+        let mut progress = |_| {};
+        self.runtime.block_on(async {
+            let work = get(&self.client, url, initiator, HTML_LIMIT, cancel.flag.clone(), &mut progress, Kind::Document, false, Some(&outgoing));
+            tokio::select! { biased; _ = cancel.signal.cancelled() => Err("Cancelled".into()), result = work => result }
+        })
+    }
     /// An iframe's document, for the page at `parent` (its site, for
     /// cookies, and its referrer).
     pub fn frame_document(&self, url: Url, parent: &Url, cancel: &Cancel) -> page::Result<Resource> {
@@ -601,6 +615,12 @@ fn referrer(from: &Url, to: &Url) -> Option<String> {
     }
     Some(format!("{}/", from.origin().ascii_serialization()))
 }
+/// A document of this media type is shown as its text (plain text, JSON,
+/// scripts, style sheets, CSV, Markdown), as Chrome shows them.
+fn shown_as_text(kind: &str) -> bool {
+    matches!(kind, "text/plain" | "text/css" | "text/csv" | "text/markdown" | "text/javascript" | "application/javascript" | "application/json" | "text/json" | "application/x-javascript")
+        || kind.starts_with("application/") && kind.ends_with("+json")
+}
 fn append(bytes: &mut Vec<u8>, chunk: &[u8], limit: usize) -> page::Result<()> {
     if chunk.len() > limit.saturating_sub(bytes.len()) {
         return Err("Decoded resource exceeds its size limit".into());
@@ -634,8 +654,11 @@ impl Resource {
     fn encoding(&self) -> &'static encoding_rs::Encoding {
         self.document_encoding.unwrap_or_else(|| {
             let protocol = self.mime.as_ref().and_then(|m| m.get_param("charset")).map(|p| p.as_str());
-            if self.mime.as_ref().is_some_and(|m| m.essence_str() == "text/plain") {
-                encoding_rs::Encoding::for_bom(&self.bytes).map(|p| p.0).or_else(|| protocol.and_then(|p| encoding_rs::Encoding::for_label(p.as_bytes()))).unwrap_or(encoding_rs::WINDOWS_1252)
+            if let Some(kind) = self.mime.as_ref().map(|m| m.essence_str()).filter(|k| shown_as_text(k)) {
+                // JSON is UTF-8 by its standard; other text, Windows-1252
+                // unless it says otherwise (as Chrome reads it).
+                let default = if kind == "text/plain" { encoding_rs::WINDOWS_1252 } else { encoding_rs::UTF_8 };
+                encoding_rs::Encoding::for_bom(&self.bytes).map(|p| p.0).or_else(|| protocol.and_then(|p| encoding_rs::Encoding::for_label(p.as_bytes()))).unwrap_or(default)
             } else {
                 olo_web::html::bytes::encoding(&self.bytes, protocol).0
             }
@@ -645,13 +668,18 @@ impl Resource {
     /// Release the encoded document buffer before parsing/layout allocations.
     pub fn take_html(&mut self, cancel: &Cancel) -> page::Result<Arc<str>> {
         let kind = self.mime.as_ref().map(|m| m.essence_str());
-        if !matches!(kind, None | Some("text/html" | "text/plain")) {
+        if !matches!(kind, None | Some("text/html")) && !kind.is_some_and(shown_as_text) {
             return Err("This document MIME type is not yet supported".into());
         }
         let skip = olo_web::html::bytes::encoding(&self.bytes, None).1;
         self.document_encoding = Some(self.encoding());
-        let plain = kind == Some("text/plain");
-        let mut output = if plain { "<!doctype html><meta charset=utf-8><pre>".to_owned() } else { String::new() };
+        let plain = kind.is_some_and(shown_as_text);
+        // Text is shown as Chrome shows it: preformatted, wrapping.
+        let mut output = if plain {
+            "<!doctype html><meta charset=utf-8><meta name=color-scheme content=\"light dark\"><pre style=\"word-wrap: break-word; white-space: pre-wrap\">".to_owned()
+        } else {
+            String::new()
+        };
         let mut decoder = text::Decoder::new(self.encoding(), text::DecodeLimits { input_bytes: HTML_LIMIT, output_bytes: HTML_LIMIT }, Some(cancel));
         decoder.push(&self.bytes[skip..], true, |s| {
             if !plain {

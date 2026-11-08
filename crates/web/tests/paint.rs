@@ -1840,3 +1840,31 @@ fn an_iframe_with_frameborder_0_has_no_border() {
     let borders = page.scene.commands().iter().filter(|c| matches!(c.primitive, paint::Primitive::Border { .. })).count();
     assert_eq!(borders, 1, "only the iframe without frameborder=0 has its border");
 }
+
+#[test]
+fn checkboxes_radios_and_selects_draw_as_chrome_in_their_scheme() {
+    let mut p = paint::Engine::default();
+    let css = "input,select{display:inline-block;appearance:auto;width:13px;height:13px;margin:0;padding:0;border:0}div{height:13px}";
+    let s = scene(
+        "<div><input type=checkbox checked><input type=checkbox><input type=radio checked><input type=checkbox checked style='appearance:none'></div><div style='color-scheme:dark'><input type=checkbox checked><input type=checkbox></div><div><input type=checkbox checked style='accent-color:red'><input type=checkbox disabled></div>",
+        css,
+        &mut p,
+    );
+    let t = render(&mut p, &s);
+    // Checked: Chrome's accent under a white check; unchecked: white in a
+    // #767676 border; a radio: its accent ring and dot about white.
+    assert_eq!(pixel(&t, 2, 3 + 2), [0x00, 0x75, 0xff, 255]);
+    assert_eq!(pixel(&t, 13 + 6, 3 + 6), [255; 4]);
+    assert_eq!(pixel(&t, 13, 3 + 6), [0x76, 0x76, 0x76, 255]);
+    assert_eq!(pixel(&t, 26 + 6, 3 + 6), [0x00, 0x75, 0xff, 255]);
+    assert_eq!(pixel(&t, 26 + 1, 3 + 6), [255; 4]);
+    // `appearance: none`: nothing drawn.
+    assert_eq!(pixel(&t, 39 + 2, 3 + 2), [255; 4]);
+    // Dark: #99c8ff checked, #3b3b3b unchecked in #858585.
+    assert_eq!(pixel(&t, 2, 16 + 2), [0x99, 0xc8, 0xff, 255]);
+    assert_eq!(pixel(&t, 13 + 6, 16 + 6), [0x3b, 0x3b, 0x3b, 255]);
+    assert_eq!(pixel(&t, 13, 16 + 6), [0x85, 0x85, 0x85, 255]);
+    // `accent-color`, and a disabled one faded.
+    assert_eq!(pixel(&t, 2, 29 + 2), [255, 0, 0, 255]);
+    assert_eq!(pixel(&t, 13, 29 + 6), [0xd1, 0xd1, 0xd1, 255]);
+}

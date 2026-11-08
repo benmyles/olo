@@ -36,9 +36,19 @@ const JAVASCRIPT: bool = true;
 pub fn max_scroll(key: &Key, extent: f64) -> i32 {
     ((extent * key.scale - f64::from(key.height)).ceil().max(0.) as i32).min(i32::MAX - MAX_VIEWPORT as i32 - 256)
 }
+/// A body a navigation posts (a form's): its media type, its bytes, and
+/// the page that posted it.
+#[derive(Debug, PartialEq)]
+pub struct Post {
+    pub kind: String,
+    pub body: Vec<u8>,
+    pub from: String,
+}
 #[derive(Clone)]
 pub struct Request {
     pub id: u64,
+    /// The document is posted to, with this (a form's submission).
+    pub post: Option<Arc<Post>>,
     pub key: Key,
     pub scroll: i32,
     pub cancel: crate::network::Cancel,
@@ -307,6 +317,8 @@ pub enum Reply {
         id: u64,
         url: String,
         replace: bool,
+        /// What the navigation posts (a form's submission), if anything.
+        post: Option<Arc<Post>>,
     },
     Error(u64, String),
 }
@@ -549,6 +561,9 @@ struct Cached {
     /// Decoded images by URL, shared by the passes.
     images: HashMap<url::Url, Option<Arc<olo_web::image::Image>>>,
     scripted: bool,
+    /// It needs its scripted pass: it has scripts, or form controls (run by
+    /// the realm's prelude).
+    wants_realm: bool,
     loaded_at: Instant,
     live: Option<Live>,
     viewport_dependent: bool,
@@ -619,7 +634,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     // run them now, unless something else is waiting.
                     if let Some(r) = &last
                         && JAVASCRIPT
-                        && cached.as_ref().is_some_and(|c| c.page.scripts > 0 && !c.scripted)
+                        && cached.as_ref().is_some_and(|c| c.wants_realm && !c.scripted)
                         && !r.cancel.load(Ordering::Relaxed)
                         && pending.is_empty()
                     {
@@ -771,7 +786,8 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                 if let Some((url, replace)) = live.realm.take_navigation()
                                     && let Some(r) = &last
                                 {
-                                    proxy.send(Reply::Navigate { id: r.id, url, replace });
+                                    let post = live.realm.take_navigation_post().map(|(kind, body)| Arc::new(Post { kind, body, from: r.key.source.clone() }));
+                                    proxy.send(Reply::Navigate { id: r.id, url, replace, post });
                                 }
                                 // pushState, replaceState, history.go: the window's
                                 // history and address follow.
@@ -973,7 +989,8 @@ fn render(
         let advanced = live.realm.advance_frame(now_ms, Duration::from_millis(30), Some(frame));
         live.usage.cpu_ms += advanced.spent_ms;
         if let Some((url, replace)) = live.realm.take_navigation() {
-            proxy.send(Reply::Navigate { id: r.id, url, replace });
+            let post = live.realm.take_navigation_post().map(|(kind, body)| Arc::new(Post { kind, body, from: r.key.source.clone() }));
+            proxy.send(Reply::Navigate { id: r.id, url, replace, post });
         }
         for change in live.realm.take_history() {
             proxy.send(Reply::History(r.id, change));
@@ -1258,7 +1275,10 @@ fn render(
                 let mut document = if r.key.source == "about:engine" {
                     None
                 } else {
-                    Some(loader.document(&r.key.source, r.key.cwd.as_deref(), &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "document"))?)
+                    Some(match &r.post {
+                        Some(p) => loader.document_post(&r.key.source, &p.from, &p.kind, &p.body, &r.cancel)?,
+                        None => loader.document(&r.key.source, r.key.cwd.as_deref(), &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "document"))?,
+                    })
                 };
                 if let Some(document) = &document {
                     proxy.send(Reply::Location(r.id, document.url.to_string()));
@@ -1329,7 +1349,7 @@ fn render(
                     }
                 })
                 .collect();
-            if scripts.is_empty() {
+            if scripts.is_empty() && !olo_js::has_controls(&doc) {
                 return Ok(doc);
             }
             proxy.send(Reply::Status(r.id, format!("Running {} scripts…", scripts.len())));
@@ -1610,6 +1630,7 @@ fn render(
         let origin = document.as_ref().map(|d| d.url.clone()).unwrap_or(url::Url::parse("about:engine")?);
         let base = page.base_href.as_deref().and_then(|href| origin.join(href).ok()).unwrap_or_else(|| origin.clone());
         eprintln!("Browser: {} page ready {:.0} ms after the request", if pass == Pass::Scripted { "scripted" } else { "static" }, loaded_at.elapsed().as_secs_f64() * 1000.);
+        let wants_realm = page.scripts > 0 || olo_js::has_controls(&page.document);
         *cached = Some(Cached {
             key: r.key.clone(),
             page,
@@ -1617,6 +1638,7 @@ fn render(
             source,
             images,
             scripted: pass == Pass::Scripted,
+            wants_realm,
             loaded_at,
             live: live_slot,
             viewport_dependent: host.viewport_used.get(),
@@ -1696,7 +1718,7 @@ fn render(
             )?;
             while !job.step(64)?.finished {}
             let layout = Arc::new(job.finish()?);
-            let mut job = paint::BuildJob::new(&page.document, layout, painter, paint::Options { canvas: [255, 255, 255, 255] }, Default::default(), Some(&r.cancel))?;
+            let mut job = paint::BuildJob::new(&page.document, layout, painter, paint::Options { canvas: [255, 255, 255, 255], dark: false }, Default::default(), Some(&r.cancel))?;
             while !job.step(32)?.finished {}
             page.scene = job.finish()?;
         }
@@ -2234,26 +2256,39 @@ impl Host for PageHost {
     fn scheme(&self) -> Scheme {
         if self.palette.is_dark() { Scheme::Dark } else { Scheme::Light }
     }
-    fn system_color(&self, c: SystemColor, _: Scheme) -> color::Result<Color> {
-        // Pages render as other browsers render them: a white canvas with
-        // the standard light system colours, whatever Olo's own palette is.
-        // Olo's dark modes for pages (a page's own color-scheme, then an
-        // automatic dark rendering) are separate work; the selection colours
-        // are Olo's.
+    fn system_color(&self, c: SystemColor, scheme: Scheme) -> color::Result<Color> {
+        // Pages render as other browsers render them: the standard system
+        // colours of the element's scheme (light unless its `color-scheme`
+        // asks for dark), Chrome's; the selection colours are Olo's.
         let p = &self.palette;
-        let v: [u8; 4] = match c {
-            SystemColor::Canvas | SystemColor::Field => [255, 255, 255, 255],
-            SystemColor::CanvasText | SystemColor::FieldText | SystemColor::ButtonText => [0, 0, 0, 255],
-            SystemColor::ButtonFace => [239, 239, 239, 255],
-            SystemColor::ButtonBorder => [118, 118, 118, 255],
-            SystemColor::GrayText => [128, 128, 128, 255],
-            SystemColor::LinkText => [0, 0, 238, 255],
-            SystemColor::ActiveText => [255, 0, 0, 255],
-            SystemColor::VisitedText => [85, 26, 139, 255],
-            SystemColor::AccentColor => p.navigation_base,
-            SystemColor::Highlight | SystemColor::SelectedItem => p.list_selected_background,
-            SystemColor::HighlightText | SystemColor::SelectedItemText | SystemColor::AccentColorText => p.list_selected_item_text,
-            _ => [0, 0, 0, 255],
+        let dark = match (scheme, c) {
+            (Scheme::Light, _) => None,
+            (_, SystemColor::Canvas) => Some([0x12, 0x12, 0x12, 255]),
+            (_, SystemColor::CanvasText | SystemColor::FieldText | SystemColor::ButtonText) => Some([255, 255, 255, 255]),
+            (_, SystemColor::Field) => Some([0x3b, 0x3b, 0x3b, 255]),
+            (_, SystemColor::ButtonFace | SystemColor::ButtonBorder) => Some([0x6b, 0x6b, 0x6b, 255]),
+            (_, SystemColor::LinkText) => Some([0x9e, 0x9e, 0xff, 255]),
+            (_, SystemColor::VisitedText) => Some([0xd0, 0xad, 0xf0, 255]),
+            (_, SystemColor::ActiveText) => Some([0xff, 0x9e, 0x9e, 255]),
+            _ => None,
+        };
+        let v: [u8; 4] = if let Some(v) = dark {
+            v
+        } else {
+            match c {
+                SystemColor::Canvas | SystemColor::Field => [255, 255, 255, 255],
+                SystemColor::CanvasText | SystemColor::FieldText | SystemColor::ButtonText => [0, 0, 0, 255],
+                SystemColor::ButtonFace => [239, 239, 239, 255],
+                SystemColor::ButtonBorder => [118, 118, 118, 255],
+                SystemColor::GrayText => [128, 128, 128, 255],
+                SystemColor::LinkText => [0, 0, 238, 255],
+                SystemColor::ActiveText => [255, 0, 0, 255],
+                SystemColor::VisitedText => [85, 26, 139, 255],
+                SystemColor::AccentColor => p.navigation_base,
+                SystemColor::Highlight | SystemColor::SelectedItem => p.list_selected_background,
+                SystemColor::HighlightText | SystemColor::SelectedItemText | SystemColor::AccentColorText => p.list_selected_item_text,
+                _ => [0, 0, 0, 255],
+            }
         };
         Ok(Color::new(Space::Srgb, [f64::from(v[0]) / 255., f64::from(v[1]) / 255., f64::from(v[2]) / 255.], f64::from(v[3]) / 255., 0))
     }

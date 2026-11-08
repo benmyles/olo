@@ -51,6 +51,9 @@ pub enum BoxKind {
     /// and paints only its own decoration.
     InlineReplaced {
         natural: [f32; 2],
+        /// A checkbox or radio button: on the baseline by its border box's
+        /// bottom, its margins aside (as Chrome lines them up).
+        toggle: bool,
     },
     BlockReplaced {
         natural: [f32; 2],
@@ -168,7 +171,7 @@ impl Tree {
                 Ok(image.natural())
             }
             BoxKind::InlineVector { vector } | BoxKind::BlockVector { vector } => Ok(self.vector(vector).ok_or(Error::Invalid)?.natural()),
-            BoxKind::InlineReplaced { natural } | BoxKind::BlockReplaced { natural } => Ok((f64::from(natural[0]), f64::from(natural[1]))),
+            BoxKind::InlineReplaced { natural, .. } | BoxKind::BlockReplaced { natural } => Ok((f64::from(natural[0]), f64::from(natural[1]))),
             _ => Err(Error::Invalid),
         }
     }
@@ -1015,15 +1018,19 @@ impl<'a> BuildJob<'a> {
                         if display == Display::Contents {
                             continue;
                         }
-                        self.note(
-                            match name {
-                                "input" | "textarea" | "select" => "form control as an empty box",
-                                "video" | "audio" => "media as an empty box",
-                                "iframe" | "object" | "embed" => "embedded document as an empty box",
-                                _ => "canvas as an empty box",
-                            },
-                            node,
-                        );
+                        let toggle = name == "input" && self.document.attribute(node, "type")?.map(str::trim).is_some_and(|t| t.eq_ignore_ascii_case("checkbox") || t.eq_ignore_ascii_case("radio"));
+                        // (Checkboxes and radio buttons are painted, as Chrome's.)
+                        if !toggle {
+                            self.note(
+                                match name {
+                                    "input" | "textarea" | "select" => "form control as an empty box",
+                                    "video" | "audio" => "media as an empty box",
+                                    "iframe" | "object" | "embed" => "embedded document as an empty box",
+                                    _ => "canvas as an empty box",
+                                },
+                                node,
+                            );
+                        }
                         let default = match name {
                             "input" => match self.document.attribute(node, "type")?.map(str::trim) {
                                 Some(t) if t.eq_ignore_ascii_case("checkbox") || t.eq_ignore_ascii_case("radio") => [13., 13.],
@@ -1196,7 +1203,11 @@ impl BuildJob<'_> {
     /// atomic inline or a block, following its display.
     fn replaced(&mut self, node: NodeId, display: Display, container: BoxId, natural: [f32; 2], absolute: bool, in_line: bool) -> Result<()> {
         match display {
-            Display::Box { outer: Outer::Inline, .. } if !absolute => self.append_object(node, container, node, BoxKind::InlineReplaced { natural }),
+            Display::Box { outer: Outer::Inline, .. } if !absolute => {
+                let toggle = self.document.name(node)? == Some("input")
+                    && self.document.attribute(node, "type")?.map(str::trim).is_some_and(|t| t.eq_ignore_ascii_case("checkbox") || t.eq_ignore_ascii_case("radio"));
+                self.append_object(node, container, node, BoxKind::InlineReplaced { natural, toggle })
+            }
             _ if in_line => self.absolute_object(node, container, BoxKind::BlockReplaced { natural }).map(|_| ()),
             _ => {
                 self.flush()?;

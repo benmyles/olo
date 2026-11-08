@@ -7,6 +7,9 @@ pub(super) struct Numeric<'a, H> {
     pub root_line_height: Option<f64>,
     pub root_axes: Option<Axes>,
     pub percentage: Option<f64>,
+    /// The element's colour scheme (its `color-scheme`, used): what
+    /// `light-dark()` and system colours resolve in.
+    pub scheme: color::Scheme,
 }
 impl<H: Host> math::Context for Numeric<'_, H> {
     fn factor(&self, unit: math::RelativeUnit) -> math::Result<f64> {
@@ -38,7 +41,7 @@ pub(super) struct Color<'a, H> {
 }
 impl<H: Host> color::Context for Color<'_, H> {
     fn scheme(&self) -> color::Scheme {
-        self.numeric.host.scheme()
+        self.numeric.scheme
     }
     fn system_color(&self, color: color::SystemColor, scheme: color::Scheme) -> color::Result<color::Color> {
         self.numeric.host.system_color(color, scheme)
@@ -60,6 +63,7 @@ pub(super) fn numeric<'a, H: Host>(
     font: &'a Font,
     line_height: f64,
     axes: Axes,
+    scheme: color::Scheme,
 ) -> Numeric<'a, H> {
     let affecting = matches!(property, Property::FontSize | Property::FontWeight | Property::FontWidth | Property::FontStyle);
     let parent_font = parent.map_or(defaults.initial_font.as_ref(), |p| p.font.as_ref());
@@ -78,5 +82,6 @@ pub(super) fn numeric<'a, H: Host>(
             Property::FontWidth => Some(1.),
             _ => None,
         },
+        scheme,
     }
 }

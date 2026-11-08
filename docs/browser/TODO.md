@@ -119,9 +119,13 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   children (they read unscrolled), keyboard scrolling of a box.
 - [x] GitHub's menu: opens, rows clickable, Products expands, its panel
   scrolls, as Chrome (JOURNAL 2026-11-07, night).
-- [ ] Forms: POST submission; checkbox drawing; a placeholder whose
-  `::placeholder` opacity changes on focus (GitHub's shows on focus in
-  Chrome). Done: agents see fields, buttons, checkboxes and selects
+- [ ] Forms: a placeholder whose `::placeholder` opacity changes on focus
+  (GitHub's shows on focus in Chrome); going back to a posted page asks
+  nothing and loads it with GET (Chrome asks to send it again); a file
+  input. Done: POST submission (urlencoded, multipart, text/plain; with
+  the page's Origin and Referer); forms on pages without scripts (a realm
+  is made for their controls); JSON and other text documents shown as
+  text, as Chrome. Done earlier: agents see fields, buttons, checkboxes and selects
   (role, name from `aria-label`, `<label>`, placeholder; value; checked;
   focused as the page has it); the page's focus is what `:focus` and
   `:focus-within` match (GitHub's label floats); a focus change restyles
@@ -165,7 +169,11 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   `::before`/`::after` generated content (strings, attr()).
 - [ ] Text: word-break/overflow-wrap (583), text-decoration (28),
   text-transform, counters and quotes in `content`.
-- [ ] Form controls drawn with the kit's look; canvas placeholders.
+- [ ] Form controls: checkboxes, radio buttons and selects are drawn as
+  Chrome draws them (`appearance`, `accent-color`, disabled, dark), on the
+  baseline as Chrome lines them up; their hover and pressed shades, range,
+  colour, file, `<progress>` and `<meter>` are not drawn yet; a select's
+  menu opens nothing. Canvas placeholders.
 - [ ] Iframes: a live page's iframes render as pictures of their documents
   (stylesheets, images; JOURNAL 2026-11-08). Open: their scripts (ads,
   YouTube and map embeds need them), input into them, iframes of pages
@@ -273,10 +281,11 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   top and bottom insets, within its containing block); hit-testing and
   the agent labels follow. Not yet: left/right insets, sticky inside a
   scrolling container, scripts seeing the stuck position.
-- [ ] Dark pages: pages render on a white canvas with the standard light
-  system colours (as Chrome does; Olo's palette no longer colours the
-  page). Next: honour a page's `color-scheme` and `prefers-color-scheme`,
-  then an automatic dark rendering for pages that have none.
+- [ ] Dark pages: `color-scheme` is honoured as Chrome does (system
+  colours, `light-dark()`, the canvas, form controls follow an element's
+  scheme; text in the default colour turns light). Not yet:
+  `<meta name=color-scheme>`, an automatic dark rendering for pages that
+  have none.
 - [ ] CSS animations and transitions: at least the resting end state
   (`animation-fill-mode: forwards`, keyframes' last frame), which pages
   rely on for fade-ins that scripts would otherwise finish.

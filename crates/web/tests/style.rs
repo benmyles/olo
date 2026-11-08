@@ -224,10 +224,19 @@ fn currentcolor_survives_inheritance_and_light_dark_selects_before_inheriting() 
     for scheme in [color::Scheme::Light, color::Scheme::Dark] {
         let host = Snapshot { scheme, ..Default::default() };
         let defaults = Defaults::new(&host, Default::default(), None).unwrap();
-        let parent = compute(&defaults, &host, "color:red;background-color:light-dark(currentcolor,green);border-top-color:currentcolor", None, None, Options::default());
+        // An element allowing both schemes takes the preferred one.
+        let parent = compute(&defaults, &host, "color-scheme:light dark;color:red;background-color:light-dark(currentcolor,green);border-top-color:currentcolor", None, None, Options::default());
         let child = compute(&defaults, &host, "color:blue;background-color:inherit;border-top-color:inherit", Some(&parent), None, Options::default());
         assert_eq!(rgba(&child, P::BorderTopColor), [0, 0, 255, 255]);
         assert_eq!(rgba(&child, P::BackgroundColor), if scheme == color::Scheme::Light { [0, 0, 255, 255] } else { [0, 128, 0, 255] });
+        // One that says nothing is light whatever the preference (as
+        // Chrome); one that asks for dark is dark, its default text light.
+        let normal = compute(&defaults, &host, "background-color:light-dark(blue,green)", None, None, Options::default());
+        assert_eq!(rgba(&normal, P::BackgroundColor), [0, 0, 255, 255]);
+        assert_eq!(rgba(&normal, P::Color), [0, 0, 0, 255]);
+        let dark = compute(&defaults, &host, "color-scheme:dark;background-color:light-dark(blue,green)", None, None, Options::default());
+        assert_eq!(rgba(&dark, P::BackgroundColor), [0, 128, 0, 255]);
+        assert_eq!(rgba(&dark, P::Color), [255, 255, 255, 255]);
         let current = compute(&defaults, &host, "color:currentcolor", Some(&parent), None, Options::default());
         assert_eq!(rgba(&current, P::Color), [255, 0, 0, 255]);
     }
@@ -302,7 +311,8 @@ fn independent_owned_chrome_probe_values_match_native_computation() {
         let input = &case["input"];
         let host = Snapshot { scheme: if input["scheme"] == "dark" { color::Scheme::Dark } else { color::Scheme::Light }, ..Default::default() };
         let defaults = Defaults::new(&host, Default::default(), None).unwrap();
-        let parent = compute(&defaults, &host, input["parent"].as_str().unwrap(), None, None, Options::default());
+        // The parent as Chrome had it (its `color-scheme` included).
+        let parent = compute(&defaults, &host, input.get("source_parent").unwrap_or(&input["parent"]).as_str().unwrap(), None, None, Options::default());
         let child = compute(&defaults, &host, input["child"].as_str().unwrap(), Some(&parent), None, Options::default());
         for (property, expected) in case["values"].as_object().unwrap() {
             let expected = expected.as_str().unwrap();

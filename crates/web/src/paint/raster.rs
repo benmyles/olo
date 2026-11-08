@@ -199,7 +199,7 @@ impl Engine {
                 Primitive::Vector { .. } => 1,
                 Primitive::Fill { .. } | Primitive::Wave { .. } => 2,
                 Primitive::Border { .. } => 3,
-                Primitive::Decoration { .. } => 4,
+                Primitive::Decoration { .. } | Primitive::Control { .. } => 4,
                 Primitive::Text { .. } | Primitive::Glyph { .. } => 5,
             };
             let started = profile.map(|_| std::time::Instant::now());
@@ -307,6 +307,7 @@ impl Engine {
                     let g = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
                     super::decoration::raster(out, s, g, *outer, scale, region, mask.as_ref(), ct, self, tree, cancel)?;
                 }
+                Primitive::Control { look, .. } => super::control::raster(out, look, c.bounds, scale, region, mask.as_ref(), ct),
                 // A wavy decoration: a sine stroked across its bounds.
                 Primitive::Wave { color, thickness, wavelength, .. } => {
                     let b = c.bounds;

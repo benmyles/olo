@@ -287,6 +287,16 @@ fn customs(
 pub(super) static TIMING: AtomicBool = AtomicBool::new(false);
 pub(super) static PHASES: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
 /// Elements merging custom properties, and the inherited entries they copied.
+/// The colour scheme an element is drawn in: what its `color-scheme` allows
+/// (`light-dark` for both), the person's `preferred` one choosing between
+/// both; light where it says nothing (`normal`), as Chrome.
+pub fn used_scheme(allowed: Keyword, preferred: color::Scheme) -> color::Scheme {
+    match allowed {
+        Keyword::Dark => color::Scheme::Dark,
+        Keyword::LightDark => preferred,
+        _ => color::Scheme::Light,
+    }
+}
 pub(super) static COUNTS: [AtomicU64; 2] = [const { AtomicU64::new(0) }; 2];
 fn stamp(on: bool) -> Option<std::time::Instant> {
     on.then(std::time::Instant::now)
@@ -329,7 +339,33 @@ pub(super) fn values(
     // Font values that cannot be computed in this context (a container unit
     // before layout) are dropped as invalid, counted, and inherit.
     let fatal = |e: &Error| matches!(e, Error::Cancelled | Error::Limit | Error::Stale | Error::Dom(_));
-    let numeric = context::numeric(host, Property::FontSize, defaults, parent, root, parent_font, parent.map_or(parent_font.metrics.normal_line_height, |p| p.line_height), axes);
+    // The element's colour scheme, before any colour is computed in it.
+    let allowed = match declared[Property::ColorScheme as usize].then(|| source(defaults, &mut resolver, Property::ColorScheme, axes, parent, options, &mut dependencies)) {
+        Some(Ok(Source::Specified(p::Value::Keyword(k)))) => k,
+        Some(Ok(Source::Inherited(Value::Keyword(k)))) => *k,
+        Some(Err(e)) if fatal(&e) => return Err(e),
+        _ => match parent.map(|p| p.value(Property::ColorScheme)) {
+            Some(Value::Keyword(k)) => *k,
+            _ => Keyword::Normal,
+        },
+    };
+    if allowed == Keyword::LightDark {
+        dependencies.color.scheme = true;
+    }
+    let scheme = used_scheme(allowed, host.scheme());
+    // Text in the default colour takes the new scheme's (as Chrome: white
+    // in a dark `color-scheme`, though `color` is inherited).
+    let parent_scheme = parent.map_or(color::Scheme::Light, |p| match p.value(Property::ColorScheme) {
+        Value::Keyword(k) => used_scheme(*k, host.scheme()),
+        _ => color::Scheme::Light,
+    });
+    let reset_color = scheme != parent_scheme
+        && !declared[Property::Color as usize]
+        && match parent {
+            None => true,
+            Some(p) => p.used_color(Property::Color).ok() == host.system_color(color::SystemColor::CanvasText, parent_scheme).ok().map(|c| c.computed()),
+        };
+    let numeric = context::numeric(host, Property::FontSize, defaults, parent, root, parent_font, parent.map_or(parent_font.metrics.normal_line_height, |p| p.line_height), axes, scheme);
     let size =
         match source(defaults, &mut resolver, Property::FontSize, axes, parent, options, &mut dependencies).and_then(|fs| font_size(fs, host, &numeric, parent_font.request.size, limits, cancelled)) {
             Ok(size) => size,
@@ -340,7 +376,7 @@ pub(super) fn values(
                 parent_font.request.size
             }
         };
-    let numeric = context::numeric(host, Property::FontWeight, defaults, parent, root, parent_font, parent.map_or(parent_font.metrics.normal_line_height, |p| p.line_height), axes);
+    let numeric = context::numeric(host, Property::FontWeight, defaults, parent, root, parent_font, parent.map_or(parent_font.metrics.normal_line_height, |p| p.line_height), axes, scheme);
     let weight =
         match source(defaults, &mut resolver, Property::FontWeight, axes, parent, options, &mut dependencies).and_then(|fw| font_weight(fw, &numeric, parent_font.request.weight, limits, cancelled)) {
             Ok(weight) => weight,
@@ -365,7 +401,7 @@ pub(super) fn values(
         let value = ordinary(
             value,
             property,
-            context::numeric(host, property, defaults, parent, root, parent_font, parent.map_or(parent_font.metrics.normal_line_height, |p| p.line_height), axes),
+            context::numeric(host, property, defaults, parent, root, parent_font, parent.map_or(parent_font.metrics.normal_line_height, |p| p.line_height), axes, scheme),
             parent,
             limits,
             cancelled,
@@ -393,7 +429,7 @@ pub(super) fn values(
     } else {
         Arc::new(Font::new(host, request)?)
     };
-    let numeric = context::numeric(host, Property::LineHeight, defaults, parent, root, &font, font.metrics.normal_line_height, axes);
+    let numeric = context::numeric(host, Property::LineHeight, defaults, parent, root, &font, font.metrics.normal_line_height, axes, scheme);
     let line =
         match source(defaults, &mut resolver, Property::LineHeight, axes, parent, options, &mut dependencies).and_then(|lh| ordinary(lh, Property::LineHeight, numeric, parent, limits, cancelled)) {
             Ok(line) => line,
@@ -489,7 +525,7 @@ pub(super) fn values(
                     }
                 };
                 match source(defaults, &mut resolver, property, axes, parent, options, &mut dependencies) {
-                    Ok(source) => match ordinary(source, property, context::numeric(host, property, defaults, parent, root, &font, line_height, axes), parent, limits, cancelled) {
+                    Ok(source) => match ordinary(source, property, context::numeric(host, property, defaults, parent, root, &font, line_height, axes, scheme), parent, limits, cancelled) {
                         Ok(value) => value,
                         Err(e @ (Error::Cancelled | Error::Limit | Error::Stale | Error::Dom(_))) => return Err(e),
                         Err(_) => fallback(&mut dependencies),
@@ -505,7 +541,7 @@ pub(super) fn values(
                 color::Computed::CurrentColor => color::Computed::Absolute(if let Some(parent) = parent {
                     parent.used_color(Property::Color)?
                 } else {
-                    host.system_color(color::SystemColor::CanvasText, host.scheme()).map_err(Error::color)?
+                    host.system_color(color::SystemColor::CanvasText, scheme).map_err(Error::color)?
                 }),
                 value => value,
             })
@@ -516,6 +552,14 @@ pub(super) fn values(
             dependencies.color.current_color = true;
         }
         values.push(Entry { property, value });
+    }
+    if reset_color {
+        let value = Value::Color(color::Computed::Absolute(host.system_color(color::SystemColor::CanvasText, scheme).map_err(Error::color)?.computed()));
+        match values.iter_mut().find(|e| e.property == Property::Color) {
+            Some(e) => e.value = value,
+            None => values.push(Entry { property: Property::Color, value }),
+        }
+        dependencies.color.system_colors = true;
     }
     if sparse {
         values.sort_unstable_by_key(|e| e.property as u16);
