@@ -1494,6 +1494,23 @@ impl<'a> Job<'a> {
     /// item, not absolutely positioned).
     /// A laid-out box's last in-flow line box's baseline, from its border
     /// box's top; None when it has no in-flow line box.
+    /// A select's first line (its chosen option): its text box's top and
+    /// the line's baseline and bottom below it, in the select's content box.
+    fn first_line(&self, id: BoxId) -> Option<(f64, f64)> {
+        let tree = &self.cache.tree;
+        let mut next = tree.get(id)?.first_child;
+        while let Some(c) = next {
+            let child = tree.get(c)?;
+            if let BoxKind::InlineContent { source } = child.kind {
+                let l = self.texts.get(source as usize).and_then(Option::as_ref)?;
+                let line = l.lines().first()?;
+                let baseline = l.baseline(0)?;
+                return Some((self.geometry.get(c.index())?.border_box.y, baseline + line.descent));
+            }
+            next = child.next_sibling;
+        }
+        None
+    }
     fn last_baseline(&self, id: BoxId, depth: usize) -> Result<Option<f64>> {
         check(self.cancel)?;
         if depth > self.limits.depth {
@@ -1854,6 +1871,16 @@ impl<'a> Job<'a> {
                 (height + style.font().metrics.ex) / 2.
             } else if matches!(b.kind, BoxKind::InlineReplaced { toggle: true, .. }) && !matches!(s.value(P::Appearance), Value::Keyword(K::None)) {
                 margin.top + g.border_box.height
+            } else if inline_block
+                && b.first_line
+                && let Some((y, _)) = self.first_line(child)
+            {
+                // A select's baseline: its first line's (its chosen option).
+                let line = cache.tree.get(child).and_then(|cb| cb.first_child).and_then(|c| match cache.tree.get(c).map(|x| x.kind) {
+                    Some(BoxKind::InlineContent { source }) => self.texts.get(source as usize).and_then(Option::as_ref).and_then(|l| l.baseline(0)),
+                    _ => None,
+                });
+                margin.top + g.border_width.top + g.padding.top + y + line.unwrap_or(0.)
             } else if inline_block && let Some(baseline) = self.last_baseline(child, 0)? {
                 baseline + margin.top
             } else {
@@ -2136,7 +2163,13 @@ impl<'a> Job<'a> {
                         f.pending = Strut::default();
                     }
                 }
-                let auto = f.cursor + if f.collapse_bottom { 0. } else { f.pending.value() };
+                let mut auto = f.cursor + if f.collapse_bottom { 0. } else { f.pending.value() };
+                // A select: as tall as its first line (its chosen option).
+                if self.cache.tree.boxes[f.id.index()].first_line
+                    && let Some((y, bottom)) = self.first_line(f.id)
+                {
+                    auto = y + bottom;
+                }
                 let height = f.used.height(auto.max(0.));
                 // `align-content` in a block container (CSS Align 3 §5.4): its
                 // content moved down into the room its height leaves; a

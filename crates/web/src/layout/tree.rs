@@ -80,6 +80,10 @@ pub struct BoxNode {
     /// A one-line field's or a select's box: its text centred in its height,
     /// as Chrome centres it (whatever its `appearance`).
     pub centred: bool,
+    /// A select's box: its text is every option's label, the chosen one
+    /// first, a line each; it is as wide as the widest and as tall as the
+    /// first (the rest clipped), as Chrome sizes a select by its options.
+    pub first_line: bool,
     /// A table cell's column and row spans (1 elsewhere).
     pub span: [u16; 2],
     pub parent: Option<BoxId>,
@@ -377,6 +381,7 @@ impl<'a> BuildJob<'a> {
                 absolute: false,
                 marker: false,
                 centred: false,
+                first_line: false,
                 span: [1, 1],
                 parent: None,
                 first_child: None,
@@ -428,7 +433,20 @@ impl<'a> BuildJob<'a> {
         }
         self.boxes[parent.index()].last_child = Some(id);
         let absolute = matches!(kind, BoxKind::Block { absolute: true, .. });
-        self.boxes.push(BoxNode { node, style_node, kind, absolute, marker: false, centred: false, span: [1, 1], parent: Some(parent), first_child: None, last_child: None, next_sibling: None });
+        self.boxes.push(BoxNode {
+            node,
+            style_node,
+            kind,
+            absolute,
+            marker: false,
+            centred: false,
+            first_line: false,
+            span: [1, 1],
+            parent: Some(parent),
+            first_child: None,
+            last_child: None,
+            next_sibling: None,
+        });
         self.progress.boxes = self.boxes.len();
         Ok(id)
     }
@@ -998,6 +1016,7 @@ impl<'a> BuildJob<'a> {
                                 let p = self.pending.as_ref().ok_or(Error::Invalid)?;
                                 let block = self.boxes[p.text_box.index()].last_child.ok_or(Error::Invalid)?;
                                 self.boxes[block.index()].centred = control != "textarea";
+                                self.boxes[block.index()].first_line = control == "select";
                                 let restore = self.pending.take();
                                 if !text.is_empty() {
                                     self.pending(block)?;
@@ -1011,6 +1030,7 @@ impl<'a> BuildJob<'a> {
                                 let id = self.add(node, node, BoxKind::Block { flow_root: true, root: false, absolute }, container)?;
                                 self.boxes[id.index()].absolute = absolute;
                                 self.boxes[id.index()].centred = control != "textarea";
+                                self.boxes[id.index()].first_line = control == "select";
                                 if !text.is_empty() {
                                     self.pending(id)?;
                                     self.append(node, id, key, &text, None)?;
@@ -1295,23 +1315,28 @@ fn control_text(doc: &Document, node: NodeId, name: &str) -> Result<Option<(Stri
             }
         }
         "select" => {
-            // The selected option's text, else the first option's.
+            // The selected option's text, else the first option's; then the
+            // others', a line each (see `BoxNode::first_line`).
+            let mut options = Vec::new();
             let mut first = None;
             let mut chosen = None;
-            let mut stack: Vec<NodeId> = doc.children(node)?.collect();
+            let mut stack: Vec<(NodeId, bool)> = doc.children(node)?.map(|c| (c, false)).collect();
             stack.reverse();
-            while let Some(n) = stack.pop() {
+            while let Some((n, grouped)) = stack.pop() {
                 match doc.name(n)? {
                     Some("option") => {
                         if first.is_none() {
                             first = Some(n);
+                        }
+                        if options.len() < 256 {
+                            options.push((n, grouped));
                         }
                         if doc.attribute(n, "selected")?.is_some() && chosen.is_none() {
                             chosen = Some(n);
                         }
                     }
                     Some("optgroup") => {
-                        let mut kids: Vec<NodeId> = doc.children(n)?.collect();
+                        let mut kids: Vec<(NodeId, bool)> = doc.children(n)?.map(|c| (c, true)).collect();
                         kids.reverse();
                         stack.extend(kids);
                     }
@@ -1319,22 +1344,41 @@ fn control_text(doc: &Document, node: NodeId, name: &str) -> Result<Option<(Stri
                 }
             }
             let Some(option) = chosen.or(first) else { return Ok(Some((String::new(), false))) };
-            let mut text = String::new();
-            let mut stack = vec![option];
-            while let Some(n) = stack.pop() {
-                if doc.node_type(n)? == crate::dom::NodeType::Text
-                    && let Some(v) = doc.value(n)?
-                {
-                    text.push_str(v);
+            let label = |option: NodeId| -> Result<String> {
+                if let Some(l) = doc.attribute(option, "label")?.filter(|l| !l.trim().is_empty()) {
+                    return Ok(l.split_whitespace().collect::<Vec<_>>().join(" "));
                 }
-                let mut kids: Vec<NodeId> = doc.children(n)?.collect();
-                kids.reverse();
-                stack.extend(kids);
-                if text.len() > 4096 {
+                let mut text = String::new();
+                let mut stack = vec![option];
+                while let Some(n) = stack.pop() {
+                    if doc.node_type(n)? == crate::dom::NodeType::Text
+                        && let Some(v) = doc.value(n)?
+                    {
+                        text.push_str(v);
+                    }
+                    let mut kids: Vec<NodeId> = doc.children(n)?.collect();
+                    kids.reverse();
+                    stack.extend(kids);
+                    if text.len() > 4096 {
+                        break;
+                    }
+                }
+                Ok(text.split_whitespace().collect::<Vec<_>>().join(" "))
+            };
+            let mut text = label(option)?;
+            // (The chosen one again when in a group: its indented width counts.)
+            for &(other, grouped) in options.iter().filter(|(o, grouped)| *o != option || *grouped) {
+                if text.len() > 16 * 1024 {
                     break;
                 }
+                text.push('\n');
+                // Chrome's popup indents a group's options: they size it so.
+                if grouped {
+                    text.push_str("    ");
+                }
+                text.push_str(&label(other)?);
             }
-            return Ok(Some((text.split_whitespace().collect::<Vec<_>>().join(" "), false)));
+            return Ok(Some((text, false)));
         }
         _ => {}
     }

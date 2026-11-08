@@ -246,7 +246,7 @@ pub const UA: &str = concat!(
     "input{padding:1px 2px;border:2px inset light-dark(#767676,#858585);background-color:Field;width:177px;white-space:pre;overflow:clip}",
     "input::placeholder,textarea::placeholder{color:#757575}",
     "textarea{padding:2px;border:1px solid light-dark(#767676,#858585);background-color:Field;font-family:monospace;width:195px;height:36px;white-space:pre-wrap;overflow:auto}",
-    "select{border:1px solid light-dark(#767676,#858585);border-radius:0;background-color:ButtonFace;padding:1px 16px 1px 4px;white-space:pre;color:FieldText;box-sizing:border-box}",
+    "select{border:1px solid light-dark(#767676,#858585);border-radius:0;background-color:ButtonFace;padding:1px 16px 1px 4px;white-space:pre;color:FieldText;box-sizing:border-box;overflow:clip}",
     "input[type=submit],input[type=reset],input[type=button],button{padding:1px 6px;border:2px outset #000;background-color:ButtonFace;color:ButtonText;width:auto;text-align:center;box-sizing:border-box}",
     "input[type=checkbox],input[type=radio]{width:13px;height:13px;padding:0;border:0;margin:3px 3px 3px 4px;background-color:transparent;box-sizing:border-box}input[type=radio]{margin:3px 3px 0 5px}",
     "input[type=hidden]{display:none!important}",

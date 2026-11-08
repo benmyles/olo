@@ -177,9 +177,9 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   Chrome draws them (`appearance`, `accent-color`, disabled, dark), on the
   baseline as Chrome lines them up; their hover and pressed shades, range,
   colour, file, `<progress>` and `<meter>` are not drawn yet. A select
-  opens its menu (the kit's) and takes the choice; open: its width is its
-  chosen option's, not its widest's (Chrome), `<optgroup>` labels in the
-  menu, arrow keys on a focused select. Canvas placeholders.
+  opens its menu (the kit's) and takes the choice, and is as wide as its
+  widest option (a group's indented), as Chrome, within 1 px; open:
+  `<optgroup>` labels in the menu, arrow keys on a focused select. Canvas placeholders.
 - [ ] Iframes: a live page's iframes render as pictures of their documents
   (stylesheets, images; JOURNAL 2026-11-08). Open: their scripts (ads,
   YouTube and map embeds need them), input into them, iframes of pages
