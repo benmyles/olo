@@ -149,12 +149,13 @@ impl Engine {
                     let (group, layer) = layers.pop().unwrap();
                     let layer = self.filtered(scene, stratum, group, layer, region, scale, cancel)?;
                     let opacity = scene.groups[group as usize].opacity;
+                    let blend_mode = blend_mode(scene.groups[group as usize].blend);
                     let group_mask = self.group_mask(scene, group, scale, region, cancel)?;
                     let target: &mut Pixmap = match layers.last_mut() {
                         Some(l) => &mut l.1,
                         None => &mut base,
                     };
-                    target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, ..Default::default() }, Transform::identity(), group_mask.as_ref());
+                    target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, blend_mode, ..Default::default() }, Transform::identity(), group_mask.as_ref());
                 }
                 for &group in &wanted {
                     if !layers.iter().any(|l| l.0 == group) {
@@ -443,12 +444,13 @@ impl Engine {
         while let Some((group, layer)) = layers.pop() {
             let layer = self.filtered(scene, stratum, group, layer, region, scale, cancel)?;
             let opacity = scene.groups[group as usize].opacity;
+            let blend_mode = blend_mode(scene.groups[group as usize].blend);
             let group_mask = self.group_mask(scene, group, scale, region, cancel)?;
             let target: &mut Pixmap = match layers.last_mut() {
                 Some(l) => &mut l.1,
                 None => &mut base,
             };
-            target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, ..Default::default() }, Transform::identity(), group_mask.as_ref());
+            target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, blend_mode, ..Default::default() }, Transform::identity(), group_mask.as_ref());
         }
         Ok(Tile { region, pixmap: base })
     }
@@ -597,5 +599,29 @@ fn box_line(line: &mut [u8], step: usize, n: usize, before: usize, after: usize,
     }
     for i in 0..n {
         line[i * step..i * step + 4].copy_from_slice(&scratch[i * 4..i * 4 + 4]);
+    }
+}
+/// A group's `mix-blend-mode` (its index in the scene's list) as the
+/// raster composites with it.
+fn blend_mode(code: u8) -> tiny_skia::BlendMode {
+    use tiny_skia::BlendMode as B;
+    match code {
+        1 => B::Multiply,
+        2 => B::Screen,
+        3 => B::Overlay,
+        4 => B::Darken,
+        5 => B::Lighten,
+        6 => B::ColorDodge,
+        7 => B::ColorBurn,
+        8 => B::HardLight,
+        9 => B::SoftLight,
+        10 => B::Difference,
+        11 => B::Exclusion,
+        12 => B::Hue,
+        13 => B::Saturation,
+        14 => B::Color,
+        15 => B::Luminosity,
+        16 => B::Plus,
+        _ => B::SourceOver,
     }
 }

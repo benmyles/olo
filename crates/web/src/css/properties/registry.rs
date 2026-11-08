@@ -83,6 +83,22 @@ keyword_registry! {
     Backwards => "backwards",
     Forwards => "forwards",
     FromFont => "from-font",
+    Multiply => "multiply",
+    Screen => "screen",
+    Overlay => "overlay",
+    Darken => "darken",
+    Lighten => "lighten",
+    ColorDodge => "color-dodge",
+    ColorBurn => "color-burn",
+    HardLight => "hard-light",
+    SoftLight => "soft-light",
+    Difference => "difference",
+    Exclusion => "exclusion",
+    Hue => "hue",
+    Saturation => "saturation",
+    ColorBlend => "color",
+    Luminosity => "luminosity",
+    PlusLighter => "plus-lighter",
     Paused => "paused",
     Reverse => "reverse",
     Running => "running",
@@ -380,6 +396,7 @@ property_registry! {
     MinHeight, "min-height", Grammar::Size(SizeKind::Minimum), "auto", false;
     MinInlineSize, "min-inline-size", Grammar::Size(SizeKind::Minimum), "auto", false;
     MinWidth, "min-width", Grammar::Size(SizeKind::Minimum), "auto", false;
+    MixBlendMode, "mix-blend-mode", Grammar::Keywords(&[Keyword::Normal,Keyword::Multiply,Keyword::Screen,Keyword::Overlay,Keyword::Darken,Keyword::Lighten,Keyword::ColorDodge,Keyword::ColorBurn,Keyword::HardLight,Keyword::SoftLight,Keyword::Difference,Keyword::Exclusion,Keyword::Hue,Keyword::Saturation,Keyword::ColorBlend,Keyword::Luminosity,Keyword::PlusLighter]), "normal", false;
     ObjectFit, "object-fit", Grammar::Keywords(&[Keyword::Fill,Keyword::Contain,Keyword::Cover,Keyword::None,Keyword::ScaleDown]), "fill", false;
     Opacity, "opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", false;
     Order, "order", Grammar::Numeric(NumericKind::Integer, Range::All, &[]), "0", false;
@@ -460,7 +477,7 @@ shorthand_registry! {
     // and the not-yet-implemented unicode-bidi are excluded by definition.
     WebkitMask, "-webkit-mask", [MaskImage,MaskPosition,MaskSize,MaskRepeat], Background;
     WebkitTextDecoration, "-webkit-text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor,TextDecorationThickness], TextDecoration;
-    All, "all", [AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,AspectRatio,BackdropFilter,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerName,ContainerType,Content,CounterIncrement,CounterReset,CounterSet,Display,Fill,FillOpacity,FillRule,Filter,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Quotes,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TableLayout,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextDecorationThickness,TextBoxEdge,TextBoxTrim,TextOrientation,TextOverflow,TextTransform,TextUnderlineOffset,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,TransitionDelay,TransitionDuration,TransitionProperty,TransitionTimingFunction,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,AspectRatio,BackdropFilter,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerName,ContainerType,Content,CounterIncrement,CounterReset,CounterSet,Display,Fill,FillOpacity,FillRule,Filter,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,MixBlendMode,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Quotes,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TableLayout,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextDecorationThickness,TextBoxEdge,TextBoxTrim,TextOrientation,TextOverflow,TextTransform,TextUnderlineOffset,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,TransitionDelay,TransitionDuration,TransitionProperty,TransitionTimingFunction,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Animation, "animation", [AnimationName,AnimationDuration,AnimationTimingFunction,AnimationDelay,AnimationIterationCount,AnimationDirection,AnimationFillMode,AnimationPlayState], Animation;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;

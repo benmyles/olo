@@ -177,6 +177,9 @@ pub struct Group {
     /// How far its content and its enclosing groups' blurs spread it
     /// (CSS px): its commands' reach.
     pub reach: f32,
+    /// Its `mix-blend-mode`, as it composites onto what is under it (0
+    /// normal; see `raster::blend_mode`).
+    pub blend: u8,
 }
 /// The box whose mask images, over its border box, mask a group.
 #[derive(Clone, Copy, Debug)]
@@ -2226,14 +2229,41 @@ impl<'a> BuildJob<'a> {
                         }
                         _ => (None, 0.),
                     };
-                    if opacity < 1. || mask.is_some() || filter.is_some() || blur > 0. {
+                    // mix-blend-mode: the box and its content composite onto
+                    // what is under it through the mode, as one group.
+                    let blend = match s.value(P::MixBlendMode) {
+                        Value::Keyword(k) => [
+                            K::Normal,
+                            K::Multiply,
+                            K::Screen,
+                            K::Overlay,
+                            K::Darken,
+                            K::Lighten,
+                            K::ColorDodge,
+                            K::ColorBurn,
+                            K::HardLight,
+                            K::SoftLight,
+                            K::Difference,
+                            K::Exclusion,
+                            K::Hue,
+                            K::Saturation,
+                            K::ColorBlend,
+                            K::Luminosity,
+                            K::PlusLighter,
+                        ]
+                        .iter()
+                        .position(|m| m == k)
+                        .unwrap_or(0) as u8,
+                        _ => 0,
+                    };
+                    if opacity < 1. || mask.is_some() || filter.is_some() || blur > 0. || blend != 0 {
                         if self.groups.len() >= self.limits.commands {
                             return Err(Error::Limit);
                         }
                         let index = self.groups.len() as u32;
                         let parent_reach = if parent_group == NONE { 0. } else { self.groups[parent_group as usize].reach };
-                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask, filter, blur, reach: parent_reach + 3. * blur });
-                        if mask.is_none() && filter.is_none() && blur == 0. {
+                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask, filter, blur, reach: parent_reach + 3. * blur, blend });
+                        if mask.is_none() && filter.is_none() && blur == 0. && blend == 0 {
                             self.group_owners.push((id, index));
                         }
                         self.current_group = index;
@@ -2253,7 +2283,9 @@ impl<'a> BuildJob<'a> {
                     let z = if positioned || item { z } else { None };
                     // (A filter other than none makes one, as it would whatever
                     // it does to colours.)
-                    let filtered = !matches!(s.value(P::Filter), Value::Keyword(K::None)) || !matches!(s.value(P::BackdropFilter), Value::Keyword(K::None));
+                    let filtered = !matches!(s.value(P::Filter), Value::Keyword(K::None))
+                        || !matches!(s.value(P::BackdropFilter), Value::Keyword(K::None))
+                        || !matches!(s.value(P::MixBlendMode), Value::Keyword(K::Normal));
                     let stacking = z.is_some() || opacity < 1. || isolated || transformed != parent_transform || layered || mask.is_some() || filtered;
                     if positioned || stacking {
                         if self.contexts.len() >= self.limits.commands {
@@ -2456,7 +2488,7 @@ impl<'a> BuildJob<'a> {
         let alone = |mut g: u32| {
             while g != NONE {
                 let group = &self.groups[g as usize];
-                if members[g as usize] != 1 || group.mask.is_some() || group.filter.is_some() || group.blur > 0. {
+                if members[g as usize] != 1 || group.mask.is_some() || group.filter.is_some() || group.blur > 0. || group.blend != 0 {
                     return false;
                 }
                 g = group.parent;
