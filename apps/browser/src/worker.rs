@@ -948,8 +948,15 @@ fn render(
             // A readback still in flight shows at the next render: soon.
             // A readback in flight shows at the next frame.
             live.render_again = live.realm.canvases_pending();
-            c.page.set_time(now_ms);
-            c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&cancel), |_, _| {})?;
+            // Only new frames of canvases and videos already shown, the
+            // document as it was: swapped into the scene, no render.
+            let swapped = revision == live.rendered && doc.revision() == c.page.document.revision() && c.page.swap_pictures(&canvases, Some(&cancel));
+            if !swapped {
+                c.page.set_time(now_ms);
+                c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&cancel), |_, _| {})?;
+            } else if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                eprintln!("  live: new pictures swapped in");
+            }
             // CSS animations still running: the next frame renders again.
             live.render_again |= c.page.animating();
             // Their events reach the page's scripts.

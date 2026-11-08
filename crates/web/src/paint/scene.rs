@@ -563,6 +563,8 @@ impl Scene {
             }
         }
         self.strata.len().hash(&mut h);
+        // New pictures (a frame swapped in) paint other tiles.
+        self.layout.cache().tree().images_identity().hash(&mut h);
         (self.commands_serial as usize, h.finish())
     }
     /// How many surface layers (live canvases shown apart) it has.

@@ -146,6 +146,10 @@ impl Tree {
             text_bytes: self.text_bytes,
         }
     }
+    /// The identity of its image set (a set with new pictures is another).
+    pub fn images_identity(&self) -> usize {
+        self.images.as_ref().map_or(0, |i| Arc::as_ptr(i) as *const u8 as usize)
+    }
     pub fn vector(&self, index: u32) -> Option<&crate::svg::Viewport> {
         self.vectors.get(index as usize)
     }

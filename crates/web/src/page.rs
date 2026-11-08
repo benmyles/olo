@@ -1443,6 +1443,43 @@ impl Page {
     pub fn set_time(&mut self, now_ms: f64) {
         self.timeline.now_ms = now_ms;
     }
+    /// Show new pictures for elements already showing one of the same size
+    /// (a canvas's or a video's next frame) without a render: the scene and
+    /// its layout as they are, over an image set with those pictures.
+    /// False when that can't be (a size changed, an element isn't bound):
+    /// the caller renders.
+    pub fn swap_pictures(&mut self, pictures: &[(crate::dom::NodeId, Arc<crate::image::Image>)], cancel: Option<&AtomicBool>) -> bool {
+        let why = |w: &str| {
+            if std::env::var_os("OLO_WEB_TIMING").is_some() {
+                eprintln!("swap pictures: no, {w}");
+            }
+            false
+        };
+        if pictures.is_empty() {
+            return why("no pictures");
+        }
+        if self.timeline.running {
+            return why("CSS animations running");
+        }
+        let Some(images) = self.images.as_ref() else { return why("no image set") };
+        let layout = self.scene.layout();
+        let tree = layout.cache().tree();
+        // The layout must be of this image set (no bindings came or went since).
+        if tree.images_identity() != Arc::as_ptr(images) as *const u8 as usize {
+            return why("the layout is of another image set");
+        }
+        let Some(set) = images.with_replaced(pictures) else { return why("a picture isn't bound or changed size") };
+        let styles = tree.styles().clone();
+        let next = Arc::new(layout.with_styles(styles, &self.document, Some(set.clone())));
+        match self.scene.with_transforms(next, &[], cancel) {
+            Ok(Some(scene)) => {
+                self.scene = scene;
+                self.images = Some(set);
+                true
+            }
+            _ => false,
+        }
+    }
     /// Scroll a box (a scroll container) by `delta` (CSS px), clamped to
     /// what it holds; the new offset when it moved. The scene is built
     /// again over the same layout (`repaint`): nothing restyles or lays out.
@@ -1547,7 +1584,7 @@ impl Page {
         // interaction (another hover is restyled whole).
         let patchable_scene = (self.rendered_interaction == self.interaction).then_some(&previous_scene);
         let before_render = std::time::Instant::now();
-        let (scene, stylesheet_issues, fallbacks) = render(
+        let incremental = render(
             &doc,
             self.images.as_ref(),
             &self.rules,
@@ -1566,7 +1603,36 @@ impl Page {
             &mut self.timeline,
             &mut self.containers,
             &mut progress,
-        )?;
+        );
+        // What it kept from before failed it (a case the incremental paths
+        // missed): rendered whole instead, the page going on, and said.
+        let (scene, stylesheet_issues, fallbacks) = match incremental {
+            Ok(done) => done,
+            Err(error) if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) => return Err(error),
+            Err(error) => {
+                eprintln!("page: an incremental render failed ({error}): rendered whole");
+                render(
+                    &doc,
+                    self.images.as_ref(),
+                    &self.rules,
+                    self.quirks,
+                    self.resource_issues,
+                    self.interaction,
+                    host,
+                    &self.scope,
+                    shaper,
+                    painter,
+                    viewport,
+                    cancel,
+                    None,
+                    None,
+                    &mut self.animated,
+                    &mut self.timeline,
+                    &mut self.containers,
+                    &mut progress,
+                )?
+            }
+        };
         self.rendered_interaction = self.interaction;
         let after_render = std::time::Instant::now();
         let mut title = String::new();
@@ -2146,7 +2212,7 @@ fn render_once(
         let (a, b) = (p.cache().tree().images(), images);
         match (a, b) {
             (None, None) => true,
-            (Some(a), Some(b)) => a.bound_nodes().eq(b.bound_nodes()),
+            (Some(a), Some(b)) => a.same_layout(b),
             _ => false,
         }
     };

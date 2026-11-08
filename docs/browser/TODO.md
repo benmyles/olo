@@ -46,9 +46,10 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   it shows at and bound to its element like a drawn canvas; scripts get
   HTMLMediaElement (play, pause, currentTime, readyState and its
   constants, events). GitHub's hero film plays (HEVC). Open, in order:
-  a new picture (a video's, a canvas's) re-renders the whole page (5-6 ms;
-  with the WebGL mascot, 84 renders a second, half a core): swap it into
-  the scene instead; pictures decoded on the GPU and shown as its planes
+  an opacity animation (GitHub's corner dots, forever) still restyles and
+  builds the scene each frame (3 ms): patch opacities in the scene as
+  transforms are; a page paint `Invalid` after a script's change on
+  GitHub (now healed by a whole render, logged); pictures decoded on the GPU and shown as its planes
   (now the processor, the `video` thread 40-50% of a core for 2560 x
   1726); sound (muted only); `poster`; `<source>` media queries;
   streaming (the file is fetched whole, 256 MB at most).

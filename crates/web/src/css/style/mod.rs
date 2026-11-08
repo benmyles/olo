@@ -270,6 +270,9 @@ impl Value {
             (Self::Transforms(a), Self::Transforms(b)) => a.same(b),
             (Self::Features(a), Self::Features(b)) => Arc::ptr_eq(&a.0, &b.0) || a == b,
             (Self::Content(a), Self::Content(b)) => Arc::ptr_eq(&a.0, &b.0) || a == b,
+            // Animation lists: unequal only when they differ (a restyle of
+            // an animated element is no geometry change by them).
+            (Self::Animation(a), Self::Animation(b)) => Arc::ptr_eq(&a.0, &b.0) || a == b,
             (Self::Oblique(a), Self::Oblique(b)) => a.to_bits() == b.to_bits(),
             _ => false,
         }

@@ -6236,3 +6236,14 @@ journal).
   without a render, and decode on the GPU.
 - **Also.** Scripts' `getBoundingClientRect` follows box scrolls;
   `console.log(NaN)` prints NaN (it printed null).
+- **A frame's cost.** Each animation frame of GitHub's (four corner dots
+  fading forever) laid the page out again: animation values never
+  compared equal to themselves, so every restyle of an animated element
+  read as a geometry change. They compare by value now: a frame keeps
+  the layout (render 5.7 to 3.0 ms). A layout is kept only while every
+  bound picture keeps its size (a video's first picture, made for the
+  placeholder box, broke a kept layout: the live page had been dropped).
+  An incremental render that fails now renders whole and the page goes
+  on. New pictures of the same size swap into the scene without a render
+  when no animation runs. GitHub with its film playing: 172 to 159% of a
+  core; the page thread 89 to 75%.

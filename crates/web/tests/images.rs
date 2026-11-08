@@ -420,3 +420,28 @@ fn independent_chrome_intrinsic_constraints_display_and_dimension_hints() {
     assert_eq!((supported, unsupported), (285, 15));
     assert!(failures.is_empty(), "{} geometry differences:\n{}", failures.len(), failures.join("\n"));
 }
+#[test]
+fn a_new_frame_of_the_same_size_replaces_its_picture_in_place() {
+    let doc = html::parse(Arc::from("<canvas id=a></canvas><video id=b></video>"), Default::default(), None).unwrap().document;
+    let mut stack = vec![doc.root()];
+    let mut nodes = Vec::new();
+    while let Some(n) = stack.pop() {
+        if matches!(doc.name(n).unwrap(), Some("canvas" | "video")) {
+            nodes.push(n);
+        }
+        stack.extend(doc.children(n).unwrap());
+    }
+    nodes.sort_by_key(|n| n.slot());
+    let frame = |v: u8, w: u32| Image::from_rgba(w, 2, vec![v; (w * 2 * 4) as usize], Default::default(), None).unwrap();
+    let set = Set::new(&doc, vec![(nodes[0], frame(1, 2)), (nodes[1], frame(2, 4))], Default::default(), None).unwrap();
+    let next = frame(9, 4);
+    let swapped = set.with_replaced(&[(nodes[1], next.clone())]).unwrap();
+    // Every index as before; the new picture where the old one was.
+    assert_eq!(swapped.index(nodes[1]), set.index(nodes[1]));
+    assert!(Arc::ptr_eq(swapped.get(nodes[1]).unwrap(), &next));
+    assert!(set.same_layout(&swapped));
+    // Another size is no swap, and no layout of the old set serves it.
+    assert!(set.with_replaced(&[(nodes[1], frame(9, 8))]).is_none());
+    let resized = Set::new(&doc, vec![(nodes[0], frame(1, 2)), (nodes[1], frame(2, 8))], Default::default(), None).unwrap();
+    assert!(!set.same_layout(&resized));
+}

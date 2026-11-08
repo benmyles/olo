@@ -284,6 +284,12 @@ impl Set {
     }
     /// Which elements are bound (not what to), for telling whether a layout
     /// made with another set has the same replaced boxes.
+    /// Whether `other` binds the same elements to images of the same
+    /// natural size (and pixels): a layout of one serves the other.
+    pub fn same_layout(&self, other: &Self) -> bool {
+        self.bindings.len() == other.bindings.len()
+            && self.bindings.iter().zip(other.bindings.iter()).all(|((a, x), (b, y))| a == b && (Arc::ptr_eq(x, y) || x.natural() == y.natural() && x.width() == y.width() && x.height() == y.height()))
+    }
     pub fn bound_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.bindings.iter().map(|(n, _)| *n)
     }
@@ -301,6 +307,25 @@ impl Set {
         }
         let i = self.index(node)? as usize;
         Some(&self.bindings[i].1)
+    }
+    /// This set with new pictures for elements already bound, each the
+    /// same size and density as the one it replaces (a canvas's or a
+    /// video's next frame): every index as before, so a layout of this set
+    /// serves the new one. None when one isn't bound or differs in size.
+    pub fn with_replaced(&self, pictures: &[(NodeId, Arc<Image>)]) -> Option<Arc<Self>> {
+        let mut bindings = self.bindings.to_vec();
+        for (node, image) in pictures {
+            let i = self.index(*node)? as usize;
+            let old = &bindings[i].1;
+            if Arc::ptr_eq(old, image) {
+                continue;
+            }
+            if old.width() != image.width() || old.height() != image.height() || old.density() != image.density() {
+                return None;
+            }
+            bindings[i].1 = image.clone();
+        }
+        Some(Arc::new(Self { document: self.document, revision: self.revision, bindings: bindings.into_boxed_slice(), backgrounds: self.backgrounds.clone(), bytes: self.bytes }))
     }
     pub fn index(&self, node: NodeId) -> Option<u32> {
         if node.document() != self.document {
