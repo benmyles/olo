@@ -218,6 +218,9 @@ pub struct Scene {
     pub(super) transform_entries: Box<[TransformEntry]>,
     pub(super) moved: Box<[Moved]>,
     pub(super) scrollers: Box<[Scroller]>,
+    /// The box each opacity group is that box's (`opacity` below 1), by
+    /// group: an animated opacity patches its group (`with_transforms`).
+    pub(super) group_owners: Box<[(BoxId, u32)]>,
     pub(super) vector_geometry: Arc<std::collections::HashMap<u32, crate::svg::used::Geometry>>,
     pub(super) vector_clips: Arc<std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>>,
     /// The commands in paint order cut into strata: runs of the page's own
@@ -563,8 +566,12 @@ impl Scene {
             }
         }
         self.strata.len().hash(&mut h);
-        // New pictures (a frame swapped in) paint other tiles.
+        // New pictures (a frame swapped in) paint other tiles, and so do
+        // groups' new opacities.
         self.layout.cache().tree().images_identity().hash(&mut h);
+        for g in self.groups.iter() {
+            g.opacity.to_bits().hash(&mut h);
+        }
         (self.commands_serial as usize, h.finish())
     }
     /// How many surface layers (live canvases shown apart) it has.
@@ -600,9 +607,34 @@ impl Scene {
         let mut entries = self.transform_entries.to_vec();
         let mut touched = vec![false; entries.len()];
         let mut moved = self.moved.to_vec();
+        let mut groups = self.groups.to_vec();
         for &id in changed {
             check(cancel)?;
             let s = tree.style(id).ok_or(Error::Invalid)?;
+            // An opacity that stays a group's (strictly between 0 and 1):
+            // that group's alpha, the same commands. One that reaches 0
+            // or 1 (the group goes, or the box stops painting) or starts
+            // needs the scene built.
+            let opacity = s.value(P::Opacity).scalar().unwrap_or(1.).clamp(0., 1.) as f32;
+            let refused = |why: &str| {
+                if std::env::var_os("OLO_WEB_TIMING").is_some() {
+                    eprintln!("  scene patch refused: {why} (opacity {opacity})");
+                }
+            };
+            match self.group_owners.iter().find(|(o, _)| *o == id) {
+                Some(&(_, g)) => {
+                    if !(opacity > 0. && opacity < 1.) {
+                        refused("a group's opacity reached 0 or 1");
+                        return Ok(None);
+                    }
+                    groups[g as usize].opacity = opacity;
+                }
+                None if opacity < 1. => {
+                    refused("an opacity below 1 without a group");
+                    return Ok(None);
+                }
+                None => {}
+            }
             // A moved layer's root: its translation, nothing to repaint.
             if let Some(m) = moved.iter_mut().find(|m| m.root == id) {
                 let Some(about) = about_of(s, m.outer).filter(|a| is_translation(*a)) else { return Ok(None) };
@@ -611,13 +643,20 @@ impl Scene {
             }
             let Some(i) = entries.iter().position(|e| e.owner == id) else {
                 // Never transformed; one that is now needs the scene built.
-                if matches!(s.value(P::Transform), Value::Transforms(_)) {
+                // (An identity transform, which the build gave no matrix,
+                // is no change.)
+                if matches!(s.value(P::Transform), Value::Transforms(_)) && !layout.bounds(id).and_then(|outer| about_of(s, outer)).is_some_and(crate::css::properties::is_identity) {
+                    refused("a transform on a box that had none");
                     return Ok(None);
                 }
                 continue;
             };
-            let Some(about) = about_of(s, entries[i].outer) else { return Ok(None) };
+            let Some(about) = about_of(s, entries[i].outer) else {
+                refused("a transform went");
+                return Ok(None);
+            };
             if entries[i].parent == NONE && crate::css::properties::is_identity(about) {
+                refused("a transform became the identity");
                 return Ok(None);
             }
             entries[i].about = about;
@@ -632,7 +671,8 @@ impl Scene {
                 commands: self.commands.clone(),
                 commands_serial: self.commands_serial,
                 clips: self.clips.clone(),
-                groups: self.groups.clone(),
+                groups: groups.clone().into_boxed_slice(),
+                group_owners: self.group_owners.clone(),
                 transforms: self.transforms.clone(),
                 transform_entries: self.transform_entries.clone(),
                 moved: moved.clone().into_boxed_slice(),
@@ -675,7 +715,8 @@ impl Scene {
             commands: self.commands.clone(),
             commands_serial: self.commands_serial,
             clips: self.clips.clone(),
-            groups: self.groups.clone(),
+            groups: groups.into_boxed_slice(),
+            group_owners: self.group_owners.clone(),
             transforms: transforms.into_boxed_slice(),
             transform_entries: entries.into_boxed_slice(),
             moved: moved.into_boxed_slice(),
@@ -932,6 +973,7 @@ pub struct BuildJob<'a> {
     animated: std::collections::HashSet<crate::dom::NodeId>,
     moved: Vec<Moved>,
     scrollers: Vec<Scroller>,
+    group_owners: Vec<(BoxId, u32)>,
     vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
@@ -1003,6 +1045,7 @@ impl<'a> BuildJob<'a> {
             animated: Default::default(),
             moved: Vec::new(),
             scrollers: Vec::new(),
+            group_owners: Vec::new(),
             vector_geometry: Default::default(),
             vector_clips: Default::default(),
             transform_entries: Vec::new(),
@@ -1631,6 +1674,9 @@ impl<'a> BuildJob<'a> {
                         }
                         let index = self.groups.len() as u32;
                         self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask });
+                        if mask.is_none() {
+                            self.group_owners.push((id, index));
+                        }
                         self.current_group = index;
                         children_group = index;
                     }
@@ -1879,6 +1925,7 @@ impl<'a> BuildJob<'a> {
             transform_entries: self.transform_entries.into_boxed_slice(),
             moved: self.moved.into_boxed_slice(),
             scrollers: self.scrollers.into_boxed_slice(),
+            group_owners: self.group_owners.into_boxed_slice(),
             vector_geometry: Arc::new(self.vector_geometry),
             vector_clips: Arc::new(self.vector_clips),
             strata: strata.into_boxed_slice(),

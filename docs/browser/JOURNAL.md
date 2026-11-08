@@ -6247,3 +6247,10 @@ journal).
   on. New pictures of the same size swap into the scene without a render
   when no animation runs. GitHub with its film playing: 172 to 159% of a
   core; the page thread 89 to 75%.
+- **Opacity patched.** An animated opacity that stays between 0 and 1
+  now patches its group's alpha in the scene, as transforms are patched
+  (the scene keeps which box owns which group; an identity transform the
+  build gave no matrix is no change). A video's pictures wait for the
+  next display frame while the page draws every frame anyway. GitHub
+  with its film playing: a render 3.0 to 1.9 ms, the process 159% to
+  154% of a core. Chrome, the same view: 21%.

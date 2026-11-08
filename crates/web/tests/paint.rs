@@ -1058,3 +1058,49 @@ fn a_grid_items_min_width_is_its_minimum_contribution() {
     let tile = render(&mut painter, &page.scene);
     assert_eq!([40, 60].map(|x| pixel(&tile, x, 5)), [[255; 4], [0, 0, 255, 255]]);
 }
+#[test]
+fn an_opacity_change_patches_its_group_and_paints_as_a_new_scene_would() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // GitHub's corner dots: an element fading, frame by frame.
+    let mut page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}#d{height:20px;background-color:rgb(0,0,255)}</style><div id=d style='opacity:0.5'></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let div = {
+        let mut stack = vec![page.document.root()];
+        let mut found = None;
+        while let Some(n) = stack.pop() {
+            if page.document.attribute(n, "id").ok().flatten() == Some("d") {
+                found = Some(n);
+            }
+            stack.extend(page.document.children(n).unwrap());
+        }
+        found.unwrap()
+    };
+    // The first change builds the scene once (the element starts animating).
+    for (opacity, blue_over_white) in [("0.4", 153u8), ("0.25", 191), ("0.75", 64), ("0", 255), ("0.5", 128), ("1", 0)] {
+        let before = page.scene.clone();
+        let mut doc = page.document.clone();
+        doc.set_attribute(div, "style", &format!("opacity:{opacity}")).unwrap();
+        page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+        // Between 0 and 1 from a group: the same commands, its alpha patched.
+        if opacity == "0.25" || opacity == "0.75" {
+            assert!(page.scene.same_commands(&before), "opacity {opacity} built the scene");
+        }
+        let p = pixel(&render(&mut painter, &page.scene), 50, 10);
+        assert!((i32::from(p[0]) - i32::from(blue_over_white)).abs() <= 1 && p[2] == 255, "opacity {opacity}: {p:?}");
+    }
+}

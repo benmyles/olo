@@ -849,7 +849,11 @@ fn render(
                 eprintln!("  videos: a picture in {:.1} ms", started.elapsed().as_secs_f64() * 1000.);
             }
             media_changed = step.changed;
-            if let Some(next) = step.next {
+            // While the page draws every display frame anyway (an animation,
+            // a canvas), a video's next picture waits for the next of them
+            // rather than waking the page between them.
+            let framing = live.wants_frame || live.render_again || c.page.animating();
+            if let Some(next) = step.next.filter(|_| !framing) {
                 let due = live.started.elapsed().as_secs_f64() * 1000. + next.as_secs_f64() * 1000.;
                 live.next_due_ms = Some(live.next_due_ms.map_or(due, |d| d.min(due)));
             }

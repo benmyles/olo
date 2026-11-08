@@ -727,6 +727,12 @@ impl Style {
     pub fn differs_only_in_transform(&self, other: &Self) -> bool {
         self.differs_only_in(other, |p| matches!(p, Property::Transform | Property::TransformOrigin))
     }
+    /// Whether every difference is in `transform`, `transform-origin` or
+    /// `opacity`: the same boxes and commands, through another matrix or
+    /// group alpha (a scene patched, not built again).
+    pub fn differs_only_in_transform_or_opacity(&self, other: &Self) -> bool {
+        self.differs_only_in(other, |p| matches!(p, Property::Transform | Property::TransformOrigin | Property::Opacity))
+    }
     fn differs_only_in(&self, other: &Self, paint_only: impl Fn(Property) -> bool) -> bool {
         if !Arc::ptr_eq(&self.defaults, &other.defaults) || self.axes != other.axes || self.line_height != other.line_height {
             return false;

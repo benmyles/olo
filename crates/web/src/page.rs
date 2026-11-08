@@ -2319,7 +2319,7 @@ fn render_once(
         let new = layout.cache().tree();
         let mut boxes = Vec::new();
         let only_transforms = patched.nodes.iter().all(|&node| match (old.styles().snapshot(node), new.styles().snapshot(node)) {
-            (Some(a), Some(b)) if a.differs_only_in_transform(b) => {
+            (Some(a), Some(b)) if a.differs_only_in_transform_or_opacity(b) => {
                 boxes.extend(new.boxes_of(node));
                 true
             }
@@ -2341,6 +2341,9 @@ fn render_once(
                 scene = previous_scene.with_transforms(layout.clone(), &boxes, cancel)?;
                 transforms_patched = scene.is_some();
             }
+        }
+        if timing.is_some() && !transforms_patched {
+            eprintln!("  scene not patched: only transforms or opacity {only_transforms}, newly animated {newly}, surfaces stand {surfaces_stand}");
         }
     }
     let mut built_ms = timing.map_or(0., |t| t.elapsed().as_secs_f64() * 1000.);
