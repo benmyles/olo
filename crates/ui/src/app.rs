@@ -241,12 +241,28 @@ struct Fit {
     need: std::rc::Rc<std::cell::Cell<Option<f32>>>,
     /// The size last asked for (so each is asked once).
     asked: std::rc::Rc<std::cell::Cell<Option<(f32, f32)>>>,
-    /// A resize asked for and not made yet: the size it was then (no
-    /// frame is shown until it's another).
-    resizing: std::rc::Rc<std::cell::Cell<Option<gpui::Size<gpui::Pixels>>>>,
+    /// A resize asked for and not made yet: the size it was then, and
+    /// when (no frame is shown until it's another, or `RESIZE_WAIT`).
+    resizing: std::rc::Rc<std::cell::Cell<Option<(gpui::Size<gpui::Pixels>, std::time::Instant)>>>,
     /// What it waits for before it's first shown ([`hold_first_show`]).
     first: std::sync::Arc<FirstShow>,
     _displays: gpui::Subscription,
+}
+
+/// The longest a window that fits what it shows holds its frames back for
+/// a resize it asked for: a compositor that keeps it at its size (a tile,
+/// Focus's zoom) never makes it, and the window was never seen
+/// (DiskBackup in Focus, Ben 2026-11-08: "an entry in the deskbar but no
+/// windows").
+pub const RESIZE_WAIT: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// Whether the compositor holds the window's size (a side of it in a tile,
+/// maximized, full screen): it isn't the window's to set, so one that
+/// fits what it shows lays out at the size it's given, scrolled if its
+/// content needs more.
+fn held(window: &Window) -> bool {
+    let t = window.tiling();
+    window.is_maximized() || window.is_fullscreen() || t.top || t.bottom || t.left || t.right
 }
 
 /// How long a window that fits what it shows waits, at most, for what it
@@ -379,6 +395,9 @@ impl Frame {
         let fit = self.fit.as_ref()?;
         let need = fit.need.get()?;
         let now = window.viewport_size();
+        if held(window) {
+            return (need > f32::from(now.height) + 0.5).then(|| need.ceil());
+        }
         let (_, scrolls) = fitted(fit.design, fit.fixed, now, need, screen_room(cx));
         // (One the person sizes keeps their size when it's enough.)
         let least = if fit.fixed { fit.design.1 } else { f32::from(now.height) };
@@ -569,19 +588,35 @@ impl Render for Frame {
                         // (Shown from now: no more holds.)
                         FIRST_SHOWS.with(|f| f.borrow_mut().remove(&window.window_handle().window_id()));
                     }
+                    // Its size the compositor's (a tile, a zoom): as given,
+                    // asking for nothing (and asking again once it isn't).
+                    if held(window) {
+                        resizing.set(None);
+                        asked.set(None);
+                        return;
+                    }
                     let ((w, h), _) = fitted(design, fixed, window.viewport_size(), f32::from(b.size.height), screen_room(cx));
                     let now = window.viewport_size();
                     let off = (f32::from(now.width) - w).abs() > 0.5 || (f32::from(now.height) - h).abs() > 0.5;
                     // (The resize asked for is made when its size is
                     // another: that frame is drawn at it, or at what the
-                    // compositor gave instead.)
-                    if resizing.get().is_some_and(|then| then != now) {
+                    // compositor gave instead; or it never comes, and the
+                    // window is shown as it is after `RESIZE_WAIT`.)
+                    if resizing.get().is_some_and(|(then, at)| then != now || at.elapsed() > RESIZE_WAIT) {
                         resizing.set(None);
                     }
                     if off && asked.get() != Some((w, h)) {
                         asked.set(Some((w, h)));
-                        resizing.set(Some(now));
+                        resizing.set(Some((now, std::time::Instant::now())));
                         window.defer(cx, move |window, _| window.resize(gpui::size(px(w), px(h))));
+                        // (Drawn again once the wait is over, made or not:
+                        // a compositor that keeps its size sends no frame.)
+                        window
+                            .spawn(cx, async move |cx| {
+                                cx.background_executor().timer(RESIZE_WAIT + std::time::Duration::from_millis(16)).await;
+                                let _ = cx.update(|window, _| window.refresh());
+                            })
+                            .detach();
                     }
                     if resizing.get().is_some() {
                         window.skip_present();

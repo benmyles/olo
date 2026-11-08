@@ -4075,6 +4075,20 @@ content out at its own height and scrolls it, the window widened by the
 scroll bar. Layer surfaces, lock screens and full screen windows are
 the screen's or the app's to size.
 
+A window the compositor holds (a side of it in a tile, maximized or
+full screen: Focus's zoom, auto-tiling) isn't the window's to size: it
+asks for nothing and lays its content out at the size it's given,
+scrolled where it needs more (`held`); once let go, it follows its
+content again. And no resize it asks for holds its frames back past
+`RESIZE_WAIT` (300 ms: a compositor that keeps it at its size never
+makes the resize, and sends no frame), after which it's drawn as it is;
+GPUI's Wayland window draws a frame skipped for a resize it can't make
+(every side held) at once. Without these, DiskBackup opened in Focus
+showed nothing at all, its Deskbar entry the only sign of it (Ben,
+2026-11-08: "an entry in the deskbar but no windows"): the frame asked
+for its content's size, Focus kept it zoomed, and every frame was
+skipped while it waited.
+
 It opens at that size: nobody sees it at its designed size first and
 then grow. The Frame measures the content as each frame is painted; a
 frame drawn at a size about to change isn't shown
