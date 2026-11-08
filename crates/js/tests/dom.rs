@@ -300,3 +300,41 @@ console.log('after play', v.paused);
         ]
     );
 }
+#[test]
+fn an_images_superseded_load_neither_shows_nor_fires() {
+    // apple.com: a 1 × 1 placeholder (fetched) then the real picture
+    // (known at once); the placeholder finishing later must not win.
+    let page = r#"<img id=i><script>
+const i = document.getElementById('i');
+i.addEventListener('load', () => console.log('load', i.naturalWidth));
+i.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+setTimeout(() => { i.src = 'https://example.test/real.png'; }, 20);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let img = find(&parsed.document, "i");
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let real = olo_web::image::Image::from_rgba(4, 3, vec![255; 48], Default::default(), None).unwrap();
+    let known = real.clone();
+    let lookup: olo_js::ImageLookup = Box::new(move |url: &str| (url == "https://example.test/real.png").then(|| known.clone()));
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap().with_image_lookup(Some(lookup));
+    realm.run_page(&scripts);
+    realm.advance(10., std::time::Duration::from_secs(1));
+    let requests = realm.take_requests();
+    assert_eq!(requests.len(), 1, "the placeholder is fetched");
+    // The real picture, known at once, while the placeholder is in flight.
+    realm.advance(100., std::time::Duration::from_secs(1));
+    let placeholder = olo_web::image::Image::from_rgba(1, 1, vec![0; 4], Default::default(), None).unwrap();
+    realm.deliver(requests[0].id, Ok(olo_js::Loaded::Image(placeholder)));
+    let bound: Vec<_> = realm.canvases().into_iter().filter(|(n, _)| *n == img).collect();
+    assert_eq!(bound.len(), 1);
+    assert!(Arc::ptr_eq(&bound[0].1, &real), "the real picture stays");
+    let report = realm.report();
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] load 4"]);
+}

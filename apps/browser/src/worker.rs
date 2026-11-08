@@ -109,6 +109,17 @@ pub struct Label {
     /// Under a sticky box: that box, whose shift at the current scroll
     /// applies to `rect`.
     pub sticky: Option<layout::Sticky>,
+    /// A form control: its role for agents ("TextInput", "Button",
+    /// "CheckBox", "RadioButton", "ComboBox"), its value and checkedness;
+    /// `text` is its name.
+    pub control: Option<Control>,
+}
+#[derive(Clone)]
+pub struct Control {
+    pub role: &'static str,
+    pub value: Option<olo_ui::gpui::SharedString>,
+    pub checked: Option<bool>,
+    pub disabled: bool,
 }
 /// Where a layer's tiles are shown: scrolled with the page, fixed to the
 /// viewport, or shifted as a sticky box's scroll has it.
@@ -165,12 +176,17 @@ pub enum Reply {
         target: Option<olo_web::dom::NodeId>,
         focus_targets: Arc<crate::navigation::FocusTargets>,
         scroll_areas: Arc<[ScrollArea]>,
+        /// The element with the page's focus (its scripts' activeElement).
+        page_focus: Option<olo_web::dom::NodeId>,
     },
     Batch(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
     /// The page's layers above its base tiles, in paint order (later page
     /// runs over fixed and sticky layers before them); empty when the
     /// base is all there is.
     Layers(u64, Vec<LayerTiles>),
+    /// The live page has something to show (an image came, a canvas drew)
+    /// while its window draws nothing: it asks for a frame.
+    WantFrame(u64),
     /// Animating WebGL canvases that would draw into textures of the
     /// window's renderer: each with its size and its GPU's UUID.
     SharedWanted(u64, Vec<(olo_web::dom::NodeId, u32, u32, [u8; 16])>),
@@ -198,6 +214,8 @@ enum Pass {
 /// due, and what has been rendered.
 struct Live {
     realm: olo_js::Realm,
+    /// The page's scripts had an element focused at the last look.
+    had_focus: bool,
     /// The page's `<video>` players.
     players: crate::media::Players,
     /// A render is wanted although the document is unchanged (a canvas's
@@ -605,6 +623,16 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                 };
                                 live.realm.input(&input, target);
                                 live.loads.dispatch(&mut live.realm);
+                                // The live probe (OLO_BROWSER_EVAL_LIVE) also after input,
+                                // so an idle page can be looked at by moving the pointer.
+                                if let Ok(file) = std::env::var("OLO_BROWSER_EVAL_LIVE")
+                                    && let Ok(js) = std::fs::read_to_string(file)
+                                    && let Ok(value) = live.realm.eval(&js)
+                                    && live.last_eval.as_deref() != Some(value.as_str())
+                                {
+                                    eprintln!("Browser live eval: {value}");
+                                    live.last_eval = Some(value);
+                                }
                                 // A link, form or script sent the page elsewhere.
                                 if let Some((url, replace)) = live.realm.take_navigation()
                                     && let Some(r) = &last
@@ -887,11 +915,27 @@ fn render(
             }
         }
         let revision = live.realm.revision();
+        // The page's focus moved (a field clicked): `:focus` and
+        // `:focus-within` match anew.
+        let focus = live.realm.focused().or(c.page.interaction.focus.filter(|_| live.realm.focused().is_some()));
+        let focus_moved = live.realm.focused().is_some() && focus != c.page.interaction.focus || live.realm.focused().is_none() && live.had_focus;
+        if focus_moved {
+            if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                eprintln!("  live: the page's focus moved to {:?}", live.realm.focused());
+            }
+            c.page.interaction.focus = live.realm.focused();
+        }
+        live.had_focus = live.realm.focused().is_some();
         // The document changed, a readback is in flight, or a canvas was
         // drawn on (its drawing shows only through a render).
-        if revision != live.rendered || live.render_again || live.realm.canvases_dirty() || c.page.animating() || media_changed {
+        if revision != live.rendered || live.render_again || live.render_due || live.realm.canvases_dirty() || c.page.animating() || media_changed || focus_moved {
             if !frame {
                 // Changes between frames show at the next frame.
+                // Paced by a window that has stopped drawing (it heard nothing
+                // was moving): asked for a frame, or none would come.
+                if paced && !live.render_due {
+                    proxy.send(Reply::WantFrame(r.id));
+                }
                 live.render_due = true;
                 return Ok(());
             }
@@ -1234,6 +1278,7 @@ fn render(
             let render_again = realm.canvases_pending();
             live_slot = Some(Live {
                 realm,
+                had_focus: false,
                 players: Default::default(),
                 render_again,
                 loads,
@@ -1429,6 +1474,12 @@ fn render(
             sought = Some(0.);
         }
     }
+    // The page's own focus (its scripts', a click into a field) is part of
+    // the interaction it is styled with, whatever the window's says.
+    let mut input = input;
+    if let Some(f) = cached.as_ref().and_then(|c| c.live.as_ref()).and_then(|l| l.realm.focused()) {
+        input.focus = Some(f);
+    }
     if let Some(Cached { key, page, viewport_dependent, .. }) = cached.as_mut()
         && key.source == r.key.source
         && key.revision == r.key.revision
@@ -1467,6 +1518,11 @@ fn render(
     }
     let cached = cached.as_mut().unwrap();
     cached.page.interaction = input;
+    // The page's own focus (its scripts', a click into a field) is what
+    // `:focus` matches, as in Chrome; the window's when the page has none.
+    if let Some(f) = cached.live.as_ref().and_then(|l| l.realm.focused()) {
+        cached.page.interaction.focus = Some(f);
+    }
     if navigation_changed || scene_changed && r.seek_anchor {
         if r.seek_anchor
             && let Some(target) = input.target
@@ -1591,8 +1647,9 @@ fn render(
                 Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
                 None => None,
             };
-            labels.push(Label { image, text: text.into_owned().into(), rect, node, link, fixed, sticky });
+            labels.push(Label { image, text: text.into_owned().into(), rect, node, link, fixed, sticky, control: None });
         }
+        labels.extend(control_labels(page, scene, visible));
         cached.label_cache = Some((cached.page.scene.clone(), Instant::now(), scroll, (r.key.width, r.key.height), labels.clone()));
         labels
     };
@@ -1615,6 +1672,7 @@ fn render(
             .filter(|s| (0..2).any(|i| s.user[i] && s.max()[i] > 0.))
             .map(|s| ScrollArea { node: s.node, rect: s.rect, fixed: s.fixed, offset: s.offset, max: s.max(), user: s.user })
             .collect(),
+        page_focus: cached.live.as_ref().and_then(|l| l.realm.focused()),
     });
     let stickies = scene.layout().sticky();
     let mut tiles = Vec::new();
@@ -1998,6 +2056,118 @@ impl Host for PageHost {
         self.viewport_used.set(true);
         Ok(value / 100.)
     }
+}
+
+/// The page's form controls showing in `visible` (document coordinates),
+/// for agents: each with its role, name, value and checkedness (Chrome's
+/// accessibility tree has them; an agent fills a form through them).
+fn control_labels(page: &page::Page, scene: &paint::Scene, visible: layout::Rect) -> Vec<Label> {
+    let doc = &page.document;
+    let layout = scene.layout();
+    let tree = layout.cache().tree();
+    let fixed = layout.fixed_boxes();
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    let text_of = |n: olo_web::dom::NodeId| -> String {
+        let mut text = String::new();
+        let mut stack = vec![n];
+        while let Some(m) = stack.pop() {
+            if text.len() > 200 {
+                break;
+            }
+            if let Ok(Some(v)) = doc.value(m)
+                && doc.node_type(m).ok() == Some(olo_web::dom::NodeType::Text)
+            {
+                text.push_str(v);
+            }
+            if let Ok(children) = doc.children(m) {
+                let children: Vec<_> = children.collect();
+                stack.extend(children.into_iter().rev());
+            }
+        }
+        text.split_whitespace().collect::<Vec<_>>().join(" ")
+    };
+    let attr = |n: olo_web::dom::NodeId, a: &str| doc.attribute(n, a).ok().flatten().map(str::to_owned).filter(|s| !s.trim().is_empty());
+    // A `<label for=id>` names its control.
+    let label_for = |n: olo_web::dom::NodeId| -> Option<String> {
+        let id = attr(n, "id")?;
+        let mut stack = vec![doc.root()];
+        while let Some(m) = stack.pop() {
+            if doc.name(m).ok().flatten() == Some("label") && attr(m, "for").as_deref() == Some(id.as_str()) {
+                return Some(text_of(m)).filter(|t| !t.is_empty());
+            }
+            if let Ok(children) = doc.children(m) {
+                stack.extend(children);
+            }
+        }
+        None
+    };
+    for (id, b) in tree.iter() {
+        let Some(name) = doc.name(b.node).ok().flatten() else { continue };
+        if !matches!(name, "input" | "textarea" | "select" | "button") || !seen.insert(b.node) {
+            continue;
+        }
+        let kind = attr(b.node, "type").unwrap_or_default().to_ascii_lowercase();
+        let role = match (name, kind.as_str()) {
+            ("input", "hidden") => continue,
+            ("input", "checkbox") => "CheckBox",
+            ("input", "radio") => "RadioButton",
+            ("input", "submit" | "button" | "reset" | "image") | ("button", _) => "Button",
+            ("select", _) => "ComboBox",
+            _ => "TextInput",
+        };
+        // Hidden (`visibility`, or under a box at opacity 0, as GitHub's
+        // closed menu is): not there for a person, nor for agents.
+        let hidden = {
+            use olo_web::css::properties::Keyword as K;
+            use olo_web::css::style::{Property as P, Value as V};
+            let mut at = Some(id);
+            let mut gone = tree.style(id).is_some_and(|s| matches!(s.value(P::Visibility), V::Keyword(K::Hidden | K::Collapse)));
+            while let Some(a) = at {
+                if gone {
+                    break;
+                }
+                gone = tree.style(a).is_some_and(|s| s.value(P::Opacity).scalar().is_some_and(|o| o <= 0.));
+                at = tree.get(a).and_then(|b| b.parent);
+            }
+            gone
+        };
+        if hidden {
+            continue;
+        }
+        let Some(mut rect) = layout.bounds(id) else { continue };
+        let shift = scene.scroll_shift(id);
+        rect.x -= shift[0];
+        rect.y -= shift[1];
+        let is_fixed = fixed.get(id.index()).copied().unwrap_or(false);
+        let shown = if is_fixed { layout::Rect { x: rect.x, y: rect.y + visible.y, ..rect } } else { rect };
+        if rect.width <= 0. || rect.height <= 0. || intersect(visible, shown).is_none() {
+            continue;
+        }
+        let label = attr(b.node, "aria-label")
+            .or_else(|| label_for(b.node))
+            .or_else(|| (role == "Button").then(|| attr(b.node, "value").or_else(|| Some(text_of(b.node)).filter(|t| !t.is_empty()))).flatten())
+            .or_else(|| attr(b.node, "placeholder"))
+            .or_else(|| attr(b.node, "title"))
+            .or_else(|| attr(b.node, "name"))
+            .unwrap_or_default();
+        let value = match role {
+            "TextInput" | "ComboBox" => doc.control_value(b.node).ok().map(|v| olo_ui::gpui::SharedString::from(v.into_owned())),
+            _ => None,
+        };
+        let checked = matches!(role, "CheckBox" | "RadioButton").then(|| doc.control_checked(b.node).unwrap_or(false));
+        out.push(Label {
+            image: false,
+            text: label.into(),
+            rect,
+            node: Some(b.node),
+            link: None,
+            fixed: is_fixed,
+            sticky: None,
+            control: Some(Control { role, value, checked, disabled: attr(b.node, "disabled").is_some() || doc.attribute(b.node, "disabled").ok().flatten().is_some() }),
+        });
+    }
+    out
 }
 
 #[cfg(test)]

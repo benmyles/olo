@@ -1034,6 +1034,7 @@
     if (old && editable(old) && valueAtFocus.has(old) && valueAtFocus.get(old) !== N.controlValue(old)) dispatch(old, new Event('change', { bubbles: true }));
     if (el && editable(el)) { valueAtFocus.set(el, N.controlValue(el)); if (!caretOf.has(el)) caretOf.set(el, N.controlValue(el).length); }
     activeElement = el;
+    N.setFocused(el || null);
     if (old) { dispatch(old, new FocusEvent('blur', { relatedTarget: el })); dispatch(old, new FocusEvent('focusout', { bubbles: true, relatedTarget: el })); }
     if (el) { dispatch(el, new FocusEvent('focus', { relatedTarget: old })); dispatch(el, new FocusEvent('focusin', { bubbles: true, relatedTarget: old })); }
   };

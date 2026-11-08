@@ -6260,3 +6260,23 @@ journal).
   under each pixel and applying the picture's own matrix, in one pass.
   GitHub with its film playing: 154% to 67% of a core (the decoder thread
   46% to 1.2%), against Chrome's 21%.
+
+## 2026-11-07, late night: apple.com scrolled through, forms for agents
+
+- **apple.com's pictures** below the first were missing. Three causes:
+  its 1 × 1 placeholder GIF (no colour table) failed to decode, now
+  transparent as in Chrome; a placeholder request finishing after the
+  real picture was bound over it (an element's superseded request is now
+  dropped, as HTML aborts it); and a picture arriving on an idle page
+  waited for a frame its window never asked for (the page now asks the
+  window for one, so any late change shows: an image, a timer's change).
+- **Its "Learn more" pills** were narrower than their text: in
+  `min-content` grid tracks an item's `min-width` stood in for its
+  min-content size (my grid change of the night before); such tracks take
+  the min-content contribution now.
+- **Agents** see a page's form controls (TextInput, Button, CheckBox,
+  RadioButton, ComboBox, with names from `aria-label`, `<label>`, the
+  placeholder; values; checked; focus), and `olo-screen set` fills
+  GitHub's sign-up field. The page's focus now drives `:focus` and
+  `:focus-within` (GitHub's label floats, its ring shows): the window's
+  request had overwritten it, restyling the page twice a frame.

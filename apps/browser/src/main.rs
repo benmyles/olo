@@ -69,6 +69,8 @@ struct Browser {
     shared_keys: Vec<u64>,
     shared_retired: Vec<u64>,
     labels: Vec<worker::Label>,
+    /// The element with the page's focus (agents see it focused).
+    page_focus: Option<olo_web::dom::NodeId>,
     /// The page's scroll containers, as the last render had them.
     scroll_areas: Arc<[worker::ScrollArea]>,
     status: String,
@@ -148,6 +150,7 @@ impl Browser {
             shared_retired: Vec::new(),
             labels: Vec::new(),
             scroll_areas: Arc::from([]),
+            page_focus: None,
             status: "Loading…".into(),
             blocked_action: None,
             scroll: (scroll * f64::from(window.scale_factor())).round() as i32,
@@ -440,6 +443,8 @@ impl Browser {
                 self.address.update(cx, |f, cx| f.set_text(url, cx));
             }
             worker::Reply::Status(id, s) if id == self.id => self.status = s,
+            // The page has something to show: a frame, which asks it for its next.
+            worker::Reply::WantFrame(id) if id == self.id => self.animating = true,
             worker::Reply::Error(id, s) if id == 0 || id == self.id => self.status = s,
             worker::Reply::Ready { id, title, fallbacks, tiles, animating } if id == self.id => {
                 self.animating = animating;
@@ -450,8 +455,9 @@ impl Browser {
                 let (document, navigation) = self.snapshot_identity;
                 self.document_snapshot = serde_json::json!({"url":self.history.current().url,"navigation":navigation,"document":document,"fallbacks":self.fallbacks}).to_string().into();
             }
-            worker::Reply::Content { id, labels, extent, scroll, interaction_mask, document, target, focus_targets, scroll_areas } if id == self.id => {
+            worker::Reply::Content { id, labels, extent, scroll, interaction_mask, document, target, focus_targets, scroll_areas, page_focus } if id == self.id => {
                 self.labels = labels;
+                self.page_focus = page_focus;
                 self.scroll_areas = scroll_areas;
                 self.interaction_mask = interaction_mask;
                 self.extent = extent;
@@ -537,8 +543,9 @@ impl Render for Browser {
         let palette = p.clone();
         let tiles = self.tiles.clone();
         let focused = self.interaction.focus;
+        let page_focus = self.page_focus;
         let document_snapshot = self.document_snapshot.clone();
-        let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image, l.fixed, l.sticky)).collect();
+        let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image, l.fixed, l.sticky, l.control.clone(), l.node)).collect();
         let scroll_areas = self.scroll_areas.clone();
         let layers: Vec<(worker::Placement, bool, Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>, Option<(olo_web::paint::DeviceRect, u64, bool)>)> =
             self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone(), l.shared)).collect();
@@ -696,13 +703,15 @@ impl Render for Browser {
                         });
                     }
                     let shift = |st: &olo_web::layout::Sticky| st.offset(scroll_css, height_css);
-                    for (text, r, link, image, fixed, sticky) in &labels {
+                    for (text, r, link, image, fixed, sticky, control, node) in &labels {
                         agent::record(
                             window,
                             cx,
                             agent::Node {
                                 document_content: true,
-                                role: if link.is_some() {
+                                role: if let Some(c) = control {
+                                    c.role
+                                } else if link.is_some() {
                                     "Link"
                                 } else if *image {
                                     "Image"
@@ -710,10 +719,11 @@ impl Render for Browser {
                                     "Label"
                                 },
                                 name: Some(text.clone()),
-                                value: link.as_ref().map(|l| l.url.clone()),
-                                clickable: link.is_some(),
-                                focused: link.as_ref().is_some_and(|l| Some(l.node) == focused),
-                                enabled: true,
+                                value: control.as_ref().and_then(|c| c.value.clone()).or_else(|| link.as_ref().map(|l| l.url.clone())),
+                                checked: control.as_ref().and_then(|c| c.checked),
+                                clickable: link.is_some() || control.is_some(),
+                                focused: link.as_ref().is_some_and(|l| Some(l.node) == focused) || control.is_some() && node.is_some() && (*node == focused || *node == page_focus),
+                                enabled: !control.as_ref().is_some_and(|c| c.disabled),
                                 bounds: Bounds::new(
                                     point(bounds.left() + px(r.x as f32), bounds.top() + px((r.y - if *fixed { 0. } else { f64::from(scroll) / scale } + sticky.as_ref().map_or(0., shift)) as f32)),
                                     size(px(r.width as f32), px(r.height as f32)),

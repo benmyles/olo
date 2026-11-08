@@ -18,8 +18,13 @@ struct Item {
     id: BoxId,
     /// Border-box width settled before layout, with its resolved margins.
     used: Used,
-    /// Min/max-content border-box contributions, margins included.
+    /// Min/max-content border-box contributions, margins included; the
+    /// min one is the item's minimum contribution (its `min-width` where
+    /// it has one), which only `auto` minimums take.
     contribution: (f64, f64),
+    /// Its min-content contribution itself, which `min-content` (and
+    /// `max-content`) minimums take.
+    min_content: f64,
     cell: Cell,
     justify: K,
     align: K,
@@ -399,6 +404,7 @@ impl Job<'_> {
                 id: child,
                 used: Used { width: 0., ..used },
                 contribution: (minimum + margin_x, w.max_content + margin_x),
+                min_content: w.min_content + margin_x,
                 cell: Cell { columns: (0, 1), rows: (0, 1) },
                 justify,
                 align,
@@ -508,7 +514,17 @@ impl Job<'_> {
                 rows.push(auto_rows[i % auto_rows.len()]);
             }
             let justify_content = keyword(style, P::JustifyContent);
-            let contributions: Vec<(usize, usize, f64, f64)> = items.iter().map(|i| (i.cell.columns.0, i.cell.columns.1, i.contribution.0, i.contribution.1)).collect();
+            // An item in tracks whose minimum is min- or max-content (Apple's
+            // `min-content min-content` buttons) contributes its min-content
+            // size there, not its `min-width` (CSS Grid §11.5).
+            let contributions: Vec<(usize, usize, f64, f64)> = items
+                .iter()
+                .map(|i| {
+                    let (a, z) = i.cell.columns;
+                    let content_mins = (a..z.max(a + 1)).all(|c| columns.get(c).is_some_and(|t| matches!(t.min, Bound::MinContent | Bound::MaxContent)));
+                    (a, z, if content_mins { i.min_content.max(i.contribution.0) } else { i.contribution.0 }, i.contribution.1)
+                })
+                .collect();
             let sizes = size_tracks(&columns, &contributions, Some(width), column_gap, matches!(justify_content, K::Normal | K::Stretch), self.scale);
             // Each item's border-box width from its columns and alignment.
             for item in &mut items {

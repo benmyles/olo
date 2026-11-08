@@ -1409,6 +1409,7 @@ pub fn finish_with(
         &mut Default::default(),
         &mut timeline,
         &mut containers,
+        &[],
         &mut progress,
     )?;
     Ok(Page {
@@ -1584,6 +1585,13 @@ impl Page {
         // interaction (another hover is restyled whole).
         let patchable_scene = (self.rendered_interaction == self.interaction).then_some(&previous_scene);
         let before_render = std::time::Instant::now();
+        // Another hover, focus or press: every element matched again
+        // (`:focus-within` and `:hover` reach ancestors, and what descends
+        // from them); geometry and texts kept where they can be.
+        let restyle: Vec<crate::dom::NodeId> = if self.rendered_interaction != self.interaction { vec![doc.root()] } else { Vec::new() };
+        if std::env::var_os("OLO_WEB_TIMING").is_some() && !restyle.is_empty() {
+            eprintln!("rerender: the interaction changed ({:?} -> {:?}): every element matched again", self.rendered_interaction, self.interaction);
+        }
         let incremental = render(
             &doc,
             self.images.as_ref(),
@@ -1602,6 +1610,7 @@ impl Page {
             &mut self.animated,
             &mut self.timeline,
             &mut self.containers,
+            &restyle,
             &mut progress,
         );
         // What it kept from before failed it (a case the incremental paths
@@ -1629,6 +1638,7 @@ impl Page {
                     &mut self.animated,
                     &mut self.timeline,
                     &mut self.containers,
+                    &[],
                     &mut progress,
                 )?
             }
@@ -1706,6 +1716,7 @@ impl Page {
             &mut self.animated,
             &mut self.timeline,
             &mut self.containers,
+            &[],
             &mut progress,
         )?;
         self.rendered_interaction = self.interaction;
@@ -2011,10 +2022,30 @@ fn render(
     animated: &mut std::collections::HashSet<crate::dom::NodeId>,
     timeline: &mut css::animation::Timeline,
     containers: &mut std::collections::HashMap<crate::dom::NodeId, [f64; 2]>,
+    restyle: &[crate::dom::NodeId],
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
-    let mut result =
-        render_once(doc, images, rules, quirks, resource_issues, input, host, scope, shaper, painter, viewport, cancel, previous, previous_scene, animated, timeline, containers, &[], &mut progress)?;
+    let mut result = render_once(
+        doc,
+        images,
+        rules,
+        quirks,
+        resource_issues,
+        input,
+        host,
+        scope,
+        shaper,
+        painter,
+        viewport,
+        cancel,
+        previous,
+        previous_scene,
+        animated,
+        timeline,
+        containers,
+        restyle,
+        &mut progress,
+    )?;
     if !rules.has_containers() {
         return Ok(result);
     }

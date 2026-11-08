@@ -1104,3 +1104,44 @@ fn an_opacity_change_patches_its_group_and_paints_as_a_new_scene_would() {
         assert!((i32::from(p[0]) - i32::from(blue_over_white)).abs() <= 1 && p[2] == 255, "opacity {opacity}: {p:?}");
     }
 }
+#[test]
+fn a_focus_set_by_the_page_matches_focus_within_on_a_rerender() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // GitHub's sign-up label floats while its field has the focus.
+    let mut page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}#f{height:40px}#l{display:block;height:20px;background-color:blue}#f:focus-within #l{background-color:red}</style><div id=f><span id=l></span><input id=i></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let find = |page: &olo_web::page::Page, id: &str| {
+        let mut stack = vec![page.document.root()];
+        while let Some(n) = stack.pop() {
+            if page.document.attribute(n, "id").ok().flatten() == Some(id) {
+                return n;
+            }
+            stack.extend(page.document.children(n).unwrap());
+        }
+        panic!("{id}")
+    };
+    assert_eq!(pixel(&render(&mut painter, &page.scene), 10, 10), [0, 0, 255, 255]);
+    page.interaction.focus = Some(find(&page, "i"));
+    let doc = page.document.clone();
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    assert_eq!(pixel(&render(&mut painter, &page.scene), 10, 10), [255, 0, 0, 255], "focused");
+    page.interaction.focus = None;
+    let doc = page.document.clone();
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    assert_eq!(pixel(&render(&mut painter, &page.scene), 10, 10), [0, 0, 255, 255], "blurred");
+}

@@ -81,9 +81,14 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   children (they read unscrolled), keyboard scrolling of a box.
 - [x] GitHub's menu: opens, rows clickable, Products expands, its panel
   scrolls, as Chrome (JOURNAL 2026-11-07, night).
-- [ ] Forms: POST submission; checkbox drawing. (The hero's email field
-  showed its label over its placeholder: `::placeholder { opacity: 0 }`
-  now hides it.)
+- [ ] Forms: POST submission; checkbox drawing; a placeholder whose
+  `::placeholder` opacity changes on focus (GitHub's shows on focus in
+  Chrome). Done: agents see fields, buttons, checkboxes and selects
+  (role, name from `aria-label`, `<label>`, placeholder; value; checked;
+  focused as the page has it); the page's focus is what `:focus` and
+  `:focus-within` match (GitHub's label floats); a focus change restyles
+  the page once (56 ms on GitHub: every element matched again; narrow it
+  to what the states reach).
 
 Next, in impact order (each removes a fallback kind or a visible gap):
 

@@ -234,6 +234,13 @@ struct State {
     image_lookup: Option<ImageLookup>,
     /// Images the scripts loaded, by `img` element.
     images: HashMap<NodeId, Arc<olo_web::image::Image>>,
+    /// Each `img` element's latest image request (0: one answered at
+    /// once): an earlier one finishing later is stale and dropped, as
+    /// HTML's "update the image data" aborts it.
+    image_latest: HashMap<NodeId, u64>,
+    /// An image came for an element since the pictures were last taken
+    /// (`canvases`): the page renders to show it.
+    images_dirty: bool,
     /// Image loads asked for and not yet taken by the browser, then in
     /// flight until delivered.
     requests: Vec<Request>,
@@ -243,6 +250,9 @@ struct State {
     modules: modules::Modules,
     /// A navigation the page asked for (location, a form), not yet taken.
     navigation: Option<(String, bool)>,
+    /// The element with the page's focus (document.activeElement), for the
+    /// browser (agents see it focused).
+    focused: Option<NodeId>,
     /// What the browser's players report of each `<video>` and `<audio>`.
     media: HashMap<NodeId, Media>,
     /// What the scripts asked of them since the browser last looked.
@@ -399,10 +409,13 @@ impl Realm {
             selectors: HashMap::new(),
             image_lookup: None,
             images: HashMap::new(),
+            image_latest: HashMap::new(),
+            images_dirty: false,
             requests: Vec::new(),
             in_flight: HashMap::new(),
             modules: modules::Modules::with_map(import_map),
             navigation: None,
+            focused: None,
             media: HashMap::new(),
             media_commands: Vec::new(),
             next_request: 1,
@@ -483,6 +496,19 @@ impl Realm {
         let _busy = Busy::new(&guard);
         let state = self.state.clone();
         let Some(node) = state.borrow_mut().in_flight.remove(&id) else { return };
+        // A request its element has since replaced (its `src` changed and a
+        // newer load began): nothing of it shows, no event fires.
+        if let Some(n) = node
+            && state.borrow().image_latest.get(&n).is_some_and(|&latest| latest != id)
+        {
+            if std::env::var_os("OLO_IMAGE_DEBUG").is_some() {
+                eprintln!("  image: request {id} superseded by {:?}", state.borrow().image_latest.get(&n));
+            }
+            return;
+        }
+        if std::env::var_os("OLO_IMAGE_DEBUG").is_some() {
+            eprintln!("  image: request {id} for {node:?}: {}", if result.is_ok() { "loaded" } else { "failed" });
+        }
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -493,7 +519,10 @@ impl Realm {
                 let size = match result {
                     Ok(Loaded::Image(image)) => {
                         let size = image.natural();
-                        state.borrow_mut().images.insert(node, image);
+                        let mut st = state.borrow_mut();
+                        st.images.insert(node, image);
+                        st.images_dirty = true;
+                        drop(st);
                         Some(size)
                     }
                     Ok(Loaded::Text(_)) => None,
@@ -766,6 +795,10 @@ impl Realm {
     /// Animating WebGL canvases that would draw their frames into textures
     /// of the window's renderer (shown with no copy): each with its size and
     /// its GPU's UUID (the window's must match). Each is asked for once.
+    /// The element with the page's focus, if any.
+    pub fn focused(&self) -> Option<NodeId> {
+        self.state.borrow().focused
+    }
     /// Whether an element has an attribute now.
     pub fn has_attribute(&self, node: NodeId, name: &str) -> bool {
         self.state.borrow().document.attribute(node, name).ok().flatten().is_some()
@@ -887,7 +920,7 @@ impl Realm {
     /// (a render shows the drawing; nothing else in the document changed).
     pub fn canvases_dirty(&self) -> bool {
         let s = self.state.borrow();
-        s.canvases.iter().any(|(_, c)| c.touched && c.dirty) || s.gl.iter().any(|(_, c)| c.touched && c.dirty)
+        s.images_dirty || s.canvases.iter().any(|(_, c)| c.touched && c.dirty) || s.gl.iter().any(|(_, c)| c.touched && c.dirty)
     }
     /// The canvases' states, for the timing log: kind, size, touched,
     /// dirty, and whether a readback is in flight.
@@ -927,6 +960,7 @@ impl Realm {
             i.map(|i| (*n, i))
         }));
         // Images the scripts loaded into `img` elements render too.
+        s.images_dirty = false;
         out.extend(s.images.iter().map(|(n, i)| (*n, i.clone())));
         out
     }
@@ -1148,10 +1182,13 @@ impl State {
             selectors: HashMap::new(),
             image_lookup: None,
             images: HashMap::new(),
+            image_latest: HashMap::new(),
+            images_dirty: false,
             requests: Vec::new(),
             in_flight: HashMap::new(),
             modules: Default::default(),
             navigation: None,
+            focused: None,
             media: HashMap::new(),
             media_commands: Vec::new(),
             next_request: 1,
@@ -1698,6 +1735,7 @@ const NATIVES: &[&str] = &[
     "setScrollOffset",
     "media",
     "mediaCommand",
+    "setFocused",
     "imagePixels",
     "glCreate",
     "glOp",
@@ -2479,6 +2517,10 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 }
             }
         }
+        "setFocused" => {
+            let n = node(scope, 0);
+            state.borrow_mut().focused = n;
+        }
         // A media element's state: [paused, ended, time, duration, width,
         // height, readyState], as its player last said (or as it starts).
         "media" => {
@@ -2653,6 +2695,8 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     Some(image) => {
                         let (w, h) = image.natural();
                         s.images.insert(n, image);
+                        s.image_latest.insert(n, 0);
+                        s.images_dirty = true;
                         drop(s);
                         let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(scope, w.round()).into(), v8::Number::new(scope, h.round()).into()];
                         rv.set(v8::Array::new_with_elements(scope, &items).into());
@@ -2661,6 +2705,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                         let id = s.next_request;
                         s.next_request += 1;
                         s.in_flight.insert(id, Some(n));
+                        s.image_latest.insert(n, id);
                         s.requests.push(Request { id, url, kind: RequestKind::Image });
                     }
                     None => rv.set_null(),

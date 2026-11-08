@@ -59,6 +59,23 @@ fn decoded<T>(result: image::ImageResult<T>, cancel: Option<&AtomicBool>) -> Res
 /// BMP/ICO/TIFF, JPEG XL, AVIF, HEIC and vector images are not yet supported by this bounded
 /// path; they must not silently fall through to the file API's larger limits.
 pub fn decode(data: &[u8], limits: Limits, cancel: Option<&AtomicBool>) -> Result<Raster, Error> {
+    let result = decode_with_codec(data, limits, cancel);
+    // A GIF with no colour table at all (the 1 × 1 placeholder pages swap
+    // in while they load pictures lazily): its pixels can only be
+    // transparent, which is how Chrome shows it; the codec refuses it.
+    if let Err(Error::Decode(e)) = &result
+        && data.starts_with(b"GIF8")
+        && data.len() >= 10
+        && e.to_string().contains("color table")
+    {
+        let (w, h) = (u32::from(u16::from_le_bytes([data[6], data[7]])), u32::from(u16::from_le_bytes([data[8], data[9]])));
+        if w > 0 && h > 0 && w <= limits.dimension && h <= limits.dimension && u64::from(w) * u64::from(h) <= limits.pixels {
+            return Ok(Raster { pixels: image::RgbaImage::new(w, h), format: ImageFormat::Gif });
+        }
+    }
+    result
+}
+fn decode_with_codec(data: &[u8], limits: Limits, cancel: Option<&AtomicBool>) -> Result<Raster, Error> {
     check(cancel)?;
     if data.len() > limits.encoded_bytes {
         return Err(Error::Limit);
@@ -156,6 +173,14 @@ impl Seek for Input<'_> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_gif_without_a_colour_table_is_transparent() {
+        // The placeholder apple.com swaps in while it loads its pictures.
+        let gif = [71u8, 73, 70, 56, 57, 97, 1, 0, 1, 0, 112, 0, 0, 33, 249, 4, 1, 0, 0, 0, 0, 44, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 68, 1, 0, 59];
+        let r = super::decode(&gif, Default::default(), None).unwrap();
+        assert_eq!((r.pixels.width(), r.pixels.height()), (1, 1));
+        assert_eq!(r.pixels.as_raw().as_slice(), &[0, 0, 0, 0]);
+    }
     use super::*;
     #[test]
     fn borrowed_reader_checks_cancellation_between_bounded_reads() {
