@@ -144,6 +144,47 @@ impl StyleTree {
     pub fn pseudo(&self, node: NodeId, pseudo: PseudoElement) -> Option<&Style> {
         self.pseudos.get(&(node, pseudo)).map(|&i| &self.styles[i as usize].style)
     }
+    /// This tree for a document that has not changed since it was styled
+    /// (`changes_since` its revision empty), under the same rules: what a
+    /// whole job over it would make, each style taken as it is, without
+    /// the job (a millisecond and more on GitHub, every animation frame).
+    /// None for another document or other rules.
+    pub fn unchanged(&self, document: &Document, generation: u64) -> Option<StyleTree> {
+        if self.document != document.id() || self.generation != generation || self.styles.is_empty() {
+            return None;
+        }
+        let mut tree = self.clone();
+        tree.geometry_kept = true;
+        Some(tree)
+    }
+    /// Whether every element of `other` has a transform where this tree's
+    /// has one, entry for entry: compared only where they don't share
+    /// their styles (a patched tree shares all but what it patched).
+    pub fn same_transformed(&self, other: &StyleTree) -> bool {
+        let has = |s: &Style| matches!(s.value(super::Property::Transform), super::Value::Transforms(_));
+        self.styles.len() == other.styles.len()
+            && self.styles.unshared(&other.styles).all(|i| {
+                let (a, b) = (&self.styles[i], &other.styles[i]);
+                a.node == b.node && a.pseudo == b.pseudo && has(&a.style) == has(&b.style)
+            })
+    }
+    /// The elements with an animation named, in the order they were
+    /// styled (document order, then any a patch added): a scan of the
+    /// styles, not a walk of the document (on GitHub's 5,000 nodes the
+    /// walk took most of a millisecond each animation frame).
+    pub fn animation_candidates(&self) -> impl Iterator<Item = (NodeId, &Style)> {
+        self.styles
+            .iter()
+            .filter(|s| {
+                s.pseudo.is_none()
+                    && matches!(s.style.value(super::Property::AnimationName), super::Value::Animation(a) if a.items().iter().any(|i| matches!(i, crate::css::properties::animation::Item::Name(_))))
+            })
+            .map(|s| (s.node, &s.style))
+    }
+    /// Whether `node` has a pseudo-element style (generated content).
+    pub fn has_pseudos(&self, node: NodeId) -> bool {
+        !self.pseudos.is_empty() && self.pseudos.keys().any(|(n, _)| *n == node)
+    }
     pub fn pseudo_count(&self) -> usize {
         self.pseudos.len()
     }

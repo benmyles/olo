@@ -662,6 +662,19 @@ pub struct Layout {
     /// What the rendering that made it substituted, by stage (see
     /// `Recorded`): set by the page after each render or measurement.
     recorded: std::sync::Mutex<Arc<super::Recorded>>,
+    /// What follows from its geometry and positioning alone, worked out
+    /// once (a live page asks for it several times a frame) and kept by a
+    /// restyle that leaves it standing (`with_styles`).
+    derived: std::sync::OnceLock<Arc<Derived>>,
+    /// The size of each query container (`container-type`), by its
+    /// element: worked out once, kept by every restyle over the same
+    /// geometry (a container's type is not paint-only).
+    containers: std::sync::OnceLock<Arc<std::collections::HashMap<crate::dom::NodeId, [f64; 2]>>>,
+}
+/// See `Layout::derived`.
+struct Derived {
+    fixed: Box<[bool]>,
+    sticky: Vec<Sticky>,
 }
 static LAYOUT_IDENTITIES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 /// What a block in normal flow was laid out under: its containing
@@ -696,7 +709,19 @@ impl Layout {
     }
     /// This layout with other styles for the same boxes: a restyle that
     /// changed only what is painted keeps every position and size.
+    /// This layout with new styles over the same geometry: for a restyle
+    /// whose every change is paint-only.
     pub fn with_styles(&self, styles: Arc<StyleTree>, document: &crate::dom::Document, images: Option<Arc<crate::image::Set>>) -> Self {
+        // Over the same geometry and positions (a restyle that kept the
+        // layout changed nothing but paint), only a transform coming or
+        // going changes which boxes are fixed (a transformed ancestor
+        // holds them).
+        let derived = std::sync::OnceLock::new();
+        if let Some(d) = self.derived.get()
+            && self.cache.tree.styles().same_transformed(&styles)
+        {
+            let _ = derived.set(d.clone());
+        }
         let tree = Arc::new(self.cache.tree.with_styles(styles, document, images));
         let cache = Arc::new(Cache {
             tree,
@@ -716,6 +741,8 @@ impl Layout {
             identity: self.identity,
             scale: self.scale,
             recorded: std::sync::Mutex::new(self.recorded()),
+            derived,
+            containers: self.containers.clone(),
         }
     }
     /// What the rendering that made this layout substituted, by stage.
@@ -821,9 +848,47 @@ impl Layout {
     /// The `position: sticky` boxes (not under fixed ones): where each
     /// sits in the flow, its containing block and its insets, for the
     /// shift the scroll gives it (CSS Positioned Layout 3 §3.4).
+    /// The sticky boxes, with what their offsets need.
     pub fn sticky(&self) -> Vec<Sticky> {
+        self.derived().sticky.clone()
+    }
+    /// Which boxes are fixed to the viewport (by their own position or an
+    /// ancestor's), by box index.
+    pub fn fixed_boxes(&self) -> Box<[bool]> {
+        self.derived().fixed.clone()
+    }
+    /// The content-box size of each query container (an inline-size
+    /// one's height 0: its queries can't see it), by its element.
+    pub fn container_sizes(&self) -> Arc<std::collections::HashMap<crate::dom::NodeId, [f64; 2]>> {
+        self.containers
+            .get_or_init(|| {
+                let tree = &self.cache.tree;
+                let mut sizes = std::collections::HashMap::new();
+                for (id, b) in tree.iter() {
+                    if !matches!(b.kind, BoxKind::Block { .. }) || sizes.contains_key(&b.node) {
+                        continue;
+                    }
+                    if let Some(s) = tree.style(id)
+                        && let Value::Keyword(kind @ (K::InlineSize | K::Size)) = s.value(P::ContainerType)
+                        && let Some(g) = self.geometry(id)
+                    {
+                        let c = g.content_box();
+                        sizes.insert(b.node, [c.width, if *kind == K::Size { c.height } else { 0. }]);
+                    }
+                }
+                Arc::new(sizes)
+            })
+            .clone()
+    }
+    fn derived(&self) -> &Arc<Derived> {
+        self.derived.get_or_init(|| {
+            let fixed = self.compute_fixed_boxes();
+            let sticky = self.compute_sticky(&fixed);
+            Arc::new(Derived { fixed, sticky })
+        })
+    }
+    fn compute_sticky(&self, fixed: &[bool]) -> Vec<Sticky> {
         let tree = &self.cache.tree;
-        let fixed = self.fixed_boxes();
         let mut out = Vec::new();
         let mut scratch = math::Scratch::default();
         for (id, b) in tree.iter() {
@@ -856,7 +921,7 @@ impl Layout {
     }
     /// Which boxes are fixed to the viewport (a `position: fixed` box and
     /// its descendants, unless a transformed ancestor contains it).
-    pub fn fixed_boxes(&self) -> Box<[bool]> {
+    fn compute_fixed_boxes(&self) -> Box<[bool]> {
         let tree = &self.cache.tree;
         let mut fixed = vec![false; self.geometry.len()];
         let mut transformed = vec![false; self.geometry.len()];
@@ -2153,6 +2218,8 @@ impl<'a> Job<'a> {
             identity: LAYOUT_IDENTITIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             scale: self.scale,
             recorded: Default::default(),
+            derived: Default::default(),
+            containers: Default::default(),
         })
     }
 }

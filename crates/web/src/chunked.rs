@@ -48,6 +48,12 @@ impl<T: Clone> Chunked<T> {
     pub(crate) fn get(&self, i: usize) -> Option<&T> {
         self.chunks.get(i / CHUNK).and_then(|c| c.get(i % CHUNK))
     }
+    /// The indices of the entries in chunks not shared with `other` (all
+    /// of them where the lengths differ): what a patch may have changed.
+    pub(crate) fn unshared<'s>(&'s self, other: &'s Self) -> impl Iterator<Item = usize> + 's {
+        let all = self.len != other.len;
+        self.chunks.iter().enumerate().filter(move |(i, c)| all || other.chunks.get(*i).is_none_or(|o| !Arc::ptr_eq(c, o))).flat_map(|(i, c)| (i * CHUNK..i * CHUNK + c.len()))
+    }
     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut T> {
         self.chunks.get_mut(i / CHUNK).and_then(|c| Arc::make_mut(c).get_mut(i % CHUNK))
     }

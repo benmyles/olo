@@ -2025,24 +2025,7 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
 }
 /// Query containers' content-box sizes in a layout (CSS px), by element.
 fn container_sizes(layout: &layout::Layout) -> std::collections::HashMap<crate::dom::NodeId, [f64; 2]> {
-    use css::properties::{Keyword as K, Property as P};
-    let tree = layout.cache().tree();
-    let mut sizes = std::collections::HashMap::new();
-    for (id, b) in tree.iter() {
-        if !matches!(b.kind, layout::BoxKind::Block { .. }) || sizes.contains_key(&b.node) {
-            continue;
-        }
-        if let Some(s) = tree.style(id)
-            && let css::style::Value::Keyword(kind @ (K::InlineSize | K::Size)) = s.value(P::ContainerType)
-            && let Some(g) = layout.geometry(id)
-        {
-            // An inline-size container answers only its width: its height
-            // (its content's) changes nothing its queries can see.
-            let c = g.content_box();
-            sizes.insert(b.node, [c.width, if *kind == K::Size { c.height } else { 0. }]);
-        }
-    }
-    sizes
+    (*layout.container_sizes()).clone()
 }
 /// `render_once`, again when a query container's size came out other than
 /// the styles were matched with (`@container` rules then hold elsewhere):
@@ -2182,14 +2165,32 @@ fn render_once(
     // CSS animations at the timeline's moment, from the previous styles'
     // animation lists (a new animation starts the frame after it appears).
     let (mut animation_values, mut animation_nodes) = match previous_styles {
-        Some(p) if !rules.keyframes().is_empty() => timeline.sample(rules.keyframes(), styled_elements(doc, p), cancel),
+        Some(p) if !rules.keyframes().is_empty() => timeline.sample(rules.keyframes(), animated_elements(doc, p), cancel),
         _ => {
             timeline.running = false;
             (Default::default(), Vec::new())
         }
     };
     let unchanged = previous_revision.is_some_and(|r| doc.changes_since(r).is_some_and(|c| c.is_empty()));
-    if let (Some(p), Some(_)) = (previous_styles, previous_scene)
+    // Nothing changed in the document, the interaction (a previous scene
+    // is passed only for the same one) nor the containers' sizes: the
+    // previous styles as they are (an animation frame; its animated
+    // elements are patched below).
+    if unchanged
+        && resized.is_empty()
+        && previous_scene.is_some()
+        && let Some(tree) = previous_styles.and_then(|p| p.unchanged(doc, rules.generation()))
+    {
+        styles = Some(Arc::new(tree));
+        patched = Some(style::Patched { geometry_kept: true, changed: 0, nodes: Vec::new(), pseudos: 0 });
+    } else if timing.is_some()
+        && let (Some(p), Some(_)) = (previous_styles, previous_scene)
+        && let Err(why) = patchable(doc, rules, p.document_revision())
+    {
+        eprintln!("  render style: not patched: {why}");
+    }
+    if styles.is_none()
+        && let (Some(p), Some(_)) = (previous_styles, previous_scene)
         && let Ok(Patchable { nodes, relayout: text_changed }) = patchable(doc, rules, p.document_revision())
     {
         relayout = text_changed;
@@ -2268,7 +2269,7 @@ fn render_once(
     let restyle_kept_geometry = styles.geometry_kept();
     // A first render (no styles before): its animations from its own styles.
     if previous_styles.is_none() && !rules.keyframes().is_empty() {
-        (animation_values, animation_nodes) = timeline.sample(rules.keyframes(), styled_elements(doc, &styles), cancel);
+        (animation_values, animation_nodes) = timeline.sample(rules.keyframes(), animated_elements(doc, &styles), cancel);
     } else if !rules.keyframes().is_empty() && !unchanged {
         // The document changed: an animation it started shows from the
         // next frame (sampled from these styles).
@@ -2277,12 +2278,21 @@ fn render_once(
     // The animated elements styled with their values now (the patch above
     // left those the document did not change as they were).
     if !animation_nodes.is_empty() {
+        let copying = std::time::Instant::now();
         let mut tree = (*styles).clone();
-        // Matched again (a few elements): their pseudo-elements' rules are
-        // not among the ones recorded for them.
-        let nodes: Vec<(crate::dom::NodeId, bool)> = animation_nodes.iter().map(|&n| (n, true)).collect();
+        let copied_ms = copying.elapsed().as_secs_f64() * 1000.;
+        // Their recorded rules with the animated values over them; matched
+        // again only with pseudo-elements, whose rules aren't recorded (on
+        // GitHub's 2.5 MB of CSS, matching nine animated elements again
+        // each frame took most of a millisecond).
+        let nodes: Vec<(crate::dom::NodeId, bool)> = animation_nodes.iter().map(|&n| (n, tree.has_pseudos(n))).collect();
         let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation(), animated: Some(&animation_values), containers: Some(containers), resized };
-        if let Some(result) = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)? {
+        let patching = std::time::Instant::now();
+        let patch = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)?;
+        if timing.is_some() {
+            eprintln!("  animation style: copy {copied_ms:.2} ms, patch {:.2} ms, {} nodes", patching.elapsed().as_secs_f64() * 1000., nodes.len());
+        }
+        if let Some(result) = patch {
             styles = Arc::new(tree);
             patched = match patched {
                 Some(mut p) => {
@@ -2571,6 +2581,11 @@ fn identity_of(t: &css::properties::Transforms) -> Option<String> {
             .collect::<Vec<_>>()
             .join(" ")
     })
+}
+/// The elements of `tree` with animations that are still in `doc` (the
+/// tree may be the previous render's).
+fn animated_elements<'t>(doc: &'t Document, tree: &'t style::StyleTree) -> impl Iterator<Item = (crate::dom::NodeId, &'t style::Style)> + 't {
+    tree.animation_candidates().filter(move |(node, _)| doc.node_type(*node).ok() == Some(NodeType::Element) && doc.is_connected(*node).unwrap_or(false))
 }
 fn styled_elements<'t>(doc: &'t Document, tree: &'t style::StyleTree) -> impl Iterator<Item = (crate::dom::NodeId, &'t style::Style)> + 't {
     let mut next = Some(doc.root());

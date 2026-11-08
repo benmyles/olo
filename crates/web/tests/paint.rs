@@ -1432,3 +1432,56 @@ fn a_shadow_tree_renders_in_its_hosts_place_with_its_slots() {
     let lb = page.scene.layout().cache().tree().iter().find(|(_, x)| x.node == l && matches!(x.kind, layout::BoxKind::Block { .. })).map(|(id, _)| page.scene.layout().bounds(id).unwrap());
     assert!(lb.is_some_and(|r| r.height > 0.), "the slotted child laid out: {lb:?}");
 }
+#[test]
+fn a_live_canvas_is_a_surface_cut_by_its_clip_and_rounded_by_its_own() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 300., height: 200., scale: 1. };
+    // One canvas half outside a straight clip (GitHub's mascot, below the
+    // edge of its box), one filling a rounded box (a video tile).
+    let mut page = olo_web::page::load(
+        Arc::from(
+            "<!doctype html><style>body{margin:0}div{overflow:hidden}canvas{display:block;width:100px;height:100px}</style>\
+             <div style='width:60px;height:40px'><canvas></canvas></div>\
+             <div style='width:100px;height:100px;border-radius:10px'><canvas></canvas></div>",
+        ),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let doc = page.document.clone();
+    let mut canvases = Vec::new();
+    let mut next = Some(doc.root());
+    while let Some(n) = next {
+        if doc.name(n).unwrap() == Some("canvas") {
+            canvases.push((n, olo_web::image::Image::shared(100, 100, canvases.len() as u64 + 1, true)));
+        }
+        next = doc.first_child(n).unwrap().or_else(|| {
+            let mut at = Some(n);
+            while let Some(a) = at {
+                if let Some(s) = doc.next_sibling(a).unwrap() {
+                    return Some(s);
+                }
+                at = doc.parent(a).unwrap();
+            }
+            None
+        });
+    }
+    assert_eq!(canvases.len(), 2);
+    page.rerender(doc, canvases, &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    let scene = &page.scene;
+    assert_eq!(scene.surface_count(), 2);
+    let shown: Vec<paint::SurfaceShown> = (0..scene.strata().len()).filter_map(|i| scene.surface(i).map(|(s, _)| s)).collect();
+    let rect = |x, y, width, height| layout::Rect { x, y, width, height };
+    assert_eq!(shown[0], paint::SurfaceShown { bounds: rect(0., 0., 100., 100.), clip: Some(rect(0., 0., 60., 40.)), radii: None });
+    assert_eq!(shown[1], paint::SurfaceShown { bounds: rect(0., 40., 100., 100.), clip: Some(rect(0., 40., 100., 100.)), radii: Some([10.; 4]) });
+}

@@ -132,6 +132,30 @@ pub struct Clip {
     /// The transform the clipping box paints through, or NONE.
     pub transform: u32,
 }
+/// Where a surface shows (document coordinates): its image's whole
+/// rectangle, the rectangle it is cut to, and the circular radii it is
+/// rounded by (top left, top right, bottom right, bottom left).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SurfaceShown {
+    pub bounds: Rect,
+    pub clip: Option<Rect>,
+    pub radii: Option<[f64; 4]>,
+}
+/// How a surface at `b` shows within a clip `k` rounded by `r`: unrounded
+/// (Some(None)) where it keeps away from the corners, rounded by circular
+/// radii (Some(Some)) where the clip is its own rectangle, and None where
+/// neither (it is painted with the page then).
+fn surface_corners(b: Rect, k: Rect, r: &decoration::Radii) -> Option<Option<[f64; 4]>> {
+    let inside = b.x >= k.x && b.y >= k.y && b.x + b.width <= k.x + k.width && b.y + b.height <= k.y + k.height;
+    let (left, right) = (r[0][0].max(r[3][0]), r[1][0].max(r[2][0]));
+    let (top, bottom) = (r[0][1].max(r[1][1]), r[2][1].max(r[3][1]));
+    if inside && ((b.x >= k.x + left && b.x + b.width <= k.x + k.width - right) || (b.y >= k.y + top && b.y + b.height <= k.y + k.height - bottom)) {
+        return Some(None);
+    }
+    let same = |a: f64, b: f64| (a - b).abs() < 0.01;
+    let own = same(b.x, k.x) && same(b.y, k.y) && same(b.width, k.width) && same(b.height, k.height);
+    (own && r.iter().all(|c| same(c[0], c[1]))).then(|| Some([r[0][0], r[1][0], r[2][0], r[3][0]]))
+}
 /// What a stratum holds: a run of the page's own commands, the fixed
 /// layer, or a sticky box's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -622,14 +646,18 @@ impl Scene {
     }
     /// A surface stratum's image and where it shows (document coordinates):
     /// the live image of the one command it holds.
-    pub fn surface(&self, i: usize) -> Option<(Rect, &Arc<crate::image::Image>)> {
+    pub fn surface(&self, i: usize) -> Option<(SurfaceShown, &Arc<crate::image::Image>)> {
         let stratum = self.strata.get(i)?;
         let LayerKind::Surface(_) = stratum.kind else { return None };
         let c = self.commands.get(*stratum.index.ids().first()? as usize)?;
         let Primitive::Image { image, .. } = c.primitive else { return None };
         let image = self.layout.cache().tree().image(image)?;
-        let bounds = if c.clip == NONE { c.bounds } else { intersection(c.bounds, self.clips[c.clip as usize].rect) };
-        Some((bounds, image))
+        let bounds = if c.transform == NONE { c.bounds } else { aabb(self.transforms[c.transform as usize], c.bounds) };
+        let (clip, radii) = match self.clips.get(c.clip as usize) {
+            None => (None, None),
+            Some(clip) => (Some(clip.rect), clip.radii.and_then(|r| surface_corners(bounds, clip.rect, &r).flatten())),
+        };
+        Some((SurfaceShown { bounds, clip, radii }, image))
     }
     /// This scene over `layout` (the same boxes, with new styles) with the
     /// matrices of the `changed` boxes made again from their styles, and
@@ -2129,19 +2157,29 @@ impl<'a> BuildJob<'a> {
         for i in 0..commands.len() as u32 {
             let c = &commands[i as usize];
             // A surface's image is a layer of its own where it is shown
-            // as it is: not under a transform, an opacity group, a fixed
-            // or sticky box, nor a rounded or transformed clip (a straight
-            // clip only cuts the layer).
+            // as it is: not under a rotating or skewing transform, an
+            // opacity group, a fixed or sticky box, nor a transformed clip.
+            // A straight clip cuts it; a rounded one rounds it where the
+            // clip is its own rectangle, else it keeps away from the corners.
+            // Through a scale and translation (GitHub's hero WebGL canvas,
+            // in a scaled box): shown at its transformed place.
+            let matrix = (c.transform != NONE).then(|| self.transforms[c.transform as usize]);
+            let axis_aligned = matrix.is_none_or(|m| m[1] == 0. && m[2] == 0. && m[0] > 0. && m[3] > 0.);
+            let shown = matrix.map_or(c.bounds, |m| aabb(m, c.bounds));
             let surface = c.surface
                 && c.moved.is_none()
                 && !c.fixed
                 && c.sticky.is_none()
-                && c.transform == NONE
+                && axis_aligned
                 && c.group == NONE
                 && (c.clip == NONE || {
                     let clip = &self.clips[c.clip as usize];
-                    clip.radii.is_none() && clip.transform == NONE
+                    clip.transform == NONE && clip.radii.is_none_or(|r| surface_corners(shown, clip.rect, &r).is_some())
                 });
+            if c.surface && !surface && std::env::var_os("OLO_SURFACE_DEBUG").is_some() {
+                let clip = (c.clip != NONE).then(|| (self.clips[c.clip as usize].rect, self.clips[c.clip as usize].transform, self.clips[c.clip as usize].radii.is_some()));
+                eprintln!("surface refused: bounds {:?} shown {shown:?} matrix {matrix:?} moved {:?} fixed {} sticky {:?} group {} clip {clip:?}", c.bounds, c.moved, c.fixed, c.sticky, c.group);
+            }
             let kind = if let Some(root) = c.moved {
                 LayerKind::Moved(root)
             } else if let (true, Primitive::Image { owner, .. }) = (surface, &c.primitive) {

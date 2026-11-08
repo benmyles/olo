@@ -151,6 +151,10 @@ pub struct LayerTiles {
     /// pixel (a canvas's backing store at another density): sampled
     /// linearly, on the GPU.
     pub scaled: bool,
+    /// A surface cut to a rectangle (device coordinates, like its own) and
+    /// rounded by circular radii (CSS px: top left, top right, bottom
+    /// right, bottom left), on the GPU.
+    pub mask: Option<(paint::DeviceRect, [f32; 4])>,
 }
 pub enum Reply {
     Status(u64, String),
@@ -1727,25 +1731,36 @@ fn render(
             // A live surface: its image shown as it is, scrolled with the
             // page, kept by its identity (no tiles to paint: what is around
             // it stays as it was while it changes).
-            let Some((bounds, image)) = scene.surface(si) else {
-                layers.push(LayerTiles { shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
+            let Some((shown_at, image)) = scene.surface(si) else {
+                layers.push(LayerTiles { mask: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                 continue;
             };
-            let x = (bounds.x * scale).round() as i32;
-            let y = (bounds.y * scale).round() as i32;
-            let width = ((bounds.x + bounds.width) * scale).round() as i32 - x;
-            let height = ((bounds.y + bounds.height) * scale).round() as i32 - y;
-            if width <= 0 || height <= 0 {
-                layers.push(LayerTiles { shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
+            let device = |r: olo_web::layout::Rect| {
+                let x = (r.x * scale).round() as i32;
+                let y = (r.y * scale).round() as i32;
+                (x, y, ((r.x + r.width) * scale).round() as i32 - x, ((r.y + r.height) * scale).round() as i32 - y)
+            };
+            let (x, y, width, height) = device(shown_at.bounds);
+            // Cut to its clip: nothing to show where none of it is inside.
+            let clip = shown_at.clip.map(|c| device(c));
+            let visible = clip.is_none_or(|(cx, cy, cw, ch)| x < cx + cw && cx < x + width && y < cy + ch && cy < y + height);
+            if width <= 0 || height <= 0 || !visible {
+                layers.push(LayerTiles { mask: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                 continue;
             }
+            let inside = clip.is_none_or(|(cx, cy, cw, ch)| x >= cx && y >= cy && x + width <= cx + cw && y + height <= cy + ch);
+            let mask = (!inside || shown_at.radii.is_some()).then(|| {
+                let (cx, cy, cw, ch) = clip.unwrap_or((x, y, width, height));
+                let radii = shown_at.radii.map_or([0.; 4], |r| r.map(|v| v as f32));
+                (paint::DeviceRect { x: cx, y: cy, width: cw.max(0) as u32, height: ch.max(0) as u32 }, radii)
+            });
             let region = paint::DeviceRect { x, y, width: width as u32, height: height as u32 };
             // A frame in a shared texture: the window shows the texture.
             if let Some((key, premultiplied)) = image.shared_texture() {
                 shown_shared.push(key);
                 total += 1;
                 let scaled = image.width() != region.width || image.height() != region.height;
-                layers.push(LayerTiles { shared: Some((region, key, premultiplied)), placement: Placement::Page, tiles: Vec::new(), scaled });
+                layers.push(LayerTiles { mask, shared: Some((region, key, premultiplied)), placement: Placement::Page, tiles: Vec::new(), scaled });
                 continue;
             }
             *clock = clock.wrapping_add(1);
@@ -1767,7 +1782,7 @@ fn render(
             };
             total += 1;
             let scaled = image.width() != region.width || image.height() != region.height;
-            layers.push(LayerTiles { shared: None, placement: Placement::Page, tiles: vec![(region, shown)], scaled });
+            layers.push(LayerTiles { mask, shared: None, placement: Placement::Page, tiles: vec![(region, shown)], scaled });
             continue;
         }
         let (x0, y0, x1, y1) = match stratum.kind {
@@ -1786,14 +1801,14 @@ fn render(
                     sy1 = sy1.min(((c.y + c.height) * scale).ceil() as i32);
                 }
                 if sx1 <= sx0 || sy1 <= sy0 {
-                    layers.push(LayerTiles { shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
+                    layers.push(LayerTiles { mask: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                     continue;
                 }
                 ((sx0 - dx).div_euclid(256) * 256, (sy0 - dy).div_euclid(256) * 256, sx1 - dx, sy1 - dy)
             }
             paint::LayerKind::Fixed | paint::LayerKind::Sticky(_) => {
                 let Some(extent) = scene.stratum_extent(si) else {
-                    layers.push(LayerTiles { shared: None, placement: Placement::Fixed, tiles: Vec::new(), scaled: false });
+                    layers.push(LayerTiles { mask: None, shared: None, placement: Placement::Fixed, tiles: Vec::new(), scaled: false });
                     continue;
                 };
                 let (limit_x, limit_y) = if stratum.kind == paint::LayerKind::Fixed { (f64::from(r.key.width), f64::from(r.key.height)) } else { (f64::INFINITY, f64::INFINITY) };
@@ -1927,7 +1942,7 @@ fn render(
             }
         }
         if si > 0 {
-            layers.push(LayerTiles { shared: None, placement, tiles: layer_tiles, scaled: false });
+            layers.push(LayerTiles { mask: None, shared: None, placement, tiles: layer_tiles, scaled: false });
         }
     }
     TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);

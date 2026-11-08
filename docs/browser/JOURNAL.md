@@ -6370,3 +6370,22 @@ journal).
   match their Chrome observations at five scales (all 300 pass). Layout
   on GitHub's page, localized: 4.4-4.7 ms before these, 4.7-4.8 ms after
   (one warm-up run aside).
+- **GitHub's homepage, cheaper than Chrome at rest.** Measured with
+  `perf` on the page thread: every animation frame ran a whole style job
+  (2,785 styles copied and accounted) because a frame with no document
+  change was "not patchable"; it takes the previous styles as they are
+  now (same document, rules, interaction and container sizes), and only
+  the animated elements are patched. Animations are sampled from the
+  styles that name one, not by walking all 5,000 nodes. Fixed and sticky
+  boxes and container sizes are worked out once per layout and kept by a
+  restyle that leaves them standing (only a transform coming or going
+  can change which boxes are fixed: compared where the style chunks
+  differ). The hero's WebGL canvas (moved below its box's edge, cut by
+  it) and the rounded video tile under it are surface layers now: a
+  surface may be cut by a straight clip and rounded by circular radii
+  where the clip is its own box, both on the GPU. Style per frame 1.4-2.0
+  → 0.5 ms; tile repaints at the top 4 (1.6 ms) → 0 a frame. Olo's whole
+  process, at the top: 72-85% of a core → 28% (`tools/dev/cost`, timing
+  output on). `compare-cost.py https://github.com/`, release builds:
+  Chrome load 9.0 CPU s, idle 50%, scroll 84%, 661 MB; Olo load 8.5 CPU
+  s, idle 39%, scroll 105%, 509 MB (scrolling is next).

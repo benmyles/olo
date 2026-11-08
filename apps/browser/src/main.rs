@@ -555,8 +555,14 @@ impl Render for Browser {
         let document_snapshot = self.document_snapshot.clone();
         let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image, l.fixed, l.sticky, l.control.clone(), l.node)).collect();
         let scroll_areas = self.scroll_areas.clone();
-        let layers: Vec<(worker::Placement, bool, Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>, Option<(olo_web::paint::DeviceRect, u64, bool)>)> =
-            self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone(), l.shared)).collect();
+        #[allow(clippy::type_complexity)]
+        let layers: Vec<(
+            worker::Placement,
+            bool,
+            Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>,
+            Option<(olo_web::paint::DeviceRect, u64, bool)>,
+            Option<(olo_web::paint::DeviceRect, [f32; 4])>,
+        )> = self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone(), l.shared, l.mask)).collect();
         let shared_requests = std::mem::take(&mut self.shared_requests);
         let shared_retired = std::mem::take(&mut self.shared_retired);
         let made_shared: std::rc::Rc<std::cell::RefCell<Vec<u64>>> = Default::default();
@@ -670,14 +676,33 @@ impl Render for Browser {
                     // shifted as the scroll has it (CSS Positioned Layout 3 §3.4).
                     let scroll_css = f64::from(scroll) / scale;
                     let height_css = f64::from(f32::from(bounds.size.height));
-                    for (placement, scaled, layer_tiles, shared) in &layers {
+                    let page_rect = |r: &olo_web::paint::DeviceRect| {
+                        Bounds::new(
+                            point(bounds.left() + px((f64::from(r.x) / scale) as f32), bounds.top() + px((f64::from(r.y - scroll) / scale) as f32)),
+                            size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
+                        )
+                    };
+                    for (placement, scaled, layer_tiles, shared, mask) in &layers {
+                        // A surface cut to its clip and rounded, on the GPU.
+                        let content_mask = mask.as_ref().map(|(clip, _)| gpui::ContentMask { bounds: page_rect(clip) });
+                        let corners = mask.as_ref().map_or(Default::default(), |(_, r)| gpui::Corners { top_left: px(r[0]), top_right: px(r[1]), bottom_right: px(r[2]), bottom_left: px(r[3]) });
                         // A canvas frame in a shared texture, with the page.
                         if let Some((r, key, premultiplied)) = shared {
-                            let b = Bounds::new(
-                                point(bounds.left() + px((f64::from(r.x) / scale) as f32), bounds.top() + px((f64::from(r.y - scroll) / scale) as f32)),
-                                size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
-                            );
-                            window.paint_shared_texture(b, olo_ui::gpui::ImageId(*key as usize), *premultiplied, !*scaled);
+                            window.with_content_mask(content_mask, |window| {
+                                window.paint_shared_texture(page_rect(r), corners, olo_ui::gpui::ImageId(*key as usize), *premultiplied, !*scaled);
+                            });
+                            continue;
+                        }
+                        if mask.is_some() {
+                            window.with_content_mask(content_mask, |window| {
+                                for (r, image) in layer_tiles {
+                                    let _ = if *scaled {
+                                        window.paint_image(page_rect(r), corners, image.clone(), 0, false)
+                                    } else {
+                                        window.paint_image_nearest_rounded(page_rect(r), corners, image.clone())
+                                    };
+                                }
+                            });
                             continue;
                         }
                         let (dy, scrolled) = match placement {

@@ -4305,6 +4305,16 @@ impl Window {
         self.paint_image_sampled(bounds, Corners::default(), data, 0, false, true)
     }
 
+    /// Olo: [`Window::paint_image_nearest`] with its corners rounded.
+    pub fn paint_image_nearest_rounded(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        data: Arc<RenderImage>,
+    ) -> Result<()> {
+        self.paint_image_sampled(bounds, corner_radii, data, 0, false, true)
+    }
+
     /// Olo: a texture of the window's renderer another API draws into, shown
     /// with no copy ([`Window::paint_shared_texture`]); None where the
     /// renderer can't share memory. Let go with [`Window::drop_shared_texture`].
@@ -4334,10 +4344,12 @@ impl Window {
     }
 
     /// Olo: shared texture `id` at `bounds`, its colours premultiplied or not,
-    /// texel for pixel (`nearest`) or sampled.
+    /// texel for pixel (`nearest`) or sampled, its corners rounded by
+    /// `corner_radii`.
     pub fn paint_shared_texture(
         &mut self,
         bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
         id: crate::ImageId,
         premultiplied: bool,
         nearest: bool,
@@ -4364,7 +4376,7 @@ impl Window {
                 .map_origin(|origin| origin.floor())
                 .map_size(|size| size.ceil()),
             content_mask,
-            corner_radii: Corners::default(),
+            corner_radii: corner_radii.scale(scale_factor),
             tile,
             opacity,
         });
