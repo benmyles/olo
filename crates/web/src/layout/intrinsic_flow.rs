@@ -71,7 +71,11 @@ impl Job<'_> {
             // nothing (CSS Sizing 3 §5.2.2), as in Chrome (the BBC's story
             // grids took their images' natural widths).
             let basis = if i == 0 { 0. } else { width };
-            let objects = if text.object_count() != 0 { self.inline_objects(id, source, text, basis, None, queries, true)?.0 } else { Vec::new() };
+            // (Restored after: this may be a measure inside another's.)
+            let outer = std::mem::replace(&mut self.measuring_max, i == 1);
+            let objects = if text.object_count() != 0 { self.inline_objects(id, source, text, basis, None, queries, true) } else { Ok((Vec::new(), Vec::new())) };
+            self.measuring_max = outer;
+            let objects = objects?.0;
             let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text.clone(), style, self.scope, available, self.scale, self.limits.text, self.cancel, spacing.clone())?;
             if !objects.is_empty() {
                 j = j.with_objects(objects)?;

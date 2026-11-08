@@ -1059,6 +1059,10 @@ pub struct Job<'a> {
     /// texts with inline objects, whose widths are per paragraph).
     intrinsics: HashMap<(u64, u32), inline::IntrinsicWidths>,
     scratch: math::Scratch,
+    /// Measuring a paragraph's max-content width (`measure_by_layout`'s
+    /// second pass): a replaced object's percentage width or max-width
+    /// behaves as `auto` there (CSS Sizing 3 §5.2.2), not against the basis.
+    pub(super) measuring_max: bool,
     progress: Progress,
     fallbacks: Fallbacks,
     failed: bool,
@@ -1141,6 +1145,7 @@ impl<'a> Job<'a> {
             active_absolute: None,
             intrinsics: HashMap::new(),
             scratch: math::Scratch::default(),
+            measuring_max: false,
             progress: Progress::default(),
             fallbacks: Fallbacks::default(),
             failed: false,
@@ -1853,7 +1858,10 @@ impl<'a> Job<'a> {
                 }
             } else {
                 let natural = cache.tree.natural(child)?;
-                let used = super::images::used(s, width, height, natural, !measuring && cache.tree.ratio_only(child), false, false, queries, &mut self.scratch, self.cancel, self.scale)?;
+                // At max-content, a percentage size is its natural one.
+                let percent = |p: P| matches!(s.value(p), Value::Numeric(n) if n.expression().constant().is_none());
+                let basis = if measuring && self.measuring_max && (percent(P::Width) || percent(P::MaxWidth)) { natural.0 } else { width };
+                let used = super::images::used(s, basis, height, natural, !measuring && cache.tree.ratio_only(child), false, false, queries, &mut self.scratch, self.cancel, self.scale)?;
                 (super::images::geometry(used), used.margin)
             };
             let height = g.border_box.height + margin.vertical();

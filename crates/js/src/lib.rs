@@ -1057,6 +1057,32 @@ impl Realm {
         out.extend(s.images.iter().map(|(n, i)| (*n, i.clone())));
         out
     }
+    /// A picture for `node` (a video's poster): the page's own at once, else
+    /// asked of the browser (`take_requests`) and bound when it comes, as an
+    /// image scripts load is (`canvases`).
+    pub fn request_image(&mut self, node: NodeId, url: &str) {
+        let mut s = self.state.borrow_mut();
+        if let Some(image) = s.image_lookup.as_mut().and_then(|f| f(url)) {
+            s.images.insert(node, image);
+            s.images_dirty = true;
+            return;
+        }
+        if s.image_lookup.is_none() {
+            return;
+        }
+        let id = s.next_request;
+        s.next_request += 1;
+        s.in_flight.insert(id, Some(node));
+        s.image_latest.insert(node, id);
+        s.requests.push(Request { id, url: url.to_owned(), kind: RequestKind::Image });
+    }
+    /// Its picture let go (a video playing shows its frames instead).
+    pub fn drop_image(&mut self, node: NodeId) {
+        let mut s = self.state.borrow_mut();
+        if s.images.remove(&node).is_some() {
+            s.images_dirty = true;
+        }
+    }
     /// The document as it is now, copied, for rendering while the scripts
     /// keep theirs.
     pub fn snapshot(&self) -> Document {

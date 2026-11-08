@@ -6839,3 +6839,13 @@ the Guardian and old Reddit, looking for pages that fail outright:
   wears the kit's slim scroll bar over its right edge: there when the
   pointer comes near or it scrolls, fading after; its thumb drags, a
   click in its track pages. It had none.
+- **Wikipedia's figures.** A `display: table` whose children aren't rows
+  (Wikipedia's figure: a link with a picture, a `table-caption`) was as
+  wide as nothing (2 px, its caption one letter a line, the next section
+  pushed out of sight). Its other children count as an anonymous cell,
+  its caption's min-content as its least width. A video in a
+  shrink-to-fit box with `max-width: 100%` was squeezed to nothing (a
+  percentage is `auto` at max-content now); a video showing nothing yet
+  keeps its room (300 × 150 by default); a video's poster shows until it
+  plays, and `preload="none"` fetches nothing until then (the whole
+  video was downloaded and its first frame shown over the poster).

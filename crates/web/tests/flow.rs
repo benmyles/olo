@@ -780,6 +780,44 @@ fn fixed_and_sticky_boxes_are_laid_out_without_fallbacks() {
 }
 
 #[test]
+fn a_table_of_plain_children_and_a_caption_is_as_wide_as_they_are() {
+    // Wikipedia's figures: a floated `display: table` holding a link with a
+    // picture (an anonymous cell) and a `table-caption`: as wide as the
+    // picture, the caption wrapping in it (it was 2 px, one letter a line).
+    let s = scope();
+    let mut e = Engine::default();
+    let (d, t) = tree(
+        "<div id=w><figure id=f><a id=a><img width=250 height=163></a><figcaption id=c>A web browser on a laptop displaying a long caption that wraps</figcaption></figure><p>Text.</p></div>",
+        "body{margin:0}#w{width:900px}figure{display:table;float:right;margin:0}#a{display:block}img{display:block}figcaption{display:table-caption}",
+        &s,
+        1,
+    );
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 1000., 1);
+    assert_eq!(rect(&d, &l, "f").width, 250.);
+    assert_eq!(rect(&d, &l, "f").x, 650.);
+    assert_eq!(rect(&d, &l, "c").width, 250.);
+    // A video showing nothing yet keeps its room; one in a shrink-to-fit
+    // box with `max-width: 100%` is as wide as its natural size there
+    // (a percentage is auto at max-content), not squeezed to nothing.
+    let (d, t) = tree(
+        "<div id=w><figure id=f><span id=p><video id=v width=250 height=159></video></span></figure><video id=plain></video></div>",
+        "body{margin:0}figure{display:table;float:right;margin:0}#p{display:inline-block}video{max-width:100%;height:auto}",
+        &s,
+        1,
+    );
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 1000., 1);
+    let any = |name: &str| {
+        let (id, _) = l.cache().tree().iter().find(|(_, b)| d.attribute(b.node, "id").ok().flatten() == Some(name)).unwrap();
+        l.bounds(id).unwrap()
+    };
+    assert_eq!(any("v").width, 250.);
+    assert_eq!(rect(&d, &l, "f").width, 250.);
+    assert_eq!((any("plain").width, any("plain").height), (300., 150.));
+}
+
+#[test]
 fn grid_areas_and_named_lines_place_items() {
     // MDN's layout: items placed by `grid-area` names (in source order the
     // other way round), the areas' edges named lines, line names from a

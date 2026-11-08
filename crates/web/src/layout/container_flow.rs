@@ -270,6 +270,46 @@ impl Job<'_> {
             }
             columns = columns.max(at);
         }
+        // Its other children: each run of them one anonymous cell, in a row
+        // of its own (CSS 2 §17.2.1: Wikipedia's figures, a picture in a
+        // `display: table`); a caption as wide as its min-content at least,
+        // across the columns (it never widens the table to its text's
+        // length, as Chrome's doesn't).
+        let mut run: Option<(f64, f64)> = None;
+        let mut captions = Vec::new();
+        let mut next = self.cache.tree.get(table).ok_or(Error::Invalid)?.first_child;
+        while let Some(child) = next {
+            check(self.cancel)?;
+            let b = self.cache.tree.get(child).ok_or(Error::Invalid)?;
+            next = b.next_sibling;
+            let style = self.cache.tree.style(child);
+            let internal = style.and_then(|s| match s.value(P::Display) {
+                Value::Display(crate::css::properties::Display::Internal(i)) => Some(i),
+                _ => None,
+            });
+            let loose = !b.absolute && matches!(b.kind, BoxKind::Block { .. } | BoxKind::InlineContent { .. }) && internal.is_none();
+            if loose {
+                let w = self.intrinsic(child, queries, basis, 0)?;
+                let (min, max) = run.unwrap_or((0., 0.));
+                run = Some((min.max(w.min_content), max.max(w.max_content)));
+                continue;
+            }
+            if let Some((min, max)) = run.take() {
+                contributions.push((0, 1, min, max));
+                columns = columns.max(1);
+            }
+            if !b.absolute && matches!(internal, Some(crate::css::properties::Internal::TableCaption)) {
+                captions.push(self.intrinsic(child, queries, basis, 0)?.min_content);
+            }
+        }
+        if let Some((min, max)) = run {
+            contributions.push((0, 1, min, max));
+            columns = columns.max(1);
+        }
+        for min in captions {
+            columns = columns.max(1);
+            contributions.push((0, columns, min, min));
+        }
         Ok((columns, contributions))
     }
     /// A table's min- and max-content widths, spacing included.

@@ -965,6 +965,13 @@ impl<'a> BuildJob<'a> {
                     // video showing a picture, an image of that picture.
                     // An iframe whose document was rendered, an image of it.
                     let drawn_canvas = matches!(name, Some("canvas" | "video" | "iframe")) && self.images.as_ref().is_some_and(|images| images.index(node).is_some());
+                    // A video showing nothing yet (no poster, no frame): its
+                    // room (its attributes' size, else 300 × 150), as Chrome.
+                    if name == Some("video") && !drawn_canvas && display != Display::Contents && matches!(namespace, Some(crate::dom::Namespace::Html)) {
+                        let natural = replaced_natural(self.document, node, [300., 150.])?;
+                        self.replaced(node, display, container, natural, absolute, self.in_line(s, absolute, container))?;
+                        continue;
+                    }
                     if name == Some("img") || drawn_canvas {
                         if display == Display::Contents {
                             continue;

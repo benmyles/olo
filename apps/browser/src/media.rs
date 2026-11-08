@@ -23,6 +23,8 @@ const MEDIA_LIMIT: usize = 256 << 20;
 const TIME_UPDATE: Duration = Duration::from_millis(250);
 
 enum Loading {
+    /// `preload="none"`: nothing fetched until it is played.
+    Idle,
     Fetching,
     Ready(olo_preview::video::Video, f64),
     Failed(String),
@@ -38,6 +40,11 @@ struct Player {
     wanted_playing: bool,
     told_ready: bool,
     last_time_update: Instant,
+    /// Its element has a poster: shown (the page binds it) until it plays.
+    poster: bool,
+    played: bool,
+    /// What fetching it takes, while it waits to be played (`preload="none"`).
+    deferred: Option<(Arc<crate::network::Loader>, url::Url, crate::network::Cancel)>,
 }
 impl Drop for Player {
     fn drop(&mut self) {
@@ -65,7 +72,8 @@ impl Players {
     }
     /// The pictures to bind, by element.
     pub fn images(&self) -> Vec<(NodeId, Arc<olo_web::image::Image>)> {
-        self.players.iter().filter_map(|(n, p)| p.image.clone().map(|i| (*n, i))).collect()
+        // (Not over its poster before it has played, as browsers show it.)
+        self.players.iter().filter(|(_, p)| !p.poster || p.played).filter_map(|(n, p)| p.image.clone().map(|i| (*n, i))).collect()
     }
     /// Follow the document's `<video>` elements (new ones fetched, gone ones
     /// stopped), do what the scripts asked, show each player's picture due
@@ -84,7 +92,24 @@ impl Players {
                     continue;
                 }
                 let autoplay = doc.attribute(node, "autoplay").ok().flatten().is_some();
-                self.players.insert(node, Player::start(src, autoplay, loader.clone(), base.clone(), cancel.clone()));
+                let poster = doc.attribute(node, "poster").ok().flatten().map(str::trim).filter(|p| !p.is_empty()).and_then(|p| base.join(p).ok());
+                // Its poster, loaded for it (an element the scripts made
+                // has none bound from the page's preparation).
+                if let Some(url) = &poster
+                    && !autoplay
+                {
+                    realm.request_image(node, url.as_str());
+                }
+                let poster = poster.is_some();
+                let lazy = !autoplay && doc.attribute(node, "preload").ok().flatten().is_some_and(|p| p.trim().eq_ignore_ascii_case("none"));
+                let mut player = Player::new(src, autoplay, poster);
+                if lazy {
+                    player.deferred = Some((loader.clone(), base.clone(), cancel.clone()));
+                    *player.loading.lock().unwrap() = Loading::Idle;
+                } else {
+                    player.fetch(loader.clone(), base.clone(), cancel.clone());
+                }
+                self.players.insert(node, player);
             }
         }
         for (node, command) in realm.take_media_commands() {
@@ -98,6 +123,10 @@ impl Players {
             let Some(p) = self.players.get_mut(&node) else { continue };
             let looping = realm.has_attribute(node, "loop");
             let (changed, events, next) = p.advance(looping, shown(node));
+            // Playing: its frames, not its poster.
+            if p.poster && p.played && p.image.is_some() {
+                realm.drop_image(node);
+            }
             if changed {
                 step.changed = true;
             }
@@ -112,9 +141,27 @@ impl Players {
     }
 }
 impl Player {
-    fn start(src: String, autoplay: bool, loader: Arc<crate::network::Loader>, base: url::Url, cancel: crate::network::Cancel) -> Player {
-        let loading = Arc::new(Mutex::new(Loading::Fetching));
-        let (slot, url) = (loading.clone(), src.clone());
+    fn new(src: String, autoplay: bool, poster: bool) -> Player {
+        Player {
+            src,
+            loading: Arc::new(Mutex::new(Loading::Fetching)),
+            video: None,
+            image: None,
+            media: Media { paused: !autoplay, ..Default::default() },
+            wanted_playing: autoplay,
+            told_ready: false,
+            last_time_update: Instant::now(),
+            poster,
+            played: autoplay,
+            deferred: None,
+        }
+    }
+    /// Fetch and probe it on a thread of its own.
+    fn fetch(&mut self, loader: Arc<crate::network::Loader>, base: url::Url, cancel: crate::network::Cancel) {
+        *self.loading.lock().unwrap() = Loading::Fetching;
+        let autoplay = self.wanted_playing;
+        let loading = self.loading.clone();
+        let (slot, url) = (loading.clone(), self.src.clone());
         let started = std::thread::Builder::new().name("video fetch".into()).spawn(move || {
             let result = (|| -> Result<(olo_preview::video::Video, f64), String> {
                 let parsed = url::Url::parse(&url).map_err(|e| e.to_string())?;
@@ -150,13 +197,16 @@ impl Player {
         if let Err(e) = started {
             *loading.lock().unwrap() = Loading::Failed(e.to_string());
         }
-        Player { src, loading, video: None, image: None, media: Media { paused: !autoplay, ..Default::default() }, wanted_playing: autoplay, told_ready: false, last_time_update: Instant::now() }
     }
     fn command(&mut self, command: MediaCommand) {
         match command {
             MediaCommand::Play => {
                 self.wanted_playing = true;
+                self.played = true;
                 self.media.paused = false;
+                if let Some((loader, base, cancel)) = self.deferred.take() {
+                    self.fetch(loader, base, cancel);
+                }
                 if let Some((v, _)) = &self.video {
                     if v.finished() {
                         v.seek(0.);
@@ -213,6 +263,11 @@ impl Player {
                     return (false, events, None);
                 }
                 Loading::Fetching => return (false, events, Some(Duration::from_millis(50))),
+                // Waiting to be played: nothing to do, nothing to poll.
+                Loading::Idle => {
+                    *slot = Loading::Idle;
+                    return (false, events, None);
+                }
             }
         }
         let Some((video, duration)) = &self.video else { return (false, events, None) };

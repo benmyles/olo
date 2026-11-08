@@ -87,6 +87,15 @@ pub struct Page {
 }
 /// A document parsed, with its stylesheets, images and fonts loaded, ready
 /// to style for a host made for its `scope()`.
+/// The picture an `<img>` shows (its `<picture>`, srcset and sizes'
+/// choice) or a `<video>` (its poster), at the density it is for.
+fn picture_source(doc: &Document, node: crate::dom::NodeId, media: &css::media::Media, cancel: Option<&AtomicBool>) -> Option<crate::srcset::Choice> {
+    if doc.name(node).ok().flatten() == Some("video") {
+        let poster = doc.attribute(node, "poster").ok().flatten()?.trim();
+        return (!poster.is_empty()).then(|| crate::srcset::Choice { url: poster.to_owned(), density: 1. });
+    }
+    crate::srcset::choose(doc, node, media, cancel)
+}
 /// A picture the page showed before it arrived (its host answered
 /// `PENDING`): bound when it does (`Page::bind_late`).
 #[derive(Clone, Debug)]
@@ -1833,6 +1842,12 @@ fn gather(
                     }
                 }
                 Some("style" | "link") => style_nodes.push(node),
+                // A video's poster: its picture until a frame shows.
+                Some("video") if doc.attribute(node, "poster")?.is_some_and(|p| !p.trim().is_empty()) => {
+                    if image_nodes.len() < PAGE_IMAGE_LIMITS.bindings {
+                        image_nodes.push(node);
+                    }
+                }
                 Some("img") => {
                     // Past the bindings an image is left out (an issue below).
                     if image_nodes.len() < PAGE_IMAGE_LIMITS.bindings {
@@ -1905,7 +1920,7 @@ fn gather(
                 prefetch(kind, &items);
             }
         }
-        let images: Vec<(Option<String>, String)> = image_nodes.iter().filter_map(|&n| crate::srcset::choose(&doc, n, &media, cancel).map(|c| (base.clone(), c.url))).collect();
+        let images: Vec<(Option<String>, String)> = image_nodes.iter().filter_map(|&n| picture_source(&doc, n, &media, cancel).map(|c| (base.clone(), c.url))).collect();
         prefetch(ResourceKind::Image, &images);
     }
     // The ordered small list avoids a second walk of all text/elements. Base
@@ -1932,7 +1947,7 @@ fn gather(
         }
         // The source its <picture>, srcset and sizes choose for this
         // display, at the density it was chosen for.
-        let Some(choice) = crate::srcset::choose(&doc, node, &media, cancel) else {
+        let Some(choice) = picture_source(&doc, node, &media, cancel) else {
             resource_issues += 1;
             continue;
         };
@@ -2176,10 +2191,10 @@ impl Page {
             let (base, href) = match &late {
                 Late::Element(node) => {
                     // Gone, or no longer a picture: nothing to bind.
-                    if !doc.is_connected(*node).unwrap_or(false) || doc.name(*node).ok().flatten() != Some("img") {
+                    if !doc.is_connected(*node).unwrap_or(false) || !matches!(doc.name(*node).ok().flatten(), Some("img" | "video")) {
                         continue;
                     }
-                    match crate::srcset::choose(doc, *node, &self.media, cancel) {
+                    match picture_source(doc, *node, &self.media, cancel) {
                         Some(choice) => (self.base_href.clone(), choice),
                         None => continue,
                     }

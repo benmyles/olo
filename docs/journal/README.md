@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: Wikipedia's figures
+
+*13:15* — Wikipedia's 'Web browser' article against Chrome (right): its figures (display: table with a table-caption) are as wide as their pictures and the text wraps round them; they were a column one letter wide, and the article's next section was pushed out of sight.
+
+![Browser: Wikipedia's figures](2026-11-08/131538-browser-wikipedia-s-figures.png)
+
 ### Browser: slim scroll bars
 
 *12:59* — The page's slim scroll bar (the kit's, as Terminal's), shown with the pointer near the right edge after a drag of its thumb to the middle of Wikipedia's article; boxes that scroll in a page get one each.
