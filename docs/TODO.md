@@ -21,11 +21,12 @@ something nobody here has is in "Blocked", with what it waits for.
   makes sense"). Done so far: the kit's way (`olo_ui::undo`: named
   steps, runs merged, Edit ▸ Undo/Redo with the profile's keys, a
   window without a menu bar given ⌘Z by its Frame, agents and the
-  palette finding them among the app's menus); Tracker (files) and
-  Preferences (every panel's settings) on it. Left, each app looked at
-  for what should undo and put on it: StyledEdit's and the Viewer's own
-  undo (and text fields') matched to it or moved onto it; Passwords'
-  edits; Deskbar's and the desktop's moves (icons placed, replicants);
+  palette finding them among the app's menus); Tracker (files),
+  Preferences (every panel's settings) and Passwords (items changed,
+  made, deleted; not the Archive, which nothing takes an item out of
+  yet) on it. Left, each app looked at for what should undo and put on
+  it: StyledEdit's and the Viewer's own undo (and text fields') matched
+  to it or moved onto it; Deskbar's and the desktop's moves (icons placed, replicants);
   Terminal's tab and pane changes (a closed tab can't come back with its
   process: say so); app_server's ⌃⌘Z window arrangement matched (named,
   Redo); and the rest (Notes, DeskCalc's tape, …).

@@ -523,13 +523,15 @@ impl Vault {
         self.save()
     }
 
-    pub fn delete(&mut self, _vault: &str, id: &str) -> Result<()> {
+    /// Delete an item; it as it was (for Undo, which makes it again).
+    pub fn delete(&mut self, _vault: &str, id: &str) -> Result<Item> {
         let at = self.data.entries.iter().position(|e| e.item.id == id).ok_or_else(|| fail("The item isn’t there any more."))?;
         let entry = self.data.entries.remove(at);
         if entry.remote.is_some() {
-            self.data.tombstones.push(Tombstone { vault: entry.item.vault_id, id: entry.item.id });
+            self.data.tombstones.push(Tombstone { vault: entry.item.vault_id.clone(), id: entry.item.id.clone() });
         }
-        self.save()
+        self.save()?;
+        Ok(entry.item)
     }
 
     /// Changes not yet in 1Password.
@@ -1027,5 +1029,27 @@ mod tests {
         let v = Vault::open_at(file, Some(&dir.join("key"))).unwrap();
         assert_eq!(v.data.vault_account.get("v1").map(String::as_str), Some("old"));
         assert!(!v.data.vault_account.contains_key(&local_vault().id));
+    }
+
+    /// Edit ▸ Undo's ways back (`undo.rs`): an edit put back as it was, a
+    /// deleted item made again with every field as it was.
+    #[test]
+    fn undo_puts_items_back() {
+        let (mut v, dir) = fresh("undo");
+        let item = login(&mut v, "Mail");
+        let mut changed = item.clone();
+        changed.title = "Mail (work)".into();
+        let after = v.put(&changed).unwrap();
+        // Undo the edit: as it was.
+        let back = v.put(&item).unwrap();
+        assert_eq!((back.id.as_str(), back.title.as_str()), (after.id.as_str(), "Mail"));
+        // Deleted, then made again from what the delete gave back.
+        let was = v.delete("", &item.id).unwrap();
+        assert!(v.get("", &item.id).is_err());
+        let again = v.create(&crate::undo::params_of(&was)).unwrap();
+        assert_eq!((again.title.as_str(), again.vault_id.as_str()), (was.title.as_str(), was.vault_id.as_str()));
+        assert_eq!(again.fields, was.fields);
+        assert_ne!(again.id, was.id, "a new item");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

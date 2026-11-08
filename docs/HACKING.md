@@ -12298,6 +12298,17 @@ place.
 
 ## Passwords (apps/passwords, crates/onepassword)
 
+**Undo** (undo.rs, `olo_ui::undo`): Edit ▸ Undo and Redo for items
+changed (put back as they were), made (deleted) and deleted (made again:
+a new item, every field as it was; `Vault::delete` gives back what it
+deleted). Each is a save, a creation or a deletion like any other, so a
+sync with 1Password takes it as one; the store's jobs carry a `Tag` (what
+for, the step's name, an edit's item as it was) that its reply gives
+back, and the reply records the step. An item with files attached can't
+be made again (its files went), so its Delete still says it's for good;
+the Archive isn't undone (nothing takes an item out of it yet). Steps
+hold secrets: they go when Passwords locks (and when the store changes).
+
 **Searching**: the toolbar's `SearchField` and a `FilterBar` over the
 list (Tag, Has) share one query (`olo_ui::search`). Words find an item
 by its title, username, websites, tags, kind, its sections' titles, its
