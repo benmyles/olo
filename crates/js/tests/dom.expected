@@ -23,12 +23,12 @@
 [log] dynamic inline after append 1
 [log] dynamic inline moved 1
 [log] innerHTML script ran false
+[warn] script failed: https://nowhere.invalid/x.js: no network
 [log] external ran
-[warn] script failed: https://nowhere.invalid/x.js: TypeError: fetch failed: no network for scripts
 [log] DOMContentLoaded interactive
 [log] dynamic inline load event
-[log] external load true
 [log] external error event
+[log] external load true
 [log] timeout 2 true
 [log] interval done 4
 [log] raf number

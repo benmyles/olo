@@ -292,18 +292,33 @@
     }
     if (!JS_TYPES.includes(type)) return;
     const src = N.attr(el, 'src');
-    let source, name;
+    const ordered = written.has(el);
     if (src != null && src.trim() !== '') {
-      name = resolveURL(src.trim());
-      let r;
-      try { r = fetchSync(name, 'GET', ''); } catch (e) { log('warn', ['script failed: ' + name + ': ' + (e && e.message || e)]); fireOn(el, 'error'); return; }
-      if (r.status && (r.status < 200 || r.status >= 300)) { log('warn', ['script failed: ' + name + ': HTTP ' + r.status]); fireOn(el, 'error'); return; }
-      source = typeof r.body === 'string' ? r.body : new TextDecoder().decode(r.body);
-    } else {
-      source = N.textContent(el);
-      name = 'inserted inline script ' + (++inserts);
-      if (!source.trim()) return;
+      // Fetched without waiting (the page's thread goes on with its event
+      // loop); run when it arrives: at once, or, written by
+      // document.write, after the ones written before it, in order.
+      const name = resolveURL(src.trim());
+      const entry = { el, name, source: undefined, failed: false };
+      if (ordered) orderedScripts.push(entry);
+      // (A data: or blob: URL is here already: read, not fetched.)
+      const load = /^(data|blob):/.test(name) ? Promise.resolve().then(() => global.__olo_fetchInline(name)) : global.__olo_fetchStart(name, 'GET', '', '');
+      load.then((r) => {
+        if (r.status && (r.status < 200 || r.status >= 300)) { log('warn', ['script failed: ' + name + ': HTTP ' + r.status]); entry.failed = true; }
+        else entry.source = typeof r.body === 'string' ? r.body : new TextDecoder().decode(r.body);
+      }, (e) => { log('warn', ['script failed: ' + name + ': ' + (e && e.message || e)]); entry.failed = true; }).then(() => { if (ordered) runOrdered(); else settle(entry); });
+      return;
     }
+    const source = N.textContent(el);
+    const name = 'inserted inline script ' + (++inserts);
+    if (!source.trim()) return;
+    // An inline one written after an external one still loading waits its turn.
+    if (ordered && orderedScripts.length) { orderedScripts.push({ el, name, source, failed: false }); return; }
+    return execute(el, source, name);
+  };
+  // Scripts document.write wrote, in the order they run (see above).
+  const written = new WeakSet();
+  const orderedScripts = [];
+  const execute = (el, source, name) => {
     const previous = currentScript;
     currentScript = el;
     let ok = false;
@@ -311,6 +326,8 @@
     fireOn(el, 'load');
     return ok;
   };
+  const settle = (entry) => { if (entry.failed) fireOn(entry.el, 'error'); else execute(entry.el, entry.source, entry.name); };
+  const runOrdered = () => { while (orderedScripts.length && (orderedScripts[0].failed || orderedScripts[0].source !== undefined)) settle(orderedScripts.shift()); };
   // A <link> a script inserts (a stylesheet, a preload) loads: its load
   // event a task later (webpack's CSS chunks wait for it; the engine
   // fetches the sheet itself).
@@ -671,7 +688,7 @@
     const holder = N.createElement('div', '');
     N.setInnerHTML(holder, w.html);
     // (Written scripts run, as the parser's do; innerHTML's would not.)
-    for (const el of N.query(holder, 'script', true)) started.delete(el);
+    for (const el of N.query(holder, 'script', true)) { started.delete(el); written.add(el); }
     const next = N.nextSibling(w.script);
     for (const c of N.childNodes(holder)) { if (next) N.insertBefore(parent, c, next); else N.append(parent, c); }
   };
