@@ -6588,3 +6588,29 @@ journal).
   (YouTube's hidden player spinners asked for 60 a second). YouTube idles
   at 0.8% CPU (Chrome 1.0%; Olo was 15.8%).
 
+## 2026-11-08, late morning: filters, Web Animations, backdrops, cost
+
+- **CSS `filter`** (journal image) was not a property Olo knew. The colour
+  functions compose into one matrix applied to the box's group; `blur()`
+  renders the group's content over the tile and its reach (3 sigma), at a
+  fraction of the resolution for a wide blur, blurs it with three box
+  passes and cuts it to the tile. Against Chrome within 4 units, no seams
+  at 1x, 1.5x, 2x. `drop-shadow()` and `url()` are not drawn yet.
+- **Web Animations animate.** `element.animate()` jumped to its end. The
+  document keeps scripts' animations and the page samples them each frame
+  with the CSS machinery, over the CSS ones; states, events, promises,
+  fills and replacement as in browsers.
+- **`backdrop-filter` on page boxes.** A frosted card that scrolls with the
+  page gets a layer of its own, so the window blurs what is under it, as it
+  did for fixed and sticky boxes. A page now scrolls as far as its boxes
+  reach, painted or not.
+- **DOMMatrix and computed transforms.** apple.com's "Hello, hello." swap
+  animated through `matrix(NaN, …)`: a computed transform is now its matrix
+  and DOMMatrix is real (13 cases equal Chrome's).
+- **Cost.** Scrolling apple.com: 56-60% of a core to 44% (a video's box
+  index rebuilt 350 times a second, every style read for animations and
+  backdrops each frame, labels remade at every scroll position). Loading
+  it: no document walk per render for stylesheets, node maps on a fast
+  hasher, debug switches read once. GitHub: a video fading in stays a GPU
+  surface (the processor converted each picture while it faded).
+

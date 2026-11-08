@@ -158,7 +158,8 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   borders, inline backgrounds' images and borders (their colour; their
   corners round since JOURNAL 2026-11-08, elliptical radii as circular)
   paints), rounded borders with differing sides,
-  `filter`, `mask-image`, `mix-blend-mode`, SVG `<text>`, `<use>`,
+  `filter` (colours and blur drawn; open: drop-shadow(), url(); JOURNAL
+  2026-11-08 late morning), `mask-image`, `mix-blend-mode`, SVG `<text>`, `<use>`,
   `<mask>` (Stripe's Sign in button).
 - [x] Text: letter-spacing/word-spacing, `text-wrap: balance`,
   `::before`/`::after` generated content (strings, attr()).
@@ -172,8 +173,9 @@ Next, in impact order (each removes a fallback kind or a visible gap):
 - [x] JavaScript: V8 with a native DOM (crates/js): the Web API surface in
   a prelude, scripts that scripts insert, measurement from a layout of the
   page as it is (getBoundingClientRect, offset*/client*/scroll*,
-  getComputedStyle), observers, custom elements, Web Animations' resting
-  states, MessageChannel, the 2D canvas (tiny-skia) and WebGL 1/2 (the
+  getComputedStyle), observers (MutationObserver records as Chrome's),
+  custom elements, Web Animations (sampled by the engine each frame),
+  MessageChannel, the 2D canvas (tiny-skia) and WebGL 1/2 (the
   GPU through OpenGL ES, a context per canvas, draws validated as WebGL
   does), images loaded for scripts (`img.src`, textures, drawImage,
   ImageBitmap) and fetch()/XMLHttpRequest, both fetched off the thread

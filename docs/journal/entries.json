@@ -4030,5 +4030,11 @@
   "title": "Browser: YouTube renders",
   "caption": "YouTube's app now runs to the end in Olo's browser: masthead, search, sign-in, the mini-guide and the feed nudge, in the dark theme the palette asks for, as Chrome shows it (it was a loading skeleton). It took fetch() keeping a Request's state in slots (YouTube probes it), template fragments connecting their custom elements, a working MutationObserver (Polymer's microtasks), request bodies as bytes (gzip), a cookie jar, and per-interface element properties.",
   "image": "2026-11-08/053732-browser-youtube-renders.png"
+ },
+ {
+  "time": "2026-11-08T07:01:46",
+  "title": "Browser: CSS filter blur and colours",
+  "caption": "filter: blur() and the colour functions (grayscale, brightness, contrast, invert, sepia, hue-rotate, saturate, opacity) now draw, against Chrome within a few units at 1x, 1.5x and 2x, without seams between tiles: a wide blur renders the group's content around the tile at a fraction of the resolution, blurs it with three box passes and draws it back.",
+  "image": "2026-11-08/070146-browser-css-filter-blur-and-colours.png"
  }
 ]
