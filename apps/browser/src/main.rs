@@ -79,6 +79,9 @@ struct Browser {
     scroll_areas: Arc<[worker::ScrollArea]>,
     status: String,
     blocked_action: Option<&'static str>,
+    /// The page's scripts asked to go this far back or forward past its
+    /// own entries (`history.go`): done at the next render.
+    pending_traverse: Option<isize>,
     scroll: i32,
     extent: f64,
     interaction: olo_web::page::Interaction,
@@ -175,6 +178,7 @@ impl Browser {
             live: false,
             status: "Loading…".into(),
             blocked_action: None,
+            pending_traverse: None,
             scroll: (scroll * f64::from(window.scale_factor())).round() as i32,
             extent: 0.,
             interaction: Default::default(),
@@ -294,6 +298,9 @@ impl Browser {
         let same = self.document_ready && entry.document == self.loaded_group;
         if same {
             self.scroll = (entry.scroll * f64::from(window.scale_factor())).round() as i32;
+            // An entry of this document: its scripts take it (popstate:
+            // a single-page app shows what that URL is).
+            let _ = self.tx.send(worker::Message::Traverse(entry.url.clone()));
         }
         self.begin_navigation(entry, same, false, window, cx);
     }
@@ -506,6 +513,35 @@ impl Browser {
                 self.history.location(url.clone());
                 self.address.update(cx, |f, cx| f.set_text(url, cx));
             }
+            // The page moved its session history: an entry of this document
+            // pushed (pushState) or retitled (replaceState), or the page
+            // traversed its own entries; or it asks to go past them.
+            worker::Reply::History(id, change) if id == self.id => {
+                use olo_js::HistoryChange as H;
+                let url = match change {
+                    H::Push(url) => {
+                        self.history.scroll(self.css_scroll());
+                        self.history.push(url.clone(), self.cwd.clone(), true);
+                        url
+                    }
+                    H::Replace(url) => {
+                        self.history.location(url.clone());
+                        url
+                    }
+                    H::Go(url, delta) => {
+                        let _ = self.history.go(delta);
+                        self.history.location(url.clone());
+                        url
+                    }
+                    H::Leave(delta) => {
+                        self.pending_traverse = Some(delta);
+                        cx.notify();
+                        return;
+                    }
+                };
+                self.address.update(cx, |f, cx| f.set_text(url, cx));
+                cx.notify();
+            }
             worker::Reply::Status(id, s) if id == self.id => self.status = s,
             // The page has something to show: a frame, which asks it for its next.
             worker::Reply::WantFrame(id) if id == self.id => self.animating = true,
@@ -585,7 +621,11 @@ impl Drop for Browser {
     }
 }
 impl Render for Browser {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // history.go past the page's own entries: the window goes there.
+        if let Some(delta) = self.pending_traverse.take() {
+            self.traverse(delta, window, cx);
+        }
         let me = cx.entity();
         let bar_me = me.clone();
         let bar = MenuBar::new(self.menus(), move |cmd, w, cx| bar_me.update(cx, |v, cx| v.command(cmd, w, cx)));

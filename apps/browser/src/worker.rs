@@ -75,6 +75,9 @@ pub enum Message {
         dx: f64,
         dy: f64,
     },
+    /// The person went back or forward to this URL within the document
+    /// (an entry the page pushed): its `popstate`.
+    Traverse(String),
 }
 /// A scroll container on the page, for the window to send the wheel over
 /// it there (see `Message::ScrollBox`): its padding box (CSS px, document
@@ -256,6 +259,9 @@ fn backdrop_boxes(layout: &layout::Layout, scale: f64) -> Vec<(BackdropLayer, (p
 pub enum Reply {
     Status(u64, String),
     Location(u64, String),
+    /// The page moved its session history (pushState, replaceState,
+    /// history.go): the window's history and address follow.
+    History(u64, olo_js::HistoryChange),
     /// `fallbacks` lists what the engine substituted on this page (empty when
     /// it rendered everything it was asked to), for the status line and agents.
     Ready {
@@ -767,6 +773,13 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                 {
                                     proxy.send(Reply::Navigate { id: r.id, url, replace });
                                 }
+                                // pushState, replaceState, history.go: the window's
+                                // history and address follow.
+                                if let Some(r) = &last {
+                                    for change in live.realm.take_history() {
+                                        proxy.send(Reply::History(r.id, change));
+                                    }
+                                }
                                 if live.realm.revision() != live.rendered {
                                     // What the person did shows at once, not at the next frame.
                                     live.next_due_ms = Some(0.);
@@ -784,6 +797,13 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                         }
                         Message::Recycle(images) => {
                             drop(images);
+                            continue;
+                        }
+                        Message::Traverse(url) => {
+                            if let Some(live) = cached.as_mut().and_then(|c| c.live.as_mut()) {
+                                live.realm.traverse(&url);
+                                live.next_due_ms = Some(0.);
+                            }
                             continue;
                         }
                         // A person scrolled a box: its offset kept (in the live
@@ -866,7 +886,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             Message::Recycle(images) => drop(images),
                             Message::SharedTextures(list) => kept.push_back(Message::SharedTextures(list)),
                             Message::RecycleTargets(targets) => drop(targets),
-                            m @ Message::ScrollBox { .. } => kept.push_back(m),
+                            m @ (Message::ScrollBox { .. } | Message::Traverse(_)) => kept.push_back(m),
                         }
                     }
                     pending = kept;
@@ -954,6 +974,9 @@ fn render(
         live.usage.cpu_ms += advanced.spent_ms;
         if let Some((url, replace)) = live.realm.take_navigation() {
             proxy.send(Reply::Navigate { id: r.id, url, replace });
+        }
+        for change in live.realm.take_history() {
+            proxy.send(Reply::History(r.id, change));
         }
         // Its scripts stopped (memory, a hang): the page stays as it was
         // last shown, its realm (and the memory it held) let go.

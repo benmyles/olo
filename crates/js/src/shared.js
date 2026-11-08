@@ -36,7 +36,9 @@
     return r;
   };
   const normalizePath = (p) => { const out = []; for (const seg of p.split('/')) { if (seg === '..') out.pop(); else if (seg !== '.') out.push(seg); } let s = out.join('/'); if (p.endsWith('/..') || p.endsWith('/.')) s += '/'; return s.startsWith('/') ? s : '/' + s; };
-  const serializeURL = (u) => u.protocol + (u.host || u.protocol === 'http:' || u.protocol === 'https:' ? '//' + (u.username ? u.username + (u.password ? ':' + u.password : '') + '@' : '') + u.host : '') + u.pathname + u.search + u.hash;
+  // (A special scheme's URL keeps its authority's slashes with an empty
+  // host: file:///a, not file:/a.)
+  const serializeURL = (u) => u.protocol + (u.host || /^(https?|wss?|ftp|file):$/.test(u.protocol) ? '//' + (u.username ? u.username + (u.password ? ':' + u.password : '') + '@' : '') + u.host : '') + u.pathname + u.search + u.hash;
   class URLSearchParams {
     constructor(init) { this._list = []; if (init instanceof URLSearchParams) this._list = init._list.map((p) => p.slice()); else if (typeof init === 'string') { const s = init.startsWith('?') ? init.slice(1) : init; for (const part of s.split('&')) { if (!part) continue; const i = part.indexOf('='); const d = (x) => { try { return decodeURIComponent(x.replace(/\+/g, ' ')); } catch (e) { return x; } }; this._list.push(i < 0 ? [d(part), ''] : [d(part.slice(0, i)), d(part.slice(i + 1))]); } } else if (init && typeof init === 'object') { for (const [k, v] of (Array.isArray(init) ? init : Object.entries(init))) this._list.push([String(k), String(v)]); } }
     append(k, v) { this._list.push([String(k), String(v)]); this._sync(); } delete(k) { this._list = this._list.filter((p) => p[0] !== String(k)); this._sync(); } get(k) { const p = this._list.find((p) => p[0] === String(k)); return p ? p[1] : null; } getAll(k) { return this._list.filter((p) => p[0] === String(k)).map((p) => p[1]); } has(k) { return this._list.some((p) => p[0] === String(k)); } set(k, v) { const i = this._list.findIndex((p) => p[0] === String(k)); if (i >= 0) { this._list[i][1] = String(v); this._list = this._list.filter((p, j) => j === i || p[0] !== String(k)); } else this._list.push([String(k), String(v)]); this._sync(); } sort() { this._list.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0); this._sync(); } forEach(fn, t) { for (const [k, v] of this._list) fn.call(t, v, k, this); } keys() { return this._list.map((p) => p[0])[Symbol.iterator](); } values() { return this._list.map((p) => p[1])[Symbol.iterator](); } entries() { return this._list.map((p) => p.slice())[Symbol.iterator](); } [Symbol.iterator]() { return this.entries(); } get size() { return this._list.length; }
@@ -53,7 +55,7 @@
     get pathname() { return this._u.pathname; } set pathname(v) { this._u.pathname = normalizePath(String(v)); }
     get search() { return this._u.search; } set search(v) { v = String(v); this._u.search = v && v !== '?' ? (v.startsWith('?') ? v : '?' + v) : ''; }
     get hash() { return this._u.hash; } set hash(v) { v = String(v); this._u.hash = v && v !== '#' ? (v.startsWith('#') ? v : '#' + v) : ''; }
-    get origin() { if (this._u.protocol === 'blob:') { try { return new URL(this._u.pathname).origin; } catch (e) { return 'null'; } } return /^(https?|wss?|ftp):$/.test(this._u.protocol) ? this._u.protocol + '//' + this._u.host : 'null'; }
+    get origin() { if (this._u.protocol === 'blob:') { try { return new URL(this._u.pathname).origin; } catch (e) { return 'null'; } } return /^(https?|wss?|ftp):$/.test(this._u.protocol) ? this._u.protocol + '//' + this._u.host : this._u.protocol === 'file:' ? 'file://' : 'null'; }
     get username() { return this._u.username; } get password() { return this._u.password; }
     get searchParams() { const p = new URLSearchParams(this._u.search); p._url = this; return p; }
     toString() { return this.href; } toJSON() { return this.href; }

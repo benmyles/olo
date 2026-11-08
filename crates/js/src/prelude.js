@@ -976,7 +976,66 @@
   for (const k of ['href', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'origin']) Object.defineProperty(location, k, { get() { return pageURL[k]; }, set(v) { if (k === 'href') { navigate(v); return; } if (k === 'origin') return; const u = new URL(pageURL.href); u[k] = v; navigate(u.href); }, enumerable: true });
   Object.assign(location, { assign(u) { navigate(u); }, replace(u) { navigate(u, true); }, reload() { navigate(pageURL.href, true); }, toString() { return pageURL.href; }, ancestorOrigins: listOf([]) });
   global.location = location;
-  const history = { length: 1, state: null, scrollRestoration: 'auto', pushState(state, title, url) { this.state = state; if (url != null) { const u = new URL(String(url), pageURL.href); pageURL.href = u.href; } }, replaceState(state, title, url) { this.pushState(state, title, url); }, back() {}, forward() {}, go() {} };
+  // The session history (HTML §7.4): this document's entries, each its URL
+  // and state. pushState and replaceState change them and tell the browser
+  // (its address and Back follow); back, forward and go move within them
+  // (popstate, and hashchange when only the fragment moved), or ask the
+  // browser to go further.
+  const historyEntries = [{ url: pageURL.href, state: null }];
+  let historyIndex = 0;
+  const sameOrigin = (u) => u.origin === pageURL.origin || pageURL.protocol === 'file:' && u.protocol === 'file:';
+  const arrive = (url, state, oldURL) => {
+    pageURL.href = url;
+    setTimeout(() => {
+      dispatch(global, new PopStateEvent('popstate', { state }));
+      const before = new URL(oldURL), after = new URL(url);
+      if (before.hash !== after.hash && before.href.split('#')[0] === after.href.split('#')[0]) dispatch(global, new HashChangeEvent('hashchange', { oldURL, newURL: url }));
+    }, 0);
+  };
+  class History {
+    get length() { return historyEntries.length; }
+    get state() { return historyEntries[historyIndex].state; }
+    get scrollRestoration() { return this._restoration || 'auto'; }
+    set scrollRestoration(v) { if (v === 'auto' || v === 'manual') this._restoration = v; }
+    pushState(state, title, url) { this._change(state, url, false); }
+    replaceState(state, title, url) { this._change(state, url, true); }
+    _change(state, url, replace) {
+      const target = url == null ? new URL(pageURL.href) : new URL(String(url), pageURL.href);
+      if (!sameOrigin(target)) throw new DOMException(`Failed to execute '${replace ? 'replaceState' : 'pushState'}' on 'History': A history state object with URL '${target.href}' cannot be created in a document with origin '${pageURL.origin}'.`, 'SecurityError');
+      const entry = { url: target.href, state: state === undefined ? null : global.structuredClone(state) };
+      if (replace) historyEntries[historyIndex] = entry;
+      else { historyEntries.splice(historyIndex + 1); historyEntries.push(entry); if (historyEntries.length > 256) historyEntries.shift(); historyIndex = historyEntries.length - 1; }
+      pageURL.href = target.href;
+      N.historyChanged(target.href, replace ? 'replace' : 'push', 0);
+    }
+    back() { this.go(-1); }
+    forward() { this.go(1); }
+    go(delta) {
+      delta = Math.trunc(Number(delta) || 0);
+      setTimeout(() => {
+        if (delta === 0) { N.navigate(pageURL.href, true); return; }
+        const target = historyIndex + delta;
+        if (target < 0 || target >= historyEntries.length) { N.historyChanged('', 'leave', target < 0 ? target : target - historyEntries.length + 1); return; }
+        const oldURL = pageURL.href;
+        historyIndex = target;
+        N.historyChanged(historyEntries[target].url, 'go', delta);
+        arrive(historyEntries[target].url, historyEntries[target].state, oldURL);
+      }, 0);
+    }
+  }
+  const history = new History();
+  global.History = History;
+  // The browser went back or forward to `url` within this document: its
+  // entry the nearest of that URL (else a new one, a fragment the browser
+  // followed), popstate with its state.
+  global.__olo_traverse = (url) => {
+    const oldURL = pageURL.href;
+    let best = -1;
+    for (let i = 0; i < historyEntries.length; i++) if (historyEntries[i].url === url && (best < 0 || Math.abs(i - historyIndex) < Math.abs(best - historyIndex))) best = i;
+    if (best < 0) { historyEntries.splice(historyIndex + 1); historyEntries.push({ url, state: null }); best = historyEntries.length - 1; }
+    historyIndex = best;
+    arrive(url, historyEntries[best].state, oldURL);
+  };
   global.history = history;
   const [vw, vh, dpr] = N.viewport();
   global.navigator = { userAgent: N.userAgent(), appName: 'Netscape', appVersion: N.userAgent().replace(/^Mozilla\//, ''), appCodeName: 'Mozilla', product: 'Gecko', productSub: '20030107', vendor: 'Google Inc.', vendorSub: '', platform: 'Linux x86_64', language: N.language(), languages: [N.language(), N.language().split('-')[0]], onLine: true, cookieEnabled: true, doNotTrack: null, hardwareConcurrency: 8, deviceMemory: 8, maxTouchPoints: 0, pdfViewerEnabled: true, webdriver: false, userAgentData: { brands: [{ brand: 'Chromium', version: '157' }, { brand: 'Google Chrome', version: '157' }], mobile: false, platform: 'Linux', getHighEntropyValues: () => Promise.resolve({ platform: 'Linux', platformVersion: '', architecture: 'x86', model: '', uaFullVersion: '157.0.0.0' }) }, connection: { effectiveType: '4g', rtt: 50, downlink: 10, saveData: false, addEventListener() {}, removeEventListener() {} }, plugins: listOf([]), mimeTypes: listOf([]), javaEnabled: () => false, sendBeacon: () => true, vibrate: () => false, getBattery: () => Promise.resolve({ charging: true, level: 1, addEventListener() {} }), permissions: { query: () => Promise.resolve({ state: 'prompt', onchange: null, addEventListener() {} }) }, clipboard: { writeText: () => Promise.resolve(), readText: () => Promise.resolve('') }, serviceWorker: { register: () => new Promise(() => {}), ready: new Promise(() => {}), getRegistrations: () => Promise.resolve([]), getRegistration: () => Promise.resolve(undefined), addEventListener() {}, controller: null }, storage: { estimate: () => Promise.resolve({ quota: 1e9, usage: 0 }), persist: () => Promise.resolve(false) }, mediaDevices: { enumerateDevices: () => Promise.resolve([]), getUserMedia: () => Promise.reject(new DOMException('Not allowed', 'NotAllowedError')) }, locks: { request: () => Promise.resolve() }, credentials: { get: () => Promise.resolve(null), store: () => Promise.resolve(), create: () => Promise.resolve(null), preventSilentAccess: () => Promise.resolve() }, geolocation: { getCurrentPosition(ok, err) { if (err) err({ code: 1, message: 'denied' }); }, watchPosition() { return 0; }, clearWatch() {} }, share: () => Promise.reject(new DOMException('Not allowed', 'NotAllowedError')), canShare: () => false, requestMediaKeySystemAccess: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')), scheduling: { isInputPending: () => false } };

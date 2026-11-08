@@ -103,6 +103,19 @@ pub type Fetcher = Box<dyn FnMut(&str, &str, &[u8], &str) -> Result<Fetched, Str
 /// (`Realm::take_image_requests`) and delivered (`Realm::image_loaded`)
 /// when fetched, off this thread.
 pub type ImageLookup = Box<dyn FnMut(&str) -> Option<Arc<olo_web::image::Image>>>;
+/// How a page moved its session history (see `Realm::take_history`).
+#[derive(Clone, Debug, PartialEq)]
+pub enum HistoryChange {
+    /// `pushState`: a new entry at this URL.
+    Push(String),
+    /// `replaceState`: the current entry's URL.
+    Replace(String),
+    /// `history.go`/`back`/`forward` within the document: by this many
+    /// entries, to this URL.
+    Go(String, isize),
+    /// `history.go` past the document's entries: the browser goes this far.
+    Leave(isize),
+}
 /// The browser's cookies for the page at a URL (`document.cookie`):
 /// `None` reads them, `Some(line)` sets one; the answer is none when the
 /// page has no jar (a local file), and its scripts keep cookies of their
@@ -257,6 +270,9 @@ struct State {
     modules: modules::Modules,
     /// A navigation the page asked for (location, a form), not yet taken.
     navigation: Option<(String, bool)>,
+    /// The session history the page changed since last taken (pushState,
+    /// replaceState, a traversal within the document).
+    history: Vec<HistoryChange>,
     /// The element with the page's focus (document.activeElement), for the
     /// browser (agents see it focused).
     focused: Option<NodeId>,
@@ -423,6 +439,7 @@ impl Realm {
             in_flight: HashMap::new(),
             modules: modules::Modules::with_map(import_map),
             navigation: None,
+            history: Vec::new(),
             focused: None,
             media: HashMap::new(),
             media_commands: Vec::new(),
@@ -737,6 +754,17 @@ impl Realm {
     /// whether it replaces the current history entry).
     pub fn take_navigation(&self) -> Option<(String, bool)> {
         self.state.borrow_mut().navigation.take()
+    }
+    /// How the page moved its session history since the last call.
+    pub fn take_history(&self) -> Vec<HistoryChange> {
+        std::mem::take(&mut self.state.borrow_mut().history)
+    }
+    /// The person went back or forward to `url` within this document: its
+    /// entry (and state) becomes current, and `popstate` (and `hashchange`
+    /// when only the fragment moved) fire.
+    pub fn traverse(&mut self, url: &str) {
+        let json = serde_json::to_string(url).unwrap_or_else(|_| "\"\"".into());
+        let _ = self.eval(&format!("globalThis.__olo_traverse && globalThis.__olo_traverse({json})"));
     }
     pub fn last_measured(&self) -> Option<Arc<olo_web::layout::Layout>> {
         self.state.borrow().measured.as_ref().map(|m| m.layout().clone())
@@ -1202,6 +1230,7 @@ impl State {
             in_flight: HashMap::new(),
             modules: Default::default(),
             navigation: None,
+            history: Vec::new(),
             focused: None,
             media: HashMap::new(),
             media_commands: Vec::new(),
@@ -1745,6 +1774,7 @@ const NATIVES: &[&str] = &[
     "fetchAsync",
     "cookie",
     "animationSet",
+    "historyChanged",
     "animationRemove",
     "structuredClone",
     "workerStart",
@@ -2138,6 +2168,24 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             let url = arg_string(scope, &args, 0);
             let replace = args.get(1).boolean_value(scope);
             state.borrow_mut().navigation = Some((url, replace));
+        }
+        // historyChanged(url, kind, delta): the page's session history moved
+        // ('push', 'replace', or 'go' by delta within the document), or (for
+        // 'leave') asks to go `delta` entries beyond what it holds.
+        "historyChanged" => {
+            let url = arg_string(scope, &args, 0);
+            let kind = arg_string(scope, &args, 1);
+            let delta = args.get(2).number_value(scope).unwrap_or(0.) as isize;
+            let change = match kind.as_str() {
+                "push" => HistoryChange::Push(url),
+                "replace" => HistoryChange::Replace(url),
+                "go" => HistoryChange::Go(url, delta),
+                _ => HistoryChange::Leave(delta),
+            };
+            let mut s = state.borrow_mut();
+            if s.history.len() < 1024 {
+                s.history.push(change);
+            }
         }
         "controlValue" => {
             if let Some(n) = node(scope, 0) {
