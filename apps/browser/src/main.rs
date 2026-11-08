@@ -406,6 +406,34 @@ impl Browser {
     }
     /// The wheel moved the page: no hover until it stops, then the hover
     /// of what is under the pointer by then.
+    /// The page scrolled to `to` (device pixels from its top, kept within
+    /// it): by the wheel, or its scroll bar dragged or paged.
+    fn scroll_page(&mut self, to: i32, modifiers: gpui::Modifiers, cx: &mut Context<Self>) {
+        let max = self.key.as_ref().map_or(0, |key| worker::max_scroll(key, self.extent));
+        let old = self.scroll;
+        self.scroll = to.clamp(0, max);
+        if self.scroll == old {
+            return;
+        }
+        self.send_input(worker::InputKind::Scroll, None, modifiers);
+        self.scrolled(cx);
+        self.seek_anchor = false;
+        self.focus_scroll = None;
+        if let Some(key) = self.key.clone() {
+            let mut recycle = Vec::new();
+            let height = key.height as i32;
+            let scroll = self.scroll;
+            self.tiles.retain(|(r, image)| {
+                let keep = r.y + r.height as i32 > scroll && r.y < scroll + height;
+                if !keep {
+                    recycle.push(image.clone());
+                }
+                keep
+            });
+            self.send_render(recycle, cx);
+        }
+        cx.notify();
+    }
     fn scrolled(&mut self, cx: &mut Context<Self>) {
         self.scrolled_at = Some(std::time::Instant::now());
         self.hover_after_scroll = Some(cx.spawn(async move |this, cx| {
@@ -954,12 +982,69 @@ impl Render for Browser {
         let up_link = me.clone();
         let leave_link = me.clone();
         let hover_link = me.clone();
+        // The page's scroll bar: the kit's slim one over its right edge,
+        // there when the pointer comes near or the page scrolls (in device
+        // pixels: where the view is, how much shows, the page's height).
+        let page_bar = self.key.as_ref().filter(|key| f64::from(key.height) < self.extent * key.scale).map(|key| {
+            let me = me.clone();
+            let (shown, total) = (key.height as f32, (self.extent * key.scale) as f32);
+            olo_ui::widgets::SlimScrollBar::new("page-scroll", self.scroll as f32, shown, total).on_scroll(move |to, _, cx| {
+                me.update(cx, |v, cx| v.scroll_page(to.round() as i32, gpui::Modifiers::default(), cx));
+            })
+        });
+        // Boxes scrolling inside the page (`overflow: auto`): a slim bar over
+        // each one in view, as the page's (in CSS pixels: the box's offset,
+        // its height, its content's).
+        let area_bars: Vec<gpui::AnyElement> = match &self.key {
+            Some(key) => {
+                let view = f64::from(key.height) / key.scale;
+                let page_top = f64::from(self.scroll) / key.scale;
+                self.scroll_areas
+                    .iter()
+                    .filter(|a| a.user[1] && a.max[1] > 0.5)
+                    .filter_map(|a| {
+                        let top = if a.fixed { a.rect.y } else { a.rect.y - page_top };
+                        if top + a.rect.height <= 0. || top >= view || a.rect.width < 2. * f64::from(olo_ui::widgets::SLIM_BAR) {
+                            return None;
+                        }
+                        let (me, node) = (me.clone(), a.node);
+                        let bar = olo_ui::widgets::SlimScrollBar::new(
+                            gpui::ElementId::Name(format!("area-scroll-{node:?}").into()),
+                            a.offset[1] as f32,
+                            a.rect.height as f32,
+                            (a.rect.height + a.max[1]) as f32,
+                        )
+                        .on_scroll(move |to, _, cx| {
+                            me.update(cx, |v, cx| {
+                                let mut areas = v.scroll_areas.to_vec();
+                                let Some(a) = areas.iter_mut().find(|a| a.node == node) else { return };
+                                let to = f64::from(to).clamp(0., a.max[1]);
+                                let dy = to - a.offset[1];
+                                if dy.abs() < 0.5 {
+                                    return;
+                                }
+                                a.offset[1] = to;
+                                let _ = v.tx.send(worker::Message::ScrollBox { node, dx: 0., dy });
+                                v.scroll_areas = areas.into();
+                                v.scrolled(cx);
+                                cx.notify();
+                            });
+                        });
+                        Some(div().absolute().left(px(a.rect.x as f32)).top(px(top as f32)).w(px(a.rect.width as f32)).h(px(a.rect.height as f32)).child(bar).into_any_element())
+                    })
+                    .collect()
+            }
+            None => Vec::new(),
+        };
         let surface = div()
             .id("document")
             .flex_1()
             .min_h_0()
             .overflow_hidden()
+            .relative()
             .child(surface)
+            .children(page_bar.map(|bar| div().absolute().top_0().left_0().size_full().child(bar)))
+            .children(area_bars)
             .on_mouse_move(move |e, w, cx| move_link.update(cx, |v, cx| v.pointer(e.position, 0, w, cx)))
             .on_mouse_down(gpui::MouseButton::Left, move |e, w, cx| down_link.update(cx, |v, cx| v.pointer(e.position, 1, w, cx)))
             .on_mouse_up(gpui::MouseButton::Left, move |e, w, cx| up_link.update(cx, |v, cx| v.pointer(e.position, 2, w, cx)))
@@ -1024,30 +1109,8 @@ impl Render for Browser {
                         v.send_input(worker::InputKind::Wheel { dx, dy }, Some(e.position), e.modifiers);
                         return;
                     }
-                    let max = v.key.as_ref().map_or(0, |key| worker::max_scroll(key, v.extent));
-                    let old = v.scroll;
-                    v.scroll = (v.scroll - (f64::from(delta) * scale).round() as i32).clamp(0, max);
                     v.send_input(worker::InputKind::Wheel { dx: 0., dy: -f64::from(delta) }, Some(e.position), e.modifiers);
-                    if v.scroll == old {
-                        return;
-                    }
-                    v.send_input(worker::InputKind::Scroll, None, e.modifiers);
-                    v.scrolled(cx);
-                    v.seek_anchor = false;
-                    v.focus_scroll = None;
-                    if let Some(key) = v.key.clone() {
-                        let mut recycle = Vec::new();
-                        let height = key.height as i32;
-                        v.tiles.retain(|(r, image)| {
-                            let keep = r.y + r.height as i32 > v.scroll && r.y < v.scroll + height;
-                            if !keep {
-                                recycle.push(image.clone());
-                            }
-                            keep
-                        });
-                        v.send_render(recycle, cx);
-                    }
-                    cx.notify();
+                    v.scroll_page(v.scroll - (f64::from(delta) * scale).round() as i32, e.modifiers, cx);
                 })
             });
         div()

@@ -1852,7 +1852,8 @@ event reaches it.
   over what's below and never showed the bar).
 - `widgets::SlimScrollBar::new(id, top, shown, total).on_scroll(|to,
   window, cx|)`: the slim one, there when wanted, for content a BeOS
-  bar's column would cost (Terminal's scrollback; use the BeOS bar
+  bar's column would cost (Terminal's scrollback; Browser's pages and
+  the boxes that scroll in them, laid over each; use the BeOS bar
   elsewhere). Laid over the box it's given: a thin rounded thumb at its
   right edge (`THUMB` 6, `THUMB_WIDE` 8 under the pointer, with a faint
   track), no arrows. It shows when the pointer comes within `SLIM_NEAR`

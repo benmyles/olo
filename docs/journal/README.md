@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: slim scroll bars
+
+*12:59* — The page's slim scroll bar (the kit's, as Terminal's), shown with the pointer near the right edge after a drag of its thumb to the middle of Wikipedia's article; boxes that scroll in a page get one each.
+
+![Browser: slim scroll bars](2026-11-08/125944-browser-slim-scroll-bars.png)
+
 ### Browser: MDN's two-column layout (grid areas)
 
 *12:55* — MDN's article page against Chrome (right) at 1000 px: its contents column and article now sit side by side, placed by grid-template-areas and named lines (they were auto-placed into the wrong columns).

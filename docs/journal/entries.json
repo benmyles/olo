@@ -4060,5 +4060,11 @@
   "title": "Browser: MDN's two-column layout (grid areas)",
   "caption": "MDN's article page against Chrome (right) at 1000 px: its contents column and article now sit side by side, placed by grid-template-areas and named lines (they were auto-placed into the wrong columns).",
   "image": "2026-11-08/125551-browser-mdn-s-two-column-layout-grid-areas.png"
+ },
+ {
+  "time": "2026-11-08T12:59:44",
+  "title": "Browser: slim scroll bars",
+  "caption": "The page's slim scroll bar (the kit's, as Terminal's), shown with the pointer near the right edge after a drag of its thumb to the middle of Wikipedia's article; boxes that scroll in a page get one each.",
+  "image": "2026-11-08/125944-browser-slim-scroll-bars.png"
  }
 ]

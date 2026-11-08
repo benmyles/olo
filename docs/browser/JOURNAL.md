@@ -6835,3 +6835,7 @@ the Guardian and old Reddit, looking for pages that fail outright:
   the strings form of `grid-template` place items by name (they were
   dropped, so every item was auto-placed): MDN's contents column and
   article now sit side by side as in Chrome.
+- **Scroll bars.** A page, and every box in view that scrolls in it,
+  wears the kit's slim scroll bar over its right edge: there when the
+  pointer comes near or it scrolls, fading after; its thumb drags, a
+  click in its track pages. It had none.
