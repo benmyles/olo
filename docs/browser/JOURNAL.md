@@ -6449,3 +6449,9 @@ journal).
   window (386 → 82 repainted, what the scroll shows), renders 1,044 →
   690 ms. `compare-cost.py` apple.com, two runs: Chrome load 1.2 CPU s,
   scroll 25-37%; Olo 1.8-2.2 CPU s, scroll 34-38%.
+- **Rounded inline backgrounds.** `<code>`, `<mark>` and pill-shaped
+  spans round their backgrounds where the box starts and ends, square
+  where it breaks across lines (`box-decoration-break: slice`), as
+  Chrome; a test page matches it at 1×, and at 1.5× and 2× the corners
+  are smooth. (`Fill` carries corner radii; drawn as an antialiased path.
+  Elliptical radii are drawn circular, and noted.)

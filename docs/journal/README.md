@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: rounded inline backgrounds
+
+*02:01* — Left Olo, right Chrome: code, a pill-shaped span and a mark across two lines, each rounded where its box starts and ends, square at the line break.
+
+![Browser: rounded inline backgrounds](2026-11-08/020121-browser-rounded-inline-backgrounds.png)
+
 ### Browser: GitHub's video on the GPU
 
 *01:49* — GitHub's homepage video, rounded in its box, now goes to the window as its decoded planes: the GPU makes RGB of them, scales and rounds them. Olo at rest on GitHub: 30% of a core to Chrome's 35%; it was 73-83%.

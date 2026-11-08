@@ -1601,3 +1601,37 @@ fn inline_elements_paint_at_their_opacity() {
     // Nothing of the faded-out word shows: no opaque black glyph run.
     assert!(page.scene.commands().iter().all(|c| !matches!(c.primitive, paint::Primitive::Text { color: [0, 0, 0, 255], .. })), "{alphas:?}");
 }
+#[test]
+fn inline_backgrounds_round_their_ends_and_not_their_line_breaks() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // A span across two lines: its first piece rounded on the left only,
+    // its last on the right only.
+    let page = olo_web::page::load(
+        Arc::from(
+            "<!doctype html><style>body{margin:0;font:16px 'Olo Inline plain';width:60px}span{background-color:rgb(0,0,255);border-radius:6px}</style><p style=margin:0><span>aaaa aaaa</span></p>",
+        ),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let pieces: Vec<[f32; 4]> = page.scene.commands().iter().filter_map(|c| if let paint::Primitive::Fill { color: [0, 0, 255, 255], radii, .. } = c.primitive { Some(radii) } else { None }).collect();
+    assert_eq!(pieces, [[6., 0., 0., 6.], [0., 6., 6., 0.]]);
+    // The first piece's top-left corner shows the page; its top right doesn't.
+    let tile = render(&mut painter, &page.scene);
+    let first = page.scene.commands().iter().find(|c| matches!(c.primitive, paint::Primitive::Fill { color: [0, 0, 255, 255], .. })).unwrap().bounds;
+    let (x0, y0) = (first.x.ceil() as usize, first.y.ceil() as usize);
+    let x1 = (first.x + first.width).floor() as usize - 1;
+    assert_eq!(pixel(&tile, x0, y0), [255, 255, 255, 255]);
+    assert_eq!(pixel(&tile, x1, y0), [0, 0, 255, 255]);
+}

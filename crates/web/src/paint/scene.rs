@@ -31,6 +31,9 @@ pub enum Primitive {
         color: [u8; 4],
         /// The box it is part of (a background, a text's line), for hit tests.
         owner: BoxId,
+        /// Its corners' radii (top left, top right, bottom right, bottom
+        /// left; CSS px): an inline box's rounded background.
+        radii: [f32; 4],
     },
     Border {
         owner: BoxId,
@@ -500,9 +503,10 @@ impl Scene {
                     origin.y.to_bits().hash(&mut h);
                     tree.vector(*vector).map_or(0, |v| v.fingerprint).hash(&mut h);
                 }
-                Primitive::Fill { color, .. } => {
+                Primitive::Fill { color, radii, .. } => {
                     2u8.hash(&mut h);
                     color.hash(&mut h);
+                    radii.map(f32::to_bits).hash(&mut h);
                 }
                 Primitive::Border { owner, colors } => {
                     3u8.hash(&mut h);
@@ -1291,7 +1295,7 @@ impl<'a> BuildJob<'a> {
         }
         let bg = color(s, P::BackgroundColor)?;
         if self.canvas_owner != Some(id) && bg[3] != 0 {
-            self.emit(group, text, outer, Primitive::Fill { color: bg, owner: id }, clip)?;
+            self.emit(group, text, outer, Primitive::Fill { color: bg, owner: id, radii: [0.; 4] }, clip)?;
         }
         let widths = [g.border_width.top, g.border_width.right, g.border_width.bottom, g.border_width.left];
         let mut colors = [[0; 4]; 4];
@@ -1431,7 +1435,7 @@ impl<'a> BuildJob<'a> {
             .collect();
         let opacity_at = |at: u32| -> f64 { faded.iter().filter(|(r, _)| r.contains(&at)).map(|(_, o)| *o).product() };
         let fade = |c: [u8; 4], o: f64| if o < 1. { [c[0], c[1], c[2], (f64::from(c[3]) * o).round() as u8] } else { c };
-        let mut backgrounds: Vec<(Range<u32>, [u8; 4], [f64; 4], bool, bool)> = Vec::new();
+        let mut backgrounds: Vec<(Range<u32>, [u8; 4], [f64; 4], bool, bool, crate::dom::NodeId)> = Vec::new();
         for b in inline_boxes {
             check(self.cancel)?;
             let s = layout.cache().tree().styles().snapshot(b.node).ok_or(Error::Stale)?;
@@ -1442,8 +1446,8 @@ impl<'a> BuildJob<'a> {
             if matches!(s.value(P::BackgroundImage), Value::Images(_)) {
                 self.fallbacks.note("inline background image not painted", Some(b.node));
             }
-            if decoration::rounded(&decoration::radii(s, Rect { x: 0., y: 0., width: 100., height: 100. })) {
-                self.fallbacks.note("inline background corners drawn square", Some(b.node));
+            if decoration::radii(s, Rect { x: 0., y: 0., width: 100., height: 100. }).iter().any(|r| (r[0] - r[1]).abs() > 0.01) {
+                self.fallbacks.note("elliptical inline background corners drawn circular", Some(b.node));
             }
             let pad = |p| s.value(p).scalar().unwrap_or(0.).max(0.);
             let range = to_output(b.range.start)..to_output(b.range.end);
@@ -1470,7 +1474,7 @@ impl<'a> BuildJob<'a> {
                     trail += edge(P::MarginRight) + edge(P::PaddingRight).max(0.);
                 }
             }
-            backgrounds.push((range, c, [pad(P::PaddingTop), trail, pad(P::PaddingBottom), lead], b.first, b.last));
+            backgrounds.push((range, c, [pad(P::PaddingTop), trail, pad(P::PaddingBottom), lead], b.first, b.last, b.node));
         }
         // Styles are immutable for this build. Consecutive glyphs usually
         // belong to the same span: resolve/convert its paint color once.
@@ -1538,7 +1542,7 @@ impl<'a> BuildJob<'a> {
             // bounds agree with the actual glyph placement.
             let scale = layout.device_scale();
             let baseline = ((at.y + text.baseline(li).ok_or(Error::Invalid)?) * scale).round() / scale;
-            for (range, c, pad, first, last) in &backgrounds {
+            for (range, c, pad, first, last, node) in &backgrounds {
                 let (mut x0, mut x1, mut ascent, mut descent) = (f64::INFINITY, f64::NEG_INFINITY, 0f64, 0f64);
                 let (mut starts, mut ends) = (false, false);
                 for fi in line.fragments.clone() {
@@ -1573,7 +1577,22 @@ impl<'a> BuildJob<'a> {
                     }
                     let snap = |v: f64| (v * scale).round() / scale;
                     let (y0, y1) = (snap(baseline - ascent - pad[0]), snap(baseline + descent + pad[2]));
-                    self.emit(group, true, Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, Primitive::Fill { color: *c, owner: id }, clip)?;
+                    let piece = Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+                    // Its corners rounded where the box starts and ends
+                    // (`box-decoration-break: slice`: the pieces between
+                    // lines are square), by its radii against this piece.
+                    let mut radii = [0f32; 4];
+                    if let Some(s) = layout.cache().tree().styles().snapshot(*node) {
+                        let r = decoration::radii(s, piece);
+                        let circular = |i: usize| r[i][0].min(r[i][1]).max(0.) as f32;
+                        if starts && *first {
+                            (radii[0], radii[3]) = (circular(0), circular(3));
+                        }
+                        if ends && *last {
+                            (radii[1], radii[2]) = (circular(1), circular(2));
+                        }
+                    }
+                    self.emit(group, true, piece, Primitive::Fill { color: *c, owner: id, radii }, clip)?;
                 }
             }
             for fi in line.fragments.clone() {
@@ -1742,7 +1761,7 @@ impl<'a> BuildJob<'a> {
                 _ => baseline - ascent * factor,
             };
             let y = (y * scale).round() / scale;
-            self.emit(group, false, Rect { x: origin.x, y, width: end_x - origin.x, height: thickness }, Primitive::Fill { color: line_color, owner: id }, clip)?;
+            self.emit(group, false, Rect { x: origin.x, y, width: end_x - origin.x, height: thickness }, Primitive::Fill { color: line_color, owner: id, radii: [0.; 4] }, clip)?;
         }
         if bounds.width > 0. && bounds.height > 0. {
             self.emit(group, true, bounds, Primitive::Text { owner: id, fragment, glyphs, origin, color, fill: self.current_text_fill }, clip)?;

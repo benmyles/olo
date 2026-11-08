@@ -50,7 +50,7 @@
  {
   "time": "2026-10-25T20:20:47",
   "title": "Tracker: column view",
-  "caption": "macOS-style column view (⌘4): one column per folder level, auto-hiding scroll bars, and a preview pane with an async thumbnail and file facts.",
+  "caption": "macOS-style column view (\u23184): one column per folder level, auto-hiding scroll bars, and a preview pane with an async thumbnail and file facts.",
   "image": "2026-10-25/202047-tracker-column-view.png"
  },
  {
@@ -62,13 +62,13 @@
  {
   "time": "2026-10-25T20:29:52",
   "title": "Tracker: Find",
-  "caption": "Find takes focus on open, closes with ⌘W, shows home-relative locations and a baseline-aligned status.",
+  "caption": "Find takes focus on open, closes with \u2318W, shows home-relative locations and a baseline-aligned status.",
   "image": "2026-10-25/202952-tracker-find.png"
  },
  {
   "time": "2026-10-25T20:29:52",
   "title": "Menus: shortcut glyphs on the baseline",
-  "caption": "⌘, ⇧ and arrows come from a fallback font; each is now laid out separately so it shares the item's baseline. The Trash is titled Trash.",
+  "caption": "\u2318, \u21e7 and arrows come from a fallback font; each is now laid out separately so it shares the item's baseline. The Trash is titled Trash.",
   "image": "2026-10-25/202952-menus-shortcut-glyphs-on-the-baseline.png"
  },
  {
@@ -158,7 +158,7 @@
  {
   "time": "2026-10-25T22:51:44",
   "title": "Twitcher (light)",
-  "caption": "⌘Tab held: app_server draws the BeOS Twitcher strip with each running app's icon and the chosen app's name.",
+  "caption": "\u2318Tab held: app_server draws the BeOS Twitcher strip with each running app's icon and the chosen app's name.",
   "image": "2026-10-25/225144-twitcher-light.png"
  },
  {
@@ -187,19 +187,19 @@
  },
  {
   "time": "2026-10-25T23:30:13",
-  "title": "Preferences ▸ Sound",
+  "title": "Preferences \u25b8 Sound",
   "caption": "Output and input device, level and mute, read live from the sound server (light and dark).",
   "image": "2026-10-25/233013-preferences-sound.png"
  },
  {
   "time": "2026-10-25T23:43:28",
-  "title": "Preferences ▸ Power",
+  "title": "Preferences \u25b8 Power",
   "caption": "Battery health and state, idle display-off and sleep times, caffeinated mode (light and dark).",
   "image": "2026-10-25/234328-preferences-power.png"
  },
  {
   "time": "2026-10-25T23:43:28",
-  "title": "Display ▸ Brightness",
+  "title": "Display \u25b8 Brightness",
   "caption": "The built-in display's brightness slider (simulated backlight in a headless session).",
   "image": "2026-10-25/234328-display-brightness.png"
  },
@@ -602,7 +602,7 @@
  {
   "time": "2026-10-26T08:19:02",
   "title": "NetPositive: Find",
-  "caption": "Edit ▸ Find… (⌘F) and Find Again (⌘G): a BeOS Find window; the match is selected and scrolled to the middle.",
+  "caption": "Edit \u25b8 Find\u2026 (\u2318F) and Find Again (\u2318G): a BeOS Find window; the match is selected and scrolled to the middle.",
   "image": "2026-10-26/081902-netpositive-find.png"
  },
  {
@@ -668,7 +668,7 @@
  {
   "time": "2026-10-26T12:21:57",
   "title": "NetPositive: a page of 120 big photos",
-  "caption": "120 pictures of 2400×1600, 1.8 GB once decoded. The page's process now holds only their files (60 MB, was every bitmap), and the painter decodes a picture only while it's drawn, within 128 MB shared by every page, so the whole browser stays near 600 MB however long the page.",
+  "caption": "120 pictures of 2400\u00d71600, 1.8 GB once decoded. The page's process now holds only their files (60 MB, was every bitmap), and the painter decodes a picture only while it's drawn, within 128 MB shared by every page, so the whole browser stays near 600 MB however long the page.",
   "image": "2026-10-26/122157-netpositive-a-page-of-120-big-photos.png"
  },
  {
@@ -704,13 +704,13 @@
  {
   "time": "2026-10-26T16:29:36",
   "title": "Shells that outlive Terminal",
-  "caption": "Terminal's shells now run in tabula-termd, one per display, which keeps each screen too. Quit Terminal, or have it crash or upgrade, and the next one reopens a window on every shell as it was, scrollback, vim and all. Terminal ▸ Terminal Daemon… shows it and its shells, and can restart it in place (shells kept) or start it over.",
+  "caption": "Terminal's shells now run in tabula-termd, one per display, which keeps each screen too. Quit Terminal, or have it crash or upgrade, and the next one reopens a window on every shell as it was, scrollback, vim and all. Terminal \u25b8 Terminal Daemon\u2026 shows it and its shells, and can restart it in place (shells kept) or start it over.",
   "image": "2026-10-26/162936-shells-that-outlive-terminal.png"
  },
  {
   "time": "2026-10-26T16:48:33",
   "title": "Images survive Terminal crashes",
-  "caption": "Terminal was killed after showing a kitty image; tabula-termd relaunched it and replayed the screen, image included. ⌘R also reaches the shell now (reverse history search).",
+  "caption": "Terminal was killed after showing a kitty image; tabula-termd relaunched it and replayed the screen, image included. \u2318R also reaches the shell now (reverse history search).",
   "image": "2026-10-26/164833-images-survive-terminal-crashes.png"
  },
  {
@@ -728,19 +728,19 @@
  {
   "time": "2026-10-26T17:49:57",
   "title": "Brightness for every display",
-  "caption": "Preferences ▸ Display now has a brightness slider for each display whose brightness can be set, external monitors too (the Studio Display over USB). Every display starts at full brightness unless you've set a level for it.",
+  "caption": "Preferences \u25b8 Display now has a brightness slider for each display whose brightness can be set, external monitors too (the Studio Display over USB). Every display starts at full brightness unless you've set a level for it.",
   "image": "2026-10-26/174957-brightness-for-every-display.png"
  },
  {
   "time": "2026-10-26T18:19:57",
   "title": "Tile windows from the keyboard",
-  "caption": "⇧⌘← and ⇧⌘→ tile the window into half the display, ⇧⌘↑/↓ the top or bottom; ⌃⌘↵ tiles every window on the display (here, three); quarters, thirds, centering and moving to the next display too. Space between them and at the edges is set in Preferences.",
+  "caption": "\u21e7\u2318\u2190 and \u21e7\u2318\u2192 tile the window into half the display, \u21e7\u2318\u2191/\u2193 the top or bottom; \u2303\u2318\u21b5 tiles every window on the display (here, three); quarters, thirds, centering and moving to the next display too. Space between them and at the edges is set in Preferences.",
   "image": "2026-10-26/181957-tile-windows-from-the-keyboard.png"
  },
  {
   "time": "2026-10-26T18:19:58",
   "title": "Keyboard shortcuts in Preferences",
-  "caption": "Keyboard ▸ Shortcuts lists the desktop's shortcuts, with the space around tiled windows. Click one and type new keys (here Left half became ⌃⌥L); keys taken from another shortcut are said, and Default Keys puts them all back.",
+  "caption": "Keyboard \u25b8 Shortcuts lists the desktop's shortcuts, with the space around tiled windows. Click one and type new keys (here Left half became \u2303\u2325L); keys taken from another shortcut are said, and Default Keys puts them all back.",
   "image": "2026-10-26/181958-keyboard-shortcuts-in-preferences.png"
  },
  {
@@ -752,19 +752,19 @@
  {
   "time": "2026-10-26T19:16:58",
   "title": "NetPositive: web notifications",
-  "caption": "Sites can show notifications: the first time one asks, a bar over its tab offers Allow or Don’t Allow (remembered per site); allowed notifications appear in the desktop's notification centre, and a click brings the tab forward.",
+  "caption": "Sites can show notifications: the first time one asks, a bar over its tab offers Allow or Don\u2019t Allow (remembered per site); allowed notifications appear in the desktop's notification centre, and a click brings the tab forward.",
   "image": "2026-10-26/191658-netpositive-web-notifications.png"
  },
  {
   "time": "2026-10-26T19:47:19",
   "title": "NetPositive: dark pages",
-  "caption": "View ▸ Dark Pages (Automatic, the default, follows the desktop; Always; Never). Each frame is redrawn on the GPU through a shader that turns lightness around and keeps hues, so every page goes dark, blank ones included; pictures, video and canvases are pre-inverted with the CSS filter the shader undoes, and pages that are dark already are left alone. Left: Never; right: Always.",
+  "caption": "View \u25b8 Dark Pages (Automatic, the default, follows the desktop; Always; Never). Each frame is redrawn on the GPU through a shader that turns lightness around and keeps hues, so every page goes dark, blank ones included; pictures, video and canvases are pre-inverted with the CSS filter the shader undoes, and pages that are dark already are left alone. Left: Never; right: Always.",
   "image": "2026-10-26/194719-netpositive-dark-pages.png"
  },
  {
   "time": "2026-10-26T20:44:52",
-  "title": "Command palette (⌘Space)",
-  "caption": "⌘Space opens a Raycast-style palette over everything: apps, the front app's menu commands, files, Passwords items, Preferences, windows, a calculator and every desktop shortcut with its keys, so typing \"half\" doubles as a reminder of ⇧⌘←.",
+  "title": "Command palette (\u2318Space)",
+  "caption": "\u2318Space opens a Raycast-style palette over everything: apps, the front app's menu commands, files, Passwords items, Preferences, windows, a calculator and every desktop shortcut with its keys, so typing \"half\" doubles as a reminder of \u21e7\u2318\u2190.",
   "image": "2026-10-26/204452-command-palette-space.png"
  },
  {
@@ -788,12 +788,12 @@
  {
   "time": "2026-10-26T21:16:45",
   "title": "NetPositive learns login fields",
-  "caption": "The field menu now lists the page's logins at once (fetched when the page loads). Filling an odd field from it — here 'who are you' as the username — is remembered for that page, so the key button fills the same field next time. Hidden decoy fields, as on Google's sign-in, are skipped.",
+  "caption": "The field menu now lists the page's logins at once (fetched when the page loads). Filling an odd field from it \u2014 here 'who are you' as the username \u2014 is remembered for that page, so the key button fills the same field next time. Hidden decoy fields, as on Google's sign-in, are skipped.",
   "image": "2026-10-26/211645-netpositive-learns-login-fields.png"
  },
  {
   "time": "2026-10-26T21:22:59",
-  "title": "Preferences ▸ Tracker",
+  "title": "Preferences \u25b8 Tracker",
   "caption": "New Tracker windows open in column view by default; Preferences has a Tracker panel to choose the view new windows open in, and Tracker follows a change at once.",
   "image": "2026-10-26/212259-preferences-tracker.png"
  },
@@ -812,7 +812,7 @@
  {
   "time": "2026-10-26T21:30:04",
   "title": "Tracker: Open in Terminal",
-  "caption": "File ▸ Open in Terminal, and the context menus, open a new Terminal window in the folder shown, or in the right-clicked folder (here alpha).",
+  "caption": "File \u25b8 Open in Terminal, and the context menus, open a new Terminal window in the folder shown, or in the right-clicked folder (here alpha).",
   "image": "2026-10-26/213004-tracker-open-in-terminal.png"
  },
  {
@@ -842,7 +842,7 @@
  {
   "time": "2026-10-26T22:00:07",
   "title": "NetPositive asks before quitting",
-  "caption": "Quitting NetPositive (or closing a window) with several tabs open, or downloads still running, now asks first, so a stray ⌘Q doesn't throw the tabs away.",
+  "caption": "Quitting NetPositive (or closing a window) with several tabs open, or downloads still running, now asks first, so a stray \u2318Q doesn't throw the tabs away.",
   "image": "2026-10-26/220007-netpositive-asks-before-quitting.png"
  },
  {
@@ -866,7 +866,7 @@
  {
   "time": "2026-10-26T22:40:28",
   "title": "Passwords: several 1Password accounts",
-  "caption": "Passwords now syncs with every 1Password account you tick (File ▸ 1Password Accounts…), in one review. The sidebar lists each account's vaults under its name, a vault is named with its account wherever it could be confused, and removing an account asks first and only removes its items from this computer.",
+  "caption": "Passwords now syncs with every 1Password account you tick (File \u25b8 1Password Accounts\u2026), in one review. The sidebar lists each account's vaults under its name, a vault is named with its account wherever it could be confused, and removing an account asks first and only removes its items from this computer.",
   "image": "2026-10-26/224028-passwords-several-1password-accounts.png"
  },
  {
@@ -878,13 +878,13 @@
  {
   "time": "2026-10-26T23:46:28",
   "title": "Band selection in lists",
-  "caption": "Dragging from a row's other columns, or from below the rows, draws a selection band in Tracker's list view and in every kit list (⇧ or ⌘ adds; it scrolls on near the edges). The column view does the same from below a column's items.",
+  "caption": "Dragging from a row's other columns, or from below the rows, draws a selection band in Tracker's list view and in every kit list (\u21e7 or \u2318 adds; it scrolls on near the edges). The column view does the same from below a column's items.",
   "image": "2026-10-26/234628-band-selection-in-lists.png"
  },
  {
   "time": "2026-10-26T23:55:16",
   "title": "Security preferences",
-  "caption": "Preferences ▸ Security holds how Passwords keeps its secrets: sync with 1Password automatically or only when asked, lock after idle, lock when the screen locks, and how soon copied secrets leave the clipboard. Passwords follows them live.",
+  "caption": "Preferences \u25b8 Security holds how Passwords keeps its secrets: sync with 1Password automatically or only when asked, lock after idle, lock when the screen locks, and how soon copied secrets leave the clipboard. Passwords follows them live.",
   "image": "2026-10-26/235516-security-preferences.png"
  },
  {
@@ -908,7 +908,7 @@
  {
   "time": "2026-10-27T00:54:06",
   "title": "Hide window, anywhere",
-  "caption": "⌘M hides the window in front, Tabula's or any other app's, and Hide window is a ⌘Space command (it finds \"minimize\" too). Change the keys in Preferences ▸ Keyboard.",
+  "caption": "\u2318M hides the window in front, Tabula's or any other app's, and Hide window is a \u2318Space command (it finds \"minimize\" too). Change the keys in Preferences \u25b8 Keyboard.",
   "image": "2026-10-27/005406-hide-window-anywhere.png"
  },
  {
@@ -926,7 +926,7 @@
  {
   "time": "2026-10-27T01:41:43",
   "title": "Notification history",
-  "caption": "The History window (Deskbar's bell, or tabula-notifications --history): every notification newest first, kept across a restart. Click to act on it (or bring the app forward), × to forget one; Do Not Disturb and Clear All along the top.",
+  "caption": "The History window (Deskbar's bell, or tabula-notifications --history): every notification newest first, kept across a restart. Click to act on it (or bring the app forward), \u00d7 to forget one; Do Not Disturb and Clear All along the top.",
   "image": "2026-10-27/014143-notification-history.png"
  },
  {
@@ -937,7 +937,7 @@
  },
  {
   "time": "2026-10-27T01:41:43",
-  "title": "Preferences ▸ Notifications",
+  "title": "Preferences \u25b8 Notifications",
   "caption": "Do Not Disturb by hand or every day at set times, how long banners stay, and per-app banners, sounds and history (apps appear once they have notified). Dark theme.",
   "image": "2026-10-27/014143-preferences-notifications.png"
  },
@@ -950,25 +950,25 @@
  {
   "time": "2026-10-27T01:58:34",
   "title": "Tracker says when a long copy is done",
-  "caption": "Through the kit's new notify API: a copy or move that ran 10 s or more posts “Finished copying …”; clicking it shows the folder.",
+  "caption": "Through the kit's new notify API: a copy or move that ran 10 s or more posts \u201cFinished copying \u2026\u201d; clicking it shows the folder.",
   "image": "2026-10-27/015834-tracker-says-when-a-long-copy-is-done.png"
  },
  {
   "time": "2026-10-27T02:12:50",
   "title": "Viewer: crop a picture",
-  "caption": "Image ▸ Crop… puts a frame over the picture: drag one out, move it or pull its edges; the size shows below and the rest dims. Crop (or Return) keeps it, and the title says the picture is edited until it's saved.",
+  "caption": "Image \u25b8 Crop\u2026 puts a frame over the picture: drag one out, move it or pull its edges; the size shows below and the rest dims. Crop (or Return) keeps it, and the title says the picture is edited until it's saved.",
   "image": "2026-10-27/021250-viewer-crop-a-picture.png"
  },
  {
   "time": "2026-10-27T02:12:50",
   "title": "Viewer: Adjust Size",
-  "caption": "Image ▸ Adjust Size… resizes the picture, keeping its proportions unless asked not to. Rotate, flip, crop and resize can all be undone, and File ▸ Save writes the picture back in its own format (Save As for another).",
+  "caption": "Image \u25b8 Adjust Size\u2026 resizes the picture, keeping its proportions unless asked not to. Rotate, flip, crop and resize can all be undone, and File \u25b8 Save writes the picture back in its own format (Save As for another).",
   "image": "2026-10-27/021250-viewer-adjust-size.png"
  },
  {
   "time": "2026-10-27T02:12:50",
   "title": "Quick Look rotates pictures",
-  "caption": "Quick Look's footer has Rotate Left and Right (⌘L and ⌘R), which turn the picture and save it at once, as on the Mac. Anything more opens in Viewer.",
+  "caption": "Quick Look's footer has Rotate Left and Right (\u2318L and \u2318R), which turn the picture and save it at once, as on the Mac. Anything more opens in Viewer.",
   "image": "2026-10-27/021250-quick-look-rotates-pictures.png"
  },
  {
@@ -986,7 +986,7 @@
  {
   "time": "2026-10-27T02:23:03",
   "title": "Backups have their own icon",
-  "caption": "Tracker shows .tabula-backup files with the new backup icon; opening one shows it in Preferences ▸ Backup, ready to import.",
+  "caption": "Tracker shows .tabula-backup files with the new backup icon; opening one shows it in Preferences \u25b8 Backup, ready to import.",
   "image": "2026-10-27/022303-backups-have-their-own-icon.png"
  },
  {
@@ -1094,13 +1094,13 @@
  {
   "time": "2026-10-27T12:15:25",
   "title": "Preferences: op on or off",
-  "caption": "Preferences ▸ Security has a Command line box to turn op off; it's on by default.",
+  "caption": "Preferences \u25b8 Security has a Command line box to turn op off; it's on by default.",
   "image": "2026-10-27/121525-preferences-op-on-or-off.png"
  },
  {
   "time": "2026-10-27T12:38:02",
   "title": "Terminal tabs",
-  "caption": "Terminal windows hold tabs: ⌘T opens one in the same folder, ⌘[ and ⌘] or Ctrl+Tab move between them, and tabs drag to reorder. A bell in a hidden tab marks it with a dot; Move Tab to New Window splits one off. The window grows by the strip so the grid stays the same, and tabs come back after an upgrade.",
+  "caption": "Terminal windows hold tabs: \u2318T opens one in the same folder, \u2318[ and \u2318] or Ctrl+Tab move between them, and tabs drag to reorder. A bell in a hidden tab marks it with a dot; Move Tab to New Window splits one off. The window grows by the strip so the grid stays the same, and tabs come back after an upgrade.",
   "image": "2026-10-27/123802-terminal-tabs.png"
  },
  {
@@ -1142,7 +1142,7 @@
  {
   "time": "2026-10-27T14:00:37",
   "title": "Num Lock on at start",
-  "caption": "Num Lock now starts on, and Preferences ▸ Keyboard can turn that off; the Num Lock key still toggles it, and changing other keyboard settings keeps its state.",
+  "caption": "Num Lock now starts on, and Preferences \u25b8 Keyboard can turn that off; the Num Lock key still toggles it, and changing other keyboard settings keeps its state.",
   "image": "2026-10-27/140037-num-lock-on-at-start.png"
  },
  {
@@ -1154,13 +1154,13 @@
  {
   "time": "2026-10-27T14:33:08",
   "title": "Terminal: Show All Tabs",
-  "caption": "Show All Tabs (⌘⇧D) puts every tab of a window on screen at once, each a live pane with its title over it; click one to type into it, marked in the group's colour. The tab strip is taller now, with the group's band kept clear of the icons.",
+  "caption": "Show All Tabs (\u2318\u21e7D) puts every tab of a window on screen at once, each a live pane with its title over it; click one to type into it, marked in the group's colour. The tab strip is taller now, with the group's band kept clear of the icons.",
   "image": "2026-10-27/143308-terminal-show-all-tabs.png"
  },
  {
   "time": "2026-10-27T14:49:18",
   "title": "Fan Out",
-  "caption": "⌃⌘/ stacks a display's windows with their tabs side by side, narrowing them to stay clear of the Deskbar; ⌃⌘Z undoes it.",
+  "caption": "\u2303\u2318/ stacks a display's windows with their tabs side by side, narrowing them to stay clear of the Deskbar; \u2303\u2318Z undoes it.",
   "image": "2026-10-27/144918-fan-out.png"
  },
  {
@@ -1178,12 +1178,12 @@
  {
   "time": "2026-10-27T15:32:23",
   "title": "Smart Tiling",
-  "caption": "Smart Tile (⌃⇧⌘↩) shows a model the screen and what each window holds, then tiles them; the note says how and offers Undo. (Here a fake model answered.)",
+  "caption": "Smart Tile (\u2303\u21e7\u2318\u21a9) shows a model the screen and what each window holds, then tiles them; the note says how and offers Undo. (Here a fake model answered.)",
   "image": "2026-10-27/153223-smart-tiling.png"
  },
  {
   "time": "2026-10-27T15:32:23",
-  "title": "Preferences ▸ AI",
+  "title": "Preferences \u25b8 AI",
   "caption": "AI features go through the Token Pool, or an Anthropic key; Smart Tiling picks its model and how hard it thinks.",
   "image": "2026-10-27/153223-preferences-ai.png"
  },
@@ -1196,19 +1196,19 @@
  {
   "time": "2026-10-27T15:40:28",
   "title": "Appearance: Longest window title",
-  "caption": "The new slider in Preferences ▸ Appearance.",
+  "caption": "The new slider in Preferences \u25b8 Appearance.",
   "image": "2026-10-27/154028-appearance-longest-window-title.png"
  },
  {
   "time": "2026-10-27T15:45:33",
   "title": "Roll up",
-  "caption": "Double-click a tab (or ⌃⌘M, or Roll Up in its menu) and only the tab stays; again brings the window back.",
+  "caption": "Double-click a tab (or \u2303\u2318M, or Roll Up in its menu) and only the tab stays; again brings the window back.",
   "image": "2026-10-27/154533-roll-up.png"
  },
  {
   "time": "2026-10-27T15:54:18",
   "title": "Icons in the Deskbar menu",
-  "caption": "Every item in Deskbar's Tabula menu now has its icon: the commands, our applications, the preference panels and each category of other applications. New sunburst icons for Stay Awake, Lock Screen, Log Out, Restart, Shut Down and the categories. Appearance ▸ Show icons in the Deskbar menu turns them off; it's on by default.",
+  "caption": "Every item in Deskbar's Tabula menu now has its icon: the commands, our applications, the preference panels and each category of other applications. New sunburst icons for Stay Awake, Lock Screen, Log Out, Restart, Shut Down and the categories. Appearance \u25b8 Show icons in the Deskbar menu turns them off; it's on by default.",
   "image": "2026-10-27/155418-icons-in-the-deskbar-menu.png"
  },
  {
@@ -1220,19 +1220,19 @@
  {
   "time": "2026-10-27T16:34:41",
   "title": "Tabula is now Olo Desktop",
-  "caption": "The new brand in About and Deskbar, light and dark: the mark and the olo wordmark, drawn crisp at 2× from data/brand. A running Tabula session upgrades into Olo in place, every window and setting kept.",
+  "caption": "The new brand in About and Deskbar, light and dark: the mark and the olo wordmark, drawn crisp at 2\u00d7 from data/brand. A running Tabula session upgrades into Olo in place, every window and setting kept.",
   "image": "2026-10-27/163441-tabula-is-now-olo-desktop.png"
  },
  {
   "time": "2026-10-27T16:59:18",
   "title": "OpenAI's models for AI features",
-  "caption": "Preferences ▸ AI offers Astra 6 (the default), Sol 6.1, Terra 6.1 and Luna 6, reached through the Token Pool's Codex accounts. A Claude model chosen before reads as Astra; calls turned away for now are retried after a wait.",
+  "caption": "Preferences \u25b8 AI offers Astra 6 (the default), Sol 6.1, Terra 6.1 and Luna 6, reached through the Token Pool's Codex accounts. A Claude model chosen before reads as Astra; calls turned away for now are retried after a wait.",
   "image": "2026-10-27/165918-openai-s-models-for-ai-features.png"
  },
  {
   "time": "2026-10-27T17:42:20",
   "title": "Keyboard hints",
-  "caption": "Tapping Control and Shift together (opt-in, Preferences ▸ Keyboard ▸ Keyboard Hints) puts a letter on everything that can be picked: the focused window's controls, other windows by their tabs, Deskbar and the desktop's icons. Typing one picks it.",
+  "caption": "Tapping Control and Shift together (opt-in, Preferences \u25b8 Keyboard \u25b8 Keyboard Hints) puts a letter on everything that can be picked: the focused window's controls, other windows by their tabs, Deskbar and the desktop's icons. Typing one picks it.",
   "image": "2026-10-27/174220-keyboard-hints.png"
  },
  {
@@ -1256,7 +1256,7 @@
  {
   "time": "2026-10-27T19:31:59",
   "title": "Cascade Others",
-  "caption": "⌃⇧⌘\\ with notes.txt focused: every other window is cascaded from the top left, and notes.txt stays where it was, in front. Fan Out Others (⌃⇧⌘/) does the same with Fan Out.",
+  "caption": "\u2303\u21e7\u2318\\ with notes.txt focused: every other window is cascaded from the top left, and notes.txt stays where it was, in front. Fan Out Others (\u2303\u21e7\u2318/) does the same with Fan Out.",
   "image": "2026-10-27/193159-cascade-others.png"
  },
  {
@@ -1292,13 +1292,13 @@
  {
   "time": "2026-10-27T20:01:34",
   "title": "Palette: open windows first",
-  "caption": "Typing an app's name in ⌘Space lists its open windows before the app itself, the one already in front last.",
+  "caption": "Typing an app's name in \u2318Space lists its open windows before the app itself, the one already in front last.",
   "image": "2026-10-27/200134-palette-open-windows-first.png"
  },
  {
   "time": "2026-10-27T20:07:25",
   "title": "Twitcher: a row per workspace",
-  "caption": "⌘Tab shows a row of apps for each workspace with windows; ↑/↓ change rows and workspaces, ←/→ walk a row, Esc puts everything back. With keyboard hints on, each cell has a letter to pick it by.",
+  "caption": "\u2318Tab shows a row of apps for each workspace with windows; \u2191/\u2193 change rows and workspaces, \u2190/\u2192 walk a row, Esc puts everything back. With keyboard hints on, each cell has a letter to pick it by.",
   "image": "2026-10-27/200725-twitcher-a-row-per-workspace.png"
  },
  {
@@ -1310,7 +1310,7 @@
  {
   "time": "2026-10-27T20:42:17",
   "title": "Touchpad preferences: profiles and every tunable",
-  "caption": "Preferences ▸ Touchpad now names the pad app_server found and recommends a profile (MacBook, Magic Trackpad, Standard; hand tuning makes it Custom). Touch holds Olo's palm and hover filter, a libinput plugin that counts a touch only while it presses, ignores palms and makes the click from the fingers' pressure alone; Gestures has scrolling speed, momentum glide, three-finger drag, drag lock and acceleration.",
+  "caption": "Preferences \u25b8 Touchpad now names the pad app_server found and recommends a profile (MacBook, Magic Trackpad, Standard; hand tuning makes it Custom). Touch holds Olo's palm and hover filter, a libinput plugin that counts a touch only while it presses, ignores palms and makes the click from the fingers' pressure alone; Gestures has scrolling speed, momentum glide, three-finger drag, drag lock and acceleration.",
   "image": "2026-10-27/204217-touchpad-preferences-profiles-and-every-tunable.png"
  },
  {
@@ -1322,7 +1322,7 @@
  {
   "time": "2026-10-27T21:04:30",
   "title": "DiskUsage: where the space went",
-  "caption": "A new app: Haiku's DiskUsage ring chart (the folder in the middle, its contents in rings outwards; click to go in, the middle to go up) beside the folder's contents by size, with bars in the slices' colours, and DaisyDisk's Collector along the bottom: drag rows or slices in (or ⌘D), then Move to Trash or Delete. The scan runs on a worker and the chart grows as it goes; it stays on one file system and counts hard links once.",
+  "caption": "A new app: Haiku's DiskUsage ring chart (the folder in the middle, its contents in rings outwards; click to go in, the middle to go up) beside the folder's contents by size, with bars in the slices' colours, and DaisyDisk's Collector along the bottom: drag rows or slices in (or \u2318D), then Move to Trash or Delete. The scan runs on a worker and the chart grows as it goes; it stays on one file system and counts hard links once.",
   "image": "2026-10-27/210430-diskusage-where-the-space-went.png"
  },
  {
@@ -1334,7 +1334,7 @@
  {
   "time": "2026-10-27T21:35:34",
   "title": "Keyboard hints on a double Control",
-  "caption": "Keyboard hints now come up when Control is pressed twice quickly, in place of Control and Shift together. How quickly is Preferences ▸ Keyboard ▸ Double-press speed (400 ms by default).",
+  "caption": "Keyboard hints now come up when Control is pressed twice quickly, in place of Control and Shift together. How quickly is Preferences \u25b8 Keyboard \u25b8 Double-press speed (400 ms by default).",
   "image": "2026-10-27/213534-keyboard-hints-on-a-double-control.png"
  },
  {
@@ -1382,37 +1382,37 @@
  {
   "time": "2026-10-27T23:19:56",
   "title": "Power: before the layout lint",
-  "caption": "Caught by the new layout lint (olo_kit::layout_lint): at 2× the Caffeinated box ran 1 px past the window's body, leaving 11 px above Defaults/Revert instead of WINDOW_INSET (12), and “Put the computer to sleep after:” stood 3 px from its field.",
+  "caption": "Caught by the new layout lint (olo_kit::layout_lint): at 2\u00d7 the Caffeinated box ran 1 px past the window's body, leaving 11 px above Defaults/Revert instead of WINDOW_INSET (12), and \u201cPut the computer to sleep after:\u201d stood 3 px from its field.",
   "image": "2026-10-27/231956-power-before-the-layout-lint.png"
  },
  {
   "time": "2026-10-27T23:19:56",
   "title": "Power: after the layout lint",
-  "caption": "One pixel taller (460×363) so the boxes clear the buttons by WINDOW_INSET, and the menu fields' divider moved out to 176 so the longest label has a LABEL_GAP before its field.",
+  "caption": "One pixel taller (460\u00d7363) so the boxes clear the buttons by WINDOW_INSET, and the menu fields' divider moved out to 176 so the longest label has a LABEL_GAP before its field.",
   "image": "2026-10-27/231956-power-after-the-layout-lint.png"
  },
  {
   "time": "2026-10-27T23:19:57",
   "title": "Tracker: before the layout lint",
-  "caption": "The layout lint found the New Windows Open In box 1 px past the panel's body at 2× (11 px to the buttons, not 12).",
+  "caption": "The layout lint found the New Windows Open In box 1 px past the panel's body at 2\u00d7 (11 px to the buttons, not 12).",
   "image": "2026-10-27/231957-tracker-before-the-layout-lint.png"
  },
  {
   "time": "2026-10-27T23:19:57",
   "title": "Tracker: after the layout lint",
-  "caption": "One pixel taller (300×181): the box ends WINDOW_INSET above Defaults/Revert.",
+  "caption": "One pixel taller (300\u00d7181): the box ends WINDOW_INSET above Defaults/Revert.",
   "image": "2026-10-27/231957-tracker-after-the-layout-lint.png"
  },
  {
   "time": "2026-10-27T23:19:57",
   "title": "About: wide enough for long facts",
-  "caption": "The layout lint runs About with long real-world facts (e.g. “AMD Ryzen 9 7945HX with Radeon Graphics, 32 cores”); at 420 the processor was cut short with “…”, so About is now 440 wide.",
+  "caption": "The layout lint runs About with long real-world facts (e.g. \u201cAMD Ryzen 9 7945HX with Radeon Graphics, 32 cores\u201d); at 420 the processor was cut short with \u201c\u2026\u201d, so About is now 440 wide.",
   "image": "2026-10-27/231957-about-wide-enough-for-long-facts.png"
  },
  {
   "time": "2026-10-27T23:20:39",
   "title": "Touchpad: 576 tall, measured by the layout lint",
-  "caption": "The layout lint runs Touchpad with every pad and profile. Its worst case is a MacBook pad without pressure on Touch, which shows both notes. At 520 the While Typing box ran 56 px past the tab and over Defaults/Revert. At 564 it was still 12 px past at 2×, leaving 8 px instead of the box's 20 px inset. At 576 it fits. Without a pad (here) the notes aren't shown, so that room is left over.",
+  "caption": "The layout lint runs Touchpad with every pad and profile. Its worst case is a MacBook pad without pressure on Touch, which shows both notes. At 520 the While Typing box ran 56 px past the tab and over Defaults/Revert. At 564 it was still 12 px past at 2\u00d7, leaving 8 px instead of the box's 20 px inset. At 576 it fits. Without a pad (here) the notes aren't shown, so that room is left over.",
   "image": "2026-10-27/232039-touchpad-576-tall-measured-by-the-layout-lint.png"
  },
  {
@@ -1424,7 +1424,7 @@
  {
   "time": "2026-10-28T00:09:04",
   "title": "Themes switch the wallpaper too",
-  "caption": "Choosing a theme in Preferences ▸ Themes now also sets the wallpaper to that theme's own (here Toybox); Backgrounds can still pick another.",
+  "caption": "Choosing a theme in Preferences \u25b8 Themes now also sets the wallpaper to that theme's own (here Toybox); Backgrounds can still pick another.",
   "image": "2026-10-28/000904-themes-switch-the-wallpaper-too.png"
  },
  {
@@ -1442,7 +1442,7 @@
  {
   "time": "2026-10-28T01:07:30",
   "title": "Terminal polished (dark)",
-  "caption": "Rounded strip tabs that share the row and end long titles with '…', the group's name in a chip with a band of its colour on every tab, pane heads with icons, the pane being typed into marked in the group colour and the others dimmed, 8×6 padding around the screen. label_fit (elide with …) now used wherever a line can overflow: palette rows, Drive Setup, kit list messages.",
+  "caption": "Rounded strip tabs that share the row and end long titles with '\u2026', the group's name in a chip with a band of its colour on every tab, pane heads with icons, the pane being typed into marked in the group colour and the others dimmed, 8\u00d76 padding around the screen. label_fit (elide with \u2026) now used wherever a line can overflow: palette rows, Drive Setup, kit list messages.",
   "image": "2026-10-28/010730-terminal-polished-dark.png"
  },
  {
@@ -1460,7 +1460,7 @@
  {
   "time": "2026-10-28T01:24:28",
   "title": "Context menus show their keys",
-  "caption": "Every context menu takes the keys its commands have in the window's menu bar (Menu::keys_from), so Tracker's item menu shows ⌘O, ⌘Y, ⌘I and so on, and the window tab menu shows the person's own desktop shortcuts.",
+  "caption": "Every context menu takes the keys its commands have in the window's menu bar (Menu::keys_from), so Tracker's item menu shows \u2318O, \u2318Y, \u2318I and so on, and the window tab menu shows the person's own desktop shortcuts.",
   "image": "2026-10-28/012428-context-menus-show-their-keys.png"
  },
  {
@@ -1477,26 +1477,26 @@
  },
  {
   "time": "2026-10-28T01:56:03",
-  "title": "Preferences ▸ Windows: space around arranged windows",
-  "caption": "A new Windows panel sets the margin at the display's edges and the gap between windows, with a miniature of the main display that follows the sliders. Tiling, zooming, Tile All, Smart Tile, Center, cascading and fanning out all keep to it, and app_server refits tiled and zoomed windows live as the sliders move, without changing which window is in front. Here a margin of 26 and a gap of 12; Deskbar's Window Arrangement menu now ends with Windows Preferences….",
+  "title": "Preferences \u25b8 Windows: space around arranged windows",
+  "caption": "A new Windows panel sets the margin at the display's edges and the gap between windows, with a miniature of the main display that follows the sliders. Tiling, zooming, Tile All, Smart Tile, Center, cascading and fanning out all keep to it, and app_server refits tiled and zoomed windows live as the sliders move, without changing which window is in front. Here a margin of 26 and a gap of 12; Deskbar's Window Arrangement menu now ends with Windows Preferences\u2026.",
   "image": "2026-10-28/015603-preferences-windows-space-around-arranged-window.png"
  },
  {
   "time": "2026-10-28T01:56:04",
-  "title": "Preferences ▸ Windows in dark mode",
+  "title": "Preferences \u25b8 Windows in dark mode",
   "caption": "The Windows panel in BeBox dark: the miniature's windows take the document colour and the theme's tab colours.",
   "image": "2026-10-28/015604-preferences-windows-in-dark-mode.png"
  },
  {
   "time": "2026-10-28T10:56:56",
   "title": "Terminal: Catppuccin colours",
-  "caption": "Settings ▸ Colors offers Catppuccin Latte and Frappé for light mode, Macchiato and Mocha for dark; Frappé (left, light mode) and Macchiato (right, dark mode) are the defaults.",
+  "caption": "Settings \u25b8 Colors offers Catppuccin Latte and Frapp\u00e9 for light mode, Macchiato and Mocha for dark; Frapp\u00e9 (left, light mode) and Macchiato (right, dark mode) are the defaults.",
   "image": "2026-10-28/105656-terminal-catppuccin-colours.png"
  },
  {
   "time": "2026-10-28T10:56:57",
   "title": "Deskbar on every display",
-  "caption": "Preferences ▸ Display ▸ Show Deskbar on every display: each display gets its own Deskbar listing just the applications with windows there (main display left, second right, its only window just moved over).",
+  "caption": "Preferences \u25b8 Display \u25b8 Show Deskbar on every display: each display gets its own Deskbar listing just the applications with windows there (main display left, second right, its only window just moved over).",
   "image": "2026-10-28/105657-deskbar-on-every-display.png"
  },
  {
@@ -1507,32 +1507,32 @@
  },
  {
   "time": "2026-10-28T10:57:26",
-  "title": "Window groups: ⌘-dragging a tab into another group",
-  "caption": "Any window can be grouped by hand: ⌘-drag its tab over another window's (here Tracker's over Terminal's); it folds into its tab where it would go and that group lights up in the focus blue (light, dark). Let go, and it joins. ⌘-dragging a tab away pops the window out; along the tabs, it reorders them.",
+  "title": "Window groups: \u2318-dragging a tab into another group",
+  "caption": "Any window can be grouped by hand: \u2318-drag its tab over another window's (here Tracker's over Terminal's); it folds into its tab where it would go and that group lights up in the focus blue (light, dark). Let go, and it joins. \u2318-dragging a tab away pops the window out; along the tabs, it reorders them.",
   "image": "2026-10-28/105726-window-groups-dragging-a-tab-into-another-group.png"
  },
  {
   "time": "2026-10-28T14:05:50",
   "title": "A new window joins its group at the group's size",
-  "caption": "A Terminal opened from its own menu (Terminal ▸ New Terminal) joined its group, then the whole group shrank to the new window's default size: the menu's pointer grab lasts until the pointer next moves, sizes waited for any grab, and the new window, in front, then led the group at its own size. Now sizes wait only for a resize grab, and a window that joins a group by itself doesn't lead it until it has drawn at the group's size (asked again if its app draws another size anyway).",
+  "caption": "A Terminal opened from its own menu (Terminal \u25b8 New Terminal) joined its group, then the whole group shrank to the new window's default size: the menu's pointer grab lasts until the pointer next moves, sizes waited for any grab, and the new window, in front, then led the group at its own size. Now sizes wait only for a resize grab, and a window that joins a group by itself doesn't lead it until it has drawn at the group's size (asked again if its app draws another size anyway).",
   "image": "2026-10-28/140550-a-new-window-joins-its-group-at-the-group-s-size.png"
  },
  {
   "time": "2026-10-28T14:09:22",
-  "title": "⌘Space opens the palette on the display in use",
+  "title": "\u2318Space opens the palette on the display in use",
   "caption": "With two displays, the palette now opens on the focused window's display (here the Terminal on the right-hand one), else the pointer's, rather than always on the main display.",
   "image": "2026-10-28/140922-space-opens-the-palette-on-the-display-in-use.png"
  },
  {
   "time": "2026-10-28T14:26:12",
-  "title": "⌘Tab groups windows by display",
-  "caption": "With a Deskbar on every display, Twitcher's rows split into a column per display, each in an etched BBox named across its top with a little screen, lit on the display this copy of the panel is on, so it's clear which windows are where. ↑/↓ keep to the chosen window's display.",
+  "title": "\u2318Tab groups windows by display",
+  "caption": "With a Deskbar on every display, Twitcher's rows split into a column per display, each in an etched BBox named across its top with a little screen, lit on the display this copy of the panel is on, so it's clear which windows are where. \u2191/\u2193 keep to the chosen window's display.",
   "image": "2026-10-28/142612-tab-groups-windows-by-display.png"
  },
  {
   "time": "2026-10-28T14:34:01",
   "title": "Terminal: tabs down the side",
-  "caption": "Settings ▸ Tabs ▸ Down the Side stands the kit's TabStrip as a column (TabStrip::side): rows like Tracker's, the group's chip at the top and its band down each tab, the selected tab opening into the screen, and an edge to drag wider. The window keeps its size; the grid makes room.",
+  "caption": "Settings \u25b8 Tabs \u25b8 Down the Side stands the kit's TabStrip as a column (TabStrip::side): rows like Tracker's, the group's chip at the top and its band down each tab, the selected tab opening into the screen, and an edge to drag wider. The window keeps its size; the grid makes room.",
   "image": "2026-10-28/143401-terminal-tabs-down-the-side.png"
  },
  {
@@ -1610,7 +1610,7 @@
  {
   "time": "2026-10-28T15:55:02",
   "title": "Terminal: sudo cancelled, plainly",
-  "caption": "Cancel ends sudo with exit 1 and a line an agent can read: “sudo: not run: cancelled in Terminal's password window”.",
+  "caption": "Cancel ends sudo with exit 1 and a line an agent can read: \u201csudo: not run: cancelled in Terminal's password window\u201d.",
   "image": "2026-10-28/155502-terminal-sudo-cancelled-plainly.png"
  },
  {
@@ -1628,7 +1628,7 @@
  {
   "time": "2026-10-28T16:34:14",
   "title": "Themes: colour sets selected the same way",
-  "caption": "Preferences ▸ Themes marks the chosen colour set with the kit's selection plate, the same soft ground as a selected card, in place of a coloured ring.",
+  "caption": "Preferences \u25b8 Themes marks the chosen colour set with the kit's selection plate, the same soft ground as a selected card, in place of a coloured ring.",
   "image": "2026-10-28/163414-themes-colour-sets-selected-the-same-way.png"
  },
  {
@@ -1663,8 +1663,8 @@
  },
  {
   "time": "2026-10-28T16:50:43",
-  "title": "Terminal: ⌘ keys as you press them",
-  "caption": "The Terminal's menus showed ⇧⌘N, ⇧⌘T and so on, because ⌘ reaches a terminal as Ctrl+Shift; they now read ⌘N, ⌘T, as pressed, in the menu bar, context menus and the list agents get. ⌘- and ⌘= (Smaller, Bigger) work now; before, Shift turned - into _ and = into +, and neither matched. A physical Ctrl+Shift+- reaches the shell as Ctrl+_ (readline's undo) instead of being taken for ⌘-: app_server keeps the right Ctrl for ⌘, and the kit tells the two apart in terminal windows.",
+  "title": "Terminal: \u2318 keys as you press them",
+  "caption": "The Terminal's menus showed \u21e7\u2318N, \u21e7\u2318T and so on, because \u2318 reaches a terminal as Ctrl+Shift; they now read \u2318N, \u2318T, as pressed, in the menu bar, context menus and the list agents get. \u2318- and \u2318= (Smaller, Bigger) work now; before, Shift turned - into _ and = into +, and neither matched. A physical Ctrl+Shift+- reaches the shell as Ctrl+_ (readline's undo) instead of being taken for \u2318-: app_server keeps the right Ctrl for \u2318, and the kit tells the two apart in terminal windows.",
   "image": "2026-10-28/165043-terminal-keys-as-you-press-them.png"
  },
  {
@@ -1814,13 +1814,13 @@
  {
   "time": "2026-10-29T00:19:55",
   "title": "Noto fonts, shipped with Olo",
-  "caption": "Before (Nimbus Sans, DejaVu for symbols) above, after (Noto Sans and Noto Sans Mono, with Noto Sans Symbols, Symbols 2 and Math for ⌘ ⌥ arrows and marks) below: one family everywhere, the same on every machine, open and clear at small sizes. app_server's tab titles, Twitcher and hint badges centre their capitals from the face's own metrics.",
+  "caption": "Before (Nimbus Sans, DejaVu for symbols) above, after (Noto Sans and Noto Sans Mono, with Noto Sans Symbols, Symbols 2 and Math for \u2318 \u2325 arrows and marks) below: one family everywhere, the same on every machine, open and clear at small sizes. app_server's tab titles, Twitcher and hint badges centre their capitals from the face's own metrics.",
   "image": "2026-10-29/001955-noto-fonts-shipped-with-olo.png"
  },
  {
   "time": "2026-10-29T00:19:56",
   "title": "Auto-tiling",
-  "caption": "Deskbar's tiles beside the cup (or ⌃⌥⌘T) tile every window on the workspace: a new one halves the focused tile along its longer side, a closed one's room goes to its neighbour. Zoom still zooms and comes back; Zoom Vertically makes a column; dialogs and small utility windows such as DeskCalc float; ⌃⌘Z undoes.",
+  "caption": "Deskbar's tiles beside the cup (or \u2303\u2325\u2318T) tile every window on the workspace: a new one halves the focused tile along its longer side, a closed one's room goes to its neighbour. Zoom still zooms and comes back; Zoom Vertically makes a column; dialogs and small utility windows such as DeskCalc float; \u2303\u2318Z undoes.",
   "image": "2026-10-29/001956-auto-tiling.png"
  },
  {
@@ -1831,8 +1831,8 @@
  },
  {
   "time": "2026-10-29T00:19:57",
-  "title": "⌘Tab keeps to this workspace, ⌥Tab goes everywhere",
-  "caption": "⌘Tab (left) switches among this workspace's applications only; ⌥Tab (right) has a numbered row for every workspace with windows, as ⌘Tab had. ⌃Tab is Next Tab in the window.",
+  "title": "\u2318Tab keeps to this workspace, \u2325Tab goes everywhere",
+  "caption": "\u2318Tab (left) switches among this workspace's applications only; \u2325Tab (right) has a numbered row for every workspace with windows, as \u2318Tab had. \u2303Tab is Next Tab in the window.",
   "image": "2026-10-29/001957-tab-keeps-to-this-workspace-tab-goes-everywhere.png"
  },
  {
@@ -1850,7 +1850,7 @@
  {
   "time": "2026-10-29T01:10:04",
   "title": "Deskbar lists every workspace in order, the one showing in a pill",
-  "caption": "No more Other Workspaces: each workspace with windows gets a quiet caption over its applications, always in ascending order, and the one showing is marked by a pill in the selection's colours (style::selection_ink), so it follows every theme, light and dark. Soft Be, Toybox and Enamel, light and dark, at 2×.",
+  "caption": "No more Other Workspaces: each workspace with windows gets a quiet caption over its applications, always in ascending order, and the one showing is marked by a pill in the selection's colours (style::selection_ink), so it follows every theme, light and dark. Soft Be, Toybox and Enamel, light and dark, at 2\u00d7.",
   "image": "2026-10-29/011004-deskbar-lists-every-workspace-in-order-the-one-s.png"
  },
  {
@@ -1861,14 +1861,14 @@
  },
  {
   "time": "2026-10-29T01:10:06",
-  "title": "⌥Tab keeps to this workspace, ⌘Tab goes everywhere, and Deskbar follows",
-  "caption": "Reversing the earlier swap: ⌘Tab's Twitcher shows every workspace's applications, ⌥Tab only this one's. While it's up, Deskbar highlights the application Twitcher is on (style::selection_wash), here DeskCalc.",
+  "title": "\u2325Tab keeps to this workspace, \u2318Tab goes everywhere, and Deskbar follows",
+  "caption": "Reversing the earlier swap: \u2318Tab's Twitcher shows every workspace's applications, \u2325Tab only this one's. While it's up, Deskbar highlights the application Twitcher is on (style::selection_wash), here DeskCalc.",
   "image": "2026-10-29/011006-tab-keeps-to-this-workspace-tab-goes-everywhere-.png"
  },
  {
   "time": "2026-10-29T01:48:18",
   "title": "Deskbar lights the workspace showing",
-  "caption": "The whole workspace showing, its heading and its applications, is washed in the selection's colour across the bar with a hairline of the selection's edge above and below, like a BListView selection as big as the group; the other workspaces stay on the plain panel. Its heading takes the selection's text colour, and its rows shade that ground for focus, hover and separators, so it follows every theme and colour set, light, dark and night. Twitcher's choice inside it takes the menu's stronger selection so it still stands out. Light and dark at 2×.",
+  "caption": "The whole workspace showing, its heading and its applications, is washed in the selection's colour across the bar with a hairline of the selection's edge above and below, like a BListView selection as big as the group; the other workspaces stay on the plain panel. Its heading takes the selection's text colour, and its rows shade that ground for focus, hover and separators, so it follows every theme and colour set, light, dark and night. Twitcher's choice inside it takes the menu's stronger selection so it still stands out. Light and dark at 2\u00d7.",
   "image": "2026-10-29/014818-deskbar-lights-the-workspace-showing.png"
  },
  {
@@ -1892,13 +1892,13 @@
  {
   "time": "2026-10-29T04:12:08",
   "title": "Notifications: times sit on the title's baseline",
-  "caption": "The app and time line up with the title's baseline rather than its box, and rows land on whole device pixels at 1.5× too.",
+  "caption": "The app and time line up with the title's baseline rather than its box, and rows land on whole device pixels at 1.5\u00d7 too.",
   "image": "2026-10-29/041208-notifications-times-sit-on-the-title-s-baseline.png"
  },
  {
   "time": "2026-10-29T04:12:08",
   "title": "Tracker's item count lines up with its list",
-  "caption": "The count bar's text starts in line with the list's icons above it (here at 1× and 2×), and the free space keeps the same inset from the right.",
+  "caption": "The count bar's text starts in line with the list's icons above it (here at 1\u00d7 and 2\u00d7), and the free space keeps the same inset from the right.",
   "image": "2026-10-29/041208-tracker-s-item-count-lines-up-with-its-list.png"
  },
  {
@@ -1915,44 +1915,44 @@
  },
  {
   "time": "2026-10-29T04:37:41",
-  "title": "Menu shortcuts: ⇧ stands with the capitals",
-  "caption": "Noto Sans Symbols puts ⇧ a device pixel below the capitals at every scale. key_combo now places a symbol about as tall as the capitals by its ink, so the feet of ⇧⌘Z line up at 1x, 1.25x, 1.5x, 1.75x and 2x.",
+  "title": "Menu shortcuts: \u21e7 stands with the capitals",
+  "caption": "Noto Sans Symbols puts \u21e7 a device pixel below the capitals at every scale. key_combo now places a symbol about as tall as the capitals by its ink, so the feet of \u21e7\u2318Z line up at 1x, 1.25x, 1.5x, 1.75x and 2x.",
   "image": "2026-10-29/043741-menu-shortcuts-stands-with-the-capitals.png"
  },
  {
   "time": "2026-10-29T08:25:29",
   "title": "Terminal shows its tab strip with one tab",
-  "caption": "The tab strip no longer waits for a second tab: one tab shows with its icon, title, close box and +, so a new tab is always a click away (light and dark at 1×, 1.5× and 2×).",
+  "caption": "The tab strip no longer waits for a second tab: one tab shows with its icon, title, close box and +, so a new tab is always a click away (light and dark at 1\u00d7, 1.5\u00d7 and 2\u00d7).",
   "image": "2026-10-29/082529-terminal-shows-its-tab-strip-with-one-tab.png"
  },
  {
   "time": "2026-10-29T08:25:30",
   "title": "Screenshot's caption lines up with Save as",
-  "caption": "The caption under the preview sits level with the Save as: row beside it at 1×, 1.5× and 2×, in light, dark and night.",
+  "caption": "The caption under the preview sits level with the Save as: row beside it at 1\u00d7, 1.5\u00d7 and 2\u00d7, in light, dark and night.",
   "image": "2026-10-29/082530-screenshot-s-caption-lines-up-with-save-as.png"
  },
  {
   "time": "2026-10-29T08:25:30",
-  "title": "Disk Usage: crisp hairlines and bars at 1.5×",
-  "caption": "The lines between slices, round each ring and round the hub are one device pixel at every scale (style::hairline), and the bars' widths land on whole device pixels, so at 1.5× nothing is blurred across two.",
+  "title": "Disk Usage: crisp hairlines and bars at 1.5\u00d7",
+  "caption": "The lines between slices, round each ring and round the hub are one device pixel at every scale (style::hairline), and the bars' widths land on whole device pixels, so at 1.5\u00d7 nothing is blurred across two.",
   "image": "2026-10-29/082530-disk-usage-crisp-hairlines-and-bars-at-1-5.png"
  },
  {
   "time": "2026-10-29T08:25:32",
   "title": "Deskbar's badge ring is one device pixel",
-  "caption": "The panel-coloured ring that cuts the unread badge out of the bell is a whole device pixel wide at 1.5× too, rather than a blurred pixel and a half.",
+  "caption": "The panel-coloured ring that cuts the unread badge out of the bell is a whole device pixel wide at 1.5\u00d7 too, rather than a blurred pixel and a half.",
   "image": "2026-10-29/082532-deskbar-s-badge-ring-is-one-device-pixel.png"
  },
  {
   "time": "2026-10-29T08:59:50",
-  "title": "The overview, on ⌃Space",
+  "title": "The overview, on \u2303Space",
   "caption": "Every workspace at once, a pane each, its windows spread out live and lettered: click one or type its letter to go to it, the arrows and Return walk them, Esc leaves. Windows showing glide into place and back; the rest fade in.",
   "image": "2026-10-29/085950-the-overview-on-space.png"
  },
  {
   "time": "2026-10-29T09:01:00",
   "title": "Spotlight while switching",
-  "caption": "While ⌘Tab is held, every window but the chosen app's dims, so the one you're about to switch to stands out; it follows each step and fades back when you let go or cancel.",
+  "caption": "While \u2318Tab is held, every window but the chosen app's dims, so the one you're about to switch to stands out; it follows each step and fades back when you let go or cancel.",
   "image": "2026-10-29/090100-spotlight-while-switching.png"
  },
  {
@@ -1982,19 +1982,19 @@
  {
   "time": "2026-10-29T11:05:57",
   "title": "Focus mode",
-  "caption": "A new windowing mode: only the active window shows, zoomed, with its app's other windows as tabs along the top and its dialogs and panels over it. Activating another window (Deskbar, ⌘Tab, the overview) shows that one instead.",
+  "caption": "A new windowing mode: only the active window shows, zoomed, with its app's other windows as tabs along the top and its dialogs and panels over it. Activating another window (Deskbar, \u2318Tab, the overview) shows that one instead.",
   "image": "2026-10-29/110557-focus-mode.png"
  },
  {
   "time": "2026-10-29T11:05:58",
   "title": "Choose the windowing mode from the tray",
-  "caption": "Deskbar's tray icon is now the windowing mode (Standard, Auto-Tiling or Focus) of this workspace on this display: either click opens the modes, then the arranging commands. ⌃⌥⌘T and ⌃⌥⌘O toggle Auto-Tiling and Focus.",
+  "caption": "Deskbar's tray icon is now the windowing mode (Standard, Auto-Tiling or Focus) of this workspace on this display: either click opens the modes, then the arranging commands. \u2303\u2325\u2318T and \u2303\u2325\u2318O toggle Auto-Tiling and Focus.",
   "image": "2026-10-29/110558-choose-the-windowing-mode-from-the-tray.png"
  },
  {
   "time": "2026-10-29T11:05:58",
   "title": "Default windowing mode in Preferences",
-  "caption": "Preferences ▸ Windows chooses the mode a workspace starts in; Deskbar's tray chooses each workspace's own.",
+  "caption": "Preferences \u25b8 Windows chooses the mode a workspace starts in; Deskbar's tray chooses each workspace's own.",
   "image": "2026-10-29/110558-default-windowing-mode-in-preferences.png"
  },
  {
@@ -2029,20 +2029,20 @@
  },
  {
   "time": "2026-10-29T15:10:50",
-  "title": "Keyboard Shortcuts sheet (⇧⌘/)",
-  "caption": "Every shortcut of the keyboard profile on one sheet: the front app's menu keys first (Tracker's here), then text editing's and the desktop's, as cards in columns; ⇧⌘/ on a Mac, Win+Shift+/ on Windows, Alt+Shift+/ on BeOS.",
+  "title": "Keyboard Shortcuts sheet (\u21e7\u2318/)",
+  "caption": "Every shortcut of the keyboard profile on one sheet: the front app's menu keys first (Tracker's here), then text editing's and the desktop's, as cards in columns; \u21e7\u2318/ on a Mac, Win+Shift+/ on Windows, Alt+Shift+/ on BeOS.",
   "image": "2026-10-29/151050-keyboard-shortcuts-sheet.png"
  },
  {
   "time": "2026-10-29T15:11:01",
   "title": "Keyboard profiles in Preferences",
-  "caption": "Preferences ▸ Keyboard ▸ Shortcuts picks a keyboard profile (Mac, Windows, BeOS, or one saved) with its command key and key behaviour, then lists every shortcut in the platform's own key names (here Windows': Win+← snaps left); a change makes it “Windows (Customized)”.",
+  "caption": "Preferences \u25b8 Keyboard \u25b8 Shortcuts picks a keyboard profile (Mac, Windows, BeOS, or one saved) with its command key and key behaviour, then lists every shortcut in the platform's own key names (here Windows': Win+\u2190 snaps left); a change makes it \u201cWindows (Customized)\u201d.",
   "image": "2026-10-29/151101-keyboard-profiles-in-preferences.png"
  },
  {
   "time": "2026-10-29T15:11:08",
   "title": "Menus in the profile's keys (Windows)",
-  "caption": "Every app's menu keys come from the keyboard profile: with Windows' keys Tracker's File menu has Explorer's (Alt+↑, Alt+Enter, F2, Del, Ctrl+Shift+N); with a Mac's, Finder's (⌘↑, ⌘I, ⇧⌘N, ⌘⌫).",
+  "caption": "Every app's menu keys come from the keyboard profile: with Windows' keys Tracker's File menu has Explorer's (Alt+\u2191, Alt+Enter, F2, Del, Ctrl+Shift+N); with a Mac's, Finder's (\u2318\u2191, \u2318I, \u21e7\u2318N, \u2318\u232b).",
   "image": "2026-10-29/151108-menus-in-the-profile-s-keys-windows.png"
  },
  {
@@ -2083,19 +2083,19 @@
  },
  {
   "time": "2026-10-29T18:06:09",
-  "title": "Terminal: New Worktree…",
-  "caption": "The group's New Worktree… (also Tabs ▸ Repository): a name that is a folder and a branch both, made in Preferences ▸ Terminal's location; the note says where it goes and on which branch (or, in red, why not), as you type. Files check out on a thread with progress and Stop.",
+  "title": "Terminal: New Worktree\u2026",
+  "caption": "The group's New Worktree\u2026 (also Tabs \u25b8 Repository): a name that is a folder and a branch both, made in Preferences \u25b8 Terminal's location; the note says where it goes and on which branch (or, in red, why not), as you type. Files check out on a thread with progress and Stop.",
   "image": "2026-10-29/180609-terminal-new-worktree.png"
  },
  {
   "time": "2026-10-29T18:06:15",
-  "title": "Preferences ▸ Terminal (light)",
-  "caption": "A new panel: where New Worktree… makes a repository's worktrees, ~/worktrees to start, each repository a folder of its name in there. Terminal follows it live.",
+  "title": "Preferences \u25b8 Terminal (light)",
+  "caption": "A new panel: where New Worktree\u2026 makes a repository's worktrees, ~/worktrees to start, each repository a folder of its name in there. Terminal follows it live.",
   "image": "2026-10-29/180615-preferences-terminal-light.png"
  },
  {
   "time": "2026-10-29T18:06:17",
-  "title": "Preferences ▸ Terminal (dark)",
+  "title": "Preferences \u25b8 Terminal (dark)",
   "caption": "The same panel in dark mode.",
   "image": "2026-10-29/180617-preferences-terminal-dark.png"
  },
@@ -2114,13 +2114,13 @@
  {
   "time": "2026-10-29T21:56:07",
   "title": "Terminal: side tabs as Deskbar's list",
-  "caption": "Tabs down the side are Deskbar's rows now: the panel's ground, a hairline under each, the one showing recessed, groups under small bold headings with a dot of their colour and a bar of it down the left. Show All Tabs' pane heads are tinted with their group's colour, a line of it across the top. (1.5×, light.)",
+  "caption": "Tabs down the side are Deskbar's rows now: the panel's ground, a hairline under each, the one showing recessed, groups under small bold headings with a dot of their colour and a bar of it down the left. Show All Tabs' pane heads are tinted with their group's colour, a line of it across the top. (1.5\u00d7, light.)",
   "image": "2026-10-29/215607-terminal-side-tabs-as-deskbar-s-list.png"
  },
  {
   "time": "2026-10-29T21:56:08",
   "title": "Terminal: quiet group chips along the top",
-  "caption": "Along the top, a group's chip is a dot of its colour and its name in quiet bold, no pill, with the line of its colour over its tabs; pane heads take the group's colour too. (1×, night.)",
+  "caption": "Along the top, a group's chip is a dot of its colour and its name in quiet bold, no pill, with the line of its colour over its tabs; pane heads take the group's colour too. (1\u00d7, night.)",
   "image": "2026-10-29/215608-terminal-quiet-group-chips-along-the-top.png"
  },
  {
@@ -2144,7 +2144,7 @@
  {
   "time": "2026-10-29T23:04:06",
   "title": "Passwords: search with filters",
-  "caption": "The search field colours filters and suggests them as you type (has:we → Website, Weak Password, with counts); a filter bar over the list (Tag, Has) edits the same query. Words find usernames and non-secret fields of every item, best matches first, marked in the rows.",
+  "caption": "The search field colours filters and suggests them as you type (has:we \u2192 Website, Weak Password, with counts); a filter bar over the list (Tag, Has) edits the same query. Words find usernames and non-secret fields of every item, best matches first, marked in the rows.",
   "image": "2026-10-29/230406-passwords-search-with-filters.png"
  },
  {
@@ -2174,31 +2174,31 @@
  {
   "time": "2026-10-29T23:28:08",
   "title": "Terminal: smaller pull request marks in the tab strip",
-  "caption": "Before (left) and after at 2×. The pull request mark is drawn as big as the text (12 pt, from GitHub's 16-unit drawing, its lines whole device pixels at every scale) and sits in the close box's place, which takes it over only under the pointer, so titles get the room back and nothing moves; each group's colour bar stops short of the next group's.",
+  "caption": "Before (left) and after at 2\u00d7. The pull request mark is drawn as big as the text (12 pt, from GitHub's 16-unit drawing, its lines whole device pixels at every scale) and sits in the close box's place, which takes it over only under the pointer, so titles get the room back and nothing moves; each group's colour bar stops short of the next group's.",
   "image": "2026-10-29/232808-terminal-smaller-pull-request-marks-in-the-tab-s.png"
  },
  {
   "time": "2026-10-29T23:45:33",
   "title": "Passwords: passkeys in Chrome",
-  "caption": "Passwords is Chrome's passkey authenticator: it asks in an alert in front which account to sign in with (a choice when there are several, Use Another Device… for Chrome's own QR-code sheet), and a sign-in that suggests passkeys has Olo ▸ Sign In with Passkey in the field's menu. At 2×; reviewed at 1×, 1.5× and 2×.",
+  "caption": "Passwords is Chrome's passkey authenticator: it asks in an alert in front which account to sign in with (a choice when there are several, Use Another Device\u2026 for Chrome's own QR-code sheet), and a sign-in that suggests passkeys has Olo \u25b8 Sign In with Passkey in the field's menu. At 2\u00d7; reviewed at 1\u00d7, 1.5\u00d7 and 2\u00d7.",
   "image": "2026-10-29/234533-passwords-passkeys-in-chrome.png"
  },
  {
   "time": "2026-10-29T23:53:31",
   "title": "Auto-tiling: every window fits where an arrangement lets it",
-  "caption": "Before (left): five windows opened in turn under auto-tiling on a 1440×900 display, the fifth (Passwords) halving a tile too small for it, overlapping three. After (right): the tree arranged again so each window has its least size: Disk Usage over Log Viewer, Passwords over StyledEdit and Activity Monitor.",
+  "caption": "Before (left): five windows opened in turn under auto-tiling on a 1440\u00d7900 display, the fifth (Passwords) halving a tile too small for it, overlapping three. After (right): the tree arranged again so each window has its least size: Disk Usage over Log Viewer, Passwords over StyledEdit and Activity Monitor.",
   "image": "2026-10-29/235331-auto-tiling-every-window-fits-where-an-arrangeme.png"
  },
  {
   "time": "2026-10-30T00:29:57",
   "title": "Quick Look: TOML (and INI) highlighted",
-  "caption": "TOML files (and Cargo.lock, uv.lock, poetry.lock) are coloured by a grammar of Quick Look's own: tables as headings, keys, strings of every kind, numbers, booleans and dates, arrays and inline tables; INI-style files (systemd units, .desktop entries, git config) by another. Light and dark, at 2×.",
+  "caption": "TOML files (and Cargo.lock, uv.lock, poetry.lock) are coloured by a grammar of Quick Look's own: tables as headings, keys, strings of every kind, numbers, booleans and dates, arrays and inline tables; INI-style files (systemd units, .desktop entries, git config) by another. Light and dark, at 2\u00d7.",
   "image": "2026-10-30/002957-quick-look-toml-and-ini-highlighted.png"
  },
  {
   "time": "2026-10-30T01:14:28",
   "title": "Tracker: Column View keeps its highlight",
-  "caption": "→ into a folder highlights its first item again. A selection put back after an upgrade waited for items that never came, and wiped the active column's selection each time a listing landed; now a waiting selection belongs to its own folder only, and the window comes back with its columns. → before a listing lands selects once it does, and a selection made in code scrolls into view in every view.",
+  "caption": "\u2192 into a folder highlights its first item again. A selection put back after an upgrade waited for items that never came, and wiped the active column's selection each time a listing landed; now a waiting selection belongs to its own folder only, and the window comes back with its columns. \u2192 before a listing lands selects once it does, and a selection made in code scrolls into view in every view.",
   "image": "2026-10-30/011428-tracker-column-view-keeps-its-highlight.png"
  },
  {
@@ -2210,7 +2210,7 @@
  {
   "time": "2026-10-30T02:40:31",
   "title": "Agent Screens: History and Replay",
-  "caption": "Each agent screen keeps what was done on it and the frames it drew. History lists the actions (searchable), shows the screen as it was at the one chosen, and plays it back in time with them: clicks as rings, keys as captions, quiet stretches skipped. Export Video… makes it an MP4 in process. Stopped screens' histories stay listed, by last use; how much is kept is in Preferences ▸ AI.",
+  "caption": "Each agent screen keeps what was done on it and the frames it drew. History lists the actions (searchable), shows the screen as it was at the one chosen, and plays it back in time with them: clicks as rings, keys as captions, quiet stretches skipped. Export Video\u2026 makes it an MP4 in process. Stopped screens' histories stay listed, by last use; how much is kept is in Preferences \u25b8 AI.",
   "image": "2026-10-30/024031-agent-screens-history-and-replay.png"
  },
  {
@@ -2246,7 +2246,7 @@
  {
   "time": "2026-10-30T04:50:52",
   "title": "File panel: filters, several files, an app's choices",
-  "caption": "Other programs' Open dialogs (the FileChooser portal) now show the app's filters as a Show pop-up (by glob or MIME type), choose several files with ⇧ and ⌘ clicks, and carry the app's own choices above the buttons, the pop-ups lined up on one divider. Chrome's multi-file uploads come back whole.",
+  "caption": "Other programs' Open dialogs (the FileChooser portal) now show the app's filters as a Show pop-up (by glob or MIME type), choose several files with \u21e7 and \u2318 clicks, and carry the app's own choices above the buttons, the pop-ups lined up on one divider. Chrome's multi-file uploads come back whole.",
   "image": "2026-10-30/045052-file-panel-filters-several-files-an-app-s-choice.png"
  },
  {
@@ -2300,7 +2300,7 @@
  {
   "time": "2026-10-30T07:53:36",
   "title": "Activity Monitor: every process, as a list or a tree",
-  "caption": "Searched and filtered with the kit's search (user:, state:, kind:, pid:), sorted by any of twelve columns (names in natural order), as a tree of who started whom (kernel threads folded here). Double-click or ⌘I for its inspector: threads, open files, memory, environment, cores, limits, priority and signals.",
+  "caption": "Searched and filtered with the kit's search (user:, state:, kind:, pid:), sorted by any of twelve columns (names in natural order), as a tree of who started whom (kernel threads folded here). Double-click or \u2318I for its inspector: threads, open files, memory, environment, cores, limits, priority and signals.",
   "image": "2026-10-30/075336-activity-monitor-every-process-as-a-list-or-a-tr.png"
  },
  {
@@ -2324,37 +2324,37 @@
  {
   "time": "2026-10-30T10:46:45",
   "title": "Deskbar's notification dot drains as they fade",
-  "caption": "An app's dot in Deskbar is filled from the left to how fresh its notifications are together (each 1/n, as the history fades them), never below a third, the rest a faint well of its colour; with Preferences ▸ Notifications ▸ Show how many beside each app's dot, the count beside it (here 2, partway through a 2-minute fade, at 2×).",
+  "caption": "An app's dot in Deskbar is filled from the left to how fresh its notifications are together (each 1/n, as the history fades them), never below a third, the rest a faint well of its colour; with Preferences \u25b8 Notifications \u25b8 Show how many beside each app's dot, the count beside it (here 2, partway through a 2-minute fade, at 2\u00d7).",
   "image": "2026-10-30/104645-deskbar-s-notification-dot-drains-as-they-fade.png"
  },
  {
   "time": "2026-10-30T10:52:55",
   "title": "Notifications: All Apps, mixed while they differ",
-  "caption": "Preferences ▸ Notifications' Applications table has an All Apps row over the list: each column checked when every app's is, a dash while they differ (the kit's CheckBox::mixed); a click sets it for every app. With the Deskbar box above it, the panel is taller.",
+  "caption": "Preferences \u25b8 Notifications' Applications table has an All Apps row over the list: each column checked when every app's is, a dash while they differ (the kit's CheckBox::mixed); a click sets it for every app. With the Deskbar box above it, the panel is taller.",
   "image": "2026-10-30/105255-notifications-all-apps-mixed-while-they-differ.png"
  },
  {
   "time": "2026-10-30T11:06:49",
-  "title": "New windows glow a moment (Preferences ▸ Appearance)",
-  "caption": "With Glow new windows for N seconds on (off by default, 5 s), a new window has a soft halo in the look's focus blue round its frame and tab as one shape, fading out over its last second; left: just opened, right: after (at 1×, enlarged 2×).",
+  "title": "New windows glow a moment (Preferences \u25b8 Appearance)",
+  "caption": "With Glow new windows for N seconds on (off by default, 5 s), a new window has a soft halo in the look's focus blue round its frame and tab as one shape, fading out over its last second; left: just opened, right: after (at 1\u00d7, enlarged 2\u00d7).",
   "image": "2026-10-30/110649-new-windows-glow-a-moment-preferences-appearance.png"
  },
  {
   "time": "2026-10-30T12:09:03",
   "title": "Token Pool: the Clients window",
-  "caption": "Pool ▸ Clients: the pool's activity over time (requests a minute by client, over the last hour, six hours or day, with totals), Codex's service with its version, settings, connections, conversations and Restart, and each Claude Code and Codex running and where its connections go (here a sandbox with a made-up day of activity).",
+  "caption": "Pool \u25b8 Clients: the pool's activity over time (requests a minute by client, over the last hour, six hours or day, with totals), Codex's service with its version, settings, connections, conversations and Restart, and each Claude Code and Codex running and where its connections go (here a sandbox with a made-up day of activity).",
   "image": "2026-10-30/120903-token-pool-the-clients-window.png"
  },
  {
   "time": "2026-10-30T12:24:16",
   "title": "Window menu: every display's workspaces",
-  "caption": "A window's tab menu ▸ Move to Workspace lists every display's workspaces, left to right as Deskbar names them, its own display's with their keys and a check; another display's moves it there, to the same place, tiled or zoomed as it was.",
+  "caption": "A window's tab menu \u25b8 Move to Workspace lists every display's workspaces, left to right as Deskbar names them, its own display's with their keys and a check; another display's moves it there, to the same place, tiled or zoomed as it was.",
   "image": "2026-10-30/122416-window-menu-every-display-s-workspaces.png"
  },
  {
   "time": "2026-10-30T12:24:17",
   "title": "Deskbar: an app's windows to any workspace",
-  "caption": "An app's Deskbar menu moves its windows as a tab's menu moves one: Move to Workspace ▸ every display's workspaces (the one they're on checked), and To the Next / Previous Display.",
+  "caption": "An app's Deskbar menu moves its windows as a tab's menu moves one: Move to Workspace \u25b8 every display's workspaces (the one they're on checked), and To the Next / Previous Display.",
   "image": "2026-10-30/122417-deskbar-an-app-s-windows-to-any-workspace.png"
  },
  {
@@ -2371,14 +2371,14 @@
  },
  {
   "time": "2026-10-30T13:11:41",
-  "title": "Preferences ▸ Terminal: Coding Agents",
+  "title": "Preferences \u25b8 Terminal: Coding Agents",
   "caption": "Tell coding agents about the repositories in their tab group (off by default): Claude Code and Codex in a tab of a group spanning repositories are told the group's name and its repositories and worktrees, through their own hooks.",
   "image": "2026-10-30/131141-preferences-terminal-coding-agents.png"
  },
  {
   "time": "2026-10-30T13:16:12",
   "title": "Notifications: only the latest of the same",
-  "caption": "Preferences ▸ Notifications ▸ History: Only the latest of the same notification (on by default): the same again from the same app takes the earlier one's place while it's still showing or unread.",
+  "caption": "Preferences \u25b8 Notifications \u25b8 History: Only the latest of the same notification (on by default): the same again from the same app takes the earlier one's place while it's still showing or unread.",
   "image": "2026-10-30/131612-notifications-only-the-latest-of-the-same.png"
  },
  {
@@ -2390,13 +2390,13 @@
  {
   "time": "2026-10-30T13:51:47",
   "title": "Agent Screens: filters",
-  "caption": "History's filters, as Log Viewer's: Result ▸ Failed keeps the 12 of 249 actions that failed, each with why in red.",
+  "caption": "History's filters, as Log Viewer's: Result \u25b8 Failed keeps the 12 of 249 actions that failed, each with why in red.",
   "image": "2026-10-30/135147-agent-screens-filters.png"
  },
  {
   "time": "2026-10-30T13:51:47",
   "title": "Agent Screens: Stats",
-  "caption": "Stats as dashboard cards (dark, 1.5×): use, actions by kind, actions a minute over the last hour, programs run.",
+  "caption": "Stats as dashboard cards (dark, 1.5\u00d7): use, actions by kind, actions a minute over the last hour, programs run.",
   "image": "2026-10-30/135147-agent-screens-stats.png"
  },
  {
@@ -2407,8 +2407,8 @@
  },
  {
   "time": "2026-10-30T15:08:51",
-  "title": "Performance supervisor: Activity Monitor's Supervisor section and Preferences ▸ Performance",
-  "caption": "The supervisor (off by default) lowers builds and background work and watches for stuck processes, leaks, memory hogs and zombies, each judged from several signals with a confidence and evidence. Activity Monitor shows it as cards (Inspect, Stop Process, Ignore This Process); every threshold is tuned in Preferences ▸ Performance.",
+  "title": "Performance supervisor: Activity Monitor's Supervisor section and Preferences \u25b8 Performance",
+  "caption": "The supervisor (off by default) lowers builds and background work and watches for stuck processes, leaks, memory hogs and zombies, each judged from several signals with a confidence and evidence. Activity Monitor shows it as cards (Inspect, Stop Process, Ignore This Process); every threshold is tuned in Preferences \u25b8 Performance.",
   "image": "2026-10-30/150851-performance-supervisor-activity-monitor-s-superv.png"
  },
  {
@@ -2431,19 +2431,19 @@
  },
  {
   "time": "2026-10-30T15:08:53",
-  "title": "Deskbar: the supervisor's gauge at 1×, 1.25×, 1.5×, 1.75×, 2×",
-  "caption": "On (dial tinted, needle up, the findings counted, red if urgent) and off (dim, needle resting). A click turns it on or off; its menu lists the findings, Show in Activity Monitor and Performance Settings…",
+  "title": "Deskbar: the supervisor's gauge at 1\u00d7, 1.25\u00d7, 1.5\u00d7, 1.75\u00d7, 2\u00d7",
+  "caption": "On (dial tinted, needle up, the findings counted, red if urgent) and off (dim, needle resting). A click turns it on or off; its menu lists the findings, Show in Activity Monitor and Performance Settings\u2026",
   "image": "2026-10-30/150853-deskbar-the-supervisor-s-gauge-at-1-1-25-1-5-1-7.png"
  },
  {
   "time": "2026-10-30T15:27:51",
   "title": "Terminal: a coding agent's title for its tab",
-  "caption": "With Preferences ▸ Terminal's new setting, Claude Code and Codex get a set_tab_title tool (an MCP server of Terminal's) and are asked to keep their tab titled with what they're working on; here the tool was called from the tab.",
+  "caption": "With Preferences \u25b8 Terminal's new setting, Claude Code and Codex get a set_tab_title tool (an MCP server of Terminal's) and are asked to keep their tab titled with what they're working on; here the tool was called from the tab.",
   "image": "2026-10-30/152751-terminal-a-coding-agent-s-title-for-its-tab.png"
  },
  {
   "time": "2026-10-30T15:27:52",
-  "title": "Preferences ▸ Terminal: Let coding agents keep their tab's title current",
+  "title": "Preferences \u25b8 Terminal: Let coding agents keep their tab's title current",
   "caption": "Off by default; the panel is taller for it.",
   "image": "2026-10-30/152752-preferences-terminal-let-coding-agents-keep-thei.png"
  },
@@ -2456,7 +2456,7 @@
  {
   "time": "2026-10-30T15:33:48",
   "title": "Quick Look full screen on two displays: after",
-  "caption": "F fills only the display the window is on; the other is untouched, and F again puts it back where it was. Same at 1.5× and 2×.",
+  "caption": "F fills only the display the window is on; the other is untouched, and F again puts it back where it was. Same at 1.5\u00d7 and 2\u00d7.",
   "image": "2026-10-30/153348-quick-look-full-screen-on-two-displays-after.png"
  },
  {
@@ -2480,7 +2480,7 @@
  {
   "time": "2026-10-30T18:51:29",
   "title": "StyledEdit: tables",
-  "caption": "A paragraph can be a table's row: its cells its text between tabs, laid out side by side in columns by the kit editor and ruled a device pixel wide (a header row shaded). Tab and ⇧Tab go from cell to cell, Tab in the last cell and Return add a row, and edits keep a table's cells and rows. The Table menu inserts and converts tables, adds and deletes rows and columns, and toggles the header; Word, OpenDocument, RTF and Markdown tables come in as tables and go out as them.",
+  "caption": "A paragraph can be a table's row: its cells its text between tabs, laid out side by side in columns by the kit editor and ruled a device pixel wide (a header row shaded). Tab and \u21e7Tab go from cell to cell, Tab in the last cell and Return add a row, and edits keep a table's cells and rows. The Table menu inserts and converts tables, adds and deletes rows and columns, and toggles the header; Word, OpenDocument, RTF and Markdown tables come in as tables and go out as them.",
   "image": "2026-10-30/185129-stylededit-tables.png"
  },
  {
@@ -2498,25 +2498,25 @@
  {
   "time": "2026-10-30T19:37:51",
   "title": "StyledEdit: the ruler, indents and tab stops",
-  "caption": "A ruler over the text (the kit's ruler; Document ▸ Show Ruler): the caret's paragraph's first-line, left and right indents to drag, and tab stops: a click sets one, a drag moves it or takes it off, and its menu (or a double click) makes it left, centre, right or decimal. Tabs now go to stops (epaint's TabStops); here a left stop at 1½ in and a decimal one at 2¼ in line up a price list. Indents and stops are kept in Word, OpenDocument and RTF.",
+  "caption": "A ruler over the text (the kit's ruler; Document \u25b8 Show Ruler): the caret's paragraph's first-line, left and right indents to drag, and tab stops: a click sets one, a drag moves it or takes it off, and its menu (or a double click) makes it left, centre, right or decimal. Tabs now go to stops (epaint's TabStops); here a left stop at 1\u00bd in and a decimal one at 2\u00bc in line up a price list. Indents and stops are kept in Word, OpenDocument and RTF.",
   "image": "2026-10-30/193751-stylededit-the-ruler-indents-and-tab-stops.png"
  },
  {
   "time": "2026-10-30T20:42:25",
   "title": "StyledEdit: Header & Footer",
-  "caption": "Document ▸ Header & Footer… sets a left, centre and right part above and below every printed page, {page} and {pages} standing for the page number and count. Kept in the file, and in Word, OpenDocument and RTF (checked in LibreOffice).",
+  "caption": "Document \u25b8 Header & Footer\u2026 sets a left, centre and right part above and below every printed page, {page} and {pages} standing for the page number and count. Kept in the file, and in Word, OpenDocument and RTF (checked in LibreOffice).",
   "image": "2026-10-30/204225-stylededit-header-footer.png"
  },
  {
   "time": "2026-10-30T21:34:51",
   "title": "StyledEdit: pictures",
-  "caption": "Pictures in the text: Insert Picture…, pasted or dropped; drawn by the kit's editor where their character is, sized from the Edit menu, kept beside the document, and in Word, OpenDocument, RTF, web pages, Markdown and print.",
+  "caption": "Pictures in the text: Insert Picture\u2026, pasted or dropped; drawn by the kit's editor where their character is, sized from the Edit menu, kept beside the document, and in Word, OpenDocument, RTF, web pages, Markdown and print.",
   "image": "2026-10-30/213451-stylededit-pictures.png"
  },
  {
   "time": "2026-10-30T21:44:06",
   "title": "StyledEdit: Page View",
-  "caption": "Document ▸ Page View sets the text on sheets of the paper it prints on, with its margins: paragraphs and rows break across pages as printed, headers and footers on each sheet; the kit editor's Options::pages.",
+  "caption": "Document \u25b8 Page View sets the text on sheets of the paper it prints on, with its margins: paragraphs and rows break across pages as printed, headers and footers on each sheet; the kit editor's Options::pages.",
   "image": "2026-10-30/214406-stylededit-page-view.png"
  },
  {
@@ -2533,7 +2533,7 @@
  },
  {
   "time": "2026-10-31T17:19:14",
-  "title": "Preferences ▸ Display: each display's panel",
+  "title": "Preferences \u25b8 Display: each display's panel",
   "caption": "What the display is (make, size, density, refresh), what Olo works out about its panel (technology, colour stripes) and how it draws text on it, with why, each correctable (Automatic or a choice). Shown on a simulated 24-inch 1080p LCD (92 ppi): subpixel text.",
   "image": "2026-10-31/171914-preferences-display-each-display-s-panel.png"
  },
@@ -2558,7 +2558,7 @@
  {
   "time": "2026-10-31T21:17:47",
   "title": "Screenshot on GPUI",
-  "caption": "Screenshot moves to the GPUI kit: the same form and buttons, the preview made at exactly its frame's size in device pixels (remade when the scale changes) and drawn one pixel to a pixel, Copy to clipboard as image/png through GPUI's clipboard (which now offers images and data, not only text), Save closing the window and holding the path on the clipboard until something else is copied. The ⌘⇧4 region picker and the colour picker are GPUI layer overlays showing each output's frozen picture 1:1.",
+  "caption": "Screenshot moves to the GPUI kit: the same form and buttons, the preview made at exactly its frame's size in device pixels (remade when the scale changes) and drawn one pixel to a pixel, Copy to clipboard as image/png through GPUI's clipboard (which now offers images and data, not only text), Save closing the window and holding the path on the clipboard until something else is copied. The \u2318\u21e74 region picker and the colour picker are GPUI layer overlays showing each output's frozen picture 1:1.",
   "image": "2026-10-31/211747-screenshot-on-gpui.png"
  },
  {
@@ -2570,7 +2570,7 @@
  {
   "time": "2026-10-31T22:46:42",
   "title": "The command palette on GPUI",
-  "caption": "The command palette, its window menu and the shortcuts sheet move to the GPUI kit. Same look; key symbols (⇧ ⌘ ↵) set on the capitals' line by their outlines, the subtitle and kind on the title's baseline, the query lined up with the titles. It opens in 28 ms (egui: 47) and holds 40 MB less; small text's darkening is now an emboldened outline rather than a stroke (the same look, a third of the time).",
+  "caption": "The command palette, its window menu and the shortcuts sheet move to the GPUI kit. Same look; key symbols (\u21e7 \u2318 \u21b5) set on the capitals' line by their outlines, the subtitle and kind on the title's baseline, the query lined up with the titles. It opens in 28 ms (egui: 47) and holds 40 MB less; small text's darkening is now an emboldened outline rather than a stroke (the same look, a third of the time).",
   "image": "2026-10-31/224642-the-command-palette-on-gpui.png"
  },
  {
@@ -2612,7 +2612,7 @@
  {
   "time": "2026-11-01T05:22:33",
   "title": "Notifications on GPUI",
-  "caption": "Notifications, banners and History, now on Olo's GPUI: the same cards, groups, stop signs, balloons and reply fields, with words kept on a row when they fit (spaces hang past the edge, as egui and typesetters wrap), the generic application icon for apps without one in banners and History alike, and an exact gap after an error's stop sign. 61 MB against egui's 153 with four banners; History scrolls 200 notes at 1.3–1.8 ms a frame.",
+  "caption": "Notifications, banners and History, now on Olo's GPUI: the same cards, groups, stop signs, balloons and reply fields, with words kept on a row when they fit (spaces hang past the edge, as egui and typesetters wrap), the generic application icon for apps without one in banners and History alike, and an exact gap after an error's stop sign. 61 MB against egui's 153 with four banners; History scrolls 200 notes at 1.3\u20131.8 ms a frame.",
   "image": "2026-11-01/052233-notifications-on-gpui.png"
  },
  {
@@ -2630,7 +2630,7 @@
  {
   "time": "2026-11-01T09:50:47",
   "title": "Activity Monitor on GPUI",
-  "caption": "Activity Monitor moves from egui to Olo's GPUI kit, looking as it did. Its window is cached parts with the section's graphs on a layer of their own (the kit's GraphLayer): a graph moving a pixel redraws the graphs, not the cards around them. Graphs' fills are a new GPU primitive (paint_area) instead of paths filled through window-sized multisampled textures, and a window's graphs move together on one clock. On release at 2×: the UI thread at or under egui's in every section with graphs (CPU 3.9% of a core against 5.2), 93–96 MB against 119–123.",
+  "caption": "Activity Monitor moves from egui to Olo's GPUI kit, looking as it did. Its window is cached parts with the section's graphs on a layer of their own (the kit's GraphLayer): a graph moving a pixel redraws the graphs, not the cards around them. Graphs' fills are a new GPU primitive (paint_area) instead of paths filled through window-sized multisampled textures, and a window's graphs move together on one clock. On release at 2\u00d7: the UI thread at or under egui's in every section with graphs (CPU 3.9% of a core against 5.2), 93\u201396 MB against 119\u2013123.",
   "image": "2026-11-01/095047-activity-monitor-on-gpui.png"
  },
  {
@@ -2641,7 +2641,7 @@
  },
  {
   "time": "2026-11-01T12:06:36",
-  "title": "Activity Monitor ▸ Displays",
+  "title": "Activity Monitor \u25b8 Displays",
   "caption": "Each display's frames a second, the ones dropped (a vblank or more late), what its frames cost app_server to draw and how app_server paces them (frames.rs: the draw's share of the frame set from its cost and from drops), whether the pointer is on a plane of its own; and the check box that has every drop logged with what went into it. Made-up displays here (OLO_ACTIVITY_DEMO_FRAMES); a headless session has none.",
   "image": "2026-11-01/120636-activity-monitor-displays.png"
  },
@@ -2654,13 +2654,13 @@
  {
   "time": "2026-11-01T15:39:34",
   "title": "Mice by make and model",
-  "caption": "Preferences ▸ Touchpad & Mouse ▸ Mouse names each mouse by maker and model (sensor, resolution, how it's connected), offers the profile recommended for it or settings of its own, says what is known about it, and points at Olo Doctor for what gets in its way (a key remapper grabbing it, a receiver allowed to sleep). The device list now comes by event, not every 3 s.",
+  "caption": "Preferences \u25b8 Touchpad & Mouse \u25b8 Mouse names each mouse by maker and model (sensor, resolution, how it's connected), offers the profile recommended for it or settings of its own, says what is known about it, and points at Olo Doctor for what gets in its way (a key remapper grabbing it, a receiver allowed to sleep). The device list now comes by event, not every 3 s.",
   "image": "2026-11-01/153934-mice-by-make-and-model.png"
  },
  {
   "time": "2026-11-01T17:14:59",
   "title": "Screen saver on GPUI",
-  "caption": "olo-screensaver draws on Olo's GPUI: Message, Icons, Lissart, Lens and Spots (rows) at 1, 1.25, 1.5, 1.75 and 2× (columns), over a test desktop. Lens magnifies the desktop through textured triangles, Lissart's hundreds of lines are painted a layer at a time.",
+  "caption": "olo-screensaver draws on Olo's GPUI: Message, Icons, Lissart, Lens and Spots (rows) at 1, 1.25, 1.5, 1.75 and 2\u00d7 (columns), over a test desktop. Lens magnifies the desktop through textured triangles, Lissart's hundreds of lines are painted a layer at a time.",
   "image": "2026-11-01/171459-screen-saver-on-gpui.png"
  },
  {
@@ -2678,7 +2678,7 @@
  {
   "time": "2026-11-01T22:30:36",
   "title": "Pinch to zoom, off by default",
-  "caption": "Preferences ▸ Touchpad & Mouse ▸ Gestures: a pinch reaches the window under the pointer only when this is on. Off, two fingers drifting together while scrolling no longer zoom Chrome's pages.",
+  "caption": "Preferences \u25b8 Touchpad & Mouse \u25b8 Gestures: a pinch reaches the window under the pointer only when this is on. Off, two fingers drifting together while scrolling no longer zoom Chrome's pages.",
   "image": "2026-11-01/223036-pinch-to-zoom-off-by-default.png"
  },
  {
@@ -2720,19 +2720,19 @@
  {
   "time": "2026-11-02T11:27:50",
   "title": "AirPods panel",
-  "caption": "Preferences ▸ AirPods: levels with a picture of each bud and the case, noise control with Adaptive's strength, press and hold, listening features, the microphone, and what this computer does with them. Shown with a pretend pair (OLO_FAKE_AIRPODS).",
+  "caption": "Preferences \u25b8 AirPods: levels with a picture of each bud and the case, noise control with Adaptive's strength, press and hold, listening features, the microphone, and what this computer does with them. Shown with a pretend pair (OLO_FAKE_AIRPODS).",
   "image": "2026-11-02/112750-airpods-panel.png"
  },
  {
   "time": "2026-11-02T11:28:43",
-  "title": "AirPods panel, dark, 1×",
-  "caption": "The same at 1× in dark mode.",
+  "title": "AirPods panel, dark, 1\u00d7",
+  "caption": "The same at 1\u00d7 in dark mode.",
   "image": "2026-11-02/112843-airpods-panel-dark-1.png"
  },
  {
   "time": "2026-11-02T11:28:44",
   "title": "Sound: AirPods",
-  "caption": "Preferences ▸ Sound with AirPods as the output: their model, codec and whether they play at music or call quality, noise control, and where to record from while they're connected.",
+  "caption": "Preferences \u25b8 Sound with AirPods as the output: their model, codec and whether they play at music or call quality, noise control, and where to record from while they're connected.",
   "image": "2026-11-02/112844-sound-airpods.png"
  },
  {
@@ -2756,7 +2756,7 @@
  {
   "time": "2026-11-02T12:02:14",
   "title": "Tracker: Go to File or Folder",
-  "caption": "Go ▸ Go to File or Folder… (⇧⌘G): a path copied is in the field already, selected, so Return goes; the names in its folder that what's typed could be are listed as it's typed, Tab completes, ↑↓ choose. A folder opens; a file shows selected in its folder's window.",
+  "caption": "Go \u25b8 Go to File or Folder\u2026 (\u21e7\u2318G): a path copied is in the field already, selected, so Return goes; the names in its folder that what's typed could be are listed as it's typed, Tab completes, \u2191\u2193 choose. A folder opens; a file shows selected in its folder's window.",
   "image": "2026-11-02/120214-tracker-go-to-file-or-folder.png"
  },
  {
@@ -2780,19 +2780,19 @@
  {
   "time": "2026-11-02T12:45:54",
   "title": "Command palette: Go to the path in the clipboard",
-  "caption": "With a path copied (absolute, ~/…, a file:// URI), the palette offers to go there before anything is typed, and a path typed whole is offered too: Tracker shows it, a folder in its window, a file selected in its folder's. Read off the UI thread once the palette has the keyboard, which app_server now gives an exclusive layer as it shows.",
+  "caption": "With a path copied (absolute, ~/\u2026, a file:// URI), the palette offers to go there before anything is typed, and a path typed whole is offered too: Tracker shows it, a folder in its window, a file selected in its folder's. Read off the UI thread once the palette has the keyboard, which app_server now gives an exclusive layer as it shows.",
   "image": "2026-11-02/124554-command-palette-go-to-the-path-in-the-clipboard.png"
  },
  {
   "time": "2026-11-02T13:23:41",
   "title": "Text cut short shows whole in a tip",
-  "caption": "Resting the pointer on text the kit cut with … (here a name in Tracker's column) shows all of it in the kit's tip; with ⌘ held, at once. Every kit window does it for every label it cuts or that runs past its clip.",
+  "caption": "Resting the pointer on text the kit cut with \u2026 (here a name in Tracker's column) shows all of it in the kit's tip; with \u2318 held, at once. Every kit window does it for every label it cuts or that runs past its clip.",
   "image": "2026-11-02/132341-text-cut-short-shows-whole-in-a-tip.png"
  },
  {
   "time": "2026-11-02T13:33:01",
   "title": "A window tab's cut title shows whole",
-  "caption": "app_server shows the whole title of a window whose tab cuts it short on a tooltip's plate under the tab, once the pointer rests on the title (at once with ⌘), as Olo's apps do for their cut text.",
+  "caption": "app_server shows the whole title of a window whose tab cuts it short on a tooltip's plate under the tab, once the pointer rests on the title (at once with \u2318), as Olo's apps do for their cut text.",
   "image": "2026-11-02/133301-a-window-tab-s-cut-title-shows-whole.png"
  },
  {
@@ -2815,26 +2815,26 @@
  },
  {
   "time": "2026-11-02T14:48:05",
-  "title": "Tracker: Open With ▸ Other…",
-  "caption": "Any app can open a file: Other… lists every app that opens files, found by typing part of its name, with 'Always open files like … with it'.",
+  "title": "Tracker: Open With \u25b8 Other\u2026",
+  "caption": "Any app can open a file: Other\u2026 lists every app that opens files, found by typing part of its name, with 'Always open files like \u2026 with it'.",
   "image": "2026-11-02/144805-tracker-open-with-other.png"
  },
  {
   "time": "2026-11-02T15:29:02",
   "title": "Default Apps: your own kinds",
-  "caption": "Preferences ▸ Default Apps ▸ Your Own Kinds: a kind named by its extensions (Game saves: .sav .sv2) opens in the app chosen; Olo knows files by it everywhere (olo_xdg::mime::own_kinds).",
+  "caption": "Preferences \u25b8 Default Apps \u25b8 Your Own Kinds: a kind named by its extensions (Game saves: .sav .sv2) opens in the app chosen; Olo knows files by it everywhere (olo_xdg::mime::own_kinds).",
   "image": "2026-11-02/152902-default-apps-your-own-kinds.png"
  },
  {
   "time": "2026-11-02T15:29:03",
   "title": "Default Apps: what Open With offers",
-  "caption": "The Open With tab: a kind's apps in Open With ▸, in order, moved, removed and added; Olo's Choice lets Olo choose again.",
+  "caption": "The Open With tab: a kind's apps in Open With \u25b8, in order, moved, removed and added; Olo's Choice lets Olo choose again.",
   "image": "2026-11-02/152903-default-apps-what-open-with-offers.png"
  },
  {
   "time": "2026-11-02T15:29:03",
   "title": "File panels: Open With",
-  "caption": "An item's menu in the Open and Save panels: Quick Look, Open With ▸ (the kit's olo_ui::open_with, as Tracker's) and Show in Tracker.",
+  "caption": "An item's menu in the Open and Save panels: Quick Look, Open With \u25b8 (the kit's olo_ui::open_with, as Tracker's) and Show in Tracker.",
   "image": "2026-11-02/152903-file-panels-open-with.png"
  },
  {
@@ -2870,7 +2870,7 @@
  {
   "time": "2026-11-02T16:37:02",
   "title": "Telegram: chats chosen together",
-  "caption": "⌘-click, ⇧-click or Edit ▸ Select All Chats chooses several; their menu archives, unarchives, marks read, mutes or deletes them all (asking first).",
+  "caption": "\u2318-click, \u21e7-click or Edit \u25b8 Select All Chats chooses several; their menu archives, unarchives, marks read, mutes or deletes them all (asking first).",
   "image": "2026-11-02/163702-telegram-chats-chosen-together.png"
  },
  {
@@ -2918,24 +2918,24 @@
  {
   "time": "2026-11-02T18:45:27",
   "title": "Agent Screens: a screen renamed",
-  "caption": "Screen ▸ Rename… or a click on its title: the name the person gives shows in the list and the header, kept with its history (olo-screen rename NAME TITLE; list says it).",
+  "caption": "Screen \u25b8 Rename\u2026 or a click on its title: the name the person gives shows in the list and the header, kept with its history (olo-screen rename NAME TITLE; list says it).",
   "image": "2026-11-02/184527-agent-screens-a-screen-renamed.png"
  },
  {
   "time": "2026-11-02T18:53:50",
   "title": "Agent Screens: several chosen, archived, deleted",
-  "caption": "⌘- and ⇧-clicks or ⌘A choose screens together; their menu archives, unarchives, stops or deletes them all (asked once); View ▸ Show Archived lists the archived in their own section; Delete moves histories to the Trash.",
+  "caption": "\u2318- and \u21e7-clicks or \u2318A choose screens together; their menu archives, unarchives, stops or deletes them all (asked once); View \u25b8 Show Archived lists the archived in their own section; Delete moves histories to the Trash.",
   "image": "2026-11-02/185350-agent-screens-several-chosen-archived-deleted.png"
  },
  {
   "time": "2026-11-02T19:56:51",
   "title": "Emoji picker: five from AI for a description",
-  "caption": "⌃⌘Space opens the emoji picker over everything: search as you type, a tab a group, skin tones kept; ⌘↩ asks the model chosen in Preferences ▸ AI for five emoji for what was typed, each with its reason. Return puts the selected one into the field that had the keyboard, in any app (app_server's InsertText). (A fake model answered here; tests never call a real one.)",
+  "caption": "\u2303\u2318Space opens the emoji picker over everything: search as you type, a tab a group, skin tones kept; \u2318\u21a9 asks the model chosen in Preferences \u25b8 AI for five emoji for what was typed, each with its reason. Return puts the selected one into the field that had the keyboard, in any app (app_server's InsertText). (A fake model answered here; tests never call a real one.)",
   "image": "2026-11-02/195651-emoji-picker-five-from-ai-for-a-description.png"
  },
  {
   "time": "2026-11-02T20:02:09",
-  "title": "Preferences ▸ AI: Emoji",
+  "title": "Preferences \u25b8 AI: Emoji",
   "caption": "The emoji picker's AI suggestions get their own switch, model and effort (low by default: they're asked while you wait), as Smart Tiling has; the panel grows to fit them.",
   "image": "2026-11-02/200209-preferences-ai-emoji.png"
  },
@@ -2953,7 +2953,7 @@
  },
  {
   "time": "2026-11-02T22:02:12",
-  "title": "Preferences ▸ Terminal: tell coding agents to use Agent Screens",
+  "title": "Preferences \u25b8 Terminal: tell coding agents to use Agent Screens",
   "caption": "A third Coding Agents setting: Claude Code and Codex are told as they start to test and use desktop apps and web pages on Agent Screens of their own, and how, Olo's Chrome included, so they never start a Chrome on the person's screen. The panel is taller to fit it.",
   "image": "2026-11-02/220212-preferences-terminal-tell-coding-agents-to-use-a.png"
  },
@@ -2965,26 +2965,26 @@
  },
  {
   "time": "2026-11-02T22:41:15",
-  "title": "Preferences ▸ Touchpad ▸ Touch: Train for Your Palm",
+  "title": "Preferences \u25b8 Touchpad \u25b8 Touch: Train for Your Palm",
   "caption": "A guided run through five exercises on the touchpad, each shown as an Olo-style animation of hands on a pad (left) and mirrored live by what the pad sees (right: a palm in orange, a finger in blue), with a word on how it's going and how many more touches it needs. Then Olo's hand-written palm model is refined to the person's hands off the UI thread, kept in the settings, and tried live.",
   "image": "2026-11-02/224115-preferences-touchpad-touch-train-for-your-palm.png"
  },
  {
   "time": "2026-11-02T23:13:48",
   "title": "Train for Your Palm, in a dialog of its own",
-  "caption": "The palm trainer moved out of the Touch tab (where it ran off the panel) into a 560×440 dialog opened from a button. The film is a laptop's deck, keys and the pad between the palm rests, with the hands resting and lifting; beside it the pad live, its own shape, each touch drawn as the model calls it: here one hand's palm half over the left edge, which the size rule misses (the red ring) and the model catches. A sixth exercise gathers exactly that case.",
+  "caption": "The palm trainer moved out of the Touch tab (where it ran off the panel) into a 560\u00d7440 dialog opened from a button. The film is a laptop's deck, keys and the pad between the palm rests, with the hands resting and lifting; beside it the pad live, its own shape, each touch drawn as the model calls it: here one hand's palm half over the left edge, which the size rule misses (the red ring) and the model catches. A sixth exercise gathers exactly that case.",
   "image": "2026-11-02/231348-train-for-your-palm-in-a-dialog-of-its-own.png"
  },
  {
   "time": "2026-11-03T10:35:49",
   "title": "StyledEdit's tool bars",
-  "caption": "The kit's new ToolBar: StyledEdit's file, editing and format tools along the top (wrapping to two rows in a narrow window, a » menu for what still doesn't fit), insert and view tools down the side. Every tool is a menu command and shows its state (Bold and Center pushed for the selected title); the pickers show the font, size and colour where the selection starts. 25 new icons, in every theme.",
+  "caption": "The kit's new ToolBar: StyledEdit's file, editing and format tools along the top (wrapping to two rows in a narrow window, a \u00bb menu for what still doesn't fit), insert and view tools down the side. Every tool is a menu command and shows its state (Bold and Center pushed for the selected title); the pickers show the font, size and colour where the selection starts. 25 new icons, in every theme.",
   "image": "2026-11-03/103549-stylededit-s-tool-bars.png"
  },
  {
   "time": "2026-11-03T18:09:37",
   "title": "Backup takes passwords to another computer",
-  "caption": "Preferences ▸ Backup seals passwords and sign-ins into the backup with a password, and moves it in on another computer: paths under the new home, the Token Pool paused, Telegram signed in again; what an import left behind is listed.",
+  "caption": "Preferences \u25b8 Backup seals passwords and sign-ins into the backup with a password, and moves it in on another computer: paths under the new home, the Token Pool paused, Telegram signed in again; what an import left behind is listed.",
   "image": "2026-11-03/180937-backup-takes-passwords-to-another-computer.png"
  },
  {
@@ -2995,7 +2995,7 @@
  },
  {
   "time": "2026-11-03T20:46:14",
-  "title": "Sound ▸ Voice Processing ▸ Try It",
+  "title": "Sound \u25b8 Voice Processing \u25b8 Try It",
   "caption": "A few seconds of your voice, recorded and put through each setting worth comparing: what each adds (delay, its time a 10 ms frame, what noise suppression and levelling did) and what ran it; played as the original or the chosen setting's sound, switching at the same place, with a live spectrum of both (the kit's new Spectrum).",
   "image": "2026-11-03/204614-sound-voice-processing-try-it.png"
  },
@@ -3020,7 +3020,7 @@
  {
   "time": "2026-11-03T22:20:10",
   "title": "Command palette: every text key, and Ctrl for files",
-  "caption": "Text editing's keys are commands of their own (Move to the end of the line, ⌘→), done in the window the palette opened over; files and folders come with a tap of Ctrl, as the key hint at the field's right says.",
+  "caption": "Text editing's keys are commands of their own (Move to the end of the line, \u2318\u2192), done in the window the palette opened over; files and folders come with a tap of Ctrl, as the key hint at the field's right says.",
   "image": "2026-11-03/222010-command-palette-every-text-key-and-ctrl-for-file.png"
  },
  {
@@ -3031,20 +3031,20 @@
  },
  {
   "time": "2026-11-03T23:59:38",
-  "title": "Terminal ▸ Command Suggestions: brush's hints from a model of your own",
-  "caption": "Preferences ▸ Terminal turns on olo-complete, a tiny model of your own commands (the line, the folder, the commands before in that shell, the hour and the day) that gives brush its grey hint. Turning it on starts it and runs its first fine-tune from the history, then says how it did on your newest commands; it learns again a minute after you type. Unavailable while brush isn't the login shell, and a brush from before the model is told apart by a mark in its binary, each with a button to Olo Suggestions. The pane is 520×692 for its tallest state.",
+  "title": "Terminal \u25b8 Command Suggestions: brush's hints from a model of your own",
+  "caption": "Preferences \u25b8 Terminal turns on olo-complete, a tiny model of your own commands (the line, the folder, the commands before in that shell, the hour and the day) that gives brush its grey hint. Turning it on starts it and runs its first fine-tune from the history, then says how it did on your newest commands; it learns again a minute after you type. Unavailable while brush isn't the login shell, and a brush from before the model is told apart by a mark in its binary, each with a button to Olo Suggestions. The pane is 520\u00d7692 for its tallest state.",
   "image": "2026-11-03/235938-terminal-command-suggestions-brush-s-hints-from-.png"
  },
  {
   "time": "2026-11-04T00:00:36",
-  "title": "Activity Monitor ▸ AI: how the command model does",
-  "caption": "A new section, asked of olo-complete once a second only while it shows: suggestions offered and taken (whole or a word at a time), what it knows, latency from the question to the answer sent (typically, 95th percentile, slowest) with a graph, and its learning: fine-tunes, the last one's examples, steps and time, how often its first suggestion is right on the newest commands against the hand-written weights, and whether it was kept. Off, it says so, with Terminal Preferences… to turn it on.",
+  "title": "Activity Monitor \u25b8 AI: how the command model does",
+  "caption": "A new section, asked of olo-complete once a second only while it shows: suggestions offered and taken (whole or a word at a time), what it knows, latency from the question to the answer sent (typically, 95th percentile, slowest) with a graph, and its learning: fine-tunes, the last one's examples, steps and time, how often its first suggestion is right on the newest commands against the hand-written weights, and whether it was kept. Off, it says so, with Terminal Preferences\u2026 to turn it on.",
   "image": "2026-11-04/000036-activity-monitor-ai-how-the-command-model-does.png"
  },
  {
   "time": "2026-11-04T00:08:48",
   "title": "Display: settings beside the panel, the window as tall as both",
-  "caption": "At 200 % on the ThinkPad's 3200 × 2000 panel, Display was a 658-point window scrolling an 804-point panel, its scroll bar against the boxes. Now the display's settings and its panel's facts are side by side, in a window that follows what it shows (fits_content), on every screen down to 1280 × 800.",
+  "caption": "At 200 % on the ThinkPad's 3200 \u00d7 2000 panel, Display was a 658-point window scrolling an 804-point panel, its scroll bar against the boxes. Now the display's settings and its panel's facts are side by side, in a window that follows what it shows (fits_content), on every screen down to 1280 \u00d7 800.",
   "image": "2026-11-04/000848-display-settings-beside-the-panel-the-window-as-.png"
  },
  {
@@ -3056,7 +3056,7 @@
  {
   "time": "2026-11-04T00:09:33",
   "title": "Performance in two tabs, the thresholds two by two",
-  "caption": "It was 1,220 points tall in a scroll view of its own; now Supervisor and Watchdog tabs, fitting a 1280 × 800 screen unscrolled.",
+  "caption": "It was 1,220 points tall in a scroll view of its own; now Supervisor and Watchdog tabs, fitting a 1280 \u00d7 800 screen unscrolled.",
   "image": "2026-11-04/000933-performance-in-two-tabs-the-thresholds-two-by-tw.png"
  },
  {
@@ -3068,19 +3068,19 @@
  {
   "time": "2026-11-04T03:17:31",
   "title": "Fitting windows open at their size",
-  "caption": "A window that fits what it shows (here Preferences ▸ Display, with its displays and GPUs, which come from app_server just after it opens) is no longer shown at its designed size and then grown: frames drawn at a size about to change aren't shown, and what it asks for as it opens holds its first showing for up to 150 ms. Display opens at 940×607 at once (before: 520, then 607). Its Graphics box's labels now level with their values.",
+  "caption": "A window that fits what it shows (here Preferences \u25b8 Display, with its displays and GPUs, which come from app_server just after it opens) is no longer shown at its designed size and then grown: frames drawn at a size about to change aren't shown, and what it asks for as it opens holds its first showing for up to 150 ms. Display opens at 940\u00d7607 at once (before: 520, then 607). Its Graphics box's labels now level with their values.",
   "image": "2026-11-04/031731-fitting-windows-open-at-their-size.png"
  },
  {
   "time": "2026-11-04T04:00:36",
-  "title": "Preferences ▸ GPUs",
+  "title": "Preferences \u25b8 GPUs",
   "caption": "A new panel: each GPU, what it drives, and its tuning. Presets (Cooler and Quieter, Balanced, Fastest) or the knobs by hand: Intel's lowest and highest clock and power-saving profile; NVIDIA's highest clock, power limit where it can be given one (not on a laptop) and persistence. Applied through polkit, kept for the computer and set again at every start. A sleeping NVIDIA GPU isn't asked (that would wake it): what it said last is shown.",
   "image": "2026-11-04/040036-preferences-gpus.png"
  },
  {
   "time": "2026-11-04T11:01:36",
   "title": "Display: Colour, with HDR",
-  "caption": "Preferences ▸ Display has a Colour tab beside the panel's facts: what the display shows (its gamut and light, from its EDID), whether sRGB's colours are shown accurately (converted into a wide display's gamut, the default) or vivid, and HDR on a display that takes it, with everything else's brightness and a band that reverts HDR unless kept. On a headless screen pretending to be a P3 HDR panel.",
+  "caption": "Preferences \u25b8 Display has a Colour tab beside the panel's facts: what the display shows (its gamut and light, from its EDID), whether sRGB's colours are shown accurately (converted into a wide display's gamut, the default) or vivid, and HDR on a display that takes it, with everything else's brightness and a band that reverts HDR unless kept. On a headless screen pretending to be a P3 HDR panel.",
   "image": "2026-11-04/110136-display-colour-with-hdr.png"
  },
  {
@@ -3092,7 +3092,7 @@
  {
   "time": "2026-11-04T13:51:06",
   "title": "Backup chooses what goes in",
-  "caption": "Preferences ▸ Backup: a check box for each part of a backup (each app's settings with the passwords and sign-ins that go with them, and the Wi-Fi networks), exporting and importing: a backup of everything can bring back the Token Pool alone. The rest stays as it is.",
+  "caption": "Preferences \u25b8 Backup: a check box for each part of a backup (each app's settings with the passwords and sign-ins that go with them, and the Wi-Fi networks), exporting and importing: a backup of everything can bring back the Token Pool alone. The rest stays as it is.",
   "image": "2026-11-04/135106-backup-chooses-what-goes-in.png"
  },
  {
@@ -3104,13 +3104,13 @@
  {
   "time": "2026-11-04T15:47:39",
   "title": "A notification for each new suggestion, once",
-  "caption": "Olo Suggestions tells of a suggestion once ever; at 1×, 1.5× and 2×. Its action used to be cut off past the banner's edge: banner actions now fit, stacked when they must.",
+  "caption": "Olo Suggestions tells of a suggestion once ever; at 1\u00d7, 1.5\u00d7 and 2\u00d7. Its action used to be cut off past the banner's edge: banner actions now fit, stacked when they must.",
   "image": "2026-11-04/154739-a-notification-for-each-new-suggestion-once.png"
  },
  {
   "time": "2026-11-04T15:47:40",
   "title": "Banner actions stack when they don't fit side by side",
-  "caption": "Two long actions, one above another at the card's width, at 1×, 1.5× and 2×; a label cut with … only when even a row of its own is too narrow.",
+  "caption": "Two long actions, one above another at the card's width, at 1\u00d7, 1.5\u00d7 and 2\u00d7; a label cut with \u2026 only when even a row of its own is too narrow.",
   "image": "2026-11-04/154740-banner-actions-stack-when-they-don-t-fit-side-by.png"
  },
  {
@@ -3121,7 +3121,7 @@
  },
  {
   "time": "2026-11-04T18:15:02",
-  "title": "Preferences ▸ Keyboard knows the Magic Keyboard with Touch ID",
+  "title": "Preferences \u25b8 Keyboard knows the Magic Keyboard with Touch ID",
   "caption": "The A2520 recognised by its name, in a box of its own with a picture (the keyboard icon for now), what it is, and why its Touch ID isn't used: its sensor is sealed to the Mac it's paired with.",
   "image": "2026-11-04/181502-preferences-keyboard-knows-the-magic-keyboard-wi.png"
  },
@@ -3139,7 +3139,7 @@
  },
  {
   "time": "2026-11-04T18:55:14",
-  "title": "Preferences ▸ GPUs: what screen recordings encode on",
+  "title": "Preferences \u25b8 GPUs: what screen recordings encode on",
   "caption": "The most powerful there is by default (here the NVIDIA RTX PRO 2000's encoder, NVENC), that GPU, or the processor (OpenH264); the recorder reads it unless told.",
   "image": "2026-11-04/185514-preferences-gpus-what-screen-recordings-encode-o.png"
  },
@@ -3151,8 +3151,8 @@
  },
  {
   "time": "2026-11-04T20:59:55",
-  "title": "Screenshot: Record…",
-  "caption": "Screenshot's window records too: Record… offers Record Screen, Record Active Window (the one behind it) and Record Region… (dragged out on the frozen screen). Its window steps aside, the recorder starts on its own and Screenshot quits; with a recording going, the menu is Pause (or Resume) and Stop Recording. The window is as tall as its form now: a fixed height had let Save in: slip under the buttons. Dark, 2x.",
+  "title": "Screenshot: Record\u2026",
+  "caption": "Screenshot's window records too: Record\u2026 offers Record Screen, Record Active Window (the one behind it) and Record Region\u2026 (dragged out on the frozen screen). Its window steps aside, the recorder starts on its own and Screenshot quits; with a recording going, the menu is Pause (or Resume) and Stop Recording. The window is as tall as its form now: a fixed height had let Save in: slip under the buttons. Dark, 2x.",
   "image": "2026-11-04/205955-screenshot-record.png"
  },
  {
@@ -3170,13 +3170,13 @@
  {
   "time": "2026-11-05T01:26:56",
   "title": "HDR video shown for an sRGB screen",
-  "caption": "HDR10 and HLG video (phones', streaming's: BT.2020, PQ or HLG) converted for an ordinary screen: its light counted in SDR's white (203 cd/m²), BT.2020 converted to sRGB, highlights rolled off up to the brightest it was mastered to. A test pattern, a PQ ramp to 1,000 cd/m² over BT.2020 colour bars at 100 and 600 cd/m²: above as it shows now, below as before (dull and grey, its samples taken as sRGB).",
+  "caption": "HDR10 and HLG video (phones', streaming's: BT.2020, PQ or HLG) converted for an ordinary screen: its light counted in SDR's white (203 cd/m\u00b2), BT.2020 converted to sRGB, highlights rolled off up to the brightest it was mastered to. A test pattern, a PQ ramp to 1,000 cd/m\u00b2 over BT.2020 colour bars at 100 and 600 cd/m\u00b2: above as it shows now, below as before (dull and grey, its samples taken as sRGB).",
   "image": "2026-11-05/012656-hdr-video-shown-for-an-srgb-screen.png"
  },
  {
   "time": "2026-11-05T03:52:45",
-  "title": "Preferences ▸ Themes: Cube, Platinum and Workbench",
-  "caption": "Three more themes, after NeXTSTEP, Mac OS 9 and AmigaOS: a full icon set each (135, drawn by gpt-image-2.5-sunburst against each theme's references), its wordmark, its wallpaper (light and dark) and its own colours. The panel lays the chosen theme's colour sets beside the ten rows, so it fits 1280 × 800 without scrolling.",
+  "title": "Preferences \u25b8 Themes: Cube, Platinum and Workbench",
+  "caption": "Three more themes, after NeXTSTEP, Mac OS 9 and AmigaOS: a full icon set each (135, drawn by gpt-image-2.5-sunburst against each theme's references), its wordmark, its wallpaper (light and dark) and its own colours. The panel lays the chosen theme's colour sets beside the ten rows, so it fits 1280 \u00d7 800 without scrolling.",
   "image": "2026-11-05/035245-preferences-themes-cube-platinum-and-workbench.png"
  },
  {
@@ -3199,7 +3199,7 @@
  },
  {
   "time": "2026-11-05T04:33:01",
-  "title": "Preferences ▸ Security: Security Keys",
+  "title": "Preferences \u25b8 Security: Security Keys",
   "caption": "A security key (a YubiKey) set up so a touch of it stands for the account password: the password checked, then two touches; a spare the same way; and three touches in a row to type its code where you are. Shown set up with the test key.",
   "image": "2026-11-05/043301-preferences-security-security-keys.png"
  },
@@ -3218,43 +3218,43 @@
  {
   "time": "2026-11-05T05:36:03",
   "title": "Clicks and shortcuts shown while recording",
-  "caption": "Record… ▸ Show Clicks and Show Shortcuts (or --show-clicks, --show-keys): a ring spreads where a button is pressed, and a shortcut shows on a key cap low on the screen, written as the keyboard profile writes it; typing never shows. Drawn by app_server, so recordings, screen sharing and agents' demos have them.",
+  "caption": "Record\u2026 \u25b8 Show Clicks and Show Shortcuts (or --show-clicks, --show-keys): a ring spreads where a button is pressed, and a shortcut shows on a key cap low on the screen, written as the keyboard profile writes it; typing never shows. Drawn by app_server, so recordings, screen sharing and agents' demos have them.",
   "image": "2026-11-05/053603-clicks-and-shortcuts-shown-while-recording.png"
  },
  {
   "time": "2026-11-05T05:57:39",
-  "title": "The Viewer's Trim…",
-  "caption": "Edit ▸ Trim… on a video puts a handle at each end of its timeline (what's cut dimmed, the picture where a handle is dragged shown); Trim copies the stretch kept into “NAME (trimmed).mp4” beside it, nothing encoded again, and shows it. olo-screenshot --trim does the same for agents.",
+  "title": "The Viewer's Trim\u2026",
+  "caption": "Edit \u25b8 Trim\u2026 on a video puts a handle at each end of its timeline (what's cut dimmed, the picture where a handle is dragged shown); Trim copies the stretch kept into \u201cNAME (trimmed).mp4\u201d beside it, nothing encoded again, and shows it. olo-screenshot --trim does the same for agents.",
   "image": "2026-11-05/055739-the-viewer-s-trim.png"
  },
  {
   "time": "2026-11-05T06:17:18",
   "title": "A window recorded on a background",
-  "caption": "Record… ▸ Window on a Background (or --background): a window's recording shows it on the wallpaper, blurred and a little dimmed, its corners rounded and a soft shadow under it, as a polished demo of one app usually looks. Made once as the recording starts; each frame copies only the window.",
+  "caption": "Record\u2026 \u25b8 Window on a Background (or --background): a window's recording shows it on the wallpaper, blurred and a little dimmed, its corners rounded and a soft shadow under it, as a polished demo of one app usually looks. Made once as the recording starts; each frame copies only the window.",
   "image": "2026-11-05/061718-a-window-recorded-on-a-background.png"
  },
  {
   "time": "2026-11-05T06:30:45",
   "title": "The pointer in a recording, larger and smoothed",
-  "caption": "Record… ▸ Larger Pointer and Smooth Pointer (or --pointer-size, --smooth-pointer): recordings draw the pointer bigger (drawn at that size, never enlarged) and gliding after the real one, so a hand's jitter is smoothed and an agent's jumps become moves. Here, the frames after one jump laid over each other, a thirtieth of a second apart. Only recordings have it; a window's recording now shows the pointer too.",
+  "caption": "Record\u2026 \u25b8 Larger Pointer and Smooth Pointer (or --pointer-size, --smooth-pointer): recordings draw the pointer bigger (drawn at that size, never enlarged) and gliding after the real one, so a hand's jitter is smoothed and an agent's jumps become moves. Here, the frames after one jump laid over each other, a thirtieth of a second apart. Only recordings have it; a window's recording now shows the pointer too.",
   "image": "2026-11-05/063045-the-pointer-in-a-recording-larger-and-smoothed.png"
  },
  {
   "time": "2026-11-05T06:45:21",
   "title": "Recordings zoom in on clicks",
-  "caption": "Record… ▸ Zoom on Clicks (or --zoom-follow): a recording of the screen glides in around each click (twice), pans to keep the pointer in view, holds while you click and type, and glides out three seconds after; a shortcut's key cap stays in its place, unzoomed. Agents zoom to a detail themselves (olo-screen zoom-video NAME X,Y,W,H, then out). The GPU draws the capture magnified, so it costs the recorder nothing; screenshots and the screen are as they are.",
+  "caption": "Record\u2026 \u25b8 Zoom on Clicks (or --zoom-follow): a recording of the screen glides in around each click (twice), pans to keep the pointer in view, holds while you click and type, and glides out three seconds after; a shortcut's key cap stays in its place, unzoomed. Agents zoom to a detail themselves (olo-screen zoom-video NAME X,Y,W,H, then out). The GPU draws the capture magnified, so it costs the recorder nothing; screenshots and the screen are as they are.",
   "image": "2026-11-05/064521-recordings-zoom-in-on-clicks.png"
  },
  {
   "time": "2026-11-05T06:57:45",
   "title": "The camera in a bubble while recording",
-  "caption": "Record… ▸ Show Camera (or --camera): the camera in a circle low in the screen's right corner while you record, so a recording of the screen has you in it; it's there before the countdown, so you can frame yourself, and drags anywhere. The camera is read natively (V4L2, in process); here a stand-in camera's pattern.",
+  "caption": "Record\u2026 \u25b8 Show Camera (or --camera): the camera in a circle low in the screen's right corner while you record, so a recording of the screen has you in it; it's there before the countdown, so you can frame yourself, and drags anywhere. The camera is read natively (V4L2, in process); here a stand-in camera's pattern.",
   "image": "2026-11-05/065745-the-camera-in-a-bubble-while-recording.png"
  },
  {
   "time": "2026-11-05T07:20:17",
   "title": "Recordings in HEVC, and a third smaller in H.264",
-  "caption": "Preferences ▸ GPUs ▸ Format: H.264 (plays everywhere) or HEVC (about half the size), on NVIDIA's encoder; olo-screenshot --codec takes AV1 too. Each codec now keeps a constant, measured quality instead of a bitrate: the same screen typed into for 5 s was 262 KB in H.264 and is 171 now, 96 in HEVC, the text as sharp. Trimming, GIFs and the Viewer take all three.",
+  "caption": "Preferences \u25b8 GPUs \u25b8 Format: H.264 (plays everywhere) or HEVC (about half the size), on NVIDIA's encoder; olo-screenshot --codec takes AV1 too. Each codec now keeps a constant, measured quality instead of a bitrate: the same screen typed into for 5 s was 262 KB in H.264 and is 171 now, 96 in HEVC, the text as sharp. Trimming, GIFs and the Viewer take all three.",
   "image": "2026-11-05/072017-recordings-in-hevc-and-a-third-smaller-in-h-264.png"
  },
  {
@@ -3266,13 +3266,13 @@
  {
   "time": "2026-11-05T10:20:00",
   "title": "Display: keep HDR or a new resolution in an alert",
-  "caption": "Turning HDR on (or choosing a resolution) in Preferences ▸ Display now asks in an alert over the window, counting down, Revert or Keep (the default), as BeOS's Screen preferences did; the line at the foot of the window was easy to miss, and HDR went off by itself 15 s later (Ben, 2026-11-05). The kit's widgets::open_timed_alert.",
+  "caption": "Turning HDR on (or choosing a resolution) in Preferences \u25b8 Display now asks in an alert over the window, counting down, Revert or Keep (the default), as BeOS's Screen preferences did; the line at the foot of the window was easy to miss, and HDR went off by itself 15 s later (Ben, 2026-11-05). The kit's widgets::open_timed_alert.",
   "image": "2026-11-05/102000-display-keep-hdr-or-a-new-resolution-in-an-alert.png"
  },
  {
   "time": "2026-11-05T10:20:01",
-  "title": "Display: Everything else's brightness up to 600 cd/m², on its track",
-  "caption": "The SDR-in-HDR slider went to 480 while app_server took 600 (and a built-in panel's now follows its brightness, near 600 on the ThinkPad's OLED), so its knob was drawn past the track's end (Ben: it 'runs off the side'). One range for both, in protocol; the kit's Slider draws a value outside its range at the end; the note under it level with the label. At 2×, 1.5× and 1×.",
+  "title": "Display: Everything else's brightness up to 600 cd/m\u00b2, on its track",
+  "caption": "The SDR-in-HDR slider went to 480 while app_server took 600 (and a built-in panel's now follows its brightness, near 600 on the ThinkPad's OLED), so its knob was drawn past the track's end (Ben: it 'runs off the side'). One range for both, in protocol; the kit's Slider draws a value outside its range at the end; the note under it level with the label. At 2\u00d7, 1.5\u00d7 and 1\u00d7.",
   "image": "2026-11-05/102001-display-everything-else-s-brightness-up-to-600-c.png"
  },
  {
@@ -3296,37 +3296,37 @@
  {
   "time": "2026-11-05T14:02:22",
   "title": "Passwords is the SSH agent",
-  "caption": "Preferences ▸ Security ▸ Be the SSH agent (on by default): ssh and git sign in with the SSH keys in Passwords, each terminal allowed the first time; where ~/.ssh/config sends ssh to another agent (1Password's app's), it says so and offers the switch once the session has Passwords' agent.",
+  "caption": "Preferences \u25b8 Security \u25b8 Be the SSH agent (on by default): ssh and git sign in with the SSH keys in Passwords, each terminal allowed the first time; where ~/.ssh/config sends ssh to another agent (1Password's app's), it says so and offers the switch once the session has Passwords' agent.",
   "image": "2026-11-05/140222-passwords-is-the-ssh-agent.png"
  },
  {
   "time": "2026-11-05T15:01:34",
   "title": "Deskbar: Ethernet beside Wi-Fi, with each link's details",
-  "caption": "An Ethernet port shows in the tray while a wired link is connected. With both connected, the link not carrying the traffic (NetworkManager's default route) is drawn faint. A right-click on either shows what it's joined to, whether it's in use, its signal and rate or speed, addresses, router, DNS servers, interface, hardware address and traffic, then Network Preferences…. Here Wi-Fi stands by while Ethernet carries the traffic (nm-fake, a stand-in NetworkManager).",
+  "caption": "An Ethernet port shows in the tray while a wired link is connected. With both connected, the link not carrying the traffic (NetworkManager's default route) is drawn faint. A right-click on either shows what it's joined to, whether it's in use, its signal and rate or speed, addresses, router, DNS servers, interface, hardware address and traffic, then Network Preferences\u2026. Here Wi-Fi stands by while Ethernet carries the traffic (nm-fake, a stand-in NetworkManager).",
   "image": "2026-11-05/150134-deskbar-ethernet-beside-wi-fi-with-each-link-s-d.png"
  },
  {
   "time": "2026-11-05T15:24:57",
-  "title": "Preferences ▸ Network: Service Order, with Deskbar following",
+  "title": "Preferences \u25b8 Network: Service Order, with Deskbar following",
   "caption": "Network has tabs for Ethernet, Service Order, DNS, Hosts and Shaping now. Here Wi-Fi was put first. NetworkManager's per-kind route metrics, written as root by olo-net-admin, moved the default route without disconnecting anything, and Deskbar's tray drew Ethernet faint and Wi-Fi strong as it happened (nm-fake standing in for NetworkManager).",
   "image": "2026-11-05/152457-preferences-network-service-order-with-deskbar-f.png"
  },
  {
   "time": "2026-11-05T15:25:52",
-  "title": "Preferences ▸ Network ▸ Shaping, as a link conditioner",
+  "title": "Preferences \u25b8 Network \u25b8 Shaping, as a link conditioner",
   "caption": "A link made slower, later and lossier than it is, each way, to try a program on a poor network: bandwidth, delay, jitter and loss, from a network to start from (Edge, 3G, LTE, DSL, Busy Wi-Fi, Very Bad Network, Offline). The kernel's netem does it, spoken to over rtnetlink by olo-net-admin as root (an ifb device carries what's received). Here 3G was chosen and is ready to turn on.",
   "image": "2026-11-05/152552-preferences-network-shaping-as-a-link-conditione.png"
  },
  {
   "time": "2026-11-05T15:42:56",
-  "title": "Preferences ▸ Network ▸ VPN, with WireGuard imported natively",
-  "caption": "The VPNs saved (WireGuard, and NetworkManager's plugins' OpenVPN, IPsec…) are each connected and disconnected here, and removed after asking. A WireGuard file (wg-quick's .conf) is imported natively: keys checked, addresses by family, and its DNS asked alone while it's up so a full tunnel's names don't leak. Here “Office” was imported and connected. Also new: a hotspot under Wi-Fi, and IPv6 and MTU on a wired link (nm-fake standing in for NetworkManager).",
+  "title": "Preferences \u25b8 Network \u25b8 VPN, with WireGuard imported natively",
+  "caption": "The VPNs saved (WireGuard, and NetworkManager's plugins' OpenVPN, IPsec\u2026) are each connected and disconnected here, and removed after asking. A WireGuard file (wg-quick's .conf) is imported natively: keys checked, addresses by family, and its DNS asked alone while it's up so a full tunnel's names don't leak. Here \u201cOffice\u201d was imported and connected. Also new: a hotspot under Wi-Fi, and IPv6 and MTU on a wired link (nm-fake standing in for NetworkManager).",
   "image": "2026-11-05/154256-preferences-network-vpn-with-wireguard-imported-.png"
  },
  {
   "time": "2026-11-05T16:05:14",
   "title": "Viewer: a PDF's text selected, copied and found",
-  "caption": "A PDF's text is read natively (hayro's interpreter with a device of Olo's own that keeps each glyph's Unicode and box), once a page, on the worker. It's selected by dragging (a word with a double-click, a line with a triple), copied with ⌘C or a right-click, Select All copies the whole document, and Find (⌘F) marks every match, selecting the one shown in the middle of the view. Here the third of 90 'compression's in bzip2's manual, the next one marked.",
+  "caption": "A PDF's text is read natively (hayro's interpreter with a device of Olo's own that keeps each glyph's Unicode and box), once a page, on the worker. It's selected by dragging (a word with a double-click, a line with a triple), copied with \u2318C or a right-click, Select All copies the whole document, and Find (\u2318F) marks every match, selecting the one shown in the middle of the view. Here the third of 90 'compression's in bzip2's manual, the next one marked.",
   "image": "2026-11-05/160514-viewer-a-pdf-s-text-selected-copied-and-found.png"
  },
  {
@@ -3337,14 +3337,14 @@
  },
  {
   "time": "2026-11-05T16:48:04",
-  "title": "Preferences ▸ Security: Face Unlock",
-  "caption": "A look at the infrared camera can stand for the password: sudo, administrator requests, Passwords and the lock screen. Olo reads the IR camera over V4L2, lights its emitter through its UVC control, finds and recognises faces with two small models in process, and keeps the faces with a root service no app can read. Install… sets it up as root through Olo's polkit agent; Set Up… takes the password and five looks.",
+  "title": "Preferences \u25b8 Security: Face Unlock",
+  "caption": "A look at the infrared camera can stand for the password: sudo, administrator requests, Passwords and the lock screen. Olo reads the IR camera over V4L2, lights its emitter through its UVC control, finds and recognises faces with two small models in process, and keeps the faces with a root service no app can read. Install\u2026 sets it up as root through Olo's polkit agent; Set Up\u2026 takes the password and five looks.",
   "image": "2026-11-05/164804-preferences-security-face-unlock.png"
  },
  {
   "time": "2026-11-05T18:04:14",
-  "title": "Agent Screens: Move Windows To…",
-  "caption": "Beside Take Control, every window on the screen goes to one of the person's display-workspaces, its program running on (Control ▸ Move Windows To ▸ too).",
+  "title": "Agent Screens: Move Windows To\u2026",
+  "caption": "Beside Take Control, every window on the screen goes to one of the person's display-workspaces, its program running on (Control \u25b8 Move Windows To \u25b8 too).",
   "image": "2026-11-05/180414-agent-screens-move-windows-to.png"
  },
  {
@@ -3415,7 +3415,7 @@
  },
  {
   "time": "2026-11-05T21:26:14",
-  "title": "Preferences ▸ Touchpad on a ThinkPad: its own palm model",
+  "title": "Preferences \u25b8 Touchpad on a ThinkPad: its own palm model",
   "caption": "On the ThinkPad's pad: palms kept palms until they lift, Olo's own model for this kind of touchpad (made from Ben's hands), and no pressure controls it has no use for.",
   "image": "2026-11-05/212614-preferences-touchpad-on-a-thinkpad-its-own-palm-.png"
  },
@@ -3440,7 +3440,7 @@
  {
   "time": "2026-11-05T23:36:32",
   "title": "Screen recordings on the Intel GPU: AV1 through VA-API",
-  "caption": "Preferences ▸ GPUs ▸ Screen Recordings offers the Intel GPU where its VA-API driver encodes AV1 (Fedora's drivers make no H.264 or HEVC): recordings are AV1 at constant quality, a 2560 × 1600 screen in about 9 ms a frame, the NVIDIA GPU left asleep.",
+  "caption": "Preferences \u25b8 GPUs \u25b8 Screen Recordings offers the Intel GPU where its VA-API driver encodes AV1 (Fedora's drivers make no H.264 or HEVC): recordings are AV1 at constant quality, a 2560 \u00d7 1600 screen in about 9 ms a frame, the NVIDIA GPU left asleep.",
   "image": "2026-11-05/233632-screen-recordings-on-the-intel-gpu-av1-through-v.png"
  },
  {
@@ -3463,8 +3463,8 @@
  },
  {
   "time": "2026-11-06T01:49:22",
-  "title": "StyledEdit: Markdown's source, ⌘/",
-  "caption": "Document ▸ Show Source (⌘/) shows the same text as a code editor: the monospaced face, line numbers, headings, links, code and marks coloured; the caret and view kept across the switch.",
+  "title": "StyledEdit: Markdown's source, \u2318/",
+  "caption": "Document \u25b8 Show Source (\u2318/) shows the same text as a code editor: the monospaced face, line numbers, headings, links, code and marks coloured; the caret and view kept across the switch.",
   "image": "2026-11-06/014922-stylededit-markdown-s-source.png"
  },
  {
@@ -3506,7 +3506,7 @@
  {
   "time": "2026-11-06T04:10:46",
   "title": "Browser: network page in night mode",
-  "caption": "Same native HTTP fixture at live 1.5×, with dark appearance and 4500K night light. Theme, scale and viewport changes reuse the DOM and compiled sheets without HTTP requests. This is a development fixture, not a website compatibility pass.",
+  "caption": "Same native HTTP fixture at live 1.5\u00d7, with dark appearance and 4500K night light. Theme, scale and viewport changes reuse the DOM and compiled sheets without HTTP requests. This is a development fixture, not a website compatibility pass.",
   "image": "2026-11-06/041046-browser-network-page-in-night-mode.png"
  },
  {
@@ -3518,43 +3518,43 @@
  {
   "time": "2026-11-06T04:52:33",
   "title": "Browser: native document links and live hover",
-  "caption": "Original Rust engine, actual 2×: structured Link records carry resolved URLs, adjacent equal-colour links retain separate owners, and native/agent pointer input follows the same anchor. Green is live hover; held input paints blue. The authored fixture passes fifteen mode/scale reviews, with no website compatibility pass inferred.",
+  "caption": "Original Rust engine, actual 2\u00d7: structured Link records carry resolved URLs, adjacent equal-colour links retain separate owners, and native/agent pointer input follows the same anchor. Green is live hover; held input paints blue. The authored fixture passes fifteen mode/scale reviews, with no website compatibility pass inferred.",
   "image": "2026-11-06/045233-browser-native-document-links-and-live-hover.png"
  },
  {
   "time": "2026-11-06T04:52:35",
   "title": "Browser: interactive links in night mode",
-  "caption": "Same native text-link fixture at live 1.5×, dark appearance and forced 4500K night light. Layout identity comes from retained source mappings without increasing the 80-byte paint command. Hover still uses conservative full-document restyle; complete input, keyboard navigation, fragments, JavaScript and website fidelity remain required.",
+  "caption": "Same native text-link fixture at live 1.5\u00d7, dark appearance and forced 4500K night light. Layout identity comes from retained source mappings without increasing the 80-byte paint command. Hover still uses conservative full-document restyle; complete input, keyboard navigation, fragments, JavaScript and website fidelity remain required.",
   "image": "2026-11-06/045235-browser-interactive-links-in-night-mode.png"
  },
  {
   "time": "2026-11-06T05:40:43",
   "title": "Browser: document navigation",
-  "caption": "Back/Forward and keyboard text-link control share native and agent actions. Fragment moves retain the document and issue no request; :target styling reaches the handwritten engine. Authored fixture, light 2×; no website acceptance.",
+  "caption": "Back/Forward and keyboard text-link control share native and agent actions. Fragment moves retain the document and issue no request; :target styling reaches the handwritten engine. Authored fixture, light 2\u00d7; no website acceptance.",
   "image": "2026-11-06/054043-browser-document-navigation.png"
  },
  {
   "time": "2026-11-06T05:40:44",
   "title": "Browser: fragment history in night mode",
-  "caption": "The same native controls at 1.5× in night mode. All fifteen mode/scale navigation reviews pass; URL, scroll and forward history survive owned-session re-exec. Complete focus, event and browser semantics remain open.",
+  "caption": "The same native controls at 1.5\u00d7 in night mode. All fifteen mode/scale navigation reviews pass; URL, scroll and forward history survive owned-session re-exec. Complete focus, event and browser semantics remain open.",
   "image": "2026-11-06/054044-browser-fragment-history-in-night-mode.png"
  },
  {
   "time": "2026-11-06T06:30:49",
   "title": "Browser: inline spacing before",
-  "caption": "The same authored inline margin/padding fixture is rejected by the prior browser engine. Frozen c420ae58, light 2×; this is a component regression illustration, not a website capture.",
+  "caption": "The same authored inline margin/padding fixture is rejected by the prior browser engine. Frozen c420ae58, light 2\u00d7; this is a component regression illustration, not a website capture.",
   "image": "2026-11-06/063049-browser-inline-spacing-before.png"
  },
  {
   "time": "2026-11-06T06:30:51",
   "title": "Browser: inline spacing and wrapping",
-  "caption": "Retained inline boundaries now participate in fitting and glyph placement. Actual first/last edges survive wrapping; native and agent text links still work. Same authored fixture, light 2×. Independent component observations include 27 explicit fractional-font non-passes.",
+  "caption": "Retained inline boundaries now participate in fitting and glyph placement. Actual first/last edges survive wrapping; native and agent text links still work. Same authored fixture, light 2\u00d7. Independent component observations include 27 explicit fractional-font non-passes.",
   "image": "2026-11-06/063051-browser-inline-spacing-and-wrapping.png"
  },
  {
   "time": "2026-11-06T06:30:53",
   "title": "Browser: inline spacing in night mode",
-  "caption": "The same fixture at live 1.5× in night mode. Transparent vertical padding preserves line metrics; inline decoration and complete hit geometry remain open. All fifteen native mode/scale reviews pass; no website acceptance follows.",
+  "caption": "The same fixture at live 1.5\u00d7 in night mode. Transparent vertical padding preserves line metrics; inline decoration and complete hit geometry remain open. All fifteen native mode/scale reviews pass; no website acceptance follows.",
   "image": "2026-11-06/063053-browser-inline-spacing-in-night-mode.png"
  },
  {
@@ -3596,13 +3596,13 @@
  {
   "time": "2026-11-06T09:49:41",
   "title": "Viewer: a video at Actual Size, Zoom to Fit and Zoom to Fill",
-  "caption": "View ▸ Actual Size (⌘0), Zoom to Fit (⌘9), Zoom to Fill (⇧⌘9), proportions kept; Enter Full Screen (F), the transport over the picture while the pointer moves",
+  "caption": "View \u25b8 Actual Size (\u23180), Zoom to Fit (\u23189), Zoom to Fill (\u21e7\u23189), proportions kept; Enter Full Screen (F), the transport over the picture while the pointer moves",
   "image": "2026-11-06/094941-viewer-a-video-at-actual-size-zoom-to-fit-and-zo.png"
  },
  {
   "time": "2026-11-06T09:49:42",
   "title": "Touchpad & Mouse: the wheel's scrolling speed",
-  "caption": "One speed for a wheel's notch in every program, Chrome included (app_server scales it before it's sent); at 1.5×",
+  "caption": "One speed for a wheel's notch in every program, Chrome included (app_server scales it before it's sent); at 1.5\u00d7",
   "image": "2026-11-06/094942-touchpad-mouse-the-wheel-s-scrolling-speed.png"
  },
  {
@@ -3626,7 +3626,7 @@
  {
   "time": "2026-11-06T12:24:05",
   "title": "Browser minification before",
-  "caption": "Baseline bilinear sampling of the authored 512×384 source on an owned Agent Screen at 1×. Native image/link nodes work; fine detail aliases when reduced.",
+  "caption": "Baseline bilinear sampling of the authored 512\u00d7384 source on an owned Agent Screen at 1\u00d7. Native image/link nodes work; fine detail aliases when reduced.",
   "image": "2026-11-06/122405-browser-minification-before.png"
  },
  {
@@ -3728,13 +3728,13 @@
  {
   "time": "2026-11-06T23:11:44",
   "title": "Browser: Stripe's hero as Chrome lays it out",
-  "caption": "The engine's offline render of stripe.com at 1000 × 700 with its web fonts: transforms, the border side shorthands, Chrome's line-height rounding and min-height grid alignment put every line of the hero where Chrome puts it.",
+  "caption": "The engine's offline render of stripe.com at 1000 \u00d7 700 with its web fonts: transforms, the border side shorthands, Chrome's line-height rounding and min-height grid alignment put every line of the hero where Chrome puts it.",
   "image": "2026-11-06/231144-browser-stripe-s-hero-as-chrome-lays-it-out.png"
  },
  {
   "time": "2026-11-07T00:29:53",
   "title": "Browser: Wikipedia's main page as Chrome lays it out",
-  "caption": "System fonts with Chrome's family policy, SVG images, mask-image icons, floats and text decoration: the main page's header, tabs, columns and floated thumbnail match Chrome at 1000 × 700.",
+  "caption": "System fonts with Chrome's family policy, SVG images, mask-image icons, floats and text decoration: the main page's header, tabs, columns and floated thumbnail match Chrome at 1000 \u00d7 700.",
   "image": "2026-11-07/002953-browser-wikipedia-s-main-page-as-chrome-lays-it-.png"
  },
  {
@@ -3775,14 +3775,14 @@
  },
  {
   "time": "2026-11-07T01:28:24",
-  "title": "Power ▸ Graphics says what each GPU is on now",
-  "caption": "Ben asked whether changing the power mode changes the NVIDIA GPU's clock. It does in Power Saver (its clock capped at 70%), but its box showed only its Custom slider, at the card's top clock whatever the mode, while Intel's sliders moved: now each GPU's line says what the mode has it on, in numbers (here Performance: Intel 1650–2450 MHz; NVIDIA as its driver has it, since a laptop's takes no power limit), and Custom's sliders show Custom's own settings, which don't move with the mode.",
+  "title": "Power \u25b8 Graphics says what each GPU is on now",
+  "caption": "Ben asked whether changing the power mode changes the NVIDIA GPU's clock. It does in Power Saver (its clock capped at 70%), but its box showed only its Custom slider, at the card's top clock whatever the mode, while Intel's sliders moved: now each GPU's line says what the mode has it on, in numbers (here Performance: Intel 1650\u20132450 MHz; NVIDIA as its driver has it, since a laptop's takes no power limit), and Custom's sliders show Custom's own settings, which don't move with the mode.",
   "image": "2026-11-07/012824-power-graphics-says-what-each-gpu-is-on-now.png"
  },
  {
   "time": "2026-11-07T02:15:47",
   "title": "Browser: stripe.com with JavaScript",
-  "caption": "The browser now runs pages' scripts: V8 (the one C++ part) with a native DOM over the engine's document, the Web API surface in a prelude (events, timers on a virtual clock, fetch, storage, observers, custom elements, Web Animations' resting states, a 2D canvas stub), scripts that scripts insert (code splitting), and measurement: scripts read geometry and computed styles from a layout of the page as it is. Stripe's React app hydrates and mounts its lazily loaded graphics (the payment terminal, the checkout, the billing chart), as in Chrome. Styling got 3.4× faster on the way: pseudo-element rules indexed apart, an ancestor Bloom filter rejecting selectors before a walk, hashed id and class keys, root/attribute/:is() buckets, sparse computed values, custom-property dictionaries that chain to their parent instead of copying.",
+  "caption": "The browser now runs pages' scripts: V8 (the one C++ part) with a native DOM over the engine's document, the Web API surface in a prelude (events, timers on a virtual clock, fetch, storage, observers, custom elements, Web Animations' resting states, a 2D canvas stub), scripts that scripts insert (code splitting), and measurement: scripts read geometry and computed styles from a layout of the page as it is. Stripe's React app hydrates and mounts its lazily loaded graphics (the payment terminal, the checkout, the billing chart), as in Chrome. Styling got 3.4\u00d7 faster on the way: pseudo-element rules indexed apart, an ancestor Bloom filter rejecting selectors before a walk, hashed id and class keys, root/attribute/:is() buckets, sparse computed values, custom-property dictionaries that chain to their parent instead of copying.",
   "image": "2026-11-07/021547-browser-stripe-com-with-javascript.png"
  },
  {
@@ -3806,7 +3806,7 @@
  {
   "time": "2026-11-07T07:51:21",
   "title": "Browser: stripe.com/pricing with ES modules, the font shorthand and auto-fit grids",
-  "caption": "The pricing page's scripts are ES modules (65 in 18 graphs, loaded level by level in 216 ms); its headings are font shorthands over custom properties, its hero card a repeat(auto-fit, minmax(0, 1fr)) grid. All three were missing; it now lays out as Chrome does at 1000 × 700.",
+  "caption": "The pricing page's scripts are ES modules (65 in 18 graphs, loaded level by level in 216 ms); its headings are font shorthands over custom properties, its hero card a repeat(auto-fit, minmax(0, 1fr)) grid. All three were missing; it now lays out as Chrome does at 1000 \u00d7 700.",
   "image": "2026-11-07/075121-browser-stripe-com-pricing-with-es-modules-the-f.png"
  },
  {
@@ -3847,7 +3847,7 @@
  },
  {
   "time": "2026-11-07T13:16:34",
-  "title": "Preferences ▸ Deskbar",
+  "title": "Preferences \u25b8 Deskbar",
   "caption": "The new Deskbar panel: the widgets in order (Add, Remove, Move Up, Move Down) beside the chosen one's settings: what it shows and which, where, look, size, name and value, how often, how far back, colour. Each change shows in the Deskbar at once.",
   "image": "2026-11-07/131634-preferences-deskbar.png"
  },
@@ -3872,19 +3872,19 @@
  {
   "time": "2026-11-07T17:19:46",
   "title": "Browser: GitHub's menu opens as in Chrome",
-  "caption": "Chrome (left) and Olo (right) at 1000 × 700 after the menu button and Products: the fixed panel takes the viewport, the rows centre their labels, Sign up sits at the bottom, labels trim to their cap height (text-box) and section names are upper case (text-transform).",
+  "caption": "Chrome (left) and Olo (right) at 1000 \u00d7 700 after the menu button and Products: the fixed panel takes the viewport, the rows centre their labels, Sign up sits at the bottom, labels trim to their cap height (text-box) and section names are upper case (text-transform).",
   "image": "2026-11-07/171946-browser-github-s-menu-opens-as-in-chrome.png"
  },
  {
   "time": "2026-11-07T17:58:22",
   "title": "Browser: GitHub's sign-up form by container queries",
-  "caption": "Chrome (left) and Olo (right) at 1000 × 700: the e-mail field and its button on one line (@container rules), the label alone in the field (::placeholder opacity 0). Olo's heading is mid-way through its typing animation; the mascot under the buttons is still missing in Olo.",
+  "caption": "Chrome (left) and Olo (right) at 1000 \u00d7 700: the e-mail field and its button on one line (@container rules), the label alone in the field (::placeholder opacity 0). Olo's heading is mid-way through its typing animation; the mascot under the buttons is still missing in Olo.",
   "image": "2026-11-07/175822-browser-github-s-sign-up-form-by-container-queri.png"
  },
  {
   "time": "2026-11-07T18:18:45",
   "title": "Browser: GitHub's hero film plays",
-  "caption": "Chrome (left, its first frame) and Olo (right, a later frame of the same HEVC film) at 1000 × 700: Olo's own player decodes it, each picture made the size it shows at.",
+  "caption": "Chrome (left, its first frame) and Olo (right, a later frame of the same HEVC film) at 1000 \u00d7 700: Olo's own player decodes it, each picture made the size it shows at.",
   "image": "2026-11-07/181845-browser-github-s-hero-film-plays.png"
  },
  {
@@ -3896,7 +3896,7 @@
  {
   "time": "2026-11-07T20:44:57",
   "title": "DiskBackup: Keep, and tidying",
-  "caption": "How long snapshots are kept (hourly, daily, weekly, monthly), beside When; Speed moved beside Back Up To so the window still fits 1280 × 800. The status says what the backups take there and the last tidy (old snapshots let go of, space freed).",
+  "caption": "How long snapshots are kept (hourly, daily, weekly, monthly), beside When; Speed moved beside Back Up To so the window still fits 1280 \u00d7 800. The status says what the backups take there and the last tidy (old snapshots let go of, space freed).",
   "image": "2026-11-07/204457-diskbackup-keep-and-tidying.png"
  },
  {
@@ -3908,7 +3908,7 @@
  {
   "time": "2026-11-07T21:10:21",
   "title": "DiskBackup in Deskbar's tray",
-  "caption": "A drive in a circular arrow: idle, backing up (green), not backing up (dim: off, on battery), the last didn't finish (red dot), nothing for days (amber). Its menu, read as it opens: what it's doing, the last and next, Stop or Back Up Now, Pause, Restore Files…, DiskBackup…. Light and dark at 2×.",
+  "caption": "A drive in a circular arrow: idle, backing up (green), not backing up (dim: off, on battery), the last didn't finish (red dot), nothing for days (amber). Its menu, read as it opens: what it's doing, the last and next, Stop or Back Up Now, Pause, Restore Files\u2026, DiskBackup\u2026. Light and dark at 2\u00d7.",
   "image": "2026-11-07/211021-diskbackup-in-deskbar-s-tray.png"
  },
  {
@@ -3920,19 +3920,19 @@
  {
   "time": "2026-11-07T21:40:08",
   "title": "Tracker: DiskBackup's ticks and Older Versions",
-  "caption": "Files whose current version is backed up wear a green tick, in every view and on the desktop (a changed file loses it until the next backup). A file's Older Versions… opens DiskBackup's Versions window: each version kept, the one there now said; Restore keeps both or replaces.",
+  "caption": "Files whose current version is backed up wear a green tick, in every view and on the desktop (a changed file loses it until the next backup). A file's Older Versions\u2026 opens DiskBackup's Versions window: each version kept, the one there now said; Restore keeps both or replaces.",
   "image": "2026-11-07/214008-tracker-diskbackup-s-ticks-and-older-versions.png"
  },
  {
   "time": "2026-11-07T21:54:08",
   "title": "DiskBackup's own icon, in every theme",
-  "caption": "A hard drive with a cloud before it, a green tick on the cloud (backed up, safe elsewhere), in place of Preferences ▸ Backup's drive and arrow (top row of each band: DiskBackup; under it, Backup's), at 64 and 16 px on the light, dark and night panels.",
+  "caption": "A hard drive with a cloud before it, a green tick on the cloud (backed up, safe elsewhere), in place of Preferences \u25b8 Backup's drive and arrow (top row of each band: DiskBackup; under it, Backup's), at 64 and 16 px on the light, dark and night panels.",
   "image": "2026-11-07/215408-diskbackup-s-own-icon-in-every-theme.png"
  },
  {
   "time": "2026-11-07T21:54:08",
   "title": "Tracker's list view: one edge at its foot",
-  "caption": "The count bar under the list view no longer draws its etched edge: the list's own sunken frame (its focus ring inside) edges it, and the two had stacked four lines in three points (tsession review: crowded lines, at 1× and 2×). Light and dark, 2× and 1×.",
+  "caption": "The count bar under the list view no longer draws its etched edge: the list's own sunken frame (its focus ring inside) edges it, and the two had stacked four lines in three points (tsession review: crowded lines, at 1\u00d7 and 2\u00d7). Light and dark, 2\u00d7 and 1\u00d7.",
   "image": "2026-11-07/215408-tracker-s-list-view-one-edge-at-its-foot.png"
  },
  {
@@ -3956,19 +3956,19 @@
  {
   "time": "2026-11-08T00:20:25",
   "title": "Disk Usage: Undo Move to Trash",
-  "caption": "Edit ▸ Undo puts what Disk Usage moved to the Trash back where it was (its sizes back in the chart); Redo moves it again. Deleting for good still says it can't be undone.",
+  "caption": "Edit \u25b8 Undo puts what Disk Usage moved to the Trash back where it was (its sizes back in the chart); Redo moves it again. Deleting for good still says it can't be undone.",
   "image": "2026-11-08/002025-disk-usage-undo-move-to-trash.png"
  },
  {
   "time": "2026-11-08T00:27:00",
-  "title": "DiskBackup: Edit ▸ Undo for its settings",
+  "title": "DiskBackup: Edit \u25b8 Undo for its settings",
   "caption": "Each settings change in DiskBackup's window is a step named for what it changed (Leave Out, Keep, Speed, Patterns typed as one run); Undo puts back only that, leaving what the service or a setup changed since.",
   "image": "2026-11-08/002700-diskbackup-edit-undo-for-its-settings.png"
  },
  {
   "time": "2026-11-08T00:33:40",
   "title": "Notifications: Undo Clear All and Forget",
-  "caption": "The History window's Edit ▸ Undo brings back what Clear All or Forget took, where it was (closed at its app by now); Redo forgets it again.",
+  "caption": "The History window's Edit \u25b8 Undo brings back what Clear All or Forget took, where it was (closed at its app by now); Redo forgets it again.",
   "image": "2026-11-08/003340-notifications-undo-clear-all-and-forget.png"
  },
  {
@@ -3982,5 +3982,11 @@
   "title": "Browser: GitHub's video on the GPU",
   "caption": "GitHub's homepage video, rounded in its box, now goes to the window as its decoded planes: the GPU makes RGB of them, scales and rounds them. Olo at rest on GitHub: 30% of a core to Chrome's 35%; it was 73-83%.",
   "image": "2026-11-08/014959-browser-github-s-video-on-the-gpu.png"
+ },
+ {
+  "time": "2026-11-08T02:01:21",
+  "title": "Browser: rounded inline backgrounds",
+  "caption": "Left Olo, right Chrome: code, a pill-shaped span and a mark across two lines, each rounded where its box starts and ends, square at the line break.",
+  "image": "2026-11-08/020121-browser-rounded-inline-backgrounds.png"
  }
 ]

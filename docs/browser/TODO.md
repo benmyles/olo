@@ -150,7 +150,8 @@ Next, in impact order (each removes a fallback kind or a visible gap):
 - [x] Paint: `url()` background images (size, position, repeat), CSS
   transforms, opacity groups.
 - [ ] Paint: dashed/dotted
-  borders, inline backgrounds' corners, images and borders (their colour
+  borders, inline backgrounds' images and borders (their colour; their
+  corners round since JOURNAL 2026-11-08, elliptical radii as circular)
   paints), rounded borders with differing sides,
   `filter`, `mask-image`, `mix-blend-mode`, SVG `<text>`, `<use>`,
   `<mask>` (Stripe's Sign in button).

@@ -265,6 +265,13 @@ impl Engine {
                         super::vector::raster(out, vector, used_geometry, resolved_clips.map(Vec::as_slice).unwrap_or(&[]), transform, vector_mask, self.limits(), &mut layer_work, cancel)?;
                     }
                 }
+                // Rounded (an inline box's background), antialiased.
+                Primitive::Fill { color, radii, .. } if radii.iter().any(|r| *r > 0.) => {
+                    let r = radii.map(|v| [f64::from(v); 2]);
+                    if let Some(p) = super::decoration::path(c.bounds, &r, scale, region) {
+                        out.fill_path(&p, &paint(*color), tiny_skia::FillRule::Winding, ct, mask.as_ref());
+                    }
+                }
                 Primitive::Fill { color, .. } => {
                     if c.transform != u32::MAX {
                         if let Some(r) = raw(c.bounds) {
