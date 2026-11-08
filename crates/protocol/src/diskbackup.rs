@@ -78,6 +78,11 @@ pub struct Settings {
     pub on_battery: bool,
     /// Stay on each folder's own disk (not into what's mounted inside).
     pub one_file_system: bool,
+    /// The key is kept in Passwords too (the app keeps it there: so the
+    /// backups can be restored on another computer).
+    pub key_in_passwords: bool,
+    /// Its item in Deskbar's tray (once set up).
+    pub in_deskbar: bool,
 }
 
 impl Default for Settings {
@@ -94,6 +99,8 @@ impl Default for Settings {
             download_kbs: 0,
             on_battery: true,
             one_file_system: true,
+            key_in_passwords: false,
+            in_deskbar: true,
         }
     }
 }
@@ -140,6 +147,7 @@ pub enum Doing {
 
 /// A backup or restore under way.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Progress {
     /// Seconds since 1970, when it started.
     pub started: i64,
@@ -154,6 +162,7 @@ pub struct Progress {
 
 /// The last backup that ended.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Last {
     /// Seconds since 1970, when it ended.
     pub time: i64,
@@ -168,6 +177,21 @@ pub struct Last {
     pub seconds: f64,
     /// Files that couldn't be read.
     pub unreadable: u64,
+}
+
+/// The last tidy: snapshots past keeping let go of, and the space only
+/// they used freed (once a day, after a backup).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Tidied {
+    /// Seconds since 1970, when it ended.
+    pub time: i64,
+    /// Why it didn't finish, if it didn't.
+    pub error: Option<String>,
+    /// Snapshots let go of since the tidy before.
+    pub forgotten: u32,
+    /// Bytes the store holds less.
+    pub freed: u64,
 }
 
 /// What the service is doing and has done (its state file, followed by
@@ -188,6 +212,10 @@ pub struct State {
     pub snapshots: u32,
     /// Where it backs up to.
     pub target: String,
+    /// What the backups take there, bytes (known since the last tidy, and
+    /// grown by each backup since).
+    pub size: Option<u64>,
+    pub tidied: Option<Tidied>,
 }
 
 impl State {
@@ -223,6 +251,9 @@ pub enum Request {
     BackUpNow,
     /// Stop what's under way (what went up stays: the next one goes on).
     Stop,
+    /// Tidy now (not waiting for the daily one): snapshots past keeping
+    /// let go of, and the space only they took freed.
+    Tidy,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

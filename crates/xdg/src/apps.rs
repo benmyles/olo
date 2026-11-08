@@ -13,6 +13,8 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-activity", "Activity Monitor", "activity"),
     ("olo-drive-setup", "DriveSetup", "drive-setup"),
     ("olo-disk-usage", "DiskUsage", "disk-usage"),
+    // (Preferences ▸ Backup's icon until it has one of its own.)
+    ("olo-diskbackup", "DiskBackup", "backup"),
     ("olo-screen", "Agent Screens", "agent-screens"),
     ("olo-logs", "Log Viewer", "logs"),
     ("olo-screenshot", "Screenshot", "screenshot"),

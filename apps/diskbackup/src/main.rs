@@ -1,6 +1,9 @@
-//! `olo-diskbackup`: DiskBackup's service and command line (the app comes
-//! next).
+//! `olo-diskbackup`: DiskBackup's app, service and command line.
 //!
+//! - (none): the app's window (`app.rs`): what it's doing and did, where
+//!   backups go, what, when, how fast, the key.
+//! - `--restore-window`: the app's Restore window (Deskbar's Restore
+//!   Files…).
 //! - `--service`: run the service (olo-session does, in a real session).
 //! - `--status [--json]`: what it's doing, has done, and its settings.
 //! - `--now`, `--stop`: back up now; stop what's under way.
@@ -10,17 +13,26 @@
 //! - `--snapshots`: every snapshot there.
 //! - `--restore SNAPSHOT PATH [TO]`: put `PATH` back as it was in
 //!   `SNAPSHOT` (`latest`, or the start of its id), where it was or `TO`.
-//! - `--set KEY=VALUE…`: `enabled`, `battery` (on/off), `every`
+//! - `--tidy`: now, not waiting for the service's daily one: this
+//!   computer's snapshots past keeping forgotten, and the space only they
+//!   used freed (with the backup to itself: not while one runs). Asked of
+//!   the service if it's running (its state says how it went), else here.
+//! - `--set KEY=VALUE…`: `enabled`, `battery`, `deskbar` (on/off), `every`
 //!   (minutes), `upload`, `download` (KB/s, 0 for no limit), `paths`
 //!   (comma-separated), `exclude` (a pattern, added), `groups`
-//!   (comma-separated ids; `--groups` lists them).
+//!   (comma-separated ids; `--groups` lists them), `hourly`, `daily`,
+//!   `weekly`, `monthly` (how many of each to keep).
 
+mod app;
+mod restore;
 mod service;
 mod target;
 
+const APP_ID: &str = "olo.diskbackup";
+
 use std::{path::PathBuf, process::ExitCode, sync::atomic::AtomicBool};
 
-use olo_diskbackup::{Key, Progress, Repo, restore};
+use olo_diskbackup::{Key, Progress, Repo};
 use olo_protocol::diskbackup::{Doing, Reply, Request, Settings, State, Target};
 
 fn main() -> ExitCode {
@@ -28,32 +40,36 @@ fn main() -> ExitCode {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let r = match args.first().map(String::as_str) {
-        Some("--service") => return service::run(),
-        Some("--status") => {
-            status(args.iter().any(|a| a == "--json"));
-            Ok(())
-        }
-        Some("--now") => ask(Request::BackUpNow),
-        Some("--stop") => ask(Request::Stop),
-        Some("--set-up-folder") => match args.get(1) {
-            Some(p) => set_up_folder(p),
-            None => Err("--set-up-folder PATH".into()),
-        },
-        Some("--snapshots") => snapshots(),
-        Some("--restore") => match (args.get(1), args.get(2)) {
-            (Some(snap), Some(path)) => restore_cli(snap, path, args.get(3)),
-            _ => Err("--restore SNAPSHOT PATH [TO]".into()),
-        },
-        Some("--set") => set(&args[1..]),
-        Some("--groups") => {
-            for g in olo_diskbackup::exclude::GROUPS {
-                println!("{:<12} {}{}: {}", g.id, g.name, if g.default { "" } else { " (off unless chosen)" }, g.about);
+    let r =
+        match args.first().map(String::as_str) {
+            Some("--service") => return service::run(),
+            Some("--status") => {
+                status(args.iter().any(|a| a == "--json"));
+                Ok(())
             }
-            Ok(())
-        }
-        _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --snapshots | --restore SNAPSHOT PATH [TO] | --set KEY=VALUE… | --groups".into()),
-    };
+            Some("--now") => ask(Request::BackUpNow),
+            Some("--stop") => ask(Request::Stop),
+            Some("--set-up-folder") => match args.get(1) {
+                Some(p) => set_up_folder(p),
+                None => Err("--set-up-folder PATH".into()),
+            },
+            Some("--snapshots") => snapshots(),
+            Some("--restore") => match (args.get(1), args.get(2)) {
+                (Some(snap), Some(path)) => restore_cli(snap, path, args.get(3)),
+                _ => Err("--restore SNAPSHOT PATH [TO]".into()),
+            },
+            Some("--tidy") => tidy(),
+            Some("--set") => set(&args[1..]),
+            Some("--groups") => {
+                for g in olo_diskbackup::exclude::GROUPS {
+                    println!("{:<12} {}{}: {}", g.id, g.name, if g.default { "" } else { " (off unless chosen)" }, g.about);
+                }
+                Ok(())
+            }
+            None | Some("--restore-window") => return app_main(),
+            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --snapshots | --restore SNAPSHOT PATH [TO] | --tidy | --set KEY=VALUE… | --groups"
+                .into()),
+        };
     match r {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -117,18 +133,53 @@ fn status(json: bool) {
     if let Some(n) = state.next {
         println!("  next: {}", when(n));
     }
+    if let Some(t) = &state.tidied {
+        match &t.error {
+            Some(e) => println!("  tidied: {} — didn't finish: {e}", when(t.time)),
+            None => println!("  tidied: {} — {} snapshot{} let go of, {} freed", when(t.time), t.forgotten, if t.forgotten == 1 { "" } else { "s" }, mb(t.freed)),
+        }
+    }
+    if let Some(size) = state.size {
+        println!("  takes {} there", mb(size));
+    }
     let limit = |k: u64| if k == 0 { "no limit".to_string() } else { format!("{k} KB/s") };
+    let k = settings.keep;
     println!(
-        "  every {} min; {}; up {}, down {}; {} snapshots",
+        "  every {} min; {}; up {}, down {}; {} snapshots (keeping {} hourly, {} daily, {} weekly, {} monthly)",
         settings.every_minutes,
         if settings.on_battery { "on battery too" } else { "not on battery" },
         limit(settings.upload_kbs),
         limit(settings.download_kbs),
-        state.snapshots
+        state.snapshots,
+        k.hourly,
+        k.daily,
+        k.weekly,
+        k.monthly
     );
 }
 
-fn ask(r: Request) -> Result<(), String> {
+/// The app: one window, one copy (another launch brings it forward).
+fn app_main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if olo_ui::instance::forward(APP_ID, &args) {
+        return ExitCode::SUCCESS;
+    }
+    olo_ui::run(APP_ID, move |cx| {
+        use olo_ui::gpui::AppContext as _;
+        let proxy = olo_ui::proxy(cx);
+        olo_ui::instance::listen(APP_ID, proxy.clone());
+        let disk = cx.new(|_| app::Disk::new(proxy));
+        let restore = args.iter().any(|a| a == "--restore-window");
+        disk.update(cx, |d, cx| if restore { d.open_restore(cx) } else { d.open(cx) });
+        let messages = disk.clone();
+        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
+        // (Back as it was after an upgrade: its window.)
+        olo_ui::on_upgrade(cx, |_| Some("{}".into()));
+    });
+    ExitCode::SUCCESS
+}
+
+pub(crate) fn ask(r: Request) -> Result<(), String> {
     use std::io::{BufRead, Write};
     let mut s = std::os::unix::net::UnixStream::connect(olo_protocol::diskbackup::socket()).map_err(|_| "the service isn't running".to_string())?;
     s.write_all(format!("{}\n", serde_json::to_string(&r).unwrap_or_default()).as_bytes()).map_err(|e| e.to_string())?;
@@ -151,7 +202,7 @@ fn open() -> Result<(Settings, Repo), String> {
     Ok((settings, repo))
 }
 
-fn set_up_folder(path: &str) -> Result<(), String> {
+pub(crate) fn set_up_folder(path: &str) -> Result<(), String> {
     let dir = PathBuf::from(path);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let dir = dir.canonicalize().map_err(|e| e.to_string())?;
@@ -166,7 +217,14 @@ fn set_up_folder(path: &str) -> Result<(), String> {
             Repo::init(store, key.clone(), Some(target::cache())).map_err(|e| e.to_string())?;
             key
         }
-        Err(olo_diskbackup::Error::WrongKey) => return Err(format!("there's a backup in {} already, and this computer's key doesn't open it", dir.display())),
+        // Another computer's (or this one's, set up again): its key from
+        // Passwords, which keeps every one DiskBackup made.
+        Err(olo_diskbackup::Error::WrongKey) => {
+            let keys = target::keys_in_passwords().map_err(|e| format!("there's a backup in {} already: its key is needed, and Passwords couldn't give it ({e})", dir.display()))?;
+            keys.into_iter()
+                .find_map(|k| Repo::open(store.clone(), k, None).ok().map(|r| r.key().clone()))
+                .ok_or_else(|| format!("there's a backup in {} already, and none of the keys in Passwords (“{}”) opens it", dir.display(), target::KEY_TITLE))?
+        }
         Err(e) => return Err(e.to_string()),
     };
     target::keep_key(&key)?;
@@ -174,7 +232,7 @@ fn set_up_folder(path: &str) -> Result<(), String> {
     s.target = t;
     s.enabled = true;
     s.save().map_err(|e| e.to_string())?;
-    println!("Backing up to {} (its key kept in the login keyring).", dir.display());
+    tracing::info!("backing up to {} (its key kept in the login keyring)", dir.display());
     Ok(())
 }
 
@@ -194,8 +252,45 @@ fn restore_cli(snap: &str, path: &str, to: Option<&String>) -> Result<(), String
     let path = target::expand(path).canonicalize().unwrap_or_else(|_| target::expand(path));
     let to = to.map(|t| target::expand(t)).unwrap_or_else(|| path.clone());
     let (cancel, progress) = (AtomicBool::new(false), Progress::default());
-    restore(&repo, &s.tree, &path, &to, &cancel, &progress).map_err(|e| e.to_string())?;
+    let said = std::sync::Once::new();
+    let _lock = target::lock_to_read(&repo, &cancel, |why| said.call_once(|| eprintln!("Waiting: {why}…"))).map_err(|e| e.to_string())?;
+    olo_diskbackup::restore(&repo, &s.tree, &path, &to, &cancel, &progress).map_err(|e| e.to_string())?;
     println!("Put back {} as {} ({} files).", path.display(), to.display(), progress.files.load(std::sync::atomic::Ordering::Relaxed));
+    Ok(())
+}
+
+fn tidy() -> Result<(), String> {
+    if State::load().pid != 0 {
+        ask(Request::Tidy)?;
+        println!("Asked the service to tidy: `olo-diskbackup --status` says how it went.");
+        return Ok(());
+    }
+    let (settings, mut repo) = open()?;
+    let _lock = repo.lock(true).map_err(|e| e.to_string())?;
+    let host = service::host();
+    let mine: Vec<_> = repo.snapshots().map_err(|e| e.to_string())?.into_iter().filter(|(_, s)| s.host == host).collect();
+    let forget = olo_diskbackup::keep::to_forget(&mine, service::policy(settings.keep));
+    for id in &forget {
+        repo.forget(id).map_err(|e| e.to_string())?;
+    }
+    let (cancel, progress) = (AtomicBool::new(false), Progress::default());
+    let p = olo_diskbackup::prune(&mut repo, &cancel, &progress).map_err(|e| e.to_string())?;
+    println!(
+        "Let go of {} snapshot{}; {} packs deleted, {} copied from into {}; {} freed ({} fetched, {} written); takes {} now; {:.1} s.",
+        forget.len(),
+        if forget.len() == 1 { "" } else { "s" },
+        p.packs_deleted,
+        p.packs_repacked,
+        p.packs_written,
+        mb(p.bytes_deleted.saturating_sub(p.bytes_written)),
+        mb(p.bytes_read),
+        mb(p.bytes_written),
+        mb(p.size),
+        p.seconds
+    );
+    if p.missing > 0 {
+        println!("{} pieces the snapshots use aren't there: the next backup puts back what this computer still has.", p.missing);
+    }
     Ok(())
 }
 
@@ -217,8 +312,13 @@ fn set(pairs: &[String]) -> Result<(), String> {
             "download" => s.download_kbs = number()?,
             "paths" => s.paths = v.split(',').map(|p| p.trim().to_owned()).filter(|p| !p.is_empty()).collect(),
             "exclude" => s.excludes.push(v.to_owned()),
+            "deskbar" => s.in_deskbar = flag()?,
             "groups" => s.exclude_groups = Some(v.split(',').map(|g| g.trim().to_owned()).filter(|g| !g.is_empty()).collect()),
-            _ => return Err(format!("{k}: enabled, battery, every, upload, download, paths, exclude or groups")),
+            "hourly" => s.keep.hourly = number()?.min(u32::MAX as u64) as u32,
+            "daily" => s.keep.daily = number()?.min(u32::MAX as u64) as u32,
+            "weekly" => s.keep.weekly = number()?.min(u32::MAX as u64) as u32,
+            "monthly" => s.keep.monthly = number()?.min(u32::MAX as u64) as u32,
+            _ => return Err(format!("{k}: enabled, battery, deskbar, every, upload, download, paths, exclude, groups, hourly, daily, weekly or monthly")),
         }
     }
     s.save().map_err(|e| e.to_string())

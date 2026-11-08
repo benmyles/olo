@@ -7719,12 +7719,15 @@ dependencies = [
 name = "olo-diskbackup-app"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "libc",
  "olo-crash",
  "olo-diskbackup",
+ "olo-keychain",
  "olo-kit-base",
  "olo-protocol",
  "olo-system",
+ "olo-ui",
  "olo-xdg",
  "serde",
  "serde_json",

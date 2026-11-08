@@ -661,6 +661,27 @@ fn login_fields(item: &Item) -> (Option<&ItemField>, Option<&ItemField>) {
 fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], vault: &str, reply: &impl Fn(Reply)) -> Response {
     let b64 = base64::engine::general_purpose::STANDARD;
     match request {
+        // An Olo program's own secret (DiskBackup's key): a Password item.
+        Request::KeepSecret { title, secret, note } => {
+            let kept = candidates.iter().filter_map(|(v, id)| c.get(v, id).ok()).any(|item| login_fields(&item).1.is_some_and(|f| f.value == *secret));
+            if kept {
+                return Response::Saved { title: title.clone(), updated: false };
+            }
+            let mut params = ItemCreateParams::new(ItemCategory::Password, vault, title.clone());
+            params.fields = vec![ItemField::new("password", "password", ItemFieldType::Concealed, secret)];
+            params.notes = Some(note.clone());
+            match c.create(&params) {
+                Ok(item) => {
+                    reply(Reply::Saved { item: Box::new(item), created: true, tag: None });
+                    Response::Saved { title: title.clone(), updated: false }
+                }
+                Err(e) => error(&e),
+            }
+        }
+        Request::Secrets { .. } => {
+            let values = candidates.iter().filter_map(|(v, id)| c.get(v, id).ok()).filter_map(|item| login_fields(&item).1.map(|f| f.value.clone())).collect();
+            Response::Secrets { values }
+        }
         // The SSH agent's (`agent`): the keys never leave this thread.
         Request::SshKeys => Response::SshKeys { keys: crate::agent::keys(&c.data) },
         Request::SshSign { key, data, flags } => {
@@ -948,6 +969,30 @@ mod tests {
     use onepassword::{AutofillBehavior, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, Website};
 
     use crate::vault::Vault;
+
+    /// An Olo program's secret (DiskBackup's key): kept as a Password item
+    /// once (the same again leaves it), and read back by its title.
+    #[test]
+    fn programs_keep_their_secrets() {
+        let dir = std::env::temp_dir().join(format!("olo-store-secret-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut v = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();
+        let vault = v.data.vaults[0].id.clone();
+        let keep = Request::KeepSecret { title: "DiskBackup Key".into(), secret: "abc123".into(), note: "the key".into() };
+        assert!(matches!(super::keychain(&mut v, &keep, &[], &vault, &|_| {}), Response::Saved { .. }));
+        let ids: Vec<(String, String)> = v.items(&vault).into_iter().filter(|i| i.title == "DiskBackup Key").map(|i| (vault.clone(), i.id)).collect();
+        assert_eq!(ids.len(), 1);
+        let item = v.get(&vault, &ids[0].1).unwrap();
+        assert_eq!((item.category, item.notes.as_str()), (ItemCategory::Password, "the key"));
+        // The same again: still one.
+        super::keychain(&mut v, &keep, &ids, &vault, &|_| {});
+        assert_eq!(v.items(&vault).iter().filter(|i| i.title == "DiskBackup Key").count(), 1);
+        let r = super::keychain(&mut v, &Request::Secrets { title: "DiskBackup Key".into() }, &ids, &vault, &|_| {});
+        let Response::Secrets { values } = &r else { panic!("not secrets") };
+        assert_eq!(values, &["abc123"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A page's logins come nearest first: its own host, its parent
     /// domains, then the site's other hosts.

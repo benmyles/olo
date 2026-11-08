@@ -26,6 +26,9 @@
 //!   and inode are as in the last snapshot isn't read again.
 //! - **`config`**: the repository's version and chunking, sealed: opening it
 //!   is how a key is known to be the right one.
+//! - **Locks** (`locks/…`, `lock`): who's using it, so tidying (`prune`:
+//!   what no snapshot kept, by `keep`, uses any more let go of) never pulls
+//!   anything from under a backup or a restore, on any computer.
 //!
 //! The key (32 random bytes) is kept by Olo Passwords, not in the store.
 
@@ -33,6 +36,9 @@ pub mod backup;
 pub mod chunker;
 pub mod crypto;
 pub mod exclude;
+pub mod keep;
+pub mod lock;
+pub mod prune;
 pub mod repo;
 pub mod restore;
 pub mod store;
@@ -40,6 +46,8 @@ pub mod tree;
 
 pub use backup::{Options, Progress, backup};
 pub use crypto::{Id, Key};
+pub use lock::Lock;
+pub use prune::{Pruned, prune};
 pub use repo::{Repo, Snapshot, Summary};
 pub use restore::restore;
 pub use store::{Limit, LocalStore, Store, Throttled};
@@ -57,6 +65,12 @@ pub enum Error {
     NoRepository,
     Exists,
     Cancelled,
+    /// Someone else is using it in a way that can't be shared (who, and
+    /// how): another computer tidying it, or backing up while this would.
+    Busy(String),
+    /// This one's lock went stale (the computer slept too long): what it
+    /// was doing stops, and starts again.
+    LockLost,
 }
 
 impl std::fmt::Display for Error {
@@ -68,6 +82,8 @@ impl std::fmt::Display for Error {
             Error::NoRepository => write!(f, "there's no backup there"),
             Error::Exists => write!(f, "there's a backup there already"),
             Error::Cancelled => write!(f, "stopped"),
+            Error::Busy(why) => write!(f, "{why}: it tries again later"),
+            Error::LockLost => write!(f, "paused too long (asleep?): it starts again"),
         }
     }
 }

@@ -60,8 +60,18 @@ pub fn cut(data: &[u8]) -> usize {
 }
 
 /// Read `r` a chunk at a time, handing each to `each` (which may stop it).
-pub fn chunks(mut r: impl std::io::Read, mut each: impl FnMut(&[u8]) -> crate::Result<()>) -> crate::Result<()> {
-    let mut buf = vec![0u8; 2 * MAX];
+pub fn chunks(r: impl std::io::Read, each: impl FnMut(&[u8]) -> crate::Result<()>) -> crate::Result<()> {
+    chunks_in(&mut Vec::new(), r, each)
+}
+
+/// [`chunks`], reading into `buf` (made the size it needs once: a backup
+/// keeps one for every file, since a new one zeroed for each, 8 MiB, cost
+/// more than reading and keeping a small file did).
+pub fn chunks_in(buf: &mut Vec<u8>, mut r: impl std::io::Read, mut each: impl FnMut(&[u8]) -> crate::Result<()>) -> crate::Result<()> {
+    if buf.len() < 2 * MAX {
+        buf.resize(2 * MAX, 0);
+    }
+    let buf = &mut buf[..2 * MAX];
     let (mut start, mut end) = (0usize, 0usize);
     let mut eof = false;
     loop {

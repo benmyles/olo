@@ -5,6 +5,12 @@
 //! priority: anything else that wants them goes first), its progress in
 //! the state file every 2 s while it runs and not otherwise. Speed limits
 //! follow the settings at once, even mid-backup.
+//!
+//! After each backup, this computer's snapshots past keeping (the settings'
+//! hours, days, weeks, months) are forgotten; once a day the backup is
+//! tidied (`prune`): the space only they used freed. Each holds a lock in
+//! the store (shared to back up, alone to tidy), so another computer
+//! backing up to the same place, or a restore, is never pulled from under.
 
 use std::{
     os::unix::net::UnixListener,
@@ -17,21 +23,28 @@ use std::{
     time::Duration,
 };
 
-use olo_diskbackup::{Id, Options, Progress, Repo, Snapshot, backup, exclude::Excludes};
-use olo_protocol::diskbackup::{Doing, Last, Reply, Request, Settings, State, Target};
+use olo_diskbackup::{Id, Options, Progress, Repo, Snapshot, backup, exclude::Excludes, keep, prune};
+use olo_protocol::diskbackup::{Doing, Keep, Last, Reply, Request, Settings, State, Target, Tidied};
 
 use crate::target::{self, Limits};
 
 enum Event {
     Settings,
     Now,
+    Tidy,
 }
 
 /// What's kept between runs of the service (in the state folder).
 #[derive(Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 struct Kept {
     last: Option<Last>,
     last_ok: Option<i64>,
+    tidied: Option<Tidied>,
+    size: Option<u64>,
+    snapshots: u32,
+    /// Snapshots forgotten since the last tidy.
+    forgotten: u32,
 }
 
 fn kept_path() -> std::path::PathBuf {
@@ -64,9 +77,18 @@ pub fn run() -> ExitCode {
         }
     });
     let k: Kept = std::fs::read_to_string(kept_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    let mut st = State { pid: std::process::id(), last: k.last, last_ok: k.last_ok, ..State::default() };
+    let mut forgotten = k.forgotten;
+    let mut st = State { pid: std::process::id(), last: k.last, last_ok: k.last_ok, tidied: k.tidied, size: k.size, snapshots: k.snapshots, ..State::default() };
     let mut open: Option<Opened> = None;
     let mut now_asked = false;
+    let mut tidy_asked = false;
+    let save = |st: &State, forgotten: u32| {
+        let k = Kept { last: st.last.clone(), last_ok: st.last_ok, tidied: st.tidied.clone(), size: st.size, snapshots: st.snapshots, forgotten };
+        if let Some(dir) = kept_path().parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(kept_path(), serde_json::to_vec(&k).unwrap_or_default());
+    };
     loop {
         let settings = Settings::load();
         limits.follow(&settings);
@@ -80,9 +102,19 @@ pub fn run() -> ExitCode {
             let wait = if why.contains("battery") { Duration::from_secs(300) } else { Duration::from_secs(u64::MAX / 4) };
             match rx.recv_timeout(wait) {
                 Ok(Event::Now) => now_asked = true,
+                Ok(Event::Tidy) => tidy_asked = true,
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 _ => {}
             }
+            continue;
+        }
+        if std::mem::take(&mut tidy_asked) {
+            cancel.store(false, Relaxed);
+            match opened(&settings, &mut open, &limits) {
+                Ok(_) => tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten),
+                Err(e) => tracing::warn!("diskbackup: can't tidy: {e}"),
+            }
+            save(&st, forgotten);
             continue;
         }
         let now = now();
@@ -93,6 +125,7 @@ pub fn run() -> ExitCode {
         if due > now {
             match rx.recv_timeout(Duration::from_secs((due - now) as u64)) {
                 Ok(Event::Now) => now_asked = true,
+                Ok(Event::Tidy) => tidy_asked = true,
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 _ => {}
             }
@@ -100,12 +133,11 @@ pub fn run() -> ExitCode {
         }
         now_asked = false;
         cancel.store(false, Relaxed);
-        once(&settings, &mut st, &mut open, &limits, &cancel);
-        let k = Kept { last: st.last.clone(), last_ok: st.last_ok };
-        if let Some(dir) = kept_path().parent() {
-            let _ = std::fs::create_dir_all(dir);
+        if once(&settings, &mut st, &mut open, &limits, &cancel, &mut forgotten) && tidy_due(st.tidied.as_ref()) {
+            cancel.store(false, Relaxed);
+            tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten);
         }
-        let _ = std::fs::write(kept_path(), serde_json::to_vec(&k).unwrap_or_default());
+        save(&st, forgotten);
     }
     ExitCode::SUCCESS
 }
@@ -139,18 +171,16 @@ fn on_battery() -> bool {
     battery && !mains
 }
 
-/// One backup, start to end, the state said throughout.
-fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool) {
-    st.doing = Doing::BackingUp;
+/// `f`, with its progress in the state file every 2 s while it runs.
+fn reporting<T>(st: &mut State, doing: Doing, progress: &Progress, f: impl FnOnce() -> T) -> T {
+    st.doing = doing;
     st.next = None;
     st.progress = Some(olo_protocol::diskbackup::Progress { started: now(), ..Default::default() });
     let _ = st.save();
-    let progress = Progress::default();
     let done = AtomicBool::new(false);
     let base = st.clone();
-    let result = std::thread::scope(|s| {
-        // The state file as it goes, every 2 s while it runs.
-        s.spawn(|| {
+    std::thread::scope(|s| {
+        let reporter = s.spawn(|| {
             while !done.load(Relaxed) {
                 std::thread::park_timeout(Duration::from_secs(2));
                 if done.load(Relaxed) {
@@ -166,15 +196,30 @@ fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: 
                 let _ = now.save();
             }
         });
-        let r = back_up(settings, open, limits, cancel, &progress);
+        let r = f();
         done.store(true, Relaxed);
+        reporter.thread().unpark();
         r
-    });
+    })
+}
+
+/// One backup, start to end, the state said throughout; whether it
+/// finished.
+fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, forgotten: &mut u32) -> bool {
+    let progress = Progress::default();
+    let result = reporting(st, Doing::BackingUp, &progress, || back_up(settings, open, limits, cancel, &progress));
+    if result.is_err() {
+        // (Opened again next time: the index as the store has it.)
+        *open = None;
+    }
     let time = now();
+    let ok = result.is_ok();
     st.last = Some(match result {
-        Ok((snapshots, summary)) => {
+        Ok((snapshots, summary, gone)) => {
             st.snapshots = snapshots;
             st.last_ok = Some(time);
+            st.size = st.size.map(|s| s + summary.stored_bytes);
+            *forgotten += gone;
             Last {
                 time,
                 error: None,
@@ -196,21 +241,89 @@ fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: 
     st.doing = Doing::Idle;
     st.progress = None;
     let _ = st.save();
+    ok
 }
 
-/// Open (once, or for a new target) and back up; how many snapshots there
-/// are then, and what this one did.
-fn back_up(settings: &Settings, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, progress: &Progress) -> Result<(u32, olo_diskbackup::Summary), String> {
-    let host = host();
+/// Tidied a day ago or more (an hour, if it didn't finish), or never.
+fn tidy_due(t: Option<&Tidied>) -> bool {
+    t.is_none_or(|t| now() - t.time >= if t.error.is_some() { 3600 } else { 24 * 3600 })
+}
+
+/// Tidy: with the backup to itself (another computer using it: next
+/// time), this computer's snapshots past keeping forgotten (the settings
+/// may have changed since the last backup), then what only they used freed.
+fn tidy(settings: &Settings, st: &mut State, open: &mut Option<Opened>, cancel: &AtomicBool, forgotten: &mut u32) {
+    let Some(o) = open.as_mut() else { return };
+    let lock = match o.repo.lock(true) {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::info!("diskbackup: not tidying now: {e}");
+            return;
+        }
+    };
+    let progress = Progress::default();
+    let result = reporting(st, Doing::Pruning, &progress, || {
+        o.repo.refresh()?;
+        let all = o.repo.snapshots()?;
+        let host = host();
+        let mine: Vec<(Id, Snapshot)> = all.iter().filter(|(_, s)| s.host == host).cloned().collect();
+        let forget = keep::to_forget(&mine, policy(settings.keep));
+        for f in &forget {
+            o.repo.forget(f)?;
+        }
+        *forgotten += forget.len() as u32;
+        prune(&mut o.repo, cancel, &progress).map(|p| (p, all.len() - forget.len()))
+    });
+    drop(lock);
+    st.tidied = Some(match result {
+        Ok((p, snapshots)) => {
+            st.snapshots = snapshots as u32;
+            tracing::info!("diskbackup: tidied: {p:?}");
+            let freed = p.bytes_deleted.saturating_sub(p.bytes_written);
+            st.size = Some(p.size);
+            let t = Tidied { time: now(), error: None, forgotten: *forgotten, freed };
+            *forgotten = 0;
+            t
+        }
+        Err(e) => {
+            tracing::warn!("diskbackup: tidying: {e}");
+            *open = None;
+            Tidied { time: now(), error: Some(e.to_string()), forgotten: *forgotten, freed: 0 }
+        }
+    });
+    st.doing = Doing::Idle;
+    st.progress = None;
+    let _ = st.save();
+}
+
+/// The engine's keeping rule, from the settings'.
+pub fn policy(k: Keep) -> keep::Policy {
+    keep::Policy { hourly: k.hourly, daily: k.daily, weekly: k.weekly, monthly: k.monthly }
+}
+
+/// The repository open (once, or for a new target).
+fn opened<'a>(settings: &Settings, open: &'a mut Option<Opened>, limits: &Limits) -> Result<&'a mut Opened, String> {
     if open.as_ref().is_none_or(|o| o.target != settings.target) {
         *open = None;
         let store = target::store(&settings.target, limits)?;
         let key = target::key()?;
         let repo = Repo::open(store, key, Some(target::cache())).map_err(|e| e.to_string())?;
+        let host = host();
         let parent = repo.snapshots().map_err(|e| e.to_string())?.into_iter().rfind(|(_, s)| s.host == host);
         *open = Some(Opened { target: settings.target.clone(), repo, parent });
     }
-    let o = open.as_mut().expect("opened");
+    Ok(open.as_mut().expect("opened"))
+}
+
+/// Open and back up; how many snapshots there are then, what this one did,
+/// and how many were forgotten after it.
+fn back_up(settings: &Settings, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, progress: &Progress) -> Result<(u32, olo_diskbackup::Summary, u32), String> {
+    let host = host();
+    let o = opened(settings, open, limits)?;
+    // Held while it backs up (and forgets): nobody tidies meanwhile.
+    let lock = o.repo.lock(false).map_err(|e| e.to_string())?;
+    // (The index as it is now: another computer may have tidied.)
+    o.repo.refresh().map_err(|e| e.to_string())?;
     let home = target::home();
     let groups = settings.exclude_groups.clone().unwrap_or_else(olo_diskbackup::exclude::default_groups);
     // Never the backup's own: its cache, and a folder target.
@@ -223,20 +336,26 @@ fn back_up(settings: &Settings, open: &mut Option<Opened>, limits: &Limits, canc
     let paths = settings.paths.iter().map(|p| target::expand(p)).filter(|p| p.exists()).collect();
     let opts = Options { paths, excludes: &excludes, host, one_file_system: settings.one_file_system };
     let parent = o.parent.as_ref().map(|(id, s)| (*id, s));
+    let host = opts.host.clone();
     let (id, snapshot) = backup(&mut o.repo, &opts, parent, cancel, progress).map_err(|e| e.to_string())?;
     let summary = snapshot.summary.clone();
     o.parent = Some((id, snapshot));
-    let count = o.repo.snapshots().map(|s| s.len() as u32).unwrap_or(0);
-    Ok((count, summary))
+    // Past keeping: this computer's snapshots the settings don't keep
+    // (another computer's are its own to keep), forgotten; the space only
+    // they used is freed when it's next tidied.
+    let all = o.repo.snapshots().map_err(|e| e.to_string())?;
+    let mine: Vec<(Id, Snapshot)> = all.iter().filter(|(_, s)| s.host == host).cloned().collect();
+    let forget = keep::to_forget(&mine, policy(settings.keep));
+    for f in &forget {
+        o.repo.forget(f).map_err(|e| e.to_string())?;
+    }
+    drop(lock);
+    Ok(((all.len() - forget.len()) as u32, summary, forget.len() as u32))
 }
 
 /// This computer's name (its snapshots are told apart by it).
 pub fn host() -> String {
-    let mut buf = [0u8; 256];
-    // SAFETY: a buffer of its length; the name is NUL-terminated in it.
-    let ok = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) } == 0;
-    let name = if ok { String::from_utf8_lossy(&buf[..buf.iter().position(|b| *b == 0).unwrap_or(0)]).into_owned() } else { String::new() };
-    if name.is_empty() { "this computer".into() } else { name }
+    olo_diskbackup::lock::host()
 }
 
 pub fn now() -> i64 {
@@ -279,6 +398,10 @@ fn listen(tx: mpsc::Sender<Event>, cancel: Arc<AtomicBool>) {
                 }
                 Ok(Request::Stop) => {
                     cancel.store(true, Relaxed);
+                    Reply::Ok
+                }
+                Ok(Request::Tidy) => {
+                    let _ = tx.send(Event::Tidy);
                     Reply::Ok
                 }
                 Err(e) => Reply::Error { message: e.to_string() },

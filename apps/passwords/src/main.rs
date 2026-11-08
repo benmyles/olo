@@ -940,6 +940,15 @@ impl Passwords {
         // The items the request may concern, by their websites.
         let fits: Box<dyn Fn(&onepassword::Website) -> bool> = match &incoming.request {
             Request::Unlock => return incoming.reply(Response::Unlocked),
+            // An Olo program's own secrets: the items with that title.
+            Request::KeepSecret { title, .. } | Request::Secrets { title } => {
+                let title = title.clone();
+                let candidates = self.items.iter().filter(|i| i.state == ItemState::Active && i.title == title).map(|i| (i.vault_id.clone(), i.id.clone())).collect();
+                let Some(vault) = self.new_item_vault() else {
+                    return incoming.reply(Response::Error { message: "There’s no vault to keep it in.".into() });
+                };
+                return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates, vault });
+            }
             Request::Shares | Request::SetShares { .. } | Request::SshKeys => {
                 return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: Vec::new(), vault: String::new() });
             }
