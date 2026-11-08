@@ -100,6 +100,13 @@ pub enum Request {
     SendToBack {
         id: WindowId,
     },
+    /// Keep a window above the others on its workspace (`on`: or not;
+    /// left out, the other way), as its menu's Always on Top.
+    SetOnTop {
+        id: WindowId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        on: Option<bool>,
+    },
     /// The windows being shared now (olo-portal's window shares): each
     /// ringed on screen while it is, so the person knows (none: none).
     SharedWindows {
@@ -1099,6 +1106,9 @@ pub struct WindowInfo {
     /// Rolled up to just its tab.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rolled: bool,
+    /// Kept above the others ([`Request::SetOnTop`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub on_top: bool,
     /// Behind the window Focus mode shows on its display
     /// ([`WindowingMode::Focus`]): not drawn until it is activated.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

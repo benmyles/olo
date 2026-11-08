@@ -415,6 +415,13 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 Reply::Ok
             }
+            Request::SetOnTop { id, on } => match self.window_by_id(id) {
+                Some(w) => {
+                    self.set_on_top(&w, on);
+                    Reply::Ok
+                }
+                None => not_found(),
+            },
             Request::SendToBack { id } => match self.window_by_id(id) {
                 Some(w) => {
                     self.send_to_back(&w);

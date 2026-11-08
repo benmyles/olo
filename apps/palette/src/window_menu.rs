@@ -56,6 +56,8 @@ pub struct Facts {
     pub others: Vec<(String, i32)>,
     /// Rolled up to its tab.
     pub rolled: bool,
+    /// Kept above the others (Always on Top).
+    pub on_top: bool,
     /// In a group with other windows (their tabs side by side).
     pub grouped: bool,
     /// Auto-tiling, or Focus, is its display's mode, and whether it
@@ -125,7 +127,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_ui::commands::path(pid as u32, surface),
             _ => None,
         };
-        let (rolled, grouped, floating, floats_always) = (w.rolled, w.group.is_some(), w.floating, w.floats_always);
+        let (rolled, on_top, grouped, floating, floats_always) = (w.rolled, w.on_top, w.group.is_some(), w.floating, w.floats_always);
         let pid = w.pid.map(|p| p as u32);
         let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_ui::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
         let find = |command: &str| own.iter().find(|e| e.command == command && e.path.len() == 1).map(|e| (e.label.clone(), e.keys.clone(), e.enabled));
@@ -133,7 +135,26 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         let (name, _) = olo_xdg::apps::app_name(&w.app_id, entry.as_ref());
         let app = Owner { pid, surface: w.surface, app_id: w.app_id.clone(), name, close: find("close"), quit: find("quit") };
         let screens = (w.kept && olo_ui::moving::menus_offer()).then(olo_ui::moving::screens);
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, focus, floating, floats_always, keys, path, app, screens });
+        proxy.send(Facts {
+            ask,
+            title: w.title,
+            workspace: w.workspace,
+            workspaces,
+            display,
+            displays,
+            others,
+            rolled,
+            on_top,
+            grouped,
+            auto,
+            focus,
+            floating,
+            floats_always,
+            keys,
+            path,
+            app,
+            screens,
+        });
     });
 }
 
@@ -262,6 +283,7 @@ pub fn build(f: &Facts) -> Menu {
         // As ⌘-dragging its tab out of the group does.
         m = m.item("Remove from Group", "ungroup");
     }
+    m = m.item("Always on Top", "on-top").checked(f.on_top);
     m = m.item("Send to Back", "send-to-back").separator();
     // The app's own Close and Quit, as its keys press them.
     let item = |m: Menu, label: String, command: &str, keys: Option<String>, enabled: bool| {
@@ -322,6 +344,7 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
     } else {
         match command {
             "send-to-back" => Request::SendToBack { id: window },
+            "on-top" => Request::SetOnTop { id: window, on: None },
             "float" => Request::SetFloating { id: window, floating: Some(true), alone: true },
             "float-group" => Request::SetFloating { id: window, floating: Some(true), alone: false },
             "unfloat" => Request::SetFloating { id: window, floating: Some(false), alone: false },
@@ -437,6 +460,7 @@ mod tests {
             workspaces: 3,
             displays: 2,
             rolled: false,
+            on_top: false,
             grouped: true,
             auto: false,
             focus: false,
@@ -474,7 +498,7 @@ mod tests {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
                 || olo_ui::moving::screen_command(c).is_some()
-                || ["send-to-back", "close", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
+                || ["send-to-back", "on-top", "close", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }
         // Each agent screen running, and a new one; none where the

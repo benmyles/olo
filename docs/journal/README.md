@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Always on Top, from a window's menu
+
+*02:42* — A window's tab menu has Always on Top: kept above the others (its dialogs over it still, picture in picture over it), across a reload; agents set it with set_on_top.
+
+![Always on Top, from a window's menu](2026-11-08/024204-always-on-top-from-a-window-s-menu.png)
+
 ### Every app clean at 1.25× and 1.75×
 
 *02:00* — The layout review at 1.25× and 1.75× had found 26 errors and 10 near-misses across the apps, all there before: Power's grid (here, even now), boxes' insets, right-aligned labels, text fields in rows, Screen Saver's monitor stand, Telegram's panes, check boxes beside menus, Network's columns, About's wordmark. Every app and panel is clean at 1, 1.25, 1.5, 1.75 and 2×.

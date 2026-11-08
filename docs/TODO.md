@@ -20,10 +20,6 @@ something nobody here has is in "Blocked", with what it waits for.
 Leftovers found in finished entries (2026-11-08 audit: each checked
 against the code, still not there):
 
-- **Always on Top, from a window's menu** (the window menu's "Not yet",
-  done 2026-10-28): a window kept above the others on its workspace
-  until turned off; app_server keeps the state, the tab's menu and the
-  palette say it, agents set it.
 - **The overview: drag a window to another workspace; add a workspace**
   (its "Not yet", done 2026-10-28): a window dragged onto another
   workspace's pane moves there; a pane at the end adds a workspace.
@@ -2363,6 +2359,12 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Always on Top, from a window's menu**~~ (the window menu's "Not
+  yet", 2026-10-28). *Done* (2026-11-08): the tab's menu's Always on Top
+  keeps a window above the others (its dialogs over it, picture in
+  picture over it) until chosen again, across an in-place reload;
+  `Request::SetOnTop` and `WindowInfo::on_top` for agents.
 
 - ~~**Lock screens and screen savers of ended agent screens lingered**~~
   (found 2026-11-07: eleven olo-lock and an olo-screensaver, 54 MB, of

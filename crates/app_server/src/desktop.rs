@@ -170,6 +170,9 @@ pub struct WindowMeta {
     /// Picture in picture (`shell::pip`): over every window, in no group,
     /// tile or remembered place. Decided on its first commit.
     pub pip: Cell<bool>,
+    /// Always on Top (its menu's, `Request::SetOnTop`): above the windows
+    /// that aren't, under picture in picture.
+    pub on_top: Cell<bool>,
 }
 
 impl WindowMeta {
@@ -225,6 +228,7 @@ impl WindowElement {
             away: RefCell::new(None),
             closed_by_hand: Cell::new(false),
             pip: Cell::new(false),
+            on_top: Cell::new(false),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
@@ -571,6 +575,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     focused: focused.is_some() && w.wl_surface().map(|s| s.into_owned()) == focused,
                     chosen: self.twitch.as_ref().is_some_and(|t| t.rows.get(t.row).and_then(|r| r.1.get(t.index)) == Some(&meta.id)),
                     rolled: w.rolled(),
+                    on_top: meta.on_top.get(),
                     covered: meta.covered.get(),
                     zoomed: self.is_zoomed(&w),
                     zoomed_along: Self::zoomed_axis(&w).map(|a| match a {

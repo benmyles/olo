@@ -10827,7 +10827,11 @@ put it away.
   (each screen running and a new one; "Moving windows to and from
   screens"), Open in Tracker (when the window's program says
   what it shows: `commands::path`, asked of its pid with its
-  `WindowInfo::surface`), Send to Back (BeOS's right-click on the tab,
+  `WindowInfo::surface`), Always on Top (checked while it is:
+  `Request::SetOnTop`, `WindowInfo::on_top`, kept across a reload in the
+  saved layout; once a turn `keep_on_top_above` raises such windows over
+  the others, each with its own dialogs, and picture in picture over
+  them), Send to Back (BeOS's right-click on the tab,
   `Request::SendToBack`), then Close and Quit APP.
   Close and Quit are the app's own, as its keys press them:
   - A kit app's come from that window's menus (`commands::menus_in(pid,
