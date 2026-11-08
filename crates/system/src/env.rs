@@ -65,9 +65,10 @@ pub fn face_here() -> bool {
 }
 
 /// Whether to listen for a finger: [`readers_here`], unless
-/// `OLO_NO_FINGERPRINT` (fprintd has no stand-in to test with).
+/// `OLO_NO_FINGERPRINT`; or (debug builds) a test's own fprintd
+/// (`OLO_FPRINT_BUS`).
 pub fn finger_here() -> bool {
-    readers_here() && std::env::var_os("OLO_NO_FINGERPRINT").is_none()
+    readers_here() && std::env::var_os("OLO_NO_FINGERPRINT").is_none() || cfg!(debug_assertions) && std::env::var_os("OLO_FPRINT_BUS").is_some()
 }
 
 /// Where programs keep their temporary files (`TMPDIR`, and `TMP` and

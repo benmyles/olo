@@ -7080,7 +7080,8 @@ fd in the event loop finishes it when it signals (`headless::read_back`,
 `screenshot::finish`: mapped without waiting, copied, saved on a thread;
 with no fence to make, at once as before). The DRM backend still takes
 its shots at once (`screenshot::take`, the two together: the person's own
-Screenshot app, now and then). Measured as above: the frame's part 5.3–5.5
+Screenshot app, now and then; making it wait for a fence too needs a
+DRM seat to try it on, so it's in TODO's Blocked). Measured as above: the frame's part 5.3–5.5
 → 0.35 ms (slowest 0.4), the read-back's 1.6 ms when the fence signals
 (the copy; slowest 1.95), so a shot holds the loop about 2 ms rather than
 5.4; the round trip the same 32 ms.
@@ -13156,7 +13157,15 @@ soft key set up in the session (`cargo run -p olo-fido --example
 soft-set-up`), Passwords debug with it and the PAM stand-in; `op item
 list` showed the alert with the sentence, the key's touch 2.5 s later
 took it away and op printed the list; with a key that never touches,
-Allow still answered it and the key's wait ended with it.
+Allow still answered it and the key's wait ended with it. A look and
+Touch ID through stand-ins on the session's own bus (`cargo run -p
+olo-system --example fake-readers -- --bus ADDRESS --finger
+match|no-match|none --face match|no-face|none`, with `OLO_FACE_BUS` and,
+debug builds, `OLO_FPRINT_BUS` at that address: it prints what it's
+asked): with no finger enrolled the alert offered the camera and a
+matching look allowed op with no click; with the look finding no face,
+the finger's match did (Claim, VerifyStart, VerifyStatus match,
+VerifyStop, Release).
 `op run` passes the values in the environment and masks them in the
 command's output (`<concealed by 1Password>`, `text::Masker`) unless
 `--no-masking`; `inject` writes files 0600. Commands that change items,
@@ -13637,7 +13646,8 @@ A Telegram client of Olo's own: MTProto in process through grammers
   paper plane (Send Voice Message) and the paperclip a × (Cancel
   Recording), as Escape is; Chat ▸ Record Voice Message does the same
   (and then Send Voice Message, Cancel Recording), for agents. Shorter
-  than half a second, it isn't sent (the banner says how). The default
+  than half a second, it isn't sent (the banner says how; tried with a
+  hold timed on app_server's socket: 0.4 s not sent, 1.0 s sent). The default
   microphone (`olo_system::recording::Capture`, mono 48 kHz, opened and
   closed on a thread: each a round trip to the sound server) is coded as
   it comes on the sound client's thread to Ogg Opus in the cache's

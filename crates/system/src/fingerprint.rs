@@ -56,8 +56,26 @@ impl Stop {
     }
 }
 
+/// fprintd's bus: the system bus, or (debug builds) a test's own
+/// (`OLO_FPRINT_BUS`, an address, as `OLO_FACE_BUS` is the face
+/// service's: the `fake-readers` example stands in there).
+fn conn() -> Result<&'static zbus::blocking::Connection> {
+    if cfg!(debug_assertions)
+        && let Ok(address) = std::env::var("OLO_FPRINT_BUS")
+        && !address.is_empty()
+    {
+        static TEST: std::sync::OnceLock<zbus::blocking::Connection> = std::sync::OnceLock::new();
+        if let Some(c) = TEST.get() {
+            return Ok(c);
+        }
+        let c = zbus::blocking::connection::Builder::address(address.as_str())?.build()?;
+        return Ok(TEST.get_or_init(|| c));
+    }
+    bus::system()
+}
+
 fn device() -> Result<Proxy<'static>> {
-    let conn = bus::system()?;
+    let conn = conn()?;
     let path: zvariant::OwnedObjectPath = bus::call(conn, DEST, "/net/reactivated/Fprint/Manager", "net.reactivated.Fprint.Manager", "GetDefaultDevice", &())?;
     Proxy::new(conn, DEST, path, DEVICE)
 }

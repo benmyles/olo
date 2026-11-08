@@ -22,6 +22,11 @@ are all done, and are in Done, newest first.)
 
 ## Done, waiting for Ben to try or confirm
 
+(Audited again 2026-11-08, all 50: each is done, and what's left in each
+is Ben's alone: his accounts (Google, GitHub, 1Password), his hands,
+face, keys, dock or displays at the machine, his upgrade, or his say on
+how it looks and sounds.)
+
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for
   continuous, minimal impact (in terms of cpu/mem/network usage -- it
@@ -2119,6 +2124,15 @@ password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
 people.
 
+- **The DRM backend's screenshots read back asynchronously too** (the
+  rest of "A screenshot holds app_server's loop", in Done): headless's
+  shots no longer wait on the GPU; the DRM backend's (the person's own
+  Screenshot app, now and then: ~5 ms of one frame at 4K) still do,
+  through MultiRenderer's mapping, re-acquired per GPU. Blocked on trying
+  it: only a DRM seat runs that path (vkms, which needs root: Ben's OK
+  for vkms stands, but sudo here asks for his face or approval, and he
+  isn't at the computer), and his own session isn't for trying it.
+
 - **The ThinkPad's leftovers that are work, not a try** (from its entry
   above; each blocked on the hardware in hand or Ben's say):
   - Saying when a display on USB-C gets no picture, and why: the Dell on
@@ -2348,7 +2362,7 @@ people.
   it signals (its fd in the event loop): the frame's part 5.3–5.5 → 0.35
   ms, the read-back 1.6 ms (the copy) when the GPU is done. The DRM
   backend (the person's Screenshot app, now and then) still takes shots
-  at once.
+  at once: that part is in Blocked (it can only be tried on a DRM seat).
 
 - ~~**app_server keeps its big buffers**~~ (its "Left", 2026-11-02).
   *Done* (2026-11-08): a screenshot's target texture is kept for the
@@ -2393,6 +2407,9 @@ people.
   microphone; hold it to record (let go on it to send, away to cancel),
   or click it to record until Send, × or Escape; Opus in Ogg coded in
   process (rusty-opus, kept to SILK after measuring it against libopus).
+  Every path tried: hold and let go on it (sent) or away (thrown away);
+  click then Send, ×, Escape; a hold of 0.4 s (timed on the socket: not
+  sent, the banner saying how) against 1.0 s (sent).
 
 - ~~**Passwords' SSH agent: allow with a touch or a look**~~ (its "Left",
   2026-11-05). *Done* (2026-11-08): the Allow alert for a terminal
@@ -2400,7 +2417,12 @@ people.
   touch of a security key set up, or a look, waited for while it's open,
   and says so; and Passwords' lock, Terminal's sudo and the polkit agent
   no longer wait on the person's reader, key or camera from a test
-  session or an agent's screen.
+  session or an agent's screen. Each tried end to end headless: the soft
+  key's touch; a look and Touch ID through stand-ins for olo-faced and
+  fprintd on the session's own bus (`fake-readers`): with no finger
+  enrolled the alert offered the camera and a matching look allowed op;
+  with the look finding no face, the finger's match allowed it (claimed,
+  stopped, released).
 
 - ~~**The overview: drag a window to another workspace; add a
   workspace**~~ (its "Not yet", 2026-10-28). *Done* (2026-11-08): a
