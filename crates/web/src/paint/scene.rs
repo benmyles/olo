@@ -90,6 +90,10 @@ pub struct Command {
     /// Under an animated, translated box (that box): painted apart in the
     /// box's own space, placed by its translation (see `Moved`).
     pub(super) moved: Option<BoxId>,
+    /// How far past its bounds it may show (CSS px): a `filter: blur()`
+    /// of a group it is in spreads it (what finds it by area looks that
+    /// much further).
+    pub(super) reach: f32,
 }
 /// The axis-aligned bounds of `r` mapped through `m`.
 pub(super) fn aabb(m: [f64; 6], r: Rect) -> Rect {
@@ -108,7 +112,13 @@ pub(super) fn extent(c: &Command, transforms: &[[f64; 6]]) -> Rect {
     extent_of(c, transforms)
 }
 fn extent_of(c: &Command, transforms: &[[f64; 6]]) -> Rect {
-    if c.transform == NONE { c.bounds } else { aabb(transforms[c.transform as usize], c.bounds) }
+    let r = if c.transform == NONE { c.bounds } else { aabb(transforms[c.transform as usize], c.bounds) };
+    if c.reach > 0. {
+        let m = f64::from(c.reach);
+        Rect { x: r.x - m, y: r.y - m, width: r.width + 2. * m, height: r.height + 2. * m }
+    } else {
+        r
+    }
 }
 /// A box painted as a whole at an opacity (CSS Color 4 §2.2): its commands
 /// are contiguous in paint order and composite through one layer.
@@ -122,6 +132,12 @@ pub struct Group {
     /// `decoration::color_matrix`), applied to what the group painted
     /// before it composites.
     pub filter: Option<[f32; 20]>,
+    /// Its `filter`'s blur (the standard deviation, CSS px; several
+    /// compose as one), applied before the matrix.
+    pub blur: f32,
+    /// How far its content and its enclosing groups' blurs spread it
+    /// (CSS px): its commands' reach.
+    pub reach: f32,
 }
 /// The box whose mask images, over its border box, mask a group.
 #[derive(Clone, Copy, Debug)]
@@ -1254,6 +1270,7 @@ impl<'a> BuildJob<'a> {
             sticky: self.current_sticky,
             surface: self.current_surface,
             moved: self.current_moved,
+            reach: if self.current_group == NONE { 0. } else { self.groups[self.current_group as usize].reach },
         };
         let reach = extent(&command, &self.transforms);
         self.extent = union(self.extent, if clip == NONE { reach } else { intersection(reach, self.clip_extent(clip)) });
@@ -2034,23 +2051,27 @@ impl<'a> BuildJob<'a> {
                         _ => None,
                     };
                     // filter: the box and its content through its colour
-                    // functions, as one group (blur and drop-shadow not yet).
-                    let filter = match s.value(P::Filter) {
+                    // functions and its blur, as one group (drop-shadow() and
+                    // url() not yet).
+                    let (filter, blur) = match s.value(P::Filter) {
                         Value::Filters(f) => {
-                            if f.0.iter().any(|f| matches!(f, crate::css::properties::Filter::Blur(_) | crate::css::properties::Filter::Other)) {
-                                self.note("filter blur()/drop-shadow()/url() not drawn", id);
+                            if f.0.iter().any(|f| matches!(f, crate::css::properties::Filter::Other)) {
+                                self.note("filter drop-shadow()/url() not drawn", id);
                             }
-                            crate::css::properties::color_matrix(&f.0)
+                            let sigma2: f64 =
+                                f.0.iter().map(|f| if let crate::css::properties::Filter::Blur(n) = f { n.expression().constant().map_or(0., |q| q.value.max(0.)).powi(2) } else { 0. }).sum();
+                            (crate::css::properties::color_matrix(&f.0), sigma2.sqrt().min(1000.) as f32)
                         }
-                        _ => None,
+                        _ => (None, 0.),
                     };
-                    if opacity < 1. || mask.is_some() || filter.is_some() {
+                    if opacity < 1. || mask.is_some() || filter.is_some() || blur > 0. {
                         if self.groups.len() >= self.limits.commands {
                             return Err(Error::Limit);
                         }
                         let index = self.groups.len() as u32;
-                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask, filter });
-                        if mask.is_none() && filter.is_none() {
+                        let parent_reach = if parent_group == NONE { 0. } else { self.groups[parent_group as usize].reach };
+                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask, filter, blur, reach: parent_reach + 3. * blur });
+                        if mask.is_none() && filter.is_none() && blur == 0. {
                             self.group_owners.push((id, index));
                         }
                         self.current_group = index;
@@ -2265,7 +2286,7 @@ impl<'a> BuildJob<'a> {
         let alone = |mut g: u32| {
             while g != NONE {
                 let group = &self.groups[g as usize];
-                if members[g as usize] != 1 || group.mask.is_some() || group.filter.is_some() {
+                if members[g as usize] != 1 || group.mask.is_some() || group.filter.is_some() || group.blur > 0. {
                     return false;
                 }
                 g = group.parent;

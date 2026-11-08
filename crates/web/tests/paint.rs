@@ -1706,6 +1706,42 @@ fn a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted() {
     assert_eq!(pixel(&tile, 50, 65), [255, 0, 0, 255], "the document's p");
 }
 #[test]
+fn a_filter_blurs_and_recolours_its_box_past_its_edges() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // A red box blurred by 4px (it spreads 12px past its edges, where no
+    // other command is), and a green one greyed.
+    let page = olo_web::page::load(
+        Arc::from(
+            "<!doctype html><style>body{margin:0}div{position:absolute;width:30px;height:30px}</style>\
+             <div style='left:30px;top:10px;background:#f00;filter:blur(4px)'></div>\
+             <div style='left:30px;top:60px;background:#0a0;filter:grayscale(1)'></div>",
+        ),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let tile = render(&mut painter, &page.scene);
+    assert_eq!(pixel(&tile, 45, 25), [255, 0, 0, 255], "inside, far from the edges: as it was");
+    let edge = pixel(&tile, 30, 25);
+    assert!(edge[0] == 255 && edge[1] > 80 && edge[1] < 180, "at the edge, half blurred: {edge:?}");
+    let outside = pixel(&tile, 25, 25);
+    assert!(outside[1] < 250 && outside[1] > 180, "past the edge, the blur's tail: {outside:?}");
+    assert_eq!(pixel(&tile, 10, 25), [255, 255, 255, 255], "beyond its reach: the page");
+    let grey = pixel(&tile, 45, 75);
+    assert!(grey[0] == grey[1] && grey[1] == grey[2] && grey[0] > 118 && grey[0] < 126, "greyed to its luma (0.7152 x 170): {grey:?}");
+}
+#[test]
 fn a_class_that_selectors_reach_from_restyles_what_they_reach() {
     let mut b = Builder::new(Default::default());
     b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();

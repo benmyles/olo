@@ -43,6 +43,13 @@ impl Engine {
     /// stratum's own space): on the page's background when `opaque` (the
     /// base), else on nothing, to composite over what is below.
     pub fn raster_stratum(&mut self, scene: &Scene, stratum: usize, region: DeviceRect, opaque: bool, cancel: Option<&AtomicBool>) -> Result<Tile> {
+        self.raster_layer(scene, stratum, region, opaque, None, scene.device_scale(), cancel)
+    }
+    /// `raster_stratum` at `scale` (device pixels per CSS px), all of it or
+    /// `only` what one group paints (its commands and its groups', on
+    /// nothing): a blurred group's content, over more than the tile.
+    #[allow(clippy::too_many_arguments)]
+    fn raster_layer(&mut self, scene: &Scene, stratum: usize, region: DeviceRect, opaque: bool, only: Option<u32>, scale: f64, cancel: Option<&AtomicBool>) -> Result<Tile> {
         let fixed = !opaque;
         check(cancel)?;
         let pixels = (region.width as usize).checked_mul(region.height as usize).ok_or(Error::Limit)?;
@@ -56,7 +63,6 @@ impl Engine {
             let tree = scene.layout.cache().tree();
             cache.prepare(tree.get(tree.root()).ok_or(Error::Invalid)?.node.document());
         }
-        let scale = scene.device_scale();
         let rect = Rect { x: f64::from(region.x) / scale, y: f64::from(region.y) / scale, width: f64::from(region.width) / scale, height: f64::from(region.height) / scale };
         if !valid(rect) {
             return Err(Error::Invalid);
@@ -97,6 +103,18 @@ impl Engine {
         };
         let mut hits = Vec::new();
         scene.query_stratum(stratum, rect, &mut hits, cancel)?;
+        if let Some(only) = only {
+            hits.retain(|&id| {
+                let mut at = scene.commands[id as usize].group;
+                while at != u32::MAX {
+                    if at == only {
+                        return true;
+                    }
+                    at = scene.groups[at as usize].parent;
+                }
+                false
+            });
+        }
         // OLO_TILE_PROFILE: time per primitive kind, per tile.
         let profile = std::env::var_os("OLO_TILE_PROFILE").map(|_| std::time::Instant::now());
         let mut counts = [0usize; 6];
@@ -110,7 +128,7 @@ impl Engine {
         let chain = |group: u32| -> Vec<u32> {
             let mut path = Vec::new();
             let mut at = group;
-            while at != u32::MAX && path.len() < 64 {
+            while at != u32::MAX && Some(at) != only && path.len() < 64 {
                 path.push(at);
                 at = scene.groups[at as usize].parent;
             }
@@ -128,10 +146,8 @@ impl Engine {
                     if wanted.contains(&open) {
                         break;
                     }
-                    let (group, mut layer) = layers.pop().unwrap();
-                    if let Some(m) = &scene.groups[group as usize].filter {
-                        filter_colors(&mut layer, m);
-                    }
+                    let (group, layer) = layers.pop().unwrap();
+                    let layer = self.filtered(scene, stratum, group, layer, region, scale, cancel)?;
                     let opacity = scene.groups[group as usize].opacity;
                     let group_mask = self.group_mask(scene, group, scale, region, cancel)?;
                     let target: &mut Pixmap = match layers.last_mut() {
@@ -404,10 +420,8 @@ impl Engine {
                 d[4]
             );
         }
-        while let Some((group, mut layer)) = layers.pop() {
-            if let Some(m) = &scene.groups[group as usize].filter {
-                filter_colors(&mut layer, m);
-            }
+        while let Some((group, layer)) = layers.pop() {
+            let layer = self.filtered(scene, stratum, group, layer, region, scale, cancel)?;
             let opacity = scene.groups[group as usize].opacity;
             let group_mask = self.group_mask(scene, group, scale, region, cancel)?;
             let target: &mut Pixmap = match layers.last_mut() {
@@ -417,6 +431,52 @@ impl Engine {
             target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, ..Default::default() }, Transform::identity(), group_mask.as_ref());
         }
         Ok(Tile { region, pixmap: base })
+    }
+    /// A group's layer over this tile through its `filter`: blurred (its
+    /// content painted again over the tile and as far round as the blur
+    /// reaches, at a lower resolution for a wide blur, blurred and cut to
+    /// the tile), then its colour matrix.
+    #[allow(clippy::too_many_arguments)]
+    fn filtered(&mut self, scene: &Scene, stratum: usize, group: u32, mut layer: Pixmap, region: DeviceRect, scale: f64, cancel: Option<&AtomicBool>) -> Result<Pixmap> {
+        let g = scene.groups[group as usize];
+        if g.blur > 0. {
+            let sigma = f64::from(g.blur) * scale;
+            // A wide blur at a fraction of the resolution (one in `k`),
+            // within the tile size limit: what it blurs away it never needed.
+            let mut k = (sigma / 12.).max(1.).floor();
+            loop {
+                let margin = (3. * sigma / k).ceil();
+                let w = (f64::from(region.width) / k).ceil() + 2. * margin;
+                let h = (f64::from(region.height) / k).ceil() + 2. * margin;
+                if w * h <= self.limits().tile_pixels as f64 || k >= 64. {
+                    break;
+                }
+                k *= 2.;
+            }
+            let margin = (3. * sigma / k).ceil() as i32;
+            let small = DeviceRect {
+                x: (f64::from(region.x) / k).floor() as i32 - margin,
+                y: (f64::from(region.y) / k).floor() as i32 - margin,
+                width: (f64::from(region.width) / k).ceil() as u32 + 2 * margin as u32 + 1,
+                height: (f64::from(region.height) / k).ceil() as u32 + 2 * margin as u32 + 1,
+            };
+            if let Ok(tile) = self.raster_layer(scene, stratum, small, false, Some(group), scale / k, cancel) {
+                let mut content = tile.pixmap;
+                blur(&mut content, sigma / k);
+                let mut out = Pixmap::new(region.width, region.height).ok_or(Error::Limit)?;
+                // Back to the tile's pixels: the small region's origin at
+                // its place, scaled by k (bilinear: it is all blurred).
+                let ox = f64::from(small.x) * k - f64::from(region.x);
+                let oy = f64::from(small.y) * k - f64::from(region.y);
+                let paint = tiny_skia::PixmapPaint { quality: if k > 1. { tiny_skia::FilterQuality::Bilinear } else { tiny_skia::FilterQuality::Nearest }, ..Default::default() };
+                out.draw_pixmap(0, 0, content.as_ref(), &paint, Transform::from_row(k as f32, 0., 0., k as f32, ox as f32, oy as f32), None);
+                layer = out;
+            }
+        }
+        if let Some(m) = &g.filter {
+            filter_colors(&mut layer, m);
+        }
+        Ok(layer)
     }
     /// A group's mask over this tile: its owner's mask images drawn on a
     /// transparent surface, taken as alpha.
@@ -453,5 +513,69 @@ fn filter_colors(layer: &mut Pixmap, m: &[f32; 20]) {
             px[i] = (row(i) * alpha * 255. + 0.5) as u8;
         }
         px[3] = (alpha * 255. + 0.5) as u8;
+    }
+}
+/// A Gaussian blur of standard deviation `sigma` (pixels) over a
+/// premultiplied layer, as three box blurs each way (Filter Effects 1
+/// §13.1's approximation): linear in the pixels whatever the radius.
+fn blur(layer: &mut Pixmap, sigma: f64) {
+    let d = (sigma * 3. * (2. * std::f64::consts::PI).sqrt() / 4. + 0.5).floor() as usize;
+    if d < 2 {
+        return;
+    }
+    // Each pass as (pixels before, pixels after) the one it writes.
+    let passes: [(usize, usize); 3] = if d % 2 == 1 { [(d / 2, d / 2); 3] } else { [(d / 2, d / 2 - 1), (d / 2 - 1, d / 2), (d / 2, d / 2)] };
+    let (w, h) = (layer.width() as usize, layer.height() as usize);
+    let data = layer.data_mut();
+    let mut scratch = vec![0u8; w.max(h) * 4];
+    for &(before, after) in &passes {
+        for y in 0..h {
+            box_line(&mut data[y * w * 4..(y + 1) * w * 4], 4, w, before, after, &mut scratch);
+        }
+    }
+    let mut column = vec![0u8; h * 4];
+    for &(before, after) in &passes {
+        for x in 0..w {
+            for y in 0..h {
+                column[y * 4..y * 4 + 4].copy_from_slice(&data[(y * w + x) * 4..(y * w + x) * 4 + 4]);
+            }
+            box_line(&mut column, 4, h, before, after, &mut scratch);
+            for y in 0..h {
+                data[(y * w + x) * 4..(y * w + x) * 4 + 4].copy_from_slice(&column[y * 4..y * 4 + 4]);
+            }
+        }
+    }
+}
+/// One box blur along a line of `n` RGBA pixels (`step` bytes apart):
+/// each the mean of the window from `before` pixels back to `after` on,
+/// nothing past the ends.
+fn box_line(line: &mut [u8], step: usize, n: usize, before: usize, after: usize, scratch: &mut [u8]) {
+    let size = (before + after + 1) as u32;
+    let mut sum = [0u32; 4];
+    for i in 0..=after.min(n.saturating_sub(1)) {
+        for c in 0..4 {
+            sum[c] += u32::from(line[i * step + c]);
+        }
+    }
+    for i in 0..n {
+        for c in 0..4 {
+            scratch[i * 4 + c] = ((sum[c] + size / 2) / size) as u8;
+        }
+        // Slide: the pixel `after + 1` on comes in, `before` back goes out.
+        let incoming = i + after + 1;
+        if incoming < n {
+            for c in 0..4 {
+                sum[c] += u32::from(line[incoming * step + c]);
+            }
+        }
+        if i >= before {
+            let outgoing = i - before;
+            for c in 0..4 {
+                sum[c] -= u32::from(line[outgoing * step + c]);
+            }
+        }
+    }
+    for i in 0..n {
+        line[i * step..i * step + 4].copy_from_slice(&scratch[i * 4..i * 4 + 4]);
     }
 }
