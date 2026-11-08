@@ -68,10 +68,22 @@ fn words_file() -> PathBuf {
     olo_xdg::config_dir().join("words")
 }
 
+/// Olo's own names that no dictionary has (the desktop's own name was
+/// marked misspelled in StyledEdit). Names with a capital inside
+/// (StyledEdit, BeOS) are never checked ([`words`]).
+const OWN: [&str; 2] = ["Olo", "Deskbar"];
+
+/// Whether `word` is one of [`OWN`], or its possessive.
+fn own(word: &str) -> bool {
+    let bare = word.strip_suffix("'s").or_else(|| word.strip_suffix("’s")).unwrap_or(word);
+    OWN.contains(&bare)
+}
+
 impl Checker {
-    /// Whether `word` is spelt right (or learnt, or ignored).
+    /// Whether `word` is spelt right (or Olo's own, learnt, or ignored).
     pub fn check(&self, word: &str) -> bool {
-        self.dict.check(word) || self.learnt.read().is_ok_and(|l| l.contains(word)) || self.ignored.read().is_ok_and(|l| l.contains(word))
+        // (Olo's own looked at only when the dictionary says no.)
+        self.dict.check(word) || own(word) || self.learnt.read().is_ok_and(|l| l.contains(word)) || self.ignored.read().is_ok_and(|l| l.contains(word))
     }
 
     /// The misspelled words of `text` (bytes).
@@ -178,6 +190,32 @@ mod tests {
 
     fn found(t: &str) -> Vec<&str> {
         words(t).map(|r| &t[r]).collect()
+    }
+
+    /// What checking costs: 20,000 words of prose, one in ten misspelled,
+    /// with this machine's dictionary (`--ignored --nocapture`, release).
+    #[test]
+    #[ignore]
+    fn check_cost() {
+        let Some(c) = load() else { return };
+        let words = ["the", "window", "opens", "where", "Olo", "keeps", "itz", "place", "and", "teh"];
+        let text: String = (0..20_000).map(|i| words[i % words.len()]).collect::<Vec<_>>().join(" ");
+        let _ = c.misspelled(&text);
+        let mut times: Vec<f64> = (0..7)
+            .map(|_| {
+                let t = std::time::Instant::now();
+                std::hint::black_box(c.misspelled(&text));
+                t.elapsed().as_secs_f64() * 1e3
+            })
+            .collect();
+        times.sort_by(f64::total_cmp);
+        eprintln!("20,000 words: median {:.2} ms ({:.2}–{:.2}), {} marked", times[3], times[0], times[6], c.misspelled(&text).len());
+    }
+
+    #[test]
+    fn olos_own_names() {
+        assert!(own("Olo") && own("Olo's") && own("Olo’s") && own("Deskbar"));
+        assert!(!own("olo") && !own("Oslo") && !own("Olos"));
     }
 
     #[test]
