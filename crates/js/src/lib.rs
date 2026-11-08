@@ -2726,7 +2726,9 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             if let Some(n) = node(scope, 0) {
                 let chosen = {
                     let s = state.borrow();
-                    let media = olo_web::css::media::Media::screen(s.config.viewport.0, s.config.viewport.1, s.config.scale, false);
+                    // As the page's sheets see it, its colour scheme too (a
+                    // README's prefers-color-scheme: dark logo, GitHub's).
+                    let media = olo_web::css::media::Media { scripting: true, ..olo_web::css::media::Media::screen(s.config.viewport.0, s.config.viewport.1, s.config.scale, s.config.dark) };
                     olo_web::srcset::choose(&s.document, n, &media, None)
                 };
                 if let Some(choice) = chosen {
