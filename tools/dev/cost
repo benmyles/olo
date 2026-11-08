@@ -7,7 +7,9 @@ touching it (read-only: /proc, and a kit app's own `{"frames":true}`).
 Prints, for the whole process and each busy thread: its share of one
 core (user and kernel), how often it woke (voluntary context switches,
 the wakeups an idle program should hardly have) and how often it was
-preempted. For one of Olo's kit apps, also each window's (and open
+preempted. The process's total is its own count, so it includes threads
+made and gone between the two looks (a pool spawning a thread per task),
+shown apart, as they can't be listed. For one of Olo's kit apps, also each window's (and open
 menu's) frames in that time and their mean cost by phase: the app's
 `ui`, tessellating, submitting to the GPU, and the slowest.
 
@@ -80,10 +82,20 @@ def main():
     secs = float(args[1]) if len(args) > 1 else 5.0
     as_json = "--json" in sys.argv
 
+    def process_ticks():
+        # The whole process's (its threads', those that have exited too).
+        with open(f"/proc/{pid}/stat") as f:
+            fields = f.read().rsplit(")", 1)[1].split()
+        return int(fields[11]) + int(fields[12])
+
     frames(pid)
     a = threads(pid)
+    pa = process_ticks()
+    started = time.monotonic()
     time.sleep(secs)
     b = threads(pid)
+    pb = process_ticks()
+    elapsed = time.monotonic() - started
     windows = frames(pid)
 
     rows = []
@@ -104,8 +116,14 @@ def main():
             }
         )
     rows.sort(key=lambda r: (-r["cpu"], -r["wakeups"]))
+    listed = sum(r["cpu"] for r in rows)
+    whole = (pb - pa) / HZ / elapsed * 100
+    # What threads made and gone between the two looks took (a thread a
+    # task can't be listed): the process's own count has them.
+    unlisted = max(0.0, whole - listed)
     total = {
-        "cpu": round(sum(r["cpu"] for r in rows), 1),
+        "cpu": round(max(whole, listed), 1),
+        "unlisted": round(unlisted, 1),
         "wakeups": sum(r["wakeups"] for r in rows),
     }
     drawn = []
@@ -132,6 +150,8 @@ def main():
     with open(f"/proc/{pid}/comm") as f:
         comm = f.read().strip()
     print(f"{comm} ({pid}) over {secs:g} s: {total['cpu']}% of a core, {total['wakeups']} wakeups/s")
+    if total["unlisted"] >= 1:
+        print(f"  {total['unlisted']:5.1f}%  in threads made and gone meanwhile (short-lived: not listed below)")
     for r in rows:
         if r["cpu"] == 0 and r["wakeups"] < 1:
             continue
