@@ -38,6 +38,8 @@ pub enum Primitive {
     Border {
         owner: BoxId,
         colors: [[u8; 4]; 4],
+        /// Each side's style (top, right, bottom, left).
+        styles: [super::border::Style; 4],
     },
     /// Shadows, backgrounds (colour, gradients) and borders with rounded
     /// corners, painted from the owner's style; `outer` is its border box.
@@ -551,9 +553,10 @@ impl Scene {
                     color.hash(&mut h);
                     radii.map(f32::to_bits).hash(&mut h);
                 }
-                Primitive::Border { owner, colors } => {
+                Primitive::Border { owner, colors, styles } => {
                     3u8.hash(&mut h);
                     colors.hash(&mut h);
+                    styles.hash(&mut h);
                     style_identity(*owner, &mut h);
                 }
                 Primitive::Decoration { owner, outer } => {
@@ -1359,21 +1362,29 @@ impl<'a> BuildJob<'a> {
         }
         let widths = [g.border_width.top, g.border_width.right, g.border_width.bottom, g.border_width.left];
         let mut colors = [[0; 4]; 4];
+        let mut styles = [super::border::Style::Solid; 4];
         for i in 0..4 {
             if widths[i] > 0. {
                 let p = [P::BorderTopStyle, P::BorderRightStyle, P::BorderBottomStyle, P::BorderLeftStyle][i];
                 colors[i] = color(s, [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor][i])?;
                 match s.value(p) {
                     Value::Keyword(K::Solid) => {}
+                    Value::Keyword(K::Dashed) => styles[i] = super::border::Style::Dashed,
+                    Value::Keyword(K::Dotted) => styles[i] = super::border::Style::Dotted,
+                    // Double needs room for its two lines and the gap.
+                    Value::Keyword(K::Double) if widths[i] >= 3. => styles[i] = super::border::Style::Double,
+                    Value::Keyword(K::Double) => {}
                     // Shaded: the top and left darker for inset (lighter for
-                    // outset), as Chrome shades them (an iframe's border).
+                    // outset), as Chrome shades them (an iframe's border);
+                    // groove and ridge likewise, as two-tone bevels.
                     Value::Keyword(k @ (K::Inset | K::Outset)) => colors[i] = decoration::bevel(colors[i], *k == K::Inset, i == 0 || i == 3),
+                    Value::Keyword(k @ (K::Groove | K::Ridge)) => colors[i] = decoration::bevel(colors[i], *k == K::Groove, i == 0 || i == 3),
                     _ => self.note("border style painted solid", id),
                 }
             }
         }
         if widths.iter().any(|w| *w > 0.) {
-            self.emit(group, text, outer, Primitive::Border { owner: id, colors }, clip)?;
+            self.emit(group, text, outer, Primitive::Border { owner: id, colors, styles }, clip)?;
         }
         Ok(())
     }

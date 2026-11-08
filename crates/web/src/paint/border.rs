@@ -1,4 +1,5 @@
-//! Axis-aligned solid borders: disjoint strips and analytical corner coverage.
+//! Axis-aligned borders: solid ones as disjoint strips and analytical
+//! corner coverage; dashed, dotted and double sides as Chrome draws them.
 //! Each corner mixes premultiplied side colours before one source-over, so
 //! adjacent translucent sides do not accumulate alpha along their join.
 use super::*;
@@ -100,12 +101,22 @@ fn corner(out: &mut Pixmap, e: Edges, flip_x: bool, flip_y: bool, horizontal: [u
     }
     Ok(())
 }
+/// A side's `border-*-style`, as painted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub enum Style {
+    #[default]
+    Solid,
+    Dashed,
+    Dotted,
+    Double,
+}
 #[allow(clippy::too_many_arguments)] // Tile, device geometry, colours and cancellation.
 pub(super) fn raster(
     out: &mut Pixmap,
     outer: Rect,
     inner: Rect,
     colors: [[u8; 4]; 4],
+    styles: [Style; 4],
     scale: f64,
     region: DeviceRect,
     mask: Option<&Mask>,
@@ -121,6 +132,10 @@ pub(super) fn raster(
     i.right = i.right.clamp(i.left, o.right);
     i.top = i.top.clamp(o.top, o.bottom);
     i.bottom = i.bottom.clamp(i.top, o.bottom);
+    if styles.iter().any(|s| *s != Style::Solid) {
+        styled(out, o, i, colors, styles, mask, transform);
+        return Ok(());
+    }
     let top = Edges { left: i.left, top: o.top, right: i.right, bottom: i.top };
     let bottom = Edges { left: i.left, top: i.bottom, right: i.right, bottom: o.bottom };
     if colors.iter().all(|c| *c == colors[0]) || !transform.is_identity() {
@@ -140,4 +155,75 @@ pub(super) fn raster(
     corner(out, Edges { left: i.right, top: o.top, right: o.right, bottom: i.top }, true, false, colors[0], colors[1], mask, cancel)?;
     corner(out, Edges { left: i.right, top: i.bottom, right: o.right, bottom: o.bottom }, true, true, colors[2], colors[1], mask, cancel)?;
     corner(out, Edges { left: o.left, top: i.bottom, right: i.left, bottom: o.bottom }, false, true, colors[2], colors[3], mask, cancel)
+}
+/// Sides some of which are dashed, dotted or double: each along its own
+/// strip (top and bottom across the corners, as Chrome starts and ends their
+/// dashes there; left and right between them).
+#[allow(clippy::too_many_arguments)]
+fn styled(out: &mut Pixmap, o: Edges, i: Edges, colors: [[u8; 4]; 4], styles: [Style; 4], mask: Option<&Mask>, transform: Transform) {
+    // (Each strip: its edges, and whether it runs across.)
+    let strips = [
+        (Edges { left: o.left, top: o.top, right: o.right, bottom: i.top }, true),
+        (Edges { left: i.right, top: o.top, right: o.right, bottom: o.bottom }, false),
+        (Edges { left: o.left, top: i.bottom, right: o.right, bottom: o.bottom }, true),
+        (Edges { left: o.left, top: o.top, right: i.left, bottom: o.bottom }, false),
+    ];
+    for side in 0..4 {
+        let (e, across) = strips[side];
+        let color = colors[side];
+        let width = if across { e.bottom - e.top } else { e.right - e.left };
+        if color[3] == 0 || width <= 0. {
+            continue;
+        }
+        // A solid or double side of a mixed border stays within the corners
+        // the solid sides share (no overlap of translucent colours).
+        let (start, end) = if across { (e.left, e.right) } else { (e.top, e.bottom) };
+        let length = end - start;
+        let along = |a: f64, b: f64| if across { Edges { left: a, right: b, ..e } } else { Edges { top: a, bottom: b, ..e } };
+        match styles[side] {
+            Style::Solid => fill(out, along(start, end), color, mask, transform),
+            Style::Double => {
+                // Two lines a third of the width each, the third between empty.
+                let third = (width / 3.).round().max(1.);
+                let (outer_line, inner_line) = if across {
+                    if side == 0 { (Edges { bottom: e.top + third, ..e }, Edges { top: e.bottom - third, ..e }) } else { (Edges { top: e.bottom - third, ..e }, Edges { bottom: e.top + third, ..e }) }
+                } else if side == 3 {
+                    (Edges { right: e.left + third, ..e }, Edges { left: e.right - third, ..e })
+                } else {
+                    (Edges { left: e.right - third, ..e }, Edges { right: e.left + third, ..e })
+                };
+                fill(out, outer_line, color, mask, transform);
+                fill(out, inner_line, color, mask, transform);
+            }
+            Style::Dashed => {
+                // Dashes twice the width long, as many as fit with gaps of the
+                // width, the gaps then even: a dash at each end.
+                let dash = (2. * width).min(length);
+                let n = ((length + width) / (dash + width)).round().max(1.);
+                let gap = if n > 1. { (length - n * dash) / (n - 1.) } else { 0. };
+                for k in 0..n as usize {
+                    let a = start + k as f64 * (dash + gap);
+                    fill(out, along(a.round(), (a + dash).round().min(end)), color, mask, transform);
+                }
+            }
+            Style::Dotted => {
+                // Round dots the width across, one at each end, about two
+                // widths apart.
+                let n = ((length - width) / (2. * width)).round().max(0.) + 1.;
+                let step = if n > 1. { (length - width) / (n - 1.) } else { 0. };
+                let mut paint = Paint::default();
+                paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
+                paint.anti_alias = true;
+                let mut path = tiny_skia::PathBuilder::new();
+                for k in 0..n as usize {
+                    let c = start + width / 2. + k as f64 * step;
+                    let (cx, cy) = if across { (c, (e.top + e.bottom) / 2.) } else { ((e.left + e.right) / 2., c) };
+                    path.push_circle(cx as f32, cy as f32, (width / 2.) as f32);
+                }
+                if let Some(path) = path.finish() {
+                    out.fill_path(&path, &paint, tiny_skia::FillRule::Winding, transform, mask);
+                }
+            }
+        }
+    }
 }

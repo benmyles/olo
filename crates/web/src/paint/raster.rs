@@ -306,11 +306,11 @@ impl Engine {
                     let g = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
                     super::decoration::raster(out, s, g, *outer, scale, region, mask.as_ref(), ct, self, tree, cancel)?;
                 }
-                Primitive::Border { owner, colors } => {
+                Primitive::Border { owner, colors, styles } => {
                     let b = scene.layout.geometry(*owner).ok_or(Error::Invalid)?.border_width;
                     let o = c.bounds;
                     let inner = Rect { x: o.x + b.left, y: o.y + b.top, width: (o.width - b.left - b.right).max(0.), height: (o.height - b.top - b.bottom).max(0.) };
-                    super::border::raster(out, o, inner, *colors, scale, region, mask.as_ref(), ct, cancel)?;
+                    super::border::raster(out, o, inner, *colors, *styles, scale, region, mask.as_ref(), ct, cancel)?;
                 }
                 Primitive::Glyph { owner, fragment, glyph, origin, color } => {
                     let text = scene.layout.text_layout(*owner).ok_or(Error::Invalid)?;

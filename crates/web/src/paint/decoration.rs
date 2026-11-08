@@ -587,7 +587,7 @@ pub(super) fn raster(
                 width: (outer.width - g.border_width.horizontal()).max(0.),
                 height: (outer.height - g.border_width.vertical()).max(0.),
             };
-            super::border::raster(out, outer, inner, [colors[0], colors[1], colors[2], colors[3]], scale, region, mask, transform, cancel)?;
+            super::border::raster(out, outer, inner, [colors[0], colors[1], colors[2], colors[3]], Default::default(), scale, region, mask, transform, cancel)?;
         }
     }
     charge(4, started);
