@@ -14,9 +14,17 @@ pub enum Issue {
     AtRule(Arc<str>),
     Nesting,
 }
+/// A rule's declaration block compiled, with what was dropped from it.
+#[derive(Clone)]
+pub(crate) struct CompiledBlock {
+    declarations: Arc<[p::Declaration]>,
+    issues: Arc<[Issue]>,
+    /// Its declarations (those dropped too), for the compile's limits.
+    count: usize,
+}
 struct Rule {
     selector: u32,
-    declarations: Box<[p::Declaration]>,
+    declarations: Arc<[p::Declaration]>,
     origin: Origin,
     layer: u32,
     order: u64,
@@ -418,33 +426,26 @@ impl SheetBuilder {
                         }
                         Err(e) => return Err(Error::Selectors(e)),
                     };
-                    let mut declarations = Vec::new();
-                    for d in rule.block_contents(cancelled).map_err(syntax_error)? {
-                        self.tick(1, cancelled)?;
-                        if d.kind() != StatementKind::Declaration {
-                            self.issue(Issue::Nesting)?;
-                            continue;
-                        }
-                        self.declarations += 1;
-                        if self.declarations > self.limits.declarations {
-                            return Err(Error::Limit);
-                        }
-                        match p::Declaration::compile(&d, self.limits.properties, cancelled) {
-                            Ok(d) => {
-                                self.note_backgrounds(&d);
-                                declarations.push(d)
-                            }
-                            Err(e @ (p::Error::Invalid | p::Error::UnknownProperty | p::Error::Unsupported(_))) => self.issue(Issue::Property(e, d.name().unwrap_or("").into()))?,
-                            Err(e) => return Err(Error::Property(e)),
-                        }
+                    let block = Self::block(&rule, self.limits, cancelled)?;
+                    self.tick(block.count + block.issues.len(), cancelled)?;
+                    self.declarations += block.count;
+                    if self.declarations > self.limits.declarations {
+                        return Err(Error::Limit);
                     }
+                    for issue in block.issues.iter() {
+                        self.issue(issue.clone())?;
+                    }
+                    for d in block.declarations.iter() {
+                        self.note_backgrounds(d);
+                    }
+                    let declarations = block.declarations;
                     if self.rules.len() >= self.limits.rules.min(u32::MAX as usize) {
                         return Err(Error::Limit);
                     }
                     let order = self.rules.len() as u64;
                     let (host, slotted, part) = self.selector_compiler.shadow_context(selector);
                     let (host, slotted) = if self.scope.is_some() { (host, slotted) } else { (false, false) };
-                    self.rules.push(Rule { selector, declarations: declarations.into_boxed_slice(), origin, layer: parent, order, container: self.container, scope: self.scope, host, slotted, part });
+                    self.rules.push(Rule { selector, declarations, origin, layer: parent, order, container: self.container, scope: self.scope, host, slotted, part });
                 }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("layer")) => {
                     let empty = rule.value().all(|c| c.kind() == Kind::Whitespace);
@@ -535,6 +536,62 @@ impl SheetBuilder {
             }
         }
         Ok(())
+    }
+    /// A style rule's declarations, compiled: as the sheet keeps them from
+    /// an earlier compile, else compiled now and kept there.
+    fn block(rule: &Statement<'_>, limits: CompileLimits, cancelled: Option<&AtomicBool>) -> Result<CompiledBlock> {
+        let key = rule.block_start();
+        if let Some(key) = key
+            && let Some(block) = rule.sheet().blocks.lock().unwrap().get(&key)
+        {
+            return Ok(block.clone());
+        }
+        let mut declarations = Vec::new();
+        let mut issues = Vec::new();
+        let mut count = 0usize;
+        for d in rule.block_contents(cancelled).map_err(syntax_error)? {
+            if d.kind() != StatementKind::Declaration {
+                issues.push(Issue::Nesting);
+                continue;
+            }
+            count += 1;
+            if count > limits.declarations {
+                return Err(Error::Limit);
+            }
+            match p::Declaration::compile(&d, limits.properties, cancelled) {
+                Ok(d) => declarations.push(d),
+                Err(e @ (p::Error::Invalid | p::Error::UnknownProperty | p::Error::Unsupported(_))) => issues.push(Issue::Property(e, d.name().unwrap_or("").into())),
+                Err(e) => return Err(Error::Property(e)),
+            }
+        }
+        let block = CompiledBlock { declarations: declarations.into(), issues: issues.into(), count };
+        if let Some(key) = key {
+            rule.sheet().blocks.lock().unwrap().insert(key, block.clone());
+        }
+        Ok(block)
+    }
+    /// Compile a sheet's declaration blocks ahead (as it arrives, on a
+    /// thread of the loader's): every style rule's, under whatever
+    /// condition, kept with the sheet for the compiles that take it.
+    pub fn precompile(syntax: &Syntax, cancelled: Option<&AtomicBool>) -> Result<()> {
+        fn walk(rules: Vec<Statement<'_>>, depth: usize, cancelled: Option<&AtomicBool>) -> Result<()> {
+            if depth > 32 {
+                return Ok(());
+            }
+            for rule in rules {
+                match rule.kind() {
+                    StatementKind::QualifiedRule => {
+                        SheetBuilder::block(&rule, CompileLimits::default(), cancelled)?;
+                    }
+                    StatementKind::AtRule if rule.block().is_some() && rule.name().is_some_and(|n| ["media", "supports", "layer", "container"].iter().any(|k| n.eq_ignore_ascii_case(k))) => {
+                        walk(rule.block_contents(cancelled).map_err(syntax_error)?, depth + 1, cancelled)?;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(())
+        }
+        walk(syntax.stylesheet(cancelled).map_err(syntax_error)?, 0, cancelled)
     }
     pub fn finish(mut self, cancelled: Option<&AtomicBool>) -> Result<RuleSet> {
         if self.failed {

@@ -1291,12 +1291,26 @@ fn render(
             if let Some(document) = &c.document {
                 let light = document.light();
                 let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| live_resource(&loader, &light, kind, base, href, &cancel, &tx);
-                match c.page.refresh(&doc, Some(&cancel), &mut resource) {
+                let wake: page::Wake = {
+                    let tx = tx.clone();
+                    Arc::new(move || drop(tx.send(Message::Arrived)))
+                };
+                match c.page.refresh(&doc, Some(&cancel), &mut resource, Some(&wake)) {
                     Ok(true) if olo_web::env_on!("OLO_BROWSER_TIMING") => eprintln!("  live render: stylesheets changed, rules remade"),
                     Ok(_) => {}
                     // A sheet still loading: this render with the sheets as
                     // they were, the next once it lands.
                     Err(e) if is_pending(&e) => {}
+                    // New rules compiling on a thread of their own: the page
+                    // shows what it showed (not its new content unstyled)
+                    // and renders once they are ready, its scripts and input
+                    // going on meanwhile.
+                    Err(e) if e.to_string() == page::COMPILING_RULES => {
+                        if olo_web::env_on!("OLO_BROWSER_TIMING") {
+                            eprintln!("  live render: rules compiling in the background");
+                        }
+                        return Ok(());
+                    }
                     Err(e) => return Err(e),
                 }
             }
@@ -1406,6 +1420,9 @@ fn render(
         // The scripted pass starts from what the static pass fetched.
         let previous = if pass == Pass::Scripted { cached.take() } else { None };
         let loaded_at = previous.as_ref().map_or_else(Instant::now, |c| c.loaded_at);
+        // Its sheets held through this pass: the same ones parsed and
+        // compiled once, not again.
+        let _static_sheets = previous.as_ref().map(|c| c.page.parsed_sheets());
         *cached = None;
         painter.clear_image_cache();
         cache.clear();

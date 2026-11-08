@@ -6,6 +6,7 @@ pub use axes::{Axes, Direction, TextOrientation, WritingMode};
 mod sheets;
 use super::{properties as p, selectors, variables};
 pub use priority::{Origin, Priority};
+pub(crate) use sheets::CompiledBlock;
 pub use sheets::{CompileLimits, ContainerCondition, ContainerFrame, Issue, MatchScratch, Memory, RuleSet, SheetBuilder, layer_statement};
 use std::{
     collections::BTreeMap,

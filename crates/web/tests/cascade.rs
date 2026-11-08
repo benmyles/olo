@@ -272,3 +272,32 @@ fn a_rejected_selector_leaves_the_next_rules_matching() {
     assert_eq!(spelling(r.property(P::Width, true).unwrap()), "1");
     assert_eq!(spelling(r.property(P::Height, true).unwrap()), "2");
 }
+#[test]
+fn a_sheet_compiled_again_keeps_its_blocks_and_answers_the_same() {
+    // The same parsed sheet compiled again (another medium, other sheets
+    // before it) takes its compiled declaration blocks as they are: the
+    // rules, their order and the dropped declarations come out the same.
+    let parsed = olo_web::html::parse(Arc::from("<!doctype html><div id=target></div>"), Default::default(), None).unwrap();
+    let node = target(&parsed.document, "#target");
+    let tree = olo_web::css::selectors::DomTree::new(&parsed.document);
+    let sheet = Syntax::parse(Arc::from("#target{width:10px;bogus:1;height:2px} @media (min-width:800px){#target{width:20px}}"), Default::default(), None).unwrap();
+    let before = Syntax::parse(Arc::from("div{width:5px;margin-top:3px}"), Default::default(), None).unwrap();
+    let compile = |width: f64, first: bool| {
+        let mut b = cascade::SheetBuilder::new(Default::default()).with_media(olo_web::css::media::Media::screen(width, 600., 1., false));
+        if first {
+            b.add_sheet(&before, Origin::Author, None).unwrap();
+        }
+        b.add_sheet(&sheet, Origin::Author, None).unwrap();
+        b.finish(None).unwrap()
+    };
+    let mut scratch = cascade::MatchScratch::default();
+    for (width, first, expected) in [(1000., false, "20"), (600., true, "10"), (1000., true, "20"), (600., false, "10")] {
+        let rules = compile(width, first);
+        assert_eq!(rules.issues().len(), 1, "the dropped declaration, every time: {:?}", rules.issues());
+        let c = rules.match_element(&tree, node, Default::default(), None, None, Default::default(), Default::default(), &mut scratch, None, None).unwrap();
+        let mut r = c.resolver();
+        assert_eq!(spelling(r.property(P::Width, true).unwrap()), expected, "at {width}");
+        assert_eq!(spelling(r.property(P::Height, true).unwrap()), "2");
+        assert_eq!(spelling(r.property(P::MarginTop, true).unwrap()), if first { "3" } else { "initial" });
+    }
+}

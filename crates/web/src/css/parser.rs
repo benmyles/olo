@@ -59,6 +59,14 @@ impl<'a> Statement<'a> {
     pub fn important(&self) -> bool {
         self.important
     }
+    /// The sheet it is in.
+    pub fn sheet(&self) -> &'a Syntax {
+        self.tree
+    }
+    /// Where its block starts in its sheet: the block's identity there.
+    pub fn block_start(&self) -> Option<u32> {
+        self.block.as_ref().map(|r| r.start)
+    }
     /// Parse this rule's block once, then retain the results in the style
     /// compiler; do not repeat it during layout or painting.
     pub fn block_contents(&self, cancelled: Option<&AtomicBool>) -> Result<Vec<Statement<'a>>> {

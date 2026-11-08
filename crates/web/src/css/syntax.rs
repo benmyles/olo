@@ -161,6 +161,10 @@ pub struct Syntax {
     dimensions: Vec<Dimension>,
     diagnostics: Vec<Diagnostic>,
     limits: Limits,
+    /// Its rules' declaration blocks as the style compiler compiled them,
+    /// by where each block starts: a sheet compiled again (a page's other
+    /// sheets changed) takes them as they are.
+    pub(crate) blocks: std::sync::Mutex<std::collections::HashMap<u32, crate::css::cascade::CompiledBlock>>,
 }
 impl std::fmt::Debug for Syntax {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -195,6 +199,7 @@ impl Syntax {
             dimensions: Vec::new(),
             diagnostics: Vec::new(),
             limits,
+            blocks: Default::default(),
         };
         let mut stack = Vec::<(u32, char)>::new();
         while let Some(token) = tokenizer.next_token()? {

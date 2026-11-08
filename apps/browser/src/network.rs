@@ -58,8 +58,8 @@ pub struct Loader {
     inflight: Arc<std::sync::Mutex<std::collections::HashMap<String, Inflight>>>,
     /// How many fetches started ahead go at once.
     permits: Arc<tokio::sync::Semaphore>,
-    /// Pictures fetched ahead, decoded on the CPU pool as they arrive (side
-    /// by side, off the page's thread), by URL.
+    /// Pictures and style sheets fetched ahead, decoded or parsed on the
+    /// CPU pool as they arrive (side by side, off the page's thread), by URL.
     decoding: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<Decoding>>>>,
     /// What stops the fetches started ahead: the document's, not one render
     /// request's (the page asks to render again while they are under way;
@@ -68,6 +68,12 @@ pub struct Loader {
     /// Who to tell when a fetch started ahead lands, by URL (a live page
     /// rendering without the sheet it waits for).
     waiters: Arc<std::sync::Mutex<std::collections::HashMap<String, Vec<Box<dyn FnOnce() + Send>>>>>,
+    /// Style sheets parsed, by URL and the document encoding they were
+    /// parsed in, while a page holds them: the page's next refresh takes
+    /// them as they are (no copy, no parse).
+    sheets: std::sync::Mutex<std::collections::HashMap<(String, &'static encoding_rs::Encoding), std::sync::Weak<css::Syntax>>>,
+    /// Web fonts unpacked, by URL, while a page holds them.
+    fonts: std::sync::Mutex<std::collections::HashMap<String, std::sync::Weak<[u8]>>>,
 }
 /// A picture being decoded ahead: its result once there.
 #[derive(Default)]
@@ -77,6 +83,10 @@ struct Decoding {
 }
 enum Decoded {
     Image(Arc<olo_web::image::Image>),
+    /// A style sheet, parsed in its document's encoding.
+    Sheet(Arc<css::Syntax>, &'static encoding_rs::Encoding),
+    /// A web font, its WOFF container unpacked.
+    Font(Arc<[u8]>),
     /// Not decoded ahead (an SVG, a failure, a cancellation): the load
     /// does it itself, as before.
     Itself,
@@ -93,6 +103,28 @@ fn decode_raster(bytes: &[u8], cancel: Option<&AtomicBool>) -> page::Result<Arc<
     let raster = olo_images::raster::decode(bytes, olo_images::raster::Limits::default(), cancel)?;
     let (w, h) = raster.pixels.dimensions();
     Ok(olo_web::image::Image::from_rgba(w, h, raster.pixels.into_raw(), Default::default(), cancel)?)
+}
+/// A web font out of its WOFF container (as it was when it isn't one, or
+/// can't be unpacked: the engine says so).
+fn unpack_font(bytes: Arc<[u8]>, cancel: Option<&AtomicBool>) -> Arc<[u8]> {
+    if olo_web::font::woff::is_woff(&bytes)
+        && let Ok(sfnt) = olo_web::font::woff::decode(&bytes, cancel)
+    {
+        return Arc::from(sfnt);
+    }
+    bytes
+}
+/// A fetched style sheet parsed, in its document's encoding unless it
+/// says otherwise.
+fn parse_sheet(status: Option<u16>, mime: Option<&mime::Mime>, bytes: &[u8], environment: &'static encoding_rs::Encoding, cancel: Option<&AtomicBool>) -> page::Result<css::Syntax> {
+    if status.is_some_and(|s| !(200..300).contains(&s)) {
+        return Err("Stylesheet returned an unsuccessful HTTP status".into());
+    }
+    if mime.is_none_or(|m| m.essence_str() != "text/css") {
+        return Err("Stylesheet MIME type must be text/css".into());
+    }
+    let encoding = mime.and_then(|m| m.get_param("charset")).map(|p| p.as_str());
+    Ok(css::Syntax::parse_bytes(bytes, css::ByteOptions { protocol_encoding: encoding, environment_encoding: Some(environment) }, Default::default(), cancel)?.syntax)
 }
 /// A fetch under way or done: its response (any status), or None when it
 /// failed or was cancelled.
@@ -167,6 +199,8 @@ impl Loader {
             decoding: Default::default(),
             ahead: Default::default(),
             waiters: Default::default(),
+            sheets: Default::default(),
+            fonts: Default::default(),
         })
     }
     fn navigation(source: &str, cwd: Option<&std::path::Path>) -> page::Result<Url> {
@@ -207,17 +241,29 @@ impl Loader {
     pub fn frame_document(&self, url: Url, parent: &Url, cancel: &Cancel) -> page::Result<Resource> {
         self.fetch(url, Some(parent), HTML_LIMIT, cancel, |_| {}, Kind::Document)
     }
-    pub fn stylesheet(&self, document: &Resource, base: Option<&str>, href: &str, cancel: &Cancel, progress: impl FnMut(usize)) -> page::Result<css::Syntax> {
+    /// A style sheet, parsed: the one a page already holds, else the one
+    /// parsed ahead as it arrived (waited for), else fetched and parsed.
+    pub fn stylesheet(&self, document: &Resource, base: Option<&str>, href: &str, cancel: &Cancel, progress: impl FnMut(usize)) -> page::Result<Arc<css::Syntax>> {
         let base = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone());
-        let resource = self.fetch(base.join(href)?, Some(&document.url), CSS_LIMIT, cancel, progress, Kind::Stylesheet)?;
-        if resource.status.is_some_and(|s| !(200..300).contains(&s)) {
-            return Err("Stylesheet returned an unsuccessful HTTP status".into());
+        let url = base.join(href)?;
+        let key = (url.to_string(), document.encoding());
+        if let Some(sheet) = self.sheets.lock().unwrap().get(&key).and_then(std::sync::Weak::upgrade) {
+            return Ok(sheet);
         }
-        if resource.mime.as_ref().is_none_or(|m| m.essence_str() != "text/css") {
-            return Err("Stylesheet MIME type must be text/css".into());
+        if let Some(Decoded::Sheet(sheet, encoding)) = self.decoded(&url, cancel)
+            && encoding == key.1
+        {
+            self.sheets.lock().unwrap().insert(key, Arc::downgrade(&sheet));
+            return Ok(sheet);
         }
-        let encoding = resource.mime.as_ref().and_then(|m| m.get_param("charset")).map(|p| p.as_str());
-        Ok(css::Syntax::parse_bytes(&resource.bytes, css::ByteOptions { protocol_encoding: encoding, environment_encoding: Some(document.encoding()) }, Default::default(), Some(cancel))?.syntax)
+        let resource = self.fetch(url, Some(&document.url), CSS_LIMIT, cancel, progress, Kind::Stylesheet)?;
+        let sheet = Arc::new(parse_sheet(resource.status, resource.mime.as_ref(), &resource.bytes, key.1, Some(cancel))?);
+        let mut sheets = self.sheets.lock().unwrap();
+        if sheets.len() >= 1024 {
+            sheets.retain(|_, w| w.strong_count() > 0);
+        }
+        sheets.insert(key, Arc::downgrade(&sheet));
+        Ok(sheet)
     }
     /// A classic script's source text, decoded by its charset, else the
     /// document's encoding, as browsers do.
@@ -316,7 +362,7 @@ impl Loader {
             bytes
         } else {
             // Decoded ahead, within the page's budget: taken as it is.
-            if let Some(image) = self.decoded(&url, cancel)
+            if let Some(Decoded::Image(image)) = self.decoded(&url, cancel)
                 && image.payload_bytes() <= remaining
             {
                 return Ok(image);
@@ -347,8 +393,26 @@ fn looks_like_svg(bytes: &[u8]) -> bool {
     text.starts_with("<?xml") || text.starts_with("<svg") || text.starts_with("<!DOCTYPE svg") || (text.starts_with("<!--") && text.contains("<svg"))
 }
 impl Loader {
-    /// A web font's bytes (any container; the engine decodes WOFF itself).
-    pub fn font(&self, document: &Resource, url: Url, cancel: &Cancel, mut progress: impl FnMut(usize)) -> page::Result<Arc<[u8]>> {
+    /// A web font's bytes: unpacked from WOFF (as a page holds it already,
+    /// or as it was unpacked when it arrived, or now), else as they came
+    /// (the engine takes what else it can).
+    pub fn font(&self, document: &Resource, url: Url, cancel: &Cancel, progress: impl FnMut(usize)) -> page::Result<Arc<[u8]>> {
+        if let Some(font) = self.fonts.lock().unwrap().get(url.as_str()).and_then(std::sync::Weak::upgrade) {
+            return Ok(font);
+        }
+        let key = url.to_string();
+        let font = match self.decoded(&url, cancel) {
+            Some(Decoded::Font(font)) => font,
+            _ => unpack_font(self.font_bytes(document, url, cancel, progress)?, Some(cancel)),
+        };
+        let mut fonts = self.fonts.lock().unwrap();
+        if fonts.len() >= 256 {
+            fonts.retain(|_, w| w.strong_count() > 0);
+        }
+        fonts.insert(key, Arc::downgrade(&font));
+        Ok(font)
+    }
+    fn font_bytes(&self, document: &Resource, url: Url, cancel: &Cancel, mut progress: impl FnMut(usize)) -> page::Result<Arc<[u8]>> {
         if url.scheme() == "data" {
             let data = data_url::DataUrl::process(url.as_str()).map_err(|_| "Malformed font data URL")?;
             let mut bytes = Vec::new();
@@ -485,8 +549,10 @@ impl Loader {
             let _ = cancel;
             let ahead = self.ahead.lock().unwrap().0.clone();
             let (initiator, flag, signal) = (initiator.clone(), ahead.flag.clone(), ahead.signal.clone());
-            // A picture: decoded on the CPU pool once it arrives.
-            let decoding = matches!(kind, Kind::Image).then(|| {
+            // A picture or style sheet: decoded or parsed on the CPU pool
+            // once it arrives.
+            let environment = document.encoding();
+            let decoding = matches!(kind, Kind::Image | Kind::Stylesheet | Kind::Font).then(|| {
                 let d = Arc::new(Decoding::default());
                 self.decoding.lock().unwrap().insert(url.to_string(), d.clone());
                 d
@@ -495,28 +561,59 @@ impl Loader {
             self.runtime.spawn(async move {
                 let work = async {
                     let Ok(_permit) = permits.acquire_owned().await else { return };
-                    let response = cell.get_or_init(|| fetch_once(client, url.clone(), initiator, limit, flag.clone(), kind)).await;
-                    if let Some(d) = &decoding {
-                        match response {
-                            Some(r) if !looks_like_svg(&r.bytes) => {
-                                let (r, d, flag) = (r.clone(), d.clone(), flag.clone());
-                                rayon::spawn(move || d.set(decode_raster(&r.bytes, Some(&flag)).map_or(Decoded::Itself, Decoded::Image)));
-                            }
-                            _ => d.set(Decoded::Itself),
-                        }
-                    }
+                    let response = cell.get_or_init(|| fetch_once(client, url.clone(), initiator, limit, flag.clone(), kind)).await.clone();
                     // Kept: in the cache when it succeeded (no longer under
-                    // way), else for the load that wants it (a 404's picture).
-                    if let Some(r) = response
-                        && (200..300).contains(&r.status)
-                    {
-                        remember(&cache, url.as_str(), r);
-                        inflight.lock().unwrap().remove(url.as_str());
-                    }
-                    // (Taken under the lock `ready_or_start` registers under.)
-                    let woken = waiters.lock().unwrap().remove(url.as_str()).unwrap_or_default();
-                    for wake in woken {
-                        wake();
+                    // way), else for the load that wants it (a 404's
+                    // picture); then whoever waits for it told.
+                    let finish = {
+                        let response = response.clone();
+                        move || {
+                            if let Some(r) = &response
+                                && (200..300).contains(&r.status)
+                            {
+                                remember(&cache, url.as_str(), r);
+                                inflight.lock().unwrap().remove(url.as_str());
+                            }
+                            // (Taken under the lock `ready_or_start` registers under.)
+                            let woken = waiters.lock().unwrap().remove(url.as_str()).unwrap_or_default();
+                            for wake in woken {
+                                wake();
+                            }
+                        }
+                    };
+                    match (&decoding, response) {
+                        // A picture: its load told it is here as it decodes.
+                        (Some(d), Some(r)) if matches!(kind, Kind::Image) && !looks_like_svg(&r.bytes) => {
+                            let (d, flag) = (d.clone(), flag.clone());
+                            rayon::spawn(move || d.set(decode_raster(&r.bytes, Some(&flag)).map_or(Decoded::Itself, Decoded::Image)));
+                            finish();
+                        }
+                        // A sheet: its page told once it is parsed (taken
+                        // then without waiting).
+                        (Some(d), Some(r)) if matches!(kind, Kind::Stylesheet) => {
+                            let (d, flag) = (d.clone(), flag.clone());
+                            rayon::spawn(move || {
+                                // (Its declarations compiled too, ready for the
+                                // page's compile.)
+                                let parsed = parse_sheet(Some(r.status), r.mime.as_ref(), &r.bytes, environment, Some(&flag)).inspect(|s| drop(css::cascade::SheetBuilder::precompile(s, Some(&flag))));
+                                d.set(parsed.map_or(Decoded::Itself, |s| Decoded::Sheet(Arc::new(s), environment)));
+                                finish();
+                            });
+                        }
+                        // A font: unpacked, its page told then.
+                        (Some(d), Some(r)) if matches!(kind, Kind::Font) && (200..300).contains(&r.status) => {
+                            let (d, flag) = (d.clone(), flag.clone());
+                            rayon::spawn(move || {
+                                d.set(Decoded::Font(unpack_font(Arc::from(&r.bytes[..]), Some(&flag))));
+                                finish();
+                            });
+                        }
+                        (d, _) => {
+                            if let Some(d) = d {
+                                d.set(Decoded::Itself);
+                            }
+                            finish();
+                        }
                     }
                 };
                 tokio::select! { biased; _ = signal.cancelled() => {
@@ -543,9 +640,9 @@ impl Loader {
         self.decoding.lock().unwrap().retain(|_, d| d.result.lock().unwrap().is_none());
         self.inflight.lock().unwrap().retain(|_, cell| !cell.initialized());
     }
-    /// A picture decoded ahead, waited for (its fetch and decoding go on
-    /// elsewhere), or None when there is none to take or it wasn't.
-    fn decoded(&self, url: &Url, cancel: &Cancel) -> Option<Arc<olo_web::image::Image>> {
+    /// A picture decoded or sheet parsed ahead, waited for (its fetch and
+    /// decoding go on elsewhere), or None when there is none to take.
+    fn decoded(&self, url: &Url, cancel: &Cancel) -> Option<Decoded> {
         let d = self.decoding.lock().unwrap().remove(url.as_str())?;
         let mut result = d.result.lock().unwrap();
         while result.is_none() {
@@ -554,10 +651,7 @@ impl Loader {
             }
             result = d.ready.wait_timeout(result, Duration::from_millis(50)).unwrap().0;
         }
-        match result.take() {
-            Some(Decoded::Image(image)) => Some(image),
-            _ => None,
-        }
+        result.take()
     }
     /// Whether a style sheet or font is here to load without waiting (in the
     /// cache, or its fetch done, whatever came of it). If not, its fetch is
@@ -567,7 +661,16 @@ impl Loader {
             return true;
         }
         let key = url.as_str();
+        // Held by a page already (parsed, unpacked).
+        if self.sheets.lock().unwrap().get(&(key.to_owned(), document.encoding())).is_some_and(|w| w.strong_count() > 0) || self.fonts.lock().unwrap().get(key).is_some_and(|w| w.strong_count() > 0) {
+            return true;
+        }
         let mut waiters = self.waiters.lock().unwrap();
+        // Arrived but still being parsed: told when it is.
+        if self.decoding.lock().unwrap().get(key).is_some_and(|d| d.result.lock().unwrap().is_none()) {
+            waiters.entry(key.to_owned()).or_default().push(wake);
+            return false;
+        }
         if self.cache.lock().unwrap().entries.contains_key(key) {
             return true;
         }

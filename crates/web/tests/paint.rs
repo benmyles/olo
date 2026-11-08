@@ -1330,7 +1330,7 @@ fn a_transition_patched_over_a_whole_restyle_keeps_its_new_geometry() {
         let child = doc.create_element("div", olo_web::dom::Namespace::Html).unwrap();
         doc.append_child(c, child).unwrap();
     }
-    assert!(page.refresh(&doc, None, &mut |_, _, _| Ok(None)).unwrap(), "the rules are made again");
+    assert!(page.refresh(&doc, None, &mut |_, _, _| Ok(None), None).unwrap(), "the rules are made again");
     page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     let l = page.scene.layout();
     let (id, _) = l.cache().tree().iter().find(|(_, b)| b.node == c).unwrap();
@@ -1694,7 +1694,7 @@ fn a_shadow_trees_sheets_style_its_tree_its_host_and_what_is_slotted() {
     let inner = doc.create_element("i", olo_web::dom::Namespace::Html).unwrap();
     doc.append_child(root, inner).unwrap();
     doc.attach_shadow(inner).unwrap();
-    page.refresh(&doc, None, &mut |_, _, _| Ok(None)).unwrap();
+    page.refresh(&doc, None, &mut |_, _, _| Ok(None), None).unwrap();
     page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     let tile = render(&mut painter, &page.scene);
     // The host: 20px of padding (from :host) in blue (the document's).
@@ -1904,4 +1904,43 @@ fn unstyled_fields_and_buttons_draw_a_thin_rounded_frame_not_their_bevel() {
     assert_eq!(pixel(&t, 25, 10), [0xef, 0xef, 0xef, 255]);
     // Styled: its own border.
     assert_eq!(pixel(&t, 49, 10), [255, 0, 0, 255]);
+}
+
+#[test]
+fn a_live_refresh_compiles_new_rules_in_the_background() {
+    // A sheet the page's scripts changed: with a waker, the refresh starts
+    // its compile on a thread of its own and answers that it is under way
+    // (the page keeps what it shows); told when it is done, the next
+    // refresh takes the rules.
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    let mut page =
+        olo_web::page::load(Arc::from("<!doctype html><style id=s>body{margin:0}#d{height:10px}</style><div id=d></div>"), &host, &scope, &mut shaper, &mut painter, viewport, None, |_, _| {})
+            .unwrap();
+    let mut stack = vec![page.document.root()];
+    let mut s = None;
+    while let Some(n) = stack.pop() {
+        if page.document.attribute(n, "id").ok().flatten() == Some("s") {
+            s = Some(n);
+        }
+        stack.extend(page.document.children(n).unwrap());
+    }
+    let mut doc = page.document.clone();
+    let text = doc.children(s.unwrap()).unwrap().next().unwrap();
+    doc.set_value(text, "body{margin:0}#d{height:37px}/* a_live_refresh_compiles_new_rules_in_the_background */").unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let wake: olo_web::page::Wake = Arc::new(move || drop(tx.send(())));
+    let first = page.refresh(&doc, None, &mut |_, _, _| Ok(None), Some(&wake));
+    assert_eq!(first.err().map(|e| e.to_string()).as_deref(), Some(olo_web::page::COMPILING_RULES));
+    rx.recv_timeout(std::time::Duration::from_secs(10)).expect("told when the rules are ready");
+    assert!(page.refresh(&doc, None, &mut |_, _, _| Ok(None), Some(&wake)).unwrap(), "the rules taken");
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    let l = page.scene.layout();
+    let height = l.cache().tree().iter().filter_map(|(id, _)| l.bounds(id)).map(|b| b.height).fold(0f64, f64::max);
+    assert!(height >= 37., "the new rule holds: {height}");
 }

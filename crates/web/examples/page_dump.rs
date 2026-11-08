@@ -129,7 +129,7 @@ fn main() {
             let name = href.split(['?', '#']).next().unwrap_or(href);
             match kind {
                 page::ResourceKind::Stylesheet => match std::fs::read_to_string(dir.join(name)) {
-                    Ok(css) => Ok(Some(page::Resource::Stylesheet(olo_web::css::Syntax::parse(Arc::from(css), Default::default(), None)?, None))),
+                    Ok(css) => Ok(Some(page::Resource::Stylesheet(page::parsed(Arc::from(css), None)?, None))),
                     Err(_) => Ok(None),
                 },
                 page::ResourceKind::Script => Ok(None),

@@ -182,6 +182,7 @@ impl Assembler {
             dimensions: self.dimensions,
             diagnostics: Vec::new(),
             limits: self.limits,
+            blocks: Default::default(),
         }
     }
 }

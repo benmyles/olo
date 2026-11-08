@@ -40,7 +40,7 @@ pub enum ResourceKind {
 pub enum Resource {
     /// A stylesheet and the absolute URL it was fetched from, which its
     /// relative `url()`s resolve against.
-    Stylesheet(css::Syntax, Option<Arc<str>>),
+    Stylesheet(Arc<css::Syntax>, Option<Arc<str>>),
     Image(Arc<crate::image::Image>),
     Font(Arc<[u8]>),
 }
@@ -161,13 +161,40 @@ type Compiled = (Arc<css::cascade::RuleSet>, bool, Vec<css::fonts::FontFace>, Ve
 /// render then needs, and a reload brings the same sheets again (GitHub
 /// compiled its 2.5 MB of CSS three times on one load, 50 ms each).
 struct CompiledEntry {
-    media: css::media::Media,
-    sheets: Vec<(Origin, Option<Arc<str>>, css::SourceHandle, Option<u64>)>,
+    key: CompileKey,
     compiled: Compiled,
 }
-thread_local! {
-    static COMPILED: std::cell::RefCell<Vec<CompiledEntry>> = const { std::cell::RefCell::new(Vec::new()) };
+/// What rules are compiled from: the sheets (origin, URL, text, shadow
+/// tree) and the medium.
+struct CompileKey {
+    media: css::media::Media,
+    sheets: Vec<(Origin, Option<Arc<str>>, css::SourceHandle, Option<u64>)>,
 }
+impl CompileKey {
+    fn of(sheets: &[Sheet], media: css::media::Media) -> Self {
+        Self { media, sheets: sheets.iter().map(|(s, o, u, k)| (*o, u.clone(), s.source_handle(), *k)).collect() }
+    }
+    fn is(&self, sheets: &[Sheet], media: css::media::Media) -> bool {
+        self.media == media
+            && self.sheets.len() == sheets.len()
+            && self.sheets.iter().zip(sheets).all(|((o, u, s, k), (syntax, origin, url, scope))| o == origin && u == url && k == scope && s.len() == syntax.source().len() && **s == *syntax.source())
+    }
+}
+/// (Shared by the pages' threads and the compiles in the background.)
+static COMPILED: std::sync::Mutex<Vec<CompiledEntry>> = std::sync::Mutex::new(Vec::new());
+/// A compile under way in the background: its rules once there.
+#[derive(Default)]
+struct Compiling {
+    result: std::sync::Mutex<Option<Option<Compiled>>>,
+    done: std::sync::Condvar,
+}
+static COMPILING: std::sync::Mutex<Vec<(CompileKey, Arc<Compiling>)>> = std::sync::Mutex::new(Vec::new());
+/// Told when rules compiled in the background are ready (the page renders
+/// again, and its refresh takes them).
+pub type Wake = Arc<dyn Fn() + Send + Sync>;
+/// What a live page's refresh answers while its new rules compile in the
+/// background: the page keeps what it shows until they are ready.
+pub const COMPILING_RULES: &str = "Rules still compiling";
 /// Scopes made lately from a base scope and a page's web fonts: the same
 /// faces again (the scripts' measurements, then the scripted render) give
 /// the same scope, so styles and texts made with one serve the other.
@@ -195,22 +222,82 @@ fn scope_with_faces(base: &Scope, faces: Vec<(Arc<[u8]>, crate::font::Descriptor
 }
 /// How many compiled rule sets are kept (the last ones compiled or used).
 const COMPILED_KEPT: usize = 2;
+/// How many are kept for all pages together.
+const COMPILED_SHARED: usize = 6;
+fn compiled_already(sheets: &[Sheet], media: css::media::Media) -> Option<Compiled> {
+    let mut c = COMPILED.lock().unwrap();
+    let i = c.iter().position(|e| e.key.is(sheets, media))?;
+    let entry = c.remove(i);
+    let compiled = entry.compiled.clone();
+    c.insert(0, entry);
+    Some(compiled)
+}
+/// The rules for these sheets: compiled already, else compiled now (or,
+/// when the same compile is under way in the background, waited for).
 fn compile(sheets: &[Sheet], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<Compiled> {
-    let same = |e: &CompiledEntry| {
-        e.media == media
-            && e.sheets.len() == sheets.len()
-            && e.sheets.iter().zip(sheets).all(|((o, u, s, k), (syntax, origin, url, scope))| o == origin && u == url && k == scope && s.len() == syntax.source().len() && **s == *syntax.source())
-    };
-    if let Some(hit) = COMPILED.with(|c| {
-        let mut c = c.borrow_mut();
-        let i = c.iter().position(same)?;
-        let entry = c.remove(i);
-        let compiled = entry.compiled.clone();
-        c.insert(0, entry);
-        Some(compiled)
-    }) {
+    if let Some(hit) = compiled_already(sheets, media) {
         return Ok(hit);
     }
+    let running = COMPILING.lock().unwrap().iter().find(|(k, _)| k.is(sheets, media)).map(|(_, c)| c.clone());
+    if let Some(running) = running {
+        let mut result = running.result.lock().unwrap();
+        while result.is_none() {
+            if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+                return Err(paint::Error::Cancelled.into());
+            }
+            result = running.done.wait_timeout(result, std::time::Duration::from_millis(50)).unwrap().0;
+        }
+        if let Some(Some(compiled)) = result.as_ref() {
+            return Ok(compiled.clone());
+        }
+    }
+    compile_now(sheets, media, cancel)
+}
+/// The rules for these sheets when they are compiled already; else their
+/// compile started on a thread of its own (`wake` told when it is done)
+/// and `COMPILING_RULES` answered.
+fn compile_in_background(sheets: &[Sheet], media: css::media::Media, wake: &Wake) -> Result<Compiled> {
+    if let Some(hit) = compiled_already(sheets, media) {
+        return Ok(hit);
+    }
+    let compiling = {
+        let mut running = COMPILING.lock().unwrap();
+        if let Some(i) = running.iter().position(|(k, _)| k.is(sheets, media)) {
+            // Failed there: compiled here, for its error.
+            if running[i].1.result.lock().unwrap().is_some() {
+                running.remove(i);
+                drop(running);
+                return compile_now(sheets, media, None);
+            }
+            return Err(COMPILING_RULES.into());
+        }
+        let compiling = Arc::new(Compiling::default());
+        running.push((CompileKey::of(sheets, media), compiling.clone()));
+        compiling
+    };
+    let (owned, wake, mine) = (sheets.to_vec(), wake.clone(), compiling.clone());
+    let started = std::thread::Builder::new().name("olo-style-compile".into()).spawn(move || {
+        let compiled = compile_now(&owned, media, None).ok();
+        // (A failure stays listed: the page's next refresh compiles it
+        // itself, for the error, rather than starting it again here.)
+        let failed = compiled.is_none();
+        *compiling.result.lock().unwrap() = Some(compiled);
+        compiling.done.notify_all();
+        if !failed {
+            COMPILING.lock().unwrap().retain(|(_, c)| !Arc::ptr_eq(c, &compiling));
+        }
+        wake();
+    });
+    match started {
+        Ok(_) => Err(COMPILING_RULES.into()),
+        // No thread to be had: compiled here.
+        Err(_) => {
+            COMPILING.lock().unwrap().retain(|(_, c)| !Arc::ptr_eq(c, &mine));
+            compile_now(sheets, media, None)
+        }
+    }
+}
+fn compile_now(sheets: &[Sheet], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<Compiled> {
     let mut builder = SheetBuilder::new(Default::default()).with_media(media);
     for (syntax, origin, base, scope) in sheets {
         builder.add_scoped_sheet_from(syntax, *origin, base.clone(), *scope, cancel)?;
@@ -219,11 +306,9 @@ fn compile(sheets: &[Sheet], media: css::media::Media, cancel: Option<&AtomicBoo
     let faces = builder.font_faces().to_vec();
     let backgrounds = builder.background_urls().to_vec();
     let compiled: Compiled = (Arc::new(builder.finish(cancel)?), dependent, faces, backgrounds);
-    COMPILED.with(|c| {
-        let mut c = c.borrow_mut();
-        c.insert(0, CompiledEntry { media, sheets: sheets.iter().map(|(s, o, u, k)| (*o, u.clone(), s.source_handle(), *k)).collect(), compiled: compiled.clone() });
-        c.truncate(COMPILED_KEPT);
-    });
+    let mut c = COMPILED.lock().unwrap();
+    c.insert(0, CompiledEntry { key: CompileKey::of(sheets, media), compiled: compiled.clone() });
+    c.truncate(COMPILED_SHARED);
     Ok(compiled)
 }
 /// At most this many `background-image` files per page.
@@ -328,7 +413,7 @@ pub fn load_resources(
     mut resource: impl FnMut(Option<&str>, &str) -> Result<Option<css::Syntax>>,
 ) -> Result<Page> {
     load_assets(source, host, scope, shaper, painter, viewport, cancel, progress, |kind, base, href| match kind {
-        ResourceKind::Stylesheet => resource(base, href).map(|s| s.map(|s| Resource::Stylesheet(s, None))),
+        ResourceKind::Stylesheet => resource(base, href).map(|s| s.map(|s| Resource::Stylesheet(Arc::new(s), None))),
         ResourceKind::Image | ResourceKind::Font | ResourceKind::Script => Ok(None),
     })
 }
@@ -394,7 +479,7 @@ pub fn prepare_scripted(
     // they can measure a styled page; after, for what they added): the
     // memo hands the second pass what the first fetched.
     let mut memo = Memo { entries: Default::default(), active: scripts.is_some() };
-    let mut load = |kind: ResourceKind, base: Option<&str>, href: &str| memo.load(kind, base, href, cancel, &mut resource);
+    let mut load = |kind: ResourceKind, base: Option<&str>, href: &str| memo.load(kind, base, href, &mut resource);
     if let Some(run) = scripts {
         let mut first = gather(doc, quirks, scope, media, fonts, cancel, &mut progress, &mut load, &mut prefetch, None)?;
         let measurer = first.measurer();
@@ -431,7 +516,7 @@ fn same_sheets(a: &[Sheet], b: &[Sheet]) -> bool {
 /// What a resource request returned, for a second gathering pass.
 enum Memoed {
     Missing,
-    Stylesheet(Arc<str>, Option<Arc<str>>),
+    Stylesheet(Arc<css::Syntax>, Option<Arc<str>>),
     Image(Arc<crate::image::Image>),
     Font(Arc<[u8]>),
 }
@@ -440,14 +525,7 @@ struct Memo {
     active: bool,
 }
 impl Memo {
-    fn load(
-        &mut self,
-        kind: ResourceKind,
-        base: Option<&str>,
-        href: &str,
-        cancel: Option<&AtomicBool>,
-        resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
-    ) -> Result<Option<Resource>> {
+    fn load(&mut self, kind: ResourceKind, base: Option<&str>, href: &str, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<Option<Resource>> {
         if !self.active {
             return resource(kind, base, href);
         }
@@ -455,7 +533,7 @@ impl Memo {
         if let Some(m) = self.entries.get(&key) {
             return Ok(match m {
                 Memoed::Missing => None,
-                Memoed::Stylesheet(source, url) => Some(Resource::Stylesheet(css::Syntax::parse(source.clone(), Default::default(), cancel)?, url.clone())),
+                Memoed::Stylesheet(syntax, url) => Some(Resource::Stylesheet(syntax.clone(), url.clone())),
                 Memoed::Image(image) => Some(Resource::Image(image.clone())),
                 Memoed::Font(bytes) => Some(Resource::Font(bytes.clone())),
             });
@@ -463,7 +541,7 @@ impl Memo {
         let r = resource(kind, base, href)?;
         let m = match &r {
             None => Memoed::Missing,
-            Some(Resource::Stylesheet(syntax, url)) => Memoed::Stylesheet(Arc::from(syntax.source()), url.clone()),
+            Some(Resource::Stylesheet(syntax, url)) => Memoed::Stylesheet(syntax.clone(), url.clone()),
             Some(Resource::Image(image)) => Memoed::Image(image.clone()),
             Some(Resource::Font(bytes)) => Memoed::Font(bytes.clone()),
         };
@@ -1088,7 +1166,7 @@ fn trim(v: f64) -> String {
 /// whose sheet failed to load.
 /// A sheet, its origin, the URL it came from, and the shadow tree it
 /// belongs to (`selectors::scope_key`; None: the document's).
-pub type Sheet = (css::Syntax, Origin, Option<Arc<str>>, Option<u64>);
+pub type Sheet = (Arc<css::Syntax>, Origin, Option<Arc<str>>, Option<u64>);
 // Within the cascade's work budget (16 M, a unit a source byte), with room
 // for the rules and declarations it ticks too.
 const CSS_BYTES: usize = 8 * 1024 * 1024;
@@ -1108,12 +1186,40 @@ const UA_QUIRKS: &str = concat!(
 /// What a host's resource answers for one it is still fetching (without
 /// waiting for it): the sheets are looked at again at the next render.
 pub const PENDING: &str = "Resource still loading";
+/// A style sheet's text parsed, once: the same text again (a `<style>`
+/// or linked sheet at the next refresh, the user agent's, the second
+/// gather's) is the syntax already made for it, while anything holds it.
+pub fn parsed(text: Arc<str>, cancel: Option<&AtomicBool>) -> Result<Arc<css::Syntax>> {
+    use std::{
+        hash::BuildHasher,
+        sync::{Mutex, Weak},
+    };
+    // By the text's hash (checked against the text): the sheets, and how
+    // many entries before the dead ones are dropped.
+    static PARSED: Mutex<Option<(std::collections::HashMap<u64, Weak<css::Syntax>>, usize)>> = Mutex::new(None);
+    let key = foldhash::quality::FixedState::with_seed(0x01_0c55).hash_one(&*text);
+    if let Some((map, _)) = PARSED.lock().unwrap().as_ref()
+        && let Some(syntax) = map.get(&key).and_then(Weak::upgrade)
+        && syntax.source() == &*text
+    {
+        return Ok(syntax);
+    }
+    let syntax = Arc::new(css::Syntax::parse(text, Default::default(), cancel)?);
+    let mut guard = PARSED.lock().unwrap();
+    let (map, limit) = guard.get_or_insert_with(|| (Default::default(), 256));
+    if map.len() >= *limit {
+        map.retain(|_, w| w.strong_count() > 0);
+        *limit = (map.len() * 2).max(256);
+    }
+    map.insert(key, Arc::downgrade(&syntax));
+    Ok(syntax)
+}
 /// The user agent's sheet, and the page's `<meta name=color-scheme>` as
 /// its root's `color-scheme` when its own sheets give none (HTML §4.2.5.4).
 fn ua_sheets(doc: &Document, quirks: bool, cancel: Option<&AtomicBool>) -> Result<Vec<Sheet>> {
-    let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None, None)];
+    let mut sheets = vec![(parsed(Arc::from(UA), cancel)?, Origin::UserAgent, None, None)];
     if quirks {
-        sheets.push((css::Syntax::parse(Arc::from(UA_QUIRKS), Default::default(), cancel)?, Origin::UserAgent, None, None));
+        sheets.push((parsed(Arc::from(UA_QUIRKS), cancel)?, Origin::UserAgent, None, None));
     }
     // The first such meta in the head (the document's first children).
     let mut stack: Vec<crate::dom::NodeId> = doc.children(doc.root())?.collect();
@@ -1127,7 +1233,7 @@ fn ua_sheets(doc: &Document, quirks: bool, cancel: Option<&AtomicBool>) -> Resul
             Some("meta") if doc.attribute(n, "name")?.is_some_and(|v| v.trim().eq_ignore_ascii_case("color-scheme")) => {
                 let content: String = doc.attribute(n, "content")?.unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '_')).collect();
                 if !content.trim().is_empty() {
-                    sheets.push((css::Syntax::parse(Arc::from(format!(":root{{color-scheme:{content}}}")), Default::default(), cancel)?, Origin::UserAgent, None, None));
+                    sheets.push((parsed(Arc::from(format!(":root{{color-scheme:{content}}}")), cancel)?, Origin::UserAgent, None, None));
                 }
                 break;
             }
@@ -1154,7 +1260,7 @@ fn imported(
     depth: usize,
     budget: &mut (usize, usize, usize),
     cancel: Option<&AtomicBool>,
-) -> Result<Vec<(css::Syntax, Option<Arc<str>>)>> {
+) -> Result<Vec<(Arc<css::Syntax>, Option<Arc<str>>)>> {
     let mut out = Vec::new();
     if depth >= 4 || !syntax.source().contains("@import") {
         return Ok(out);
@@ -1227,7 +1333,7 @@ fn imported(
             if !media.is_empty() && !media.eq_ignore_ascii_case("all") {
                 text = under_media(&media, &text);
             }
-            let sheet = if text.len() == sheet.source().len() { sheet } else { css::Syntax::parse(Arc::from(text), Default::default(), cancel)? };
+            let sheet = if text.len() == sheet.source().len() { sheet } else { parsed(Arc::from(text), cancel)? };
             out.push((sheet, sheet_url));
         }
     }
@@ -1392,7 +1498,7 @@ fn load_sheets(
                         text.push_str(value)
                     }
                 }
-                let syntax = css::Syntax::parse(Arc::from(text), Default::default(), cancel)?;
+                let syntax = parsed(Arc::from(text), cancel)?;
                 let mut budget = (imports, css_bytes, 0);
                 let mut list = imported(&syntax, None, base, resource, 0, &mut budget, cancel)?;
                 (imports, css_bytes) = (budget.0, budget.1);
@@ -1400,7 +1506,7 @@ fn load_sheets(
                 list.push((syntax, None));
                 for (syntax, url) in list {
                     let syntax = match media {
-                        Some(m) => css::Syntax::parse(Arc::from(under_media(m, syntax.source())), Default::default(), cancel)?,
+                        Some(m) => parsed(Arc::from(under_media(m, syntax.source())), cancel)?,
                         None => syntax,
                     };
                     sheets.push((syntax, Origin::Author, url, None));
@@ -1413,7 +1519,7 @@ fn load_sheets(
                     if let Some((statement, url)) = layered.get(href.trim())
                         && first_seen.insert(href.trim())
                     {
-                        sheets.push((css::Syntax::parse(Arc::from(statement.as_str()), Default::default(), cancel)?, Origin::Author, url.clone(), None));
+                        sheets.push((parsed(Arc::from(statement.as_str()), cancel)?, Origin::Author, url.clone(), None));
                     }
                     continue;
                 }
@@ -1445,7 +1551,7 @@ fn load_sheets(
                         list.push((syntax, url));
                         for (syntax, url) in list {
                             let syntax = match media {
-                                Some(m) => css::Syntax::parse(Arc::from(under_media(m, syntax.source())), Default::default(), cancel)?,
+                                Some(m) => parsed(Arc::from(under_media(m, syntax.source())), cancel)?,
                                 None => syntax,
                             };
                             sheets.push((syntax, Origin::Author, url, None));
@@ -1472,7 +1578,7 @@ fn load_sheets(
                     continue;
                 }
                 css_bytes += text.len();
-                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None, scope));
+                sheets.push((parsed(Arc::from(text), cancel)?, Origin::Author, None, scope));
             }
             Some("link") if doc.attribute(node, "rel")?.is_some_and(|r| r.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("stylesheet"))) => {
                 let Some(href) = doc.attribute(node, "href")? else { continue };
@@ -2084,7 +2190,16 @@ impl Page {
     }
     /// Follow a later revision's stylesheets (see `Measurer::refresh`):
     /// returns whether the rules were made again.
-    pub fn refresh(&mut self, doc: &Document, cancel: Option<&AtomicBool>, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<bool> {
+    /// With `wake`, new rules compile in the background: `COMPILING_RULES`
+    /// is answered meanwhile (the page shows what it showed, its event loop
+    /// going on), and `wake` told when they are ready.
+    pub fn refresh(
+        &mut self,
+        doc: &Document,
+        cancel: Option<&AtomicBool>,
+        resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+        wake: Option<&Wake>,
+    ) -> Result<bool> {
         // Nothing that could change the sheets since the last look: no
         // walk of the document (it ran on every render while apple.com
         // loaded).
@@ -2105,7 +2220,10 @@ impl Page {
         // waiting, see `PENDING`): looked at again at the next render.
         let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel).inspect_err(|_| self.sheets_checked = None)?;
         sheets.extend(loaded);
-        let (rules, dependent, faces, _) = compile(&sheets, self.media, cancel)?;
+        let (rules, dependent, faces, _) = match wake {
+            Some(wake) => compile_in_background(&sheets, self.media, wake).inspect_err(|_| self.sheets_checked = None)?,
+            None => compile(&sheets, self.media, cancel)?,
+        };
         let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel).inspect_err(|_| self.sheets_checked = None)?;
         self.rules = rules;
         self.media_dependent = dependent;
@@ -2115,6 +2233,12 @@ impl Page {
         self.sheet_ids = ids;
         self.base_href = base;
         Ok(true)
+    }
+    /// The style sheets it was styled with, parsed (with their compiled
+    /// declarations): held, the next pass over the same document takes
+    /// them as they are.
+    pub fn parsed_sheets(&self) -> Vec<Arc<css::Syntax>> {
+        self.sheets.iter().map(|s| s.0.clone()).collect()
     }
     /// The fonts this page is styled and shaped with.
     pub fn scope(&self) -> &Scope {
