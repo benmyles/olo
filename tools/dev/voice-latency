@@ -3,19 +3,27 @@
 private PipeWire graph of its own (no hardware: a timer driver, a test
 microphone and speakers; its own WirePlumber with every monitor off, its
 own runtime, config and state folders, no D-Bus), olo-voice --service in
-it, clicks played into the test microphone, and one stereo recording of
-the microphone (left) and Olo Voice's source (right): the gap between the
-two is what Olo Voice adds, nothing else's buffering in it.
+it, speech played into the test microphone, and the microphone (left)
+and Olo Voice's source (right) recorded side by side: the lag between the
+two (cross-correlated) is what Olo Voice adds, nothing else's buffering
+in it.
 
-  tools/dev/voice-latency [--settings noise=off,…] [--seconds N] [--quantum N] [--keep]
+  tools/dev/voice-latency [--settings noise=off,…] [--seconds N] [--quantum N]
+                          [--probe sync|async] [--signal speech|clicks] [--keep]
 
 --settings: olo-voice --set pairs (default noise=off,echo=off,normalize=off:
-only the buffering; its processing's own delay the chain tests check).
---quantum: the graph's quantum another client asks for (as a call app
-might), else what Olo Voice asks. Release builds (cargo build --release
--p olo-voice). Nothing of the person's session is touched: every program
-runs with the private folders, and they're removed after (--keep keeps
-them, in /var/tmp/olo-pw)."""
+only the buffering). --quantum: the graph's quantum another client asks for
+(as a call app might), else what Olo Voice asks. --probe: what records
+(sync, the default: a realtime filter, scheduled in the cycle as the apps
+that record through Pulse are, Chrome's and every call app's; async:
+pw-record, which PipeWire schedules asynchronously, so it reads any
+source that isn't a device a cycle late, 10 ms at a call's quantum: not
+Olo's). --signal: speech (the default; clicks in silence are what the
+level stage boosts and limits, and a speech model takes for noise).
+Release builds (cargo build --release -p olo-voice-service). Nothing of
+the person's session is touched: every program runs with the private
+folders, and they're removed after (--keep keeps them, in
+/var/tmp/olo-pw)."""
 
 import json, math, os, shutil, signal, struct, subprocess, sys, time, wave
 
@@ -120,6 +128,79 @@ def clicks(path, seconds, every=0.5):
         w.writeframes(bytes(frames))
 
 
+def probe_run(path):
+    """The synchronous probe: a realtime pw_filter (as Pulse's streams are
+    scheduled: in the cycle) with inputs L and R, written to `path` as
+    interleaved f32 as they come."""
+    import ctypes as C
+    pw = C.CDLL("libpipewire-0.3.so.0")
+    pw.pw_init(None, None)
+    for f in ("pw_main_loop_new", "pw_main_loop_get_loop", "pw_properties_new", "pw_filter_new_simple", "pw_filter_add_port", "pw_filter_get_dsp_buffer"):
+        getattr(pw, f).restype = C.c_void_p
+    pw.pw_filter_get_dsp_buffer.argtypes = [C.c_void_p, C.c_uint32]
+    loop = C.c_void_p(pw.pw_main_loop_new(None))
+    props = lambda *kv: C.c_void_p(pw.pw_properties_new(*([C.c_char_p(x.encode()) for x in kv] + [None])))
+    PROCESS = C.CFUNCTYPE(None, C.c_void_p, C.c_void_p)
+
+    class Events(C.Structure):
+        _fields_ = [("version", C.c_uint32)] + [(n, C.c_void_p) for n in ("destroy", "state_changed", "io_changed", "param_changed", "add_buffer", "remove_buffer")] + [("process", PROCESS), ("drained", C.c_void_p), ("command", C.c_void_p)]
+
+    out = open(path, "wb", buffering=0)
+    ports = {}
+
+    def process(_, position):
+        # The cycle's samples: spa_io_position's clock.duration.
+        n = C.c_uint64.from_address(position + 96).value
+        both = (C.c_float * (2 * n))()
+        for k, name in enumerate(("L", "R")):
+            a = pw.pw_filter_get_dsp_buffer(ports[name], n)
+            if a:
+                both[k::2] = (C.c_float * n).from_address(a)[:]
+        out.write(bytes(both))
+
+    cb = PROCESS(process)
+    events = Events(version=1, process=cb)
+    f = C.c_void_p(pw.pw_filter_new_simple(C.c_void_p(pw.pw_main_loop_get_loop(loop)), b"olo-latency-probe", props("media.type", "Audio", "media.category", "Capture", "node.name", "olo-latency-probe"), C.byref(events), None))
+    for name in ("L", "R"):
+        ports[name] = C.c_void_p(pw.pw_filter_add_port(f, 0, 1, 8, props("format.dsp", "32 bit float mono audio", "port.name", name), None, 0))
+    # (PW_FILTER_FLAG_RT_PROCESS.)
+    pw.pw_filter_connect(f, 4, None, 0)
+    pw.pw_main_loop_run(loop)
+
+
+def speech(path, seconds):
+    """A second of silence (while it's linked), then the voice crate's
+    test speech (16 kHz, made 48 kHz), as long as asked."""
+    raw = open(os.path.join(ROOT, "crates/voice/tests/data/slt.raw"), "rb").read()
+    x = struct.unpack(f"<{len(raw) // 2}h", raw)
+    up = []
+    for a, b in zip(x, x[1:] + (0,)):
+        up += [a, (2 * a + b) // 3, (a + 2 * b) // 3]
+    n = int(seconds * RATE)
+    up = (up * (n // len(up) + 1))[:n]
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes(bytes(RATE * 2) + struct.pack(f"<{len(up)}h", *up))
+
+
+def best_lag(left, right, most=RATE // 10):
+    """Where `right` lines up best with `left`, 0 to `most` samples later:
+    cross-correlated a sample in 8 first, then sample by sample around it."""
+    start = next((i for i, v in enumerate(left) if abs(v) > 0.01), 0)
+    n = min(len(left), len(right)) - start - most
+    if n <= RATE:
+        return None
+    n = min(n, 3 * RATE)
+    l, r = left[start:start + n + most], right[start:start + n + most]
+    dl = [sum(l[i:i + 8]) for i in range(0, n, 8)]
+    dr = [sum(r[i:i + 8]) for i in range(0, n + most, 8)]
+    coarse = max(range(most // 8), key=lambda k: sum(a * b for a, b in zip(dl, dr[k:])))
+    fine = range(max(0, coarse * 8 - 12), min(most, coarse * 8 + 12))
+    return max(fine, key=lambda k: sum(a * b for a, b in zip(l[:n], r[k:k + n])))
+
+
 def onsets(x, threshold=0.2, gap=RATE // 10):
     out, last = [], -gap
     for i, v in enumerate(x):
@@ -139,6 +220,8 @@ def main():
     # as a floor): `loopback`.
     other = opt("--other", None)
     keep = "--keep" in a
+    sync = opt("--probe", "sync") == "sync"
+    signal_kind = opt("--signal", "speech")
     shutil.rmtree(BASE, ignore_errors=True)
     for d in ("run", "conf/pipewire", "conf/wireplumber/wireplumber.conf.d", "state", "data", "home", "voice"):
         os.makedirs(f"{BASE}/{d}", exist_ok=True)
@@ -162,8 +245,13 @@ def main():
             # Another client asking for that quantum (as a call app might).
             procs.append(start("quantum", ["pw-metadata", "-n", "settings", "0", "clock.force-quantum", quantum], "quantum.log"))
             time.sleep(0.5)
-        probe = f"{BASE}/probe.wav"
-        rec = start("record", ["pw-record", "--rate", str(RATE), "--channels", "2", "--format", "f32", "-P", "{ node.name = olo-latency-probe node.autoconnect = false }", probe], "record.log")
+        probe = f"{BASE}/probe.raw" if sync else f"{BASE}/probe.wav"
+        if sync:
+            rec = start("record", [sys.executable, "-I", os.path.abspath(__file__), "--probe-run", probe], "record.log")
+            inputs = ("olo-latency-probe:L", "olo-latency-probe:R")
+        else:
+            rec = start("record", ["pw-record", "--rate", str(RATE), "--channels", "2", "--format", "f32", "-P", "{ node.name = olo-latency-probe node.autoconnect = false }", probe], "record.log")
+            inputs = ("olo-latency-probe:input_FL", "olo-latency-probe:input_FR")
         procs.append(rec)
         time.sleep(1.0)
         ports = subprocess.run(["pw-link", "-o"], env=env(), capture_output=True, text=True).stdout.split()
@@ -171,13 +259,16 @@ def main():
         mic = next((p for p in ports if p.startswith("test-mic:capture")), None)
         if not source or not mic:
             sys.exit(f"ports not found: {ports}")
-        for out, inp in ((mic, "olo-latency-probe:input_FL"), (source, "olo-latency-probe:input_FR")):
+        for out, inp in ((mic, inputs[0]), (source, inputs[1])):
             r = subprocess.run(["pw-link", out, inp], env=env(), capture_output=True, text=True)
             if r.returncode:
                 sys.exit(f"pw-link {out} {inp}: {r.stderr}")
         time.sleep(1.5)
         wav = f"{BASE}/clicks.wav"
-        clicks(wav, seconds)
+        if signal_kind == "clicks":
+            clicks(wav, seconds)
+        else:
+            speech(wav, seconds)
         # (Linked by hand: WirePlumber links a player to a sink, not into
         # a virtual microphone.)
         play = start("play", ["pw-play", "-P", "{ node.name = olo-latency-clicks node.autoconnect = false }", wav], "play.log")
@@ -192,11 +283,16 @@ def main():
         graph = [" ".join(l.split()) for l in top.splitlines()][-12:]
         play.wait(timeout=seconds + 10)
         time.sleep(0.8)
-        rec.send_signal(signal.SIGINT)
+        # (The probe sits in PipeWire's loop, where Python never sees a
+        # SIGINT; what it has is written each cycle.)
+        rec.send_signal(signal.SIGTERM if sync else signal.SIGINT)
         rec.wait(timeout=5)
         status = subprocess.run([voice, "--status", "--json"], env=env(), capture_output=True, text=True).stdout
-        with wave.open(probe) as w:
-            raw = w.readframes(w.getnframes())
+        if sync:
+            raw = open(probe, "rb").read()
+        else:
+            with wave.open(probe) as w:
+                raw = w.readframes(w.getnframes())
         n = len(raw) // 8
         samples = struct.unpack(f"<{2 * n}f", raw[: 8 * n])
         left, right = samples[0::2], samples[1::2]
@@ -207,12 +303,21 @@ def main():
             if later:
                 lags.append(later[0] - t)
         state = json.loads(status).get("state", {}) if status.strip().startswith("{") else {}
+        if signal_kind == "speech":
+            lag = best_lag(left, right)
+            measured = {"added_ms": round(lag * 1000 / RATE, 2) if lag is not None else None}
+        else:
+            measured = {
+                "clicks": len(lo),
+                "came_through": len(lags),
+                "added_ms": {"least": round(min(lags) * 1000 / RATE, 2), "most": round(max(lags) * 1000 / RATE, 2), "mean": round(sum(lags) * 1000 / RATE / len(lags), 2)} if lags else None,
+            }
         print(json.dumps({
             "settings": settings,
             "quantum": quantum or "Olo Voice's",
-            "clicks": len(lo),
-            "came_through": len(lags),
-            "added_ms": {"least": round(min(lags) * 1000 / RATE, 2), "most": round(max(lags) * 1000 / RATE, 2), "mean": round(sum(lags) * 1000 / RATE / len(lags), 2)} if lags else None,
+            "probe": "sync" if sync else "async",
+            "signal": signal_kind,
+            **measured,
             "graph": graph,
             "says_ms": state.get("latency_ms"),
             "dropouts": state.get("dropouts"),
@@ -231,4 +336,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:2] == ["--probe-run"]:
+        probe_run(sys.argv[2])
+    else:
+        main()

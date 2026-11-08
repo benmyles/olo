@@ -43,20 +43,16 @@ something nobody here has is in "Blocked", with what it waits for.
   pixel, timers not hooked up), wake for each, then make the poll a long
   safety net (seconds) or none; measure idle before and after.
 
-- **Voice Processing's delay, the rest** (Ben, 2026-11-07: "we need that
-  to be way more optimized so that it is not introducing any kind of
-  noticeable lag"). Done: 51 ms really (said 40) → 40, said as it is
-  (the buffering 21.33 → 10.0 ms, measured: tools/dev/voice-latency).
-  Left: (1) the cycle a source fed by another stream is behind (10 ms):
-  one node with the microphone in and the cleaned sound out (pw_filter,
-  linked to the microphone by Olo itself), no quality cost; (2) the
-  noise suppressor's 30 ms: DeepFilterNet3's look-ahead. Done:
-  DeepFilterNet3-LL as a second noise model (Preferences ▸ Sound ▸
-  Noise model: DeepFilterNet3 Low Delay), 10 ms where DeepFilterNet3 is
-  30, its GRUs in 8 bits (`deep_filter::q8`, AVX-VNNI) so a frame is
-  ~420 µs; DeepFilterNet3 stays the default. Left: measure the total
-  with it on (tools/dev/voice-latency: about 20 ms expected), and Ben
-  to choose the default once he's heard both. tract still allocates
+- **Voice Processing's delay: Ben to choose the default noise model**
+  (Ben, 2026-11-07: "we need that to be way more optimized so that it is
+  not introducing any kind of noticeable lag"; "get rid of the remaining
+  delay"). Done: 51 ms really (said 40) → what an app recording through
+  Pulse gets now, measured with a synchronous probe: 30 ms with
+  DeepFilterNet3, 10 with DeepFilterNet3 Low Delay (Preferences ▸ Sound
+  ▸ Noise model), 0 with noise suppression off; the "cycle a source fed
+  by another stream is behind" was the old probe's (pw-record is
+  scheduled asynchronously), not Olo's. Left: Ben to choose the default
+  once he's heard both (Try It compares them). tract still allocates
   ~850 times a frame on the realtime thread (its tensors): a plan with
   its buffers made once would take that away.
 

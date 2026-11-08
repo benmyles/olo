@@ -8977,17 +8977,27 @@ one are always told apart:
   nothing is held back for the frames' fit, and with a quantum another
   program forces only its misfit is (`misfit`: `FRAME - gcd`, 448 samples
   for a power of two), exactly, from the start (silence before the
-  sound); recordings 2048 samples and four frames more. What it says it
-  adds is what it does: the processing's delay, what's held, and the
-  one cycle a source fed by another stream is behind (PipeWire's own
-  loopback is too). `tools/dev/voice-latency` measures it in a private
-  PipeWire graph of its own (no hardware; its own WirePlumber with every
-  monitor off, runtime, config and state folders): clicks into a test
-  microphone, one stereo recording of it and of Olo Voice's source, the
-  gap between them (`--settings`, `--quantum`, `--other loopback` for
-  PipeWire's own as a floor). Before the group and trigger: 21.33 ms of
-  buffering said as 10; after: 10.0 (14.67 at a forced 256, 30.67 at
-  1024), said as measured, no dropouts.
+  sound); recordings 2048 samples and four frames more. Triggered, the
+  source gives each cycle's frames in that cycle, so an app recording
+  through Pulse (Chrome's, every call app's: PipeWire schedules them in
+  the cycle) gets the voice with nothing added but the processing's
+  delay and what's held; only a client PipeWire schedules asynchronously
+  (pw-record, pw-play: `node.async`, `=` in pw-top) reads it a cycle
+  late, as it reads any source that isn't a device. What the service
+  says it adds is that. `tools/dev/voice-latency` measures it in a
+  private PipeWire graph of its own (no hardware; its own WirePlumber
+  with every monitor off, runtime, config and state folders): speech
+  into a test microphone, the microphone and Olo Voice's source recorded
+  side by side by a synchronous probe (a realtime `pw_filter`, as
+  Pulse's streams are scheduled), and the lag between them
+  cross-correlated (`--settings`, `--quantum`, `--probe async` for
+  pw-record, `--signal clicks`, `--other loopback` for PipeWire's own).
+  2026-11-07: the processing off 0.0 ms, a forced 256 or 1024 quantum
+  9.33 (the frames' misfit), the low-delay noise model 10.0, DeepFilterNet3
+  30.0, each said as measured, no dropouts. (Measured with pw-record
+  before, every figure had a quantum more: not Olo's.) Don't judge the
+  delay with clicks in silence: the level stage boosts and limits them,
+  and a speech model takes them for noise.
 - **Settings** `voice.json` in the config folder
   (`olo_protocol::voice::Settings`: enabled, mode, echo cancellation,
   noise, normalize), followed by inotify. **State** `olo-voice.json` in

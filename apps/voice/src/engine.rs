@@ -16,12 +16,20 @@
 //! nothing drifts), the source is triggered (`StreamFlags::TRIGGER`) from
 //! the microphone's process once its frames are done, and for calls the
 //! graph runs a frame a cycle (`node.force-quantum` 480, while something
-//! records), so nothing is held back for the frames' fit; the one cycle a
-//! source fed by another stream is behind remains (PipeWire's loopback is
-//! too). With a quantum that doesn't fit the frames (another program
-//! forcing its own) only its misfit is held (`misfit`), exactly, from the
-//! start. Measured by tools/dev/voice-latency (the processing off): 21.33
-//! ms before, 10.0 after; 14.67 at a forced 256, 30.67 at 1024.
+//! records), so nothing is held back for the frames' fit. With a quantum
+//! that doesn't fit the frames (another program forcing its own) only its
+//! misfit is held (`misfit`), exactly, from the start.
+//!
+//! Triggered, the source gives each cycle's frames in that cycle: an app
+//! that records through Pulse (Chrome's, every call app's: scheduled in
+//! the cycle) gets the voice 0 ms behind the microphone with the
+//! processing off, the noise model's own delay with it on (10 ms the
+//! low-delay one, 30 DeepFilterNet3). Only a client PipeWire schedules
+//! asynchronously (pw-record) reads it a cycle late, as it reads any
+//! source that isn't a device. Measured by tools/dev/voice-latency (a
+//! synchronous probe, speech cross-correlated; 2026-11-07): 0.0, 10.0
+//! and 30.0 ms. (An earlier pw-record probe had said 10 ms more of each,
+//! and so had this service.)
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -183,12 +191,11 @@ impl Processing {
         self.quantum = 0;
     }
 
-    /// What it delays the sound by, in samples: the processing's, what
-    /// the source holds for its quantum, and the cycle a source fed by
-    /// another stream is behind it (PipeWire's own loopback is too:
-    /// measured, a quantum exactly).
+    /// What it delays the sound by, in samples: the processing's, and
+    /// what the source holds for its quantum (as an app recording through
+    /// Pulse gets it: in the cycle the microphone's frames came in).
     fn latency(&self) -> u32 {
-        (self.voice.latency_samples() + self.hold + self.extra + self.quantum) as u32
+        (self.voice.latency_samples() + self.hold + self.extra) as u32
     }
 }
 
