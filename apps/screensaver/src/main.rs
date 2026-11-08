@@ -188,6 +188,11 @@ fn main() {
                 })
             });
         }
+        // Nothing to draw on (no compositor): nothing to do.
+        if cx.windows().is_empty() {
+            eprintln!("olo-screensaver: no screen to cover");
+            cx.quit();
+        }
     });
 }
 

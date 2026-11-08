@@ -2633,7 +2633,15 @@ gone, as Deskbar did, or spin on a stored protocol error, as
 Notifications did, 2026-11-01; once told, the loop stops, so a program
 nobody re-executes, outside a session, ends rather than waking for ever
 on the dead socket); GPUI's connect waits up to 15 s for
-the compositor to be back. And it connects to app_server's direct
+the compositor to be back. A program app_server started on a
+connection it handed over (`WAYLAND_SOCKET`: the lock screen, the
+screen saver) can't make that connection again, so it ends instead,
+on an upgrade too, and app_server starts it again if it is still
+wanted (the lock screen while locked, within 2 s); re-executed, it
+came back with no compositor and stayed for ever (eleven lock
+screens of an ended agent screen, one per upgrade, 2026-11-07). A
+`cx.quit()` while launching ends the program on any backend (calloop's
+`run` clears a stop sent before it starts, so it used not to). And it connects to app_server's direct
 socket (`olo-<display>-direct`), not to
 `WAYLAND_DISPLAY`, which in a session is olo-wlproxy's: the proxy keeps
 outside programs' windows across a restart by replaying their objects

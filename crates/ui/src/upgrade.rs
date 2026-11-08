@@ -46,6 +46,11 @@ extern "C" fn on_signal(_: libc::c_int) {
 /// that start, the GPU is broken rather than reset, and the app ends
 /// rather than go round for ever.
 fn lost_compositor(cx: &mut App, binary: &Binary) {
+    if handed_connection() {
+        // (Returning ends it: the loop stops after this.)
+        tracing::warn!("the connection the compositor handed this program is gone: ending");
+        return;
+    }
     let gpu = gpui::gpu_device_lost();
     if gpu && gpu_lost_before().is_some_and(|at| at.elapsed().unwrap_or_default() < GPU_AGAIN) {
         tracing::error!("the GPU device is lost again within {} s of the last time: ending", GPU_AGAIN.as_secs());
@@ -249,6 +254,23 @@ fn gpu_lost_before() -> Option<SystemTime> {
 /// Takes what the previous self left in the environment, at start-up.
 pub(crate) fn claim() {
     gpu_lost_before();
+    handed_connection();
+}
+
+/// Whether the compositor handed this program its connection
+/// (`WAYLAND_SOCKET`: app_server starts the lock screen and the screen
+/// saver so, to know which client each is). Read at start-up, before
+/// the connection is made (which takes it out of the environment). Such
+/// a connection can't be made again, by this program or a new one: where
+/// another program re-executes (its binary upgraded, the compositor gone)
+/// this one ends, and whoever started it starts it again if it is still
+/// wanted (app_server, the lock screen while locked). Re-executed, it
+/// came back with no compositor at all and stayed for ever: eleven lock
+/// screens of an agent screen long gone, one for each upgrade
+/// (2026-11-07).
+fn handed_connection() -> bool {
+    static HANDED: OnceLock<bool> = OnceLock::new();
+    *HANDED.get_or_init(|| std::env::var_os("WAYLAND_SOCKET").is_some_and(|s| !s.is_empty()))
 }
 
 type SaveState = Box<dyn Fn(&mut App) -> Option<String>>;
@@ -397,6 +419,11 @@ pub(crate) fn init(cx: &mut App) {
         while let Some(what) = rx.next().await {
             if what != UPGRADE || !binary.changed() {
                 continue;
+            }
+            if handed_connection() {
+                tracing::info!("upgraded: ending, to be started again by the compositor that handed this program its connection");
+                let _ = cx.update(|cx| cx.quit());
+                return;
             }
             {
                 // Told, then waited for while busy.
