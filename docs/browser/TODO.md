@@ -46,11 +46,12 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   it shows at and bound to its element like a drawn canvas; scripts get
   HTMLMediaElement (play, pause, currentTime, readyState and its
   constants, events). GitHub's hero film plays (HEVC). Open, in order:
-  GitHub with its film playing costs Olo 154% of a core where Chrome
-  takes 21%: decode on the GPU and show its planes (the `video` thread
-  46%), and animate opacity and transform without a style patch each
-  display frame (1.4 ms of 3.4 a render; Chrome's compositor does it off
-  its main thread); a page paint `Invalid` after a script's change on
+  GitHub with its film playing costs Olo 67% of a core where Chrome
+  takes 21% (it was 154% before GPU decoding): animate opacity and
+  transform without a style patch each display frame (1.4 ms of 3.4 a
+  render; Chrome's compositor does it off its main thread); show a
+  video's planes through the window's GPU where it is a surface (4.2 ms
+  a picture to make RGBA now); a page paint `Invalid` after a script's change on
   GitHub (now healed by a whole render, logged); pictures decoded on the GPU and shown as its planes
   (now the processor, the `video` thread 40-50% of a core for 2560 x
   1726); sound (muted only); `poster`; `<source>` media queries;

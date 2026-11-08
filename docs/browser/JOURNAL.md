@@ -6254,3 +6254,9 @@ journal).
   next display frame while the page draws every frame anyway. GitHub
   with its film playing: a render 3.0 to 1.9 ms, the process 159% to
   154% of a core. Chrome, the same view: 21%.
+- **Video on the GPU.** The player decodes where a GPU can (here Intel's,
+  VA-API; NVIDIA's NVDEC; else the processor) and hands its planes over;
+  the browser makes RGBA of them at the size shown, averaging the samples
+  under each pixel and applying the picture's own matrix, in one pass.
+  GitHub with its film playing: 154% to 67% of a core (the decoder thread
+  46% to 1.2%), against Chrome's 21%.

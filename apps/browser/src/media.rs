@@ -137,7 +137,9 @@ impl Player {
                     return Err("no picture track in a codec the player takes".into());
                 }
                 let duration = info.duration.unwrap_or(f64::NAN);
-                let options = olo_preview::video::Options { playing: autoplay, picture: true, sound: false, bgra: true, yuv: false, device: olo_preview::video::Device::Processor };
+                // Planes where a GPU decodes (VA-API, NVDEC; else the processor),
+                // made RGB here at the size shown.
+                let options = olo_preview::video::Options { playing: autoplay, picture: true, sound: false, bgra: true, yuv: true, device: olo_preview::video::Device::Automatic };
                 Ok((olo_preview::video::Video::start_with(&input, if duration.is_finite() { duration } else { 0. }, options), duration))
             })();
             *slot.lock().unwrap() = match result {
@@ -203,11 +205,21 @@ impl Player {
         let Some((video, duration)) = &self.video else { return (false, events, None) };
         let (picture, next) = video.tick_picture();
         let mut changed = false;
-        if let Some(olo_preview::video::Picture::Bgra { size: [w, h], data, .. }) = picture {
-            // Made the size it shows at (contained in its box), keeping its
-            // natural size through its density.
-            let [ow, oh] = fitted([w, h], shown);
-            let rgba = reduce(&data, [w, h], [ow, oh]);
+        // Made the size it shows at (contained in its box), keeping its
+        // natural size through its density.
+        let made = match picture {
+            Some(olo_preview::video::Picture::Bgra { size: [w, h], data, .. }) => {
+                let [ow, oh] = fitted([w, h], shown);
+                Some((w, h, ow, oh, reduce(&data, [w, h], [ow, oh])))
+            }
+            Some(olo_preview::video::Picture::Yuv(frame)) => {
+                let (w, h) = (frame.width as usize, frame.height as usize);
+                let [ow, oh] = fitted([w, h], shown);
+                Some((w, h, ow, oh, reduce_yuv(&frame, [ow, oh])))
+            }
+            _ => None,
+        };
+        if let Some((w, h, ow, oh, rgba)) = made {
             let density = w as f64 / ow as f64;
             if let Ok(mut image) = olo_web::image::Image::from_premultiplied(ow as u32, oh as u32, rgba, density, Default::default(), None) {
                 // After its first picture, a surface of its own (nothing
@@ -303,6 +315,64 @@ fn reduce(bgra: &[u8], [w, h]: [usize; 2], [ow, oh]: [usize; 2]) -> Vec<u8> {
                         for c in 0..4 {
                             row[i * 4 + c] = ((sums[i * 4 + c] + n / 2) / n) as u8;
                         }
+                    }
+                }
+            });
+        }
+    });
+    out
+}
+/// A picture's Y'CbCr planes (4:2:0, 8- or 16-bit, wherever its decoder
+/// left them) as RGBA `[ow, oh]` big: each output pixel from the average
+/// of the luma and chroma samples under it, made RGB by the picture's own
+/// matrix (`YuvFrame::rgb_matrix`); in bands on a few threads.
+fn reduce_yuv(f: &olo_ui::gpui::YuvFrame, [ow, oh]: [usize; 2]) -> Vec<u8> {
+    let (w, h) = (f.width as usize, f.height as usize);
+    let (cw, ch) = f.chroma_size();
+    let (cw, ch) = (cw as usize, ch as usize);
+    let (luma, lp) = f.luma();
+    let (chroma, cp) = f.chroma();
+    let deep = f.deep;
+    let m = f.rgb_matrix();
+    let sample = |plane: &[u8], i: usize| -> f32 {
+        if deep { f32::from(u16::from_le_bytes([plane.get(i).copied().unwrap_or(0), plane.get(i + 1).copied().unwrap_or(0)])) / 65535. } else { f32::from(plane.get(i).copied().unwrap_or(0)) / 255. }
+    };
+    let bps = if deep { 2 } else { 1 };
+    let spans = |n: usize, o: usize| -> Vec<(usize, usize)> { (0..o).map(|i| ((i * n) / o, (((i + 1) * n) / o).max((i * n) / o + 1).min(n))).collect() };
+    let (xs, ys) = (spans(w, ow), spans(h, oh));
+    let mut out = vec![0u8; ow * oh * 4];
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(8);
+    let rows_per = oh.div_ceil(threads);
+    std::thread::scope(|scope| {
+        for (band, chunk) in out.chunks_mut(rows_per * ow * 4).enumerate() {
+            let (xs, ys, sample) = (&xs, &ys, &sample);
+            scope.spawn(move || {
+                for (r, row) in chunk.chunks_exact_mut(ow * 4).enumerate() {
+                    let (y0, y1) = ys[band * rows_per + r];
+                    let (cy0, cy1) = (y0 / 2, (y1.div_ceil(2)).max(y0 / 2 + 1).min(ch));
+                    for (i, &(x0, x1)) in xs.iter().enumerate() {
+                        let mut yl = 0.;
+                        for y in y0..y1 {
+                            for x in x0..x1 {
+                                yl += sample(luma, y * lp + x * bps);
+                            }
+                        }
+                        yl /= ((y1 - y0) * (x1 - x0)) as f32;
+                        let (cx0, cx1) = (x0 / 2, (x1.div_ceil(2)).max(x0 / 2 + 1).min(cw));
+                        let (mut cb, mut cr) = (0., 0.);
+                        for y in cy0..cy1 {
+                            for x in cx0..cx1 {
+                                cb += sample(chroma, y * cp + x * 2 * bps);
+                                cr += sample(chroma, y * cp + x * 2 * bps + bps);
+                            }
+                        }
+                        let n = ((cy1 - cy0) * (cx1 - cx0)).max(1) as f32;
+                        let (cb, cr) = (cb / n, cr / n);
+                        for c in 0..3 {
+                            let v = m[0][c] * yl + m[1][c] * cb + m[2][c] * cr + m[3][c];
+                            row[i * 4 + c] = (v.clamp(0., 1.) * 255. + 0.5) as u8;
+                        }
+                        row[i * 4 + 3] = 255;
                     }
                 }
             });
