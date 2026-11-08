@@ -10894,7 +10894,13 @@ put it away.
   workspace count and the displays; the palette then opens a clear
   full-screen overlay on that output and pops an ordinary kit menu at
   the point: Hide, Zoom, Back to Its Own Size, Center, Tile ▸ (halves,
-  quarters, thirds), Move to Workspace ▸ (every display's workspaces,
+  quarters, thirds), Tile With ▸ (the other windows on its display's
+  workspace, by app and title, a group once; not minimized ones, nor
+  floating ones under auto-tiling; none in Focus: `Request::TileWith`,
+  `tile_with`: the one further left now on the left; auto-tiled on one
+  tree, the other moves into a tile beside it as a tile dropped on its
+  edge, one step Undo takes back; else the two take the halves, as Tile
+  Left and Tile Right do), Move to Workspace ▸ (every display's workspaces,
   left to right as Deskbar's heading menus list them, named as Deskbar
   names them, "D1 Workspace 2"; its own display's with their keys and a
   check; another's is `MoveToWorkspace { id, index, output }`), the

@@ -385,6 +385,15 @@ pub enum Request {
         #[serde(default)]
         window: Option<WindowId>,
     },
+    /// Tile window `id` beside window `with` (the window menu's Tile
+    /// With): the one further left now on the left. Auto-tiled on the
+    /// same display, `with` moves into a tile beside `id`'s (as a tile
+    /// dropped on its edge, one step Undo takes back); else they take the
+    /// display's left and right halves, as Tile Left and Tile Right.
+    TileWith {
+        id: WindowId,
+        with: WindowId,
+    },
     /// Tile the resizable windows of app `app_id` on this workspace in a
     /// grid on the active display, in front of the rest.
     TileApp {

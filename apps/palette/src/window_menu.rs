@@ -58,6 +58,10 @@ pub struct Facts {
     pub rolled: bool,
     /// Kept above the others (Always on Top).
     pub on_top: bool,
+    /// The windows it can be tiled with (Tile With): the others on its
+    /// display's workspace, not minimized (auto-tiled: tiles only, not
+    /// floating ones), each with its app's name and title.
+    pub beside: Vec<(u64, String)>,
     /// In a group with other windows (their tabs side by side).
     pub grouped: bool,
     /// Auto-tiling, or Focus, is its display's mode, and whether it
@@ -101,7 +105,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
     let _ = std::thread::Builder::new().name("window-menu".into()).spawn(move || {
         let Ok(mut c) = Client::connect() else { return };
         let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows) else { return };
-        let Some(w) = windows.into_iter().find(|w| w.id == ask.window) else { return };
+        let Some(w) = windows.iter().find(|w| w.id == ask.window).cloned() else { return };
         let workspaces = match c.request(&Request::Workspaces) {
             Ok(Reply::Workspaces { count, .. }) => count,
             _ => 1,
@@ -123,6 +127,28 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             _ => None,
         };
         let (auto, focus) = (mode == Some(olo_protocol::WindowingMode::AutoTiling), mode == Some(olo_protocol::WindowingMode::Focus));
+        // (A group once: its windows share their frame, so tiling one tiles
+        // them all; its own group's not at all.)
+        let mut groups = std::collections::HashSet::new();
+        let beside = windows
+            .iter()
+            .filter(|o| o.id != w.id && o.output == w.output && o.workspace == w.workspace && !o.minimized && !(auto && o.floating))
+            .filter(|o| w.group.is_none() || o.group != w.group)
+            .filter(|o| o.group.is_none_or(|g| groups.insert(g)))
+            .map(|o| {
+                let entry = if olo_xdg::apps::our_app(&o.app_id).is_some() { None } else { olo_xdg::desktop_entry::find(&o.app_id) };
+                let (name, _) = olo_xdg::apps::app_name(&o.app_id, entry.as_ref());
+                let title: String = o.title.chars().take(48).collect();
+                let label = if title.is_empty() || title == name {
+                    name
+                } else if o.title.chars().count() > 48 {
+                    format!("{name} — {title}…")
+                } else {
+                    format!("{name} — {title}")
+                };
+                (o.id, label)
+            })
+            .collect();
         let path = match (w.pid, w.surface) {
             (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_ui::commands::path(pid as u32, surface),
             _ => None,
@@ -145,6 +171,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             others,
             rolled,
             on_top,
+            beside,
             grouped,
             auto,
             focus,
@@ -267,7 +294,14 @@ pub fn build(f: &Facts) -> Menu {
             m = with_keys(m.item("Float Window", "float"));
         }
     }
-    m = m.separator().submenu(tile).submenu(spaces);
+    m = m.separator().submenu(tile);
+    // Beside another window (not in Focus, which zooms them all; not a
+    // window floating over auto-tiled ones).
+    if !f.focus && !(f.auto && f.floating) && !f.beside.is_empty() {
+        let with = f.beside.iter().fold(Menu::new("Tile With"), |m, (id, label)| m.item(label.clone(), format!("tile-with:{id}")));
+        m = m.submenu(with);
+    }
+    m = m.submenu(spaces);
     if f.displays > 1 {
         m = shortcut(m, "next-display", "To the Next Display");
         m = shortcut(m, "previous-display", "To the Previous Display");
@@ -334,6 +368,8 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
     }
     let req = if let Some(id) = command.strip_prefix("shortcut:") {
         Request::RunShortcut { id: id.to_owned(), window: Some(window) }
+    } else if let Some(with) = command.strip_prefix("tile-with:").and_then(|w| w.parse().ok()) {
+        Request::TileWith { id: window, with }
     } else if let Some(rest) = command.strip_prefix("workspace:") {
         let (n, output) = match rest.split_once(':') {
             Some((n, o)) => (n, Some(o.to_owned())),
@@ -461,6 +497,7 @@ mod tests {
             displays: 2,
             rolled: false,
             on_top: false,
+            beside: vec![(9, "StyledEdit — Untitled 1".into())],
             grouped: true,
             auto: false,
             focus: false,
@@ -498,6 +535,7 @@ mod tests {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
                 || olo_ui::moving::screen_command(c).is_some()
+                || c.strip_prefix("tile-with:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || ["send-to-back", "on-top", "close", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }

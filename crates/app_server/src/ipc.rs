@@ -768,6 +768,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },
             },
+            Request::TileWith { id, with } => match (self.window_by_id(id), self.window_by_id(with)) {
+                (Some(w), Some(other)) if id != with => {
+                    self.tile_with(&w, &other);
+                    Reply::Ok
+                }
+                (Some(_), Some(_)) => Reply::Error { message: "a window can't be tiled with itself".into() },
+                _ => Reply::Error { message: "no such window".into() },
+            },
             Request::RunShortcut { id, window } => match olo_protocol::shortcuts::by_id(&id) {
                 Some(info) => {
                     let target = window.and_then(|w| self.window_by_id(w));

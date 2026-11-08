@@ -20,8 +20,6 @@ something nobody here has is in "Blocked", with what it waits for.
 Leftovers found in finished entries (2026-11-08 audit: each checked
 against the code, still not there):
 
-- **Window menu: tile with…** (the window menu's other "Not yet"):
-  tile a window beside one chosen from a list.
 - **Shortcuts for programs that aren't Olo's** (the shortcut profiles'
   "Not yet"): Chrome's own keys in the shortcuts sheet and the profile.
 - **app_server keeps its big buffers** (its "Left", 2026-11-02): a
@@ -2345,6 +2343,11 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Window menu: tile with…**~~ (the window menu's other "Not yet").
+  *Done* (2026-11-08): Tile With ▸ lists the other windows on the
+  display's workspace; chosen, the two are tiled side by side (halves,
+  or beside it in its auto-tiled tile).
 
 - ~~**Auto-tiling: master and stack, one transaction, a layout
   picker**~~ (its "Not yet", 2026-10-28). *Done* (2026-11-08): Main and

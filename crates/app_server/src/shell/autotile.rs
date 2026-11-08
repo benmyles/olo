@@ -2328,6 +2328,32 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.auto_tick();
     }
 
+    /// `w` and `other` side by side (the window menu's Tile With), the
+    /// one further left now on the left: auto-tiled on one display's tree,
+    /// `other` moves into a tile beside `w`'s (as a tile dropped on its
+    /// edge); else they take the halves, as Tile Left and Tile Right.
+    pub fn tile_with(&mut self, w: &WindowElement, other: &WindowElement) {
+        let x = |s: &Self, e: &WindowElement| s.space.element_geometry(e).map_or(0, |g| g.loc.x);
+        let w_left = x(self, w) <= x(self, other);
+        if let (Some(a), Some(b)) = (self.tree_of(w), self.tree_of(other))
+            && a == b
+            && let Some(before) = self.auto.trees.remove(&a)
+        {
+            self.auto.undo = Some(Undo::Tree(a.clone(), Some(before.clone())));
+            self.arrangement_step("Tile With", super::tiling::ArrangedKind::Auto);
+            let mut t = before.without(&|n| *n == Node::Window(other.id())).unwrap_or(Node::Window(w.id()));
+            t.split_leaf(w.id(), Node::Window(other.id()), Cut::Columns, !w_left);
+            info!(window = w.id(), with = other.id(), "tiled with");
+            self.auto.trees.insert(a, t);
+            self.auto.dirty = true;
+            self.auto_tick();
+            return;
+        }
+        let (left, right) = if w_left { (w.clone(), other.clone()) } else { (other.clone(), w.clone()) };
+        self.run_shortcut(olo_protocol::Shortcut::Tile(Tile::Left), Some(left));
+        self.run_shortcut(olo_protocol::Shortcut::Tile(Tile::Right), Some(right));
+    }
+
     /// Whether an edge drag of tile `w` may move `side`: not the edge of
     /// the area.
     pub fn auto_side_moves(&self, w: &WindowElement, side: Side) -> bool {
