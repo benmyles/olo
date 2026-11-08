@@ -1145,3 +1145,61 @@ fn a_focus_set_by_the_page_matches_focus_within_on_a_rerender() {
     page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     assert_eq!(pixel(&render(&mut painter, &page.scene), 10, 10), [0, 0, 255, 255], "blurred");
 }
+
+#[test]
+fn gradient_layers_take_their_size_position_and_repeat() {
+    let mut p = paint::Engine::default();
+    // Half the width, not repeated: the right half shows the page.
+    let s = scene("<div></div>", "div{width:100px;height:20px;background:linear-gradient(red,red) no-repeat;background-size:50% 100%}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 10, 10), [255, 0, 0, 255]);
+    assert_eq!(pixel(&t, 75, 10), [255; 4]);
+    // Placed at the far end of the free space.
+    let s = scene("<div></div>", "div{width:100px;height:20px;background:linear-gradient(red,red) no-repeat 100% 0;background-size:50% 100%}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 10, 10), [255; 4]);
+    assert_eq!(pixel(&t, 75, 10), [255, 0, 0, 255]);
+    // A 20px tile repeated along x: each tile goes red to blue again.
+    let s = scene("<div></div>", "div{width:100px;height:20px;background:linear-gradient(to right, red, blue) repeat-x;background-size:20px 100%}", &mut p);
+    let t = render(&mut p, &s);
+    for x in [1, 21, 61] {
+        let c = pixel(&t, x, 10);
+        assert!(c[0] > 200 && c[2] < 60, "x {x}: {c:?}");
+    }
+    let c = pixel(&t, 39, 10);
+    assert!(c[2] > 200 && c[0] < 60, "{c:?}");
+    // Three times as wide and at the start: the box shows its first third.
+    let s = scene("<div></div>", "div{width:100px;height:20px;background:linear-gradient(to right, red 33.3%, blue 33.4%) no-repeat 0 0;background-size:300% 100%}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 95, 10), [255, 0, 0, 255]);
+}
+
+#[test]
+fn background_clip_text_paints_the_backgrounds_through_the_glyphs() {
+    let mut p = paint::Engine::default();
+    let s = scene("<p>HHHH</p>", "p{margin:0;width:100px;font-size:40px;line-height:50px;color:transparent;background:linear-gradient(to right, red, blue);background-clip:text}", &mut p);
+    assert!(!s.fallbacks().counts().iter().any(|(what, _)| what.contains("background-clip")), "{:?}", s.fallbacks());
+    let t = render(&mut p, &s);
+    let mut red = 0;
+    let mut blue = 0;
+    let mut white = 0;
+    for y in 0..50 {
+        for x in 0..100 {
+            match pixel(&t, x, y) {
+                [255, 255, 255, 255] => white += 1,
+                [r, _, b, _] if r > 180 && b < 120 => red += 1,
+                [r, _, b, _] if b > 180 && r < 120 => blue += 1,
+                _ => {}
+            }
+        }
+    }
+    // The glyphs show the gradient, red at the left and blue at the right;
+    // between and around them the page shows.
+    assert!(red > 20 && blue > 20, "red {red}, blue {blue}");
+    assert!(white > 500, "white {white}");
+    // An opaque colour paints over the background.
+    let s = scene("<p>HHHH</p>", "p{margin:0;width:100px;font-size:40px;color:lime;background:red;background-clip:text}", &mut p);
+    let t = render(&mut p, &s);
+    let reds = (0..50).flat_map(|y| (0..100).map(move |x| (x, y))).filter(|&(x, y)| pixel(&t, x, y) == [255, 0, 0, 255]).count();
+    assert_eq!(reds, 0);
+}

@@ -48,6 +48,10 @@ pub enum Primitive {
         glyphs: Range<u32>,
         origin: Point,
         color: [u8; 4],
+        /// Under a box with `background-clip: text`: its backgrounds
+        /// paint through these glyphs (an index into the scene's
+        /// `text_fills`), or NONE.
+        fill: u32,
     },
 }
 #[derive(Clone, Debug)]
@@ -221,6 +225,9 @@ pub struct Scene {
     /// The box each opacity group is that box's (`opacity` below 1), by
     /// group: an animated opacity patches its group (`with_transforms`).
     pub(super) group_owners: Box<[(BoxId, u32)]>,
+    /// The boxes with `background-clip: text` and their border boxes
+    /// (see `Primitive::Text::fill`).
+    pub(super) text_fills: Arc<[(BoxId, Rect)]>,
     pub(super) vector_geometry: Arc<std::collections::HashMap<u32, crate::svg::used::Geometry>>,
     pub(super) vector_clips: Arc<std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>>,
     /// The commands in paint order cut into strata: runs of the page's own
@@ -471,8 +478,13 @@ impl Scene {
                     style_identity(*owner, &mut h);
                     backgrounds.hash(&mut h);
                 }
-                Primitive::Text { owner, fragment, glyphs, origin, color } => {
+                Primitive::Text { owner, fragment, glyphs, origin, color, fill } => {
                     5u8.hash(&mut h);
+                    if let Some(&(box_, outer)) = self.text_fills.get(*fill as usize) {
+                        rect(outer, &mut h);
+                        style_identity(box_, &mut h);
+                        backgrounds.hash(&mut h);
+                    }
                     glyphs.start.hash(&mut h);
                     glyphs.end.hash(&mut h);
                     origin.x.to_bits().hash(&mut h);
@@ -673,6 +685,7 @@ impl Scene {
                 clips: self.clips.clone(),
                 groups: groups.clone().into_boxed_slice(),
                 group_owners: self.group_owners.clone(),
+                text_fills: self.text_fills.clone(),
                 transforms: self.transforms.clone(),
                 transform_entries: self.transform_entries.clone(),
                 moved: moved.clone().into_boxed_slice(),
@@ -717,6 +730,7 @@ impl Scene {
             clips: self.clips.clone(),
             groups: groups.into_boxed_slice(),
             group_owners: self.group_owners.clone(),
+            text_fills: self.text_fills.clone(),
             transforms: transforms.into_boxed_slice(),
             transform_entries: entries.into_boxed_slice(),
             moved: moved.into_boxed_slice(),
@@ -917,6 +931,9 @@ struct State {
     /// How far the scroll containers around moved this box's content
     /// (what a box positioned against a block outside them takes back).
     shift: Point,
+    /// Under a box with `background-clip: text` (see
+    /// `Primitive::Text::fill`), or NONE.
+    text_fill: u32,
 }
 /// One CSS stacking context (CSS 2.2 Appendix E): the root, positioned boxes
 /// (z-index: auto ones painted as if they were contexts), opacity groups and
@@ -974,6 +991,8 @@ pub struct BuildJob<'a> {
     moved: Vec<Moved>,
     scrollers: Vec<Scroller>,
     group_owners: Vec<(BoxId, u32)>,
+    text_fills: Vec<(BoxId, Rect)>,
+    current_text_fill: u32,
     vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
@@ -1046,6 +1065,8 @@ impl<'a> BuildJob<'a> {
             moved: Vec::new(),
             scrollers: Vec::new(),
             group_owners: Vec::new(),
+            text_fills: Vec::new(),
+            current_text_fill: NONE,
             vector_geometry: Default::default(),
             vector_clips: Default::default(),
             transform_entries: Vec::new(),
@@ -1123,14 +1144,13 @@ impl<'a> BuildJob<'a> {
         let radii = decoration::radii(s, outer);
         let images = matches!(s.value(P::BackgroundImage), Value::Images(_));
         let shadows = matches!(s.value(P::BoxShadow), Value::Shadows(_));
-        if decoration::rounded(&radii) || images || shadows {
+        // A colour clipped to less than the border box (or to the text).
+        let clipped = !matches!(s.value(P::BackgroundClip), Value::Keyword(K::BorderBox)) && self.canvas_owner != Some(id) && color(s, P::BackgroundColor)?[3] != 0;
+        if decoration::rounded(&radii) || images || shadows || clipped {
             if let Value::Images(list) = s.value(P::BackgroundImage)
                 && list.0.iter().flatten().any(|i| matches!(i, crate::css::properties::Image::Url(url) if self.layout.cache().tree().background(url).is_none()))
             {
                 self.note("background image not loaded", id);
-            }
-            if matches!(s.value(P::BackgroundClip), Value::Keyword(K::Text)) {
-                self.note("background-clip: text not painted", id);
             }
             if let Value::Shadows(list) = s.value(P::BoxShadow)
                 && list.0.iter().any(|s| s.inset)
@@ -1280,7 +1300,7 @@ impl<'a> BuildJob<'a> {
         let prepared = text.text().prepared();
         // Styles are immutable for this build. Consecutive glyphs usually
         // belong to the same span: resolve/convert its paint color once.
-        let mut paint_color: Option<(u32, [u8; 4], Option<([u8; 4], K)>)> = None;
+        let mut paint_color: Option<(u32, [u8; 4], Option<([u8; 4], K)>, bool)> = None;
         let mut image_owners = Vec::new();
         if HAS_IMAGES {
             let mut child = layout.cache().tree().get(id).ok_or(Error::Invalid)?.first_child;
@@ -1330,8 +1350,8 @@ impl<'a> BuildJob<'a> {
                     let g = run.glyphs[gi as usize];
                     let mapping = prepared.mapping_at_output(g.cluster).ok_or(Error::Invalid)?;
                     let span = source.spans.get(mapping.span as usize).ok_or(Error::Invalid)?;
-                    let (c, deco) = match paint_color {
-                        Some((owner, color, deco)) if owner == mapping.span => (color, deco),
+                    let (c, deco, shown) = match paint_color {
+                        Some((owner, color, deco, shown)) if owner == mapping.span => (color, deco, shown),
                         _ => {
                             let s = layout.cache().tree().styles().snapshot(span.style_node).ok_or(Error::Stale)?;
                             let mut c = color(s, P::Color)?;
@@ -1349,8 +1369,11 @@ impl<'a> BuildJob<'a> {
                                 Value::Keyword(k @ (K::Underline | K::Overline | K::LineThrough)) if c[3] != 0 => Some((s.used_color(P::TextDecorationColor)?.srgb8_clipped(), *k)),
                                 _ => None,
                             };
-                            paint_color = Some((mapping.span, c, deco));
-                            (c, deco)
+                            // Under `background-clip: text`, transparent
+                            // glyphs still show the background through them.
+                            let shown = c[3] != 0 || self.current_text_fill != NONE && visible(s);
+                            paint_color = Some((mapping.span, c, deco, shown));
+                            (c, deco, shown)
                         }
                     };
                     // A cluster shared across different paint styles needs caret clipping.
@@ -1395,7 +1418,7 @@ impl<'a> BuildJob<'a> {
                             self.segment(group, clip, id, fi, start..gi, start_at, old, b, old_deco, origin.x, baseline, &run.font, run.size)?;
                         }
                     }
-                    if segment.is_none() && (bounds.is_some() || deco.is_some()) && c[3] != 0 {
+                    if segment.is_none() && (bounds.is_some() || deco.is_some()) && shown {
                         segment = Some((gi, origin, c, bounds.unwrap_or(Rect { x: origin.x, y: baseline, width: 0., height: 0. }), hit_span, deco));
                     }
                 }
@@ -1446,7 +1469,7 @@ impl<'a> BuildJob<'a> {
             self.emit(group, false, Rect { x: origin.x, y, width: end_x - origin.x, height: thickness }, Primitive::Fill { color: line_color, owner: id }, clip)?;
         }
         if bounds.width > 0. && bounds.height > 0. {
-            self.emit(group, true, bounds, Primitive::Text { owner: id, fragment, glyphs, origin, color }, clip)?;
+            self.emit(group, true, bounds, Primitive::Text { owner: id, fragment, glyphs, origin, color, fill: self.current_text_fill }, clip)?;
         }
         Ok(())
     }
@@ -1517,6 +1540,7 @@ impl<'a> BuildJob<'a> {
                     moved: parent_moved,
                     scroller: parent_scroller,
                     shift: parent_shift,
+                    text_fill: NONE,
                 });
                 self.progress.boxes += 1;
                 continue;
@@ -1531,6 +1555,9 @@ impl<'a> BuildJob<'a> {
             let mut children_transform = parent_transform;
             self.current_moved = parent_moved;
             let mut children_moved = parent_moved;
+            let parent_text_fill = b.parent.map_or(NONE, |p| self.states[p.index()].text_fill);
+            self.current_text_fill = parent_text_fill;
+            let mut children_text_fill = parent_text_fill;
             // In-flow content paints in slot 2 of its context; a box that
             // starts a context paints its own decoration in slot 0 of the new one.
             let mut group = (context, 2);
@@ -1648,6 +1675,7 @@ impl<'a> BuildJob<'a> {
                             moved: children_moved,
                             scroller: children_scroller,
                             shift: children_shift,
+                            text_fill: NONE,
                         });
                         self.progress.boxes += 1;
                         continue;
@@ -1751,6 +1779,12 @@ impl<'a> BuildJob<'a> {
                     children_clip = clip;
                     if visible(s) {
                         self.decorate(id, s, g, outer, group, clip, false)?;
+                        // Backgrounds clipped to the text: painted with the
+                        // glyphs inside (the innermost such box's).
+                        if matches!(s.value(P::BackgroundClip), Value::Keyword(K::Text)) && self.text_fills.len() < self.limits.commands {
+                            children_text_fill = self.text_fills.len() as u32;
+                            self.text_fills.push((id, outer));
+                        }
                         if let BoxKind::BlockImage { image } = b.kind {
                             // A live surface (a canvas being animated) goes
                             // in a layer of its own: what is around it is
@@ -1833,6 +1867,7 @@ impl<'a> BuildJob<'a> {
                 moved: children_moved,
                 scroller: children_scroller,
                 shift: children_shift,
+                text_fill: children_text_fill,
             });
             self.progress.boxes += 1;
             self.progress.commands = self.draft.len();
@@ -1932,6 +1967,7 @@ impl<'a> BuildJob<'a> {
             moved: self.moved.into_boxed_slice(),
             scrollers: self.scrollers.into_boxed_slice(),
             group_owners: self.group_owners.into_boxed_slice(),
+            text_fills: self.text_fills.into(),
             vector_geometry: Arc::new(self.vector_geometry),
             vector_clips: Arc::new(self.vector_clips),
             strata: strata.into_boxed_slice(),

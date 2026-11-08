@@ -522,42 +522,14 @@ pub(super) fn raster(
             scale,
             region,
         ),
-        3 => None, // Clipped to the text: not painted until glyph masks exist.
+        3 => None, // Clipped to the text: painted with it (`text_backgrounds`).
         _ => Some(border_path.clone()),
     };
     if let Some(clip_path) = &clip_path {
         let started = now();
-        let bg = s.used_color(P::BackgroundColor)?.srgb8_clipped();
-        if bg[3] != 0 {
-            let mut p = paint_for(bg);
-            p.anti_alias = rounded(&radii) || !transform.is_identity();
-            out.fill_path(clip_path, &p, FillRule::Winding, transform, mask);
-        }
+        let boxes = [outer, padding_box, content_box];
+        backgrounds(out, s, boxes, clip_path, rounded(&radii) || !transform.is_identity(), scale, region, mask, transform, engine, tree, cancel)?;
         charge(1, started);
-        if let Value::Images(images) = s.value(P::BackgroundImage) {
-            let origin_box = match s.value(P::BackgroundOrigin) {
-                Value::Keyword(K::BorderBox) => outer,
-                Value::Keyword(K::ContentBox) => content_box,
-                _ => padding_box,
-            };
-            for (layer, image) in images.0.iter().enumerate().rev() {
-                check(cancel)?;
-                let Some(image) = image else { continue };
-                if let Image::Url(url) = image {
-                    let started = now();
-                    if let Some(bitmap) = tree.background(url) {
-                        image_layer(out, s, (P::BackgroundSize, P::BackgroundPosition, P::BackgroundRepeat), layer, bitmap, origin_box, clip_path, scale, region, mask, transform, engine, cancel)?;
-                    }
-                    charge(2, started);
-                    continue;
-                }
-                let started = now();
-                let Some(shader) = shader(image, current, origin_box, scale, region) else { continue };
-                let p = Paint { shader, anti_alias: rounded(&radii) || !transform.is_identity(), ..Default::default() };
-                out.fill_path(clip_path, &p, FillRule::Winding, transform, mask);
-                charge(3, started);
-            }
-        }
     }
     // Borders: one colour and solid or painted as solid → the ring between
     // the outer and inner rounded rectangles; otherwise the straight painter.
@@ -595,33 +567,106 @@ pub(super) fn raster(
     charge(4, started);
     Ok(())
 }
-/// One `background-image: url()` layer (CSS Backgrounds 3 §3): sized by
-/// `background-size` against its positioning area, placed by
-/// `background-position`, tiled by `background-repeat`, clipped to the
-/// box's clip path. Drawn as a pattern of the image's nearest mip level.
+/// A box's background colour and layers (last declared first), each
+/// clipped to the clip path; `boxes` are its border, padding and content
+/// boxes (the origin boxes).
 #[allow(clippy::too_many_arguments)]
-fn image_layer(
+fn backgrounds(
     out: &mut Pixmap,
     s: &Style,
-    (size_property, position_property, repeat_property): (P, P, P),
-    layer: usize,
-    image: &std::sync::Arc<crate::image::Image>,
-    area: Rect,
+    [outer, padding_box, content_box]: [Rect; 3],
     clip_path: &Path,
+    anti_alias: bool,
     scale: f64,
     region: DeviceRect,
     mask: Option<&Mask>,
     transform: Transform,
     engine: &mut Engine,
+    tree: &crate::layout::Tree,
     cancel: Option<&AtomicBool>,
 ) -> Result<()> {
-    use crate::css::properties::{RepeatAxis, Size};
-    let (natural_w, natural_h) = image.natural();
-    if natural_w <= 0. || natural_h <= 0. || area.width <= 0. || area.height <= 0. {
-        return Ok(());
+    let bg = s.used_color(P::BackgroundColor)?.srgb8_clipped();
+    if bg[3] != 0 {
+        let mut p = paint_for(bg);
+        p.anti_alias = anti_alias;
+        out.fill_path(clip_path, &p, FillRule::Winding, transform, mask);
     }
-    let ratio = natural_w / natural_h;
+    let Value::Images(images) = s.value(P::BackgroundImage) else { return Ok(()) };
+    let origin_box = match s.value(P::BackgroundOrigin) {
+        Value::Keyword(K::BorderBox) => outer,
+        Value::Keyword(K::ContentBox) => content_box,
+        _ => padding_box,
+    };
+    let current = s.used_color(P::Color)?;
+    let properties = (P::BackgroundSize, P::BackgroundPosition, P::BackgroundRepeat);
+    for (layer, image) in images.0.iter().enumerate().rev() {
+        check(cancel)?;
+        match image {
+            Some(Image::Url(url)) => {
+                if let Some(bitmap) = tree.background(url) {
+                    image_layer(out, s, properties, layer, bitmap, origin_box, clip_path, scale, region, mask, transform, engine, cancel)?;
+                }
+            }
+            Some(gradient) => gradient_layer(out, s, properties, layer, gradient, current, origin_box, clip_path, anti_alias, scale, region, mask, transform, engine)?,
+            None => {}
+        }
+    }
+    Ok(())
+}
+/// `background-clip: text` (CSS Backgrounds 4 §2.1): the box's
+/// backgrounds painted through `glyphs`, the coverage of the text
+/// inside it, within its border box.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn text_backgrounds(
+    out: &mut Pixmap,
+    s: &Style,
+    g: &crate::layout::Geometry,
+    outer: Rect,
+    scale: f64,
+    region: DeviceRect,
+    glyphs: &Mask,
+    transform: Transform,
+    engine: &mut Engine,
+    tree: &crate::layout::Tree,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
+    let radii = radii(s, outer);
+    let Some(border_path) = path(outer, &radii, scale, region) else { return Ok(()) };
+    let padding_box = Rect {
+        x: outer.x + g.border_width.left,
+        y: outer.y + g.border_width.top,
+        width: (outer.width - g.border_width.horizontal()).max(0.),
+        height: (outer.height - g.border_width.vertical()).max(0.),
+    };
+    let content_box = Rect {
+        x: padding_box.x + g.padding.left,
+        y: padding_box.y + g.padding.top,
+        width: (padding_box.width - g.padding.horizontal()).max(0.),
+        height: (padding_box.height - g.padding.vertical()).max(0.),
+    };
+    backgrounds(out, s, [outer, padding_box, content_box], &border_path, true, scale, region, Some(glyphs), transform, engine, tree, cancel)
+}
+/// Where one background (or mask) layer's tile goes (CSS Backgrounds 3
+/// §3): its size from `background-size` against the positioning area
+/// (an image without a natural size, a gradient, takes the area's), its
+/// offset in the area from `background-position`, and whether it repeats
+/// along each axis.
+struct Tile {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    repeat_x: bool,
+    repeat_y: bool,
+}
+fn tile(s: &Style, (size_property, position_property, repeat_property): (P, P, P), layer: usize, area: Rect, natural: Option<(f64, f64)>) -> Option<Tile> {
+    use crate::css::properties::{RepeatAxis, Size};
+    if area.width <= 0. || area.height <= 0. {
+        return None;
+    }
     let nth = |n: usize| if n == 0 { 0 } else { layer % n };
+    let (natural_w, natural_h) = natural.unwrap_or((area.width, area.height));
+    let ratio = natural.map(|(w, h)| w / h);
     let (w, h) = match s.value(size_property) {
         Value::Sizes(sizes) if !sizes.0.is_empty() => match &sizes.0[nth(sizes.0.len())] {
             Size::Auto => (natural_w, natural_h),
@@ -636,18 +681,20 @@ fn image_layer(
             Size::Explicit(w, h) => {
                 let w = w.as_ref().map(|w| resolve_any(w, area.width));
                 let h = h.as_ref().map(|h| resolve_any(h, area.height));
-                match (w, h) {
-                    (Some(w), Some(h)) => (w, h),
-                    (Some(w), None) => (w, w / ratio),
-                    (None, Some(h)) => (h * ratio, h),
-                    (None, None) => (natural_w, natural_h),
+                match (w, h, ratio) {
+                    (Some(w), Some(h), _) => (w, h),
+                    (Some(w), None, Some(ratio)) => (w, w / ratio),
+                    (None, Some(h), Some(ratio)) => (h * ratio, h),
+                    (Some(w), None, None) => (w, area.height),
+                    (None, Some(h), None) => (area.width, h),
+                    (None, None, _) => (natural_w, natural_h),
                 }
             }
         },
         _ => (natural_w, natural_h),
     };
     if !(w.is_finite() && h.is_finite()) || w <= 0. || h <= 0. {
-        return Ok(());
+        return None;
     }
     // Percentages of background-position are of the free space.
     let (x, y) = match s.value(position_property) {
@@ -661,25 +708,86 @@ fn image_layer(
         Value::Repeats(r) if !r.0.is_empty() => r.0[nth(r.0.len())],
         _ => (RepeatAxis::Repeat, RepeatAxis::Repeat),
     };
-    let repeat_x = rx != RepeatAxis::NoRepeat;
-    let repeat_y = ry != RepeatAxis::NoRepeat;
-    let surface = super::image::surface(engine, image, w * scale, h * scale, cancel)?;
-    let Some(pixmap) = surface.pixmap() else { return Ok(()) };
-    // The tile's origin and size in untransformed device space.
-    let origin = Point::from_xy(((area.x + x) * scale - f64::from(region.x)) as f32, ((area.y + y) * scale - f64::from(region.y)) as f32);
-    let (tile_w, tile_h) = ((w * scale) as f32, (h * scale) as f32);
-    let pattern = Transform::from_scale(tile_w / pixmap.width() as f32, tile_h / pixmap.height() as f32).post_translate(origin.x, origin.y);
-    let spread = if repeat_x || repeat_y { SpreadMode::Repeat } else { SpreadMode::Pad };
-    let paint = Paint { shader: Pattern::new(pixmap, spread, FilterQuality::Bilinear, 1., pattern), anti_alias: true, ..Default::default() };
-    if repeat_x && repeat_y {
-        out.fill_path(clip_path, &paint, FillRule::Winding, transform, mask);
+    Some(Tile { x, y, w, h, repeat_x: rx != RepeatAxis::NoRepeat, repeat_y: ry != RepeatAxis::NoRepeat })
+}
+/// One `background-image: url()` layer: sized, placed and tiled (see
+/// `tile`), clipped to the box's clip path. Drawn as a pattern of the
+/// image's nearest mip level.
+#[allow(clippy::too_many_arguments)]
+fn image_layer(
+    out: &mut Pixmap,
+    s: &Style,
+    properties: (P, P, P),
+    layer: usize,
+    image: &std::sync::Arc<crate::image::Image>,
+    area: Rect,
+    clip_path: &Path,
+    scale: f64,
+    region: DeviceRect,
+    mask: Option<&Mask>,
+    transform: Transform,
+    engine: &mut Engine,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
+    let (natural_w, natural_h) = image.natural();
+    if natural_w <= 0. || natural_h <= 0. {
         return Ok(());
     }
-    // Without repeat along an axis, only the tile's band along it paints.
+    let Some(t) = tile(s, properties, layer, area, Some((natural_w, natural_h))) else { return Ok(()) };
+    let surface = super::image::surface(engine, image, t.w * scale, t.h * scale, cancel)?;
+    let Some(pixmap) = surface.pixmap() else { return Ok(()) };
+    pattern_layer(out, pixmap, &t, area, clip_path, scale, region, mask, transform, engine)
+}
+/// A tile's pixmap painted at its place in `area`, repeated along the
+/// axes it repeats on, clipped to the clip path.
+#[allow(clippy::too_many_arguments)]
+fn pattern_layer(
+    out: &mut Pixmap,
+    pixmap: tiny_skia::PixmapRef,
+    t: &Tile,
+    area: Rect,
+    clip_path: &Path,
+    scale: f64,
+    region: DeviceRect,
+    mask: Option<&Mask>,
+    transform: Transform,
+    engine: &Engine,
+) -> Result<()> {
+    // The tile's origin and size in untransformed device space.
+    let origin = Point::from_xy(((area.x + t.x) * scale - f64::from(region.x)) as f32, ((area.y + t.y) * scale - f64::from(region.y)) as f32);
+    let (tile_w, tile_h) = ((t.w * scale) as f32, (t.h * scale) as f32);
+    let pattern = Transform::from_scale(tile_w / pixmap.width() as f32, tile_h / pixmap.height() as f32).post_translate(origin.x, origin.y);
+    let spread = if t.repeat_x || t.repeat_y { SpreadMode::Repeat } else { SpreadMode::Pad };
+    let paint = Paint { shader: Pattern::new(pixmap, spread, FilterQuality::Bilinear, 1., pattern), anti_alias: true, ..Default::default() };
+    band(out, &paint, origin, (tile_w, tile_h), t, clip_path, region, mask, transform, engine)
+}
+/// Fills the clip path with `paint` within the tile's band: everywhere
+/// along an axis it repeats on, only the tile's extent along one it
+/// doesn't.
+#[allow(clippy::too_many_arguments)]
+fn band(
+    out: &mut Pixmap,
+    paint: &Paint,
+    origin: Point,
+    (tile_w, tile_h): (f32, f32),
+    t: &Tile,
+    clip_path: &Path,
+    region: DeviceRect,
+    mask: Option<&Mask>,
+    transform: Transform,
+    engine: &Engine,
+) -> Result<()> {
+    if t.repeat_x && t.repeat_y {
+        out.fill_path(clip_path, paint, FillRule::Winding, transform, mask);
+        return Ok(());
+    }
     let far = 1e7f32;
-    let Some(band) =
-        tiny_skia::Rect::from_xywh(if repeat_x { -far } else { origin.x }, if repeat_y { -far } else { origin.y }, if repeat_x { 2. * far } else { tile_w }, if repeat_y { 2. * far } else { tile_h })
-    else {
+    let Some(band) = tiny_skia::Rect::from_xywh(
+        if t.repeat_x { -far } else { origin.x },
+        if t.repeat_y { -far } else { origin.y },
+        if t.repeat_x { 2. * far } else { tile_w },
+        if t.repeat_y { 2. * far } else { tile_h },
+    ) else {
         return Ok(());
     };
     if (region.width as usize).saturating_mul(region.height as usize) > engine.limits().layer_bytes {
@@ -694,8 +802,55 @@ fn image_layer(
         }
     };
     m.intersect_path(&PathBuilder::from_rect(band), FillRule::Winding, true, transform);
-    out.fill_path(clip_path, &paint, FillRule::Winding, transform, Some(&m));
+    out.fill_path(clip_path, paint, FillRule::Winding, transform, Some(&m));
     Ok(())
+}
+/// One gradient layer, sized, placed and tiled like an image (see
+/// `tile`). A tile filling the area (the usual case) is the gradient's
+/// shader over the area, padded past it; one that doesn't repeat is that
+/// shader within its band; a repeating smaller tile is drawn once into a
+/// pixmap and repeated as a pattern.
+#[allow(clippy::too_many_arguments)]
+fn gradient_layer(
+    out: &mut Pixmap,
+    s: &Style,
+    properties: (P, P, P),
+    layer: usize,
+    gradient: &Image<crate::css::color::Computed>,
+    current: crate::css::color::Color,
+    area: Rect,
+    clip_path: &Path,
+    anti_alias: bool,
+    scale: f64,
+    region: DeviceRect,
+    mask: Option<&Mask>,
+    transform: Transform,
+    engine: &Engine,
+) -> Result<()> {
+    let Some(t) = tile(s, properties, layer, area, None) else { return Ok(()) };
+    let rect = Rect { x: area.x + t.x, y: area.y + t.y, width: t.w, height: t.h };
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+    if near(t.x, 0.) && near(t.y, 0.) && near(t.w, area.width) && near(t.h, area.height) {
+        let Some(shader) = shader(gradient, current, area, scale, region) else { return Ok(()) };
+        let p = Paint { shader, anti_alias, ..Default::default() };
+        out.fill_path(clip_path, &p, FillRule::Winding, transform, mask);
+        return Ok(());
+    }
+    let origin = Point::from_xy((rect.x * scale - f64::from(region.x)) as f32, (rect.y * scale - f64::from(region.y)) as f32);
+    let (tile_w, tile_h) = ((t.w * scale) as f32, (t.h * scale) as f32);
+    if !t.repeat_x && !t.repeat_y {
+        let Some(shader) = shader(gradient, current, rect, scale, region) else { return Ok(()) };
+        let p = Paint { shader, anti_alias, ..Default::default() };
+        return band(out, &p, origin, (tile_w, tile_h), &t, clip_path, region, mask, transform, engine);
+    }
+    let (pw, ph) = ((t.w * scale).ceil().max(1.) as u32, (t.h * scale).ceil().max(1.) as u32);
+    if (pw as usize).saturating_mul(ph as usize).saturating_mul(4) > engine.limits().layer_bytes {
+        return Err(Error::Limit);
+    }
+    let mut pixmap = Pixmap::new(pw, ph).ok_or(Error::Limit)?;
+    let Some(shader) = shader(gradient, current, Rect { x: 0., y: 0., width: t.w, height: t.h }, scale, DeviceRect { x: 0, y: 0, width: pw, height: ph }) else { return Ok(()) };
+    pixmap.fill_rect(tiny_skia::Rect::from_xywh(0., 0., pw as f32, ph as f32).ok_or(Error::Invalid)?, &Paint { shader, ..Default::default() }, Transform::identity(), None);
+    pattern_layer(out, pixmap.as_ref(), &t, area, clip_path, scale, region, mask, transform, engine)
 }
 /// The box's `mask-image` layers drawn into `out` (a transparent surface
 /// the size of the tile): their alpha is the mask (CSS Masking 1 §7),
@@ -727,9 +882,7 @@ pub(super) fn mask_layers(
             // and mask-clip's default), which also bounds what the group
             // shows, as mask-clip does.
             Some(gradient) => {
-                let Some(shader) = shader(gradient, current, outer, scale, region) else { continue };
-                let p = Paint { shader, anti_alias: !transform.is_identity(), ..Default::default() };
-                out.fill_path(&clip_path, &p, FillRule::Winding, transform, None);
+                gradient_layer(out, s, (P::MaskSize, P::MaskPosition, P::MaskRepeat), layer, gradient, current, outer, &clip_path, !transform.is_identity(), scale, region, None, transform, engine)?
             }
             None => {}
         }

@@ -286,27 +286,64 @@ impl Engine {
                     let inner = Rect { x: o.x + b.left, y: o.y + b.top, width: (o.width - b.left - b.right).max(0.), height: (o.height - b.top - b.bottom).max(0.) };
                     super::border::raster(out, o, inner, *colors, scale, region, mask.as_ref(), ct, cancel)?;
                 }
-                Primitive::Text { owner, fragment, glyphs, origin, color, .. } => {
+                Primitive::Text { owner, fragment, glyphs, origin, color, fill } => {
                     let text = scene.layout.text_layout(*owner).ok_or(Error::Invalid)?;
                     let f = text.fragments().get(*fragment as usize).ok_or(Error::Invalid)?;
                     let run = text.run(f).ok_or(Error::Invalid)?;
                     let unit = run.size / f64::from(run.font.units_per_em());
-                    let mut pen = 0i64;
-                    let p = paint(*color);
-                    for g in &run.glyphs[glyphs.start as usize..glyphs.end as usize] {
-                        check(cancel)?;
-                        let ink = self.ink(&run.font, g.id, cancel)?;
-                        if let Some(path) = ink.path {
-                            let x = origin.x + (pen + i64::from(g.x_offset)) as f64 * unit;
-                            let y = origin.y - f64::from(g.y_offset) * unit;
-                            let t = Transform::from_row((unit * scale) as f32, 0., 0., (-unit * scale) as f32, (x * scale - f64::from(region.x)) as f32, (y * scale - f64::from(region.y)) as f32);
-                            if !t.is_finite() || t.sx == 0. || t.sy == 0. {
-                                return Err(Error::Invalid);
+                    // `background-clip: text`: the glyphs' coverage, through
+                    // which the box's backgrounds paint under their colour.
+                    let mut coverage = match scene.text_fills.get(*fill as usize) {
+                        Some(_) => {
+                            if (region.width as usize).saturating_mul(region.height as usize) > self.limits().layer_bytes {
+                                return Err(Error::Limit);
                             }
-                            let t = t.post_concat(ct);
-                            out.fill_path(&path, &p, FillRule::Winding, t, mask.as_ref());
+                            Some(Mask::new(region.width, region.height).ok_or(Error::Limit)?)
                         }
-                        pen += i64::from(g.x_advance);
+                        None => None,
+                    };
+                    let p = paint(*color);
+                    let passes: &[bool] = if coverage.is_some() { &[true, false] } else { &[false] };
+                    for &pass in passes {
+                        if !pass && color[3] == 0 {
+                            break;
+                        }
+                        let mut pen = 0i64;
+                        for g in &run.glyphs[glyphs.start as usize..glyphs.end as usize] {
+                            check(cancel)?;
+                            let ink = self.ink(&run.font, g.id, cancel)?;
+                            if let Some(path) = ink.path {
+                                let x = origin.x + (pen + i64::from(g.x_offset)) as f64 * unit;
+                                let y = origin.y - f64::from(g.y_offset) * unit;
+                                let t = Transform::from_row((unit * scale) as f32, 0., 0., (-unit * scale) as f32, (x * scale - f64::from(region.x)) as f32, (y * scale - f64::from(region.y)) as f32);
+                                if !t.is_finite() || t.sx == 0. || t.sy == 0. {
+                                    return Err(Error::Invalid);
+                                }
+                                let t = t.post_concat(ct);
+                                match (pass, coverage.as_mut()) {
+                                    (true, Some(m)) => m.fill_path(&path, FillRule::Winding, true, t),
+                                    _ => out.fill_path(&path, &p, FillRule::Winding, t, mask.as_ref()),
+                                }
+                            }
+                            pen += i64::from(g.x_advance);
+                        }
+                        if pass && let Some(m) = coverage.take() {
+                            let m = match mask.as_ref() {
+                                Some(clip) => {
+                                    let mut m = m;
+                                    for (a, b) in m.data_mut().iter_mut().zip(clip.data()) {
+                                        *a = ((u16::from(*a) * u16::from(*b) + 127) / 255) as u8;
+                                    }
+                                    m
+                                }
+                                None => m,
+                            };
+                            let &(box_, outer) = &scene.text_fills[*fill as usize];
+                            let tree = scene.layout.cache().tree();
+                            let s = tree.style(box_).ok_or(Error::Invalid)?;
+                            let g = scene.layout.geometry(box_).ok_or(Error::Invalid)?;
+                            super::decoration::text_backgrounds(out, s, g, outer, scale, region, &m, ct, self, tree, cancel)?;
+                        }
                     }
                 }
             }
