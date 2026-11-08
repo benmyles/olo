@@ -255,6 +255,9 @@ pub struct Control {
     pub role: String,
     pub name: String,
     pub clickable: bool,
+    /// Its element id, whole (GPUI's: the ids of what it's in, then its
+    /// own), as recorded while reviewing.
+    pub element: Option<String>,
 }
 
 impl Control {
@@ -301,8 +304,28 @@ pub fn review(parts: &Parts, width: f32, height: f32, ppp: f32) -> Vec<Finding> 
     control_edges(parts, ppp, &mut out);
     uneven_gaps(parts, ppp, &mut out);
     after_commit(parts, &mut out);
+    same_ids(parts, &mut out);
     out.sort_by_key(|f| f.level);
     out
+}
+
+/// Two controls with one element id share their state (a press, the
+/// keyboard's focus), so a click on either is lost: a kit Button's id is
+/// its label unless given one, and two Remove buttons in one window, in
+/// nothing with an id of its own, collided (Preferences ▸ Security's,
+/// 2026-11-08).
+fn same_ids(p: &Parts, out: &mut Vec<Finding>) {
+    let mut seen: Vec<(&str, &Control)> = Vec::new();
+    for c in showing(p) {
+        let Some(id) = c.element.as_deref() else { continue };
+        match seen.iter().find(|(s, _)| *s == id) {
+            Some((_, first)) => push(
+                out,
+                finding(Level::Error, "same-id", format!("{} and {} have one element id: clicks on them are lost (give each its own: `.id(…)`)", first.said(), c.said()), first.rect.union(c.rect)),
+            ),
+            None => seen.push((id, c)),
+        }
+    }
 }
 
 /// Nearer than this to the window's edge (and not on it, nor in a bar
@@ -1105,5 +1128,27 @@ fn uneven_rows(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
                 push(out, finding(Level::Review, "uneven-rows", text, c[i].rect.union(c[i + 1].rect)));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn button(name: &str, x: f32, element: &str) -> Control {
+        let rect = Rect::from_min_max(pos2(x, 20.0), pos2(x + 80.0, 44.0));
+        Control { rect, clip: Rect::from_min_max(pos2(0.0, 0.0), pos2(400.0, 300.0)), role: "Button".into(), name: name.into(), clickable: true, element: Some(element.into()) }
+    }
+
+    /// Two buttons with one element id (a Remove in each of two boxes,
+    /// neither with an id of its own) are found; with ids of their own,
+    /// not.
+    #[test]
+    fn controls_with_one_id_are_found() {
+        let mut p = Parts { controls: vec![button("Remove", 20.0, "[Remove]"), button("Remove", 200.0, "[Remove]")], ..Parts::default() };
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "same-id").count();
+        assert_eq!(found(&p), 1);
+        p.controls[1].element = Some("[face-remove]".into());
+        assert_eq!(found(&p), 0);
     }
 }

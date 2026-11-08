@@ -37,7 +37,7 @@ thread_local! {
 }
 
 /// Whether `window`'s drawing is being recorded.
-fn recording(window: &Window) -> bool {
+pub(crate) fn recording(window: &Window) -> bool {
     PENDING.with(|p| p.borrow().as_ref().is_some_and(|p| p.windows.contains_key(&window.window_handle().window_id())))
 }
 
@@ -223,7 +223,14 @@ fn controls(window: &Window) -> Vec<Control> {
         .filter_map(|(r, moved)| {
             let n = r.downcast_ref::<crate::agent::Node>()?;
             let at = Bounds { origin: n.bounds.origin + *moved, size: n.bounds.size };
-            Some(Control { rect: kb(at), clip: n.clip.map_or(whole, kb), role: n.role.to_owned(), name: n.name.as_ref().map(|s| s.to_string()).unwrap_or_default(), clickable: n.clickable })
+            Some(Control {
+                rect: kb(at),
+                clip: n.clip.map_or(whole, kb),
+                role: n.role.to_owned(),
+                name: n.name.as_ref().map(|s| s.to_string()).unwrap_or_default(),
+                clickable: n.clickable,
+                element: n.element.clone(),
+            })
         })
         .collect()
 }

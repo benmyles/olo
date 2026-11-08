@@ -3953,7 +3953,12 @@ recorded otherwise.
     closer than `metrics::SECTION`,
     two spacings: the row ends its group, so what follows is a new
     section; as close as the rows above, the row reads as the start of
-    what follows, as Preferences ▸ Power ▸ Graphics' Screen Recordings did).
+    what follows, as Preferences ▸ Power ▸ Graphics' Screen Recordings did),
+    `same-id` (two controls with one element id: they share GPUI's state,
+    a press among it, so a click on either is lost; a kit Button's id is
+    its label unless given one, and Preferences ▸ Security's two Remove
+    buttons, in no element with an id, did nothing; the controls record
+    their ids only while a review records, so nothing else pays).
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off

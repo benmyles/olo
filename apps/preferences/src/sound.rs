@@ -445,7 +445,9 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
         });
         ui.add(Slider::new(format!("volume-{title}"), level, 0.0..=1.0).step(0.01).label(label).value_text(format!("{:.0}%", level * 100.0)).enabled(!dev.volume.muted).on_change(on));
         let name = dev.name.clone();
-        ui.add(CheckBox::new("Mute", dev.volume.muted).on_toggle(move |muted, _, _| {
+        // (An id of its own: the output's and the input's Mute, one id,
+        // lost their clicks.)
+        ui.add(CheckBox::new("Mute", dev.volume.muted).id(format!("mute-{title}")).on_toggle(move |muted, _, _| {
             let _ = tx.send(Change::Mute(kind, name.clone(), muted));
         }));
         if kind == Kind::Output {

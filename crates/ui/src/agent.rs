@@ -31,6 +31,9 @@ pub struct Node {
     /// What it was painted in (`Window::content_mask`, set by [`record`]):
     /// what shows of it.
     pub clip: Option<Bounds<Pixels>>,
+    /// Its element id, whole, while the window is being reviewed (the
+    /// review's `same-id`); None otherwise, costing nothing.
+    pub element: Option<String>,
 }
 
 impl Node {
