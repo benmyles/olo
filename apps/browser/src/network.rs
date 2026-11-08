@@ -626,11 +626,14 @@ impl Loader {
                         }
                     };
                     match (&decoding, response) {
-                        // A picture: its load told it is here as it decodes.
+                        // A picture: its page told once it is decoded (taken
+                        // then without waiting).
                         (Some(d), Some(r)) if matches!(kind, Kind::Image) && !looks_like_svg(&r.bytes) => {
                             let (d, flag) = (d.clone(), flag.clone());
-                            rayon::spawn(move || d.set(decode_raster(&r.bytes, Some(&flag)).map_or(Decoded::Itself, Decoded::Image)));
-                            finish();
+                            rayon::spawn(move || {
+                                d.set(decode_raster(&r.bytes, Some(&flag)).map_or(Decoded::Itself, Decoded::Image));
+                                finish();
+                            });
                         }
                         // A sheet: its page told once it is parsed (taken
                         // then without waiting).

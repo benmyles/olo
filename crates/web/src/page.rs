@@ -46,6 +46,8 @@ pub enum Resource {
 }
 pub struct Page {
     images: Option<Arc<crate::image::Set>>,
+    /// Pictures not here when it was prepared (it showed without them).
+    late: Vec<Late>,
     /// The interaction the scene was rendered with.
     rendered_interaction: Interaction,
     /// Elements whose `transform` has animated: painted as moved layers.
@@ -85,7 +87,18 @@ pub struct Page {
 }
 /// A document parsed, with its stylesheets, images and fonts loaded, ready
 /// to style for a host made for its `scope()`.
+/// A picture the page showed before it arrived (its host answered
+/// `PENDING`): bound when it does (`Page::bind_late`).
+#[derive(Clone, Debug)]
+enum Late {
+    /// An `<img>`, its source chosen again then.
+    Element(crate::dom::NodeId),
+    /// A `background-image`, by the URL as written, and what it resolves
+    /// against.
+    Background(Arc<str>, Option<String>),
+}
 pub struct Prepared {
+    late: Vec<Late>,
     document: Document,
     sheets: Vec<Sheet>,
     rules: Arc<css::cascade::RuleSet>,
@@ -144,6 +157,7 @@ impl Prepared {
             sheet_ids: self.sheet_ids.clone(),
             base: self.base.clone(),
             checked: None,
+            late: self.late.len(),
         }
     }
     /// What the stylesheets declared that the engine dropped.
@@ -564,8 +578,15 @@ pub struct Measurer {
     base: Option<String>,
     /// The document and revision the sheets were last looked for at.
     checked: Option<(u64, u64)>,
+    /// How many pictures the page it measures for was prepared without.
+    late: usize,
 }
 impl Measurer {
+    /// How many pictures the page was prepared without (still on their
+    /// way): a page with none to run still goes live for them.
+    pub fn late_images(&self) -> usize {
+        self.late
+    }
     /// Follow the document's stylesheets: when the style/link elements
     /// changed since (a sheet a script added, removed or rewrote), load
     /// them, compile the rules and fonts again. Returns whether they did
@@ -1900,6 +1921,7 @@ fn gather(
     sheets.extend(loaded_sheets);
     resource_issues += sheet_issues;
     let mut image_bindings = Vec::new();
+    let mut late = Vec::new();
     // An image at a srcset density, once per image and density.
     let mut dense: std::collections::HashMap<(usize, u64), Arc<crate::image::Image>> = Default::default();
     let mut image_unique = std::collections::HashSet::new();
@@ -1914,7 +1936,15 @@ fn gather(
             resource_issues += 1;
             continue;
         };
-        match resource(ResourceKind::Image, base.as_deref(), &choice.url)? {
+        let got = match resource(ResourceKind::Image, base.as_deref(), &choice.url) {
+            // Not here yet: the page shows without it, and binds it later.
+            Err(e) if e.to_string() == PENDING => {
+                late.push(Late::Element(node));
+                continue;
+            }
+            got => got?,
+        };
+        match got {
             Some(Resource::Image(image)) => {
                 let bound = if (choice.density - 1.).abs() > 1e-9 && image.density() == 1. {
                     dense.entry((Arc::as_ptr(&image) as usize, choice.density.to_bits())).or_insert_with(|| image.with_density(choice.density)).clone()
@@ -1971,7 +2001,15 @@ fn gather(
         if backgrounds.contains_key(url) {
             continue;
         }
-        match resource(ResourceKind::Image, sheet_base.as_deref().or(base.as_deref()), url)? {
+        let resolved = sheet_base.as_deref().or(base.as_deref());
+        let got = match resource(ResourceKind::Image, resolved, url) {
+            Err(e) if e.to_string() == PENDING => {
+                late.push(Late::Background(url.clone(), resolved.map(str::to_owned)));
+                continue;
+            }
+            got => got?,
+        };
+        match got {
             Some(Resource::Image(image)) => {
                 if image_unique.contains(&Arc::as_ptr(&image)) {
                     backgrounds.insert(url.clone(), image);
@@ -2003,6 +2041,7 @@ fn gather(
     };
     let (sheet_ids, _, _) = sheet_identities(&doc)?;
     Ok(Prepared {
+        late,
         document: doc,
         sheets,
         rules,
@@ -2046,7 +2085,7 @@ pub fn finish_with(
     previous: Option<&layout::Layout>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<Page> {
-    let Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope, rules_reused, base_scope, sheet_ids, .. } = prepared;
+    let Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope, rules_reused, base_scope, sheet_ids, late, .. } = prepared;
     if host.font_context() != scope.context() {
         return Err(style::Error::Stale.into());
     }
@@ -2091,6 +2130,7 @@ pub fn finish_with(
     )?;
     Ok(Page {
         images,
+        late,
         rendered_interaction: Interaction::default(),
         animated: Default::default(),
         containers,
@@ -2117,6 +2157,67 @@ pub fn finish_with(
     })
 }
 impl Page {
+    /// Whether it shows without pictures still on their way.
+    pub fn has_late_images(&self) -> bool {
+        !self.late.is_empty()
+    }
+    /// How many pictures it shows without, still on their way.
+    pub fn late_images(&self) -> usize {
+        self.late.len()
+    }
+    /// The pictures it showed without that are here now, bound (those still
+    /// on their way kept for later): whether any was, so it renders again.
+    /// `doc` is the document as it is now (scripts may have moved on).
+    pub fn bind_late(&mut self, doc: &Document, cancel: Option<&AtomicBool>, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<bool> {
+        let mut bindings = Vec::new();
+        let mut backgrounds = std::collections::HashMap::new();
+        let mut waiting = Vec::new();
+        for late in std::mem::take(&mut self.late) {
+            let (base, href) = match &late {
+                Late::Element(node) => {
+                    // Gone, or no longer a picture: nothing to bind.
+                    if !doc.is_connected(*node).unwrap_or(false) || doc.name(*node).ok().flatten() != Some("img") {
+                        continue;
+                    }
+                    match crate::srcset::choose(doc, *node, &self.media, cancel) {
+                        Some(choice) => (self.base_href.clone(), choice),
+                        None => continue,
+                    }
+                }
+                Late::Background(url, base) => (base.clone(), crate::srcset::Choice { url: url.to_string(), density: 1. }),
+            };
+            match resource(ResourceKind::Image, base.as_deref(), &href.url) {
+                Err(e) if e.to_string() == PENDING => waiting.push(late),
+                Ok(Some(Resource::Image(image))) => match late {
+                    Late::Element(node) => {
+                        let image = if (href.density - 1.).abs() > 1e-9 && image.density() == 1. { image.with_density(href.density) } else { image };
+                        bindings.push((node, image));
+                    }
+                    Late::Background(url, _) => {
+                        backgrounds.insert(url, image);
+                    }
+                },
+                Ok(_) => self.resource_issues += 1,
+                Err(e) if e.to_string().ends_with("Cancelled") => return Err(e),
+                Err(_) => self.resource_issues += 1,
+            }
+        }
+        self.late = waiting;
+        if bindings.is_empty() && backgrounds.is_empty() {
+            return Ok(false);
+        }
+        let set = match &self.images {
+            Some(set) => set.with_more(doc, bindings, backgrounds, PAGE_IMAGE_LIMITS, cancel),
+            None => crate::image::Set::with_backgrounds(doc, bindings, backgrounds, PAGE_IMAGE_LIMITS, cancel),
+        };
+        match set {
+            Ok(set) => self.images = Some(set),
+            // Past the page's budget: left out, as at its preparation.
+            Err(crate::image::Error::Limit) => self.resource_issues += 1,
+            Err(e) => return Err(e.into()),
+        }
+        Ok(true)
+    }
     /// The moment (ms on the page's clock) its next render shows its CSS
     /// animations at.
     pub fn set_time(&mut self, now_ms: f64) {

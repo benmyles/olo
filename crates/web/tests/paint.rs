@@ -1944,3 +1944,52 @@ fn a_live_refresh_compiles_new_rules_in_the_background() {
     let height = l.cache().tree().iter().filter_map(|(id, _)| l.bounds(id)).map(|b| b.height).fold(0f64, f64::max);
     assert!(height >= 37., "the new rule holds: {height}");
 }
+
+#[test]
+fn pictures_not_here_yet_show_when_they_land() {
+    // The host answers PENDING for a picture still on its way: the page
+    // shows without it (its <img> keeping its attribute size, its
+    // background empty) and binds both once they land.
+    use olo_web::{image::Image, page};
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let red = Image::from_rgba(1, 1, vec![255, 0, 0, 255], Default::default(), None).unwrap();
+    let html = "<!doctype html><style>body{margin:0}div{width:20px;height:20px;background:url(b.png)}img{display:block}</style><img src=a.png width=30 height=10><div></div>";
+    let mut shaper = Shaper::default();
+    let mut p = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    let mut page = page::load_assets(
+        Arc::from(html),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut p,
+        viewport,
+        None,
+        |_, _| {},
+        |kind, _, _| {
+            assert_eq!(kind, page::ResourceKind::Image);
+            Err(page::PENDING.into())
+        },
+    )
+    .unwrap();
+    assert!(page.has_late_images());
+    let px = |page: &page::Page, p: &mut paint::Engine, x: usize, y: usize| -> [u8; 4] {
+        let t = p.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: 100, height: 100 }, None).unwrap().into_rgba();
+        t[(y * 100 + x) * 4..][..4].try_into().unwrap()
+    };
+    assert_eq!(px(&page, &mut p, 5, 5), [255; 4], "the picture's room, empty");
+    assert_eq!(px(&page, &mut p, 5, 15), [255; 4], "the background, empty: the div starts below the img's 10px");
+    // Still on their way: nothing bound.
+    let doc = page.document.clone();
+    assert!(!page.bind_late(&doc, None, &mut |_, _, _| Err(page::PENDING.into())).unwrap());
+    assert_eq!(page.late_images(), 2);
+    // Landed.
+    assert!(page.bind_late(&doc, None, &mut |_, _, _| Ok(Some(page::Resource::Image(red.clone())))).unwrap());
+    assert!(!page.has_late_images());
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut p, viewport, None, |_, _| {}).unwrap();
+    assert_eq!(px(&page, &mut p, 5, 5), [255, 0, 0, 255], "the picture");
+    assert_eq!(px(&page, &mut p, 5, 15), [255, 0, 0, 255], "the background");
+}

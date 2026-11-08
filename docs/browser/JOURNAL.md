@@ -6817,3 +6817,16 @@ the Guardian and old Reddit, looking for pages that fail outright:
   pictures) and a worker's `fetch()` had a thread each, waiting; they are
   tasks on the network runtime now, with a picture's decoding on the CPU
   pool. 60 loads at once: peak threads 90 → 34, worst timer gap 25 → 16 ms.
+- **Text first, pictures as they land.** A page's first render waited
+  for every picture on it to arrive and decode. A picture still on its
+  way now answers `PENDING`: the page shows without it (an `<img>`
+  keeping its attribute size, as Chrome does), and its live render binds
+  it, and any `background-image`, when the decode lands
+  (`Page::bind_late`); a page with nothing to run goes live for that.
+  Found with it: a page whose window was told "animating" and then "not"
+  before a frame came counted as hidden for good and never drew again.
+  A page with a 150 ms sheet and five pictures answered in 1 s: first
+  render 1012 → 154 ms. First render on real pages, two loads each:
+  BBC 870–1141 → 717–792 ms, apple.com 593–603 → 466–546 ms,
+  Wikipedia's "Web browser" 683–859 → 369–446 ms; settled pages
+  pixel-identical.

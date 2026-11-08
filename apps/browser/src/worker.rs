@@ -426,6 +426,9 @@ struct Live {
     /// A render is wanted although the document is unchanged (a canvas's
     /// readback was in flight at the last one).
     render_again: bool,
+    /// Pictures the page showed without may have landed: bind them at the
+    /// next render.
+    late_check: bool,
     /// Cancelled when the page goes (its fetches and measurements stop).
     cancel: crate::network::Cancel,
     /// Fetches what its scripts ask for, off this thread.
@@ -880,6 +883,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             if let Some(c) = cached.as_mut()
                                 && let Some(live) = c.live.as_mut()
                             {
+                                live.late_check = true;
                                 live.render_again = true;
                                 live.next_due_ms = Some(0.);
                             }
@@ -1316,6 +1320,34 @@ fn render(
                     let tx = tx.clone();
                     Arc::new(move || drop(tx.send(Message::Arrived)))
                 };
+                // Pictures it showed without that have landed since.
+                if c.page.has_late_images() && std::mem::take(&mut live.late_check) {
+                    let host = PageHost::new(c.page.scope(), &r.key);
+                    let scope = c.page.scope().clone();
+                    let images = &mut c.images;
+                    let mut late = |kind: page::ResourceKind, base: Option<&str>, href: &str| -> page::Result<Option<page::Resource>> {
+                        let Ok(mut url) = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href) else { return Ok(None) };
+                        url.set_fragment(None);
+                        // (One picture for every element showing it.)
+                        if let Some(image) = images.get(&url) {
+                            return Ok(image.clone().map(page::Resource::Image));
+                        }
+                        let tx = tx.clone();
+                        if kind != page::ResourceKind::Image || !loader.ready_or_start(&light, kind, &url, &cancel, Box::new(move || drop(tx.send(Message::Arrived)))) {
+                            return Err(page::PENDING.into());
+                        }
+                        let svg = |bytes: &[u8]| olo_web::svg_image::rasterize(bytes, &host, &scope, r.key.scale, Some(&cancel)).map_err(|e| format!("SVG image: {e}").into());
+                        let image = loader.image(&light, url.clone(), page::PAGE_IMAGE_LIMITS.bytes, &cancel, |_| {}, &svg).ok();
+                        images.insert(url, image.clone());
+                        Ok(image.map(page::Resource::Image))
+                    };
+                    match c.page.bind_late(&doc, Some(&cancel), &mut late) {
+                        Ok(true) if olo_web::env_on!("OLO_BROWSER_TIMING") => eprintln!("  live render: late pictures bound ({} still on their way)", c.page.late_images()),
+                        Ok(_) => {}
+                        Err(e) if is_cancellation(&e) => return Err(e),
+                        Err(e) => eprintln!("Browser: late pictures: {e}"),
+                    }
+                }
                 match c.page.refresh(&doc, Some(&cancel), &mut resource, Some(&wake)) {
                     Ok(true) if olo_web::env_on!("OLO_BROWSER_TIMING") => eprintln!("  live render: stylesheets changed, rules remade"),
                     Ok(_) => {}
@@ -1528,7 +1560,9 @@ fn render(
                     }
                 })
                 .collect();
-            if scripts.is_empty() && !olo_js::has_controls(&doc) {
+            // (A page with nothing to run goes live all the same while
+            // pictures it shows without are on their way: it binds them.)
+            if scripts.is_empty() && !olo_js::has_controls(&doc) && measurer.late_images() == 0 {
                 return Ok(doc);
             }
             proxy.send(Reply::Status(r.id, format!("Running {} scripts…", scripts.len())));
@@ -1655,6 +1689,7 @@ fn render(
                 frames: Default::default(),
                 box_index: None,
                 render_again,
+                late_check: true,
                 loads,
                 cancel: live_cancel.clone(),
                 started: scripted_at,
@@ -1741,6 +1776,16 @@ fn render(
                     if let Some(image) = images.get(&url) {
                         return Ok(image.as_ref().map(|image| page::Resource::Image(image.clone())));
                     }
+                    // Not here yet: the page shows without it (text first, as
+                    // Chrome paints), and its live render binds it when it
+                    // lands.
+                    let wake = {
+                        let tx = tx.clone();
+                        Box::new(move || drop(tx.send(Message::Arrived)))
+                    };
+                    if !loader.ready_or_start(document, page::ResourceKind::Image, &url, &r.cancel, wake) {
+                        return Err(page::PENDING.into());
+                    }
                     resources += 1;
                     if resources > 1024 {
                         return Err("Page exceeds the development resource request limit".into());
@@ -1804,7 +1849,9 @@ fn render(
         let origin = document.as_ref().map(|d| d.url.clone()).unwrap_or(url::Url::parse("about:engine")?);
         let base = page.base_href.as_deref().and_then(|href| origin.join(href).ok()).unwrap_or_else(|| origin.clone());
         eprintln!("Browser: {} page ready {:.0} ms after the request", if pass == Pass::Scripted { "scripted" } else { "static" }, loaded_at.elapsed().as_secs_f64() * 1000.);
-        let wants_realm = page.scripts > 0 || olo_js::has_controls(&page.document);
+        // (A page showing without some of its pictures goes live too: its
+        // live render binds them as they land.)
+        let wants_realm = page.scripts > 0 || olo_js::has_controls(&page.document) || page.has_late_images();
         *cached = Some(Cached {
             key: r.key.clone(),
             page,
@@ -1828,6 +1875,14 @@ fn render(
             tile_signatures: Default::default(),
             anchor_scroll: None,
         });
+        // Its late pictures looked for at its first live render (those that
+        // landed while it was prepared told no live page).
+        if let Some(c) = cached.as_mut()
+            && c.page.has_late_images()
+            && let Some(live) = c.live.as_mut()
+        {
+            live.render_again = true;
+        }
         cache.clear();
     }
     let c = cached.as_mut().unwrap();
@@ -2394,8 +2449,14 @@ fn render(
         tiles,
         animating: {
             let animating = cached.page.animating() || cached.live.as_ref().is_some_and(|l| l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty());
-            if animating && let Some(live) = cached.live.as_mut() {
-                live.waiting_since.get_or_insert_with(Instant::now);
+            // Waiting for the window's frames while it animates; not once it
+            // stops (the window stops sending them: that is not hiding it).
+            if let Some(live) = cached.live.as_mut() {
+                if animating {
+                    live.waiting_since.get_or_insert_with(Instant::now);
+                } else {
+                    live.waiting_since = None;
+                }
             }
             animating
         },

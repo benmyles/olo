@@ -324,6 +324,27 @@ impl Set {
             .collect();
         Some(Arc::new(Self { document: self.document, revision: document.revision(), bindings: bindings.into_boxed_slice(), backgrounds: self.backgrounds.clone(), bytes: self.bytes }))
     }
+    /// This set with more bindings and `background-image` pictures (ones
+    /// that arrived after the page was shown), replacing any for the same
+    /// element or URL, for the document as it is now.
+    pub fn with_more(
+        &self,
+        document: &Document,
+        extra: Vec<(NodeId, Arc<Image>)>,
+        backgrounds: HashMap<Arc<str>, Arc<Image>>,
+        limits: Limits,
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Arc<Self>, Error> {
+        let mut bindings: Vec<(NodeId, Arc<Image>)> = self.bindings.iter().filter(|(n, _)| !extra.iter().any(|(e, _)| e == n)).cloned().collect();
+        bindings.extend(extra);
+        let bindings = bindings
+            .into_iter()
+            .filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas" | "video" | "iframe")))
+            .collect();
+        let mut all = self.backgrounds.clone();
+        all.extend(backgrounds);
+        Self::with_backgrounds(document, bindings, all, limits, cancel)
+    }
     /// This set with more bindings (canvases the scripts drew), replacing
     /// any for the same element, for the document as it is now.
     pub fn with_extra(&self, document: &Document, extra: Vec<(NodeId, Arc<Image>)>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
