@@ -366,6 +366,28 @@ impl Dictionary {
         }
     }
 }
+/// Properties the box tree is built from (which boxes there are, of what
+/// kind; generated content, markers, counters): see `layout::BuildJob`.
+fn builds_boxes(p: Property) -> bool {
+    use Property as P;
+    matches!(
+        p,
+        P::Display
+            | P::Position
+            | P::Float
+            | P::Content
+            | P::CounterIncrement
+            | P::CounterReset
+            | P::CounterSet
+            | P::ListStyleImage
+            | P::ListStylePosition
+            | P::ListStyleType
+            | P::Quotes
+            | P::WhiteSpaceCollapse
+            | P::TextTransform
+            | P::Appearance
+    )
+}
 /// Properties whose value changes what is painted but not any geometry.
 fn paint_only(p: Property) -> bool {
     use Property as P;
@@ -748,6 +770,11 @@ impl Style {
     /// one serves the other.
     pub fn differs_only_in_paint(&self, other: &Self) -> bool {
         self.differs_only_in(other, paint_only)
+    }
+    /// Whether every difference from `other` leaves the box tree as it is
+    /// (sizes, spacing, alignment: laid out again over the same boxes).
+    pub fn keeps_boxes(&self, other: &Self) -> bool {
+        self.differs_only_in(other, |p| !builds_boxes(p))
     }
     /// Whether every difference from `other` is in `transform` or
     /// `transform-origin`: the same boxes, painted the same, through

@@ -765,17 +765,32 @@ impl Measurer {
                 }
                 d
             });
-            let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
-            // The images were bound to the document before the scripts changed
-            // it; while they still fit, boxes take their sizes.
-            if let Some(images) = &self.images
-                && images.validate(doc).is_ok()
-            {
-                job = job.with_images(images.clone())?;
-            }
-            while !job.step(256)?.finished {}
-            found[1].merge(job.fallbacks());
-            let tree = job.finish()?;
+            let bound = self.images.as_ref().filter(|images| images.validate(doc).is_ok());
+            let in_place = match &patched {
+                Some((p, None)) => Some(p.boxes_kept),
+                _ => None,
+            };
+            let kept = match (previous, previous_revision) {
+                (Some(p), Some(revision)) => kept_boxes(&p.layout, doc, revision, &styles, in_place, bound),
+                _ => None,
+            };
+            let tree = match kept {
+                Some(tree) => {
+                    redone[1] = layout::Redone::Not;
+                    Arc::new(tree)
+                }
+                None => {
+                    let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
+                    // The images were bound to the document before the scripts changed
+                    // it; while they still fit, boxes take their sizes.
+                    if let Some(images) = bound {
+                        job = job.with_images(images.clone())?;
+                    }
+                    while !job.step(256)?.finished {}
+                    found[1].merge(job.fallbacks());
+                    job.finish()?
+                }
+            };
             phases[1] = started.elapsed().as_secs_f64() * 1000. - phases[0];
             let mut job = layout::PrepareJob::new(shaper, &self.scope, tree, Default::default(), cancel)?;
             if let Some(p) = previous {
@@ -2802,6 +2817,61 @@ fn dirty_nodes(doc: &Document, revision: u64) -> Option<crate::dom::NodeSet> {
     dirty_ancestors(doc, &nodes, &mut dirty);
     Some(dirty)
 }
+/// The previous layout's box tree with `styles`, when it still stands: the
+/// document changed only in styles and in attributes the box tree never
+/// reads (no text, no children, no controls), and no style decides other
+/// boxes (`Style::keeps_boxes`). Laid out again over it, not built anew
+/// (GitHub rebuilt its 2578 boxes, 4.5 ms, for a class flipped as it
+/// scrolls). `patched_in_place`: the patch's own verdict, its old styles
+/// gone.
+fn kept_boxes(previous: &layout::Layout, doc: &Document, revision: u64, styles: &Arc<StyleTree>, patched_in_place: Option<bool>, images: Option<&Arc<crate::image::Set>>) -> Option<layout::Tree> {
+    use crate::dom::Change;
+    let changes = doc.changes_since(revision)?;
+    if changes.len() > 1024 {
+        return None;
+    }
+    let unread = |name: &str| {
+        matches!(name, "class" | "id" | "title" | "role" | "tabindex" | "slot" | "part" | "lang" | "translate" | "draggable" | "nonce")
+            || name.starts_with("data-")
+            || name.starts_with("aria-")
+            || name.starts_with("on")
+    };
+    let why = |what: String| {
+        if crate::env_on!("OLO_WEB_TIMING") {
+            eprintln!("  boxes built again: {what}");
+        }
+    };
+    for (_, change) in changes {
+        match change {
+            Change::Style(_) => {}
+            Change::Attribute { name, .. } if unread(name) => {}
+            other => {
+                why(match other {
+                    Change::Attribute { name, .. } => format!("attribute {name}"),
+                    Change::Text { .. } => "text".into(),
+                    Change::Children { .. } => "children".into(),
+                    Change::Control(_) => "a control's value".into(),
+                    _ => "a change of another kind".into(),
+                });
+                return None;
+            }
+        }
+    }
+    let old = previous.cache().tree();
+    let same_images = match (old.images(), images) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a.same_layout(b),
+        _ => false,
+    };
+    if !same_images {
+        return None;
+    }
+    let kept = if Arc::ptr_eq(old.styles(), styles) { patched_in_place? } else { styles.keeps_boxes_of(old.styles()) };
+    if !kept {
+        why("a style decides other boxes".into());
+    }
+    kept.then(|| old.with_styles(styles.clone(), doc, images.cloned()))
+}
 /// `nodes` and their ancestors into `dirty`.
 fn dirty_ancestors(doc: &Document, nodes: &[crate::dom::NodeId], dirty: &mut crate::dom::NodeSet) {
     for &node in nodes {
@@ -3198,7 +3268,7 @@ fn render_once(
         && let Some(tree) = previous_styles.and_then(|p| p.unchanged(doc, rules.generation()))
     {
         styles = Some(Arc::new(tree));
-        patched = Some(style::Patched { geometry_kept: true, changed: 0, nodes: Vec::new(), pseudos: 0 });
+        patched = Some(style::Patched { geometry_kept: true, changed: 0, nodes: Vec::new(), pseudos: 0, boxes_kept: true });
     } else if timing.is_some()
         && let (Some(p), Some(_)) = (previous_styles, previous_scene)
         && let Err(why) = patchable(doc, rules, p.document_revision())
@@ -3342,6 +3412,7 @@ fn render_once(
             patched = match patched {
                 Some(mut p) => {
                     p.geometry_kept &= result.geometry_kept;
+                    p.boxes_kept &= result.boxes_kept;
                     p.changed += result.changed;
                     p.pseudos += result.pseudos;
                     for n in result.nodes {
@@ -3422,15 +3493,27 @@ fn render_once(
         Arc::new(p.with_styles(styles, doc, images.cloned()))
     } else {
         progress(Phase::Boxes, 0);
-        let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
-        if let Some(images) = images {
-            job = job.with_images(images.clone())?;
-        }
-        while !job.step(128)?.finished {
-            progress(Phase::Boxes, job.progress().boxes)
-        }
-        found[1].merge(job.fallbacks());
-        let tree = job.finish()?;
+        let kept = match (previous, previous_revision) {
+            (Some(p), Some(revision)) => kept_boxes(p, doc, revision, &styles, None, images),
+            _ => None,
+        };
+        let tree = match kept {
+            Some(tree) => {
+                redone[1] = layout::Redone::Not;
+                Arc::new(tree)
+            }
+            None => {
+                let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
+                if let Some(images) = images {
+                    job = job.with_images(images.clone())?;
+                }
+                while !job.step(128)?.finished {
+                    progress(Phase::Boxes, job.progress().boxes)
+                }
+                found[1].merge(job.fallbacks());
+                job.finish()?
+            }
+        };
         if let Some(t) = timing {
             stamps[1] = t.elapsed().as_secs_f64() * 1000.;
         }

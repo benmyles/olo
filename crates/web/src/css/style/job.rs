@@ -239,6 +239,18 @@ impl StyleTree {
     pub fn geometry_kept(&self) -> bool {
         self.geometry_kept
     }
+    /// Whether this tree styles the same elements and pseudo-elements as
+    /// `old`, in the same order, every difference leaving the box tree as
+    /// it is (`Style::keeps_boxes`).
+    pub fn keeps_boxes_of(&self, old: &StyleTree) -> bool {
+        if self.styles.len() != old.styles.len() || self.document != old.document {
+            return false;
+        }
+        self.styles
+            .iter()
+            .zip(old.styles.iter())
+            .all(|(a, b)| a.node == b.node && a.pseudo == b.pseudo && (a.style.overrides_share(&b.style) || a.style.same_as(&b.style) || a.style.keeps_boxes(&b.style)))
+    }
     pub fn document_revision(&self) -> u64 {
         self.revision
     }
@@ -283,6 +295,8 @@ pub struct Patched {
     pub nodes: Vec<NodeId>,
     /// Pseudo-elements whose style changed.
     pub pseudos: usize,
+    /// Every difference leaves the box tree as it is (`Style::keeps_boxes`).
+    pub boxes_kept: bool,
 }
 /// Worker job: parent-before-child traversal, bounded steps and a readable
 /// completed prefix. The caller sends progress/results to the UI and checks
@@ -1336,6 +1350,7 @@ impl<'a> Job<'a> {
         let mut geometry_kept = true;
         let mut changed = 0usize;
         let mut changed_nodes = Vec::new();
+        let mut boxes_kept = true;
         let mut pseudos_changed = 0usize;
         let mut done = std::collections::HashSet::new();
         // The elements asked for, then the subtrees of those that changed
@@ -1387,6 +1402,9 @@ impl<'a> Job<'a> {
                 if geometry_kept && !old.differs_only_in_paint(&style) {
                     geometry_kept = false;
                 }
+                if boxes_kept && !old.keeps_boxes(&style) {
+                    boxes_kept = false;
+                }
                 changed += 1;
                 changed_nodes.push(node);
             }
@@ -1411,6 +1429,9 @@ impl<'a> Job<'a> {
                 if geometry_kept && !entry.style.differs_only_in_paint(&s) {
                     geometry_kept = false;
                 }
+                if boxes_kept && !entry.style.keeps_boxes(&s) {
+                    boxes_kept = false;
+                }
                 self.tree.report.value_fallbacks += usize::from(s.dependencies().fallbacks);
                 undo.push((at, std::mem::replace(&mut entry.style, s), entry.matched.clone()));
                 pseudos_changed += 1;
@@ -1428,7 +1449,7 @@ impl<'a> Job<'a> {
                 queue.extend(descendants);
             }
         }
-        Ok(Ok(Patched { geometry_kept, changed, nodes: changed_nodes, pseudos: pseudos_changed }))
+        Ok(Ok(Patched { geometry_kept, changed, nodes: changed_nodes, pseudos: pseudos_changed, boxes_kept }))
     }
     /// An element's style computed: its hints and inline declarations, its
     /// rules (the ones recorded before cascaded again when only its inline

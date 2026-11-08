@@ -6916,3 +6916,11 @@ the Guardian and old Reddit, looking for pages that fail outright:
   Matching 107 → 27 ms. MDN against Chrome: load 1.65–1.70 CPU s
   (Chrome 1.1), scrolling 22% (Chrome 43–46%), 211 MB (Chrome 491–585).
   GitHub is still behind: load 10.8 vs 8.5 CPU s, scrolling 72% vs 56%.
+- **A restyle that leaves the boxes as they were keeps the box tree:** if
+  the document changed only in styles and in attributes the box tree never
+  reads, and no style changed a box-deciding property (`display`,
+  `position`, `float`, `content`, list and counter properties,
+  `white-space`, `text-transform`, `appearance`), the previous box tree
+  takes the new styles and is laid out again incrementally. Checked with
+  `OLO_LAYOUT_CHECK` scrolling GitHub and MDN: 0 boxes differ from a fresh
+  layout. GitHub's own rebuilds come from child-list changes (open).
