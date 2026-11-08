@@ -309,3 +309,20 @@ fn an_svg_with_only_a_viewbox_fills_the_width_at_its_ratio() {
     assert_eq!((r("c").width, r("c").height), (40., 20.));
     assert_eq!((r("d").width, r("d").height), (300., 150.));
 }
+#[test]
+fn what_takes_no_pointer_events_passes_the_point_to_the_box_it_is_in() {
+    // apple.com's nav: links holding `pointer-events: none` spans and
+    // SVGs, painted over an open flyout's background (absolute, earlier in
+    // the tree), under a `pointer-events: none` scrim (`body::before`).
+    let p = load(
+        "body::before{content:'';position:fixed;top:0;left:0;width:400px;height:40px;background:#eee;pointer-events:none;z-index:0}nav{position:fixed;top:0;left:0;width:400px;height:40px;z-index:1}#f{position:absolute;top:0;left:0;width:400px;height:200px;background:#fff}a{position:relative;display:inline-block;margin-left:100px}#s{pointer-events:none}#v{pointer-events:none;display:block}</style><nav><div id=f></div><a id=l href=#><span id=s><svg id=v width=30 height=40></svg></span></a><a id=t href=#><span style=pointer-events:none>Text</span></a></nav>",
+        1.,
+    );
+    let hit = |x: f64, y: f64| {
+        let n = p.scene.hit_test(x, y, 0., 300., &[]).unwrap();
+        p.document.attribute(n, "id").unwrap().map(str::to_owned)
+    };
+    assert_eq!(hit(110., 20.), Some("l".into()), "the link, not the flyout under it");
+    assert_eq!(hit(50., 20.), Some("f".into()), "the flyout, not the scrim over it");
+    assert_eq!(hit(50., 100.), Some("f".into()));
+}

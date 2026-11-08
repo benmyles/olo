@@ -244,6 +244,9 @@ fn main() {
                     let text = page.scene.text_content(i as u32).map(|t| t.chars().take(40).collect::<String>()).unwrap_or_default();
                     println!("{i} {kind} <{name} class=\"{}\"> {b:?} visible {:?} {text:?}", class.chars().take(80).collect::<String>(), page.scene.visible_bounds(i as u32));
                 }
+                let stickies = page.scene.layout().sticky();
+                let hit = page.scene.hit_test(x, y, 0., 700., &stickies);
+                println!("hit: {:?} <{}> class {:?}", hit, hit.and_then(|n| page.document.name(n).ok().flatten()).unwrap_or("?"), hit.and_then(|n| page.document.attribute(n, "class").ok().flatten()));
             }
             if let Some((file, height, top)) = png {
                 // 512 × 512 tiles, as the browser paints, composed into one image.

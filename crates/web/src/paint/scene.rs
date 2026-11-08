@@ -785,24 +785,52 @@ impl Scene {
                     }
                 }
                 let Some(node) = self.node(id) else { continue };
-                let ignored = |node| {
-                    tree.styles()
-                        .snapshot(node)
-                        .is_some_and(|style| matches!(style.value(P::PointerEvents), Value::Keyword(K::None)) || matches!(style.value(P::Visibility), Value::Keyword(K::Hidden)))
+                let takes_none = |style: &Style| matches!(style.value(P::PointerEvents), Value::Keyword(K::None)) || matches!(style.value(P::Visibility), Value::Keyword(K::Hidden));
+                let ignored = |node| tree.styles().snapshot(node).is_some_and(takes_none);
+                // The painting box's own style: a pseudo-element's (apple's
+                // `body::before` scrim over its nav takes no pointer events).
+                let owner = match c.primitive {
+                    Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } | Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } | Primitive::Fill { owner, .. } => {
+                        Some(owner)
+                    }
+                    Primitive::Text { .. } => None,
                 };
-                if ignored(node) {
+                if ignored(node) || owner.and_then(|o| tree.style(o)).is_some_and(takes_none) {
+                    // A graphic or text that takes no pointer events passes
+                    // the point to the boxes it is drawn in (up to its
+                    // positioned one), as Chrome: apple.com's nav links are
+                    // `pointer-events: none` SVGs in links painted over an
+                    // open flyout, which took their hovers.
+                    if c.transform == NONE
+                        && let Primitive::Vector { owner, .. } | Primitive::Image { owner, .. } | Primitive::Text { owner, .. } = c.primitive
+                        && let Some(found) = self.box_under(owner, x, py, &takes_none)
+                    {
+                        return Some(found);
+                    }
                     continue;
                 }
                 // A box hit through its background or border: a box in it
                 // that paints nothing there (a transparent button over its
                 // row) is still what is under the point, as in Chrome.
+                // One that takes no pointer events (`pointer-events: none`,
+                // hidden) passes the point to the box it is in: apple.com's
+                // nav links hold a `pointer-events: none` span, and the
+                // nav itself took their hovers.
                 if let Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } | Primitive::Fill { owner, .. } = c.primitive
                     && c.transform == NONE
-                    && let Some(inner) = self.deepest_box(owner, x, py)
-                    && let Some(b) = tree.get(inner)
-                    && !ignored(b.node)
+                    && let Some(mut inner) = self.deepest_box(owner, x, py)
                 {
-                    return Some(b.node);
+                    for _ in 0..4096 {
+                        let Some(b) = tree.get(inner) else { break };
+                        if inner == owner {
+                            break;
+                        }
+                        if !ignored(b.node) && !matches!(b.kind, BoxKind::InlineContent { .. }) {
+                            return Some(b.node);
+                        }
+                        let Some(parent) = b.parent else { break };
+                        inner = parent;
+                    }
                 }
                 return Some(node);
             }
@@ -822,6 +850,31 @@ impl Scene {
     /// entered, so a hit costs the depth times the siblings on the way.
     /// Positioned, transformed and clipped-away boxes are left to their own
     /// paint.
+    /// The nearest box around `from` (itself, for a text's box) under the
+    /// point that takes pointer events, no further out than its first
+    /// positioned or transformed ancestor (a layer of its own above what
+    /// is under it).
+    fn box_under(&self, from: BoxId, x: f64, y: f64, takes_none: &dyn Fn(&Style) -> bool) -> Option<crate::dom::NodeId> {
+        let tree = self.layout.cache().tree();
+        let mut at = from;
+        for _ in 0..256 {
+            let b = tree.get(at)?;
+            let s = tree.style(at)?;
+            if at != from && !matches!(b.kind, BoxKind::InlineContent { .. }) {
+                let r = self.layout.bounds(at)?;
+                let shift = self.scroll_shift(at);
+                let (rx, ry) = (r.x - shift[0], r.y - shift[1]);
+                if !takes_none(s) && x >= rx && y >= ry && x < rx + r.width && y < ry + r.height {
+                    return Some(b.node);
+                }
+                if matches!(s.value(P::Transform), Value::Transforms(_)) || !matches!(s.value(P::Position), Value::Keyword(K::Static)) {
+                    return None;
+                }
+            }
+            at = b.parent?;
+        }
+        None
+    }
     fn deepest_box(&self, owner: BoxId, x: f64, y: f64) -> Option<BoxId> {
         let layout = &self.layout;
         let tree = layout.cache().tree();

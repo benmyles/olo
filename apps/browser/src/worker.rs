@@ -1647,11 +1647,10 @@ fn render(
             let image = vector || matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
             let node = scene.node(id);
             let text = if image {
-                std::borrow::Cow::Borrowed(node.map(|n| page.document.attribute(n, if vector { "aria-label" } else { "alt" })).transpose()?.flatten().filter(|s| !s.is_empty()).unwrap_or(if vector {
-                    "Graphic"
-                } else {
-                    "Image"
-                }))
+                match node.map(|n| graphic_name(&page.document, n, vector)).transpose()?.flatten() {
+                    Some(name) => std::borrow::Cow::Owned(name),
+                    None => std::borrow::Cow::Borrowed(if vector { "Graphic" } else { "Image" }),
+                }
             } else {
                 let Some(text) = scene.text_content(id).filter(|s| !s.is_empty()) else { continue };
                 text
@@ -2082,6 +2081,43 @@ impl Host for PageHost {
     }
 }
 
+/// A picture's or graphic's name for agents: its `alt` (an image) or
+/// `aria-label` (a graphic), an SVG's `<title>`, else the `aria-label` or
+/// `title` of the link or button it is drawn in (apple.com's nav links are
+/// `<a aria-label="Store">` holding an aria-hidden SVG of the word).
+fn graphic_name(doc: &olo_web::dom::Document, node: olo_web::dom::NodeId, vector: bool) -> olo_web::dom::Result<Option<String>> {
+    let named = |n: olo_web::dom::NodeId, a: &str| -> olo_web::dom::Result<Option<String>> { Ok(doc.attribute(n, a)?.map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned)) };
+    if let Some(name) = named(node, if vector { "aria-label" } else { "alt" })? {
+        return Ok(Some(name));
+    }
+    if vector {
+        let mut child = doc.first_child(node)?;
+        while let Some(c) = child {
+            if doc.name(c)? == Some("title") {
+                let mut text = String::new();
+                let mut t = doc.first_child(c)?;
+                while let Some(x) = t {
+                    text.push_str(doc.value(x)?.unwrap_or(""));
+                    t = doc.next_sibling(x)?;
+                }
+                if !text.trim().is_empty() {
+                    return Ok(Some(text.trim().to_owned()));
+                }
+            }
+            child = doc.next_sibling(c)?;
+        }
+    }
+    let mut up = doc.parent(node)?;
+    for _ in 0..8 {
+        let Some(n) = up else { break };
+        let control = matches!(doc.name(n)?, Some("a" | "button")) || doc.attribute(n, "role")?.is_some_and(|r| matches!(r, "button" | "link" | "menuitem" | "tab"));
+        if control {
+            return Ok(named(n, "aria-label")?.or(named(n, "title")?));
+        }
+        up = doc.parent(n)?;
+    }
+    Ok(None)
+}
 /// The page's form controls showing in `visible` (document coordinates),
 /// for agents: each with its role, name, value and checkedness (Chrome's
 /// accessibility tree has them; an agent fills a form through them).
