@@ -15,6 +15,13 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Tracker: a click in the name being edited ends the edit** (Ben,
+  2026-11-07: "when i do rename / edit name and go to click in the
+  selected text with the cursor it takes me out of edit mode instead of
+  changing the cursor position"). A click in the field moves the caret
+  (a drag selects), as in any text field; only a click outside it ends
+  the edit.
+
 - **Undo in Tracker, and everywhere it makes sense** (Ben, 2026-11-07:
   "tracker needs to support undo for file/folder renames/moves/etc and
   also we need generally and unviversally to support undo in all olo
@@ -50,12 +57,15 @@ something nobody here has is in "Blocked", with what it waits for.
   Left: (1) the cycle a source fed by another stream is behind (10 ms):
   one node with the microphone in and the cleaned sound out (pw_filter,
   linked to the microphone by Olo itself), no quality cost; (2) the
-  noise suppressor's 30 ms: DeepFilterNet3's look-ahead. Measured
-  against RNNoise (tests/least_delay.rs): 10 ms, a tenth of the CPU,
-  but room noise down 8-11 dB where DeepFilterNet3 takes 26-30, the
-  voice kept as well: Ben to choose (a least-delay choice, or not).
-  The least-delay test's "after another voice" lag search locks on the
-  quiet voice: fix before judging that case.
+  noise suppressor's 30 ms: DeepFilterNet3's look-ahead. Done:
+  DeepFilterNet3-LL as a second noise model (Preferences ▸ Sound ▸
+  Noise model: DeepFilterNet3 Low Delay), 10 ms where DeepFilterNet3 is
+  30, its GRUs in 8 bits (`deep_filter::q8`, AVX-VNNI) so a frame is
+  ~420 µs; DeepFilterNet3 stays the default. Left: measure the total
+  with it on (tools/dev/voice-latency: about 20 ms expected), and Ben
+  to choose the default once he's heard both. tract still allocates
+  ~850 times a frame on the realtime thread (its tensors): a plan with
+  its buffers made once would take that away.
 
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for

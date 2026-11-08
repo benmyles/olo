@@ -8885,19 +8885,42 @@ normalization) choose the chain; build a `Voice` off the real-time thread
    uncertainty, applied to the noise model's input spectrum (so it never
    hears the other person's voice, which would make it turn yours down).
    No delay of its own. About 30 µs a frame.
-2. **Noise suppression**: DeepFilterNet3 with two frames of look-ahead.
-   Thresholds: noise-only frames go down to the limit, both decoders always
-   run otherwise (the library's defaults chop clean speech). About 250 µs
-   a frame. Its weight matrices are f16 (`deep_filter::tract::
-   half_weights`: each matmul's constant f32 weights swapped for an f16
-   copy before optimizing, so tract packs them as f16 and runs its
-   f16-weights, f32-activations kernels; the sums and activations stay
-   f32): half the bytes to fall out of the caches between frames. On x86
-   with F16C a frame back to back went from 391 to 296 µs and one every
-   10 ms, as live, from 773 to 536 µs, the voice trials' SDR the same to
-   a tenth of a dB (translating the whole model to f16, activations too,
-   had wrecked it). Where it doesn't optimize (a processor with no such
-   kernels) it's f32; `OLO_VOICE_F32=1` asks for f32 to compare.
+2. **Noise suppression**: DeepFilterNet3, one of two models
+   (`Settings::model`, Preferences ▸ Sound ▸ Noise model): DeepFilterNet3
+   itself, two frames of look-ahead (the voice 30 ms behind), or its
+   low-delay version DeepFilterNet3-LL, none (10 ms; both tarballs
+   built in from LFS, the second's pages read only when it's chosen).
+   Measured against each other (tests/least_delay.rs, chain.rs): as much
+   room noise out between words, a voice in a noisy room 1-2 dB less
+   clean with the low-delay one, and it keeps more of a quieter voice
+   (another person's, or what the canceller leaves of the far end's: 34
+   dB down where DeepFilterNet3 takes 57); its estimate of a frame's SNR
+   runs about 10 dB under DeepFilterNet3's, so fewer frames of noise
+   alone are gated to silence. Thresholds: noise-only frames go down to
+   the limit, both decoders always run otherwise (the library's defaults
+   chop clean speech).
+
+   The GRUs' matrices (512 wide in the low-delay model: twelve 1536 ×
+   512, read whole every frame for one vector each) are 8-bit
+   (`deep_filter::q8`): a byte a weight scaled by its row, the vector as
+   15-bit integers, summed as integers by AVX-VNNI (`vpdpbusd` on the
+   vector's high and low bytes: the same sums as 16-bit, to the bit),
+   else AVX2 (`vpmaddwd`), else a plain loop. The rest of the weights
+   are f16 (`deep_filter::tract::half_weights`: each matmul's constant
+   f32 weights swapped for an f16 copy before optimizing, so tract runs
+   its f16-weights, f32-activations kernels; translating the whole model
+   to f16, activations too, had wrecked it). The time a frame is the
+   time to stream the weights: in f16 a GRU matrix took 58 µs (27 GB/s
+   on one core); in 8 bits 10.5 µs from L2, 18 from L3, 34 from memory.
+   A frame back to back, x86 with AVX-VNNI (2026-11-07): DeepFilterNet3
+   318 → 232-260 µs, the low-delay one 850-1458 → 405-441 µs; one every
+   10 ms as live, the low-delay one's median 1.5-1.8 → 1.0 ms and its
+   99th 2.4-5.5 → 1.5 ms; every voice trial's SDR within 0.4 dB of f16.
+   `OLO_VOICE_F16=1` leaves out the 8 bits, `OLO_VOICE_F32=1` asks for
+   f32, to compare. Where a frame's time goes, model by model and node
+   by node, paced or not: `vendor/deep_filter/tests/profile.rs`
+   (`OLO_DF_MODEL`, `OLO_DF_NODES`, `OLO_DF_PACED`; `q8_speed` times the
+   8-bit product hot, from the cache and from memory).
 3. **Level normalization**: AGC2 (adaptive digital gain from a neural
    voice detector, then a limiter), allowed to turn loud talkers down as
    well as quiet ones up: speech lands within half a dB of -24 dBFS rms

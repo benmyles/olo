@@ -15,3 +15,5 @@ olo-protocol.workspace = true
 [dev-dependencies]
 # Compared against DeepFilterNet3 for a least-delay choice (tests/least_delay.rs).
 nnnoiseless = "0.5"
+# The timing paced as live on a fast core, as the engine asks for.
+olo-system.workspace = true

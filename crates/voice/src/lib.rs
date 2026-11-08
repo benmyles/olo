@@ -32,9 +32,12 @@ use ndarray::{ArrayView2, ArrayViewMut2};
 pub const FRAME: usize = 480;
 pub const RATE: u32 = 48_000;
 
-pub use olo_protocol::voice::{Mode, Noise, Settings};
+pub use olo_protocol::voice::{Mode, Model, Noise, Settings};
 
 static MODEL: &[u8] = include_bytes!("../../../vendor/deep_filter/models/DeepFilterNet3_onnx.tar.gz");
+/// DeepFilterNet3-LL (`Model::LowDelay`): no look-ahead. Its pages are read
+/// only when it's chosen.
+static MODEL_LOW_DELAY: &[u8] = include_bytes!("../../../vendor/deep_filter/models/DeepFilterNet3_ll_onnx.tar.gz");
 
 /// The chain, for one microphone.
 pub struct Voice {
@@ -105,10 +108,13 @@ pub fn accelerated_by() -> String {
     }
     #[cfg(target_arch = "x86_64")]
     {
+        // The GRUs' 8-bit products (`df::q8`) take AVX-VNNI where it's
+        // there.
+        let vnni = if df::q8::Kernel::best() == df::q8::Kernel::Vnni { ", AVX-VNNI" } else { "" };
         if std::arch::is_x86_feature_detected!("avx512f") {
-            "AVX-512 (x86-64)".into()
+            format!("AVX-512{vnni} (x86-64)")
         } else if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") {
-            "AVX2 and FMA (x86-64)".into()
+            format!("AVX2, FMA{vnni} (x86-64)")
         } else {
             "SSE (x86-64)".into()
         }
@@ -226,10 +232,22 @@ impl Voice {
     /// Set up the chain (loading a model takes a moment: off the
     /// real-time thread).
     pub fn new(settings: Settings) -> Result<Voice, String> {
+        Voice::with_model(
+            settings,
+            match settings.model {
+                Model::DeepFilterNet3 => MODEL,
+                Model::LowDelay => MODEL_LOW_DELAY,
+            },
+        )
+    }
+
+    /// [`Voice::new`], noise suppressed by the DeepFilterNet model `model`
+    /// (its exported tarball) whatever the settings say.
+    pub fn with_model(settings: Settings, model: &[u8]) -> Result<Voice, String> {
         let on = settings.enabled;
         let echo = (on && settings.echo_cancellation).then(echo::EchoCanceller::new);
         let (noise, lookahead) = if on && settings.noise != Noise::Off {
-            let params = df::tract::DfParams::from_bytes(MODEL).map_err(|e| e.to_string())?;
+            let params = df::tract::DfParams::from_bytes(model).map_err(|e| e.to_string())?;
             // Frames of noise alone (under -10 dB local SNR) are taken down
             // to the limit; otherwise both decoders always run (35 is the
             // model's own SNR ceiling). The library's defaults skip the deep

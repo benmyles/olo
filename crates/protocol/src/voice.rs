@@ -81,6 +81,42 @@ impl Noise {
     }
 }
 
+/// Which model takes the noise out: both DeepFilterNet3, the low-delay one
+/// trained without looking ahead (Ben, 2026-11-07: "keep DeepFilterNet3 as
+/// an option but then add another option for the lower latency model").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Model {
+    /// Looks 20 ms ahead: the voice 30 ms behind (40 ms in all on a
+    /// call). The most noise out of a voice in a noisy room.
+    #[default]
+    #[serde(rename = "deepfilternet3")]
+    DeepFilterNet3,
+    /// DeepFilterNet3-LL: no look-ahead, the voice 10 ms behind (20 ms in
+    /// all); as clean between words, a voice in a noisy room a little
+    /// less clean (2 dB in the trials); three times the work a frame.
+    #[serde(rename = "deepfilternet3-ll")]
+    LowDelay,
+}
+
+impl Model {
+    pub const ALL: [Model; 2] = [Model::DeepFilterNet3, Model::LowDelay];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Model::DeepFilterNet3 => "DeepFilterNet3",
+            Model::LowDelay => "DeepFilterNet3 Low Delay",
+        }
+    }
+
+    /// Its word for `olo-voice --set model=…`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Model::DeepFilterNet3 => "deepfilternet3",
+            Model::LowDelay => "low-delay",
+        }
+    }
+}
+
 /// What the voice processing does (Preferences ▸ Sound).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -92,13 +128,15 @@ pub struct Settings {
     /// out of something the microphone can hear: not headphones).
     pub echo_cancellation: bool,
     pub noise: Noise,
+    /// What takes the noise out.
+    pub model: Model,
     /// Bring every voice to the same level.
     pub normalize: bool,
 }
 
 impl Default for Settings {
     fn default() -> Settings {
-        Settings { enabled: true, mode: Mode::Calls, echo_cancellation: true, noise: Noise::Strong, normalize: true }
+        Settings { enabled: true, mode: Mode::Calls, echo_cancellation: true, noise: Noise::Strong, model: Model::DeepFilterNet3, normalize: true }
     }
 }
 

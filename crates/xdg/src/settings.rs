@@ -244,6 +244,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Clean up the microphone's sound", role: "CheckBox" },
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Tuned for", role: "ComboBox" },
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Background noise", role: "ComboBox" },
+    Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Noise model", role: "ComboBox" },
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Cancel echo from the speakers", role: "CheckBox" },
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Even out the voice's level", role: "CheckBox" },
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Try It…", role: "Button" },

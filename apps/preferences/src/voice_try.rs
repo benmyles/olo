@@ -56,6 +56,11 @@ pub fn variants(now: Settings) -> Vec<(String, Settings)> {
     for n in voice::Noise::ALL.into_iter().filter(|n| *n != now.noise) {
         out.push((format!("Background noise: {}", n.label()), Settings { noise: n, ..now }));
     }
+    if now.noise != voice::Noise::Off {
+        for model in voice::Model::ALL.into_iter().filter(|m| *m != now.model) {
+            out.push((format!("Noise model: {}", model.label()), Settings { model, ..now }));
+        }
+    }
     out.push((if now.normalize { "Level not evened out".into() } else { "Level evened out".into() }, Settings { normalize: !now.normalize, ..now }));
     for mode in voice::Mode::ALL.into_iter().filter(|m| *m != now.mode) {
         out.push((format!("Tuned for {}", mode.label().to_lowercase()), Settings { mode, ..now }));
