@@ -311,7 +311,12 @@ impl Job<'_> {
             max.min(room).max(min).max(0.)
         };
         // size_tracks places the spacing between columns; the two edge gaps are ours.
-        let widths = size_tracks(&tracks, &contributions, Some((content - 2. * sx).max(0.)), sx, true, self.scale);
+        let fixed = specified.is_some() && matches!(style.value(P::TableLayout), Value::Keyword(K::Fixed));
+        let (widths, content) = if fixed {
+            self.fixed_columns(id, columns, (content - gaps).max(0.), sx, queries)?
+        } else {
+            (size_tracks(&tracks, &contributions, Some((content - 2. * sx).max(0.)), sx, true, self.scale), content)
+        };
         used.width = used::grid(content, self.scale);
         // Legacy centring (<center>, align=center) centres a table narrower
         // than its container, shrink-to-fit or sized (HTML §15.3.9).
@@ -330,6 +335,46 @@ impl Job<'_> {
         }
         self.tables.push(Table { id, columns: widths, spacing: (sx, sy) });
         Ok(())
+    }
+    /// `table-layout: fixed` (CSS 2.2 §17.5.2.1): the first row's cells
+    /// with a width (percentages of the table's) fix their columns, a
+    /// spanning one's shared; the other columns share what is left equally;
+    /// columns asking more than there is widen the table. `room` is the
+    /// columns' share of the table's width; the widths and the table's
+    /// content width.
+    fn fixed_columns(&mut self, id: BoxId, columns: usize, room: f64, sx: f64, queries: QueryBasis) -> Result<(Vec<f64>, f64)> {
+        let rows = self.table_rows(id)?;
+        let mut fixed: Vec<Option<f64>> = vec![None; columns];
+        if let Some((_, cells)) = rows.first() {
+            let mut at = 0usize;
+            for &cell in cells {
+                let span = usize::from(self.cache.tree.get(cell).ok_or(Error::Invalid)?.span[0]).max(1);
+                let s = self.cache.tree.style(cell).ok_or(Error::Stale)?;
+                if let Some(w) = used::length(s, P::Width, Some(room), None, queries, &mut self.scratch, self.cancel, self.scale)? {
+                    let mut edge = |p| used::length(s, p, Some(room), Some(0.), queries, &mut self.scratch, self.cancel, self.scale).map(|v| v.unwrap_or(0.).max(0.));
+                    let decoration = edge(P::PaddingLeft)? + edge(P::PaddingRight)? + s.used_border_width(P::BorderLeftWidth)? + s.used_border_width(P::BorderRightWidth)?;
+                    let total = if matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox)) { w.max(decoration) } else { w + decoration };
+                    let share = (total - sx * (span - 1) as f64).max(0.) / span as f64;
+                    for c in fixed.iter_mut().skip(at).take(span) {
+                        *c = Some(share);
+                    }
+                }
+                at += span;
+            }
+        }
+        let taken: f64 = fixed.iter().flatten().sum();
+        let open = fixed.iter().filter(|w| w.is_none()).count();
+        let left = (room - taken).max(0.);
+        let mut widths: Vec<f64> = fixed.iter().map(|w| w.unwrap_or(if open > 0 { left / open as f64 } else { 0. })).collect();
+        // Every column fixed and room to spare: spread over them by width.
+        if open == 0 && taken > 0. && taken < room {
+            for w in &mut widths {
+                *w += (room - taken) * *w / taken;
+            }
+        }
+        let widths: Vec<f64> = widths.into_iter().map(|w| used::grid(w, self.scale)).collect();
+        let total: f64 = widths.iter().sum::<f64>() + sx * (columns + 1) as f64;
+        Ok((widths, total.max(room + sx * (columns + 1) as f64)))
     }
     pub(super) fn finish_table(&mut self, id: BoxId) {
         if self.tables.last().is_some_and(|t| t.id == id) {

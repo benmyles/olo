@@ -326,3 +326,21 @@ fn what_takes_no_pointer_events_passes_the_point_to_the_box_it_is_in() {
     assert_eq!(hit(50., 20.), Some("f".into()), "the flyout, not the scrim over it");
     assert_eq!(hit(50., 100.), Some("f".into()));
 }
+#[test]
+fn a_fixed_table_takes_its_first_rows_widths() {
+    // GitHub's file list: table-layout: fixed, a hidden colspan=2 cell,
+    // then 40%, auto and 136 px (Chrome: 272.39, 272.61, 136 at 2, 276.39,
+    // 551 in a 689 px table).
+    let p = load(
+        "table{table-layout:fixed;width:689px}th,td{padding:0}.a{width:100%;display:none}.b{width:40%}.d{width:136px}.small{display:none}</style><table><thead><tr><th class=a colspan=2>A</th><th id=b class=b>B</th><th id=c>C</th><th id=d class=d>D</th></tr></thead><tbody><tr><td class=small colspan=2>s</td><td id=n>name</td><td id=m>a message long enough to need room</td><td id=t>date</td></tr></tbody></table>",
+        1.,
+    );
+    let w = |id: &str| {
+        let r = rect(&p, id);
+        ((r.x * 100.).round() / 100., (r.width * 100.).round() / 100.)
+    };
+    assert_eq!(w("b"), (2., 272.39));
+    assert_eq!(w("c"), (276.39, 272.61));
+    assert_eq!(w("d"), (551., 136.));
+    assert_eq!(w("m"), w("c"), "the rows follow the first");
+}

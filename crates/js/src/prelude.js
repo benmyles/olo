@@ -1203,7 +1203,22 @@
   class Storage { constructor() { this._m = new Map(); } get length() { return this._m.size; } key(i) { return [...this._m.keys()][i] || null; } getItem(k) { return this._m.has(String(k)) ? this._m.get(String(k)) : null; } setItem(k, v) { this._m.set(String(k), String(v)); } removeItem(k) { this._m.delete(String(k)); } clear() { this._m.clear(); } }
   const storageHandler = { get(t, k) { if (typeof k !== 'string' || k in t) return t[k]; const v = t.getItem(k); return v === null ? undefined : v; }, set(t, k, v) { if (k in t) t[k] = v; else t.setItem(k, v); return true; }, deleteProperty(t, k) { t.removeItem(k); return true; }, has(t, k) { return k in t || t.getItem(String(k)) !== null; }, ownKeys(t) { return [...t._m.keys()]; }, getOwnPropertyDescriptor(t, k) { const v = t.getItem(String(k)); return v === null ? undefined : { value: v, writable: true, enumerable: true, configurable: true }; } };
   global.Storage = Storage; global.localStorage = new Proxy(new Storage(), storageHandler); global.sessionStorage = new Proxy(new Storage(), storageHandler);
-  global.indexedDB = { open() { const r = { onsuccess: null, onerror: null, onupgradeneeded: null, result: null, addEventListener() {} }; setTimeout(() => { if (r.onerror) r.onerror({ target: r }); }, 0); return r; }, deleteDatabase() { return { addEventListener() {} }; }, databases: () => Promise.resolve([]) };
+  // IndexedDB isn't here: a request fails, as it does in a browser that
+  // refuses storage, its `error` event fired (to `onerror` and listeners
+  // both: GitHub's query cache waited on a listener that never heard, and
+  // its file list's commits never loaded).
+  const failedRequest = () => {
+    const r = new EventTargetCtor();
+    Object.assign(r, { onsuccess: null, onerror: null, onupgradeneeded: null, onblocked: null, result: undefined, error: null, readyState: 'pending', source: null, transaction: null });
+    setTimeout(() => {
+      r.readyState = 'done';
+      r.error = new DOMException('IndexedDB is not available', 'UnknownError');
+      const ev = new Event('error', { bubbles: false, cancelable: true });
+      dispatch(r, ev);
+    }, 0);
+    return r;
+  };
+  global.indexedDB = { open: () => failedRequest(), deleteDatabase: () => failedRequest(), databases: () => Promise.resolve([]), cmp: (a, b) => (a < b ? -1 : a > b ? 1 : 0) };
   global.caches = { open: () => Promise.resolve({ match: () => Promise.resolve(undefined), put: () => Promise.resolve(), add: () => Promise.resolve(), addAll: () => Promise.resolve(), delete: () => Promise.resolve(false), keys: () => Promise.resolve([]) }), match: () => Promise.resolve(undefined), has: () => Promise.resolve(false), delete: () => Promise.resolve(false), keys: () => Promise.resolve([]) };
   // Encoding, base64, structured clone, crypto
   global.structuredClone = (v) => (v === undefined ? undefined : N.structuredClone(v));
