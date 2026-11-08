@@ -630,6 +630,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
             Ok(Value::Display(Display::parse(parts)?))
         }
         Grammar::GridLine => grid::parse_line(parts),
+        Grammar::GridAreas => grid::parse_areas(parts),
         Grammar::GridAutoFlow => {
             let (mut flow, mut dense) = (None, false);
             if parts.len() > 2 {
@@ -738,7 +739,7 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
             unsupported_function(c)?;
             Numeric::compile(c, NumericKind::LengthPercentage, Range::Nonnegative, limits, cancelled).map(Value::Numeric)
         }
-        Grammar::Display | Grammar::FontFamily | Grammar::FontStyle | Grammar::Tracks | Grammar::GridLine | Grammar::GridAutoFlow => Err(Error::Invalid),
+        Grammar::Display | Grammar::FontFamily | Grammar::FontStyle | Grammar::Tracks | Grammar::GridAreas | Grammar::GridLine | Grammar::GridAutoFlow => Err(Error::Invalid),
         Grammar::Images
         | Grammar::Sizes
         | Grammar::Positions

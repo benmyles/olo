@@ -169,7 +169,7 @@ impl Job<'_> {
     /// as `minmax(0, 1fr)`: as many as can be filled); with the range of
     /// an `auto-fit` repeat, whose empty tracks collapse after placement.
     fn tracks(&mut self, value: &Value, available: Option<f64>, gap: f64, queries: QueryBasis, items: usize) -> Result<(Vec<Track>, Option<(usize, usize)>)> {
-        let Value::Tracks(Tracks(entries)) = value else { return Ok((Vec::new(), None)) };
+        let Value::Tracks(Tracks(entries, _)) = value else { return Ok((Vec::new(), None)) };
         let mut out = Vec::new();
         let mut fit = None;
         for entry in entries.iter() {
@@ -534,12 +534,34 @@ impl Job<'_> {
             let auto_columns = self.auto_tracks(style.value(P::GridAutoColumns), Some(width), queries)?;
             let auto_rows = self.auto_tracks(style.value(P::GridAutoRows), height, queries)?;
             let flow_column = matches!(keyword(style, P::GridAutoFlow), K::Column | K::ColumnDense);
+            // Named areas: the explicit grid as large as they are (its extra
+            // tracks the auto ones), their edges named lines.
+            let areas = match style.value(P::GridTemplateAreas) {
+                Value::GridAreas(a) => Some(a.clone()),
+                _ => None,
+            };
+            let mut explicit_rows = explicit_rows;
+            if let Some(a) = &areas {
+                while columns.len() < a.columns as usize {
+                    let i = columns.len();
+                    columns.push(auto_columns[i % auto_columns.len()]);
+                }
+                while explicit_rows.len() < a.rows as usize {
+                    let i = explicit_rows.len();
+                    explicit_rows.push(auto_rows[i % auto_rows.len()]);
+                }
+            }
+            let column_names = line_names(style.value(P::GridTemplateColumns), columns.len(), areas.as_ref(), true);
+            let row_names = line_names(style.value(P::GridTemplateRows), explicit_rows.len(), areas.as_ref(), false);
             let explicit_columns = columns.len();
             for item in &mut items {
                 let c = cache.tree.get(item.id).ok_or(Error::Invalid)?;
                 if !matches!(c.kind, BoxKind::InlineContent { .. }) {
                     let s = cache.tree.style(item.id).ok_or(Error::Stale)?;
-                    item.cell = Cell { columns: lines(s, P::GridColumnStart, P::GridColumnEnd, explicit_columns), rows: lines(s, P::GridRowStart, P::GridRowEnd, explicit_rows.len()) };
+                    item.cell = Cell {
+                        columns: lines(s, P::GridColumnStart, P::GridColumnEnd, explicit_columns, &column_names),
+                        rows: lines(s, P::GridRowStart, P::GridRowEnd, explicit_rows.len(), &row_names),
+                    };
                 } else {
                     item.cell = Cell { columns: (usize::MAX, 1), rows: (usize::MAX, 1) };
                 }
@@ -1208,9 +1230,52 @@ fn size_tracks(tracks: &[Track], items: &[(usize, usize, f64, f64)], available: 
     }
     base.iter().map(|v| used::grid(v.max(0.), scale)).collect()
 }
+/// An axis's named lines (index from 0, name): its track list's, through
+/// an auto-repeat expanded to `tracks`, and its areas' edges (`a-start`,
+/// `a-end`), in line order.
+fn line_names(value: &Value, tracks: usize, areas: Option<&crate::css::properties::GridAreas>, columns: bool) -> Vec<(usize, Arc<str>)> {
+    let mut out: Vec<(usize, Arc<str>)> = Vec::new();
+    if let Value::Tracks(Tracks(entries, names)) = value
+        && !names.is_empty()
+    {
+        // Lines after an auto-repeat move by its extra copies.
+        let mut at = 0usize;
+        let mut repeat = None;
+        for e in entries.iter() {
+            match e {
+                TrackEntry::Track(_) => at += 1,
+                TrackEntry::AutoRepeat(_, body) => {
+                    repeat = Some((at, body.len()));
+                    at += body.len();
+                }
+            }
+        }
+        let extra = tracks.saturating_sub(at);
+        for (line, name) in names.iter() {
+            let line = *line as usize;
+            let line = match repeat {
+                Some((start, body)) if line >= start + body => line + extra,
+                _ => line,
+            };
+            out.push((line, name.clone()));
+        }
+    }
+    if let Some(a) = areas {
+        for (name, [r0, c0, r1, c1]) in a.areas.iter() {
+            let (start, end) = if columns { (*c0, *c1) } else { (*r0, *r1) };
+            out.push((start as usize, Arc::from(format!("{name}-start"))));
+            out.push((end as usize, Arc::from(format!("{name}-end"))));
+        }
+    }
+    out.sort_by_key(|(l, _)| *l);
+    out
+}
 /// Resolve an item's lines from its style into track index ranges, with
-/// usize::MAX marking an automatic start.
-pub(super) fn lines(style: &Style, start: P, end: P, explicit: usize) -> (usize, usize) {
+/// usize::MAX marking an automatic start. A named line is the first (or
+/// nth) line with that name; a bare name at a start is the `name-start`
+/// line an area gives, at an end its `name-end`, else a line of that
+/// name; a name no line has is the first line past the explicit grid.
+pub(super) fn lines(style: &Style, start: P, end: P, explicit: usize, names: &[(usize, Arc<str>)]) -> (usize, usize) {
     use crate::css::properties::GridLine;
     let line = |p: P| -> Option<GridLine> {
         match style.value(p) {
@@ -1218,16 +1283,29 @@ pub(super) fn lines(style: &Style, start: P, end: P, explicit: usize) -> (usize,
             _ => None,
         }
     };
-    let resolve = |l: &GridLine| -> Option<usize> {
-        if l.span || l.name.is_some() && l.number.is_none() {
+    let nth = |name: &str, n: i32| -> Option<usize> {
+        let found: Vec<usize> = names.iter().filter(|(_, x)| &**x == name).map(|(l, _)| *l).collect();
+        if n > 0 { found.get(n as usize - 1).copied() } else { found.len().checked_sub(n.unsigned_abs() as usize).and_then(|i| found.get(i).copied()) }
+    };
+    let resolve = |l: &GridLine, is_start: bool| -> Option<usize> {
+        if l.span {
             return None;
+        }
+        if let Some(name) = &l.name {
+            let found = match l.number {
+                None => nth(&format!("{name}-{}", if is_start { "start" } else { "end" }), 1).or_else(|| nth(name, 1)),
+                Some(n) => nth(name, n),
+            };
+            return Some(found.unwrap_or(explicit + 1 + l.number.map_or(0, |n| n.max(1) as usize - 1)));
         }
         let n = l.number?;
         Some(if n > 0 { (n - 1) as usize } else { (explicit as i64 + 1 + i64::from(n)).max(0) as usize })
     };
     let (s, e) = (line(start), line(end));
+    let resolve_start = |l: &GridLine| resolve(l, true);
+    let resolve_end = |l: &GridLine| resolve(l, false);
     let span_of = |l: &Option<GridLine>| l.as_ref().filter(|l| l.span).and_then(|l| l.number).map(|n| n.max(1) as usize).unwrap_or(1);
-    match (s.as_ref().and_then(resolve), e.as_ref().and_then(resolve)) {
+    match (s.as_ref().and_then(resolve_start), e.as_ref().and_then(resolve_end)) {
         (Some(a), Some(z)) if z > a => (a, z),
         (Some(a), Some(z)) if z < a => (z, a),
         (Some(a), Some(_)) => (a, a + 1),

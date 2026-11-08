@@ -20,6 +20,7 @@ pub(super) enum Grammar {
     Size(SizeKind),
     Display,
     Tracks,
+    GridAreas,
     GridLine,
     GridAutoFlow,
     Radius,
@@ -381,6 +382,7 @@ property_registry! {
     GridColumnStart, "grid-column-start", Grammar::GridLine, "auto", false;
     GridRowEnd, "grid-row-end", Grammar::GridLine, "auto", false;
     GridRowStart, "grid-row-start", Grammar::GridLine, "auto", false;
+    GridTemplateAreas, "grid-template-areas", Grammar::GridAreas, "none", false;
     GridTemplateColumns, "grid-template-columns", Grammar::Tracks, "none", false;
     GridTemplateRows, "grid-template-rows", Grammar::Tracks, "none", false;
     Height, "height", Grammar::Size(SizeKind::Preferred), "auto", false;
@@ -501,7 +503,7 @@ shorthand_registry! {
     // and the not-yet-implemented unicode-bidi are excluded by definition.
     WebkitMask, "-webkit-mask", [MaskImage,MaskPosition,MaskSize,MaskRepeat], Background;
     WebkitTextDecoration, "-webkit-text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor,TextDecorationThickness], TextDecoration;
-    All, "all", [AccentColor,AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,Appearance,AspectRatio,BackdropFilter,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColorScheme,ColumnGap,ContainerName,ContainerType,Content,CounterIncrement,CounterReset,CounterSet,Display,Fill,FillOpacity,FillRule,Filter,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,MixBlendMode,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Quotes,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TableLayout,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextDecorationThickness,TextBoxEdge,TextBoxTrim,TextOrientation,TextOverflow,TextTransform,TextUnderlineOffset,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,TransitionDelay,TransitionDuration,TransitionProperty,TransitionTimingFunction,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [AccentColor,AlignContent,AlignItems,AlignSelf,AnimationDelay,AnimationDirection,AnimationDuration,AnimationFillMode,AnimationIterationCount,AnimationName,AnimationPlayState,AnimationTimingFunction,Appearance,AspectRatio,BackdropFilter,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColorScheme,ColumnGap,ContainerName,ContainerType,Content,CounterIncrement,CounterReset,CounterSet,Display,Fill,FillOpacity,FillRule,Filter,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateAreas,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,MixBlendMode,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Quotes,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TableLayout,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextDecorationThickness,TextBoxEdge,TextBoxTrim,TextOrientation,TextOverflow,TextTransform,TextUnderlineOffset,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,TransitionDelay,TransitionDuration,TransitionProperty,TransitionTimingFunction,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Animation, "animation", [AnimationName,AnimationDuration,AnimationTimingFunction,AnimationDelay,AnimationIterationCount,AnimationDirection,AnimationFillMode,AnimationPlayState], Animation;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
@@ -528,12 +530,12 @@ shorthand_registry! {
     // font-kerning and the rest are not implemented).
     Font, "font", [FontStyle,FontWeight,FontWidth,FontSize,LineHeight,FontFamily,FontFeatureSettings], Font;
     Gap, "gap", [RowGap,ColumnGap], Repeat;
-    Grid, "grid", [GridTemplateRows,GridTemplateColumns,GridAutoRows,GridAutoColumns,GridAutoFlow], Grid;
+    Grid, "grid", [GridTemplateRows,GridTemplateColumns,GridTemplateAreas,GridAutoRows,GridAutoColumns,GridAutoFlow], Grid;
     GridArea, "grid-area", [GridRowStart,GridColumnStart,GridRowEnd,GridColumnEnd], Grid;
     GridColumn, "grid-column", [GridColumnStart,GridColumnEnd], Grid;
     GridGap, "grid-gap", [RowGap,ColumnGap], Repeat;
     GridRow, "grid-row", [GridRowStart,GridRowEnd], Grid;
-    GridTemplate, "grid-template", [GridTemplateRows,GridTemplateColumns], Grid;
+    GridTemplate, "grid-template", [GridTemplateRows,GridTemplateColumns,GridTemplateAreas], Grid;
     Inset, "inset", [Top,Right,Bottom,Left], Quad;
     InsetBlock, "inset-block", [InsetBlockStart,InsetBlockEnd], Repeat;
     InsetInline, "inset-inline", [InsetInlineStart,InsetInlineEnd], Repeat;

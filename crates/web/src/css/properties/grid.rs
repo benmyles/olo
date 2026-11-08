@@ -1,5 +1,5 @@
-//! Grid track lists and grid lines (CSS Grid Layout 2), typed before cascade.
-//! Line names are accepted and dropped; areas and subgrid are not implemented.
+//! Grid track lists, line names, template areas and grid lines (CSS Grid
+//! Layout 2), typed before cascade. Subgrid is not implemented.
 use super::*;
 /// One bound of a track: minmax()'s parts, or both bounds of a plain size.
 #[derive(Clone, Debug)]
@@ -51,21 +51,27 @@ pub enum Entry {
     /// `repeat(auto-fill | auto-fit, …)`: as many copies as fit the container.
     AutoRepeat(AutoRepeat, Arc<[Track]>),
 }
-/// A track list; `none` is the keyword, never an empty list.
+/// Line names: each line's index (counting an auto-repeat's tracks once)
+/// and a name it has.
+pub type LineNames = Arc<[(u32, Arc<str>)]>;
+/// A track list and its line names; `none` is the keyword, never an empty
+/// list.
 #[derive(Clone, Debug)]
-pub struct Tracks(pub Arc<[Entry]>);
+pub struct Tracks(pub Arc<[Entry]>, pub LineNames);
 impl Tracks {
     pub(crate) fn same(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-            || self.0.len() == other.0.len()
-                && self.0.iter().zip(other.0.iter()).all(|(a, b)| match (a, b) {
-                    (Entry::Track(a), Entry::Track(b)) => a.min.same(&b.min) && a.max.same(&b.max),
-                    (Entry::AutoRepeat(ka, ta), Entry::AutoRepeat(kb, tb)) => ka == kb && ta.len() == tb.len() && ta.iter().zip(tb.iter()).all(|(a, b)| a.min.same(&b.min) && a.max.same(&b.max)),
-                    _ => false,
-                })
+        self.1 == other.1
+            && (Arc::ptr_eq(&self.0, &other.0)
+                || self.0.len() == other.0.len()
+                    && self.0.iter().zip(other.0.iter()).all(|(a, b)| match (a, b) {
+                        (Entry::Track(a), Entry::Track(b)) => a.min.same(&b.min) && a.max.same(&b.max),
+                        (Entry::AutoRepeat(ka, ta), Entry::AutoRepeat(kb, tb)) => ka == kb && ta.len() == tb.len() && ta.iter().zip(tb.iter()).all(|(a, b)| a.min.same(&b.min) && a.max.same(&b.max)),
+                        _ => false,
+                    }))
     }
     pub(crate) fn reserved_bytes(&self) -> usize {
-        self.0.len() * size_of::<Entry>()
+        self.1.iter().map(|(_, n)| n.len() + size_of::<(u32, Arc<str>)>()).sum::<usize>()
+            + self.0.len() * size_of::<Entry>()
             + self
                 .0
                 .iter()
@@ -85,8 +91,94 @@ impl Tracks {
                 Entry::AutoRepeat(kind, tracks) => Entry::AutoRepeat(*kind, tracks.iter().map(track).collect::<Result<Vec<_>>>()?.into()),
             });
         }
-        Ok(Self(out.into()))
+        Ok(Self(out.into(), self.1.clone()))
     }
+}
+/// `grid-template-areas`: the named areas of a grid of `rows` × `columns`
+/// cells, each by its lines (row start, column start, row end, column end,
+/// from 0).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GridAreas {
+    pub rows: u32,
+    pub columns: u32,
+    pub areas: Arc<[(Arc<str>, [u32; 4])]>,
+}
+impl GridAreas {
+    pub(crate) fn reserved_bytes(&self) -> usize {
+        self.areas.iter().map(|(n, _)| n.len() + size_of::<(Arc<str>, [u32; 4])>()).sum()
+    }
+}
+/// The areas the strings of a `grid-template-areas` (or `grid-template`)
+/// name: every row as many cells, each name a filled rectangle.
+fn areas(rows: &[&str]) -> Result<GridAreas> {
+    let mut grid: Vec<Vec<Option<&str>>> = Vec::with_capacity(rows.len());
+    for row in rows {
+        // Names, and runs of `.` (a cell no area takes).
+        let mut cells = Vec::new();
+        let mut chars = row.char_indices().peekable();
+        while let Some((i, c)) = chars.next() {
+            if c.is_whitespace() {
+                continue;
+            }
+            let dot = c == '.';
+            let mut end = i + c.len_utf8();
+            while let Some(&(j, d)) = chars.peek() {
+                if d.is_whitespace() || (d == '.') != dot {
+                    break;
+                }
+                end = j + d.len_utf8();
+                chars.next();
+            }
+            cells.push(if dot { None } else { Some(&row[i..end]) });
+        }
+        if cells.is_empty() || grid.first().is_some_and(|first| first.len() != cells.len()) || cells.len() > MAX_TRACKS {
+            return Err(Error::Invalid);
+        }
+        grid.push(cells);
+    }
+    if grid.is_empty() || grid.len() > MAX_TRACKS {
+        return Err(Error::Invalid);
+    }
+    let mut found: Vec<(Arc<str>, [u32; 4])> = Vec::new();
+    for (r, row) in grid.iter().enumerate() {
+        for (c, cell) in row.iter().enumerate() {
+            let Some(name) = cell else { continue };
+            if found.iter().any(|(n, _)| &**n == *name) {
+                continue;
+            }
+            // Its rectangle: from its first cell, as far right and down as
+            // it goes; every cell there its own, and none outside.
+            let width = row[c..].iter().take_while(|x| *x == cell).count();
+            let height = grid[r..].iter().take_while(|g| g[c] == *cell).count();
+            let inside = grid[r..r + height].iter().all(|g| g[c..c + width].iter().all(|x| x == cell));
+            let count = grid.iter().flatten().filter(|x| *x == cell).count();
+            if !inside || count != width * height {
+                return Err(Error::Invalid);
+            }
+            found.push((Arc::from(*name), [r as u32, c as u32, (r + height) as u32, (c + width) as u32]));
+        }
+    }
+    Ok(GridAreas { rows: grid.len() as u32, columns: grid[0].len() as u32, areas: found.into() })
+}
+/// `grid-template-areas`: `none` or strings.
+pub(super) fn parse_areas(parts: &[Component<'_>]) -> Result<Value> {
+    if let [c] = parts
+        && is_ident(*c, "none")
+    {
+        return Ok(Value::Keyword(Keyword::None));
+    }
+    let rows: Vec<&str> = parts.iter().map(|c| if c.kind() == Kind::String { c.text().ok_or(Error::Invalid) } else { Err(Error::Invalid) }).collect::<Result<_>>()?;
+    Ok(Value::GridAreas(areas(&rows)?))
+}
+/// The names in a `[…]` of a track list.
+fn names_in(c: Component<'_>, line: u32, out: &mut Vec<(u32, Arc<str>)>) -> Result<()> {
+    for n in c.children().filter(|c| c.kind() != Kind::Whitespace) {
+        if n.kind() != Kind::Ident || is_ident(n, "span") || is_ident(n, "auto") {
+            return Err(Error::Invalid);
+        }
+        out.push((line, Arc::from(n.text().unwrap())));
+    }
+    Ok(())
 }
 /// A grid line: `auto` is the keyword; an integer, a span, or a name.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -155,12 +247,14 @@ fn track(c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Re
         _ => Track { min: s.clone(), max: s },
     })
 }
-/// Tracks of one `repeat()` body or a whole list, line names dropped.
-fn tracks<'a>(components: impl Iterator<Item = Component<'a>>, out: &mut Vec<Track>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<()> {
+/// Tracks of one `repeat()` body, and its line names (by line, from its
+/// first).
+fn tracks<'a>(components: impl Iterator<Item = Component<'a>>, out: &mut Vec<Track>, names: &mut Vec<(u32, Arc<str>)>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<()> {
     for c in components.filter(|c| c.kind() != Kind::Whitespace) {
         check(cancelled)?;
         if c.kind() == Kind::Square {
-            continue; // Line names.
+            names_in(c, out.len() as u32, names)?;
+            continue;
         }
         if out.len() >= MAX_TRACKS {
             return Err(Error::Limit);
@@ -184,10 +278,14 @@ pub(super) fn parse_tracks<'a>(values: impl Iterator<Item = Component<'a>>, limi
         return Err(Error::Invalid);
     }
     let mut entries = Vec::new();
+    let mut names = Vec::new();
+    // The line the next track starts at (an auto-repeat's tracks counted once).
+    let mut line = 0u32;
     let mut auto_repeats = 0;
     for c in components {
         check(cancelled)?;
         if c.kind() == Kind::Square {
+            names_in(c, line, &mut names)?;
             continue;
         }
         if c.kind() == Kind::Function && c.text().unwrap().eq_ignore_ascii_case("repeat") {
@@ -197,7 +295,8 @@ pub(super) fn parse_tracks<'a>(values: impl Iterator<Item = Component<'a>>, limi
                 return Err(Error::Invalid);
             }
             let mut body = Vec::new();
-            tracks(c.children().between(count.after(), c.after()).skip_while(|c| c.kind() != Kind::Comma).skip(1), &mut body, limits, cancelled)?;
+            let mut body_names = Vec::new();
+            tracks(c.children().between(count.after(), c.after()).skip_while(|c| c.kind() != Kind::Comma).skip(1), &mut body, &mut body_names, limits, cancelled)?;
             if body.is_empty() {
                 return Err(Error::Invalid);
             }
@@ -206,6 +305,9 @@ pub(super) fn parse_tracks<'a>(values: impl Iterator<Item = Component<'a>>, limi
                 if auto_repeats > 1 {
                     return Err(Error::Invalid);
                 }
+                // (Its names, on its first copy's lines.)
+                names.extend(body_names.into_iter().map(|(l, n)| (line + l, n)));
+                line += body.len() as u32;
                 entries.push(Entry::AutoRepeat(if is_ident(count, "auto-fill") { AutoRepeat::Fill } else { AutoRepeat::Fit }, body.into()));
                 continue;
             }
@@ -214,7 +316,9 @@ pub(super) fn parse_tracks<'a>(values: impl Iterator<Item = Component<'a>>, limi
                 return Err(Error::Limit);
             }
             for _ in 0..n {
+                names.extend(body_names.iter().map(|(l, name)| (line + l, name.clone())));
                 entries.extend(body.iter().cloned().map(Entry::Track));
+                line += body.len() as u32;
             }
             continue;
         }
@@ -222,11 +326,12 @@ pub(super) fn parse_tracks<'a>(values: impl Iterator<Item = Component<'a>>, limi
             return Err(Error::Limit);
         }
         entries.push(Entry::Track(track(c, limits, cancelled)?));
+        line += 1;
     }
     if entries.is_empty() {
         return Err(Error::Invalid);
     }
-    Ok(Value::Tracks(Tracks(entries.into())))
+    Ok(Value::Tracks(Tracks(entries.into(), names.into())))
 }
 /// `auto | <integer> <ident>? | span <integer>? <ident>? | <ident>`.
 pub(super) fn parse_line(parts: &[Component<'_>]) -> Result<Value> {
@@ -310,19 +415,70 @@ pub(super) fn parse_shorthand(shorthand: Shorthand, values: Components<'_>, limi
             if components.len() == 1 && is_ident(components[0], "none") {
                 return Ok(properties.iter().map(|&property| Assignment { property, value: Value::Wide(variables::Wide::Initial) }).collect());
             }
-            let [slash] = slashes.as_slice() else { return Err(Error::Unsupported("grid template areas shorthand")) };
+            // `[names]? "row" <size>? [names]? … [/ <track-list>]?`: the areas
+            // with their rows (auto unless sized), and the columns.
+            let strings = components.iter().take_while(|c| c.character() != Some('/')).any(|c| c.kind() == Kind::String);
+            if strings {
+                if slashes.len() > 1 || components.iter().any(|c| is_ident(*c, "auto-flow")) {
+                    return Err(Error::Invalid);
+                }
+                let before: Vec<Component<'_>> = components.iter().take_while(|c| c.character() != Some('/')).copied().collect();
+                let mut rows = Vec::new();
+                let mut row_tracks = Vec::new();
+                let mut names = Vec::new();
+                let mut sized = true;
+                for c in before {
+                    check(cancelled)?;
+                    match c.kind() {
+                        Kind::String => {
+                            if !sized {
+                                row_tracks.push(Track { min: TrackSize::Auto, max: TrackSize::Auto });
+                            }
+                            rows.push(c.text().ok_or(Error::Invalid)?);
+                            sized = false;
+                        }
+                        Kind::Square => names_in(c, if sized { row_tracks.len() } else { row_tracks.len() + 1 } as u32, &mut names)?,
+                        _ if !sized => {
+                            row_tracks.push(track(c, limits, cancelled)?);
+                            sized = true;
+                        }
+                        _ => return Err(Error::Invalid),
+                    }
+                }
+                if !sized {
+                    row_tracks.push(Track { min: TrackSize::Auto, max: TrackSize::Auto });
+                }
+                let areas = areas(&rows)?;
+                let columns = match slashes.as_slice() {
+                    [_] => parse_tracks(values.skip_while(|c| c.character() != Some('/')).skip(1), limits, cancelled)?,
+                    _ => Value::Keyword(Keyword::None),
+                };
+                if let Value::Tracks(t) = &columns
+                    && t.0.len() != areas.columns as usize
+                {
+                    return Err(Error::Invalid);
+                }
+                let rows = Value::Tracks(Tracks(row_tracks.into_iter().map(Entry::Track).collect::<Vec<_>>().into(), names.into()));
+                let mut out: Assignments = smallvec::smallvec![
+                    Assignment { property: Property::GridTemplateRows, value: rows },
+                    Assignment { property: Property::GridTemplateColumns, value: columns },
+                    Assignment { property: Property::GridTemplateAreas, value: Value::GridAreas(areas) },
+                ];
+                for &property in properties.iter().filter(|p| !matches!(p, Property::GridTemplateRows | Property::GridTemplateColumns | Property::GridTemplateAreas)) {
+                    out.push(Assignment { property, value: Value::Wide(variables::Wide::Initial) });
+                }
+                return Ok(out);
+            }
+            let [slash] = slashes.as_slice() else { return Err(Error::Unsupported("grid shorthand without a slash")) };
             let rows_source = values.clone().take_while(|c| c.character() != Some('/'));
             let columns_source = values.skip_while(|c| c.character() != Some('/')).skip(1);
-            if components[..*slash].iter().any(|c| c.kind() == Kind::String)
-                || components[slash + 1..].iter().any(|c| is_ident(*c, "auto-flow"))
-                || components[..*slash].iter().any(|c| is_ident(*c, "auto-flow"))
-            {
-                return Err(Error::Unsupported("grid template areas or auto-flow shorthand"));
+            if components[slash + 1..].iter().any(|c| is_ident(*c, "auto-flow")) || components[..*slash].iter().any(|c| is_ident(*c, "auto-flow")) {
+                return Err(Error::Unsupported("grid auto-flow shorthand"));
             }
             let rows = parse_tracks(rows_source, limits, cancelled)?;
             let columns = parse_tracks(columns_source, limits, cancelled)?;
             let mut out: Assignments = smallvec::smallvec![Assignment { property: Property::GridTemplateRows, value: rows }, Assignment { property: Property::GridTemplateColumns, value: columns }];
-            for &property in &properties[2..] {
+            for &property in properties.iter().filter(|p| !matches!(p, Property::GridTemplateRows | Property::GridTemplateColumns)) {
                 out.push(Assignment { property, value: Value::Wide(variables::Wide::Initial) });
             }
             Ok(out)

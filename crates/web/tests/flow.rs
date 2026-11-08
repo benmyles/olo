@@ -780,6 +780,46 @@ fn fixed_and_sticky_boxes_are_laid_out_without_fallbacks() {
 }
 
 #[test]
+fn grid_areas_and_named_lines_place_items() {
+    // MDN's layout: items placed by `grid-area` names (in source order the
+    // other way round), the areas' edges named lines, line names from a
+    // track list (one after an auto-repeat moved by its copies), and the
+    // `grid-template` strings form.
+    let s = scope();
+    let mut e = Engine::default();
+    let (d, t) = tree(
+        "<div id=g><div id=h class=h>H</div><div id=s class=s>S</div><div id=b class=b>B</div><div id=n style='grid-column:content-start/full-end;grid-row:3'>N</div><div id=e style='grid-column:side-end'>E</div></div>",
+        "#g{display:grid;grid-template-areas:'side . header' 'side . body';grid-template-columns:[full-start] 100px [side-end] 10px [content-start] 1fr [full-end]}.h{grid-area:header}.b{grid-area:body}.s{grid-area:side}",
+        &s,
+        1,
+    );
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    assert_eq!(rect(&d, &l, "s"), layout::Rect { x: 0., y: 0., width: 100., height: 40. }, "the side area spans both rows");
+    assert_eq!(rect(&d, &l, "h"), layout::Rect { x: 110., y: 0., width: 290., height: 20. });
+    assert_eq!(rect(&d, &l, "b"), layout::Rect { x: 110., y: 20., width: 290., height: 20. });
+    assert_eq!(rect(&d, &l, "n"), layout::Rect { x: 110., y: 40., width: 290., height: 20. });
+    // `side-end` as a start: the line the area ends on (an explicit name too).
+    assert_eq!(rect(&d, &l, "e").x, 100.);
+    // After `repeat(auto-fill, …)`: the name moves past its copies.
+    let (d, t) = tree("<div id=g><div id=a style='grid-column:last'>A</div></div>", "#g{display:grid;grid-template-columns:repeat(auto-fill,50px) [last] 100px}", &s, 1);
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    assert_eq!(rect(&d, &l, "a"), layout::Rect { x: 300., y: 0., width: 100., height: 20. });
+    // The strings form of `grid-template`: areas and row sizes together.
+    let (d, t) = tree(
+        "<div id=g><div id=a style='grid-area:foot'>A</div><div id=b style='grid-area:top'>B</div></div>",
+        "#g{display:grid;grid-template:'top top' 30px 'foot .' 1fr / 100px 1fr;height:100px}",
+        &s,
+        1,
+    );
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    assert_eq!(rect(&d, &l, "b"), layout::Rect { x: 0., y: 0., width: 400., height: 30. });
+    assert_eq!(rect(&d, &l, "a"), layout::Rect { x: 0., y: 30., width: 100., height: 70. });
+}
+
+#[test]
 fn grid_tracks_place_items_and_size_rows_from_content() {
     let s = scope();
     let mut e = Engine::default();

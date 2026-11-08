@@ -171,6 +171,7 @@ fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_
         p::Value::Inset(shape) => Value::Inset(shape.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
         p::Value::Tracks(tracks) => Value::Tracks(tracks.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
         p::Value::GridLine(line) => Value::GridLine(line),
+        p::Value::GridAreas(areas) => Value::GridAreas(areas),
         p::Value::Radius(r) => Value::Radius(r.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
         p::Value::Sizes(s) => Value::Sizes(s.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
         p::Value::Positions(p) => Value::Positions(p.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),

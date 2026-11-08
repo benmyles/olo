@@ -6830,3 +6830,8 @@ the Guardian and old Reddit, looking for pages that fail outright:
   BBC 870–1141 → 717–792 ms, apple.com 593–603 → 466–546 ms,
   Wikipedia's "Web browser" 683–859 → 369–446 ms; settled pages
   pixel-identical.
+- **Grid areas and named lines.** `grid-template-areas`, line names in
+  track lists (through `repeat()`), the areas' `-start`/`-end` lines and
+  the strings form of `grid-template` place items by name (they were
+  dropped, so every item was auto-placed): MDN's contents column and
+  article now sit side by side as in Chrome.

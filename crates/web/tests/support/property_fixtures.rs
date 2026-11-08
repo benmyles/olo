@@ -43,7 +43,7 @@ fn compare(value: &Value, expected: &Json, property: &str) -> Check {
     }
     let expected = expected.as_str().ok_or_else(|| unsupported("non-string scalar reference"))?;
     match value {
-        Value::Tracks(_) | Value::GridLine(_) => Err(unsupported("grid value reference")),
+        Value::Tracks(_) | Value::GridAreas(_) | Value::GridLine(_) => Err(unsupported("grid value reference")),
         Value::Radius(_)
         | Value::Images(_)
         | Value::Shadows(_)

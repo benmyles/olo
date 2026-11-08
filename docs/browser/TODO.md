@@ -183,8 +183,9 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   `::before`/`::after` generated content (strings, attr()).
 - [ ] Text: word-break/overflow-wrap (583), text-decoration (28),
   text-transform, counters and quotes in `content`.
-- [ ] MDN's layout (its sidebar and article overlap; the search box shows
-  open); old Reddit's login dialog (a `faceplate-partial` its app loads)
+- [ ] MDN: its two columns are placed as Chrome's (grid areas, JOURNAL
+  2026-11-08 night); the search box still shows open, the language menu
+  twice, the Baseline panel expanded, the contents' current entry unmarked; old Reddit's login dialog (a `faceplate-partial` its app loads)
   never shows; Amazon's front page is its AWS WAF challenge, which fetches
   its inputs and then waits on something that never comes (no verify
   request; blob workers, Web Crypto and FormData bodies work).

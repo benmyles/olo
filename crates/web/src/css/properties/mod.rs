@@ -17,7 +17,7 @@ pub use content::{Content, ContentPart};
 pub use decoration::{Direction, Filter, Filters, Image, Images, Positions, RadialSize, Radius, RepeatAxis, Repeats, Shadow, Shadows, Size, Sizes, Stop, color_matrix};
 pub use display::{Display, Inner, Internal, Outer};
 pub use font::{Families, Family, Feature, Features, GenericFamily};
-pub use grid::{AutoRepeat, Entry as TrackEntry, GridLine, Track, TrackSize, Tracks};
+pub use grid::{AutoRepeat, Entry as TrackEntry, GridAreas, GridLine, LineNames, Track, TrackSize, Tracks};
 pub use numeric::{Numeric, NumericKind, Range};
 pub use registry::{Keyword, Name, Property, Shorthand};
 use smallvec::SmallVec;
@@ -99,6 +99,7 @@ pub enum Value {
     LocalUrl(LocalUrl),
     Inset(Inset),
     Tracks(Tracks),
+    GridAreas(GridAreas),
     GridLine(GridLine),
     Radius(Radius),
     Images(Images<color::Value>),
@@ -134,6 +135,7 @@ impl Value {
             Self::Inset(s) => s.reserved_bytes(),
             Self::Tracks(t) => t.reserved_bytes(),
             Self::GridLine(l) => l.reserved_bytes(),
+            Self::GridAreas(a) => a.reserved_bytes(),
             Self::Radius(r) => r.reserved_bytes(),
             Self::Images(i) => i.reserved_bytes(),
             Self::Shadows(s) => s.reserved_bytes(),

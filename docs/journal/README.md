@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: MDN's two-column layout (grid areas)
+
+*12:55* — MDN's article page against Chrome (right) at 1000 px: its contents column and article now sit side by side, placed by grid-template-areas and named lines (they were auto-placed into the wrong columns).
+
+![Browser: MDN's two-column layout (grid areas)](2026-11-08/125551-browser-mdn-s-two-column-layout-grid-areas.png)
+
 ### Browser: select menus
 
 *09:44* — Pressing a select opens the kit's menu field popup over it, its chosen option lying over the select and disabled options greyed; the choice is the select's, with input and change events, as in Chrome.
