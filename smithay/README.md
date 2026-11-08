@@ -54,3 +54,11 @@ What Olo changed, so far (see "Every frame on time" in
 - The damage tracker warns of a step of a frame over 4 ms: beginning
   it, an element's draw (naming the element, its place and kind), or
   finishing it (`slow frame: …`), so a slow frame says where it went.
+- The GLES renderer keeps the last read-back's buffer (`GlesCleanup`'s
+  spare) for the next read-back of its size, a screenshot's 33 MB at 4K,
+  rather than making and freeing one each time; let go 10 s after its
+  last use.
+- Its doctests build in `cargo test --workspace`: it's its own
+  dev-dependency with `renderer_test`, the dummy renderer they use
+  (`cfg(doctest)` doesn't reach the library, rust-lang/rust#67295).
+  Only test builds get it.

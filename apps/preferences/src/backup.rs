@@ -2265,8 +2265,9 @@ mod tests {
         std::fs::write(roots[0].1.join("pool.json"), b"{}").unwrap();
         let parts = parts_here(&roots, &NoSystem);
         let names: Vec<&str> = parts.iter().map(|p| p.0.as_str()).collect();
-        // Its apps' files, and what goes only in a sealed backup.
-        assert_eq!(names, ["GitHub", "Passwords", "Programs’ Secrets", "Telegram", "Terminal", "Token Pool", WIFI_PART]);
+        // Its apps' files, and what goes only in a sealed backup
+        // (DiskBackup's key and its Google sign-in among them).
+        assert_eq!(names, ["DiskBackup", "GitHub", "Passwords", "Programs’ Secrets", "Telegram", "Terminal", "Token Pool", WIFI_PART]);
         assert_eq!(parts.iter().find(|p| p.0 == "Terminal").map(|p| (p.1, p.2)), Some((1, 2)));
         let _ = std::fs::remove_dir_all(&base);
     }
