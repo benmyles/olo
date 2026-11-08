@@ -301,7 +301,13 @@ impl Job<'_> {
         let extra = used.padding.horizontal() + used.border.horizontal();
         let specified = used::length(style, P::Width, Some(available), None, queries, &mut self.scratch, self.cancel, self.scale)?;
         let tracks = vec![Track { min: Bound::Auto, max: Bound::Auto }; columns];
-        let content = if specified.is_some() {
+        let fixed_layout = specified.is_some() && matches!(style.value(P::TableLayout), Value::Keyword(K::Fixed));
+        let content = if specified.is_some() && !fixed_layout {
+            // An auto-layout table is never narrower than its columns' min-content
+            // (CSS 2.2 §17.5.2.2), its width set or not.
+            let mins = size_tracks(&tracks, &contributions, None, sx, false, self.scale);
+            used.width.max(mins.iter().sum::<f64>() + gaps)
+        } else if specified.is_some() {
             used.width
         } else {
             let mins = size_tracks(&tracks, &contributions, None, sx, false, self.scale);
@@ -315,7 +321,7 @@ impl Job<'_> {
         let (widths, content) = if fixed {
             self.fixed_columns(id, columns, (content - gaps).max(0.), sx, queries)?
         } else {
-            (size_tracks(&tracks, &contributions, Some((content - 2. * sx).max(0.)), sx, true, self.scale), content)
+            (auto_columns(&size_tracks(&tracks, &contributions, None, sx, false, self.scale), &column_maxes(columns, &contributions), (content - gaps).max(0.), self.scale), content)
         };
         used.width = used::grid(content, self.scale);
         // Legacy centring (<center>, align=center) centres a table narrower
@@ -1256,4 +1262,34 @@ fn column_maxes(columns: usize, items: &[(usize, usize, f64, f64)]) -> Vec<f64> 
         }
     }
     maxes
+}
+/// An auto-layout table's column widths in `available` (the spacing taken
+/// out), as Chrome's (Blink's AutoTableLayout) gives them: at least their
+/// min-content each; between the columns' total min- and max-content, each
+/// column in turn takes its share of what is left in proportion to its
+/// max-content; past the total max-content, the extra in that proportion.
+fn auto_columns(mins: &[f64], maxes: &[f64], available: f64, scale: f64) -> Vec<f64> {
+    let n = mins.len();
+    let maxes: Vec<f64> = (0..n).map(|i| maxes.get(i).copied().unwrap_or(0.).max(mins[i])).collect();
+    let (total_min, total_max) = (mins.iter().sum::<f64>(), maxes.iter().sum::<f64>());
+    if n == 0 || available <= total_min {
+        return mins.to_vec();
+    }
+    let mut widths = Vec::with_capacity(n);
+    if available >= total_max {
+        let extra = available - total_max;
+        for &m in &maxes {
+            widths.push(m + if total_max > 0. { extra * m / total_max } else { extra / n as f64 });
+        }
+    } else {
+        let (mut left, mut total) = (available, total_max);
+        for i in 0..n {
+            let share = if total > 0. { left * maxes[i] / total } else { left / (n - i) as f64 };
+            let w = share.max(mins[i]).min(left);
+            widths.push(w);
+            left -= w;
+            total -= maxes[i];
+        }
+    }
+    widths.into_iter().map(|w| super::used::grid(w, scale)).collect()
 }

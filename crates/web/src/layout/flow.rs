@@ -1841,7 +1841,12 @@ impl<'a> Job<'a> {
                     let w = self.intrinsic(child, queries, width, 0)?;
                     let mut m = |p| used::length(s, p, Some(width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale).map(|v| v.unwrap_or(0.));
                     let margin = Edges { left: m(P::MarginLeft)?, right: m(P::MarginRight)?, top: 0., bottom: 0. };
-                    (Geometry { border_box: Rect { x: 0., y: 0., width: w.max_content, height: 0. }, margin, ..Default::default() }, margin)
+                    // Its min-content width at the paragraph's min-content (the
+                    // measure at a basis of 0), else its max-content: an
+                    // inline-block of items wraps them where its line can
+                    // (Wikipedia's comma lists made an infobox 1000 px wide).
+                    let used = if width <= 0. { w.min_content } else { w.max_content };
+                    (Geometry { border_box: Rect { x: 0., y: 0., width: used, height: 0. }, margin, ..Default::default() }, margin)
                 } else {
                     let g = self.geometry[child.index()];
                     (g, g.margin)

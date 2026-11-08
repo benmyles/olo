@@ -1089,7 +1089,9 @@ impl<'a> Job<'a> {
             if self.progress.work > self.limits.work {
                 return Err(Error::Limit);
             }
-            if (p.offset <= self.paint_start || p.end.byte < self.paint_start) && !self.spacing.contains(self.spacing_start, self.from, p.offset) {
+            // (A forced break past the line's start ends it, though nothing
+            // before it paints: a collapsed newline, then a <br>.)
+            if (p.offset <= self.paint_start || p.end.byte < self.paint_start && p.kind != Kind::Required) && !self.spacing.contains(self.spacing_start, self.from, p.offset) {
                 self.first = self.scan;
                 continue;
             }

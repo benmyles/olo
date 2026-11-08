@@ -6722,3 +6722,19 @@ DuckDuckGo's HTML search (a POST form, no scripts) rendered unstyled:
   `BackCompat` in quirks mode (it always said `CSS1Compat`).
 - **An inline element's `getBoundingClientRect()`** was zeros: it is the
   union of its pieces on the lines (within 1 px of Chrome's heights).
+
+## 2026-11-08, late afternoon: Wikipedia again
+
+- **Wikipedia's articles were blank** ("flow layout Text(Invalid)"): a
+  paragraph's newline then a `<br>` (which Parsoid writes) left the line
+  breaker with a forced break it took for one before the line's start;
+  it skipped it and ran out of break points. A forced break past the
+  line's start always ends the line.
+- **Its infobox was 1000 px wide inside a 22em table**: an inline-block
+  (its comma-separated lists) counted its max-content width at the
+  paragraph's min-content too; it counts its min-content there.
+- **Auto-layout tables share their spare width as Chrome's do**: by the
+  columns' max-content, in turn, at least each one's min-content (they
+  shared it evenly); and a table with a set width is never narrower than
+  its columns' min-content. Rust's infobox: label column 122 px (Chrome
+  127.6).

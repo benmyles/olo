@@ -918,3 +918,43 @@ fn empty_inlines_in_a_nowrap_container_lay_out() {
     let l = fit(&mut e, &s, c, 400., 1);
     assert_eq!(rect(&d, &l, "b").height, 0.);
 }
+#[test]
+fn a_newline_before_a_br_lays_out() {
+    // Wikipedia's articles: a paragraph's newline, then a <br>, then a block.
+    let s = scope();
+    let mut e = Engine::default();
+    for html in ["\n<br id=b></p>", "\n<br id=b>", "x\n<br id=b>y"] {
+        let (d, t) = tree(html, "html,body,p{display:block}", &s, 1);
+        let c = cache(&mut e, &s, t);
+        let _ = fit(&mut e, &s, c, 600., 1);
+        let _ = d;
+    }
+}
+#[test]
+fn an_inline_block_of_items_wraps_them_at_min_content_and_columns_share_by_max_content() {
+    let s = scope();
+    let mut e = Engine::default();
+    // Wikipedia's comma lists: an inline-block list of inline-block items in
+    // a cell of a narrow table: the cell's minimum is its widest item, so
+    // the table keeps its width and the items wrap.
+    let css = format!("{TABLE} ul{{display:inline-block;margin:0;padding:0}}li{{display:inline-block}}");
+    let (d, t) =
+        tree("<table id=t style='width:200px'><tr><td id=a>Label</td><td id=b><ul><li>alpha</li><li>beta</li><li>gamma</li><li>delta</li><li>epsilon</li></ul></td></tr></table>", &css, &s, 1);
+    // (The test font's glyphs are 20 px wide.)
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 600., 1);
+    let (a, b, table) = (rect(&d, &l, "a"), rect(&d, &l, "b"), rect(&d, &l, "t"));
+    // (At least its columns' min-content: 102 + 142 + spacing here, wider
+    // than the 200 px it asks for, as Chrome lays it out.)
+    assert_eq!(table.width, 102. + 142. + 6., "{table:?}");
+    assert!(b.x + b.width <= table.x + table.width, "{b:?} {table:?}");
+    // Between the columns' total min- and max-content, the spare width goes
+    // by max-content (Chrome's auto layout): the wide column gets more.
+    let (d, t) =
+        tree("<table id=t style='width:500px'><tr><td id=a>Label</td><td id=b><ul><li>alpha</li><li>beta</li><li>gamma</li><li>delta</li><li>epsilon</li></ul></td></tr></table>", &css, &s, 1);
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 600., 1);
+    let (a, b) = (rect(&d, &l, "a"), rect(&d, &l, "b"));
+    assert!(b.width > a.width * 2., "{a:?} {b:?}");
+    assert_eq!(a.width + b.width + 6., 500.);
+}
