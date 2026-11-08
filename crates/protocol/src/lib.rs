@@ -24,6 +24,7 @@ pub mod mice;
 pub mod notifications;
 pub mod panels;
 pub mod performance;
+pub mod power_button;
 pub mod recording;
 pub mod rescue;
 pub mod sharing;
@@ -962,6 +963,9 @@ pub enum EventKind {
     /// [`Event::TouchContacts`]: only by name, as it comes with each of
     /// the pad's reports (Preferences' palm trainer).
     TouchContacts,
+    /// [`Event::PowerButton`]: only by name (Deskbar's), so a program
+    /// from before it, subscribed to all, never meets it.
+    PowerButton,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1034,6 +1038,15 @@ pub enum Event {
         #[serde(default)]
         button: bool,
     },
+    /// The built-in power button did `action` (pressed, or held for its
+    /// seconds): Deskbar asks first for the "Asking First" ones; the rest
+    /// app_server has done. `done`: false where app_server only says it
+    /// (a headless session never restarts the computer).
+    PowerButton {
+        action: power_button::PowerAction,
+        #[serde(default)]
+        done: bool,
+    },
 }
 
 fn no_key() -> u64 {
@@ -1055,6 +1068,7 @@ impl Event {
             Event::Painted { .. } => EventKind::Painted,
             Event::TouchContacts { .. } => EventKind::TouchContacts,
             Event::InputDevicesChanged { .. } => EventKind::InputDevices,
+            Event::PowerButton { .. } => EventKind::PowerButton,
             Event::KeyGrab { .. } => return None,
         })
     }
@@ -2315,6 +2329,8 @@ pub struct KeyboardSettings {
     /// How quickly a double press (Control twice, for hints) must come,
     /// in milliseconds: the second press within this of the first.
     pub double_press_ms: u32,
+    /// What the built-in power button does, pressed and held.
+    pub power_button: power_button::PowerButton,
 }
 
 /// [`Request::Overview`]'s answer: what the overview shows.
@@ -2461,6 +2477,7 @@ impl Default for KeyboardSettings {
             find_on_command_tap: None,
             hints: false,
             double_press_ms: 400,
+            power_button: power_button::PowerButton::default(),
             terminal_apps: ["olo.terminal", "org.gnome.Ptyxis", "org.gnome.Console", "org.gnome.Terminal", "com.mitchellh.ghostty", "foot", "kitty", "Alacritty", "org.wezfurlong.wezterm"]
                 .map(String::from)
                 .to_vec(),

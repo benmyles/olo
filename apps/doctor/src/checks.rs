@@ -48,6 +48,11 @@ const SECURITY_KEY_RULE_PATH: &str = "etc/udev/rules.d/74-olo-security-keys.rule
 
 /// The presence sensor's buffer for the session (`presence_rule`).
 pub const PRESENCE_RULE: &str = include_str!("../../../data/udev/73-olo-presence.rules");
+/// Olo's helper for the power button's "Immediately" (Preferences ▸
+/// Keyboard): its unit and the polkit rule that lets the person at the
+/// computer start it.
+pub const POWER_NOW_UNIT: &str = include_str!("../../../data/systemd/olo-power-now@.service");
+pub const POWER_NOW_RULES: &str = include_str!("../../../data/polkit/49-olo-power-now.rules");
 const PRESENCE_RULE_PATH: &str = "etc/udev/rules.d/73-olo-presence.rules";
 /// Where the login screen's entry goes (tools/install-session.sh): where
 /// GDM and SDDM always look, or on an atomic system (its /usr read-only)
@@ -562,6 +567,7 @@ pub fn scan(roots: &Roots) -> Report {
     login_keyring(roots, &mut r);
     secrets_store(roots, &procs, &mut r);
     presence_rule(roots, &mut r);
+    power_now(roots, &mut r);
     security_keys(roots, &mut r);
     panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
@@ -1806,6 +1812,40 @@ fn secrets_store(roots: &Roots, procs: &[Proc], r: &mut Report) {
 
 /// A human presence sensor (a ThinkPad's "prox"), and Olo's rule that
 /// gives the session its buffer (Preferences ▸ Power ▸ Presence).
+/// The power button's "Restart Immediately" and "Shut Down Immediately"
+/// (a hold, by default ten seconds' shuts down at once): done by Olo's
+/// helper unit, which only root can install. Its unit is what's checked:
+/// polkit's rules folder isn't readable by the person, and the fix writes
+/// both.
+fn power_now(roots: &Roots, r: &mut Report) {
+    let input = roots.fs.join("sys/class/input");
+    let button = std::fs::read_dir(&input).into_iter().flatten().flatten().any(|e| read(&e.path().join("name")).is_some_and(|n| n.trim() == "Power Button"));
+    if !button {
+        return;
+    }
+    let unit = roots.fs.join(olo_protocol::power_button::HELPER_UNIT_PATH.trim_start_matches('/'));
+    let installed = std::fs::read_to_string(&unit).ok();
+    if installed.as_deref() == Some(POWER_NOW_UNIT) {
+        r.fine.push(Fine { title: "The power button can restart and shut down at once".into(), detail: "Olo's helper is installed (olo-power-now@.service).".into() });
+        return;
+    }
+    r.findings.push(Finding {
+        id: "power-now".into(),
+        severity: Severity::Advice,
+        title: if installed.is_some() { "Olo's power button helper is out of date".into() } else { "The power button can't restart or shut down at once".into() },
+        detail: "Held, the power button can restart or shut the computer down immediately (Preferences ▸ Keyboard: by default, held ten seconds): every program ended and the disks written out, without waiting for the orderly stop. That takes a small system helper, which only the administrator can install; without it, Immediately does what Restart and Shut Down do. The fix installs olo-power-now@.service and a polkit rule that lets the person at the computer start it, nothing else.".into(),
+        fix: Some(Fix {
+            label: if installed.is_some() { "Update the Helper".into() } else { "Install the Helper".into() },
+            root: true,
+            steps: vec![
+                Step::WriteFile { path: PathBuf::from(olo_protocol::power_button::HELPER_UNIT_PATH), content: POWER_NOW_UNIT.into(), mode: 0o644 },
+                Step::WriteFile { path: PathBuf::from(olo_protocol::power_button::HELPER_RULES_PATH), content: POWER_NOW_RULES.into(), mode: 0o644 },
+                Step::Unit { name: "olo-power-now@.service".into(), action: UnitAction::Reload },
+            ],
+        }),
+    });
+}
+
 fn presence_rule(roots: &Roots, r: &mut Report) {
     let iio = roots.fs.join("sys/bus/iio/devices");
     let Some(sensor) = std::fs::read_dir(&iio).into_iter().flatten().flatten().map(|e| e.path()).find(|p| read(&p.join("name")).is_some_and(|n| n.trim() == "prox")) else { return };
@@ -2690,6 +2730,35 @@ mod tests {
             assert!(matches!(&steps[1], Step::WriteSysfs { path, .. } if path == Path::new("/sys/class/hidraw/hidraw4/uevent")));
             assert_eq!(steps.len(), 2);
         }
+        let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    /// The power button's helper: offered where there's a power button,
+    /// its unit and rule written and systemd reloaded; fine once its unit
+    /// is this build's; an older unit, updated.
+    #[test]
+    fn the_power_buttons_helper() {
+        let (fs, roots) = machine("power-now");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let ours = |r: &Report| r.findings.iter().find(|f| f.id == "power-now").cloned();
+        // No power button (an agent's screen, a server): nothing said.
+        assert!(ours(&scan(&roots)).is_none());
+        w("sys/class/input/input2/name", "Power Button\n");
+        let f = ours(&scan(&roots)).expect("offered");
+        assert_eq!(f.title, "The power button can't restart or shut down at once");
+        let steps = &f.fix.as_ref().unwrap().steps;
+        assert!(matches!(&steps[0], Step::WriteFile { path, content, .. } if path == Path::new("/etc/systemd/system/olo-power-now@.service") && content == POWER_NOW_UNIT));
+        assert!(matches!(&steps[1], Step::WriteFile { path, content, .. } if path == Path::new("/etc/polkit-1/rules.d/49-olo-power-now.rules") && content == POWER_NOW_RULES));
+        assert!(matches!(&steps[2], Step::Unit { action: UnitAction::Reload, .. }));
+        w("etc/systemd/system/olo-power-now@.service", "an older one");
+        assert_eq!(ours(&scan(&roots)).unwrap().title, "Olo's power button helper is out of date");
+        w("etc/systemd/system/olo-power-now@.service", POWER_NOW_UNIT);
+        let r = scan(&roots);
+        assert!(ours(&r).is_none() && r.fine.iter().any(|f| f.title == "The power button can restart and shut down at once"));
         let _ = std::fs::remove_dir_all(&fs);
     }
 

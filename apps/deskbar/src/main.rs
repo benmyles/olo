@@ -141,6 +141,9 @@ enum Msg {
     Workspace(u32, u32, Vec<DisplayWorkspace>),
     Status(status::Status),
     Power(olo_protocol::PowerStatus),
+    /// The power button held for an "Asking First" (app_server's
+    /// power_button.rs): its alert, as the menu's Restart and Shut Down.
+    PowerButton(Power),
     /// Undo and Redo Window Arrangement's names (None: nothing to).
     Arrangement(Option<String>, Option<String>),
     Settings(Settings),
@@ -1325,6 +1328,7 @@ impl Deskbar {
                 self.status = s;
             }
             Msg::Arrangement(undo, redo) => self.arrangement = (undo, redo),
+            Msg::PowerButton(action) => self.confirm_power(action, cx),
             Msg::Power(p) => {
                 // (Nothing read for widgets nobody can see.)
                 self.live.pause(p.display_asleep || p.locked, &self.proxy);
@@ -3155,7 +3159,7 @@ fn watch_server(proxy: olo_ui::Proxy) {
                         proxy.send(Msg::Outputs(outputs));
                     }
                     use olo_protocol::EventKind as K;
-                    if let Ok(events) = c.into_events_of(&[K::Windows, K::Workspace, K::Power, K::Settings, K::Outputs, K::ArrangementUndo]) {
+                    if let Ok(events) = c.into_events_of(&[K::Windows, K::Workspace, K::Power, K::Settings, K::Outputs, K::ArrangementUndo, K::PowerButton]) {
                         // Displays that came while this was subscribing
                         // (after an upgrade they come one by one): asked
                         // again, now that what changes from here comes as
@@ -3173,6 +3177,8 @@ fn watch_server(proxy: olo_ui::Proxy) {
                                 Event::ArrangementUndoChanged { undo, redo } => proxy.send(Msg::Arrangement(undo, redo)),
                                 Event::SettingsChanged { settings } => proxy.send(settings_msg(settings)),
                                 Event::OutputsChanged { outputs } => proxy.send(Msg::Outputs(outputs)),
+                                Event::PowerButton { action: olo_protocol::power_button::PowerAction::RestartAsk, done: true } => proxy.send(Msg::PowerButton(Power::Restart)),
+                                Event::PowerButton { action: olo_protocol::power_button::PowerAction::ShutDownAsk, done: true } => proxy.send(Msg::PowerButton(Power::ShutDown)),
                                 _ => {}
                             }
                         }

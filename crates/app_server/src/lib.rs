@@ -48,6 +48,7 @@ pub mod overview;
 pub mod pace;
 pub mod plymouth;
 pub mod power;
+pub mod power_button;
 pub mod private;
 pub mod rescue;
 pub mod saver;

@@ -5188,6 +5188,43 @@ would have. `OLO_KEYBOARDS_DEMO=1` lists the layout lint's
 made-up keyboards (a laptop's and the A2520), to look at headless;
 `ui_lint_keyboards_tab` lints the tab with them.
 
+**The power button** (Preferences ▸ Keyboard ▸ Power Button, Ben
+2026-11-08; `olo_protocol::power_button`, app_server's
+`power_button.rs`): what the computer's own button does pressed, and
+held for each hold's seconds (`KeyboardSettings::power_button`: a
+`press` and `holds`, each from `PowerAction`: Nothing, Lock the Screen,
+Log Out, and Restart and Shut Down three ways each: asking first, not
+asking, immediately). By default a press does nothing, 3 s restarts
+asking first and 10 s shuts down immediately. logind shut the computer
+down on a press (`HandlePowerKey=poweroff`); app_server holds its
+`handle-power-key` lock for the session (`power.rs`'s worker, beside
+`handle-suspend-key`) and takes KEY_POWER only from the computer's own
+devices (`built_in`: the ACPI button, Intel's HID events, the laptop's
+keyboard, by sysfs path, never a USB or Bluetooth keyboard's power key,
+which goes nowhere). Down, a calloop timer runs for the first hold and
+is set again for each next (`due`), so a hold is done as it's reached,
+still held (3 s asks, and held on, 10 s shuts down); up before the
+first, the press's action; a hold reached makes the let go no press.
+Nothing polls: no timer while it's up. Restart and Shut Down are
+logind's, as Deskbar's menu (every program asked to end, services
+stopped in order); asking first is Deskbar's own Restart or Shut Down
+alert (`Event::PowerButton { action, done }`, sent only to clients that
+ask for `EventKind::PowerButton` by name, so older ones never meet it;
+not while the screen is locked, nothing there to answer it);
+immediately is Olo's helper, `olo-power-now@reboot|poweroff.service`
+(`systemctl --force`: programs ended and the disks written, no orderly
+stop), which the person at the computer may start without a password
+(a polkit rule, `49-olo-power-now.rules`), installed by Doctor's
+`power-now` fix (the tab's Install the Helper… runs `olo-doctor --fix
+power-now`); without it, immediately is as Restart and Shut Down. A
+headless app_server (tests, agents' screens) takes a synthetic
+KEY_POWER and never acts: it says what it would have done (`done:
+false`, "not the session: not done" in its log). Firmware may cut the
+power on a long hold whatever is set (ThinkPads' is said to be about
+5 s), so a hold past that never reaches Olo. It's a tab of its own:
+in the Keyboard tab it made the panel 1028 points tall, past a 1280 ×
+800 screen.
+
 Every shortcut, app_server's and the apps', and how keys behave, are one
 keyboard profile (`KeyboardProfile`, in `KeyboardSettings::profile`),
 chosen in Preferences ▸ Keyboard ▸ Shortcuts: Mac (the default), Windows
@@ -8744,6 +8781,13 @@ scan made for the sudo user). What it looks for:
   olo-session takes them from that file as it starts, before any thread
   (`take_tmpdir`), so Deskbar's apps and Terminal's shells have them.
   Programs already running keep theirs until they start again.
+- **The power button's helper** (`power_now`, on a computer with an
+  ACPI power button, `Power Button` in /sys/class/input): Olo's
+  `olo-power-now@.service` and its polkit rule (carried with
+  `include_str!` from data/systemd and data/polkit) missing or out of
+  date (advice: Install the Helper, Update the Helper): written, and
+  systemd reloaded. It's what lets Preferences ▸ Keyboard ▸ Power
+  Button's "immediately" restart or shut down at once.
 
 Drivers and firmware come through PackageKit (`olo_system::packages`,
 its D-Bus API: resolve, refresh, install, update, install a package

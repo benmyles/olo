@@ -296,6 +296,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub showing: HashMap<String, u32>,
     /// A timer is set for a recording's zoom's hold (`zoom`).
     pub zoom_timer: bool,
+    /// The built-in power button while it's down (power_button.rs).
+    pub power_held: crate::power_button::Held,
     /// Olo Rescue, while it's on (rescue.rs), and its keys followed.
     pub rescue: Option<crate::rescue::Rescue>,
     pub rescue_chord: crate::rescue::Chord,
@@ -1267,6 +1269,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             parked: Default::default(),
             showing: HashMap::new(),
             zoom_timer: false,
+            power_held: Default::default(),
             rescue: None,
             rescue_chord: Default::default(),
             security_key_ids: Vec::new(),

@@ -109,6 +109,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     fn keyboard_key_to_action<B: InputBackend>(&mut self, evt: B::KeyboardKeyEvent) -> KeyAction {
         let key = evt.key_code().raw().saturating_sub(8);
+        // The power button: the computer's own does what Preferences ▸
+        // Keyboard says (power_button.rs); another keyboard's power key,
+        // nothing.
+        if key == crate::power_button::KEY_POWER {
+            if crate::power_button::built_in(evt.device().syspath().as_deref()) {
+                self.power_button(evt.state() == KeyState::Pressed);
+            }
+            return KeyAction::None;
+        }
         // A security key's typing goes to nobody, but three touches in a
         // row (security_key.rs).
         if !self.security_key_ids.is_empty() && evt.device().usb_id().is_some_and(|id| self.security_key_ids.contains(&id)) {
@@ -1679,6 +1688,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let state = if pressed { smithay::backend::input::ButtonState::Pressed } else { smithay::backend::input::ButtonState::Released };
                 pointer.button(self, &ButtonEvent { button, state, serial, time });
                 pointer.frame(self);
+            }
+            // (A synthetic power key: a headless session's, for tests,
+            // which never restarts the computer; the session's is dropped.)
+            S::Key { key, pressed } if key == crate::power_button::KEY_POWER => {
+                if !BackendData::IS_SESSION {
+                    self.power_button(pressed);
+                }
             }
             S::Key { key, pressed } => {
                 let _ = serial;

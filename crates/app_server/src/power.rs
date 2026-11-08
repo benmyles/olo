@@ -298,6 +298,10 @@ fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<crate::osd::Indi
     let _sleep_key = olo_system::power::inhibit("handle-suspend-key", "Olo", "Olo handles the sleep key (a Magic Keyboard's Do Not Disturb sends it)", true)
         .map_err(|e| warn!("can't take the sleep key from logind: {e}"))
         .ok();
+    // The power button too: logind shut down on a press; Olo does what
+    // Preferences ▸ Keyboard says (power_button.rs). Held for the session.
+    let _power_key =
+        olo_system::power::inhibit("handle-power-key", "Olo", "Olo handles the power button (Preferences ▸ Keyboard)", true).map_err(|e| warn!("can't take the power button from logind: {e}")).ok();
     let mut w = Worker { inhibitor: None, feedback, found, displays: Default::default(), warned: Default::default() };
     while let Ok(mut job) = rx.recv() {
         // Only the newest brightness matters (a held key repeats).

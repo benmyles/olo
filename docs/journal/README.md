@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Keyboard ▸ Power Button
+
+*11:08* — Preferences ▸ Keyboard has a Power Button tab: what the computer's own power button does when pressed, and when held for a number of seconds, each from Nothing, Lock the Screen, Log Out, Restart (asking first, or not, or immediately) and Shut Down (the same three). By default a press does nothing, holding it 3 seconds asks to restart (Deskbar's Restart alert), and 10 seconds shuts down at once. Immediately needs Olo's small helper, which Install the Helper… (Olo Doctor's fix) puts in place. It is a tab of its own because the Keyboard tab with it no longer fit a 1280 × 800 screen.
+
+![Keyboard ▸ Power Button](2026-11-08/110828-keyboard-power-button.png)
+
 ### Where Olo's login screen can't show, GDM's takes the seat
 
 *09:33* — A GPU Olo can't draw on (the VM's plain virtio GPU): after Olo's splash, GDM's login screen, started by systemd through olo-login's OnFailure=. Before, SELinux kept olo-login from starting it and the screen stayed on the console.
