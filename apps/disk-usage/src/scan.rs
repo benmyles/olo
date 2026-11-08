@@ -142,6 +142,36 @@ impl Tree {
         self.generation += 1;
     }
 
+    /// Put `id` back in (taken out by `remove`, then put back from the
+    /// Trash where it was).
+    pub fn put_back(&mut self, id: NodeId) {
+        if id == ROOT || !self.nodes[id as usize].gone {
+            return;
+        }
+        let (size, files) = (self.nodes[id as usize].size, self.nodes[id as usize].files);
+        self.nodes[id as usize].gone = false;
+        let mut at = self.nodes[id as usize].parent;
+        let mut above = Vec::new();
+        loop {
+            let n = &mut self.nodes[at as usize];
+            n.size += size;
+            n.files += files;
+            above.push(at);
+            if at == ROOT {
+                break;
+            }
+            at = n.parent;
+        }
+        if self.sorted {
+            for a in above {
+                let mut children = std::mem::take(&mut self.nodes[a as usize].children);
+                children.sort_by(|&x, &y| self.nodes[y as usize].size.cmp(&self.nodes[x as usize].size));
+                self.nodes[a as usize].children = children;
+            }
+        }
+        self.generation += 1;
+    }
+
     fn sort_all(&mut self) {
         for i in 0..self.nodes.len() {
             let mut children = std::mem::take(&mut self.nodes[i].children);
@@ -298,7 +328,7 @@ mod tests {
 
     #[test]
     fn sizes_add_up_and_hard_links_count_once() {
-        let dir = std::env::temp_dir().join(format!("olo-disk-usage-test-{}", std::process::id()));
+        let dir = PathBuf::from(format!("/var/tmp/olo-disk-usage-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("a/b")).unwrap();
         std::fs::write(dir.join("a/b/big"), vec![1u8; 256 * 1024]).unwrap();
@@ -328,6 +358,12 @@ mod tests {
         assert_eq!(t.nodes[ROOT as usize].size, before - a_size);
         assert_eq!(t.find(&dir.join("a")), None);
         assert!(t.nodes[ROOT as usize].children.windows(2).all(|w| t.nodes[w[0] as usize].size >= t.nodes[w[1] as usize].size));
+        // Put back (Undo of Move to Trash): as it was.
+        t.put_back(a);
+        assert_eq!(t.nodes[ROOT as usize].size, before);
+        assert_eq!(t.nodes[ROOT as usize].files, 4);
+        assert_eq!(t.find(&dir.join("a")), Some(a));
+        assert_eq!(t.children(ROOT, 0)[0], if t.nodes[big as usize].size > 0 { a } else { twin });
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

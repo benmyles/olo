@@ -3598,5 +3598,11 @@
   "title": "DiskBackup: Back Up to Google Drive, walked through",
   "caption": "Google asks each person to make their own sign-in for an app like DiskBackup, so DiskBackup walks them through it: six steps in Google Cloud, each with Open for its page, then the client's file (or its ID and secret) and Sign In with Google. A client kept in Passwords skips the steps on another computer.",
   "image": "2026-11-07/223440-diskbackup-back-up-to-google-drive-walked-throug.png"
+ },
+ {
+  "time": "2026-11-08T00:20:25",
+  "title": "Disk Usage: Undo Move to Trash",
+  "caption": "Edit \u25b8 Undo puts what Disk Usage moved to the Trash back where it was (its sizes back in the chart); Redo moves it again. Deleting for good still says it can't be undone.",
+  "image": "2026-11-08/002025-disk-usage-undo-move-to-trash.png"
  }
 ]

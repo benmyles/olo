@@ -9451,7 +9451,10 @@ The freedesktop Trash helpers Tracker and DiskUsage share are
 `olo_xdg::trash`: `trash_slot` reserves a name and writes the
 .trashinfo, `trash_origin` reads it back, `move_to_trash` renames into
 the Trash when on the same volume (Tracker copies across volumes with
-progress instead). Tracker's Empty Trash is instant to see: the Trash's
+progress instead), `put_back` renames an item back where it came from
+(its folder made again, a number added if something new has its name:
+DiskUsage's Edit ▸ Undo Move to Trash, Redo moving it again; a new scan
+forgets the steps). Tracker's Empty Trash is instant to see: the Trash's
 `files` and `info` are swapped for empty folders (`renameat2`
 `RENAME_EXCHANGE`, so the paths always exist and the Trash icon and any
 Trash window change at once), and what was in them is deleted in

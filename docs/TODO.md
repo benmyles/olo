@@ -737,7 +737,7 @@ something nobody here has is in "Blocked", with what it waits for.
   /dev/video0 and 1) and an infrared one ("Integrated IR Camera",
   /dev/video2 and 3; UVC, interface 1.2), a camera HID interface (1.4:
   hidraw0) and a DFU one; Ben's account can open them (the video
-  group's ACL). Next: the IR node's formats (GREY or Y8 at what size),
+  group's ACL). Then (done 2026-11-05, below): the IR node's formats (GREY or Y8 at what size),
   its extension units' GUIDs and controls (UVC_GET_INFO, GET_LEN),
   which control lights the emitter, and what the HID interface reports
   (the shutter, perhaps).
@@ -1130,7 +1130,7 @@ something nobody here has is in "Blocked", with what it waits for.
   (hidraw, root's only), FIDO (hidraw, usage page 0xF1D0 usage 1:
   CTAPHID; the session's ACL already gives Ben read and write, so
   FIDO2 needs no root and no rule) and CCID (PIV, OpenPGP). So FIDO2's
-  `hmac-secret` is the way in. Next: `CTAPHID_INIT` and
+  `hmac-secret` is the way in. Then (done 2026-11-05, below): `CTAPHID_INIT` and
   `authenticatorGetInfo` (its extensions, PIN set or not), then the
   sealed-password design above.
   *Stray taps ignored* (Ben, 2026-11-04): "i have a habit of
@@ -1262,7 +1262,7 @@ something nobody here has is in "Blocked", with what it waits for.
   (`ABS_MT_TOOL_TYPE`), tracking id and pressure (`ABS_MT_PRESSURE`):
   no contact size (`ABS_MT_TOUCH_MAJOR`/`MINOR`, `ABS_MT_WIDTH_*`),
   which the trainer draws and the palm model reads (the Mac's pad gives
-  it), so every contact is a point. Next: see what it sends for a palm
+  it), so every contact is a point. Then (done 2026-11-05, below): see what it sends for a palm
   (an evdev recording of palms, fingertips and a flat thumb: whether the
   firmware marks palms `MT_TOOL_PALM` itself, as libinput expects of
   such pads, what pressure a palm gives, and whether a palm comes as

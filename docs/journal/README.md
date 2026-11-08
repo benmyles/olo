@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-08
+
+### Disk Usage: Undo Move to Trash
+
+*00:20* — Edit ▸ Undo puts what Disk Usage moved to the Trash back where it was (its sizes back in the chart); Redo moves it again. Deleting for good still says it can't be undone.
+
+![Disk Usage: Undo Move to Trash](2026-11-08/002025-disk-usage-undo-move-to-trash.png)
+
 ## 2026-11-07
 
 ### DiskBackup: Back Up to Google Drive, walked through
