@@ -117,7 +117,7 @@ fn run() -> Result<(), String> {
 
     // The model, on a thread of its own: we keep the note ticking and
     // listen for Cancel.
-    let ask = olo_ai::Ask { system: SYSTEM.into(), content, schema: schema(), max_tokens: 16000 };
+    let ask = olo_ai::Ask { system: SYSTEM.into(), content, schema: schema(), max_tokens: 16000, history: Vec::new() };
     let (ai, feature) = (settings.ai.clone(), feature.clone());
     let answer = std::thread::spawn(move || olo_ai::ask(&ai, &feature, &ask));
     while !answer.is_finished() {

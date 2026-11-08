@@ -434,7 +434,7 @@ fn backup_cli(flag: &str, file: &std::path::Path, sealed: bool, only: Option<Vec
     };
     let r = match flag {
         "--export" => (|| {
-            let choice = choose(backup::parts_here(&backup::roots()))?;
+            let choice = choose(backup::parts_here(&backup::roots(), &backup::Root))?;
             let how = if sealed { backup::Seal::Passphrase(passphrase()?) } else { backup::Seal::Open };
             backup::export_only(&backup::roots(), file, &how, &backup::Here::this(), &choice, &|_, _| {}, &no).map(|m| show(&m))
         })(),

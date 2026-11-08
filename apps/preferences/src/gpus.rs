@@ -218,7 +218,7 @@ fn apply(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy) {
         .expect("thread");
 }
 
-fn run_tune(tuning: &Tuning) -> Result<String, String> {
+pub(crate) fn run_tune(tuning: &Tuning) -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
     let tune = exe.with_file_name("olo-gpu-tune");

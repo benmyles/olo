@@ -15,23 +15,190 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Intel's render GT busy on an idle desktop**: on 2026-11-07 its idle
-  residency rose 4 ms in a second (the media GT's 928), so the GPU never
-  rests (RC6). Find what keeps it awake (app_server drawing every frame?
-  a forcewake held?), measure with `timings` and the GT's residency.
+- **Undo in Tracker, and everywhere it makes sense** (Ben, 2026-11-07:
+  "tracker needs to support undo for file/folder renames/moves/etc and
+  also we need generally and unviversally to support undo in all olo
+  apps where it makes sense"). Tracker has none now: Edit ▸ Undo (⌘Z) and
+  Redo for what its operations did (`ops.rs`: rename, move, copy,
+  duplicate, new folder, move to Trash, restore; a copy undone is the
+  copy removed, a trashing undone is the restore), each step what it
+  did and where, done again or undone as one even when it was many
+  files, on the worker with progress as the operations are, and said
+  plainly when it can't be any more (a file since changed or gone).
+  Then one kit-wide way for every app (`olo_ui`: an undo history a window
+  keeps, Edit ▸ Undo/Redo named by what they'd undo, "Undo Rename",
+  agents able to read and drive it), and each app looked at for what
+  should undo: what has its own already (text fields, StyledEdit, the
+  Viewer's picture edits, app_server's ⌃⌘Z window arrangement) moved
+  onto it or matched to it; Preferences' changes, Passwords' edits,
+  Deskbar's and the desktop's moves, Terminal's tab and pane changes,
+  and the rest.
 
-- **Syntax colouring for justfiles in the Viewer** (Ben, 2026-11-07:
-  "add syntax highlighting for justfiles to viewer"). `justfile`,
-  `Justfile`, `.justfile` and `*.just` are shown as plain text now:
-  syntect's bundled grammars have none, and Olo's own
-  (`crates/preview/src/syntaxes`) are TOML and INI. A just grammar
-  there (recipes and their parameters and dependencies, variables and
-  `:=`, settings, attributes, `{{ }}` interpolation, strings, comments,
-  and the recipe bodies as shell), its scopes mapped onto the theme's
-  token classes as the others are (`text::classify`), the names above
-  matched to it; Quick Look gets it too.
+- **A resting display still looks every 100 ms** (found 2026-11-07,
+  looking into the Intel GPU): `render::IDLE_POLL`, the safety net for
+  changes that don't wake a display (`Backend::wake`). An idle
+  headless session's app_server: 0.3% of a core, 16 wakeups a second,
+  each look gathering and comparing every element (strace: timerfd armed
+  ~100 ms each time). Find what changes without waking (keep_warm's
+  pixel, timers not hooked up), wake for each, then make the poll a long
+  safety net (seconds) or none; measure idle before and after.
+
+- **Voice Processing's delay, the rest** (Ben, 2026-11-07: "we need that
+  to be way more optimized so that it is not introducing any kind of
+  noticeable lag"). Done: 51 ms really (said 40) → 40, said as it is
+  (the buffering 21.33 → 10.0 ms, measured: tools/dev/voice-latency).
+  Left: (1) the cycle a source fed by another stream is behind (10 ms):
+  one node with the microphone in and the cleaned sound out (pw_filter,
+  linked to the microphone by Olo itself), no quality cost; (2) the
+  noise suppressor's 30 ms: DeepFilterNet3's look-ahead. Measured
+  against RNNoise (tests/least_delay.rs): 10 ms, a tenth of the CPU,
+  but room noise down 8-11 dB where DeepFilterNet3 takes 26-30, the
+  voice kept as well: Ben to choose (a least-delay choice, or not).
+  The least-delay test's "after another voice" lag search locks on the
+  quiet voice: fix before judging that case.
+
+- **DiskBackup** (Ben, 2026-11-07, after the work items before it):
+  "build DiskBackup which is an olo native app and service for
+  continuous, minimal impact (in terms of cpu/mem/network usage -- it
+  should always just use background resources) full disk backups that
+  are stored in the cloud (for now just build google drive storage
+  support but do it in a way where we leave the door open to add more
+  providers in the future). the app should automate all setup that
+  needs to happen to connect to gdrive and start backing up there, and
+  backups should be encrypted with a token/key that lives in olo
+  passwords and the app should be able to restore from the target and
+  the user can choose what to restore in an easy to use ux and it should
+  also support versioning in a way that minimizes disk usage so only
+  changes and deltas need to be kept and it should also compress
+  everything. make sure it's all ultra efficient, background resources
+  only, highly customizable with excellent defaults, it should include a
+  deskbar widget too and the ability to run as a service so the app
+  itself doesn't need to be open for backups to happen, and it should
+  integrate with all the olo stuff in all the places that make sense. it
+  should always provide very clear and transparent status about
+  everything it's doing and has done. it should of course support
+  excludes and it should have a bunch of built-in exclude
+  groups/templates that cover e.g. all kinds of files that can be
+  regenerated e.g. build/debug files for programming languages, node
+  modules, downloaded cargo cache stuff and so on. also include
+  integration with olo tracker so in olo tracker anything where the most
+  recent version is backed up gets a slightly modified icon with a
+  little green tick in the bottom right. and if you right click you can
+  see older versions and restore them and so on. and everything has to
+  continue to be super responsive and built to work great even with slow
+  and awkward storage backends like google drive. and also obviously we
+  should support files of any size and so on, handling all the plumbing
+  needed to make this all work properly with any storage backend."
+  To think through first: content-defined chunks (deduplicated across
+  versions and files, compressed, encrypted, packed into large objects
+  for a slow store), an index kept locally and in the store, a storage
+  trait (Google Drive first: OAuth set up by the app, resumable
+  uploads, rate limits), a service at idle priority (I/O and CPU) that
+  follows changes (fanotify) rather than scanning, Doctor and Deskbar
+  and Tracker and Passwords where they fit.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Preferences ▸ Deskbar's own icon** (with the image model's key Ben
+  added, 2026-11-07): an upright grey panel with status lights and a
+  green rising graph (`data/icons/manifest.txt`), two Classic candidates
+  against the reference set (the one whose top face shows more), and
+  drawn for all nine other themes against their own references; the
+  panel and the palette's entry use it in place of Activity Monitor's.
+
+- **Slash commands in the command palette: /ws and /ask** (Ben,
+  2026-11-07). `/` lists them; `/ws TEXT` searches the web; `/ask
+  QUESTION` asks Preferences ▸ AI's new Ask model (Astra 6 on low by
+  default) and shows the answer in the palette as it streams, then up
+  to four numbered snippets (previewed, six lines): its number shows one
+  whole, Return copies it ("Copied"), Escape goes back a step (and
+  stops one still coming), Space asks a follow-up in the same
+  conversation. Tried end to end through the Token Pool. Try: ⌘Space,
+  `/ask how do i find what ports are open`.
+
+- **Quick Look went gray on a PDF, and the arrows stopped** (Ben,
+  2026-11-07: "i hit space then press down, looks fine on next file,
+  down again and looks fine, down again and just gray with no content,
+  up again same no content"). Since the Viewer's move to GPUI (Nov 1),
+  Quick Look showed a PDF as its card on gray (its pages weren't drawn,
+  the window sized for a page), and on it Up and Down did nothing (they
+  were the pages'), so going back showed the same. Now its first page
+  shows (the rest are the Viewer's: Open with Viewer), and the arrows
+  step on past it as past a picture. Not reproduced with pictures of any
+  size or format at 1× and 2×. Try: Quick Look through a folder with a
+  PDF in it; if it goes gray on something else, say what the file was.
+
+- **Float a window, or its group, from its tab; Unfloat** (Ben,
+  2026-11-07: "right click on a tab title bar thing and if we are in
+  auto-tiling or focus mode i should be able to choose "Float Window"
+  and if it's part of a group then also an option for "Float Window
+  Group" … if it's part of a group and i just choose to float window
+  then it should also pull it out of that group"; "an option to
+  "Unfloat" a floating window too"). The tab's menu in auto-tiling and
+  Focus: Float Window (out of its group first, in the same turn),
+  Float Window Group, Unfloat (dimmed for a dialog or alert, which
+  floats whatever is asked); ⌃⌥⌘F's keys on the one that does as they
+  do. Try: right-click a tab in auto-tiling or Focus after the upgrade.
+
+- **Deskbar widgets' tips list the top five processes** (Ben,
+  2026-11-07: "for relevant widgets like cpu, gpu, memory, network make
+  it so that hovering over the widget also shows the top 5 highest
+  consuming processes"). CPU, memory, GPU, network and disk widgets: the
+  tip's reading, then "Using the most:" and five processes, kept up to
+  date while it shows (and its reading). Read only while a tip shows
+  (Activity Monitor's sampling, moved to `olo_system::procs`): the
+  worker's share of a core then 0.8% (CPU) to 1.2% (network), nothing
+  after. Also fixed on the way: a shared row's cell took the pointer 3
+  points into the row above, so moving from one widget's tip to the
+  cell under it showed none. Try: rest the pointer on a widget after
+  the upgrade.
+
+- **Intel's render GT on an idle desktop: not stuck** (Ben: "do intel
+  gpu"). The 4 ms of rest a second first seen was a passing load. With
+  Olo idle (a test session of its own, settled) the render GT rests as
+  it did without it (816 ms a second against ~800: nothing measurable);
+  on your desktop it rests ~800 ms a second, awake the rest because your
+  displays draw 32, 12 and 13 frames a second as things on them change
+  (agents' terminals, the clock): work following change. One thing to
+  know: Performance mode puts Intel's GPU on Fastest, its lowest clock
+  held at 1600 MHz (`/etc/olo/gpus.json`), so whenever it wakes it runs
+  fast; Balanced and Power Saver don't. What it did find: app_server's
+  100 ms look at resting displays (Not started).
+
+- **Syntax colouring for justfiles in the Viewer** (Ben, 2026-11-07:
+  "add syntax highlighting for justfiles to viewer"). A just grammar of
+  Olo's own (`crates/preview/src/syntaxes/just.sublime-syntax`):
+  settings, variables and `:=`, export, aliases, imports and modules,
+  attributes, recipes (names, `@`, parameters, dependencies), each of
+  just's strings and backticks, `if`/`else` and calls; recipe bodies as
+  bash, `{{ }}` found in them, in the shell's strings and comments too.
+  `justfile`, `Justfile`, `.justfile` and `*.just` (and ```just fences).
+  Try: a justfile in the Viewer or Quick Look after the upgrade.
+
+- **Deskbar's widgets move smoothly, share rows, and come along in
+  backups** (Ben, 2026-11-07: "make the graphs etc in the deskbar
+  widgets all animate smoothly like in activity monitor"; "even if e.g.
+  something only updates once per second it still smoothly animates,
+  including e.g heatmap the tiles should animate to the next state";
+  "the option of more than 1 widget per row, e.g. a more compact
+  representation of a combination of things", as iStat Menus' labels
+  over little meters; "make sure all this stuff like the deskbar widgets
+  settings and so on properly get imported/exported in olo backups";
+  and "an option for a heatmap look for cpu where each core is a grid
+  item"). Graphs scroll a device pixel at a time, an interval behind the
+  latest reading, as Activity Monitor's; bars, meters and heatmap cells
+  move to each reading over the time between readings; all on a layer
+  of their own, so motion draws only them. Preferences ▸ Deskbar ▸
+  "Beside the widget before it" puts a widget in the row before it,
+  each then its name over a small drawing. Heatmap: a cell a core. A
+  widget changed is read at once. Backups: the deskbar widgets were
+  always in (app_server's settings); from another computer, one
+  measuring a device that isn't there measures the default instead,
+  said; the GPUs' tuning and power plan (/etc/olo/gpus.json, root's)
+  now go in too, put back through polkit, only the plan from another
+  computer. Cost, eight widgets at 2×: 0.9% of a core, 9.6 frames/s
+  (before they moved, 0.3% at 2.1). Try: Preferences ▸ Deskbar after
+  the upgrade.
 
 - **Olo's history rewritten without personal details** (Ben, 2026-11-07:
   "do the history rewrite but backup the repo first"). Backed up first,
@@ -1906,15 +2073,6 @@ something nobody here has is in "Blocked", with what it waits for.
     above (HDR, VRR, face sign-in, the haptic touchpad's palm filter).
 
 ## Blocked
-
-- **Preferences ▸ Deskbar's own icon**: generated with
-  `tools/genicon.py deskbar "…" --variants 2` against the reference set
-  (docs/ICONS.md), which needs the image model's key (`OPENAI_API_KEY`
-  or `~ben/.env`, absent on 2026-11-07). Subject: "a slim upright panel
-  of light grey metal standing on the desk like a tall narrow plaque, a
-  short row of tiny coloured status lights near its top and a small
-  green rising line graph glowing on its face". Until then the panel
-  shows Activity Monitor's (`activity`).
 
 Each waits for what its entry's "Left" says: Ben at the machine (a
 password, a touch, a camera, a reboot he agrees to), hardware nobody

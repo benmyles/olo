@@ -34,7 +34,7 @@ import sys
 import time
 
 TSESSION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tsession")
-BASE = "/tmp/olo-dev"
+BASE = "/var/tmp/olo-dev"
 
 
 def env_of(name):

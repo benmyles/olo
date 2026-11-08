@@ -115,7 +115,7 @@ def main():
         time.sleep(2)
         st = ipc({"type": "power_status"}).get("status", {})
         check(st.get("locked") and st.get("rescue"), "the keys while locked: Rescue's displays")
-        log = open(os.path.join("/tmp/olo-dev", NAME, "app_server.log")).read()
+        log = open(os.path.join("/var/tmp/olo-dev", NAME, "app_server.log")).read()
         check(log.count("olo-rescue started") == 1, "nothing of Rescue's over the lock")
         ipc({"type": "rescue", "on": False})
 

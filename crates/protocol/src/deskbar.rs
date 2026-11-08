@@ -62,6 +62,10 @@ pub struct Widget {
     /// Its colour: one of the look's hues, or None for the selection's
     /// accent.
     pub hue: Option<Hue>,
+    /// In the row of the widget before it (in the same place), side by
+    /// side, each drawn small: its label over its drawing, as iStat
+    /// Menus' are. Ignored in the tray and for a place's first.
+    pub beside: bool,
 }
 
 impl Default for Widget {
@@ -80,7 +84,7 @@ impl Widget {
             Measure::Space { .. } | Measure::Memory { .. } => Look::Meter,
             _ => Look::Graph,
         };
-        Widget { id, hue: Some(measure.hue()), measure, place: Place::Top, look, size: Size::Medium, label: true, value: true, every_ms: 1000, span_s: 60 }
+        Widget { id, hue: Some(measure.hue()), measure, place: Place::Top, look, size: Size::Medium, label: true, value: true, every_ms: 1000, span_s: 60, beside: false }
     }
 
     /// `every_ms` within what's allowed.
@@ -204,10 +208,12 @@ pub enum Look {
     Meter,
     /// The value alone, in words.
     Number,
+    /// A cell for each series (each core), lit by its level: a heatmap.
+    Heatmap,
 }
 
 impl Look {
-    pub const ALL: [Look; 4] = [Look::Graph, Look::Bars, Look::Meter, Look::Number];
+    pub const ALL: [Look; 5] = [Look::Graph, Look::Bars, Look::Heatmap, Look::Meter, Look::Number];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -215,6 +221,7 @@ impl Look {
             Look::Bars => "Bars",
             Look::Meter => "Meter",
             Look::Number => "Number",
+            Look::Heatmap => "Heatmap",
         }
     }
 }

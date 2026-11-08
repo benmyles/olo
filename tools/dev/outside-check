@@ -62,7 +62,7 @@ def windows():
 
 
 def display():
-    return json.load(open(f"/tmp/olo-dev/{N}/env.json"))["WAYLAND_DISPLAY"]
+    return json.load(open(f"/var/tmp/olo-dev/{N}/env.json"))["WAYLAND_DISPLAY"]
 
 
 def ours(pattern):
@@ -169,7 +169,7 @@ def main():
                 alive = [p for p in before[name] if os.path.exists(f"/proc/{p}")]
                 window = "" if name in windowless else f", window {'shown' if shown(see) else 'GONE'}"
                 check(len(alive) == len(before[name]) and (name in windowless or bool(shown(see))), f"{name}: {len(alive)} of {len(before[name])} processes{window}")
-        log = f"/tmp/olo-dev/{N}/app_server.log"
+        log = f"/var/tmp/olo-dev/{N}/app_server.log"
         errors = [l.strip()[-160:] for l in open(log, errors="replace") if "app_server's error" in l] if os.path.exists(log) else []
         check(not errors, "no program's connection ended by app_server" + (f": {errors[:3]}" if errors else ""))
     finally:

@@ -93,6 +93,9 @@ pub struct PreviewView {
     pub item: Item,
     pub generation: u64,
     body: Option<Body>,
+    /// A PDF's first page is in the picture's view (`image`): it shows
+    /// there, the card until then.
+    first_page: bool,
     failed: Option<String>,
     cancel: Arc<AtomicBool>,
     started: Instant,
@@ -197,6 +200,7 @@ impl PreviewView {
             controls_hide: None,
             frame: None,
             yuv_frame: None,
+            first_page: false,
             decode_with: video::Device::default(),
             decoding_said: None,
             video_hdr: false,
@@ -268,6 +272,7 @@ impl PreviewView {
         self.item = item;
         self.generation = generation;
         self.failed = None;
+        self.first_page = false;
         self.player = None;
         self.video = None;
         self.tick = None;
@@ -340,6 +345,20 @@ impl PreviewView {
                 self.body = Some(b);
                 self.failed = None;
                 cx.emit(PreviewEvent::Shown);
+            }
+            // A PDF's first page, as a picture (Ben, 2026-11-07: Quick
+            // Look showed a PDF as its icon; pages are the Viewer's, its
+            // Open with Viewer).
+            Update::Page(0, page) => {
+                if let Some(Body::Pages { note, .. }) = &self.body {
+                    let (full, note) = ([page.size[0] as f32, page.size[1] as f32], note.clone());
+                    self.image.update(cx, |v, cx| {
+                        v.set_name(note);
+                        v.set_picture(page, full, cx);
+                    });
+                    self.first_page = true;
+                    cx.notify();
+                }
             }
             Update::Page(..) => {}
             Update::Highlighted(mut t) => {
@@ -504,7 +523,7 @@ impl PreviewView {
     /// Whether the arrow keys are free for the caller (nothing shown
     /// scrolls or has a selection to move).
     pub fn arrows_free(&self) -> bool {
-        self.failed.is_some() || matches!(self.body, None | Some(Body::Image { .. } | Body::Media(_) | Body::Font { .. } | Body::Card { .. }))
+        self.failed.is_some() || matches!(self.body, None | Some(Body::Image { .. } | Body::Pages { .. } | Body::Media(_) | Body::Font { .. } | Body::Card { .. }))
     }
 
     /// Show an edited picture in place of the one loaded (see
@@ -773,6 +792,7 @@ impl Render for PreviewView {
                 canvas(|_, _, _| {}, move |b, _, window, cx| card(window, cx, b, &item, None, spinning)).size_full().into_any_element()
             }
             (None, Some(Body::Image { .. })) => self.image.clone().into_any_element(),
+            (None, Some(Body::Pages { .. })) if self.first_page => self.image.clone().into_any_element(),
             (None, Some(Body::Card { .. } | Body::Pages { .. })) => {
                 let item = self.item.clone();
                 canvas(|_, _, _| {}, move |b, _, window, cx| card(window, cx, b, &item, None, false)).size_full().into_any_element()

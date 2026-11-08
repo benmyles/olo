@@ -18,6 +18,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use olo_system::procs::{Before, Known, gpu_clients, processes, socket_owners, traffic};
+pub use olo_system::procs::{GpuClient, Proc, users};
 use olo_theme::Hue;
 use serde::{Deserialize, Serialize};
 
@@ -80,41 +82,6 @@ pub struct Source {
     /// A fixed top of the scale; None scales to what the graph shows.
     pub max: Option<f64>,
     pub group: Group,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Proc {
-    pub pid: i32,
-    pub ppid: i32,
-    pub name: String,
-    pub user: String,
-    pub uid: u32,
-    /// Of one core (so up to 100 × cores).
-    pub cpu: f64,
-    pub memory: u64,
-    pub threads: u32,
-    pub state: char,
-    pub nice: i32,
-    /// CPU time used so far (seconds).
-    pub cpu_time: f64,
-    /// When it started (seconds since boot).
-    pub started: f64,
-    /// Bytes read and written each second, when they can be read (its
-    /// own user's processes, everyone's with full access).
-    pub read: Option<f64>,
-    pub written: Option<f64>,
-    /// Bytes its TCP sockets sent and received each second, when its open
-    /// files can be seen (as `read`).
-    #[serde(default)]
-    pub sent: Option<f64>,
-    #[serde(default)]
-    pub received: Option<f64>,
-    /// Each GPU's (in `System::gpus`' order): None, not using it; Some(%)
-    /// of it busy for this process (0 where the driver doesn't say).
-    #[serde(default)]
-    pub gpus: Vec<Option<f64>>,
-    /// Its command line, arguments spaced.
-    pub command: String,
 }
 
 /// A network connection (TCP or UDP, v4 or v6).
@@ -245,22 +212,6 @@ pub struct Volume {
     pub size: Option<u64>,
     pub free: Option<u64>,
     pub read_only: bool,
-}
-
-/// A program using a GPU, from its DRM file descriptors' fdinfo (and
-/// NVIDIA's library for NVIDIA's).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct GpuClient {
-    pub pid: i32,
-    pub name: String,
-    /// Which GPU (in `System::gpus`' order).
-    #[serde(default)]
-    pub gpu: usize,
-    /// Memory it has on the GPU (resident), in bytes.
-    pub memory: u64,
-    /// GPU time used each second, as a share of one engine, where the
-    /// driver reports engine time.
-    pub busy: Option<f64>,
 }
 
 /// What isn't a series: the machine, and the state of things now.
@@ -674,123 +625,6 @@ fn cpu_lines(stat: &str) -> Vec<CpuTimes> {
         .collect()
 }
 
-pub fn users() -> HashMap<u32, String> {
-    read("/etc/passwd")
-        .lines()
-        .filter_map(|l| {
-            let mut f = l.split(':');
-            let name = f.next()?;
-            let uid = f.nth(1)?.parse().ok()?;
-            Some((uid, name.to_owned()))
-        })
-        .collect()
-}
-
-/// What `processes` needs to turn counters into rates.
-struct Before<'a> {
-    ticks: &'a HashMap<i32, u64>,
-    io: &'a HashMap<i32, (u64, u64)>,
-}
-
-/// What doesn't change in a process's life (its name, command line and
-/// owner), kept by pid with when it started, so a list of hundreds reads
-/// only their stat and io each time.
-#[derive(Default)]
-struct Known {
-    by_pid: HashMap<i32, (u64, String, String, u32)>,
-}
-
-/// Processes, and their counters now: CPU ticks, and bytes read and
-/// written, by pid.
-type Counted = (Vec<Proc>, HashMap<i32, u64>, HashMap<i32, (u64, u64)>);
-
-/// Every process: its counters now, and how it looked.
-fn processes(before: Before, elapsed: f64, users: &HashMap<u32, String>, page: u64, hz: f64, known: &mut Known) -> Counted {
-    let mut list = Vec::new();
-    let mut ticks = HashMap::new();
-    let mut io = HashMap::new();
-    for e in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
-        let Some(pid) = e.file_name().to_str().and_then(|s| s.parse::<i32>().ok()) else { continue };
-        let dir = e.path();
-        let stat = read(dir.join("stat"));
-        // "pid (comm) state ..." — comm may hold spaces and parentheses.
-        let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else { continue };
-        let comm = &stat[open + 1..close];
-        let f: Vec<&str> = stat[close + 1..].split_whitespace().collect();
-        if f.len() < 22 {
-            continue;
-        }
-        let state = f[0].chars().next().unwrap_or('?');
-        let ppid = f[1].parse().unwrap_or(0);
-        let t = num(f[11]) + num(f[12]);
-        let nice = f[16].parse().unwrap_or(0);
-        let threads = num(f[17]) as u32;
-        let started = num(f[19]) as f64 / hz;
-        let rss = num(f[21]) * page;
-        ticks.insert(pid, t);
-        let cpu = before.ticks.get(&pid).map_or(0.0, |&p| t.saturating_sub(p) as f64 / hz / elapsed * 100.0);
-        // Its I/O, where it may be read.
-        let counted = std::fs::read_to_string(dir.join("io")).ok().map(|s| {
-            let field = |k: &str| s.lines().find_map(|l| l.strip_prefix(k)).map_or(0, num);
-            (field("read_bytes:"), field("write_bytes:"))
-        });
-        let (read_rate, write_rate) = match (counted, before.io.get(&pid)) {
-            (Some((r, w)), Some(&(r0, w0))) => (Some(r.saturating_sub(r0) as f64 / elapsed), Some(w.saturating_sub(w0) as f64 / elapsed)),
-            (Some(_), None) => (Some(0.0), Some(0.0)),
-            _ => (None, None),
-        };
-        if let Some(c) = counted {
-            io.insert(pid, c);
-        }
-        let start_ticks = num(f[19]);
-        let (name, command, uid) = match known.by_pid.get(&pid) {
-            // (A program that runs another keeps its pid but changes its
-            // name: comm says so.)
-            Some((start, name, command, uid)) if *start == start_ticks && name.starts_with(comm) => (name.clone(), command.clone(), *uid),
-            _ => {
-                let cmd = read(dir.join("cmdline"));
-                let command = cmd.trim_end_matches('\0').replace('\0', " ");
-                // comm is cut at 15 bytes; the program's file name isn't.
-                let mut name = comm.to_owned();
-                if name.len() >= 15
-                    && let Some(arg0) = cmd.split('\0').next()
-                    && let Some(base) = Path::new(arg0).file_name().map(|b| b.to_string_lossy().into_owned())
-                    && base.starts_with(&name)
-                {
-                    name = base;
-                }
-                let uid = std::fs::metadata(&dir).map_or(0, |m| std::os::unix::fs::MetadataExt::uid(&m));
-                known.by_pid.insert(pid, (start_ticks, name.clone(), command.clone(), uid));
-                (name, command, uid)
-            }
-        };
-        let user = users.get(&uid).cloned().unwrap_or_else(|| uid.to_string());
-        list.push(Proc {
-            pid,
-            ppid,
-            name,
-            user,
-            uid,
-            cpu,
-            memory: rss,
-            threads,
-            state,
-            nice,
-            cpu_time: t as f64 / hz,
-            started,
-            read: read_rate,
-            written: write_rate,
-            // (From its sockets, after: `traffic`.)
-            sent: None,
-            received: None,
-            command,
-            gpus: Vec::new(),
-        });
-    }
-    known.by_pid.retain(|pid, _| ticks.contains_key(pid));
-    (list, ticks, io)
-}
-
 /// `\040`-style escapes in /proc/self/mounts.
 fn unescape(s: &str) -> String {
     let b = s.as_bytes();
@@ -849,113 +683,6 @@ fn statvfs(path: &str) -> Option<(u64, u64)> {
     Some((st.f_blocks as u64 * frag, st.f_bavail as u64 * frag))
 }
 
-/// Who has each GPU open: each DRM client's memory and, where the driver
-/// says, engine time (`drm-engine-*`, nanoseconds; xe's `drm-cycles-*`
-/// of `drm-total-cycles-*`), by the render or card node it opened (which
-/// GPU); NVIDIA's from its library while it's awake. A program's
-/// descriptors sharing a client count once.
-fn gpu_clients(gpus: &[crate::gpus::Probe], pids: &[(i32, String)], before: &HashMap<(u64, u64), (u64, u64)>, elapsed: f64) -> (Vec<GpuClient>, HashMap<(u64, u64), (u64, u64)>) {
-    use std::os::unix::fs::MetadataExt as _;
-    // Each GPU's device numbers (its card and render nodes).
-    let mut nodes: HashMap<u64, usize> = HashMap::new();
-    for (i, g) in gpus.iter().enumerate() {
-        for e in std::fs::read_dir(g.device.join("drm")).into_iter().flatten().flatten() {
-            if let Ok(m) = std::fs::metadata(format!("/dev/dri/{}", e.file_name().to_string_lossy())) {
-                nodes.insert(m.rdev(), i);
-            }
-        }
-    }
-    let mut out: Vec<GpuClient> = Vec::new();
-    let mut busy = HashMap::new();
-    for (pid, name) in pids {
-        let Ok(rd) = std::fs::read_dir(format!("/proc/{pid}/fd")) else { continue };
-        let mut seen = std::collections::HashSet::new();
-        let mut clients: HashMap<usize, GpuClient> = HashMap::new();
-        for fd in rd.flatten() {
-            let Ok(target) = std::fs::read_link(fd.path()) else { continue };
-            if !target.starts_with("/dev/dri/") {
-                continue;
-            }
-            let Some(&gpu) = std::fs::metadata(&target).ok().and_then(|m| nodes.get(&m.rdev())) else { continue };
-            let info = read(format!("/proc/{pid}/fdinfo/{}", fd.file_name().to_string_lossy()));
-            let field = |k: &str| info.lines().find_map(|l| l.strip_prefix(k)).map(str::trim);
-            let Some(id) = field("drm-client-id:").and_then(|v| v.parse::<u64>().ok()) else { continue };
-            if !seen.insert((gpu, id)) {
-                continue;
-            }
-            let client = clients.entry(gpu).or_insert_with(|| GpuClient { pid: *pid, name: name.clone(), gpu, ..Default::default() });
-            let (mut ns, mut cycles, mut total) = (None, 0u64, 0u64);
-            for l in info.lines() {
-                let Some((k, v)) = l.split_once(':') else { continue };
-                let mut words = v.split_whitespace();
-                let n = words.next().map_or(0, num);
-                let scale = match words.next() {
-                    Some("KiB") => 1024,
-                    Some("MiB") => 1024 * 1024,
-                    Some("GiB") => 1024 * 1024 * 1024,
-                    _ => 1,
-                };
-                if k.starts_with("drm-resident-") {
-                    client.memory += n * scale;
-                } else if k.starts_with("drm-engine-") && !k.starts_with("drm-engine-capacity") {
-                    *ns.get_or_insert(0u64) += n;
-                } else if k.starts_with("drm-total-cycles-") {
-                    total = total.max(n);
-                } else if k.starts_with("drm-cycles-") {
-                    cycles += n;
-                }
-            }
-            let key = (gpu as u64, id);
-            let now = match ns {
-                Some(ns) => (ns, 0),
-                None if total > 0 => (cycles, total),
-                None => continue,
-            };
-            busy.insert(key, now);
-            let share = match before.get(&key) {
-                // Nanoseconds of engine time a second.
-                Some(&(was, 0)) if now.1 == 0 => now.0.saturating_sub(was) as f64 / (elapsed * 1e9) * 100.0,
-                // Cycles busy of the cycles there were.
-                Some(&(was, was_total)) if now.1 > was_total => now.0.saturating_sub(was) as f64 / (now.1 - was_total) as f64 * 100.0,
-                _ => 0.0,
-            };
-            client.busy = Some(client.busy.unwrap_or(0.0) + share);
-        }
-        out.extend(clients.into_values());
-    }
-    // NVIDIA's (its driver's descriptors say no engine time): its library's
-    // users, while it's awake.
-    for (i, g) in gpus.iter().enumerate() {
-        let crate::gpus::Kind::Nvidia { bus } = &g.kind else { continue };
-        // (Asleep, or idle when last asked: its users aren't asked for,
-        // which would keep it awake.)
-        if crate::gpus::asleep(&g.device) || !crate::gpus::nvidia_busy(bus) {
-            continue;
-        }
-        let Some(d) = crate::gpus::nvml().and_then(|n| n.device_by_pci_bus_id(bus.as_str()).ok()) else { continue };
-        let since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |t| t.as_micros() as u64).saturating_sub((elapsed * 1e6) as u64);
-        let util: HashMap<u32, u32> = d.process_utilization_stats(since).map(|v| v.into_iter().map(|u| (u.pid, u.sm_util)).collect()).unwrap_or_default();
-        let procs = d.running_graphics_processes().unwrap_or_default().into_iter().chain(d.running_compute_processes().unwrap_or_default());
-        for pr in procs {
-            let pid = pr.pid as i32;
-            let memory = match pr.used_gpu_memory {
-                nvml_wrapper::enums::device::UsedGpuMemory::Used(b) => b,
-                _ => 0,
-            };
-            let name = pids.iter().find(|(p, _)| *p == pid).map(|(_, n)| n.clone()).unwrap_or_default();
-            match out.iter_mut().find(|c| c.pid == pid && c.gpu == i) {
-                Some(c) => {
-                    c.memory = c.memory.max(memory);
-                    c.busy = Some(util.get(&pr.pid).copied().unwrap_or(0) as f64);
-                }
-                None => out.push(GpuClient { pid, name, gpu: i, memory, busy: Some(util.get(&pr.pid).copied().unwrap_or(0) as f64) }),
-            }
-        }
-    }
-    out.sort_by_key(|c| std::cmp::Reverse(c.memory));
-    (out, busy)
-}
-
 /// "1.2.3.4:80" from /proc/net's hex for v4 or v6.
 pub fn socket_address(hex: &str) -> String {
     let Some((addr, port)) = hex.split_once(':') else { return hex.into() };
@@ -998,26 +725,6 @@ fn tcp_state(code: &str) -> &'static str {
     }
 }
 
-/// Every TCP and UDP connection, and who has it (where their open files
-/// can be seen).
-/// Socket inode → the process that has it open, and the processes whose
-/// open files could be seen.
-fn socket_owners(procs: &[Proc]) -> (HashMap<u64, i32>, std::collections::HashSet<i32>) {
-    let (mut owner, mut seen) = (HashMap::new(), std::collections::HashSet::new());
-    for p in procs {
-        let Ok(rd) = std::fs::read_dir(format!("/proc/{}/fd", p.pid)) else { continue };
-        seen.insert(p.pid);
-        for fd in rd.flatten() {
-            if let Ok(target) = std::fs::read_link(fd.path())
-                && let Some(inode) = target.to_str().and_then(|t| t.strip_prefix("socket:[")).and_then(|t| t.strip_suffix(']')).and_then(|t| t.parse().ok())
-            {
-                owner.insert(inode, p.pid);
-            }
-        }
-    }
-    (owner, seen)
-}
-
 /// TCP's state by number (netlink's), as the list says it.
 fn tcp_state_of(n: u8) -> &'static str {
     tcp_state(&format!("{n:02X}"))
@@ -1055,38 +762,6 @@ fn connections_of(sockets: &[crate::netdiag::Socket], owner: &HashMap<u64, i32>,
             }
         })
         .collect()
-}
-
-/// Each process's TCP bytes sent and received each second, from its
-/// sockets' counters now and at the last look (`before`): a socket new
-/// since counts in full, one gone counts no more. Those whose files can't
-/// be seen get none.
-fn traffic(
-    procs: &mut [Proc],
-    sockets: &[crate::netdiag::Socket],
-    owner: &HashMap<u64, i32>,
-    seen: &std::collections::HashSet<i32>,
-    before: Option<&HashMap<u64, (u64, u64)>>,
-    elapsed: f64,
-) -> HashMap<u64, (u64, u64)> {
-    let mut by_pid: HashMap<i32, (u64, u64)> = HashMap::new();
-    let mut now = HashMap::new();
-    for s in sockets.iter().filter(|s| s.tcp) {
-        now.insert(s.inode, (s.sent, s.received));
-        let (Some(pid), Some(before)) = (owner.get(&s.inode), before) else { continue };
-        let (was_sent, was_received) = before.get(&s.inode).copied().unwrap_or((0, 0));
-        let e = by_pid.entry(*pid).or_default();
-        e.0 += s.sent.saturating_sub(was_sent);
-        e.1 += s.received.saturating_sub(was_received);
-    }
-    let per = elapsed.max(1e-3);
-    for p in procs.iter_mut() {
-        let known = before.is_some() && seen.contains(&p.pid);
-        let (sent, received) = by_pid.get(&p.pid).copied().unwrap_or_default();
-        p.sent = known.then(|| sent as f64 / per);
-        p.received = known.then(|| received as f64 / per);
-    }
-    now
 }
 
 /// Each interface's counters: from netlink, else /proc/net/dev.
@@ -1618,7 +1293,7 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
 
                 let mut processes = if control.want_processes.load(Ordering::Relaxed) {
                     let (t0, i0) = (p.map(|p| p.ticks.clone()).unwrap_or_default(), p.map(|p| p.io.clone()).unwrap_or_default());
-                    let (list, ticks, io) = processes(Before { ticks: &t0, io: &i0 }, elapsed.unwrap_or(1.0), &users, page, hz, &mut known);
+                    let (list, ticks, io) = processes(Before { ticks: &t0, io: &i0, with_io: true }, elapsed.unwrap_or(1.0), &users, page, hz, &mut known);
                     c.ticks = ticks;
                     c.io = io;
                     Some(list)
@@ -1773,7 +1448,7 @@ mod tests {
 
     #[test]
     fn lists_processes() {
-        let (list, ticks, _) = processes(Before { ticks: &HashMap::new(), io: &HashMap::new() }, 1.0, &users(), 4096, 100.0, &mut Known::default());
+        let (list, ticks, _) = processes(Before { ticks: &HashMap::new(), io: &HashMap::new(), with_io: true }, 1.0, &users(), 4096, 100.0, &mut Known::default());
         let me = std::process::id() as i32;
         let mine = list.iter().find(|p| p.pid == me).expect("this test's process");
         assert!(mine.threads >= 1 && mine.ppid > 0);

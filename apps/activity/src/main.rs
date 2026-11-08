@@ -19,7 +19,7 @@ mod details;
 use olo_system::gpu_load as gpus;
 mod helper;
 mod inspector;
-mod netdiag;
+use olo_system::netdiag;
 mod palms;
 mod processes;
 mod sample;

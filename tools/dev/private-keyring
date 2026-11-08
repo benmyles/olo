@@ -6,7 +6,7 @@
 #   tools/dev/private-keyring start   # prints the variables to export
 #   tools/dev/private-keyring stop
 set -e
-DIR=/tmp/olo-dev/keyring
+DIR=/var/tmp/olo-dev/keyring
 case "$1" in
 start)
     "$0" stop >/dev/null 2>&1 || true
@@ -18,9 +18,9 @@ start)
     # if no test prompter answers) may reach the person's display.
     unset GNOME_KEYRING_CONTROL WAYLAND_DISPLAY DISPLAY
     # A bus of its own: busd if installed (`cargo install busd --root
-    # /tmp/olo-dev/busd`), else dbus-daemon with the session's rules
+    # /var/tmp/olo-dev/busd`), else dbus-daemon with the session's rules
     # (dbus-broker needs a systemd user manager).
-    BUSD=${BUSD:-/tmp/olo-dev/busd/bin/busd}
+    BUSD=${BUSD:-/var/tmp/olo-dev/busd/bin/busd}
     if [ -x "$BUSD" ]; then
         setsid "$BUSD" --address "unix:path=$DIR/bus" >"$DIR/bus.log" 2>&1 < /dev/null &
         echo $! > "$DIR/bus.pid"

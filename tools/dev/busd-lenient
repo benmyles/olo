@@ -9,7 +9,7 @@
 # user who owns ~/.cargo.
 #
 #   BUSD=$(tools/dev/busd-lenient)
-#   $BUSD --address unix:path=/tmp/olo-dev/NAME/bus.sock &
+#   $BUSD --address unix:path=/var/tmp/olo-dev/NAME/bus.sock &
 set -e
 DIR=$HOME/.cache/olo-dev/busd-lenient
 BIN=$DIR/busd-0.5.0/target/release/busd

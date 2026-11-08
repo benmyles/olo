@@ -8,6 +8,20 @@
 //! so a call in progress never loses its device. The captures exist only
 //! while the source streams: nothing records the microphone, and nothing
 //! runs, while no one listens.
+//!
+//! Nothing waits that needn't (Ben, 2026-11-07, of 40 ms: "we need that to
+//! be way more optimized so that it is not introducing any kind of
+//! noticeable lag"), as PipeWire's own echo-cancel does it: the captures
+//! and the source are one group (`node.group`: one driver, one clock, so
+//! nothing drifts), the source is triggered (`StreamFlags::TRIGGER`) from
+//! the microphone's process once its frames are done, and for calls the
+//! graph runs a frame a cycle (`node.force-quantum` 480, while something
+//! records), so nothing is held back for the frames' fit; the one cycle a
+//! source fed by another stream is behind remains (PipeWire's loopback is
+//! too). With a quantum that doesn't fit the frames (another program
+//! forcing its own) only its misfit is held (`misfit`), exactly, from the
+//! start. Measured by tools/dev/voice-latency (the processing off): 21.33
+//! ms before, 10.0 after; 14.67 at a forced 256, 30.67 at 1024.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -42,17 +56,43 @@ impl Config {
         format!("{label} (Voice Processing)")
     }
 
-    /// The buffering around the processing: the graph's quantum asked for,
-    /// and what the source keeps ahead (samples).
-    fn buffering(&self) -> (&'static str, usize) {
+    /// The buffering around the processing: the graph's quantum asked for
+    /// (samples), whether it's forced (calls: a frame a cycle), and what
+    /// the source keeps ahead beyond what the quantum's fit needs.
+    fn buffering(&self) -> (u32, bool, usize) {
         match self.settings.mode {
-            // A frame ahead: enough for any quantum's phase against the
-            // frames; with a 10 ms quantum, nothing more.
-            Mode::Calls => ("480/48000", FRAME),
-            Mode::Recording => ("2048/48000", 2048 + 4 * FRAME),
+            Mode::Calls => (FRAME as u32, true, 0),
+            // (Not to the millisecond: a long quantum, a margin of frames.)
+            Mode::Recording => (2048, false, 4 * FRAME),
         }
     }
+
+    fn latency(&self) -> String {
+        format!("{}/{RATE}", self.buffering().0)
+    }
 }
+
+/// What the source must hold back for `quantum` samples a cycle when
+/// frames of `FRAME` come as the microphone's samples make them, so it
+/// never runs dry, which is what it delays the sound by: nothing when
+/// the frames fit the quantum (a multiple), else the most a frame can be
+/// short of done at a cycle's end, `FRAME - gcd(quantum, FRAME)` (448
+/// samples for any power of two). Held from the start (silence before
+/// the sound), the frames done never fall short of a quantum: each cycle
+/// adds a quantum and takes one, so what's held stays, and the samples
+/// not yet a frame are at most that.
+fn misfit(quantum: usize) -> usize {
+    let q = quantum.max(1);
+    if q % FRAME == 0 { 0 } else { FRAME - gcd(q, FRAME) }
+}
+
+fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+/// The source, to trigger from the microphone's process once its frames
+/// are done (null until it's made).
+type Trigger = Arc<std::sync::atomic::AtomicPtr<pw::sys::pw_stream>>;
 
 /// What the engine has been doing, for the state file.
 #[derive(Debug, Default)]
@@ -61,7 +101,11 @@ pub struct Stats {
     pub frames: AtomicU64,
     pub frame_ns: AtomicU64,
     pub dropouts: AtomicU64,
+    /// What it delays the sound by in all: the processing's, and what the
+    /// source holds for the quantum it runs at.
     pub latency_samples: AtomicU32,
+    /// The graph's quantum, as the source last ran (samples; 0 not yet).
+    pub quantum: AtomicU32,
 }
 
 pub enum Message {
@@ -115,9 +159,13 @@ struct Processing {
     far: Vec<f32>,
     /// Processed, waiting for the source.
     out: VecDeque<f32>,
-    /// What the source keeps ahead, and whether it has that yet.
-    ahead: usize,
-    primed: bool,
+    /// What the source keeps ahead beyond its quantum's fit (recording's
+    /// margin).
+    extra: usize,
+    /// The quantum the source last ran at (0: to find out, and hold
+    /// back for), and what it holds back for it (`misfit`).
+    quantum: usize,
+    hold: usize,
 }
 
 impl Processing {
@@ -125,16 +173,36 @@ impl Processing {
         let mut settings = config.settings;
         settings.echo_cancellation &= config.speakers.is_some();
         let voice = Voice::new(settings)?;
-        Ok(Processing { voice, mic: Vec::with_capacity(4096), far: Vec::with_capacity(4096), out: VecDeque::with_capacity(16384), ahead: config.buffering().1, primed: false })
+        Ok(Processing { voice, mic: Vec::with_capacity(4096), far: Vec::with_capacity(4096), out: VecDeque::with_capacity(16384), extra: config.buffering().2, quantum: 0, hold: 0 })
     }
 
     fn reset(&mut self) {
         self.mic.clear();
         self.far.clear();
         self.out.clear();
-        self.primed = false;
+        self.quantum = 0;
+    }
+
+    /// What it delays the sound by, in samples: the processing's, what
+    /// the source holds for its quantum, and the cycle a source fed by
+    /// another stream is behind it (PipeWire's own loopback is too:
+    /// measured, a quantum exactly).
+    fn latency(&self) -> u32 {
+        (self.voice.latency_samples() + self.hold + self.extra + self.quantum) as u32
     }
 }
+
+/// The quantum the source forces on the graph while something records
+/// from it: calls a frame a cycle, so nothing waits; "0" forces none.
+fn force_quantum(config: &Config) -> String {
+    let (quantum, force, _) = config.buffering();
+    if force { quantum.to_string() } else { "0".into() }
+}
+
+/// One group for the captures and the source: one driver, one clock (so
+/// nothing drifts and the source can be fed in the cycle its frames came
+/// in), and never linked to each other.
+const GROUP: &str = "olo-voice";
 
 fn format_param() -> Result<Vec<u8>, String> {
     let mut info = spa::param::audio::AudioInfoRaw::new();
@@ -181,6 +249,7 @@ fn capture(
     latency: &str,
     processing: Arc<Mutex<Processing>>,
     stats: Arc<Stats>,
+    trigger: Option<Trigger>,
 ) -> Result<(pw::stream::StreamRc, Box<dyn std::any::Any>), String> {
     let name = if monitor { "Olo Voice: echo reference" } else { "Olo Voice: microphone" };
     let mut props = properties! {
@@ -189,6 +258,8 @@ fn capture(
         *pw::keys::MEDIA_ROLE => "Communication",
         *pw::keys::NODE_NAME => if monitor { "olo_voice.echo_reference" } else { "olo_voice.microphone" },
         *pw::keys::NODE_LATENCY => latency,
+        *pw::keys::NODE_GROUP => GROUP,
+        *pw::keys::NODE_LINK_GROUP => GROUP,
         *pw::keys::TARGET_OBJECT => target,
         // Ours alone: not something for the person to move about.
         "node.dont-reconnect" => "true",
@@ -208,33 +279,45 @@ fn capture(
             let Some(bytes) = data.data() else { return };
             let end = (offset + size).min(bytes.len());
             let input = samples(&bytes[offset.min(end)..end]);
-            let mut p = processing.lock().unwrap();
-            let p = &mut *p;
-            if monitor {
-                p.far.extend_from_slice(input);
-                let whole = p.far.len() / FRAME * FRAME;
-                for f in p.far[..whole].as_chunks::<FRAME>().0 {
-                    p.voice.render(f);
+            {
+                let mut p = processing.lock().unwrap();
+                let p = &mut *p;
+                if monitor {
+                    p.far.extend_from_slice(input);
+                    let whole = p.far.len() / FRAME * FRAME;
+                    for f in p.far[..whole].as_chunks::<FRAME>().0 {
+                        p.voice.render(f);
+                    }
+                    p.far.drain(..whole);
+                } else {
+                    // The processing's thread on a fast core while it works
+                    // (once: it is PipeWire's realtime thread, for good).
+                    thread_local!(static FAST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) });
+                    if !FAST.replace(true) {
+                        let _ = olo_system::priority::util_min_self(olo_protocol::performance::AUDIO_UTIL_MIN);
+                    }
+                    p.mic.extend_from_slice(input);
+                    let whole = p.mic.len() / FRAME * FRAME;
+                    let mut out = [0f32; FRAME];
+                    for f in p.mic[..whole].as_chunks::<FRAME>().0 {
+                        let started = std::time::Instant::now();
+                        p.voice.capture(f, &mut out);
+                        stats.frame_ns.fetch_add(started.elapsed().as_nanos() as u64, Relaxed);
+                        stats.frames.fetch_add(1, Relaxed);
+                        p.out.extend(out);
+                    }
+                    p.mic.drain(..whole);
                 }
-                p.far.drain(..whole);
-            } else {
-                // The processing's thread on a fast core while it works
-                // (once: it is PipeWire's realtime thread, for good).
-                thread_local!(static FAST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) });
-                if !FAST.replace(true) {
-                    let _ = olo_system::priority::util_min_self(olo_protocol::performance::AUDIO_UTIL_MIN);
+            }
+            // The source given this cycle's frames now (it takes the lock).
+            if let Some(t) = &trigger {
+                let source = t.load(std::sync::atomic::Ordering::Acquire);
+                if !source.is_null() {
+                    // SAFETY: the source outlives the captures (made before
+                    // them, gone after: `run`), and this is the data loop's
+                    // thread, where its process runs.
+                    unsafe { pw::sys::pw_stream_trigger_process(source) };
                 }
-                p.mic.extend_from_slice(input);
-                let whole = p.mic.len() / FRAME * FRAME;
-                let mut out = [0f32; FRAME];
-                for f in p.mic[..whole].as_chunks::<FRAME>().0 {
-                    let started = std::time::Instant::now();
-                    p.voice.capture(f, &mut out);
-                    stats.frame_ns.fetch_add(started.elapsed().as_nanos() as u64, Relaxed);
-                    stats.frames.fetch_add(1, Relaxed);
-                    p.out.extend(out);
-                }
-                p.mic.drain(..whole);
             }
         })
         .register()
@@ -252,11 +335,11 @@ fn capture(
     Ok((stream, Box::new(listener)))
 }
 
-fn captures(core: &pw::core::CoreRc, config: &Config, processing: &Arc<Mutex<Processing>>, stats: &Arc<Stats>) -> Result<Captures, String> {
-    let latency = config.buffering().0;
-    let mut streams = vec![capture(core, &config.microphone, false, latency, processing.clone(), stats.clone())?];
+fn captures(core: &pw::core::CoreRc, config: &Config, processing: &Arc<Mutex<Processing>>, stats: &Arc<Stats>, trigger: &Trigger) -> Result<Captures, String> {
+    let latency = config.latency();
+    let mut streams = vec![capture(core, &config.microphone, false, &latency, processing.clone(), stats.clone(), Some(trigger.clone()))?];
     if let (Some(speakers), true) = (&config.speakers, config.settings.echo_cancellation) {
-        streams.push(capture(core, speakers, true, latency, processing.clone(), stats.clone())?);
+        streams.push(capture(core, speakers, true, &latency, processing.clone(), stats.clone(), None)?);
     }
     let weak = streams.iter().map(|(s, _)| s.downgrade()).collect();
     Ok(Captures { _streams: streams, weak })
@@ -277,8 +360,8 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
     let core = context.connect_rc(None).map_err(|e| format!("can't reach PipeWire: {e}"))?;
 
     let processing = Arc::new(Mutex::new(Processing::new(&config)?));
-    stats.latency_samples.store(processing.lock().unwrap().voice.latency_samples() as u32 + config.buffering().1 as u32, Relaxed);
-    let current = Rc::new(RefCell::new((config.clone(), captures(&core, &config, &processing, &stats)?)));
+    stats.latency_samples.store(processing.lock().unwrap().latency(), Relaxed);
+    let trigger: Trigger = Arc::new(std::sync::atomic::AtomicPtr::new(std::ptr::null_mut()));
 
     let source = pw::stream::StreamRc::new(
         core.clone(),
@@ -291,11 +374,17 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
             *pw::keys::NODE_NAME => NODE,
             *pw::keys::NODE_DESCRIPTION => config.description(),
             *pw::keys::AUDIO_CHANNELS => "1",
-            *pw::keys::NODE_LATENCY => config.buffering().0,
+            *pw::keys::NODE_LATENCY => config.latency(),
+            *pw::keys::NODE_FORCE_QUANTUM => force_quantum(&config),
+            *pw::keys::NODE_GROUP => GROUP,
+            *pw::keys::NODE_LINK_GROUP => GROUP,
             "device.icon-name" => "audio-input-microphone",
         },
     )
     .map_err(|e| e.to_string())?;
+    // (The captures, made after it, trigger it; it goes after them.)
+    trigger.store(source.as_raw_ptr(), std::sync::atomic::Ordering::Release);
+    let current = Rc::new(RefCell::new((config.clone(), captures(&core, &config, &processing, &stats, &trigger)?)));
     let _source_listener = source
         .add_local_listener_with_user_data(())
         .state_changed({
@@ -321,27 +410,45 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
                     let n = if requested == 0 { out.len() } else { requested.min(out.len()) };
                     let out = &mut out[..n];
                     let mut p = processing.lock().unwrap();
-                    if !p.primed && p.out.len() >= p.ahead + n {
-                        p.primed = true;
+                    let p = &mut *p;
+                    // The quantum it runs at: what it holds back for it
+                    // (`misfit`: the delay), held from now exactly, with
+                    // silence before the sound to make it up (starting) or
+                    // the oldest let go. Each cycle then adds a quantum and
+                    // takes one: what's held stays, and never runs dry.
+                    if n != p.quantum {
+                        p.quantum = n;
+                        p.hold = misfit(n);
+                        let (want, have) = (p.hold + p.extra + n, p.mic.len() + p.out.len());
+                        if have < want {
+                            for _ in have..want {
+                                p.out.push_front(0.0);
+                            }
+                        } else {
+                            let extra = (have - want).min(p.out.len());
+                            p.out.drain(..extra);
+                        }
+                        stats.quantum.store(n as u32, Relaxed);
+                        stats.latency_samples.store(p.latency(), Relaxed);
                     }
-                    if p.primed && p.out.len() < n {
-                        // Ran dry: count it, and wait to be ahead again.
+                    if p.out.len() < n {
+                        // Ran dry (it shouldn't): count it, silence, and
+                        // held again next cycle.
                         stats.dropouts.fetch_add(1, Relaxed);
-                        p.primed = false;
-                    }
-                    if p.primed {
+                        out.fill(0.0);
+                        p.quantum = 0;
+                    } else {
                         for (o, s) in out.iter_mut().zip(p.out.drain(..n)) {
                             *o = s;
                         }
-                        // Never more than a frame beyond what's kept ahead
-                        // (the captures' clock a hair fast).
-                        let most = p.ahead + n + FRAME;
-                        if p.out.len() > most {
-                            let extra = p.out.len() - most;
+                        // Never more than a frame beyond what's held (should
+                        // a capture's clock run a hair fast).
+                        let most = p.hold + p.extra + FRAME;
+                        let held = p.mic.len() + p.out.len();
+                        if held > most {
+                            let extra = (held - most).min(p.out.len());
                             p.out.drain(..extra);
                         }
-                    } else {
-                        out.fill(0.0);
                     }
                     n
                 } else {
@@ -357,11 +464,14 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
         .map_err(|e| e.to_string())?;
     let format = format_param()?;
     let mut params = [pw::spa::pod::Pod::from_bytes(&format).ok_or("format")?];
-    source.connect(spa::utils::Direction::Output, None, pw::stream::StreamFlags::MAP_BUFFERS | pw::stream::StreamFlags::RT_PROCESS, &mut params).map_err(|e| e.to_string())?;
+    // (Triggered by the microphone's process: `TRIGGER`.)
+    source
+        .connect(spa::utils::Direction::Output, None, pw::stream::StreamFlags::MAP_BUFFERS | pw::stream::StreamFlags::RT_PROCESS | pw::stream::StreamFlags::TRIGGER, &mut params)
+        .map_err(|e| e.to_string())?;
 
     let weak = mainloop.downgrade();
     let _rx = rx.attach(mainloop.loop_(), {
-        let (core, processing, stats, source) = (core.clone(), processing.clone(), stats.clone(), source.downgrade());
+        let (core, processing, stats, source, trigger) = (core.clone(), processing.clone(), stats.clone(), source.downgrade(), trigger.clone());
         move |message| match message {
             Message::Quit => {
                 if let Some(l) = weak.upgrade() {
@@ -376,7 +486,7 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
                 if cur.0.settings != config.settings || cur.0.speakers != config.speakers {
                     match Processing::new(&config) {
                         Ok(p) => {
-                            stats.latency_samples.store(p.voice.latency_samples() as u32 + config.buffering().1 as u32, Relaxed);
+                            stats.latency_samples.store(p.latency(), Relaxed);
                             *processing.lock().unwrap() = p;
                         }
                         Err(e) => tracing::warn!("voice: {e}"),
@@ -384,7 +494,7 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
                 }
                 // Drop the old captures before making the new.
                 cur.1 = Captures { _streams: Vec::new(), weak: Vec::new() };
-                match captures(&core, &config, &processing, &stats) {
+                match captures(&core, &config, &processing, &stats, &trigger) {
                     Ok(c) => {
                         let streaming = source.upgrade().is_some_and(|s| matches!(s.state(), pw::stream::StreamState::Streaming));
                         set_active(&c.weak, streaming);
@@ -392,11 +502,16 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
                     }
                     Err(e) => tracing::warn!("voice: {e}"),
                 }
-                // Named after the microphone it listens to now.
-                if cur.0.description() != config.description()
+                // Named after the microphone it listens to now, and at the
+                // mode's quantum.
+                if (cur.0.description() != config.description() || cur.0.settings.mode != config.settings.mode)
                     && let Some(s) = source.upgrade()
                 {
-                    let props = properties! { *pw::keys::NODE_DESCRIPTION => config.description() };
+                    let props = properties! {
+                        *pw::keys::NODE_DESCRIPTION => config.description(),
+                        *pw::keys::NODE_LATENCY => config.latency(),
+                        *pw::keys::NODE_FORCE_QUANTUM => force_quantum(&config),
+                    };
                     // SAFETY: the stream is alive (upgraded), on its own
                     // loop's thread; PipeWire copies the dictionary.
                     unsafe { pw::sys::pw_stream_update_properties(s.as_raw_ptr(), props.dict().as_raw()) };
@@ -422,5 +537,36 @@ mod tests {
         assert_eq!(c("AirPods").description(), "AirPods (Voice Processing)");
         assert_eq!(c("MacBook Pro Microphone").description(), "MacBook Pro Microphone (Voice Processing)");
         assert_eq!(c(" ").description(), "Microphone (Voice Processing)");
+    }
+
+    /// What the source holds back for each quantum: nothing for one the
+    /// frames fit (a call's, a frame a cycle), else the most a frame can
+    /// be short of done; and run through, it never runs dry.
+    #[test]
+    fn what_the_source_holds_for_its_quantum() {
+        assert_eq!(misfit(480), 0);
+        assert_eq!(misfit(960), 0);
+        for q in [128, 256, 512, 1024, 2048] {
+            assert_eq!(misfit(q), 448, "{q}");
+        }
+        assert_eq!(misfit(100), 460);
+        assert_eq!(misfit(240), 240);
+        for q in [32, 64, 100, 128, 160, 192, 240, 256, 300, 441, 480, 512, 640, 960, 1000, 1024, 2048] {
+            let hold = misfit(q);
+            let (mut mic, mut out) = (0usize, 0usize);
+            for cycle in 0..20_000 {
+                mic += q;
+                out += mic / FRAME * FRAME;
+                mic %= FRAME;
+                if cycle == 0 {
+                    // (Held from the start: silence before the sound.)
+                    out += hold + q - (mic + out).min(hold + q);
+                }
+                assert!(out >= q, "{q}: dry at cycle {cycle}");
+                out -= q;
+                // (What's held stays the same: the delay.)
+                assert_eq!(mic + out, hold, "{q} at cycle {cycle}");
+            }
+        }
     }
 }

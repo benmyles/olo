@@ -1,0 +1,249 @@
+%YAML 1.2
+---
+# just's justfiles: recipes (their names, parameters and dependencies,
+# @ to run quietly), variables and :=, export, settings, aliases,
+# imports and modules, [attributes], strings (each of just's quotes),
+# backticks, if/else, function calls and comments; recipe bodies as
+# shell (bash), {{ }} interpolation found anywhere in them, inside the
+# shell's strings and comments too (just puts it in before the shell
+# sees the line).
+name: Just
+scope: source.just
+file_extensions: [just]
+hidden_file_extensions: [justfile, Justfile, .justfile]
+
+variables:
+  name: '[A-Za-z_][A-Za-z0-9_-]*'
+
+contexts:
+  main:
+    - include: comments
+    - match: '^(\[)'
+      captures:
+        1: punctuation.definition.annotation.begin.just
+      push: attributes
+    - match: '^(set)\s+({{name}})'
+      captures:
+        1: keyword.other.set.just
+        2: entity.other.attribute-name.setting.just
+      push: setting
+    - match: '^(alias)\s+({{name}})\s*(:=)'
+      captures:
+        1: keyword.other.alias.just
+        2: entity.name.function.alias.just
+        3: keyword.operator.assignment.just
+      push: alias-target
+    - match: '^(import|mod)(\?)?(?=\s)'
+      captures:
+        1: keyword.other.import.just
+        2: keyword.operator.optional.just
+      push: import
+    - match: '^(export)\s+({{name}})\s*(:=)'
+      captures:
+        1: storage.modifier.export.just
+        2: variable.other.definition.just
+        3: keyword.operator.assignment.just
+      push: expression-line
+    - match: '^({{name}})\s*(:=)'
+      captures:
+        1: variable.other.definition.just
+        2: keyword.operator.assignment.just
+      push: expression-line
+    # A recipe: its name, then its parameters, then its dependencies.
+    - match: '^(@)?({{name}})(?=[^\n]*?:(?!=))'
+      captures:
+        1: storage.modifier.quiet.just
+        2: entity.name.function.recipe.just
+      push: recipe-parameters
+
+  comments:
+    - match: '#'
+      scope: punctuation.definition.comment.just
+      push:
+        - meta_scope: comment.line.number-sign.just
+        - match: '$\n?'
+          pop: true
+
+  attributes:
+    - meta_scope: meta.annotation.just
+    - match: '\]'
+      scope: punctuation.definition.annotation.end.just
+      pop: true
+    - match: '{{name}}'
+      scope: entity.other.attribute-name.just
+    - match: '[(),:]'
+      scope: punctuation.separator.just
+    - include: strings
+    - match: '$\n?'
+      pop: true
+
+  setting:
+    - match: '$\n?'
+      pop: true
+    - match: ':='
+      scope: keyword.operator.assignment.just
+    - match: '\['
+      scope: punctuation.section.brackets.begin.just
+    - match: '\]'
+      scope: punctuation.section.brackets.end.just
+    - match: ','
+      scope: punctuation.separator.just
+    - include: expression
+
+  alias-target:
+    - match: '$\n?'
+      pop: true
+    - include: comments
+    - match: '{{name}}(?:::{{name}})*'
+      scope: variable.function.just
+
+  import:
+    - match: '$\n?'
+      pop: true
+    - include: comments
+    - include: strings
+    - match: '{{name}}'
+      scope: entity.name.namespace.just
+
+  expression-line:
+    - match: '$\n?'
+      pop: true
+    - include: expression
+
+  expression:
+    - include: comments
+    - include: strings
+    - match: '\b(if|else)\b'
+      scope: keyword.control.conditional.just
+    - match: '==|!=|=~|&&|\|\||[+/]'
+      scope: keyword.operator.just
+    - match: '\b(true|false)\b'
+      scope: constant.language.boolean.just
+    - match: '({{name}})(\()'
+      captures:
+        1: support.function.just
+        2: punctuation.section.parens.begin.just
+    - match: '[(){}]'
+      scope: punctuation.section.just
+    - match: '{{name}}'
+      scope: variable.other.just
+
+  strings:
+    - match: '"""'
+      scope: punctuation.definition.string.begin.just
+      push:
+        - meta_scope: string.quoted.double.block.just
+        - match: '"""'
+          scope: punctuation.definition.string.end.just
+          pop: true
+        - match: '\\.'
+          scope: constant.character.escape.just
+    - match: "'''"
+      scope: punctuation.definition.string.begin.just
+      push:
+        - meta_scope: string.quoted.single.block.just
+        - match: "'''"
+          scope: punctuation.definition.string.end.just
+          pop: true
+    - match: '```'
+      scope: punctuation.definition.string.begin.just
+      push:
+        - meta_scope: string.interpolated.backtick.block.just
+        - match: '```'
+          scope: punctuation.definition.string.end.just
+          pop: true
+    - match: 'x?"'
+      scope: punctuation.definition.string.begin.just
+      push:
+        - meta_scope: string.quoted.double.just
+        - match: '"'
+          scope: punctuation.definition.string.end.just
+          pop: true
+        - match: '\\.'
+          scope: constant.character.escape.just
+        - match: '$\n?'
+          pop: true
+    - match: "x?'"
+      scope: punctuation.definition.string.begin.just
+      push:
+        - meta_scope: string.quoted.single.just
+        - match: "'"
+          scope: punctuation.definition.string.end.just
+          pop: true
+        - match: '$\n?'
+          pop: true
+    - match: '`'
+      scope: punctuation.definition.string.begin.just
+      push:
+        - meta_scope: string.interpolated.backtick.just
+        - match: '`'
+          scope: punctuation.definition.string.end.just
+          pop: true
+        - match: '$\n?'
+          pop: true
+
+  recipe-parameters:
+    - meta_scope: meta.recipe.parameters.just
+    - match: ':(?!=)'
+      scope: punctuation.separator.dependencies.just
+      set: recipe-dependencies
+    - match: '([+*])?(\$)?({{name}})'
+      captures:
+        1: keyword.operator.variadic.just
+        2: storage.modifier.export.just
+        3: variable.parameter.just
+    - match: '='
+      scope: keyword.operator.assignment.just
+    - include: strings
+    - match: '[()]'
+      scope: punctuation.section.parens.just
+    - match: '$\n?'
+      pop: true
+
+  recipe-dependencies:
+    - meta_scope: meta.recipe.dependencies.just
+    - match: '$\n?'
+      set: recipe-body
+    - include: comments
+    - match: '&&'
+      scope: keyword.operator.just
+    - match: '(\()({{name}}(?:::{{name}})*)'
+      captures:
+        1: punctuation.section.parens.begin.just
+        2: variable.function.just
+      push:
+        - match: '\)'
+          scope: punctuation.section.parens.end.just
+          pop: true
+        - include: expression
+    - match: '{{name}}(?:::{{name}})*'
+      scope: variable.function.just
+
+  # Its lines, indented, as shell: to the first line that isn't.
+  recipe-body:
+    - match: '^(?=[ \t]+\S)'
+      push: scope:source.shell.bash
+      with_prototype:
+        - match: '^(?=\S)'
+          pop: true
+        - match: '^([ \t]+)([@-]+)'
+          captures:
+            2: storage.modifier.line.just
+        - include: interpolation
+    - match: '^(?=\S)'
+      pop: true
+
+  interpolation:
+    - match: '\{\{\{\{'
+      scope: constant.character.escape.just
+    - match: '\{\{'
+      scope: punctuation.section.interpolation.begin.just
+      push:
+        - clear_scopes: true
+        - meta_scope: meta.interpolation.just
+        - match: '\}\}'
+          scope: punctuation.section.interpolation.end.just
+          pop: true
+        - match: '$\n?'
+          pop: true
+        - include: expression

@@ -14,7 +14,7 @@ use std::{
 use olo_protocol::{Client, ClientError, Reply, Request};
 
 /// Where tsession keeps each session (its logs, env.json, pid files).
-pub const BASE: &str = "/tmp/olo-dev";
+pub const BASE: &str = "/var/tmp/olo-dev";
 
 pub struct Session {
     pub name: String,

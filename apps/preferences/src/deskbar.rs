@@ -56,19 +56,28 @@ const EVERY: [(u32, &str); 8] =
 const SPANS: [(u32, &str); 7] = [(30, "30 seconds"), (60, "1 minute"), (120, "2 minutes"), (300, "5 minutes"), (600, "10 minutes"), (1800, "30 minutes"), (3600, "1 hour")];
 
 /// What a widget is, said in its list row: "CPU, a graph under the tray".
-fn summary(w: &Widget, sources: &Sources) -> String {
+fn summary(w: &Widget, shares: bool, sources: &Sources) -> String {
     let look = match w.look {
         Look::Graph => "a graph",
         Look::Bars => "bars",
         Look::Meter => "a meter",
         Look::Number => "a number",
+        Look::Heatmap => "a heatmap",
     };
     let place = match w.place {
         Place::Tray => "in the tray",
         Place::Top => "under the tray",
         Place::Foot => "at the bottom",
     };
-    format!("{}, {look} {place}", meters::describe(&w.measure, sources))
+    let beside = if shares { ", beside the one before" } else { "" };
+    format!("{}, {look} {place}{beside}", meters::describe(&w.measure, sources))
+}
+
+/// Whether the widget at `i` shares the row of the one before it: it
+/// asks to, out of the tray, and one before it is in its place.
+fn shares(widgets: &[Widget], i: usize) -> bool {
+    let w = &widgets[i];
+    w.beside && w.place != Place::Tray && widgets[..i].iter().any(|o| o.place == w.place)
 }
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
@@ -77,7 +86,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let selected = st.list.read(ui.cx).state.single().filter(|i| *i < widgets.len());
     let list_model = st.list.clone();
     let left = ui.collect(|ui| {
-        let rows: Vec<String> = widgets.iter().map(|w| summary(w, &sources)).collect();
+        let rows: Vec<String> = widgets.iter().enumerate().map(|(i, w)| summary(w, shares(&widgets, i), &sources)).collect();
         let n = rows.len();
         let list = ColumnListView::new("deskbar-widgets", &list_model, vec![Column::new("Widget", 290.0)], n, move |cell, window, cx| cell.text(window, cx, rows[cell.row].clone()))
             .no_header()
@@ -161,14 +170,15 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         ui.note("Each shows in the Deskbar as it changes. Click one there for Activity Monitor.");
     });
     let right = ui.collect(|ui| match selected.and_then(|i| widgets.get(i)) {
-        Some(w) => editor(ui, w, &sources),
+        Some(w) => editor(ui, w, selected.is_some_and(|i| widgets[..i].iter().any(|o| o.place == w.place)), &sources),
         None => ui.bbox("Widget", |ui| ui.note("Choose a widget to change it, or add one.")),
     });
     ui.add_columns(left, right);
 }
 
-/// The chosen widget's settings, each changing it (by id) at once.
-fn editor(ui: &mut Ui, w: &Widget, sources: &Sources) {
+/// The chosen widget's settings, each changing it (by id) at once
+/// (`after` one in its place: it can share that one's row).
+fn editor(ui: &mut Ui, w: &Widget, after: bool, sources: &Sources) {
     let id = w.id;
     // A change to the widget `id`, whatever its place in the list now.
     fn change(id: u32, f: impl Fn(&mut Widget) + 'static) -> impl Fn(&mut olo_protocol::Settings) + 'static {
@@ -206,6 +216,10 @@ fn editor(ui: &mut Ui, w: &Widget, sources: &Sources) {
             ui.choose("widget-size", &Size::ALL.map(|z| (z, z.name())), &w.size, |f| f.label("Size:").divider(DIVIDER), move |s, v| change(id, move |w| w.size = v)(s));
             ui.check("Show its name", w.label, move |s, v| change(id, move |w| w.label = v)(s));
             ui.check("Show its value", w.value, move |s, v| change(id, move |w| w.value = v)(s));
+        });
+        // (Side by side, each small: its name over its drawing.)
+        ui.enabled_if(!in_tray && after, |ui| {
+            ui.check("Beside the widget before it", w.beside, move |s, v| change(id, move |w| w.beside = v)(s));
         });
         if in_tray {
             ui.note("In the tray it's an icon's size; its name and value are in its tip.");

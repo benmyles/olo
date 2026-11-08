@@ -32,7 +32,7 @@ import hashlib, json, os, socket, subprocess, sys, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TSESSION = os.path.join(ROOT, "tools/dev/tsession")
-BASE = "/tmp/olo-dev"
+BASE = "/var/tmp/olo-dev"
 RUNTIME = f"/run/user/{os.getuid()}"
 
 # Preferences' panels (Bluetooth stays out of test runs; AirPods needs

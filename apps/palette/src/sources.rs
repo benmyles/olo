@@ -93,6 +93,10 @@ pub enum Action {
     Theme(bool),
     /// Search the web in the web browser.
     Search(String),
+    /// Put this in the query (a slash command chosen: "/ws ").
+    Fill(String),
+    /// Ask the AI (/ask): the answer shows in the palette.
+    Ask(String),
 }
 
 impl Action {
@@ -108,7 +112,7 @@ impl Action {
             Action::Keys(keys) => format!("keys:{}", keys.iter().map(u32::to_string).collect::<Vec<_>>().join("+")),
             // Windows and menus come and go; sums, searches and paths gone
             // to are one-offs.
-            Action::Activate(_) | Action::Menu { .. } | Action::Copy(_) | Action::Search(_) | Action::Reveal(_) => return None,
+            Action::Activate(_) | Action::Menu { .. } | Action::Copy(_) | Action::Search(_) | Action::Reveal(_) | Action::Fill(_) | Action::Ask(_) => return None,
         })
     }
 }
@@ -646,7 +650,8 @@ pub fn perform(action: Action, front: Option<u64>) {
                 }
                 Ok(())
             }
-            Action::Copy(_) => Ok(()),
+            // (The palette's own: never sent here.)
+            Action::Copy(_) | Action::Fill(_) | Action::Ask(_) => Ok(()),
             Action::Theme(dark) => {
                 if let Ok(mut c) = Client::connect()
                     && let Ok(Reply::Settings { mut settings }) = c.request(&Request::GetSettings)

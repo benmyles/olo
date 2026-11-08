@@ -97,7 +97,7 @@ def main():
         ok = False
         for _ in range(40):
             time.sleep(0.25)
-            snap_path = f"{os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')}/olo-terminal-groups-{json.load(open(f'/tmp/olo-dev/{N}/env.json'))['WAYLAND_DISPLAY']}.json"
+            snap_path = f"{os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')}/olo-terminal-groups-{json.load(open(f'/var/tmp/olo-dev/{N}/env.json'))['WAYLAND_DISPLAY']}.json"
             if os.path.exists(snap_path) and any(t.get("cwd") == HOME for t in json.load(open(snap_path))["tabs"]):
                 ok = True
                 break

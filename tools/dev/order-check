@@ -100,7 +100,7 @@ def main():
             failures.append("order")
     finally:
         ts("stop", NAME)
-        shutil.rmtree(os.path.join("/tmp/olo-dev", NAME), ignore_errors=True)
+        shutil.rmtree(os.path.join("/var/tmp/olo-dev", NAME), ignore_errors=True)
     if failures:
         sys.exit(1)
     print("windows come back as they were")

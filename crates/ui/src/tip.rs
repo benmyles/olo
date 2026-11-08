@@ -7,7 +7,9 @@
 //! (`widgets::tooltip` is GPUI's own, inside its window, for the rest.)
 //!
 //! The widget tells [`hover`] when the pointer comes and goes (its
-//! `on_hover`), and [`pressed`] when it's pressed.
+//! `on_hover`), and [`pressed`] when it's pressed; [`retext`] changes
+//! what its tip says while it shows (a live value: Deskbar's widgets),
+//! resized and placed again for it.
 
 use std::time::{Duration, Instant};
 
@@ -123,6 +125,26 @@ pub fn pressed(window: &Window, cx: &mut App, key: impl Into<SharedString>) {
     tips.waiting = None;
     tips.pressed = Some((window.window_handle(), key.into()));
     hide(cx);
+}
+
+/// The tip of widget `key` of `window` says `text` from now: if it's
+/// showing, drawn again, resized and placed again for it (else nothing:
+/// [`hover`] takes the text as it shows).
+pub fn retext(window: &Window, cx: &mut App, key: impl Into<SharedString>, text: impl Into<SharedString>) {
+    let (key, text, parent) = (key.into(), text.into(), window.window_handle());
+    let Some(tip) = cx.default_global::<Tips>().shown.as_ref().filter(|(w, k, _)| *w == parent && *k == key).map(|(_, _, t)| *t) else { return };
+    if text.is_empty() {
+        hide(cx);
+        return;
+    }
+    let (w, h) = tip_size(cx, &text);
+    let _ = tip.update(cx, |v, window, cx| {
+        if v.text != text {
+            v.text = text;
+            window.resize(size(px(w), px(h)));
+            cx.notify();
+        }
+    });
 }
 
 /// Puts the tip showing away.

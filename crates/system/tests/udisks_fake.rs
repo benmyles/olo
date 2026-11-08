@@ -1,7 +1,7 @@
 //! `olo_system::disks` against `udisks-fake`, end to end. Needs a bus
 //! to meet on: run with `OLO_TEST_BUS=unix:path=…` (a private
 //! dbus-broker or busd), e.g.
-//! `OLO_TEST_BUS=unix:path=/tmp/olo-dev/notes/bus.sock cargo test -p olo-system --test udisks_fake`.
+//! `OLO_TEST_BUS=unix:path=/var/tmp/olo-dev/notes/bus.sock cargo test -p olo-system --test udisks_fake`.
 //! Without it the test does nothing.
 
 use std::{

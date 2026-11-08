@@ -135,3 +135,4 @@ header-footer|a single sheet of white paper standing upright with faint grey tex
 page-view|two sheets of white paper with faint grey lines of text side by side on the desk, like the open pages of a document laid out
 ruler|a straight wooden ruler lying on the desk, tan with black tick marks and small numerals along its edge
 wrap-lines|a small square white paper card lying on the desk with three charcoal lines of text and a chunky Be-blue arrow curving from the right end of the top line back to the start of the next line
+deskbar|a slim upright panel of light grey metal standing on the desk like a tall narrow plaque, a short row of tiny coloured status lights near its top and a small green rising line graph glowing on its face

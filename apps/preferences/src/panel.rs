@@ -180,7 +180,7 @@ impl Panel {
             Panel::DefaultApps => "default-apps",
             // (Its own icon to come: generated against the reference set,
             // which needs the image model's key.)
-            Panel::Deskbar => "activity",
+            Panel::Deskbar => "deskbar",
             Panel::Display => "display",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",

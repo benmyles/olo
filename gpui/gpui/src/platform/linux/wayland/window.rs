@@ -134,6 +134,12 @@ pub struct WaylandWindowState {
     popup: Option<xdg_popup::XdgPopup>,
     /// Olo: the popup this one opened over (a submenu's menu), if any.
     popup_of: Option<xdg_surface::XdgSurface>,
+    /// Olo: a popup's kind, to place it again as it's resized, and the
+    /// size it was last placed for (a resize before its first configure
+    /// places it again once that comes: until then the compositor has
+    /// placed nothing, and its configure says the old size).
+    popup_kind: Option<WindowKind>,
+    popup_placed: Size<Pixels>,
     /// Olo: a popup that grabbed the pointer and keyboard (a menu; not a
     /// tip).
     grabbing: bool,
@@ -458,6 +464,8 @@ impl WaylandWindowState {
             toplevel,
             popup,
             popup_of: None,
+            popup_kind: None,
+            popup_placed: Size::default(),
             grabbing: false,
             fixed_size: !options.is_resizable,
             viewport,
@@ -760,55 +768,8 @@ impl WaylandWindow {
                 kind @ (WindowKind::Popup { .. } | WindowKind::Tip { .. }),
                 Some((parent_surface, serial)),
             ) => {
-                // Olo: a tip, below what it tells about (a gap away), or
-                // above; taking no input, grabbing nothing.
-                const TIP_GAP: f32 = 4.0;
-                let (anchor, corner, offset, tip) = match kind {
-                    WindowKind::Popup {
-                        anchor,
-                        corner,
-                        offset,
-                        ..
-                    } => (anchor, corner, offset, false),
-                    WindowKind::Tip { anchor, .. } => {
-                        let a = Bounds {
-                            origin: crate::point(anchor.origin.x, anchor.origin.y - px(TIP_GAP)),
-                            size: size(anchor.size.width, anchor.size.height + px(2.0 * TIP_GAP)),
-                        };
-                        (a, crate::Corner::BottomLeft, Point::default(), true)
-                    }
-                    _ => unreachable!(),
-                };
-                // Olo: where it opens, and how the compositor may move it
-                // to keep it on screen.
-                let positioner = globals.wm_base.create_positioner(&globals.qh, ());
-                let size = params.bounds.size;
-                positioner.set_size((size.width.0 as i32).max(1), (size.height.0 as i32).max(1));
-                positioner.set_anchor_rect(
-                    anchor.origin.x.0 as i32,
-                    anchor.origin.y.0 as i32,
-                    (anchor.size.width.0 as i32).max(1),
-                    (anchor.size.height.0 as i32).max(1),
-                );
-                positioner.set_anchor(match corner {
-                    crate::Corner::TopLeft => xdg_positioner::Anchor::TopLeft,
-                    crate::Corner::TopRight => xdg_positioner::Anchor::TopRight,
-                    crate::Corner::BottomLeft => xdg_positioner::Anchor::BottomLeft,
-                    crate::Corner::BottomRight => xdg_positioner::Anchor::BottomRight,
-                });
-                positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
-                let slide = xdg_positioner::ConstraintAdjustment::SlideX
-                    | xdg_positioner::ConstraintAdjustment::SlideY;
-                if offset == Point::default() {
-                    positioner.set_constraint_adjustment(
-                        slide
-                            | xdg_positioner::ConstraintAdjustment::FlipX
-                            | xdg_positioner::ConstraintAdjustment::FlipY,
-                    );
-                } else {
-                    positioner.set_offset(offset.x.0.round() as i32, offset.y.0.round() as i32);
-                    positioner.set_constraint_adjustment(slide);
-                }
+                let tip = matches!(kind, WindowKind::Tip { .. });
+                let positioner = popup_positioner(&globals, &kind, params.bounds.size);
                 let popup = match &parent_surface {
                     PopupParent::Xdg(parent) => {
                         xdg_surface.get_popup(Some(parent), &positioner, &globals.qh, surface.id())
@@ -888,6 +849,7 @@ impl WaylandWindow {
         };
 
         let grabbing = popup.is_some() && matches!(params.kind, WindowKind::Popup { .. });
+        let popup_kind = popup.is_some().then_some(params.kind);
         let made = Self::finish(
             handle,
             globals,
@@ -908,6 +870,8 @@ impl WaylandWindow {
         state.dialog = dialog_object;
         state.imported = imported;
         state.popup_of = popup_of;
+        state.popup_kind = popup_kind;
+        state.popup_placed = state.bounds.size;
         state.grabbing = grabbing;
         drop(state);
         Ok(made)
@@ -1524,7 +1488,16 @@ impl WaylandWindowStatePtr {
             let request_frame_callback = !state.acknowledged_first_configure;
             state.acknowledged_first_configure = true;
             let resizing = state.resizing;
+            // Olo: a popup resized before this (a tip whose words changed
+            // as it opened) is placed again for its size now.
+            let size_now = state.bounds.size;
+            let replace = request_frame_callback
+                && state.popup_kind.is_some()
+                && state.popup_placed != size_now;
             drop(state);
+            if replace {
+                self.place_popup(size_now);
+            }
             // (What was acknowledged applies with the next commit: at
             // once, but a resize by hand's sizes paced by the display.)
             self.frames.needs_commit.set(true);
@@ -1868,6 +1841,23 @@ impl WaylandWindowStatePtr {
         self.set_size_and_scale(Some(size), None);
     }
 
+    /// Olo: a popup placed again for `size`, to stay on screen
+    /// (xdg_popup's reposition, version 3; the compositor configures it
+    /// at its new place and size).
+    fn place_popup(&self, size: Size<Pixels>) {
+        let mut state = self.state.borrow_mut();
+        let (Some(popup), Some(kind)) = (state.popup.clone(), state.popup_kind) else {
+            return;
+        };
+        if popup.version() < 3 {
+            return;
+        }
+        let positioner = popup_positioner(&state.globals, &kind, size);
+        popup.reposition(&positioner, 0);
+        positioner.destroy();
+        state.popup_placed = size;
+    }
+
     /// Olo: a resize by hand ended: once the size has rested, the
     /// swapchain is made to fit (its room is GPU memory: three screens'
     /// worth for a window grown to its screen's size and back).
@@ -2045,7 +2035,7 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn resize(&mut self, mut size: Size<Pixels>) {
-        let state = self.borrow();
+        let mut state = self.borrow();
         let state_ptr = self.0.clone();
         // Olo: the sides the compositor holds keep its size (a window
         // maximized, zoomed, full screen or in a tile: xdg's states say
@@ -2076,6 +2066,14 @@ impl PlatformWindow for WaylandWindow {
         if let (Some(layer), Some(options)) = (&state.layer_surface, &state.layer_shell) {
             place_layer(layer, options, size);
             state.surface.commit();
+        }
+        // Olo: a popup of another size (a tip whose words changed) is
+        // placed again for it, so it stays on screen (xdg_popup's
+        // reposition, version 3).
+        if state.acknowledged_first_configure && size != state.popup_placed {
+            drop(state);
+            self.0.place_popup(size);
+            state = self.borrow();
         }
 
         state
@@ -2875,6 +2873,65 @@ const SNUG_AFTER: std::time::Duration = std::time::Duration::from_millis(1500);
 
 /// Olo: room for a window of `size` resized by hand: as big as its screen
 /// (or a quarter more than now), so the rest of the resize costs nothing.
+/// Olo: where a popup opens for its kind and size, and how the
+/// compositor may move it to keep it on screen: a tip below what it
+/// tells about (a gap away), or above; a menu at its corner.
+fn popup_positioner(
+    globals: &Globals,
+    kind: &WindowKind,
+    size: Size<Pixels>,
+) -> xdg_positioner::XdgPositioner {
+    const TIP_GAP: f32 = 4.0;
+    let (anchor, corner, offset) = match *kind {
+        WindowKind::Popup {
+            anchor,
+            corner,
+            offset,
+            ..
+        } => (anchor, corner, offset),
+        WindowKind::Tip { anchor, .. } => {
+            let a = Bounds {
+                origin: crate::point(anchor.origin.x, anchor.origin.y - px(TIP_GAP)),
+                size: crate::size(anchor.size.width, anchor.size.height + px(2.0 * TIP_GAP)),
+            };
+            (a, crate::Corner::BottomLeft, Point::default())
+        }
+        _ => (
+            Bounds::default(),
+            crate::Corner::BottomLeft,
+            Point::default(),
+        ),
+    };
+    let positioner = globals.wm_base.create_positioner(&globals.qh, ());
+    positioner.set_size((size.width.0 as i32).max(1), (size.height.0 as i32).max(1));
+    positioner.set_anchor_rect(
+        anchor.origin.x.0 as i32,
+        anchor.origin.y.0 as i32,
+        (anchor.size.width.0 as i32).max(1),
+        (anchor.size.height.0 as i32).max(1),
+    );
+    positioner.set_anchor(match corner {
+        crate::Corner::TopLeft => xdg_positioner::Anchor::TopLeft,
+        crate::Corner::TopRight => xdg_positioner::Anchor::TopRight,
+        crate::Corner::BottomLeft => xdg_positioner::Anchor::BottomLeft,
+        crate::Corner::BottomRight => xdg_positioner::Anchor::BottomRight,
+    });
+    positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+    let slide =
+        xdg_positioner::ConstraintAdjustment::SlideX | xdg_positioner::ConstraintAdjustment::SlideY;
+    if offset == Point::default() {
+        positioner.set_constraint_adjustment(
+            slide
+                | xdg_positioner::ConstraintAdjustment::FlipX
+                | xdg_positioner::ConstraintAdjustment::FlipY,
+        );
+    } else {
+        positioner.set_offset(offset.x.0.round() as i32, offset.y.0.round() as i32);
+        positioner.set_constraint_adjustment(slide);
+    }
+    positioner
+}
+
 fn resize_room(state: &WaylandWindowState, size: Size<DevicePixels>) -> Size<DevicePixels> {
     match state.display.as_ref().map(|(_, o)| o.bounds.size) {
         Some(screen) if screen.width.0 > 0 && screen.height.0 > 0 => Size {

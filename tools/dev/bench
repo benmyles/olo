@@ -119,7 +119,7 @@ APPS = [
     App("styled-edit-md", ["olo-styled-edit", os.path.join(HOME, "Documents", "long.md")], type_text="**benchmark** 123"),
     App("terminal", ["olo-terminal", "-e", "sh", "-c", "seq 1 60000; exec sh"], type_text="echo benchmark", settle=3.0),
     App("viewer", ["olo-viewer", os.path.join(HOME, "Pictures", "big.png")], settle=2.5),
-    App("notifications", ["olo-notifications", "--bus", f"unix:path=/tmp/olo-dev/{NAME}/bus"]),
+    App("notifications", ["olo-notifications", "--bus", f"unix:path=/var/tmp/olo-dev/{NAME}/bus"]),
     App("activity", ["olo-activity"], rows=True),
     App("deskcalc", ["olo-deskcalc"], type_text="12345+678="),
     App("disk-usage", ["olo-disk-usage", HOME], settle=3.0),
@@ -159,14 +159,14 @@ class Session:
         # (Ended with this run unless --keep, killed or not.)
         owner = [] if "--keep" in sys.argv else ["--owner", str(os.getpid())]
         tsession("start", NAME, self.size, "--session", "--shell", "--home", HOME, "--dark", *owner)
-        self.env = json.load(open(f"/tmp/olo-dev/{NAME}/env.json"))
+        self.env = json.load(open(f"/var/tmp/olo-dev/{NAME}/env.json"))
         self.sock, self.runtime, self.display = self.env["OLO_SOCKET"], self.env["XDG_RUNTIME_DIR"], self.env["WAYLAND_DISPLAY"]
         for _ in range(100):
             if self.deskbar_pid():
                 break
             time.sleep(0.1)
         tsession("hz", NAME, str(hz))
-        cfg = os.path.join(f"/tmp/olo-dev/{NAME}/config/olo")
+        cfg = os.path.join(f"/var/tmp/olo-dev/{NAME}/config/olo")
         os.makedirs(cfg, exist_ok=True)
         json.dump({"view": "cards", "fade": False}, open(os.path.join(cfg, "notifications.json"), "w"))
         time.sleep(1.0)

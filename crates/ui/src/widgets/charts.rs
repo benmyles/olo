@@ -527,6 +527,8 @@ impl RenderOnce for Spectrum {
     }
 }
 
+pub use clock::tick_within;
+
 /// When a window's graphs move: one clock for all of them, so they move
 /// together. Each graph drawn says how often its samples move a device
 /// pixel; the clock ticks at the finest of those (a minute across 600
@@ -887,35 +889,6 @@ mod tests {
     }
 }
 
-/// A small graph of `levels` (0 to 1, oldest first), its newest at
-/// `bounds`' right edge and `slots` readings across it, filled under its
-/// line if `fill`: Deskbar's widgets, drawn in a canvas's paint. A NaN
-/// level is a gap.
-pub fn paint_sparkline(window: &mut Window, bounds: Bounds<Pixels>, levels: &[f32], slots: usize, color: Hsla, fill: bool) {
-    if levels.len() < 2 {
-        return;
-    }
-    let slots = slots.max(levels.len()).max(2);
-    let step = f32::from(bounds.size.width) / (slots - 1) as f32;
-    let h = f32::from(bounds.size.height);
-    let x0 = f32::from(bounds.right()) - step * (levels.len() - 1) as f32;
-    let at = |i: usize, v: f32| point(px(x0 + step * i as f32), bounds.bottom() - px(0.75 + v.clamp(0.0, 1.0) * (h - 1.5)));
-    window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
-        window.paint_layer(bounds, |window| {
-            for (i, w) in levels.windows(2).enumerate() {
-                if !w[0].is_finite() || !w[1].is_finite() {
-                    continue;
-                }
-                let (a, b) = (at(i, w[0]), at(i + 1, w[1]));
-                if fill {
-                    window.paint_area(a, b, bounds.bottom(), color.opacity(0.3));
-                }
-                window.paint_segment(a, b, px(1.25), true, color);
-            }
-        });
-    });
-}
-
 /// Bars side by side across `bounds`, one a level (0 to 1) each, rising
 /// from its foot, a device pixel apart: Pulse's processors.
 pub fn paint_bars(window: &mut Window, bounds: Bounds<Pixels>, levels: &[f32], color: Hsla) {
@@ -959,4 +932,83 @@ pub fn paint_well(window: &mut Window, bounds: Bounds<Pixels>, p: &olo_theme::Pa
     style::fill_rect(window, inner, style::c(p.document_background));
     style::sunken(window, rect, p, false);
     inner
+}
+
+/// Levels (0 to 1) as a heatmap: a grid of cells across `bounds`, one a
+/// level, each `ground` mixed toward `hot` as far as its level (a
+/// processor's cores, idle to busy), laid out in as many rows as makes
+/// the cells biggest, a device pixel apart.
+pub fn paint_heatmap(window: &mut Window, bounds: Bounds<Pixels>, levels: &[f32], ground: olo_theme::Rgba, hot: olo_theme::Rgba) {
+    let n = levels.len();
+    if n == 0 {
+        return;
+    }
+    let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+    let (rows, cols) = heatmap_grid(n, w, h);
+    let gap = 1.0 / window.scale_factor();
+    let (cw, ch) = ((w - gap * (cols - 1) as f32) / cols as f32, (h - gap * (rows - 1) as f32) / rows as f32);
+    for (i, v) in levels.iter().enumerate() {
+        let v = if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
+        let (r, c) = (i / cols, i % cols);
+        let x = f32::from(bounds.left()) + c as f32 * (cw + gap);
+        let y = f32::from(bounds.top()) + r as f32 * (ch + gap);
+        let cell = style::snap(window, Bounds::from_corners(point(px(x), px(y)), point(px(x + cw), px(y + ch))));
+        style::fill_rect(window, cell, style::c(olo_theme::mix(ground, hot, 0.12 + 0.88 * v)));
+    }
+}
+
+/// The rows and columns `n` cells are laid out in across `w` by `h`: as
+/// many rows as make the cells biggest (squarest on a tie).
+pub fn heatmap_grid(n: usize, w: f32, h: f32) -> (usize, usize) {
+    let n = n.max(1);
+    (1..=n)
+        .map(|rows| (rows, n.div_ceil(rows)))
+        .max_by(|a, b| {
+            let size = |(r, c): (usize, usize)| (w / c as f32).min(h / r as f32);
+            size(*a).total_cmp(&size(*b))
+        })
+        .unwrap_or((1, n))
+}
+
+#[cfg(test)]
+mod heatmap_tests {
+    /// Sixteen cores: four by four in a tray icon's square, one row of
+    /// sixteen in a row's strip.
+    #[test]
+    fn a_heatmaps_grid() {
+        assert_eq!(super::heatmap_grid(16, 14.0, 14.0), (4, 4));
+        assert_eq!(super::heatmap_grid(16, 150.0, 12.0), (1, 16));
+        assert_eq!(super::heatmap_grid(16, 150.0, 30.0), (2, 8));
+        assert_eq!(super::heatmap_grid(1, 20.0, 20.0), (1, 1));
+    }
+}
+
+/// A small graph of timed `points` (seconds, level 0 to 1, oldest first),
+/// `now` at `bounds`' right edge and `span` seconds back its left, filled
+/// under its line if `fill`: it scrolls as time passes, not a step a
+/// reading (Deskbar's widgets; ask for the next frame with
+/// [`tick_within`]). A NaN level is a gap.
+pub fn paint_trace(window: &mut Window, bounds: Bounds<Pixels>, points: &[(f64, f32)], now: f64, span: f64, color: Hsla, fill: bool) {
+    if points.len() < 2 || span <= 0.0 {
+        return;
+    }
+    let w = f32::from(bounds.size.width);
+    let h = f32::from(bounds.size.height);
+    let at = |t: f64, v: f32| point(bounds.right() - px(((now - t) / span) as f32 * w), bounds.bottom() - px(0.75 + v.clamp(0.0, 1.0) * (h - 1.5)));
+    let start = points.partition_point(|(t, _)| *t < now - span).saturating_sub(1);
+    window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
+        window.paint_layer(bounds, |window| {
+            for pair in points[start..].windows(2) {
+                let ((t0, v0), (t1, v1)) = (pair[0], pair[1]);
+                if !v0.is_finite() || !v1.is_finite() {
+                    continue;
+                }
+                let (a, b) = (at(t0, v0), at(t1, v1));
+                if fill {
+                    window.paint_area(a, b, bounds.bottom(), color.opacity(0.3));
+                }
+                window.paint_segment(a, b, px(1.25), true, color);
+            }
+        });
+    });
 }
