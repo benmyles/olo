@@ -1115,10 +1115,11 @@ impl Tracker {
             }
             DropTarget::Place => {
                 if let Some(d) = on_desktop {
-                    d.update(cx, |d, cx| {
-                        d.place_dragged(drop.position);
+                    let moved = d.update(cx, |d, cx| {
                         cx.notify();
+                        d.place_dragged(drop.position)
                     });
+                    self.done(if moved.len() == 1 { "Move Icon" } else { "Move Icons" }, undo::Change::Placed(moved), cx);
                 }
                 return;
             }
@@ -1273,14 +1274,28 @@ impl Tracker {
     fn undo_redo(&mut self, redo: bool, origin: Option<EntityId>, cx: &mut Context<Self>) {
         let step = if redo { self.history.take_redo() } else { self.history.take_undo() };
         let Some(step) = step else { return };
-        let (kind, sources, targets) = step.change.inverse();
         let purpose = if redo { undo::Purpose::Redo } else { undo::Purpose::Undo };
-        self.run_job(kind, sources, None, targets, origin, Some((step.name, purpose)), cx);
+        match step.change.inverse() {
+            Some((kind, sources, targets)) => self.run_job(kind, sources, None, targets, origin, Some((step.name, purpose)), cx),
+            // Desktop icons: back where they were, at once.
+            None => {
+                if let undo::Change::Placed(moved) = &step.change {
+                    if let Some(d) = self.desktop() {
+                        d.update(cx, |d, cx| {
+                            d.put_places(moved);
+                            cx.notify();
+                        });
+                    }
+                    self.history.record(purpose, step.name, undo::Change::swapped(moved));
+                }
+            }
+        }
         self.refresh_menus(cx);
     }
 
-    /// A step done here and now (a rename, a new folder: no job).
-    fn done(&mut self, name: &str, change: undo::Change, cx: &mut Context<Self>) {
+    /// A step done here and now (a rename, a new folder, icons placed: no
+    /// job).
+    pub(crate) fn done(&mut self, name: &str, change: undo::Change, cx: &mut Context<Self>) {
         if change.is_empty() {
             return;
         }

@@ -32,6 +32,9 @@ pub enum Change {
     Restored(Vec<(PathBuf, PathBuf)>),
     /// Made: copies, a new folder, links, what was pasted.
     Made(Vec<PathBuf>),
+    /// Desktop icons placed (dragged, cleaned up): no job, put back as
+    /// they were at once (`desktop::Placed`).
+    Placed(crate::desktop::Placed),
 }
 
 impl Change {
@@ -39,18 +42,25 @@ impl Change {
         match self {
             Change::Moved(v) | Change::Trashed(v) | Change::Restored(v) => v.is_empty(),
             Change::Made(v) => v.is_empty(),
+            Change::Placed(v) => v.is_empty(),
         }
     }
 
     /// The job that takes it back: its kind, sources and (for `PutBack`)
-    /// targets.
-    pub fn inverse(&self) -> (Kind, Vec<PathBuf>, Vec<PathBuf>) {
-        match self {
+    /// targets (None: no job, `Placed`).
+    pub fn inverse(&self) -> Option<(Kind, Vec<PathBuf>, Vec<PathBuf>)> {
+        Some(match self {
             Change::Moved(pairs) => (Kind::PutBack, pairs.iter().map(|(_, to)| to.clone()).collect(), pairs.iter().map(|(from, _)| from.clone()).collect()),
             Change::Trashed(pairs) => (Kind::Restore, pairs.iter().map(|(_, at)| at.clone()).collect(), Vec::new()),
             Change::Restored(pairs) => (Kind::Trash, pairs.iter().map(|(_, to)| to.clone()).collect(), Vec::new()),
             Change::Made(paths) => (Kind::Trash, paths.clone(), Vec::new()),
-        }
+            Change::Placed(_) => return None,
+        })
+    }
+
+    /// Icons' places the other way round: what putting them back did.
+    pub fn swapped(moved: &crate::desktop::Placed) -> Change {
+        Change::Placed(moved.iter().map(|(k, before, after)| (k.clone(), *after, *before)).collect())
     }
 
     /// What a finished job of `kind` did, from its outcome (some of it, if
@@ -98,7 +108,7 @@ mod tests {
     /// that did recorded for the other list.
     fn turn(h: &mut History<Change>, redo: bool) -> Outcome {
         let step = if redo { h.take_redo() } else { h.take_undo() }.expect("a step");
-        let (kind, sources, targets) = step.change.inverse();
+        let (kind, sources, targets) = step.change.inverse().expect("a job");
         let o = run(kind, sources, None, targets);
         if let Some(change) = Change::of(kind, &o) {
             h.record(if redo { Purpose::Redo } else { Purpose::Undo }, step.name, change);
@@ -167,14 +177,24 @@ mod tests {
         let _ = sfs::remove_dir_all(&d);
     }
 
+    /// Icons put back where they were: what that did is the same places
+    /// the other way round, so Redo puts them where they were dragged.
+    #[test]
+    fn icons_back_and_forth() {
+        let moved = vec![("a.txt".to_owned(), Some([10.0, 20.0]), Some([300.0, 40.0])), ("b".to_owned(), None, Some([5.0, 5.0]))];
+        let Change::Placed(back) = Change::swapped(&moved) else { panic!() };
+        assert_eq!(back, vec![("a.txt".to_owned(), Some([300.0, 40.0]), Some([10.0, 20.0])), ("b".to_owned(), Some([5.0, 5.0]), None)]);
+        assert!(Change::Placed(moved).inverse().is_none());
+    }
+
     /// The inverse of each kind of step: moves back, the Trash's restores,
     /// what was made to the Trash.
     #[test]
     fn inverses() {
         let (a, b) = (Path::new("/a").to_path_buf(), Path::new("/t/a").to_path_buf());
-        assert_eq!(Change::Moved(vec![(a.clone(), b.clone())]).inverse(), (Kind::PutBack, vec![b.clone()], vec![a.clone()]));
-        assert_eq!(Change::Trashed(vec![(a.clone(), b.clone())]).inverse(), (Kind::Restore, vec![b.clone()], vec![]));
-        assert_eq!(Change::Restored(vec![(b.clone(), a.clone())]).inverse(), (Kind::Trash, vec![a.clone()], vec![]));
-        assert_eq!(Change::Made(vec![a.clone()]).inverse(), (Kind::Trash, vec![a], vec![]));
+        assert_eq!(Change::Moved(vec![(a.clone(), b.clone())]).inverse().unwrap(), (Kind::PutBack, vec![b.clone()], vec![a.clone()]));
+        assert_eq!(Change::Trashed(vec![(a.clone(), b.clone())]).inverse().unwrap(), (Kind::Restore, vec![b.clone()], vec![]));
+        assert_eq!(Change::Restored(vec![(b.clone(), a.clone())]).inverse().unwrap(), (Kind::Trash, vec![a.clone()], vec![]));
+        assert_eq!(Change::Made(vec![a.clone()]).inverse().unwrap(), (Kind::Trash, vec![a], vec![]));
     }
 }

@@ -11030,7 +11030,8 @@ deferred so the Tracker can update the window back):
   done, as done: items moved from where to where (rename, move, put
   back), put in the Trash or restored from it (from where, to where in
   it), or made (copy, duplicate, new folder, links, a paste or drop of
-  text or a picture). Each job reports that (`ops::Outcome::moved`,
+  text or a picture), or desktop icons placed (dragged, Clean Up: each
+  one's place before and after, put back at once, no job). Each job reports that (`ops::Outcome::moved`,
   `created`); a rename or a new folder records it at once. Undoing runs
   what takes it back as a job like any other (on a worker, progress,
   Stop): moved items go back to exactly where they were
