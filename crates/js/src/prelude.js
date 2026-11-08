@@ -468,7 +468,8 @@
     clientWidth: { get() { if (this === html()) return N.viewport()[0]; if (N.computed(this, 'display') === 'inline') return 0; const r = N.paddingRect(this); return r ? Math.round(r[2]) : 0; } }, clientHeight: { get() { if (this === html()) return N.viewport()[1]; if (N.computed(this, 'display') === 'inline') return 0; const r = N.paddingRect(this); return r ? Math.round(r[3]) : 0; } },
     clientTop: { get() { const r = N.rect(this), p = N.paddingRect(this); return r && p ? Math.round(p[1] - r[1]) : 0; } }, clientLeft: { get() { const r = N.rect(this), p = N.paddingRect(this); return r && p ? Math.round(p[0] - r[0]) : 0; } },
     scrollWidth: { get() { if (this === html() || this === document.body && N.computed(this, 'overflow-y') === 'visible') return Math.round(N.docSize()[0]); const r = N.scrollSize(this); return r ? Math.round(r[2]) : 0; } }, scrollHeight: { get() { if (this === html() || this === document.body && N.computed(this, 'overflow-y') === 'visible') return Math.round(N.docSize()[1]); const r = N.scrollSize(this); return r ? Math.round(r[3]) : 0; } },
-    scrollTop: { get() { return this._scrollTop || 0; }, set(v) { Object.defineProperty(this, '_scrollTop', { value: Math.max(0, Number(v) || 0), writable: true, configurable: true }); } }, scrollLeft: { get() { return this._scrollLeft || 0; }, set(v) { Object.defineProperty(this, '_scrollLeft', { value: Math.max(0, Number(v) || 0), writable: true, configurable: true }); } },
+    scrollTop: { get() { if (this === html() || this === document.body) return global.scrollY; return N.scrollOffset(this)[1]; }, set(v) { if (this === html() || this === document.body) { global.scrollTo(global.scrollX, Number(v) || 0); return; } scrollElement(this, N.scrollOffset(this)[0], Number(v) || 0); } },
+    scrollLeft: { get() { if (this === html() || this === document.body) return global.scrollX; return N.scrollOffset(this)[0]; }, set(v) { if (this === html() || this === document.body) return; scrollElement(this, Number(v) || 0, N.scrollOffset(this)[1]); } },
     shadowRoot: { get() { return this._shadow || null; } },
     assignedSlot: { get() { return null; } },
     isContentEditable: { get() { return false; } },
@@ -528,7 +529,7 @@
     insertAdjacentText(where, text) { this.insertAdjacentNodes(where, [N.createText(String(text))]); },
     getBoundingClientRect() { const r = N.rect(this); return r ? new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]) : new DOMRect(0, 0, 0, 0); },
     getClientRects() { const r = N.rect(this); return listOf(r ? [new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3])] : [], global.DOMRectList); },
-    focus() { focusElement(this); }, blur() { if (activeElement === this) focusElement(null); }, select() { caretOf.set(this, this.value.length); }, setSelectionRange(a) { caretOf.set(this, Math.max(0, Math.min(Number(a) || 0, this.value.length))); }, scrollIntoView() {}, scrollTo() {}, scrollBy() {}, scroll() {},
+    focus() { focusElement(this); }, blur() { if (activeElement === this) focusElement(null); }, select() { caretOf.set(this, this.value.length); }, setSelectionRange(a) { caretOf.set(this, Math.max(0, Math.min(Number(a) || 0, this.value.length))); }, scrollIntoView() {}, scrollTo(x, y) { if (typeof x === 'object' && x) { const o = N.scrollOffset(this); y = x.top ?? o[1]; x = x.left ?? o[0]; } scrollElement(this, Number(x) || 0, Number(y) || 0); }, scrollBy(x, y) { const o = N.scrollOffset(this); if (typeof x === 'object' && x) { y = x.top || 0; x = x.left || 0; } scrollElement(this, o[0] + (Number(x) || 0), o[1] + (Number(y) || 0)); }, scroll(x, y) { this.scrollTo(x, y); },
     click() { const el = this; if (N.attr(el, 'disabled') != null && ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(N.nodeName(el))) return; activate(el, () => { const ev = Object.assign(new MouseEvent('click', { bubbles: true, cancelable: true }), { isTrusted: false }); dispatch(el, ev); return ev; }); },
     submit() { if (N.nodeName(this) === 'FORM') submitForm(this, null, false); }, reset() { if (N.nodeName(this) === 'FORM') for (const c of N.query(this, 'input,textarea', true)) N.setControlValue(c, N.nodeName(c) === 'TEXTAREA' ? N.textContent(c) : (N.attr(c, 'value') || '')); }, requestSubmit(submitter) { if (N.nodeName(this) === 'FORM') submitForm(this, submitter || null, true); }, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
     animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), null); a.play(); return a; },
@@ -801,6 +802,13 @@
     decl.getPropertyValue = (name) => { name = propName(name); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(name)] !== undefined ? defaults[camel(name)] : ''; };
     return new Proxy(decl, { get(target, key) { if (typeof key !== 'string') return undefined; if (key in target) return target[key]; const name = kebab(key); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(key)] !== undefined ? defaults[camel(key)] : ''; }, set() { return true; } });
   };
+  // A box's scroll (scrollTop, scrollTo): the engine clamps it and keeps
+  // it; its `scroll` event (which doesn't bubble) follows in a task, once
+  // however many scrolls came before it.
+  const scrollPending = new Set();
+  const scrollElement = (el, x, y) => { if (N.setScrollOffset(el, x, y)) queueScroll(el); };
+  const queueScroll = (el) => { if (scrollPending.has(el)) return; scrollPending.add(el); setTimeout(() => { scrollPending.delete(el); el.dispatchEvent(new Event('scroll')); }, 0); };
+  global.__olo_scrolled = (el) => queueScroll(el);
   // matchMedia answers by the engine's media evaluation, the same as the
   // page's sheets. The viewport is fixed for a realm (a resize renders a
   // new one), so a list never changes; its listeners are kept all the same.

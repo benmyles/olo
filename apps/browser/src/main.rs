@@ -68,6 +68,8 @@ struct Browser {
     shared_keys: Vec<u64>,
     shared_retired: Vec<u64>,
     labels: Vec<worker::Label>,
+    /// The page's scroll containers, as the last render had them.
+    scroll_areas: Arc<[worker::ScrollArea]>,
     status: String,
     blocked_action: Option<&'static str>,
     scroll: i32,
@@ -144,6 +146,7 @@ impl Browser {
             shared_keys: Vec::new(),
             shared_retired: Vec::new(),
             labels: Vec::new(),
+            scroll_areas: Arc::from([]),
             status: "Loading…".into(),
             blocked_action: None,
             scroll: (scroll * f64::from(window.scale_factor())).round() as i32,
@@ -446,8 +449,9 @@ impl Browser {
                 let (document, navigation) = self.snapshot_identity;
                 self.document_snapshot = serde_json::json!({"url":self.history.current().url,"navigation":navigation,"document":document,"fallbacks":self.fallbacks}).to_string().into();
             }
-            worker::Reply::Content { id, labels, extent, scroll, interaction_mask, document, target, focus_targets } if id == self.id => {
+            worker::Reply::Content { id, labels, extent, scroll, interaction_mask, document, target, focus_targets, scroll_areas } if id == self.id => {
                 self.labels = labels;
+                self.scroll_areas = scroll_areas;
                 self.interaction_mask = interaction_mask;
                 self.extent = extent;
                 self.scroll = scroll;
@@ -534,6 +538,7 @@ impl Render for Browser {
         let focused = self.interaction.focus;
         let document_snapshot = self.document_snapshot.clone();
         let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image, l.fixed, l.sticky)).collect();
+        let scroll_areas = self.scroll_areas.clone();
         let layers: Vec<(worker::Placement, bool, Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>, Option<(olo_web::paint::DeviceRect, u64, bool)>)> =
             self.layers.iter().map(|l| (l.placement, l.scaled, l.tiles.clone(), l.shared)).collect();
         let shared_requests = std::mem::take(&mut self.shared_requests);
@@ -716,6 +721,23 @@ impl Render for Browser {
                             },
                         );
                     }
+                    // The page's scroll containers: an agent scrolls one by
+                    // the wheel over it (`olo-screen scroll` at its bounds).
+                    for a in scroll_areas.iter() {
+                        let top = a.rect.y - if a.fixed { 0. } else { f64::from(scroll) / scale };
+                        agent::record(
+                            window,
+                            cx,
+                            agent::Node {
+                                document_content: true,
+                                role: "ScrollArea",
+                                value: Some(format!("{:.0},{:.0} of {:.0},{:.0}", a.offset[0], a.offset[1], a.max[0], a.max[1]).into()),
+                                enabled: true,
+                                bounds: Bounds::new(point(bounds.left() + px(a.rect.x as f32), bounds.top() + px(top as f32)), size(px(a.rect.width as f32), px(a.rect.height as f32))),
+                                ..Default::default()
+                            },
+                        );
+                    }
                 });
             },
         )
@@ -760,11 +782,42 @@ impl Render for Browser {
             })
             .on_scroll_wheel(move |e, w, cx| {
                 scrolling.update(cx, |v, cx| {
-                    let delta = match e.delta {
-                        ScrollDelta::Pixels(p) => f32::from(p.y),
-                        ScrollDelta::Lines(p) => p.y * 40.,
+                    let (delta_x, delta) = match e.delta {
+                        ScrollDelta::Pixels(p) => (f32::from(p.x), f32::from(p.y)),
+                        ScrollDelta::Lines(p) => (p.x * 40., p.y * 40.),
                     };
                     let scale = f64::from(w.scale_factor());
+                    // Over a scroll container with room that way: the box
+                    // scrolls (the innermost, painted last), not the page.
+                    let (mut dx, mut dy) = (-f64::from(delta_x), -f64::from(delta));
+                    // Shift turns a wheel sideways (a carousel, a wide table), as in Chrome.
+                    if e.modifiers.shift && dx == 0. {
+                        (dx, dy) = (dy, 0.);
+                    }
+                    let bounds = v.viewport.get();
+                    let px = f64::from(f32::from(e.position.x - bounds.left()));
+                    let py = f64::from(f32::from(e.position.y - bounds.top()));
+                    let page_y = py + f64::from(v.scroll) / scale;
+                    let inside = |a: &worker::ScrollArea| {
+                        let y = if a.fixed { py } else { page_y };
+                        px >= a.rect.x && px < a.rect.x + a.rect.width && y >= a.rect.y && y < a.rect.y + a.rect.height
+                    };
+                    if let Some(i) = v.scroll_areas.iter().rposition(|a| inside(a) && a.takes(dx, dy)) {
+                        let mut areas = v.scroll_areas.to_vec();
+                        let a = &mut areas[i];
+                        // Kept here as it will be, so wheel steps before the
+                        // next render still know where the box's ends are.
+                        a.offset = [(a.offset[0] + dx).clamp(0., a.max[0]), (a.offset[1] + dy).clamp(0., a.max[1])];
+                        let _ = v.tx.send(worker::Message::ScrollBox { node: a.node, dx, dy });
+                        v.scroll_areas = areas.into();
+                        v.send_input(worker::InputKind::Wheel { dx, dy }, Some(e.position), e.modifiers);
+                        return;
+                    }
+                    // Sideways with nothing to take it: the page doesn't scroll sideways.
+                    if dy == 0. {
+                        v.send_input(worker::InputKind::Wheel { dx, dy }, Some(e.position), e.modifiers);
+                        return;
+                    }
                     let max = v.key.as_ref().map_or(0, |key| worker::max_scroll(key, v.extent));
                     let old = v.scroll;
                     v.scroll = (v.scroll - (f64::from(delta) * scale).round() as i32).clamp(0, max);

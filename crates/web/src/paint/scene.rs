@@ -29,6 +29,8 @@ pub enum Primitive {
     },
     Fill {
         color: [u8; 4],
+        /// The box it is part of (a background, a text's line), for hit tests.
+        owner: BoxId,
     },
     Border {
         owner: BoxId,
@@ -143,6 +145,30 @@ pub struct Moved {
     pub clip: Option<Rect>,
     outer: Rect,
 }
+/// A scroll container (`overflow` other than `visible` and `clip`): its
+/// box and node, its padding box as painted (document coordinates, or the
+/// viewport's under a fixed box), its offset and the size of what it
+/// holds from its padding box's corner, and which axes a person can
+/// scroll (`auto` and `scroll`; `hidden` scrolls only by script).
+#[derive(Clone, Copy, Debug)]
+pub struct Scroller {
+    pub root: BoxId,
+    pub node: crate::dom::NodeId,
+    pub rect: Rect,
+    pub fixed: bool,
+    pub sticky: Option<BoxId>,
+    pub offset: [f64; 2],
+    pub content: [f64; 2],
+    pub user: [bool; 2],
+    /// Its end padding (right, bottom), which what it holds ends with.
+    pad: [f64; 2],
+}
+impl Scroller {
+    /// The farthest it scrolls, each axis.
+    pub fn max(&self) -> [f64; 2] {
+        [(self.content[0] - self.rect.width).max(0.), (self.content[1] - self.rect.height).max(0.)]
+    }
+}
 /// How a transformed box's matrix was made: its box, the matrix of the
 /// transformed box above it (or NONE), its border box and its own matrix
 /// about its origin; so a changed `transform` patches the table without
@@ -191,6 +217,7 @@ pub struct Scene {
     pub(super) transforms: Box<[[f64; 6]]>,
     pub(super) transform_entries: Box<[TransformEntry]>,
     pub(super) moved: Box<[Moved]>,
+    pub(super) scrollers: Box<[Scroller]>,
     pub(super) vector_geometry: Arc<std::collections::HashMap<u32, crate::svg::used::Geometry>>,
     pub(super) vector_clips: Arc<std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>>,
     /// The commands in paint order cut into strata: runs of the page's own
@@ -215,7 +242,8 @@ impl Scene {
         &self.layout
     }
     pub fn node(&self, command: u32) -> Option<crate::dom::NodeId> {
-        if let Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } | Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } = self.commands.get(command as usize)?.primitive
+        if let Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } | Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } | Primitive::Fill { owner, .. } =
+            self.commands.get(command as usize)?.primitive
         {
             self.layout.cache().tree().get(owner).map(|b| b.node)
         } else {
@@ -425,7 +453,7 @@ impl Scene {
                     origin.y.to_bits().hash(&mut h);
                     tree.vector(*vector).map_or(0, |v| v.fingerprint).hash(&mut h);
                 }
-                Primitive::Fill { color } => {
+                Primitive::Fill { color, .. } => {
                     2u8.hash(&mut h);
                     color.hash(&mut h);
                 }
@@ -542,6 +570,10 @@ impl Scene {
         self.strata.iter().filter(|s| matches!(s.kind, LayerKind::Surface(_))).count()
     }
     /// Every moved layer.
+    /// The scroll containers, in paint order.
+    pub fn scrollers(&self) -> &[Scroller] {
+        &self.scrollers
+    }
     pub fn moved_layers(&self) -> &[Moved] {
         &self.moved
     }
@@ -602,6 +634,7 @@ impl Scene {
                 transforms: self.transforms.clone(),
                 transform_entries: self.transform_entries.clone(),
                 moved: moved.clone().into_boxed_slice(),
+                scrollers: self.scrollers.clone(),
                 vector_geometry: self.vector_geometry.clone(),
                 vector_clips: self.vector_clips.clone(),
                 strata: self.strata.iter().map(|s| Stratum { kind: s.kind, index: s.index.clone() }).collect(),
@@ -644,6 +677,7 @@ impl Scene {
             transforms: transforms.into_boxed_slice(),
             transform_entries: entries.into_boxed_slice(),
             moved: moved.into_boxed_slice(),
+            scrollers: self.scrollers.clone(),
             vector_geometry: self.vector_geometry.clone(),
             vector_clips: self.vector_clips.clone(),
             strata: strata.into_boxed_slice(),
@@ -705,7 +739,7 @@ impl Scene {
                 // A box hit through its background or border: a box in it
                 // that paints nothing there (a transparent button over its
                 // row) is still what is under the point, as in Chrome.
-                if let Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } = c.primitive
+                if let Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } | Primitive::Fill { owner, .. } = c.primitive
                     && c.transform == NONE
                     && let Some(inner) = self.deepest_box(owner, x, py)
                     && let Some(b) = tree.get(inner)
@@ -716,7 +750,14 @@ impl Scene {
                 return Some(node);
             }
         }
-        None
+        // Nothing painted there: the innermost box in flow under the point,
+        // as Chrome finds it (a row without a background, a page's bare body).
+        let root = tree.get(tree.root())?.first_child?;
+        let inner = self.deepest_box(root, x, y).unwrap_or(root);
+        let node = tree.get(inner)?.node;
+        let hidden =
+            tree.styles().snapshot(node).is_some_and(|style| matches!(style.value(P::PointerEvents), Value::Keyword(K::None)) || matches!(style.value(P::Visibility), Value::Keyword(K::Hidden)));
+        (!hidden).then_some(node)
     }
     /// The innermost in-flow box under `owner` whose border box holds the
     /// point (layout coordinates), later siblings winning (painted above);
@@ -728,12 +769,14 @@ impl Scene {
         let layout = &self.layout;
         let tree = layout.cache().tree();
         let start = layout.bounds(owner)?;
-        let mut origin = (start.x - layout.geometry(owner)?.border_box.x, start.y - layout.geometry(owner)?.border_box.y);
+        let shift = self.scroll_shift(owner);
+        let mut origin = (start.x - layout.geometry(owner)?.border_box.x - shift[0], start.y - layout.geometry(owner)?.border_box.y - shift[1]);
         let (mut at, mut found) = (owner, None);
         for _ in 0..4096 {
             let g = layout.geometry(at)?;
             let content = g.content_box();
-            let inner = (origin.0 + content.x, origin.1 + content.y);
+            let offset = self.scroll_offset_of(at);
+            let inner = (origin.0 + content.x - offset[0], origin.1 + content.y - offset[1]);
             let mut next = None;
             let mut child = tree.get(at)?.first_child;
             while let Some(id) = child {
@@ -757,6 +800,29 @@ impl Scene {
             at = id;
         }
         found
+    }
+    /// A scroll container's offset (zero for any other box).
+    fn scroll_offset_of(&self, id: BoxId) -> [f64; 2] {
+        if self.scrollers.iter().all(|s| s.offset == [0., 0.]) {
+            return [0., 0.];
+        }
+        self.scrollers.iter().find(|s| s.root == id).map_or([0., 0.], |s| s.offset)
+    }
+    /// How far the scroll containers around a box moved it.
+    pub fn scroll_shift(&self, id: BoxId) -> [f64; 2] {
+        let mut shift = [0., 0.];
+        if self.scrollers.iter().all(|s| s.offset == [0., 0.]) {
+            return shift;
+        }
+        let tree = self.layout.cache().tree();
+        let mut at = tree.get(id).and_then(|b| b.parent);
+        while let Some(p) = at {
+            let o = self.scroll_offset_of(p);
+            shift[0] += o[0];
+            shift[1] += o[1];
+            at = tree.get(p).and_then(|b| b.parent);
+        }
+        shift
     }
     /// The page's own commands over `region` (every page stratum), in
     /// paint order: not the fixed or sticky layers'.
@@ -802,6 +868,12 @@ struct State {
     sticky: Option<BoxId>,
     /// Under a moved layer (see `Command::moved`).
     moved: Option<BoxId>,
+    /// The scroll container whose content this is (index into
+    /// `scrollers`), or NONE.
+    scroller: u32,
+    /// How far the scroll containers around moved this box's content
+    /// (what a box positioned against a block outside them takes back).
+    shift: Point,
 }
 /// One CSS stacking context (CSS 2.2 Appendix E): the root, positioned boxes
 /// (z-index: auto ones painted as if they were contexts), opacity groups and
@@ -857,6 +929,7 @@ pub struct BuildJob<'a> {
     /// moved layer.
     animated: std::collections::HashSet<crate::dom::NodeId>,
     moved: Vec<Moved>,
+    scrollers: Vec<Scroller>,
     vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
@@ -927,6 +1000,7 @@ impl<'a> BuildJob<'a> {
             current_moved: None,
             animated: Default::default(),
             moved: Vec::new(),
+            scrollers: Vec::new(),
             vector_geometry: Default::default(),
             vector_clips: Default::default(),
             transform_entries: Vec::new(),
@@ -1035,7 +1109,7 @@ impl<'a> BuildJob<'a> {
         }
         let bg = color(s, P::BackgroundColor)?;
         if self.canvas_owner != Some(id) && bg[3] != 0 {
-            self.emit(group, text, outer, Primitive::Fill { color: bg }, clip)?;
+            self.emit(group, text, outer, Primitive::Fill { color: bg, owner: id }, clip)?;
         }
         let widths = [g.border_width.top, g.border_width.right, g.border_width.bottom, g.border_width.left];
         let mut colors = [[0; 4]; 4];
@@ -1318,7 +1392,7 @@ impl<'a> BuildJob<'a> {
                 _ => baseline - ascent * factor,
             };
             let y = (y * scale).round() / scale;
-            self.emit(group, false, Rect { x: origin.x, y, width: end_x - origin.x, height: thickness }, Primitive::Fill { color: line_color }, clip)?;
+            self.emit(group, false, Rect { x: origin.x, y, width: end_x - origin.x, height: thickness }, Primitive::Fill { color: line_color, owner: id }, clip)?;
         }
         if bounds.width > 0. && bounds.height > 0. {
             self.emit(group, true, bounds, Primitive::Text { owner: id, fragment, glyphs, origin, color }, clip)?;
@@ -1372,12 +1446,13 @@ impl<'a> BuildJob<'a> {
                 break;
             };
             self.next += 1;
-            let (parent, mut context, mut clip, parent_group, parent_transform, parent_hidden, parent_fixed, parent_sticky, parent_moved) = if let Some(parent) = b.parent {
-                let p = &self.states[parent.index()];
-                (p.origin, p.context, p.clip, p.group, p.transform, p.hidden, p.fixed, p.sticky, p.moved)
-            } else {
-                (Point::default(), 0, NONE, NONE, NONE, false, false, None, None)
-            };
+            let (mut parent, mut context, mut clip, parent_group, parent_transform, parent_hidden, parent_fixed, parent_sticky, parent_moved, mut parent_scroller, mut parent_shift) =
+                if let Some(parent) = b.parent {
+                    let p = &self.states[parent.index()];
+                    (p.origin, p.context, p.clip, p.group, p.transform, p.hidden, p.fixed, p.sticky, p.moved, p.scroller, p.shift)
+                } else {
+                    (Point::default(), 0, NONE, NONE, NONE, false, false, None, None, NONE, Point::default())
+                };
             if parent_hidden {
                 self.states.push(State {
                     origin: parent,
@@ -1389,6 +1464,8 @@ impl<'a> BuildJob<'a> {
                     fixed: parent_fixed,
                     sticky: parent_sticky,
                     moved: parent_moved,
+                    scroller: parent_scroller,
+                    shift: parent_shift,
                 });
                 self.progress.boxes += 1;
                 continue;
@@ -1416,6 +1493,17 @@ impl<'a> BuildJob<'a> {
                     cb = tree.get(cb).ok_or(Error::Invalid)?.parent.ok_or(Error::Invalid)?;
                 }
                 clip = self.states[cb.index()].clip;
+                // Positioned against a block outside the scroll containers
+                // around it (a fixed box: the viewport's): it doesn't move
+                // with them, nor count in what they hold.
+                let fixed_here = parent_transform == NONE && tree.style(id).is_some_and(|s| matches!(s.value(P::Position), Value::Keyword(K::Fixed)));
+                let (scroller, shift) = if fixed_here { (NONE, Point::default()) } else { (self.states[cb.index()].scroller, self.states[cb.index()].shift) };
+                if scroller != parent_scroller || shift.x != parent_shift.x || shift.y != parent_shift.y {
+                    parent.x += parent_shift.x - shift.x;
+                    parent.y += parent_shift.y - shift.y;
+                    parent_scroller = scroller;
+                    parent_shift = shift;
+                }
             }
             let g = *layout.geometry(id).ok_or(Error::Invalid)?;
             let mut outer = g.border_box;
@@ -1425,8 +1513,18 @@ impl<'a> BuildJob<'a> {
                 return Err(Error::Invalid);
             }
             let local = g.content_box();
-            let origin = Point { x: parent.x + local.x, y: parent.y + local.y };
+            let mut origin = Point { x: parent.x + local.x, y: parent.y + local.y };
             let mut children_clip = clip;
+            // What a scroll container holds reaches as far as its boxes do
+            // (a nested scroll container's own box, not what it holds).
+            let mut children_scroller = parent_scroller;
+            let mut children_shift = parent_shift;
+            if parent_scroller != NONE {
+                let sc = &mut self.scrollers[parent_scroller as usize];
+                // Margin boxes, then the container's end padding (as Chrome).
+                sc.content[0] = sc.content[0].max(outer.x + outer.width + g.margin.right.max(0.) + sc.pad[0] + sc.offset[0] - sc.rect.x);
+                sc.content[1] = sc.content[1].max(outer.y + outer.height + g.margin.bottom.max(0.) + sc.pad[1] + sc.offset[1] - sc.rect.y);
+            }
             match b.kind {
                 BoxKind::Viewport => {}
                 BoxKind::Block { .. } | BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. } => {
@@ -1497,6 +1595,8 @@ impl<'a> BuildJob<'a> {
                             fixed: children_fixed,
                             sticky: children_sticky,
                             moved: children_moved,
+                            scroller: children_scroller,
+                            shift: children_shift,
                         });
                         self.progress.boxes += 1;
                         continue;
@@ -1630,6 +1730,31 @@ impl<'a> BuildJob<'a> {
                         let radii = if x && y && decoration::rounded(&radii) && clip_rect == p { Some(decoration::inset_radii(&radii, g.border_width)) } else { None };
                         children_clip = self.clips.len() as u32;
                         self.clips.push(Clip { rect: clip_rect, radii, transform: children_transform });
+                        // A scroll container (not `clip`): its content painted
+                        // moved by its offset, within its padding box.
+                        let scrolls = |p| !matches!(s.value(p), Value::Keyword(K::Visible | K::Clip));
+                        // The root's and body's overflow is the viewport's (CSS
+                        // Overflow 3 §3.3): the page scrolls, not them.
+                        let viewport_owner = matches!(self.doc.name(b.node).ok().flatten(), Some("html" | "body"));
+                        if !viewport_owner && (scrolls(P::OverflowX) || scrolls(P::OverflowY)) && self.scrollers.len() < self.limits.commands {
+                            let user = |p| matches!(s.value(p), Value::Keyword(K::Auto | K::Scroll));
+                            let offset = self.doc.scroll_offset(b.node);
+                            children_scroller = self.scrollers.len() as u32;
+                            self.scrollers.push(Scroller {
+                                root: id,
+                                node: b.node,
+                                rect: p,
+                                fixed: children_fixed,
+                                sticky: children_sticky,
+                                offset,
+                                content: [p.width, p.height],
+                                user: [user(P::OverflowX), user(P::OverflowY)],
+                                pad: [g.padding.right, g.padding.bottom],
+                            });
+                            origin.x -= offset[0];
+                            origin.y -= offset[1];
+                            children_shift = Point { x: parent_shift.x + offset[0], y: parent_shift.y + offset[1] };
+                        }
                     }
                 }
                 BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. } => {}
@@ -1652,6 +1777,8 @@ impl<'a> BuildJob<'a> {
                 fixed: children_fixed,
                 sticky: children_sticky,
                 moved: children_moved,
+                scroller: children_scroller,
+                shift: children_shift,
             });
             self.progress.boxes += 1;
             self.progress.commands = self.draft.len();
@@ -1749,6 +1876,7 @@ impl<'a> BuildJob<'a> {
             transforms: self.transforms.into_boxed_slice(),
             transform_entries: self.transform_entries.into_boxed_slice(),
             moved: self.moved.into_boxed_slice(),
+            scrollers: self.scrollers.into_boxed_slice(),
             vector_geometry: Arc::new(self.vector_geometry),
             vector_clips: Arc::new(self.vector_clips),
             strata: strata.into_boxed_slice(),

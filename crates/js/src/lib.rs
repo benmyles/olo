@@ -731,6 +731,38 @@ impl Realm {
     /// Animating WebGL canvases that would draw their frames into textures
     /// of the window's renderer (shown with no copy): each with its size and
     /// its GPU's UUID (the window's must match). Each is asked for once.
+    /// A person scrolled a box (the wheel over it) to `offset`, already
+    /// clamped: the document keeps it, and the box's `scroll` event fires.
+    pub fn scroll_box(&mut self, node: NodeId, offset: [f64; 2]) -> bool {
+        let moved = self.state.borrow_mut().document.set_scroll_offset(node, offset).unwrap_or(false);
+        if moved {
+            let guard = self.guard.clone();
+            if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+                return moved;
+            }
+            let _busy = Busy::new(&guard);
+            let state = self.state.clone();
+            v8::scope!(let scope, &mut self.isolate);
+            let context = v8::Local::new(scope, &self.context);
+            let scope = &mut v8::ContextScope::new(scope, context);
+            v8::tc_scope!(let tc, scope);
+            let global = context.global(tc);
+            if let Some(element) = wrap(tc, &state, node)
+                && let Some(name) = v8::String::new(tc, "__olo_scrolled")
+                && let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
+                && f.call(tc, global.into(), &[element.into()]).is_none()
+            {
+                let error = exception_text(tc, "scroll");
+                state.borrow_mut().report.errors.push(error);
+            }
+        }
+        moved
+    }
+    /// Counts every box scroll (by a person or a script): a render that
+    /// saw it shows the offsets as they are.
+    pub fn scroll_serial(&self) -> u64 {
+        self.state.borrow().document.scroll_serial()
+    }
     /// The page's window shown or not: document.hidden, and visibilitychange
     /// when it changes.
     pub fn set_hidden(&mut self, hidden: bool) {
@@ -1587,6 +1619,8 @@ const NATIVES: &[&str] = &[
     "imageSize",
     "imageSource",
     "matchMedia",
+    "scrollOffset",
+    "setScrollOffset",
     "imagePixels",
     "glCreate",
     "glOp",
@@ -2353,6 +2387,34 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     }
                     None => rv.set_null(),
                 }
+            }
+        }
+        // A scroll container's offset, [x, y] (CSS px).
+        "scrollOffset" => {
+            if let Some(n) = node(scope, 0) {
+                let o = state.borrow().document.scroll_offset(n);
+                let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(scope, o[0]).into(), v8::Number::new(scope, o[1]).into()];
+                rv.set(v8::Array::new_with_elements(scope, &items).into());
+            }
+        }
+        // Scroll a box (scrollTop, scrollTo): clamped to what it holds, as
+        // the measured layout has it; whether it moved (its `scroll` event
+        // is the script side's to queue).
+        "setScrollOffset" => {
+            if let Some(n) = node(scope, 0) {
+                let x = args.get(1).number_value(scope).unwrap_or(0.);
+                let y = args.get(2).number_value(scope).unwrap_or(0.);
+                let mut s = state.borrow_mut();
+                let max = s.measured().and_then(|m| Some((m.scroll_size(n)?, m.padding_box(n)?))).map(|((w, h), p)| [(w - p.width).max(0.), (h - p.height).max(0.)]);
+                let moved = match max {
+                    Some(max) => {
+                        let clamp = |v: f64, m: f64| if v.is_finite() { v.clamp(0., m) } else { 0. };
+                        s.document.set_scroll_offset(n, [clamp(x, max[0]), clamp(y, max[1])]).unwrap_or(false)
+                    }
+                    None => false,
+                };
+                drop(s);
+                rv.set(v8::Boolean::new(scope, moved).into());
             }
         }
         "computed" => {

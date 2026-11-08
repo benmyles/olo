@@ -200,3 +200,33 @@ fn computed_line_height_and_font_family_read_as_chrome_reports_them() {
     assert_eq!(page::computed_value(style, P::LineHeight).as_deref(), Some("24px"));
     assert_eq!(page::computed_value(style, P::FontFamily).as_deref(), Some("\"Olo Inline plain\", \"My Font\", sans-serif"));
 }
+#[test]
+fn scroll_containers_move_what_they_hold_within_their_padding_box() {
+    let scale = 1.;
+    let mut p = load(
+        "#s{overflow:auto;height:100px;width:200px}#s div{height:40px}#f{position:fixed;top:0;left:300px;width:10px;height:500px;background-color:red}#h{overflow:hidden;height:20px}#h div{height:300px}</style><div id=s><div id=a></div><div id=b></div><div id=c></div><div id=d></div><div id=f></div><div id=h><div></div></div></div>",
+        scale,
+    );
+    let node = |p: &page::Page, id: &str| p.scene.layout().cache().tree().iter().find(|(_, b)| p.document.attribute(b.node, "id").ok().flatten() == Some(id)).unwrap().1.node;
+    let s = node(&p, "s");
+    let sc = *p.scene.scrollers().iter().find(|x| x.node == s).unwrap();
+    // Five 40 px rows (the clipping box's height is `#s div`'s): 200 px;
+    // the fixed box and what the inner box clips count for nothing.
+    assert_eq!(sc.content, [200., 200.]);
+    assert_eq!(sc.max(), [0., 100.]);
+    assert_eq!(sc.user, [true, true]);
+    assert_eq!(p.scroll_box(s, [0., 50.]), Some([0., 50.]));
+    assert_eq!(p.scroll_box(s, [0., 500.]), Some([0., 100.]));
+    assert_eq!(p.scroll_box(s, [0., 5.]), None);
+    let host = paint_host::Scaled::new(p.scope().clone(), scale);
+    p.repaint(&host, &mut paint::Engine::default(), None).unwrap();
+    // The third row (80 to 120 in the box) now shows at its top; a click there finds it.
+    let id = |n: Option<olo_web::dom::NodeId>| n.and_then(|n| p.document.attribute(n, "id").unwrap().map(str::to_owned));
+    let mut painter = paint::Engine::default();
+    let tile = painter.raster(&p.scene, paint::DeviceRect { x: 0, y: 0, width: 400, height: 300 }, None).unwrap();
+    assert_eq!(&tile.rgba()[(5 * 400 + 305) * 4..][..4], &[255, 0, 0, 255]);
+    assert_eq!(id(p.scene.hit_test(10., 5., 0., 300., &[])), Some("c".into()));
+    assert_eq!(p.scene.scrollers().iter().find(|x| x.node == s).unwrap().offset, [0., 100.]);
+    // The fixed box stays where the viewport has it.
+    assert_eq!(id(p.scene.hit_test(305., 5., 0., 300., &[])), Some("f".into()));
+}

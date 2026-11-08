@@ -1437,6 +1437,26 @@ impl Page {
     pub fn set_time(&mut self, now_ms: f64) {
         self.timeline.now_ms = now_ms;
     }
+    /// Scroll a box (a scroll container) by `delta` (CSS px), clamped to
+    /// what it holds; the new offset when it moved. The scene is built
+    /// again over the same layout (`repaint`): nothing restyles or lays out.
+    pub fn scroll_box(&mut self, node: crate::dom::NodeId, delta: [f64; 2]) -> Option<[f64; 2]> {
+        let sc = self.scene.scrollers().iter().find(|s| s.node == node).copied()?;
+        let max = sc.max();
+        // From where the document has it (scrolls since the scene was built count).
+        let at = self.document.scroll_offset(node);
+        let to = [(at[0] + delta[0]).clamp(0., max[0]), (at[1] + delta[1]).clamp(0., max[1])];
+        self.document.set_scroll_offset(node, to).ok()?.then_some(to)
+    }
+    /// The scene built again over the same layout, as the document's
+    /// scroll offsets have it now.
+    pub fn repaint(&mut self, host: &impl Host, painter: &mut paint::Engine, cancel: Option<&AtomicBool>) -> Result<()> {
+        let canvas = host.system_color(css::color::SystemColor::Canvas, host.scheme())?.srgb8_clipped();
+        let mut job = paint::BuildJob::new(&self.document, self.scene.layout().clone(), painter, paint::Options { canvas }, Default::default(), cancel)?.with_animated(self.animated.clone());
+        while !job.step(256)?.finished {}
+        self.scene = job.finish()?;
+        Ok(())
+    }
     /// Some CSS animation still changes: render again at the next frame.
     pub fn animating(&self) -> bool {
         self.timeline.running

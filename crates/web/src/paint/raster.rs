@@ -265,7 +265,7 @@ impl Engine {
                         super::vector::raster(out, vector, used_geometry, resolved_clips.map(Vec::as_slice).unwrap_or(&[]), transform, vector_mask, self.limits(), &mut layer_work, cancel)?;
                     }
                 }
-                Primitive::Fill { color } => {
+                Primitive::Fill { color, .. } => {
                     if c.transform != u32::MAX {
                         if let Some(r) = raw(c.bounds) {
                             out.fill_rect(r, &paint(*color), ct, mask.as_ref());

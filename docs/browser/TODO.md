@@ -51,13 +51,17 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
 - [x] Lazy images' timer loop: web-vitals' capturing window `load`
   listener got every image's load event (load events don't reach the
   window now). Open: `loading=lazy` images still never load.
-- [ ] Scroll containers (`overflow: auto | scroll`): the wheel scrolls the
-  page under them (GitHub's open menu), no scrollbar, `scrollTop` and
-  `scroll` events on them. Needs a scroll offset per box, its content
-  painted moved and clipped (a moved layer, like sticky), wheel routing to
-  the innermost box that can scroll that way, and the agent tree showing it.
-- [x] GitHub's menu: opens, rows clickable, Products expands, as Chrome
-  (JOURNAL 2026-11-07, night). Open: its panel scrolling (above).
+- [x] Scroll containers (`overflow: auto | scroll`; `hidden` by script):
+  the wheel (Shift: sideways) scrolls the innermost one with room that
+  way, `scrollTop`/`scrollLeft`/`scrollTo`/`scrollBy` and `scroll`
+  events, their range as Chrome's (margin boxes and end padding; fixed
+  boxes and those positioned outside count for nothing and stay put),
+  hit tests follow, agents see each as a ScrollArea. Open: scrollbars
+  (Chrome's take 15 px of the box's width; none drawn), `scrollIntoView`,
+  `scroll-snap`, smooth scrolling, a scrolled box's `getBoundingClientRect`
+  children (they read unscrolled), keyboard scrolling of a box.
+- [x] GitHub's menu: opens, rows clickable, Products expands, its panel
+  scrolls, as Chrome (JOURNAL 2026-11-07, night).
 - [ ] Forms: the hero's email field shows its label over its placeholder
   (Chrome floats the label); POST submission; checkbox drawing.
 

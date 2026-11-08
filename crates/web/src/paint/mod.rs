@@ -13,7 +13,7 @@ use crate::{css, dom, font, layout};
 pub use glyph::{CacheStats, Engine};
 pub use mipmap::ImageCacheStats;
 pub use raster::{DeviceRect, Tile};
-pub use scene::{BuildJob, Command, LayerKind, Moved, Options, Primitive, Progress, Scene, Stratum};
+pub use scene::{BuildJob, Command, LayerKind, Moved, Options, Primitive, Progress, Scene, Scroller, Stratum};
 /// Draw a loaded SVG viewport into a surface through `transform` (its user
 /// units to device pixels), for rasterising an SVG as an image.
 pub(crate) fn raster_vector(

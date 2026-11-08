@@ -6193,5 +6193,19 @@ journal).
   on GitHub unchanged (2.9 ms and 4.3 ms medians).
 - **Found on the way.** The UA sheet named three unparsed properties
   (counted as page issues) and `all` missed the animation longhands;
-  both fixed. Open: scroll containers don't scroll (the menu's panel
-  scrolls the page under it).
+  both fixed.
+- **Scroll containers** scroll now. The wheel over one with room that
+  way goes to it (Shift: sideways); its offset is kept in the document
+  (outside the change log: nothing restyles or lays out) and the scene
+  is built again over the same layout, 0.07 ms on a test page, the tiles
+  it changed repainted. Scripts read and set `scrollTop`, `scrollLeft`,
+  `scrollTo` and `scrollBy` and get `scroll` events. A box's range is
+  Chrome's (GitHub's menu 637 + 526 px, Chrome 515 + 648; a test strip
+  316 px both): margin boxes and end padding count, and boxes positioned
+  against a block outside it (GitHub's hidden fixed dropdowns) neither
+  count nor move. Agents see each as a ScrollArea with its offset.
+- **Hit tests** found nothing on a plain background (fills had no owner
+  box): a click there went to whatever was under it. Fills are owned
+  now, and a point over nothing painted finds the innermost box there.
+  0.23 to 0.56 µs a hit test (200,000 over GitHub's first screen),
+  every point now finding its box where a sixth found nothing.

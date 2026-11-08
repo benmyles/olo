@@ -340,6 +340,12 @@ pub struct Document {
     /// value and checkedness: what the person typed or ticked), shared
     /// with snapshots.
     controls: Arc<HashMap<NodeId, ControlState>>,
+    /// Scroll containers' offsets (CSS px, x then y), shared with
+    /// snapshots. Outside the change log: scrolling restyles and lays out
+    /// nothing, it only moves what the box shows (`scroll_serial` tells a
+    /// painter it moved).
+    scrolls: Arc<HashMap<NodeId, [f64; 2]>>,
+    scroll_serial: u64,
     name_bytes: usize,
     limits: Limits,
 }
@@ -385,6 +391,8 @@ impl Document {
             names: Arc::new(Vec::new()),
             atoms: Arc::new(HashMap::new()),
             controls: Arc::new(HashMap::new()),
+            scrolls: Arc::new(HashMap::new()),
+            scroll_serial: 0,
             name_bytes: 0,
             limits,
         })
@@ -432,6 +440,37 @@ impl Document {
     /// A mutation the log cannot describe: restyles start over.
     fn bump(&mut self) -> Result<()> {
         self.bump_with(Change::Unknown)
+    }
+    /// A scroll container's offset (CSS px, x then y; zero when never scrolled).
+    pub fn scroll_offset(&self, id: NodeId) -> [f64; 2] {
+        self.scrolls.get(&id).copied().unwrap_or([0., 0.])
+    }
+    /// Whether any box has been scrolled.
+    pub fn any_scrolled(&self) -> bool {
+        !self.scrolls.is_empty()
+    }
+    /// Scroll a box to `offset` (already clamped to what it can show);
+    /// whether it moved.
+    pub fn set_scroll_offset(&mut self, id: NodeId, offset: [f64; 2]) -> Result<bool> {
+        self.resolve(id)?;
+        if !offset.iter().all(|v| v.is_finite()) {
+            return Ok(false);
+        }
+        if self.scroll_offset(id) == offset {
+            return Ok(false);
+        }
+        if offset == [0., 0.] {
+            Arc::make_mut(&mut self.scrolls).remove(&id);
+        } else {
+            Arc::make_mut(&mut self.scrolls).insert(id, offset);
+        }
+        self.scroll_serial += 1;
+        Ok(true)
+    }
+    /// Counts every scroll: a painter that saw this serial shows the
+    /// offsets as they are.
+    pub fn scroll_serial(&self) -> u64 {
+        self.scroll_serial
     }
     /// A control's state (None: as its attributes say).
     pub fn control(&self, id: NodeId) -> Option<&ControlState> {

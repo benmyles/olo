@@ -68,6 +68,34 @@ pub enum Message {
     /// height), none when the window can't share with the canvas's GPU.
     SharedTextures(Vec<(olo_web::dom::NodeId, Vec<SharedHandle>)>),
     RecycleTargets(Arc<crate::navigation::FocusTargets>),
+    /// The wheel over a scroll container (see `ScrollArea`): scroll it by
+    /// (dx, dy) CSS px.
+    ScrollBox {
+        node: olo_web::dom::NodeId,
+        dx: f64,
+        dy: f64,
+    },
+}
+/// A scroll container on the page, for the window to send the wheel over
+/// it there (see `Message::ScrollBox`): its padding box (CSS px, document
+/// coordinates, or the viewport's when `fixed`), its offset, the farthest
+/// it scrolls and which axes a person may scroll.
+#[derive(Clone, Copy, Debug)]
+pub struct ScrollArea {
+    pub node: olo_web::dom::NodeId,
+    pub rect: layout::Rect,
+    pub fixed: bool,
+    pub offset: [f64; 2],
+    pub max: [f64; 2],
+    pub user: [bool; 2],
+}
+impl ScrollArea {
+    /// Whether it can take a scroll by (dx, dy): an axis it scrolls on with
+    /// room left that way.
+    pub fn takes(&self, dx: f64, dy: f64) -> bool {
+        let room = |i: usize, d: f64| self.user[i] && self.max[i] > 0. && (d > 0. && self.offset[i] < self.max[i] - 0.5 || d < 0. && self.offset[i] > 0.5);
+        room(0, dx) || room(1, dy)
+    }
 }
 #[derive(Clone)]
 pub struct Label {
@@ -136,6 +164,7 @@ pub enum Reply {
         document: u64,
         target: Option<olo_web::dom::NodeId>,
         focus_targets: Arc<crate::navigation::FocusTargets>,
+        scroll_areas: Arc<[ScrollArea]>,
     },
     Batch(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
     /// The page's layers above its base tiles, in paint order (later page
@@ -599,6 +628,51 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             drop(images);
                             continue;
                         }
+                        // A person scrolled a box: its offset kept (in the live
+                        // page's document too, with its `scroll` event), the
+                        // scene built again over the same layout, and the
+                        // tiles it changed painted.
+                        Message::ScrollBox { node, mut dx, mut dy } => {
+                            // Wheel steps already queued for the same box: one scroll.
+                            while let Ok(next) = rx.try_recv() {
+                                match next {
+                                    Message::ScrollBox { node: n, dx: x, dy: y } if n == node => {
+                                        dx += x;
+                                        dy += y;
+                                    }
+                                    other => {
+                                        pending.push_back(other);
+                                        break;
+                                    }
+                                }
+                            }
+                            if let Some(c) = cached.as_mut()
+                                && let Some(r) = &last
+                                && let Some(to) = c.page.scroll_box(node, [dx, dy])
+                            {
+                                if let Some(live) = c.live.as_mut() {
+                                    live.realm.scroll_box(node, to);
+                                    live.loads.dispatch(&mut live.realm);
+                                }
+                                let started = Instant::now();
+                                let host = PageHost::new(c.page.scope(), &r.key);
+                                let repainted = c.page.repaint(&host, &mut painter, Some(&r.cancel));
+                                if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                                    eprintln!("  box scroll: scene in {:.2} ms", started.elapsed().as_secs_f64() * 1000.);
+                                }
+                                match repainted {
+                                    Ok(()) => {
+                                        if let Err(error) = render(r, &loader, &tx, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Static)
+                                            && !is_cancellation(&error)
+                                        {
+                                            eprintln!("Browser box scroll: {error}");
+                                        }
+                                    }
+                                    Err(error) => eprintln!("Browser box scroll: {error}"),
+                                }
+                            }
+                            continue;
+                        }
                         Message::SharedTextures(list) => {
                             if let Some(live) = cached.as_mut().and_then(|c| c.live.as_mut()) {
                                 let mut released = Vec::new();
@@ -634,6 +708,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             Message::Recycle(images) => drop(images),
                             Message::SharedTextures(list) => kept.push_back(Message::SharedTextures(list)),
                             Message::RecycleTargets(targets) => drop(targets),
+                            m @ Message::ScrollBox { .. } => kept.push_back(m),
                         }
                     }
                     pending = kept;
@@ -1472,6 +1547,13 @@ fn render(
         document: page.document.id(),
         target: page.interaction.target,
         focus_targets: cached.focus_targets.as_ref().unwrap().clone(),
+        scroll_areas: page
+            .scene
+            .scrollers()
+            .iter()
+            .filter(|s| (0..2).any(|i| s.user[i] && s.max()[i] > 0.))
+            .map(|s| ScrollArea { node: s.node, rect: s.rect, fixed: s.fixed, offset: s.offset, max: s.max(), user: s.user })
+            .collect(),
     });
     let stickies = scene.layout().sticky();
     let mut tiles = Vec::new();
@@ -1886,7 +1968,7 @@ mod tests {
             },
         )
         .unwrap();
-        let red = |page: &page::Page| page.scene.commands().iter().find(|c| matches!(c.primitive, paint::Primitive::Fill { color: [255, 0, 0, 255] })).unwrap().bounds;
+        let red = |page: &page::Page| page.scene.commands().iter().find(|c| matches!(c.primitive, paint::Primitive::Fill { color: [255, 0, 0, 255], .. })).unwrap().bounds;
         assert_eq!((red(&page).width, red(&page).height), (250., 30.));
         assert!(host.viewport_used.get());
         let identity = page.document.id();

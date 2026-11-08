@@ -229,3 +229,34 @@ fn match_media_answers_whole_queries_as_the_sheets_do() {
         ]
     );
 }
+#[test]
+fn a_box_a_person_scrolls_tells_its_scripts() {
+    let page = r#"<div id=s style="overflow:auto;height:50px"><p style="height:400px">x</p></div><script>
+const s = document.getElementById('s');
+s.addEventListener('scroll', (e) => console.log('scroll', e.target.id, s.scrollTop, s.scrollLeft, e.bubbles));
+document.addEventListener('scroll', () => console.log('document saw it'));
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let s = find(&parsed.document, "s");
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    let serial = realm.scroll_serial();
+    // Two wheel steps before the page's next task: one event, at the last offset.
+    assert!(realm.scroll_box(s, [0., 30.]));
+    assert!(realm.scroll_box(s, [0., 45.]));
+    assert!(!realm.scroll_box(s, [0., 45.]));
+    assert!(realm.scroll_serial() > serial);
+    realm.advance(100., std::time::Duration::from_secs(1));
+    let report = realm.report();
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] scroll s 45 0 false"]);
+    let (doc, _) = realm.finish();
+    assert_eq!(doc.scroll_offset(s), [0., 45.]);
+}
