@@ -12380,6 +12380,24 @@ files, node_modules left out), a change and Back Up Now (1 changed,
 nothing new), the older version restored, 5 MB new at a 500 KB/s upload
 limit in 10.06 s; its scheduling policy 5 (SCHED_IDLE).
 
+**The app** (`olo-diskbackup` with no arguments; `app.rs`; one window,
+three columns so it fits a 1280 × 800 screen): the backup (what the
+service is doing and did, live from its state file, followed by inotify:
+nothing ticks while nothing happens, times shown as clock times; Back Up
+Now or Stop), where backups go (Choose a Folder…: a backup there already
+opened with this computer's key, else a new one and a key), the key
+(Keep Key in Passwords: the keychain's `KeepSecret`, a Password item
+"DiskBackup Key" with a note saying what it is, synced to 1Password like
+any; Passwords started if it isn't running, unlocked if it asks), what's
+backed up (folders added and removed), what's left out (each group named
+for what it leaves out, its folders under it: Ben, "right now it looks
+like you're asking if i want to leave out the actual source code of all
+those langs"; the person's own patterns in a box of their own), when (every
+15 minutes to a day, on battery or not) and how fast (upload and download
+limits). Every change is written to the settings, which the service
+follows at once. The keychain's `Secrets` reads an Olo program's secrets
+back by title (another computer's setup, next).
+
 Measured (release, one thread, this machine, 2026-11-07;
 `tests/round_trip.rs`'s `throughput`): data/ (988 MB, 12,160 files,
 pictures mostly) first backed up in 7.5 s (132 MB/s), 947 MB stored; again

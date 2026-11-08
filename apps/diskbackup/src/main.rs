@@ -1,6 +1,7 @@
-//! `olo-diskbackup`: DiskBackup's service and command line (the app comes
-//! next).
+//! `olo-diskbackup`: DiskBackup's app, service and command line.
 //!
+//! - (none): the app's window (`app.rs`): what it's doing and did, where
+//!   backups go, what, when, how fast, the key.
 //! - `--service`: run the service (olo-session does, in a real session).
 //! - `--status [--json]`: what it's doing, has done, and its settings.
 //! - `--now`, `--stop`: back up now; stop what's under way.
@@ -15,8 +16,11 @@
 //!   (comma-separated), `exclude` (a pattern, added), `groups`
 //!   (comma-separated ids; `--groups` lists them).
 
+mod app;
 mod service;
 mod target;
+
+const APP_ID: &str = "olo.diskbackup";
 
 use std::{path::PathBuf, process::ExitCode, sync::atomic::AtomicBool};
 
@@ -52,6 +56,7 @@ fn main() -> ExitCode {
             }
             Ok(())
         }
+        None => return app_main(),
         _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --snapshots | --restore SNAPSHOT PATH [TO] | --set KEY=VALUE… | --groups".into()),
     };
     match r {
@@ -128,7 +133,27 @@ fn status(json: bool) {
     );
 }
 
-fn ask(r: Request) -> Result<(), String> {
+/// The app: one window, one copy (another launch brings it forward).
+fn app_main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if olo_ui::instance::forward(APP_ID, &args) {
+        return ExitCode::SUCCESS;
+    }
+    olo_ui::run(APP_ID, move |cx| {
+        use olo_ui::gpui::AppContext as _;
+        let proxy = olo_ui::proxy(cx);
+        olo_ui::instance::listen(APP_ID, proxy.clone());
+        let disk = cx.new(|_| app::Disk::new(proxy));
+        disk.update(cx, |d, cx| d.open(cx));
+        let messages = disk.clone();
+        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
+        // (Back as it was after an upgrade: its window.)
+        olo_ui::on_upgrade(cx, |_| Some("{}".into()));
+    });
+    ExitCode::SUCCESS
+}
+
+pub(crate) fn ask(r: Request) -> Result<(), String> {
     use std::io::{BufRead, Write};
     let mut s = std::os::unix::net::UnixStream::connect(olo_protocol::diskbackup::socket()).map_err(|_| "the service isn't running".to_string())?;
     s.write_all(format!("{}\n", serde_json::to_string(&r).unwrap_or_default()).as_bytes()).map_err(|e| e.to_string())?;
@@ -151,7 +176,7 @@ fn open() -> Result<(Settings, Repo), String> {
     Ok((settings, repo))
 }
 
-fn set_up_folder(path: &str) -> Result<(), String> {
+pub(crate) fn set_up_folder(path: &str) -> Result<(), String> {
     let dir = PathBuf::from(path);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let dir = dir.canonicalize().map_err(|e| e.to_string())?;
@@ -174,7 +199,7 @@ fn set_up_folder(path: &str) -> Result<(), String> {
     s.target = t;
     s.enabled = true;
     s.save().map_err(|e| e.to_string())?;
-    println!("Backing up to {} (its key kept in the login keyring).", dir.display());
+    tracing::info!("backing up to {} (its key kept in the login keyring)", dir.display());
     Ok(())
 }
 

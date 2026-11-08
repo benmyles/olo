@@ -63,6 +63,14 @@ pub enum Request {
     /// Items whose title, website or tags hold every word of `query`
     /// (the command palette). Only while unlocked; doesn't wait.
     Search { query: String },
+    /// Keep an Olo program's own secret (DiskBackup's key) as a Password
+    /// item titled `title`, with `note` saying what it is; one with that
+    /// title and secret already there is left as it is. Answered once
+    /// unlocked: `Saved`.
+    KeepSecret { title: String, secret: String, note: String },
+    /// The secrets of the Password items titled `title` (an Olo program's
+    /// own, kept by `KeepSecret`), once unlocked: `Secrets`.
+    Secrets { title: String },
     /// Bring Passwords forward showing item `id` (once unlocked).
     Show { vault: String, id: String },
     /// From `op`: answered once unlocked and the asking terminal session
@@ -202,14 +210,16 @@ impl Request {
             | Request::SshKeys
             | Request::SshSign { .. }
             | Request::Shares
-            | Request::SetShares { .. } => Duration::from_secs(300),
+            | Request::SetShares { .. }
+            | Request::KeepSecret { .. }
+            | Request::Secrets { .. } => Duration::from_secs(300),
         }
     }
 }
 
 impl Drop for Request {
     fn drop(&mut self) {
-        if let Request::Check { password, .. } | Request::Save { password, .. } = self {
+        if let Request::Check { password, .. } | Request::Save { password, .. } | Request::KeepSecret { secret: password, .. } = self {
             password.zeroize();
         }
     }
@@ -310,6 +320,10 @@ pub enum Response {
     Items {
         items: Vec<Found>,
     },
+    /// For `Secrets`.
+    Secrets {
+        values: Vec<String>,
+    },
     /// For `Show`.
     Shown,
     Passkeys {
@@ -385,6 +399,7 @@ impl Drop for Response {
                 number.zeroize();
                 code.zeroize();
             }
+            Response::Secrets { values } => values.iter_mut().for_each(|v| v.zeroize()),
             _ => {}
         }
     }

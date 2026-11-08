@@ -78,6 +78,9 @@ pub struct Settings {
     pub on_battery: bool,
     /// Stay on each folder's own disk (not into what's mounted inside).
     pub one_file_system: bool,
+    /// The key is kept in Passwords too (the app keeps it there: so the
+    /// backups can be restored on another computer).
+    pub key_in_passwords: bool,
 }
 
 impl Default for Settings {
@@ -94,6 +97,7 @@ impl Default for Settings {
             download_kbs: 0,
             on_battery: true,
             one_file_system: true,
+            key_in_passwords: false,
         }
     }
 }

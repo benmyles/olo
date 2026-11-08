@@ -58,8 +58,12 @@ something nobody here has is in "Blocked", with what it waits for.
   snapshots, excludes, restore, speed limits, a folder as a store); the
   service and its command line (idle priority, a schedule, Back Up Now,
   Stop, battery, status, the key in the login keyring); HACKING.md,
-  "DiskBackup". Next: the app (setup, status, settings, restore; the key
-  kept in Passwords too); keeping (forget by `Keep`, then prune what only
+  "DiskBackup"; the app's window (status, target and setup, the key kept
+  in Passwords, folders, leave-out groups named by what they leave out,
+  patterns, schedule, speed limits). Next: restoring in the app (a
+  snapshot browser, choose what, put back where it was or elsewhere) and
+  setting up on another computer (the key read back from Passwords);
+  DiskBackup's own icon (Preferences ▸ Backup's for now); keeping (forget by `Keep`, then prune what only
   forgotten snapshots used); Google Drive (needs an OAuth client of
   Ben's: a Google Cloud project's "Desktop app" credentials); Deskbar,
   Tracker, Doctor.
