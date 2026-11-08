@@ -2886,7 +2886,35 @@ fn identity_of(t: &css::properties::Transforms) -> Option<String> {
 /// The elements of `tree` with animations that are still in `doc` (the
 /// tree may be the previous render's).
 fn animated_elements<'t>(doc: &'t Document, tree: &'t style::StyleTree) -> impl Iterator<Item = (crate::dom::NodeId, &'t style::Style)> + 't {
-    tree.animation_candidates().filter(move |(node, _)| doc.node_type(*node).ok() == Some(NodeType::Element) && doc.is_connected(*node).unwrap_or(false))
+    tree.animation_candidates().filter(move |(node, _)| doc.node_type(*node).ok() == Some(NodeType::Element) && doc.is_connected(*node).unwrap_or(false) && displayed(doc, tree, *node))
+}
+/// Whether an element is rendered: neither it nor a composed ancestor is
+/// `display: none`, and a shadow host's child is taken by a slot. An
+/// animation on one that isn't runs no frames, as in Chrome (YouTube's
+/// hidden player spinners asked for 60 frames a second while idle).
+fn displayed(doc: &Document, tree: &style::StyleTree, node: crate::dom::NodeId) -> bool {
+    use css::{
+        properties::{Display, Property},
+        style::Value,
+    };
+    let mut at = node;
+    for _ in 0..4096 {
+        if tree.snapshot(at).is_some_and(|s| matches!(s.value(Property::Display), Value::Display(Display::None))) {
+            return false;
+        }
+        let Some(parent) = doc.parent(at).ok().flatten() else { return true };
+        at = if let Some(host) = doc.shadow_host(parent) {
+            host
+        } else if doc.shadow_root(parent).is_some() {
+            match doc.assigned_slot(at).ok().flatten() {
+                Some(slot) => slot,
+                None => return false,
+            }
+        } else {
+            parent
+        };
+    }
+    true
 }
 fn styled_elements<'t>(doc: &'t Document, tree: &'t style::StyleTree) -> impl Iterator<Item = (crate::dom::NodeId, &'t style::Style)> + 't {
     let mut next = Some(doc.root());

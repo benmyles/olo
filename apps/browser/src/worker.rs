@@ -446,7 +446,7 @@ impl Loads {
                         let fetched = if method == "GET" && headers.is_empty() {
                             this.loader.bytes(&this.document.url, url, &this.cancel)
                         } else {
-                            this.loader.request(&this.document.url, url, method, headers, body.as_bytes(), &this.cancel)
+                            this.loader.request(&this.document.url, url, method, headers, body, &this.cancel)
                         };
                         fetched.map(|(status, content_type, body, url)| olo_js::Loaded::Text(olo_js::Fetched { status, content_type, body, url })).map_err(|e| e.to_string())
                     }
@@ -469,12 +469,12 @@ impl Loads {
     /// What workers fetch with, on their threads.
     fn worker_fetcher(&self) -> olo_js::SharedFetcher {
         let this = self.clone();
-        Arc::new(move |url: &str, method: &str, body: &str, headers: &str| {
+        Arc::new(move |url: &str, method: &str, body: &[u8], headers: &str| {
             let url = url::Url::parse(url).map_err(|e| e.to_string())?;
             let fetched = if method == "GET" && headers.is_empty() {
                 this.loader.bytes(&this.document.url, url, &this.cancel)
             } else {
-                this.loader.request(&this.document.url, url, method, headers, body.as_bytes(), &this.cancel)
+                this.loader.request(&this.document.url, url, method, headers, body, &this.cancel)
             };
             fetched.map(|(status, content_type, body, url)| olo_js::Fetched { status, content_type, body, url }).map_err(|e| e.to_string())
         })
@@ -1043,6 +1043,19 @@ fn render(
         // The document changed, a readback is in flight, or a canvas was
         // drawn on (its drawing shows only through a render).
         if revision != live.rendered || live.render_again || live.render_due || live.realm.canvases_dirty() || c.page.animating() || media_changed || focus_moved {
+            // OLO_RENDER_TRACE: why each live render happens.
+            if std::env::var_os("OLO_RENDER_TRACE").is_some() {
+                eprintln!(
+                    "  render because:{}{}{}{}{}{}{}",
+                    if revision != live.rendered { " document" } else { "" },
+                    if live.render_again { " again" } else { "" },
+                    if live.render_due { " due" } else { "" },
+                    if live.realm.canvases_dirty() { " canvas" } else { "" },
+                    if c.page.animating() { " animating" } else { "" },
+                    if media_changed { " media" } else { "" },
+                    if focus_moved { " focus" } else { "" },
+                );
+            }
             if !frame {
                 // Changes between frames show at the next frame.
                 // Paced by a window that has stopped drawing (it heard nothing
@@ -1287,13 +1300,13 @@ fn render(
             let fetcher: olo_js::Fetcher = {
                 let cancel = live_cancel.clone();
                 let loader = loader.clone();
-                Box::new(move |url: &str, method: &str, body: &str, headers: &str| {
+                Box::new(move |url: &str, method: &str, body: &[u8], headers: &str| {
                     let url = url::Url::parse(url).map_err(|e| e.to_string())?;
                     if method == "GET" && headers.is_empty() {
                         let (status, content_type, body, final_url) = loader.text(&fetch_document, url, &cancel).map_err(|e| e.to_string())?;
                         return Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url });
                     }
-                    let (status, content_type, body, final_url) = loader.request(&fetch_document, url, method, headers, body.as_bytes(), &cancel).map_err(|e| e.to_string())?;
+                    let (status, content_type, body, final_url) = loader.request(&fetch_document, url, method, headers, body, &cancel).map_err(|e| e.to_string())?;
                     Ok(olo_js::Fetched { status, content_type, body, url: final_url })
                 })
             };

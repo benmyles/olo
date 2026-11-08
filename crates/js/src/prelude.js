@@ -1438,9 +1438,96 @@
   // Encoding, base64, structured clone, crypto
   global.structuredClone = (v) => (v === undefined ? undefined : N.structuredClone(v));
   global.crypto = { getRandomValues(a) { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256) & (a.BYTES_PER_ELEMENT === 1 ? 255 : a.BYTES_PER_ELEMENT === 2 ? 65535 : 0xffffffff); return a; }, randomUUID() { const h = () => Math.floor(Math.random() * 16).toString(16); return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => c === 'x' ? h() : (8 + Math.floor(Math.random() * 4)).toString(16)); }, subtle: { digest: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')), importKey: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')), sign: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')) } };
-  // Observers: intersection reports everything visible once; mutation and resize record nothing.
-  global.MutationObserver = class MutationObserver { constructor(cb) { this._cb = cb; } observe() {} disconnect() {} takeRecords() { return []; } };
-  global.MutationRecord = class MutationRecord {};
+  // Observers: intersection reports everything visible once.
+  // MutationObserver (DOM §4.3): every change a script makes to the tree
+  // (children, attributes, text) goes through the natives wrapped here,
+  // which queue a record for each observer of the node (or, with subtree,
+  // of an ancestor in its tree), delivered together in a microtask.
+  // Polymer queues its microtasks on a text node's observer (YouTube's
+  // guide waited on one forever); Stimulus, Turbo, htmx and GitHub's
+  // components connect through them. While nothing observes, each change
+  // costs one check.
+  {
+    class MutationRecord {
+      constructor(type, target) { this.type = type; this.target = target; this.addedNodes = listOf([]); this.removedNodes = listOf([]); this.previousSibling = null; this.nextSibling = null; this.attributeName = null; this.attributeNamespace = null; this.oldValue = null; }
+    }
+    const registrations = new WeakMap();
+    let registered = 0, nextObserver = 0, scheduled = false;
+    const pending = new Set();
+    const deliver = () => {
+      scheduled = false;
+      const list = [...pending].sort((a, b) => a._id - b._id);
+      pending.clear();
+      for (const o of list) { const records = o._records.splice(0); if (records.length) { try { o._cb.call(o, records, o); } catch (e) { reportError(e); } } }
+    };
+    // The observers interested in a change of `target` (its own, then its
+    // ancestors' with subtree), each given its record.
+    const queue = (target, wants, make) => {
+      let found = null;
+      for (let n = target, own = true; n; n = N.parent(n), own = false) {
+        const regs = registrations.get(n);
+        if (!regs) continue;
+        for (const r of regs) {
+          if ((own || r.options.subtree) && wants(r.options) && !(found && found.has(r.observer))) (found || (found = new Map())).set(r.observer, r.options);
+        }
+      }
+      if (!found) return;
+      for (const [o, options] of found) { o._records.push(make(options)); pending.add(o); }
+      if (!scheduled) { scheduled = true; Promise.resolve().then(deliver); }
+    };
+    const childList = (target, added, removed, previous, next) => {
+      if (!added.length && !removed.length) return;
+      queue(target, (o) => o.childList, () => { const r = new MutationRecord('childList', target); r.addedNodes = listOf(added.slice()); r.removedNodes = listOf(removed.slice()); r.previousSibling = previous || null; r.nextSibling = next || null; return r; });
+    };
+    const characterData = (target, old) => queue(target, (o) => o.characterData, (o) => { const r = new MutationRecord('characterData', target); if (o.characterDataOldValue) r.oldValue = old; return r; });
+    const attribute = (target, name, old) => queue(target, (o) => o.attributes && (!o.attributeFilter || o.attributeFilter.includes(name)), (o) => { const r = new MutationRecord('attributes', target); r.attributeName = name; if (o.attributeOldValue) r.oldValue = old; return r; });
+    // The node leaving its parent, before it moves: the record for that.
+    const leaving = (node) => { const from = N.parent(node); return from ? [from, N.previousSibling(node), N.nextSibling(node)] : null; };
+    const inserted = (parent, node, insert) => {
+      const fragment = N.nodeType(node) === 11;
+      const added = fragment ? N.childNodes(node) : [node];
+      const left = fragment ? null : leaving(node);
+      insert();
+      if (left) childList(left[0], [], [node], left[1], left[2]);
+      if (fragment && added.length) childList(node, [], added, null, null);
+      if (added.length) childList(parent, added, [], N.previousSibling(added[0]), N.nextSibling(added[added.length - 1]));
+    };
+    const append = N.append, insertBefore = N.insertBefore, remove = N.remove, setAttr = N.setAttr, removeAttr = N.removeAttr, setTextContent = N.setTextContent, setData = N.setData, setInnerHTML = N.setInnerHTML;
+    N.append = (parent, node) => { if (!registered) return append(parent, node); let r; inserted(parent, node, () => { r = append(parent, node); }); return r; };
+    N.insertBefore = (parent, node, ref) => { if (!registered) return insertBefore(parent, node, ref); let r; inserted(parent, node, () => { r = insertBefore(parent, node, ref); }); return r; };
+    N.remove = (node) => { if (!registered) return remove(node); const left = leaving(node); const r = remove(node); if (left) childList(left[0], [], [node], left[1], left[2]); return r; };
+    N.setAttr = (el, name, value) => { if (!registered) return setAttr(el, name, value); const old = N.attr(el, name); const r = setAttr(el, name, value); attribute(el, String(name).toLowerCase(), old); return r; };
+    N.removeAttr = (el, name) => { if (!registered) return removeAttr(el, name); const old = N.attr(el, name); const r = removeAttr(el, name); if (old != null) attribute(el, String(name).toLowerCase(), old); return r; };
+    N.setData = (node, value) => { if (!registered) return setData(node, value); const old = N.data(node); const r = setData(node, value); characterData(node, old); return r; };
+    N.setTextContent = (node, text) => {
+      if (!registered) return setTextContent(node, text);
+      const type = N.nodeType(node);
+      if (type === 3 || type === 8 || type === 7) { const old = N.data(node); const r = setTextContent(node, text); characterData(node, old); return r; }
+      const removed = N.childNodes(node); const r = setTextContent(node, text); childList(node, N.childNodes(node), removed, null, null); return r;
+    };
+    N.setInnerHTML = (node, markup) => { if (!registered) return setInnerHTML(node, markup); const removed = N.childNodes(node); const r = setInnerHTML(node, markup); childList(node, N.childNodes(node), removed, null, null); return r; };
+    global.MutationObserver = class MutationObserver {
+      constructor(callback) { if (typeof callback !== 'function') throw new TypeError("Failed to construct 'MutationObserver': parameter 1 is not of type 'Function'."); this._cb = callback; this._records = []; this._nodes = new Set(); this._id = nextObserver++; }
+      observe(target, options) {
+        if (!target || !isNode(target)) throw new TypeError("Failed to execute 'observe' on 'MutationObserver': parameter 1 is not of type 'Node'.");
+        const o = Object.assign({}, options || {});
+        if ((o.attributeOldValue || o.attributeFilter) && o.attributes === undefined) o.attributes = true;
+        if (o.characterDataOldValue && o.characterData === undefined) o.characterData = true;
+        if (!o.childList && !o.attributes && !o.characterData) throw new TypeError("Failed to execute 'observe' on 'MutationObserver': The options object must set at least one of 'attributes', 'characterData', or 'childList' to true.");
+        if (o.attributeFilter) o.attributeFilter = [...o.attributeFilter].map(String);
+        let regs = registrations.get(target);
+        if (!regs) { regs = []; registrations.set(target, regs); }
+        const existing = regs.find((r) => r.observer === this);
+        if (existing) existing.options = o; else { regs.push({ observer: this, options: o }); registered++; this._nodes.add(target); }
+      }
+      disconnect() {
+        for (const n of this._nodes) { const regs = registrations.get(n); if (!regs) continue; const i = regs.findIndex((r) => r.observer === this); if (i >= 0) { regs.splice(i, 1); registered--; } }
+        this._nodes.clear(); this._records = []; pending.delete(this);
+      }
+      takeRecords() { const r = this._records.splice(0); pending.delete(this); return r; }
+    };
+    global.MutationRecord = MutationRecord;
+  }
   // ResizeObserver reports each target once it has a size, then again when
   // the size it saw last changes (checked after every tick of timers).
   const resizeObservers = new Set();
@@ -1495,12 +1582,22 @@
         if (state.intersecting === intersecting && state.step === step) continue;
         state.intersecting = intersecting; state.step = step;
         const bounds = new DOMRect(rect.x, rect.y, rect.w, rect.h);
-        entries.push({ target: el, time: performanceNow(), isIntersecting: intersecting, intersectionRatio: ratio, boundingClientRect: bounds, intersectionRect: intersecting ? new DOMRect(ix0, iy0, Math.max(0, ix1 - ix0), Math.max(0, iy1 - iy0)) : new DOMRect(0, 0, 0, 0), rootBounds: new DOMRect(root.x, root.y, root.w, root.h), isVisible: intersecting });
+        entries.push(new IntersectionObserverEntry({ target: el, time: performanceNow(), isIntersecting: intersecting, intersectionRatio: ratio, boundingClientRect: bounds, intersectionRect: intersecting ? new DOMRect(ix0, iy0, Math.max(0, ix1 - ix0), Math.max(0, iy1 - iy0)) : new DOMRect(0, 0, 0, 0), rootBounds: new DOMRect(root.x, root.y, root.w, root.h), isVisible: intersecting }));
       }
       if (entries.length) { try { this._cb(entries, this); } catch (e) { reportError(e); } }
     }
   };
-  global.IntersectionObserverEntry = class IntersectionObserverEntry {};
+  // Its entries' fields as the prototype's getters, as a browser has them
+  // (the W3C polyfill, which YouTube loads, installs itself unless
+  // `intersectionRatio` is in the prototype, then polls the page).
+  class IntersectionObserverEntry {
+    constructor(init) { Object.defineProperty(this, '_init', { value: init || {} }); }
+    get target() { return this._init.target || null; } get time() { return this._init.time || 0; }
+    get isIntersecting() { return !!this._init.isIntersecting; } get intersectionRatio() { return this._init.intersectionRatio || 0; }
+    get boundingClientRect() { return this._init.boundingClientRect || new DOMRect(); } get intersectionRect() { return this._init.intersectionRect || new DOMRect(); }
+    get rootBounds() { return this._init.rootBounds || null; } get isVisible() { return !!this._init.isVisible; }
+  }
+  global.IntersectionObserverEntry = IntersectionObserverEntry;
   // A synchronous fetch (XMLHttpRequest in synchronous mode): bytes.
   const fetchSync = (url, method, body, headers) => (/^(data|blob):/.test(url) ? global.__olo_fetchInline(url) : N.fetchSync(url, method, body, headers || ''));
   const headerLines = (h) => Object.entries(h || {}).map(([k, v]) => k + ': ' + v).join('\n');
@@ -1524,7 +1621,8 @@
     }
     _fail() { this.readyState = 4; this.status = 0; this._change(); dispatch(this, new ProgressEvent('error')); dispatch(this, new ProgressEvent('loadend')); }
     send(body) {
-      const payload = body == null ? '' : typeof body === 'string' ? body : body instanceof URLSearchParams ? body.toString() : (body instanceof Blob || body instanceof ArrayBuffer || ArrayBuffer.isView(body)) ? new TextDecoder().decode(body instanceof Blob ? body._bytes : body) : String(body);
+      // (Bytes as they are: a binary body must not pass through text.)
+      const payload = body == null ? '' : typeof body === 'string' ? body : body instanceof URLSearchParams ? body.toString() : body instanceof Blob ? body._bytes : body instanceof ArrayBuffer ? new Uint8Array(body) : ArrayBuffer.isView(body) ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength) : String(body);
       if (this._sync) { try { this._finish(fetchSync(this._url, this._method, payload, headerLines(this._headers) + (this.withCredentials ? '\nx-olo-credentials: include' : ''))); } catch (e) { this._fail(); } return; }
       dispatch(this, new ProgressEvent('loadstart'));
       if (/^(data|blob):/.test(this._url)) { setTimeout(() => { try { this._finish(global.__olo_fetchInline(this._url)); } catch (e) { this._fail(); } }, 0); return; }

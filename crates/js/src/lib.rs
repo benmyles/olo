@@ -97,7 +97,7 @@ pub struct Fetched {
 }
 /// Fetches a URL (method, body) for scripts; the browser supplies one.
 /// (url, method, body, headers as `name: value` lines).
-pub type Fetcher = Box<dyn FnMut(&str, &str, &str, &str) -> Result<Fetched, String>>;
+pub type Fetcher = Box<dyn FnMut(&str, &str, &[u8], &str) -> Result<Fetched, String>>;
 /// An image already decoded for the page, by absolute URL (no I/O); the
 /// browser supplies one. Images it doesn't have are requested
 /// (`Realm::take_image_requests`) and delivered (`Realm::image_loaded`)
@@ -119,7 +119,7 @@ pub enum RequestKind {
     /// An `img` element's image, decoded.
     Image,
     /// A fetch() or XMLHttpRequest: the bytes.
-    Text { method: String, body: String, headers: String },
+    Text { method: String, body: Vec<u8>, headers: String },
 }
 /// What a request got.
 pub enum Loaded {
@@ -1924,6 +1924,29 @@ pub(crate) fn bytes_array<'s>(scope: &mut v8::PinScope<'s, '_>, bytes: Vec<u8>, 
         ByteKind::F32 => v8::Float32Array::new(scope, buffer, 0, len / 4).map_or_else(|| v8::undefined(scope).into(), |a| a.into()),
     }
 }
+/// A request body argument: a typed array's (or buffer's) bytes as they
+/// are, a string's as UTF-8 (gzip from a CompressionStream must not pass
+/// through text).
+pub(crate) fn arg_body(scope: &mut v8::PinScope, args: &v8::FunctionCallbackArguments, i: i32) -> Vec<u8> {
+    if args.length() <= i {
+        return Vec::new();
+    }
+    let v = args.get(i);
+    if let Ok(view) = v.try_cast::<v8::ArrayBufferView>() {
+        let mut bytes = vec![0u8; view.byte_length()];
+        view.copy_contents(&mut bytes);
+        return bytes;
+    }
+    if let Ok(buffer) = v.try_cast::<v8::ArrayBuffer>() {
+        let len = buffer.byte_length();
+        // SAFETY: the buffer's store is `len` bytes long while it is alive.
+        return buffer.data().map_or_else(Vec::new, |p| unsafe { std::slice::from_raw_parts(p.as_ptr() as *const u8, len) }.to_vec());
+    }
+    if v.is_null_or_undefined() {
+        return Vec::new();
+    }
+    v.to_rust_string_lossy(scope).into_bytes()
+}
 fn arg_string(scope: &mut v8::PinScope, args: &v8::FunctionCallbackArguments, i: i32) -> String {
     let v = args.get(i);
     if v.is_null_or_undefined() { String::new() } else { v.to_rust_string_lossy(scope) }
@@ -2434,7 +2457,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         "fetchSync" => {
             let url = arg_string(scope, &args, 0);
             let method = arg_string(scope, &args, 1);
-            let body = arg_string(scope, &args, 2);
+            let body = arg_body(scope, &args, 2);
             let headers = if args.length() > 3 && args.get(3).is_string() { arg_string(scope, &args, 3) } else { String::new() };
             let result = {
                 let mut s = state.borrow_mut();
@@ -2480,7 +2503,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         "fetchAsync" => {
             let url = arg_string(scope, &args, 0);
             let method = arg_string(scope, &args, 1);
-            let body = arg_string(scope, &args, 2);
+            let body = arg_body(scope, &args, 2);
             let headers = if args.length() > 3 && args.get(3).is_string() { arg_string(scope, &args, 3) } else { String::new() };
             let mut s = state.borrow_mut();
             if s.fetcher.is_none() {

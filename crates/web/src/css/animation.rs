@@ -534,6 +534,9 @@ impl Timeline {
                 let shows = !matches!(style.value(Property::Visibility), super::style::Value::Keyword(Keyword::Hidden | Keyword::Collapse))
                     || frames.frames.iter().any(|f| f.values.iter().any(|(n, _)| &**n == "visibility"));
                 self.running |= shows && running(&spec, elapsed);
+                if shows && running(&spec, elapsed) && std::env::var_os("OLO_RENDER_TRACE").is_some() {
+                    eprintln!("  animation runs: {node:?} {} ({} s x {})", spec.name, spec.duration, spec.count);
+                }
                 // Its events: start once the delay is over, end once it is done.
                 let phase = self.phases.entry(key.clone()).or_insert(0);
                 if *phase < 1 && elapsed >= spec.delay {

@@ -56,7 +56,7 @@ fn modules_import_bare_names_through_the_import_map() {
             Source::External(u) => panic!("external script {u}"),
         })
         .collect();
-    let fetcher: olo_js::Fetcher = Box::new(|url: &str, _: &str, _: &str, _: &str| {
+    let fetcher: olo_js::Fetcher = Box::new(|url: &str, _: &str, _: &[u8], _: &str| {
         let body = match url {
             "https://cdn.test/react.js" => "export const name = 'react';",
             "https://cdn.test/lib/math.js" => "export const twice = n => n * 2;",

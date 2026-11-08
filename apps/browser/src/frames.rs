@@ -196,13 +196,13 @@ fn start(src: String, parent: url::Url, size: [u32; 2], made: Arc<Mutex<Made>>, 
                 };
                 let fetcher: olo_js::Fetcher = {
                     let (loader, cancel, from) = (loader.clone(), cancel.clone(), document.url.clone());
-                    Box::new(move |url: &str, method: &str, body: &str, headers: &str| {
+                    Box::new(move |url: &str, method: &str, body: &[u8], headers: &str| {
                         let url = url::Url::parse(url).map_err(|e| e.to_string())?;
                         if method == "GET" && headers.is_empty() {
                             let (status, content_type, body, final_url) = loader.text(&from, url, &cancel).map_err(|e| e.to_string())?;
                             return Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url });
                         }
-                        let (status, content_type, body, final_url) = loader.request(&from, url, method, headers, body.as_bytes(), &cancel).map_err(|e| e.to_string())?;
+                        let (status, content_type, body, final_url) = loader.request(&from, url, method, headers, body, &cancel).map_err(|e| e.to_string())?;
                         Ok(olo_js::Fetched { status, content_type, body, url: final_url })
                     })
                 };

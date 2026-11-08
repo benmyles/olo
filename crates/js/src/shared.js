@@ -230,7 +230,7 @@
       // Its credentials mode, when not same-origin, for the browser (the
       // line is never sent).
       if (slot.credentials === 'include' || slot.credentials === 'omit') lines.push('x-olo-credentials: ' + slot.credentials);
-      return global.__olo_fetchStart(slot.url, slot.method, req._bodyString(), lines.join('\n'));
+      return global.__olo_fetchStart(slot.url, slot.method, req._bytes, lines.join('\n'));
     }).then((r) => resolve(response(r)), (e) => reject(new TypeError('Failed to fetch: ' + (e && e.message || e))));
   });
 })(globalThis);

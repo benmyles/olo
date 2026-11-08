@@ -202,7 +202,7 @@ fn fetch(state: &Rc<RefCell<State>>, url: &str) -> Result<String, String> {
     let fetched = {
         let mut s = state.borrow_mut();
         match s.fetcher.as_mut() {
-            Some(f) => f(url, "GET", "", "")?,
+            Some(f) => f(url, "GET", &[], "")?,
             None => return Err("no network for modules".into()),
         }
     };
@@ -225,7 +225,7 @@ fn fetch_all(state: &Rc<RefCell<State>>, urls: &[String]) -> Vec<Result<String, 
             .map(|url| {
                 let shared = shared.clone();
                 scope.spawn(move || -> Result<String, String> {
-                    let fetched = shared(url, "GET", "", "")?;
+                    let fetched = shared(url, "GET", &[], "")?;
                     if fetched.status >= 400 {
                         return Err(format!("{url} answered {}", fetched.status));
                     }
