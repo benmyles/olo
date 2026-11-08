@@ -1366,6 +1366,7 @@ fn render(
             let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), Some(measure))
                 .map_err(|e| page::Error::from(e.as_str()))?
                 .with_image_lookup(Some(image_lookup))
+                .with_cookies(Some(crate::cookies::script_access()))
                 .with_workers(Some(loads.worker_fetcher()), Some(loads.waker()));
             // OLO_BROWSER_EVAL_FIRST=FILE: its expression run before the
             // page's scripts (to patch what they will call, for debugging).

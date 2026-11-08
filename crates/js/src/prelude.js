@@ -665,7 +665,9 @@
     hidden: { get() { return pageHidden; } }, visibilityState: { get() { return pageHidden ? 'hidden' : 'visible'; } }, hasFocus() { return !pageHidden; },
     activeElement: { get() { return activeElement && N.isConnected(activeElement) ? activeElement : this.body; } }, scrollingElement: { get() { return html(); } }, currentScript: { get() { return currentScript; } },
     doctype: { get() { for (const c of N.childNodes(documentNode)) if (N.nodeType(c) === 10) return c; return null; } },
-    cookie: { get() { return [...cookies.entries()].map(([k, v]) => k + '=' + v).join('; '); }, set(v) { const s = String(v); const m = s.match(/^\s*([^=;]+)=([^;]*)/); if (m) { if (/max-age=0|expires=Thu, 01 Jan 1970/i.test(s)) cookies.delete(m[1].trim()); else cookies.set(m[1].trim(), m[2]); } } },
+    // The browser's cookies for the page; a page without a jar (a file)
+    // keeps its scripts' own.
+    cookie: { get() { const jar = N.cookie(null, global.location.href); return jar != null ? jar : [...cookies.entries()].map(([k, v]) => k + '=' + v).join('; '); }, set(v) { const s = String(v); if (N.cookie(s, global.location.href) != null) return; const m = s.match(/^\s*([^=;]+)=([^;]*)/); if (m) { if (/max-age=0|expires=Thu, 01 Jan 1970/i.test(s)) cookies.delete(m[1].trim()); else cookies.set(m[1].trim(), m[2]); } } },
     forms: { get() { return collectionOf(N.query(documentNode, 'form', true)); } }, images: { get() { return collectionOf(N.query(documentNode, 'img', true)); } }, links: { get() { return collectionOf(N.query(documentNode, 'a[href],area[href]', true)); } }, scripts: { get() { return collectionOf(N.query(documentNode, 'script', true)); } }, anchors: { get() { return collectionOf(N.query(documentNode, 'a[name]', true)); } }, embeds: { get() { return collectionOf([]); } }, plugins: { get() { return collectionOf([]); } }, all: { get() { return collectionOf(N.query(documentNode, '*', true)); } },
     styleSheets: { get() { return listOf(N.query(documentNode, 'style:not([data-olo-adopted]),link[rel~=stylesheet]', true).map(sheetOf).filter(Boolean)); } },
     adoptedStyleSheets: { get() { return adopted; }, set(v) { adopted = Array.from(v || []); syncAdopted(); } },
@@ -949,7 +951,15 @@
     N.removeAttr = (el, name) => { const old = el && el._upgraded ? N.attr(el, name) : undefined; const r = removeAttr(el, name); if (old != null) changedAttribute(el, name, old); return r; };
   }
   global.customElements = {
-    define(name, ctor, options) { definitions.set(name, ctor); const w = whenDefined.get(name); if (w) w.resolve(ctor); const sel = name + (options && options.extends ? ', [is="' + name + '"]' : ''); const found = N.query(documentNode, sel, true); for (const root of N.shadowRoots()) if (N.isConnected(root)) found.push(...N.query(root, sel, true)); for (const el of found) { upgrade(el, name); if (el._upgraded && typeof el.connectedCallback === 'function') { Object.defineProperty(el, '_connected', { value: true, configurable: true, writable: true }); try { el.connectedCallback(); } catch (e) { reportError(e); } } } },
+    define(name, ctor, options) {
+      // HTML §4.13.4: a valid, new name and a constructor not defined yet
+      // (YouTube defines yt-icon twice; the first stays, the second throws).
+      name = String(name);
+      if (typeof ctor !== 'function') throw new TypeError("Failed to execute 'define' on 'CustomElementRegistry': The provided value is not of type 'CustomElementConstructor'.");
+      if (!/^[a-z][^A-Z\s\/>]*-[^A-Z\s\/>]*$/.test(name) || ['annotation-xml', 'color-profile', 'font-face', 'font-face-src', 'font-face-uri', 'font-face-format', 'font-face-name', 'missing-glyph'].includes(name)) throw new DOMException(`Failed to execute 'define' on 'CustomElementRegistry': "${name}" is not a valid custom element name`, 'SyntaxError');
+      if (definitions.has(name)) throw new DOMException(`Failed to execute 'define' on 'CustomElementRegistry': the name "${name}" has already been used with this registry`, 'NotSupportedError');
+      for (const c of definitions.values()) if (c === ctor) throw new DOMException("Failed to execute 'define' on 'CustomElementRegistry': this constructor has already been used with this registry", 'NotSupportedError');
+      definitions.set(name, ctor); const w = whenDefined.get(name); if (w) w.resolve(ctor); const sel = name + (options && options.extends ? ', [is="' + name + '"]' : ''); const found = N.query(documentNode, sel, true); for (const root of N.shadowRoots()) if (N.isConnected(root)) found.push(...N.query(root, sel, true)); for (const el of found) { upgrade(el, name); if (el._upgraded && typeof el.connectedCallback === 'function') { Object.defineProperty(el, '_connected', { value: true, configurable: true, writable: true }); try { el.connectedCallback(); } catch (e) { reportError(e); } } } },
     get(name) { return definitions.get(name); },
     getName(ctor) { for (const [n, c] of definitions) if (c === ctor) return n; return null; },
     whenDefined(name) { if (definitions.has(name)) return Promise.resolve(definitions.get(name)); let entry = whenDefined.get(name); if (!entry) { let resolve; const promise = new Promise((r) => { resolve = r; }); entry = { promise, resolve }; whenDefined.set(name, entry); } return entry.promise; },
@@ -1515,10 +1525,10 @@
     _fail() { this.readyState = 4; this.status = 0; this._change(); dispatch(this, new ProgressEvent('error')); dispatch(this, new ProgressEvent('loadend')); }
     send(body) {
       const payload = body == null ? '' : typeof body === 'string' ? body : body instanceof URLSearchParams ? body.toString() : (body instanceof Blob || body instanceof ArrayBuffer || ArrayBuffer.isView(body)) ? new TextDecoder().decode(body instanceof Blob ? body._bytes : body) : String(body);
-      if (this._sync) { try { this._finish(fetchSync(this._url, this._method, payload, headerLines(this._headers))); } catch (e) { this._fail(); } return; }
+      if (this._sync) { try { this._finish(fetchSync(this._url, this._method, payload, headerLines(this._headers) + (this.withCredentials ? '\nx-olo-credentials: include' : ''))); } catch (e) { this._fail(); } return; }
       dispatch(this, new ProgressEvent('loadstart'));
       if (/^(data|blob):/.test(this._url)) { setTimeout(() => { try { this._finish(global.__olo_fetchInline(this._url)); } catch (e) { this._fail(); } }, 0); return; }
-      global.__olo_fetchStart(this._url, this._method, payload, headerLines(this._headers)).then((r) => this._finish(r), () => this._fail());
+      global.__olo_fetchStart(this._url, this._method, payload, headerLines(this._headers) + (this.withCredentials ? '\nx-olo-credentials: include' : '')).then((r) => this._finish(r), () => this._fail());
     }
   }
   XMLHttpRequest.UNSENT = 0; XMLHttpRequest.OPENED = 1; XMLHttpRequest.HEADERS_RECEIVED = 2; XMLHttpRequest.LOADING = 3; XMLHttpRequest.DONE = 4;

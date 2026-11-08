@@ -106,7 +106,7 @@ impl Frames {
                 let made = Arc::new(Mutex::new(Made::Loading));
                 let cancel = network::Cancel::default();
                 let image = self.frames.remove(&node).and_then(|mut f| f.image.take());
-                start(src.clone(), size, made.clone(), cancel.clone(), loader.clone(), scope.clone(), key.clone(), wake.clone());
+                start(src.clone(), base.clone(), size, made.clone(), cancel.clone(), loader.clone(), scope.clone(), key.clone(), wake.clone());
                 self.frames.insert(node, Frame { src, size, made, cancel, image });
             }
             let f = self.frames.get_mut(&node).expect("inserted above");
@@ -130,11 +130,11 @@ impl Frames {
 /// The frame's document fetched, laid out and painted at `size` (device
 /// pixels, at the page's scale and palette), on a thread of its own.
 #[allow(clippy::too_many_arguments)]
-fn start(src: String, size: [u32; 2], made: Arc<Mutex<Made>>, cancel: network::Cancel, loader: Arc<network::Loader>, scope: Scope, key: Key, wake: olo_js::Waker) {
+fn start(src: String, parent: url::Url, size: [u32; 2], made: Arc<Mutex<Made>>, cancel: network::Cancel, loader: Arc<network::Loader>, scope: Scope, key: Key, wake: olo_js::Waker) {
     let slot = made.clone();
     let spawned = std::thread::Builder::new().name("browser-frame".into()).spawn(move || {
         let result = (|| -> page::Result<Arc<Image>> {
-            let mut document = loader.document(&src, None, &cancel, |_| {})?;
+            let mut document = loader.frame_document(url::Url::parse(&src)?, &parent, &cancel)?;
             if document.status.is_some_and(|s| !(200..300).contains(&s)) {
                 return Err("The frame's document returned an unsuccessful HTTP status".into());
             }
@@ -206,7 +206,7 @@ fn start(src: String, size: [u32; 2], made: Arc<Mutex<Made>>, cancel: network::C
                         Ok(olo_js::Fetched { status, content_type, body, url: final_url })
                     })
                 };
-                let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), None).map_err(|e| page::Error::from(e.as_str()))?;
+                let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), None).map_err(|e| page::Error::from(e.as_str()))?.with_cookies(Some(crate::cookies::script_access()));
                 realm.run_page(&scripts);
                 Ok(realm.snapshot())
             };

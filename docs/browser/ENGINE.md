@@ -2094,8 +2094,32 @@ and generated plain-text HTML are capped at 16 MiB. The page caps aggregate
 stylesheet UTF-8 source at 4 MiB and external requests at 128. These development
 quotas are explicit errors, not website passes. HTTP pages cannot load local
 files; HTTPS sheets cannot downgrade to HTTP, including through redirects.
-Embedded URL credentials are rejected. Cookies, Fetch/web APIs, caches, full
-origin/referrer/mixed-content policy and process sandboxing remain required.
+Embedded URL credentials are rejected. Caches, full origin/referrer/mixed-
+content policy and process sandboxing remain required (cookies: below).
+
+### Cookies (2026-11-08)
+
+`apps/browser/src/cookies.rs` is the browser's one jar (RFC 6265bis), shared
+by every page's requests and scripts. Each request and redirect hop carries
+the cookies matching its URL by domain (public suffixes from `psl`), path
+and scheme, sorted longer path first; each response's `Set-Cookie` lines are
+stored. Credentials follow the request: navigations, frames, stylesheets,
+images and scripts always; a script's `fetch()`/XHR and fonts only to their
+own origin unless `credentials: 'include'`/`withCredentials` (the page says
+so in an `x-olo-credentials` line `Outgoing` takes out; `omit` sends none).
+SameSite is by the page's site (schemeful): Strict never cross-site, Lax and
+unsaid (Lax, as Chrome) only on a top-level GET navigation, None always and
+only when Secure. Secure only from a secure origin (and localhost), the
+`__Secure-`/`__Host-` prefixes, an insecure page leaving a secure cookie
+alone, HttpOnly kept from scripts and from being replaced by them, 4 KB a
+cookie, 180 a site, 3300 in all, at most 400 days.
+
+`document.cookie` goes through the jar (`olo_js::Cookies`, at the page's
+current URL); a page without a web origin (a file) keeps its scripts' own.
+Cookies with an expiry are kept in `~/.local/state/olo/browser/cookies.json`
+(0600), or `~/.local/state/olo/screens/NAME/olo-browser/` on an Agent Screen
+(its pages' cookies are the screen's), or `OLO_BROWSER_COOKIES`; a thread
+writes them a second after the last change and sleeps otherwise.
 
 `html::bytes::encoding` selects BOM, supported transport charset, bounded
 1024-byte meta/XML prescan, then windows-1252. This is initial top-level input,

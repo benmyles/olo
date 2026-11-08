@@ -25,3 +25,5 @@ url = "2"
 encoding_rs = "0.8"
 mime = "0.3"
 percent-encoding = "2"
+# Public suffixes, for cookies' domains and sites.
+psl = "2"

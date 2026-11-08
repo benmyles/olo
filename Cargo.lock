@@ -7513,6 +7513,7 @@ dependencies = [
  "olo-web",
  "olo-xdg",
  "percent-encoding",
+ "psl",
  "reqwest",
  "serde",
  "serde_json",

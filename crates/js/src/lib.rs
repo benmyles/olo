@@ -103,6 +103,11 @@ pub type Fetcher = Box<dyn FnMut(&str, &str, &str, &str) -> Result<Fetched, Stri
 /// (`Realm::take_image_requests`) and delivered (`Realm::image_loaded`)
 /// when fetched, off this thread.
 pub type ImageLookup = Box<dyn FnMut(&str) -> Option<Arc<olo_web::image::Image>>>;
+/// The browser's cookies for the page at a URL (`document.cookie`):
+/// `None` reads them, `Some(line)` sets one; the answer is none when the
+/// page has no jar (a local file), and its scripts keep cookies of their
+/// own.
+pub type Cookies = Box<dyn FnMut(&str, Option<&str>) -> Option<String>>;
 /// Something the scripts asked for over the network: the browser fetches
 /// it (off this thread) and answers with `Realm::deliver`.
 pub struct Request {
@@ -233,6 +238,7 @@ struct State {
     selectors: HashMap<(String, bool), Arc<Selectors>>,
     gl_seconds: f64,
     image_lookup: Option<ImageLookup>,
+    cookies: Option<Cookies>,
     /// Images the scripts loaded, by `img` element.
     images: HashMap<NodeId, Arc<olo_web::image::Image>>,
     /// Each `img` element's latest image request (0: one answered at
@@ -409,6 +415,7 @@ impl Realm {
             gl_seconds: 0.,
             selectors: HashMap::new(),
             image_lookup: None,
+            cookies: None,
             images: HashMap::new(),
             image_latest: HashMap::new(),
             images_dirty: false,
@@ -470,6 +477,11 @@ impl Realm {
     /// Supply the lookup of images the page already has decoded.
     pub fn with_image_lookup(self, lookup: Option<ImageLookup>) -> Self {
         self.state.borrow_mut().image_lookup = lookup;
+        self
+    }
+    /// Supply the browser's cookies for the page.
+    pub fn with_cookies(self, cookies: Option<Cookies>) -> Self {
+        self.state.borrow_mut().cookies = cookies;
         self
     }
     /// Workers fetch their scripts (and fetch()) through this, on their
@@ -1182,6 +1194,7 @@ impl State {
             gl_seconds: 0.,
             selectors: HashMap::new(),
             image_lookup: None,
+            cookies: None,
             images: HashMap::new(),
             image_latest: HashMap::new(),
             images_dirty: false,
@@ -1730,6 +1743,7 @@ const NATIVES: &[&str] = &[
     "canvasPixels",
     "loadImage",
     "fetchAsync",
+    "cookie",
     "structuredClone",
     "workerStart",
     "workerPost",
@@ -2449,6 +2463,20 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         }
         // fetch(): (url, method, body) → request id; `__olo_fetched`
         // follows when the browser has it. Null without a fetcher.
+        // document.cookie through the browser's jar: no argument reads,
+        // a line sets; null when the page has none.
+        "cookie" => {
+            let line = if args.length() > 0 && args.get(0).is_string() { Some(arg_string(scope, &args, 0)) } else { None };
+            let url = arg_string(scope, &args, 1);
+            let answer = {
+                let mut s = state.borrow_mut();
+                s.cookies.as_mut().and_then(|c| c(&url, line.as_deref()))
+            };
+            match answer {
+                Some(text) => rv.set(string(scope, &text)),
+                None => rv.set_null(),
+            }
+        }
         "fetchAsync" => {
             let url = arg_string(scope, &args, 0);
             let method = arg_string(scope, &args, 1);

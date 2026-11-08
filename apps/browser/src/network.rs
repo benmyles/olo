@@ -102,6 +102,11 @@ impl Loader {
     pub fn document(&self, source: &str, cwd: Option<&std::path::Path>, cancel: &Cancel, progress: impl FnMut(usize)) -> page::Result<Resource> {
         self.fetch(Self::navigation(source, cwd)?, None, HTML_LIMIT, cancel, progress, Kind::Document)
     }
+    /// An iframe's document, for the page at `parent` (its site, for
+    /// cookies, and its referrer).
+    pub fn frame_document(&self, url: Url, parent: &Url, cancel: &Cancel) -> page::Result<Resource> {
+        self.fetch(url, Some(parent), HTML_LIMIT, cancel, |_| {}, Kind::Document)
+    }
     pub fn stylesheet(&self, document: &Resource, base: Option<&str>, href: &str, cancel: &Cancel, progress: impl FnMut(usize)) -> page::Result<css::Syntax> {
         let base = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone());
         let resource = self.fetch(base.join(href)?, Some(&document.url), CSS_LIMIT, cancel, progress, Kind::Stylesheet)?;
@@ -354,6 +359,16 @@ struct Outgoing {
     method: reqwest::Method,
     headers: Vec<(header::HeaderName, header::HeaderValue)>,
     body: Vec<u8>,
+    /// Its credentials mode when not same-origin (fetch's `credentials`,
+    /// XMLHttpRequest's `withCredentials`): cookies with every request
+    /// (include) or none (omit).
+    credentials: Option<Credentials>,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Credentials {
+    Omit,
+    SameOrigin,
+    Include,
 }
 impl Outgoing {
     fn new(method: &str, headers: &str, body: &[u8]) -> page::Result<Self> {
@@ -387,9 +402,19 @@ impl Outgoing {
             "via",
         ];
         let mut out = Vec::new();
+        let mut credentials = None;
         for line in headers.lines() {
             let Some((name, value)) = line.split_once(':') else { continue };
             let name = name.trim().to_ascii_lowercase();
+            // The page's scripts say their credentials mode so (never sent).
+            if name == "x-olo-credentials" {
+                credentials = match value.trim() {
+                    "omit" => Some(Credentials::Omit),
+                    "include" => Some(Credentials::Include),
+                    _ => None,
+                };
+                continue;
+            }
             if FORBIDDEN.contains(&name.as_str()) || name.starts_with("proxy-") || name.starts_with("sec-") {
                 continue;
             }
@@ -397,7 +422,7 @@ impl Outgoing {
                 out.push((n, v));
             }
         }
-        Ok(Self { method, headers: out, body: body.to_vec() })
+        Ok(Self { method, headers: out, body: body.to_vec(), credentials })
     }
 }
 #[allow(clippy::too_many_arguments)]
@@ -458,6 +483,26 @@ async fn get(
                     if let Some(referrer) = initiator.and_then(|from| referrer(from, &url)) {
                         request = request.header(header::REFERER, referrer);
                     }
+                    // Cookies, as the request's credentials mode allows:
+                    // a script's request and a font (CORS) only to their own
+                    // origin unless they include them; the rest always.
+                    let credentials = outgoing.and_then(|o| o.credentials).unwrap_or(match kind {
+                        Kind::Fetch | Kind::Font => Credentials::SameOrigin,
+                        _ => Credentials::Include,
+                    });
+                    let with_cookies = match credentials {
+                        Credentials::Omit => false,
+                        Credentials::Include => true,
+                        Credentials::SameOrigin => initiator.is_none_or(|i| i.origin() == url.origin()),
+                    };
+                    let context = crate::cookies::Context {
+                        site: initiator,
+                        navigation: matches!(kind, Kind::Document) && initiator.is_none(),
+                        safe: matches!(method, reqwest::Method::GET | reqwest::Method::HEAD),
+                    };
+                    if with_cookies && let Some(cookie) = crate::cookies::jar().header(&url, context) {
+                        request = request.header(header::COOKIE, cookie);
+                    }
                     let mut accept = true;
                     if let Some(o) = outgoing {
                         for (n, v) in &o.headers {
@@ -501,6 +546,13 @@ async fn get(
                         page::Error::from(text.as_str())
                     })?;
                     let status = response.status();
+                    if with_cookies {
+                        for line in response.headers().get_all(header::SET_COOKIE) {
+                            if let Ok(line) = std::str::from_utf8(line.as_bytes()) {
+                                crate::cookies::jar().set_from_response(&url, line);
+                            }
+                        }
+                    }
                     if matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308)
                         && let Some(location) = response.headers().get(header::LOCATION)
                     {
