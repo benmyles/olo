@@ -365,8 +365,11 @@ impl Set {
     /// Whether `other` binds the same elements to images of the same
     /// natural size (and pixels): a layout of one serves the other.
     pub fn same_layout(&self, other: &Self) -> bool {
+        // By element, not by place: a canvas's next frame is bound anew at
+        // the end (`with_extra`), the same size (GitHub's animated globe
+        // made every animation frame build its boxes and lay out again).
         self.bindings.len() == other.bindings.len()
-            && self.bindings.iter().zip(other.bindings.iter()).all(|((a, x), (b, y))| a == b && (Arc::ptr_eq(x, y) || x.natural() == y.natural() && x.width() == y.width() && x.height() == y.height()))
+            && self.bindings.iter().all(|(n, x)| other.get(*n).is_some_and(|y| Arc::ptr_eq(x, y) || x.natural() == y.natural() && x.width() == y.width() && x.height() == y.height()))
     }
     pub fn bound_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.bindings.iter().map(|(n, _)| *n)
