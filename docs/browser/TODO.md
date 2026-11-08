@@ -35,6 +35,11 @@ GitHub's homepage, open (seen against Chrome at 1000 × 700):
 
 Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 
+- [ ] GitHub against Chrome (JOURNAL 2026-11-08, night): load 10.8 vs 8.5
+  CPU s, scrolling 72% vs 56%. As it scrolls, its scripts measure and it
+  renders several times a frame, and a one-element style patch rebuilds
+  the whole box tree (4.5 ms of 2578 boxes) before an incremental layout:
+  build the box tree incrementally (the changed subtrees only).
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.
