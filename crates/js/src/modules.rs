@@ -312,6 +312,25 @@ fn load<'obj>(tc: &mut Catching<'_, '_, 'obj, '_>, state: &Rc<RefCell<State>>, u
     }
     Ok(module)
 }
+/// One module of a graph loaded without waiting (the prelude fetches its
+/// sources asynchronously): `text` compiled as `url` (unless it is already),
+/// and the imports it names that are not loaded yet, for the prelude to
+/// fetch next.
+pub(crate) fn compile_step(tc: &mut Catching<'_, '_, '_, '_>, state: &Rc<RefCell<State>>, url: &str, text: &str) -> Result<Vec<String>, String> {
+    if state.borrow().modules.by_url.contains_key(url) {
+        return Ok(Vec::new());
+    }
+    let (_, mut imports) = compile(tc, state, url, text)?;
+    imports.sort();
+    imports.dedup();
+    let s = state.borrow();
+    imports.retain(|u| !s.modules.by_url.contains_key(u));
+    Ok(imports)
+}
+/// Whether the module at `url` is loaded (compiled), its imports perhaps not.
+pub(crate) fn known(state: &Rc<RefCell<State>>, url: &str) -> bool {
+    state.borrow().modules.by_url.contains_key(url)
+}
 /// The module at `url` loaded with its graph, instantiated and run.
 pub(crate) fn run<'obj>(tc: &mut Catching<'_, '_, 'obj, '_>, state: &Rc<RefCell<State>>, url: &str, source: Option<&str>) -> Result<v8::Local<'obj, v8::Module>, String> {
     let module = load(tc, state, url, source)?;
@@ -426,6 +445,19 @@ fn dynamic_import<'s>(
             // A classic script's name is not a URL: the page's is the base.
             let base = if url::Url::parse(&referrer).is_ok() { referrer.clone() } else { state.borrow().config.url.clone() };
             let resolved = resolve(&state.borrow().modules.map, &base, &specifier);
+            // The page's prelude loads the graph without waiting (its
+            // sources fetched asynchronously) and settles the promise.
+            if let Ok(url) = &resolved {
+                let context = scope.get_current_context();
+                let global = context.global(scope);
+                if let Some(name) = v8::String::new(scope, "__olo_import")
+                    && let Some(f) = global.get(scope, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
+                    && let Some(arg) = v8::String::new(scope, url)
+                    && let Some(p) = f.call(scope, global.into(), &[arg.into()]).and_then(|p| v8::Local::<v8::Promise>::try_from(p).ok())
+                {
+                    return Some(p);
+                }
+            }
             resolved.and_then(|url| {
                 v8::tc_scope!(let tc, scope);
                 run(tc, &state, &url, None).map(|m| v8::Global::new(tc, m))

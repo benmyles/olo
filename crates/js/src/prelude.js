@@ -283,11 +283,15 @@
     // load or error on the element.
     if (type === 'module') {
       const msrc = N.attr(el, 'src');
-      const previous = currentScript;
-      currentScript = null;
-      let ok = false;
-      try { ok = msrc != null && msrc.trim() !== '' ? N.runModule(null, resolveURL(msrc.trim())) : N.runModule(N.textContent(el), global.location.href.split('#')[0] + '#inline-module-' + (++inserts)); } finally { currentScript = previous; }
-      fireOn(el, ok ? 'load' : 'error');
+      const url = msrc != null && msrc.trim() !== '' ? resolveURL(msrc.trim()) : global.location.href.split('#')[0] + '#inline-module-' + (++inserts);
+      // Its graph fetched without waiting, then run (as a module is, later).
+      loadModuleGraph(url, msrc != null && msrc.trim() !== '' ? null : N.textContent(el)).then(() => {
+        const previous = currentScript;
+        currentScript = null;
+        let ok = false;
+        try { ok = N.runModule(null, url); } finally { currentScript = previous; }
+        fireOn(el, ok ? 'load' : 'error');
+      }, (e) => { reportError(e); fireOn(el, 'error'); });
       return;
     }
     if (!JS_TYPES.includes(type)) return;
@@ -315,6 +319,22 @@
     if (ordered && orderedScripts.length) { orderedScripts.push({ el, name, source, failed: false }); return; }
     return execute(el, source, name);
   };
+  // A module graph loaded without the page's thread waiting: each source
+  // fetched asynchronously (side by side), compiled as it arrives (V8
+  // reads its imports), the next ones fetched; running it then needs no
+  // network. import() comes here too.
+  const moduleText = (url) => (/^(data|blob):/.test(url) ? Promise.resolve().then(() => global.__olo_fetchInline(url)) : global.__olo_fetchStart(url, 'GET', '', '')).then((r) => {
+    if (r.status && (r.status < 200 || r.status >= 300)) throw new TypeError('Failed to fetch module ' + url + ': HTTP ' + r.status);
+    return typeof r.body === 'string' ? r.body : new TextDecoder().decode(r.body);
+  });
+  const loadModuleGraph = (url, source) => {
+    if (N.moduleKnown(url)) return Promise.resolve();
+    const pending = new Map();
+    const step = (u, text) => Promise.all(N.moduleCompile(u, text).filter((m) => !pending.has(m)).map((m) => { const p = moduleText(m).then((t) => step(m, t)); pending.set(m, p); return p; }));
+    pending.set(url, null);
+    return (source != null ? Promise.resolve(source) : moduleText(url)).then((t) => step(url, t));
+  };
+  global.__olo_import = (url) => loadModuleGraph(url, null).then(() => N.moduleNamespace(url));
   // Scripts document.write wrote, in the order they run (see above).
   const written = new WeakSet();
   const orderedScripts = [];

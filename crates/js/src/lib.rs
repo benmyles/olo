@@ -1821,6 +1821,9 @@ const NATIVES: &[&str] = &[
     "navigatePost",
     "openSelect",
     "runModule",
+    "moduleCompile",
+    "moduleKnown",
+    "moduleNamespace",
     "digest",
     "hmac",
     "randomBytes",
@@ -2783,6 +2786,45 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             match out {
                 Some(bytes) => rv.set(bytes_array(scope, bytes, ByteKind::U8)),
                 None => rv.set_null(),
+            }
+        }
+        // moduleCompile(url, text): one module of a graph loaded without
+        // waiting; the imports it names not loaded yet. moduleKnown(url).
+        "moduleCompile" => {
+            let url = arg_string(scope, &args, 0);
+            let text = arg_string(scope, &args, 1);
+            v8::tc_scope!(let tc, scope);
+            match modules::compile_step(tc, &state, &url, &text) {
+                Ok(missing) => {
+                    let items: Vec<v8::Local<v8::Value>> = missing.iter().map(|u| string(tc, u).into()).collect();
+                    rv.set(v8::Array::new_with_elements(tc, &items).into());
+                }
+                Err(error) => {
+                    let message = v8::String::new(tc, &error).unwrap_or_else(|| v8::String::empty(tc));
+                    let exception = v8::Exception::error(tc, message);
+                    tc.throw_exception(exception);
+                }
+            }
+        }
+        "moduleKnown" => {
+            let url = arg_string(scope, &args, 0);
+            rv.set_bool(modules::known(&state, &url));
+        }
+        // moduleNamespace(url): its loaded graph instantiated and run; its
+        // namespace (what import() resolves to).
+        "moduleNamespace" => {
+            let url = arg_string(scope, &args, 0);
+            v8::tc_scope!(let tc, scope);
+            match modules::run(tc, &state, &url, None) {
+                Ok(module) => {
+                    let namespace = module.get_module_namespace();
+                    rv.set(namespace);
+                }
+                Err(error) => {
+                    let message = v8::String::new(tc, &error).unwrap_or_else(|| v8::String::empty(tc));
+                    let exception = v8::Exception::error(tc, message);
+                    tc.throw_exception(exception);
+                }
             }
         }
         // runModule(source or null, url): a module script a script inserted
