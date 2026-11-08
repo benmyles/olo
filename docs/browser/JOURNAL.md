@@ -6784,3 +6784,36 @@ the Guardian and old Reddit, looking for pages that fail outright:
   (first / scripted, ms): BBC 1757 / 5468 → 936 / 2245, apple.com 529 /
   1363 → 470 / 989, YouTube 736 / 1902 → 662 / 1668, GitHub 463 / 2319 →
   492 / 2194.
+
+## 2026-11-08, night: nothing a page does waits on the network or on work it can hand off
+
+- **What a live page's scripts add no longer stops it.** Scripts they
+  insert, style sheets and fonts, `import()` and inserted module scripts,
+  and a worker's `fetch()` were each fetched with a blocking request on
+  the page's (or worker's) thread: timers, input and frames stood still
+  until the answer came. Each is started without waiting now and taken
+  when it lands (`Message::Arrived`, `ToWorker::Fetched`); the page
+  renders on with what it has meanwhile, as Chrome does. A 16 ms timer's
+  worst gap while each kind loads from a server answering 150 ms late:
+  inserted scripts 462 → 16 ms, style sheets 609 → 16 ms, a module chain
+  457 → 16 ms, a worker's fetches 455 → 16 ms. GitHub's repository page,
+  scripted render 2905 → 1469 ms (its imports held the first pass).
+- **A module script is fetched once**: the module loader joins the fetch
+  the preload scan started for it (it went out twice).
+- **Style sheets are parsed and compiled once, off the page's thread.** A
+  sheet is parsed on the CPU pool as it arrives, with its rules'
+  declarations compiled there too, and the page is told once it is done;
+  pages share the parse (and a refresh takes it with no copy or fetch),
+  and a sheet keeps its compiled declarations, so a changed set compiles
+  only what is new. Web fonts are unpacked from WOFF as they arrive and
+  kept while a page holds them. A live render whose sheets changed
+  compiles the new rules on a thread of its own and keeps its picture
+  until they are ready (no flash of unstyled content); a script's own
+  measurement still gets them at once. GitHub (2.5 MB of CSS): a
+  refresh's sheet loading 19–34 → 1 ms, fonts 5–6 → 0 ms, the first
+  script measurement's rules 63–93 → 22–36 ms, the scripted pass's
+  gather 100–189 → 51–83 ms, memory a little lower.
+- **No thread waits on the network.** A page's loads (`fetch()`, XHR,
+  pictures) and a worker's `fetch()` had a thread each, waiting; they are
+  tasks on the network runtime now, with a picture's decoding on the CPU
+  pool. 60 loads at once: peak threads 90 → 34, worst timer gap 25 → 16 ms.

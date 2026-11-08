@@ -33,6 +33,20 @@ GitHub's homepage, open (seen against Chrome at 1000 × 700):
   1.3-1.9 (scripts 1.2 s, the scripts' first full style 45 ms each time
   the sheets change, WebGL's EGL start 135 ms on the page thread).
 
+Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
+
+- [ ] Selectors are compiled again with every compile of a page's sheets
+  (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
+  as its declarations are, relocated into the rule set's arenas.
+- [ ] A page's tiles are painted one after another on its thread (about
+  0.25 ms each at 1×; a full repaint at 2× is some 100 tiles): paint
+  them side by side on the CPU pool.
+- [ ] A page's first module graph is fetched with a thread per module
+  waiting on the network (`modules::fetch_all`): start them as tasks
+  (the page waits for the graph either way).
+- [ ] `crypto.subtle.digest` and HMAC compute on the page's thread
+  (their promises are settled at once): on the CPU pool for large inputs.
+
 apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
 
 - [x] CSS animations (`@keyframes`, `animation`): apple.com's ribbon, the
