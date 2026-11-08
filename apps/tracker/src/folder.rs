@@ -1165,13 +1165,20 @@ impl FolderWin {
         };
         let free = self.free_space();
         let _ = cx;
+        // (The list view's own sunken frame edges it: an etched edge
+        // under that one too crowded the two, a line apart.)
+        let etched = self.view != ViewMode::List;
         canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
                 let line = style::hairline(window);
-                style::hline(window, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.3));
-                style::hline(window, b.left(), b.right(), b.top() + line, style::c(p.shine));
+                if etched {
+                    style::hline(window, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.3));
+                    style::hline(window, b.left(), b.right(), b.top() + line, style::c(p.shine));
+                } else {
+                    style::fill_rect(window, Bounds::from_corners(b.origin, point(b.right(), b.top() + line * 2.0)), style::c(p.panel_background));
+                }
                 // Below the two-line etched edge.
                 let under = Bounds::from_corners(point(b.left(), b.top() + line * 2.0), b.bottom_right());
                 style::fill_rect(window, under, style::c(p.panel_background));

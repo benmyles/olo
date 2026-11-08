@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Tracker's list view: one edge at its foot
+
+*21:54* — The count bar under the list view no longer draws its etched edge: the list's own sunken frame (its focus ring inside) edges it, and the two had stacked four lines in three points (tsession review: crowded lines, at 1× and 2×). Light and dark, 2× and 1×.
+
+![Tracker's list view: one edge at its foot](2026-11-07/215408-tracker-s-list-view-one-edge-at-its-foot.png)
+
+### DiskBackup's own icon, in every theme
+
+*21:54* — A hard drive with a cloud before it, a green tick on the cloud (backed up, safe elsewhere), in place of Preferences ▸ Backup's drive and arrow (top row of each band: DiskBackup; under it, Backup's), at 64 and 16 px on the light, dark and night panels.
+
+![DiskBackup's own icon, in every theme](2026-11-07/215408-diskbackup-s-own-icon-in-every-theme.png)
+
 ### Tracker: DiskBackup's ticks and Older Versions
 
 *21:40* — Files whose current version is backed up wear a green tick, in every view and on the desktop (a changed file loses it until the next backup). A file's Older Versions… opens DiskBackup's Versions window: each version kept, the one there now said; Restore keeps both or replaces.

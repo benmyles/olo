@@ -72,18 +72,14 @@ something nobody here has is in "Blocked", with what it waits for.
   Tracker's ticks (files backed up as they are now) and Older Versions…
   (DiskBackup's Versions window: Keep Both or Replace); Olo Doctor's
   checks (not set up, not running, paused, nothing for days, the key
-  only here: each with DiskBackup's own fix). Next: Google
+  only here: each with DiskBackup's own fix); its own icon (a drive, a
+  cloud with a tick before it), in every theme. Next: Google
   Drive (needs an OAuth client of Ben's: a Google Cloud project's
   "Desktop app" credentials; the store's list with sizes, ranges,
-  resumable uploads, rate limits); DiskBackup's own icon
-  (Preferences ▸ Backup's for now); following changes (fanotify) rather
+  resumable uploads, rate limits); following changes (fanotify) rather
   than walking (an unchanged walk of 100,000 files is 0.4 s, so not yet
   pressing); a repair for a damaged index (made again from the packs'
   own lists).
-- **Tracker's list view: its focus ring crowds the status bar** (found
-  2026-11-07 by `tsession review` at 1× and 2×, there before DiskBackup's
-  ticks: "two lines 2.0 pt apart" at the list's foot, its blue ring a
-  hairline gap above the status bar's top edge): give it room.
 
 ## Not started (highest priority first)
 
