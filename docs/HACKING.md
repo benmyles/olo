@@ -7072,7 +7072,18 @@ loop 5.3–5.5 ms either way, 3.5 of them waiting on the GPU in
 `map_texture` and 1.5 copying 33 MB to the heap, so the round trip is
 the same 32 ms (the file written on a thread). The 18–21 ms this was
 about was the M2's Mesa freeing such buffers inside the renderer's next
-bind (gone since `dmabuf_check`, 2026-11-02).
+bind (gone since `dmabuf_check`, 2026-11-02). So the headless backend
+(agent screens' looks, tsession's shots) doesn't wait for the GPU: a shot
+is drawn and its read-back queued in the frame (`screenshot::start`,
+`render::offscreen_start`), an EGL native fence after it, and the fence's
+fd in the event loop finishes it when it signals (`headless::read_back`,
+`screenshot::finish`: mapped without waiting, copied, saved on a thread;
+with no fence to make, at once as before). The DRM backend still takes
+its shots at once (`screenshot::take`, the two together: the person's own
+Screenshot app, now and then). Measured as above: the frame's part 5.3–5.5
+→ 0.35 ms (slowest 0.4), the read-back's 1.6 ms when the fence signals
+(the copy; slowest 1.95), so a shot holds the loop about 2 ms rather than
+5.4; the round trip the same 32 ms.
 
 The Screenshot app (`olo-screenshot`) follows Haiku's: it takes a
 picture as it starts, then shows it with Capture active window / Include

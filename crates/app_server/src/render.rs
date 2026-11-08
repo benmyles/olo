@@ -865,11 +865,31 @@ where
     R::TextureId: Clone + Send + 'static,
     R::Error: std::fmt::Display,
 {
+    let readback = capture_start(renderer, output, space, overlays, overview, clear_color, locked)?;
+    offscreen_finish(renderer, readback)
+}
+
+/// [`capture`], its pixels on their way back ([`offscreen_start`]).
+pub fn capture_start<R, T>(
+    renderer: &mut R,
+    output: &Output,
+    space: &Space<WindowElement>,
+    overlays: Vec<CustomRenderElements<R>>,
+    overview: Option<&crate::overview::Overview>,
+    clear_color: Color32F,
+    locked: bool,
+) -> Result<Readback<R::TextureMapping>, String>
+where
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
+    T: Clone + 'static,
+    R::TextureId: Clone + Send + 'static,
+    R::Error: std::fmt::Display,
+{
     let size = crate::capture::size(output).ok_or("output has no mode")?;
     let scale = output.current_scale().fractional_scale();
     // (A screenshot is the screen as it is: never a recording's zoom.)
     let (elements, clear_color) = capture_elements(renderer, output, space, overlays, overview, clear_color, locked, None, false);
-    offscreen(renderer, size, scale, &elements, clear_color)
+    offscreen_start(renderer, size, scale, &elements, clear_color)
 }
 
 thread_local! {
@@ -1072,6 +1092,30 @@ where
     T: Clone + 'static,
     E: RenderElement<R>,
 {
+    let readback = offscreen_start(renderer, size, scale, elements, clear_color)?;
+    offscreen_finish(renderer, readback)
+}
+
+/// A picture drawn offscreen on its way back from the GPU
+/// ([`offscreen_start`]): its pixels copied into a buffer of the
+/// renderer's, which [`offscreen_finish`] maps.
+pub struct Readback<M> {
+    mapping: M,
+    size: Size<i32, Physical>,
+}
+
+/// Draw `elements` offscreen and ask for the pixels back, without waiting
+/// for them: the GPU draws and copies while app_server goes on, and
+/// [`offscreen_finish`] (once a fence says it's done: headless's shots)
+/// takes them without waiting.
+pub fn offscreen_start<R, T, E>(renderer: &mut R, size: Size<i32, Physical>, scale: f64, elements: &[E], clear_color: Color32F) -> Result<Readback<R::TextureMapping>, String>
+where
+    R: Renderer + Offscreen<T> + ExportMem,
+    R::Error: std::fmt::Display,
+    R::TextureId: 'static,
+    T: Clone + 'static,
+    E: RenderElement<R>,
+{
     if size.w <= 0 || size.h <= 0 {
         return Err("nothing to capture".into());
     }
@@ -1084,8 +1128,18 @@ where
         damage_tracker.render_output(renderer, &mut fb, 0, elements, clear_color).map_err(|e| format!("{e:?}"))?;
         renderer.copy_framebuffer(&fb, Rectangle::from_size(buffer_size), Fourcc::Abgr8888).map_err(err)?
     };
+    Ok(Readback { mapping, size })
+}
+
+/// The pixels of a [`Readback`] (waiting for the GPU if it isn't done).
+pub fn offscreen_finish<R>(renderer: &mut R, readback: Readback<R::TextureMapping>) -> Result<image::RgbaImage, String>
+where
+    R: ExportMem,
+    R::Error: std::fmt::Display,
+{
+    let Readback { mapping, size } = readback;
     let flipped = mapping.flipped();
-    let data = renderer.map_texture(&mapping).map_err(err)?.to_vec();
+    let data = renderer.map_texture(&mapping).map_err(|e| e.to_string())?.to_vec();
     let mut img = image::RgbaImage::from_raw(size.w as u32, size.h as u32, data).ok_or("short read")?;
     // GL reads back bottom-up unless the mapping already accounts for it.
     if !flipped {

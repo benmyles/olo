@@ -19,7 +19,7 @@ use smithay::{
         renderer::{
             Bind, ImportDma, ImportMemWl, Offscreen,
             damage::OutputDamageTracker,
-            gles::{GlesRenderer, GlesTexture},
+            gles::{GlesMapping, GlesRenderer, GlesTexture},
         },
     },
     input::keyboard::LedState,
@@ -88,6 +88,12 @@ pub struct HeadlessData {
     frame_timer: Option<(RegistrationToken, std::time::Instant)>,
     /// In `frames_due`: a wake there only moves screens' times up.
     in_frames: bool,
+    /// Shots drawn, their pixels on their way back from the GPU: saved as
+    /// the fence after them signals (`read_back`), so a shot doesn't hold
+    /// the loop waiting for the GPU.
+    readbacks: Vec<crate::screenshot::Pending<GlesMapping>>,
+    /// A fence's source is in the loop for them.
+    readbacks_waiting: bool,
 }
 
 impl DmabufHandler for AnvilState<HeadlessData> {
@@ -369,7 +375,17 @@ pub fn run_headless(size_arg: Option<&str>) {
     // Screen captures draw into dmabufs of what this GPU renders.
     let capture_dma = smithay::backend::drm::DrmNode::from_path(&node).ok().and_then(|n| crate::capture::dma_constraints(n, renderer.egl_context().dmabuf_render_formats()));
     let outputs: Vec<Output> = screens.iter().map(|s| s.output.clone()).collect();
-    let data = HeadlessData { renderer, screens, dmabuf_state: (dmabuf_state, dmabuf_global), dmabuf_checks, handle: event_loop.handle(), frame_timer: None, in_frames: false };
+    let data = HeadlessData {
+        renderer,
+        screens,
+        dmabuf_state: (dmabuf_state, dmabuf_global),
+        dmabuf_checks,
+        handle: event_loop.handle(),
+        frame_timer: None,
+        in_frames: false,
+        readbacks: Vec::new(),
+        readbacks_waiting: false,
+    };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
     state.captures.dma = capture_dma;
     let shm_formats = state.backend_data.renderer.shm_formats();
@@ -467,8 +483,7 @@ pub fn run_headless(size_arg: Option<&str>) {
                     overlays.splice(0..0, dragged);
                 }
                 let t = std::time::Instant::now();
-                crate::screenshot::take::<_, GlesTexture>(
-                    &mut state.ipc,
+                let pending = crate::screenshot::start::<_, GlesTexture>(
                     shot,
                     &mut state.backend_data.renderer,
                     output,
@@ -479,8 +494,10 @@ pub fn run_headless(size_arg: Option<&str>) {
                     locked,
                     (pointer, crate::cursor::pictured(&crate::saver::shown_cursor(&state.saver, &state.cursor_status))),
                 );
+                state.backend_data.readbacks.push(pending);
                 state.timings.phase("screenshot", t);
             }
+            read_back(&mut state);
             crate::render::let_go_of_kept_target();
             // Frames programs asked for (screen sharing).
             state.captures.finish();
@@ -667,6 +684,48 @@ thread_local! {
 }
 
 /// What a resting look found damaged, kept for its debug line.
+/// Shots drawn this turn: saved once the GPU has their pixels, as a fence
+/// after them signals (its fd readable in the loop); with no fence to wait
+/// on, at once (waiting for the GPU here, as shots did before).
+fn read_back(state: &mut AnvilState<HeadlessData>) {
+    if state.backend_data.readbacks.is_empty() || state.backend_data.readbacks_waiting {
+        return;
+    }
+    let fd = {
+        let renderer = &mut state.backend_data.renderer;
+        let display = renderer.egl_context().display().clone();
+        smithay::backend::egl::fence::EGLFence::create(&display).ok().and_then(|fence| {
+            // (A native fence's fd is there once it's flushed.)
+            let _ = renderer.with_context(|gl| unsafe { gl.Flush() });
+            fence.export().ok()
+        })
+    };
+    let Some(fd) = fd else {
+        finish_readbacks(state);
+        return;
+    };
+    let source = smithay::reexports::calloop::generic::Generic::new(fd, smithay::reexports::calloop::Interest::READ, smithay::reexports::calloop::Mode::OneShot);
+    let inserted = state.handle.insert_source(source, |_, _, state| {
+        state.backend_data.readbacks_waiting = false;
+        let t = std::time::Instant::now();
+        finish_readbacks(state);
+        state.timings.phase("screenshot read back", t);
+        // More drawn meanwhile: their own fence.
+        read_back(state);
+        Ok(smithay::reexports::calloop::PostAction::Remove)
+    });
+    match inserted {
+        Ok(_) => state.backend_data.readbacks_waiting = true,
+        Err(_) => finish_readbacks(state),
+    }
+}
+
+fn finish_readbacks(state: &mut AnvilState<HeadlessData>) {
+    for pending in std::mem::take(&mut state.backend_data.readbacks) {
+        crate::screenshot::finish(&mut state.ipc, &mut state.backend_data.renderer, pending);
+    }
+}
+
 fn note_resting_damage(damage: Option<&Vec<smithay::utils::Rectangle<i32, smithay::utils::Physical>>>) {
     if RESTING_LOOK.get() {
         RESTING_DAMAGE.set(damage.cloned().unwrap_or_default());
