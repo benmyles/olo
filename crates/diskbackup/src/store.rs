@@ -15,8 +15,9 @@ pub trait Store: Send + Sync {
     /// `len` bytes of `name` from `offset` (a chunk out of a pack).
     fn get_range(&self, name: &str, offset: u64, len: u64) -> io::Result<Vec<u8>>;
     /// The names in folder `dir` and those under it ("index" → "index/…";
-    /// "" everything), none if there's no such folder.
-    fn list(&self, dir: &str) -> io::Result<Vec<String>>;
+    /// "" everything), sorted, each with its size; none if there's no such
+    /// folder.
+    fn list(&self, dir: &str) -> io::Result<Vec<(String, u64)>>;
     fn delete(&self, name: &str) -> io::Result<()>;
     /// Where it is, to say ("~/Backups/DiskBackup", "Google Drive").
     fn describe(&self) -> String;
@@ -69,8 +70,8 @@ impl Store for LocalStore {
         Ok(out)
     }
 
-    fn list(&self, dir: &str) -> io::Result<Vec<String>> {
-        fn walk(root: &Path, at: &Path, out: &mut Vec<String>) -> io::Result<()> {
+    fn list(&self, dir: &str) -> io::Result<Vec<(String, u64)>> {
+        fn walk(root: &Path, at: &Path, out: &mut Vec<(String, u64)>) -> io::Result<()> {
             let entries = match std::fs::read_dir(at) {
                 Ok(e) => e,
                 Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -85,7 +86,7 @@ impl Store for LocalStore {
                 if e.file_type()?.is_dir() {
                     walk(root, &e.path(), out)?;
                 } else if let Ok(rel) = e.path().strip_prefix(root) {
-                    out.push(rel.to_string_lossy().into_owned());
+                    out.push((rel.to_string_lossy().into_owned(), e.metadata()?.len()));
                 }
             }
             Ok(())
@@ -192,7 +193,7 @@ impl<S: Store> Store for Throttled<S> {
         self.inner.get_range(name, offset, len)
     }
 
-    fn list(&self, dir: &str) -> io::Result<Vec<String>> {
+    fn list(&self, dir: &str) -> io::Result<Vec<(String, u64)>> {
         self.inner.list(dir)
     }
 

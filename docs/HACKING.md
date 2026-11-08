@@ -12313,9 +12313,17 @@ in layers; done so far, **the engine** (crates/diskbackup):
   sealed (XChaCha20-Poly1305, a random nonce each).
 - **Packs** of about 16 MiB (`data/xx/<id>`): few large objects suit a
   slow store; each ends with its own sealed list of what it holds, so the
-  index can be made again from the packs. **The index** (`index/<id>`,
-  sealed, a file a flush) says where each chunk is; it's read at open
-  (cached locally: index files never change).
+  index can be made again from the packs. Trees go in packs of their own,
+  which the local cache keeps whole (still sealed): walking a snapshot
+  (the next backup's unchanged files, browsing to restore, tidying) reads
+  the disk, never a slow store. **The index** (`index/<id>`, sealed) says
+  where each blob is; it's read at open (cached locally: index files never
+  change) and again when it changed (`Repo::refresh`: new files added, all
+  read again if any went). It goes up with each snapshot and every five
+  minutes while packs do, so a backup stopped part way (or the computer
+  turned off) loses at most a pack: the next goes on from there (a test:
+  stopped once a pack had gone up, then 40 MiB backed up again from another
+  `Repo`, at most 25 MiB sent).
 - **Trees and snapshots** (`tree.rs`, `repo.rs`): a folder is a tree
   (name, kind, mode, modified and changed times, inode, size, a file's
   chunks, a folder's tree, a link's target), itself a blob, so an
@@ -12328,7 +12336,11 @@ in layers; done so far, **the engine** (crates/diskbackup):
   rest are read with O_NOATIME and let go of from the page cache after
   (`POSIX_FADV_DONTNEED`: the backup's reading isn't anyone's working
   set). Sockets, pipes and devices skipped; unreadable files said in the
-  summary and left out; Stop at any point.
+  summary and left out; Stop at any point, and a failing store, stop the
+  backup (never taken for a file that couldn't be read). Files are read
+  into one 8 MiB buffer for the whole backup (one zeroed for each cost
+  more than reading and keeping a small file did), and one zstd context
+  compresses every chunk.
 - **Excludes** (`exclude.rs`): groups of what can be made again (caches,
   Trash, Rust's target/ builds and Cargo's downloads, node_modules and
   frameworks' builds, Python's, Go's, Gradle's and Maven's, C/C++/Zig/
@@ -12345,6 +12357,30 @@ in layers; done so far, **the engine** (crates/diskbackup):
 - **`config`**: the format and chunking, sealed: opening it is how a key
   is known to be the right one (`Error::WrongKey`). The key, 32 random
   bytes (`Key::to_hex`), is kept by Olo Passwords, not in the store.
+- **Locks** (`lock.rs`, `locks/<random>`: host, process, time, sealed):
+  backing up or restoring holds a shared one, tidying the only one
+  (`Repo::lock`; `Error::Busy` says who's in the way). Taking one writes it
+  first, then reads everyone else's, so of two that can't both be held
+  each sees the other. A holder refreshes it every five minutes; one not
+  refreshed for 30 minutes is stale (crashed, or a laptop asleep
+  mid-backup), as is this computer's whose process is gone. A holder that
+  went 20 minutes without refreshing (it slept) takes its lock as lost
+  (`Error::LockLost`) and writes nothing more: what it wrote may have been
+  tidied away meanwhile; the service opens the backup again and goes on.
+- **Keeping** (`keep.rs`): the newest snapshot of each of the last so
+  many hours, days, ISO weeks and months (local time; Settings' `keep`,
+  24/14/8/24 by default), and always the newest; each computer forgets
+  only its own (another's are its to keep).
+- **Tidying** (`prune.rs`): what every snapshot left uses (its trees,
+  read once each from the cache, and their chunks); a pack nothing in it
+  is used goes; one 30% unused, or one of eight or more small ones (a
+  backup's last, partly filled), has what's used copied into new packs
+  (sealed as it was: only checked whole) and goes; a blob kept twice kept
+  once, in the pack most used; packs no index names (a backup stopped
+  before naming them) go. Only the index files naming a pack that goes
+  are written again (and small ones, eight or more, put together), then
+  they go, then the packs: stopped anywhere, nothing is lost. The cache's
+  copies of what's gone go too.
 
 - **Speed limits** (`store::Limit`; Ben: "make sure that i can also set
   a max upload/download speed"): bytes a second each way, 0 for none,
@@ -12357,22 +12393,31 @@ runs it in the logged-in session): the whole process at the CPU's and the
 disks' idle priority (SCHED_IDLE, the idle I/O class: anything else that
 wants them goes first); asleep until a backup is due (`every_minutes`
 after the last), its settings change (inotify) or it's asked on its
-socket (`olo_protocol::diskbackup::Request`: Back Up Now, Stop); waits
+socket (`olo_protocol::diskbackup::Request`: Back Up Now, Stop, Tidy); waits
 for power on battery unless allowed (`on_battery`), looking again every
-five minutes then. A backup takes unchanged files from the last snapshot
+five minutes then. A backup holds a shared lock, reads the index again if
+another computer changed it, and takes unchanged files from the last snapshot
 of this computer's (its host name), leaves out the exclude groups chosen,
 the person's patterns, its own cache and a folder target; its progress in
 the state file (`$XDG_RUNTIME_DIR/olo-diskbackup.json`, `State`) every 2 s
 while it runs and not otherwise; the last's outcome kept across restarts
-(the state folder). Settings: `~/.config/olo/diskbackup.json`
+(the state folder). After it, this computer's snapshots past keeping are
+forgotten; once a day (an hour, if the last didn't finish), or when asked,
+the backup is tidied with the only lock (another computer using it: next
+time), `Doing::Pruning` in the state, then `State::tidied` (snapshots let
+go of since, bytes freed) and `State::size` (what the backups take there,
+grown by each backup since). A failed backup or tidy opens the backup
+again next time. Settings: `~/.config/olo/diskbackup.json`
 (`olo_protocol::diskbackup::Settings`: target, paths, exclude groups and
 patterns, every, keep, speed limits, battery, one file system). The key:
 in the login keyring (`olo_system::secrets::DISKBACKUP_KEY`, which the
 settings backup carries too), where the service finds it with no one
 there; Passwords keeps it as well (the app, next). Command line:
 `--status [--json]`, `--now`, `--stop`, `--set-up-folder PATH`,
-`--snapshots`, `--restore SNAPSHOT PATH [TO]`, `--set KEY=VALUE…`
-(enabled, battery, every, upload, download, paths, exclude, groups),
+`--snapshots`, `--restore SNAPSHOT PATH [TO]` (a shared lock, waiting
+for a tidy under way), `--tidy` (asked of the service if it runs, else
+done there), `--set KEY=VALUE…` (enabled, battery, every, upload,
+download, paths, exclude, groups, hourly, daily, weekly, monthly),
 `--groups`. For tests, `OLO_DISKBACKUP_DIR` keeps its settings, state and
 socket apart and `OLO_DISKBACKUP_KEY` gives the key. Checked so (a
 sandbox HOME, a folder target): set up, the first backup at once (9
@@ -12393,8 +12438,11 @@ backed up (folders added and removed), what's left out (each group named
 for what it leaves out, its folders under it: Ben, "right now it looks
 like you're asking if i want to leave out the actual source code of all
 those langs"; the person's own patterns in a box of their own), when (every
-15 minutes to a day, on battery or not) and how fast (upload and download
-limits). Every change is written to the settings, which the service
+15 minutes to a day, on battery or not), how long snapshots are kept
+(hourly for 12 hours to a week, daily for 7 to 90 days, weekly for 4 to
+52 weeks, monthly for 6 months to forever; none for any), and how fast
+(upload and download limits). The status says what the backups take
+there and the last tidy that did something. Every change is written to the settings, which the service
 follows at once. The keychain's `Secrets` reads an Olo program's secrets
 back by title (another computer's setup, next).
 
@@ -12406,15 +12454,24 @@ goes out; the home folder first); what's selected put back where it was
 one named with its date, "todo (from 7 Nov 2026 20.14).txt") or into a
 folder chosen (Restore To…). Opening the backup, reading a folder and
 putting back each run on a worker; putting back says its progress every
-quarter second and stops at Stop (what was restored so far stays).
+quarter second and stops at Stop (what was restored so far stays). It
+holds a shared lock (waiting, said, while the backup is tidied) and reads
+the index again first; browsing reads it again if a folder can't be read
+(tidied since the window opened: what moved, found where it went).
 Checked headless: a file changed between two snapshots, the older one's
 version restored with Keep Both beside the current one, both as they
 should be.
 
 Measured (release, one thread, this machine, 2026-11-07;
-`tests/round_trip.rs`'s `throughput`): data/ (988 MB, 12,160 files,
-pictures mostly) first backed up in 7.5 s (132 MB/s), 947 MB stored; again
-with nothing changed 0.03 s, nothing stored. `round_trip` backs up,
+`tests/round_trip.rs`'s `throughput`, `OLO_DB_SRC` the folder): data/
+(988 MB, 12,160 files, pictures mostly) first backed up in 4.8 s
+(207 MB/s; 7.5 s, 132 MB/s, before the one buffer and zstd context), 947
+MB stored; again with nothing changed 0.03 s, nothing stored. 100,000
+small files in 21,041 folders: first 1.13 s (23 s before: an 8 MiB buffer
+zeroed for each), unchanged 0.41 s (trees from the cache). Tidying them
+(the service, a folder store): nothing to copy, 0.23 s (21,041 trees
+walked); with 55% of them deleted, 3 packs copied from (23 MB read, 14 MB
+written) in 0.22 s. `round_trip` backs up,
 changes (bytes inserted, a file added, one removed), backs up again (1
 changed, 1 new, the rest unchanged, under 4 MiB new), restores both
 versions and checks nothing in the store is readable.

@@ -40,6 +40,40 @@ pub fn store(target: &Target, limits: &Limits) -> Result<Arc<dyn Store>, String>
     }
 }
 
+/// A shared lock on `repo` (to restore from it), waiting while it's being
+/// tidied (`waiting` told why) until `cancel`.
+pub fn lock_to_read(repo: &olo_diskbackup::Repo, cancel: &std::sync::atomic::AtomicBool, waiting: impl Fn(&str)) -> Result<olo_diskbackup::Lock, olo_diskbackup::Error> {
+    loop {
+        match repo.lock(false) {
+            Err(olo_diskbackup::Error::Busy(why)) => {
+                waiting(&why);
+                for _ in 0..20 {
+                    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                        return Err(olo_diskbackup::Error::Cancelled);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+            r => return r,
+        }
+    }
+}
+
+/// `f` with `repo`; once more with its index read again if it fails (the
+/// backup tidied since it was opened: what moved, found where it went).
+pub fn retrying<T>(repo: &std::sync::RwLock<olo_diskbackup::Repo>, f: impl Fn(&olo_diskbackup::Repo) -> olo_diskbackup::Result<T>) -> Result<T, String> {
+    fn poisoned<E>(_: E) -> String {
+        "the backup isn't open".into()
+    }
+    match f(&*repo.read().map_err(poisoned)?) {
+        Ok(t) => return Ok(t),
+        Err(olo_diskbackup::Error::Cancelled) => return Err(olo_diskbackup::Error::Cancelled.to_string()),
+        Err(_) => {}
+    }
+    repo.write().map_err(poisoned)?.refresh().map_err(|e| e.to_string())?;
+    f(&*repo.read().map_err(poisoned)?).map_err(|e| e.to_string())
+}
+
 /// `~/…` as the home folder.
 pub fn expand(p: &str) -> PathBuf {
     match p.strip_prefix('~') {

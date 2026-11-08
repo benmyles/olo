@@ -127,7 +127,7 @@ fn back_up_change_back_up_restore_both() {
     assert_eq!(std::fs::read(&new).unwrap(), big);
 
     // Nothing readable in the store.
-    for name in store.list("").unwrap() {
+    for (name, _) in store.list("").unwrap() {
         let data = store.get(&name).unwrap();
         assert!(!data.windows(13).any(|w| w == b"SECRET-MARKER"), "{name}");
         assert!(!data.windows(7).any(|w| w == b"note.tx"), "names too: {name}");

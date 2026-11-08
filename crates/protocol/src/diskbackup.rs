@@ -174,6 +174,21 @@ pub struct Last {
     pub unreadable: u64,
 }
 
+/// The last tidy: snapshots past keeping let go of, and the space only
+/// they used freed (once a day, after a backup).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Tidied {
+    /// Seconds since 1970, when it ended.
+    pub time: i64,
+    /// Why it didn't finish, if it didn't.
+    pub error: Option<String>,
+    /// Snapshots let go of since the tidy before.
+    pub forgotten: u32,
+    /// Bytes the store holds less.
+    pub freed: u64,
+}
+
 /// What the service is doing and has done (its state file, followed by
 /// inotify: the app, Deskbar, Tracker, Doctor).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -192,6 +207,10 @@ pub struct State {
     pub snapshots: u32,
     /// Where it backs up to.
     pub target: String,
+    /// What the backups take there, bytes (known since the last tidy, and
+    /// grown by each backup since).
+    pub size: Option<u64>,
+    pub tidied: Option<Tidied>,
 }
 
 impl State {
@@ -227,6 +246,9 @@ pub enum Request {
     BackUpNow,
     /// Stop what's under way (what went up stays: the next one goes on).
     Stop,
+    /// Tidy now (not waiting for the daily one): snapshots past keeping
+    /// let go of, and the space only they took freed.
+    Tidy,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

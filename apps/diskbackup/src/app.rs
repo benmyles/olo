@@ -31,6 +31,12 @@ pub enum Msg {
 const EVERY: &[(u32, &str)] = &[(15, "15 minutes"), (30, "30 minutes"), (60, "Hour"), (120, "2 hours"), (360, "6 hours"), (720, "12 hours"), (1440, "Day")];
 /// Speed limits offered, KB/s (0: none).
 const SPEEDS: &[u64] = &[0, 256, 512, 1000, 2000, 5000, 10_000, 25_000];
+
+/// How long each kind of snapshot is kept: the choices.
+const HOURLY: &[(u32, &str)] = &[(0, "None"), (12, "12 hours"), (24, "24 hours"), (48, "48 hours"), (168, "A week")];
+const DAILY: &[(u32, &str)] = &[(0, "None"), (7, "7 days"), (14, "14 days"), (30, "30 days"), (90, "90 days")];
+const WEEKLY: &[(u32, &str)] = &[(0, "None"), (4, "4 weeks"), (8, "8 weeks"), (12, "12 weeks"), (26, "26 weeks"), (52, "52 weeks")];
+const MONTHLY: &[(u32, &str)] = &[(0, "None"), (6, "6 months"), (12, "12 months"), (24, "24 months"), (60, "5 years"), (u32::MAX, "Forever")];
 pub struct Disk {
     pub settings: Settings,
     pub state: State,
@@ -166,15 +172,15 @@ impl Disk {
         cx.notify();
         let proxy = self.proxy.clone();
         std::thread::spawn(move || {
-            let out = crate::set_up_folder(&dir.display().to_string()).and_then(|()| {
+            let out = crate::set_up_folder(&dir.display().to_string()).map(|()| {
                 let mut s = Settings::load();
                 match keep_in_passwords() {
                     Ok(()) => {
                         s.key_in_passwords = true;
                         let _ = s.save();
-                        Ok(format!("Backing up to {}. Its key is kept in Passwords.", dir.display()))
+                        format!("Backing up to {}. Its key is kept in Passwords.", dir.display())
                     }
-                    Err(e) => Ok(format!("Backing up to {}. Keep its key in Passwords when you can ({e}).", dir.display())),
+                    Err(e) => format!("Backing up to {}. Keep its key in Passwords when you can ({e}).", dir.display()),
                 }
             });
             proxy.send(Msg::Note(out));
@@ -290,7 +296,10 @@ pub fn status_lines(st: &State, s: &Settings) -> Vec<(String, bool)> {
         }
         Doing::Waiting { why } => out.push((format!("Waiting: {why}."), false)),
         Doing::Restoring => out.push(("Restoring…".into(), false)),
-        Doing::Pruning => out.push(("Letting go of old snapshots…".into(), false)),
+        Doing::Pruning => {
+            let p = st.progress.clone().unwrap_or_default();
+            out.push((if p.current.is_empty() { "Tidying…".into() } else { format!("Tidying: {}…", p.current) }, false));
+        }
         Doing::Idle => match (&st.last, st.last_ok) {
             (Some(l), _) if l.error.is_none() => out.push((format!("Backed up at {}: {}, {} new.", clock(l.time), plural(l.files, "file"), size(l.new_bytes)), false)),
             (Some(l), ok) => {
@@ -303,7 +312,16 @@ pub fn status_lines(st: &State, s: &Settings) -> Vec<(String, bool)> {
         },
     }
     if let Some(n) = st.next.filter(|_| st.doing == Doing::Idle) {
-        out.push((format!("Next at {}. {} kept.", clock(n), plural(st.snapshots as u64, "snapshot")), false));
+        let takes = st.size.map(|b| format!(", {}", size(b))).unwrap_or_default();
+        out.push((format!("Next at {}. {} kept{takes}.", clock(n), plural(st.snapshots as u64, "snapshot")), false));
+    }
+    // The last tidy, if it did anything (or didn't finish).
+    if let Some(t) = st.tidied.as_ref().filter(|_| st.doing == Doing::Idle) {
+        match &t.error {
+            Some(e) => out.push((format!("Tidying at {} didn’t finish: {e}.", clock(t.time)), true)),
+            None if t.forgotten > 0 || t.freed > 0 => out.push((format!("Tidied at {}: {} let go of, {} freed.", clock(t.time), plural(t.forgotten as u64, "old snapshot"), size(t.freed)), false)),
+            None => {}
+        }
     }
     out
 }
@@ -355,7 +373,7 @@ impl Render for MainWindow {
         for (i, (text, error)) in status_lines(&st, &s).into_iter().enumerate() {
             status = status.child(if i == 0 || error { line(text, error).into_any_element() } else { dim(text).into_any_element() });
         }
-        let running = st.doing == Doing::BackingUp;
+        let running = matches!(st.doing, Doing::BackingUp | Doing::Pruning);
         let buttons = div().flex().flex_row().gap(px(m::SPACING)).pt(px(m::TIGHT)).child(if running {
             Button::new("Stop").on_click(cmd("stop"))
         } else {
@@ -413,6 +431,29 @@ impl Render for MainWindow {
             .child(speed_menu("upload", "Upload at most:", s.upload_kbs, |s, k| s.upload_kbs = k))
             .child(speed_menu("download", "Download at most:", s.download_kbs, |s, k| s.download_kbs = k))
             .child(dim("Backups always go at the computer’s idle priority: anything else you do comes first.".into()));
+
+        // ---- how long snapshots are kept.
+        let keep_menu = |id: &'static str, label: &'static str, choices: &'static [(u32, &'static str)], now: u32, set: fn(&mut Settings, u32)| {
+            let at = choices.iter().position(|(n, _)| *n == now);
+            let mut names: Vec<SharedString> = choices.iter().map(|(_, name)| SharedString::from(*name)).collect();
+            if at.is_none() {
+                names.push(now.to_string().into());
+            }
+            let app = app.clone();
+            MenuField::new(id, names, at.unwrap_or(choices.len())).label(label).divider(120.0).on_change(move |i, _, cx| {
+                if let Some((n, _)) = choices.get(i) {
+                    let n = *n;
+                    app.update(cx, |d, cx| d.change(|s| set(s, n), cx));
+                }
+            })
+        };
+        let k = s.keep;
+        let keep = BBox::new("Keep")
+            .child(keep_menu("hourly", "Hourly for:", HOURLY, k.hourly, |s, n| s.keep.hourly = n))
+            .child(keep_menu("daily", "Daily for:", DAILY, k.daily, |s, n| s.keep.daily = n))
+            .child(keep_menu("weekly", "Weekly for:", WEEKLY, k.weekly, |s, n| s.keep.weekly = n))
+            .child(keep_menu("monthly", "Monthly for:", MONTHLY, k.monthly, |s, n| s.keep.monthly = n))
+            .child(dim("The last backup of each hour, day, week and month is kept that long; the rest go, and the space only they took is freed once a day.".into()));
 
         // ---- the key.
         let mut key = BBox::new("Key");
@@ -477,8 +518,10 @@ impl Render for MainWindow {
 
         let column = |items: Vec<gpui::AnyElement>| div().flex_1().min_w(px(0.0)).flex().flex_col().gap(px(m::SPACING)).children(items);
         // (Three columns: two would be taller than a 1280 × 800 screen.)
-        let first = column(vec![status.into_any_element(), target.into_any_element(), key.into_any_element()]);
-        let second = column(vec![what.into_any_element(), also.into_any_element(), when.into_any_element(), speed.into_any_element()]);
+        // (Where and how fast with the status; when and how long kept with
+        // what's backed up.)
+        let first = column(vec![status.into_any_element(), target.into_any_element(), speed.into_any_element(), key.into_any_element()]);
+        let second = column(vec![what.into_any_element(), also.into_any_element(), when.into_any_element(), keep.into_any_element()]);
         let third = column(vec![leave.into_any_element()]);
         let mut body = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(first).child(second).child(third));
         if let Some((text, error)) = d.note.clone() {

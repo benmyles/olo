@@ -7,7 +7,7 @@
 use std::{
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, RwLock,
         atomic::{AtomicBool, Ordering::Relaxed},
     },
 };
@@ -24,9 +24,12 @@ use olo_ui::{
 
 use crate::{app::Msg, target};
 
+/// The backup open, for the window and its workers.
+type Shared = Arc<RwLock<Repo>>;
+
 /// What a worker tells the Restore window.
 pub enum Done {
-    Opened(Result<(Arc<Repo>, Vec<(Id, Snapshot)>), String>),
+    Opened(Result<(Shared, Vec<(Id, Snapshot)>), String>),
     /// A folder's entries (for the listing numbered so).
     Listed(u64, Result<Vec<Node>, String>),
     Progress(u64, u64, String),
@@ -35,7 +38,8 @@ pub enum Done {
 
 pub struct RestoreWindow {
     proxy: Proxy,
-    repo: Option<Arc<Repo>>,
+    /// (Its index read again if the backup was tidied since: `retrying`.)
+    repo: Option<Arc<RwLock<Repo>>>,
     /// Newest first.
     snapshots: Vec<(Id, Snapshot)>,
     snap: Option<usize>,
@@ -114,7 +118,7 @@ impl RestoreWindow {
                 let repo = Repo::open(store, target::key()?, Some(target::cache())).map_err(|e| e.to_string())?;
                 let mut snaps = repo.snapshots().map_err(|e| e.to_string())?;
                 snaps.reverse();
-                Ok((Arc::new(repo), snaps))
+                Ok((Arc::new(RwLock::new(repo)), snaps))
             })();
             proxy.send(Msg::Restore(Done::Opened(r)));
         });
@@ -182,22 +186,22 @@ impl RestoreWindow {
         cx.notify();
         let proxy = self.proxy.clone();
         std::thread::spawn(move || {
-            let r = (|| -> Result<Vec<Node>, String> {
+            let r = target::retrying(&repo, |repo| {
                 let mut at = dir.clone();
                 let node = loop {
-                    match find(&repo, &snap.tree, &at).map_err(|e| e.to_string())? {
+                    match find(repo, &snap.tree, &at)? {
                         Some(n) if n.kind == Kind::Dir => break n,
                         _ if at.parent().is_some() => at = at.parent().map(Path::to_path_buf).unwrap_or_default(),
                         _ => return Ok(Vec::new()),
                     }
                 };
                 let mut nodes = match node.subtree {
-                    Some(id) => repo.tree(&id).map_err(|e| e.to_string())?.nodes,
+                    Some(id) => repo.tree(&id)?.nodes,
                     None => Vec::new(),
                 };
                 nodes.sort_by(|a, b| (a.kind != Kind::Dir).cmp(&(b.kind != Kind::Dir)).then_with(|| name_of(a).to_lowercase().cmp(&name_of(b).to_lowercase())));
                 Ok(nodes)
-            })();
+            });
             proxy.send(Msg::Restore(Done::Listed(n, r)));
         });
     }
@@ -295,7 +299,23 @@ impl RestoreWindow {
                         proxy.send(Msg::Restore(Done::Progress(progress.files.load(Relaxed), progress.bytes.load(Relaxed), current)));
                     }
                 });
-                let r = pairs.iter().try_for_each(|(from, to)| olo_diskbackup::restore(&repo, &snap.tree, from, to, &cancel, &progress));
+                // Held while it restores: nobody tidies meanwhile (one
+                // under way is waited for), and the index as it is now.
+                let r = (|| {
+                    let lock = {
+                        let repo = repo.read().map_err(|_| olo_diskbackup::Error::Cancelled)?;
+                        target::lock_to_read(&repo, &cancel, |why| {
+                            if let Ok(mut c) = progress.current.lock() {
+                                *c = format!("Waiting: {why}.");
+                            }
+                        })?
+                    };
+                    repo.write().map_err(|_| olo_diskbackup::Error::Cancelled)?.refresh()?;
+                    let repo = repo.read().map_err(|_| olo_diskbackup::Error::Cancelled)?;
+                    let r = pairs.iter().try_for_each(|(from, to)| olo_diskbackup::restore(&repo, &snap.tree, from, to, &cancel, &progress));
+                    drop(lock);
+                    r
+                })();
                 done.store(true, Relaxed);
                 r
             });

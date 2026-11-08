@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### DiskBackup: Keep, and tidying
+
+*20:44* — How long snapshots are kept (hourly, daily, weekly, monthly), beside When; Speed moved beside Back Up To so the window still fits 1280 × 800. The status says what the backups take there and the last tidy (old snapshots let go of, space freed).
+
+![DiskBackup: Keep, and tidying](2026-11-07/204457-diskbackup-keep-and-tidying.png)
+
 ### Preferences ▸ Deskbar
 
 *13:16* — The new Deskbar panel: the widgets in order (Add, Remove, Move Up, Move Down) beside the chosen one's settings: what it shows and which, where, look, size, name and value, how often, how far back, colour. Each change shows in the Deskbar at once.

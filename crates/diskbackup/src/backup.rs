@@ -49,6 +49,8 @@ struct Walk<'a, 'r> {
     cancel: &'a AtomicBool,
     progress: &'a Progress,
     summary: Summary,
+    /// What files are read into (one for all).
+    buf: Vec<u8>,
 }
 
 /// Back up `opts.paths` into `repo`, taking unchanged files from `parent`
@@ -56,12 +58,20 @@ struct Walk<'a, 'r> {
 pub fn backup(repo: &mut Repo, opts: &Options, parent: Option<(Id, &Snapshot)>, cancel: &AtomicBool, progress: &Progress) -> Result<(Id, Snapshot)> {
     let started = Instant::now();
     let stored = repo.stored;
-    let mut w = Walk { repo, opts, cancel, progress, summary: Summary::default() };
+    let mut w = Walk { repo, opts, cancel, progress, summary: Summary::default(), buf: Vec::new() };
     let parent_root = match parent {
         Some((_, s)) => Some(w.repo.tree(&s.tree)?),
         None => None,
     };
-    let root = w.ancestors(Path::new("/"), parent_root.as_ref(), &opts.paths)?;
+    let root = match w.ancestors(Path::new("/"), parent_root.as_ref(), &opts.paths) {
+        Ok(root) => root,
+        Err(e) => {
+            // Stopped or failed: the index of what went up so far up too,
+            // so the next backup goes on from there.
+            let _ = w.repo.write_index();
+            return Err(e);
+        }
+    };
     let mut summary = w.summary;
     summary.stored_bytes = repo.stored - stored;
     summary.seconds = started.elapsed().as_secs_f64();
@@ -171,7 +181,9 @@ impl Walk<'_, '_> {
             let before = prev.and_then(|t| t.get(bytes));
             match kind {
                 Kind::File => {
-                    if self.file(&p, &mut n, before).is_err() {
+                    // (Unreadable: said, and left out; stopped, or the
+                    // store failing: the backup stops.)
+                    if !self.file(&p, &mut n, before)? {
                         continue;
                     }
                 }
@@ -199,8 +211,9 @@ impl Walk<'_, '_> {
     }
 
     /// A file's chunks into `n`: as before if it's unchanged (and they're
-    /// all still there), else read. An unreadable one is said and left out.
-    fn file(&mut self, p: &Path, n: &mut Node, before: Option<&Node>) -> Result<()> {
+    /// all still there), else read; whether it's kept. An unreadable one is
+    /// said and left out (false); stopped, or the store failing, an error.
+    fn file(&mut self, p: &Path, n: &mut Node, before: Option<&Node>) -> Result<bool> {
         self.summary.files += 1;
         self.summary.bytes += n.size;
         self.progress.files.fetch_add(1, Relaxed);
@@ -211,7 +224,7 @@ impl Walk<'_, '_> {
         {
             n.content = b.content.clone();
             self.summary.unchanged_files += 1;
-            return Ok(());
+            return Ok(true);
         }
         if let Ok(mut c) = self.progress.current.lock() {
             *c = p.display().to_string();
@@ -220,17 +233,23 @@ impl Walk<'_, '_> {
             Ok(f) => f,
             Err(e) => {
                 self.summary.errors.push(format!("{}: {e}", p.display()));
-                return Err(e.into());
+                return Ok(false);
             }
         };
         let mut content = Vec::new();
         let (repo, cancel, progress) = (&mut *self.repo, self.cancel, self.progress);
         let mut new_bytes = 0u64;
-        let r = crate::chunker::chunks(&file, |chunk| {
+        // What stops the backup (not the file's own fault).
+        let mut fatal = None;
+        let r = crate::chunker::chunks_in(&mut self.buf, &file, |chunk| {
             if cancel.load(Relaxed) {
+                fatal = Some(Error::Cancelled);
                 return Err(Error::Cancelled);
             }
-            let (id, new) = repo.put(chunk, false)?;
+            let (id, new) = repo.put(chunk, false).map_err(|e| {
+                fatal = Some(e);
+                Error::Cancelled
+            })?;
             if new {
                 new_bytes += chunk.len() as u64;
                 progress.new_bytes.fetch_add(chunk.len() as u64, Relaxed);
@@ -241,13 +260,12 @@ impl Walk<'_, '_> {
         // What was read isn't anyone's working set: let it go.
         // SAFETY: a valid descriptor; advice only.
         unsafe { libc::posix_fadvise(std::os::fd::AsRawFd::as_raw_fd(&file), 0, 0, libc::POSIX_FADV_DONTNEED) };
-        match r {
-            Ok(()) => {}
-            Err(Error::Cancelled) => return Err(Error::Cancelled),
-            Err(e) => {
-                self.summary.errors.push(format!("{}: {e}", p.display()));
-                return Err(e);
-            }
+        if let Some(e) = fatal {
+            return Err(e);
+        }
+        if let Err(e) = r {
+            self.summary.errors.push(format!("{}: {e}", p.display()));
+            return Ok(false);
         }
         n.content = content;
         self.summary.new_bytes += new_bytes;
@@ -256,7 +274,7 @@ impl Walk<'_, '_> {
         } else {
             self.summary.new_files += 1;
         }
-        Ok(())
+        Ok(true)
     }
 }
 
