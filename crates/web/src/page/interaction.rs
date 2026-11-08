@@ -83,7 +83,12 @@ impl<'a> Snapshot<'a> {
             _ => selectors::Error::InvalidNode,
         };
         let forms = self.forms.get_or_init(|| controls::DisabledStates::new(self.doc, Default::default(), self.cancel)).as_ref().map_err(|e| map(*e))?;
-        forms.disabled(self.doc, node).map_err(map)
+        match forms.disabled(self.doc, node) {
+            // A control the forms' walk didn't see (in a shadow tree, MDN's)
+            // or one since changed: disabled by its own attribute.
+            Err(controls::Error::Disconnected | controls::Error::Stale) => Ok(Some(self.doc.attribute(node, "disabled")?.is_some())),
+            other => other.map_err(map),
+        }
     }
     fn within(&self, mut subject: Option<NodeId>, ancestor: NodeId) -> selectors::Result<bool> {
         while let Some(node) = subject {

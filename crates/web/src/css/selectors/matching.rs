@@ -804,14 +804,17 @@ impl<'a, T: Tree> Machine<'a, '_, T> {
                 }));
             }
             self.build_indices(node, tag, ctx)?;
-            let &(index, total) = self.indices.get(&(node, tag)).ok_or(Error::InvalidNode)?;
-            return Ok(formula.matches(if index == 0 {
-                0
-            } else if last {
-                total - index + 1
-            } else {
-                index
-            }));
+            if let Some(&(index, total)) = self.indices.get(&(node, tag)) {
+                return Ok(formula.matches(if index == 0 {
+                    0
+                } else if last {
+                    total - index + 1
+                } else {
+                    index
+                }));
+            }
+            // Not among the children its parent's walk saw (a node of a
+            // shadow tree, MDN's): counted among its siblings directly.
         }
         if list != ANY && self.list(list, node, ctx, false)?.is_none() {
             return Ok(false);
