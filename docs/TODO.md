@@ -2232,13 +2232,16 @@ people.
     `live_wrong_password` has run: password-auth here is pam_unix alone,
     no face, reader or faillock; denied after its 1.9 s delay, one
     authentication failure in the journal for it.)
-  - The MacBook's palm captures, on the Mac (`on_real_hands`,
+  - Data on the Mac: the MacBook's palm captures (`on_real_hands`,
     `what_the_runs_dont_show`, `make_default_model`, which makes the
-    shipped model from them).
-  - The Viewer's original sample clips, if they're kept anywhere (the
-    Mac?): not on this machine (/ and /home searched). The tests ran
-    and pass on clips of the same names made as HACKING says (ffmpeg's
-    testsrc2 through SVT-AV1, libvpx, NVENC; the JCT-VC stream).
+    shipped model from them), and the Viewer's original sample clips
+    (test.mp4, gop.mp4, av1.mp4, vp9.mp4, hevc.mp4 and the rest): made
+    there (HACKING's figures for them are the M2 Max's; no session on
+    this machine made them, its transcripts searched, and / and /home
+    have none). Here the tests ran and pass on clips of the same names
+    made as HACKING says (ffmpeg's testsrc2 through SVT-AV1, libvpx,
+    NVENC; the JCT-VC stream); the originals, run on the Mac or copied
+    here, are what's left.
 
 - **The ThinkPad's leftovers that are work, not a try** (from its entry
   above; each blocked on the hardware in hand or Ben's say):
