@@ -12346,6 +12346,40 @@ in layers; done so far, **the engine** (crates/diskbackup):
   is known to be the right one (`Error::WrongKey`). The key, 32 random
   bytes (`Key::to_hex`), is kept by Olo Passwords, not in the store.
 
+- **Speed limits** (`store::Limit`; Ben: "make sure that i can also set
+  a max upload/download speed"): bytes a second each way, 0 for none,
+  changed live; a store paces its transfers a 256 KiB piece at a time
+  (`Throttled` for one that doesn't pace itself), up to a quarter second's
+  worth at once, so the network never sees a burst at full speed.
+
+**The service** (apps/diskbackup, `olo-diskbackup --service`; olo-session
+runs it in the logged-in session): the whole process at the CPU's and the
+disks' idle priority (SCHED_IDLE, the idle I/O class: anything else that
+wants them goes first); asleep until a backup is due (`every_minutes`
+after the last), its settings change (inotify) or it's asked on its
+socket (`olo_protocol::diskbackup::Request`: Back Up Now, Stop); waits
+for power on battery unless allowed (`on_battery`), looking again every
+five minutes then. A backup takes unchanged files from the last snapshot
+of this computer's (its host name), leaves out the exclude groups chosen,
+the person's patterns, its own cache and a folder target; its progress in
+the state file (`$XDG_RUNTIME_DIR/olo-diskbackup.json`, `State`) every 2 s
+while it runs and not otherwise; the last's outcome kept across restarts
+(the state folder). Settings: `~/.config/olo/diskbackup.json`
+(`olo_protocol::diskbackup::Settings`: target, paths, exclude groups and
+patterns, every, keep, speed limits, battery, one file system). The key:
+in the login keyring (`olo_system::secrets::DISKBACKUP_KEY`, which the
+settings backup carries too), where the service finds it with no one
+there; Passwords keeps it as well (the app, next). Command line:
+`--status [--json]`, `--now`, `--stop`, `--set-up-folder PATH`,
+`--snapshots`, `--restore SNAPSHOT PATH [TO]`, `--set KEY=VALUE…`
+(enabled, battery, every, upload, download, paths, exclude, groups),
+`--groups`. For tests, `OLO_DISKBACKUP_DIR` keeps its settings, state and
+socket apart and `OLO_DISKBACKUP_KEY` gives the key. Checked so (a
+sandbox HOME, a folder target): set up, the first backup at once (9
+files, node_modules left out), a change and Back Up Now (1 changed,
+nothing new), the older version restored, 5 MB new at a 500 KB/s upload
+limit in 10.06 s; its scheduling policy 5 (SCHED_IDLE).
+
 Measured (release, one thread, this machine, 2026-11-07;
 `tests/round_trip.rs`'s `throughput`): data/ (988 MB, 12,160 files,
 pictures mostly) first backed up in 7.5 s (132 MB/s), 947 MB stored; again

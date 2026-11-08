@@ -65,7 +65,8 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// service talks to the computer's own Bluetooth; olo-secrets answers
 /// for the login keyring (when Preferences ▸ Security says so) in GNOME
 /// Keyring's place, which PAM started for this login; Terminal's tab
-/// title service for coding agents listens on another loopback port.
+/// title service for coding agents listens on another loopback port;
+/// DiskBackup backs up this computer's disk (only the logged-in session's).
 const REAL_SHELL: &[&[&str]] = &[
     &["olo-polkit-agent"],
     &["olo-notifications"],
@@ -75,6 +76,9 @@ const REAL_SHELL: &[&[&str]] = &[
     &["olo-doctor", "--watch"],
     &["olo-airpods", "--service"],
     &["olo-voice", "--service"],
+    // DiskBackup's service: asleep until a backup is due (nothing at all
+    // until it's set up).
+    &["olo-diskbackup", "--service"],
     // The SSH agent (Passwords without a window; it exits, not wanted,
     // with the agent turned off).
     &["olo-passwords", "--agent"],

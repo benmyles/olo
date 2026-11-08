@@ -52,12 +52,17 @@ something nobody here has is in "Blocked", with what it waits for.
   uploads, rate limits), a service at idle priority (I/O and CPU) that
   follows changes (fanotify) rather than scanning, Doctor and Deskbar
   and Tracker and Passwords where they fit.
+  Ben, later the same day: "make sure that i can also set a max
+  upload/download speed for the backups too".
   Done: the engine (crates/diskbackup: chunks, packs, index, trees,
-  snapshots, excludes, restore, a folder as a store; HACKING.md,
-  "DiskBackup"). Next: the service (idle priority, a schedule, status,
-  the key in Passwords) and its command line; the app (setup, status,
-  restore); Google Drive (needs an OAuth client of Ben's: a Google Cloud
-  project's "Desktop app" credentials); Deskbar, Tracker, Doctor.
+  snapshots, excludes, restore, speed limits, a folder as a store); the
+  service and its command line (idle priority, a schedule, Back Up Now,
+  Stop, battery, status, the key in the login keyring); HACKING.md,
+  "DiskBackup". Next: the app (setup, status, settings, restore; the key
+  kept in Passwords too); keeping (forget by `Keep`, then prune what only
+  forgotten snapshots used); Google Drive (needs an OAuth client of
+  Ben's: a Google Cloud project's "Desktop app" credentials); Deskbar,
+  Tracker, Doctor.
 
 ## Not started (highest priority first)
 

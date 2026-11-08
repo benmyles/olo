@@ -42,7 +42,7 @@ pub use backup::{Options, Progress, backup};
 pub use crypto::{Id, Key};
 pub use repo::{Repo, Snapshot, Summary};
 pub use restore::restore;
-pub use store::{LocalStore, Store};
+pub use store::{Limit, LocalStore, Store, Throttled};
 pub use tree::{Kind, Node, Tree};
 
 /// What went wrong, said plainly.
