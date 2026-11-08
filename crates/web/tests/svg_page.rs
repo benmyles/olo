@@ -504,3 +504,32 @@ fn svg_rectangle_limits_cancellation_and_overflow_tiles() {
     page.document.set_attribute(root, "width", "100").unwrap();
     assert!(paint::BuildJob::new(&page.document, page.scene.layout().clone(), &mut painter, Default::default(), Default::default(), None).is_err());
 }
+#[test]
+fn svg_gradients_paint_across_their_shapes() {
+    // A linear gradient over its shape's box (red at the left, blue at the
+    // right), defined after its use, on a shape under a root `fill="none"`
+    // (MDN's browser logos): drawn, not its first stop, not nothing.
+    for scale in [1., 1.5, 2.] {
+        let (page, mut painter) = load(
+            "<svg width=100 height=10 viewBox='0 0 100 10' fill=none><rect width=100 height=10 style='fill:url(#g)'/><defs><linearGradient id=g><stop stop-color=red /><stop offset=1 stop-color=blue /></linearGradient></defs></svg>",
+            scale,
+        );
+        let tile = painter.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: 300, height: 30 }, None).unwrap();
+        let pixel = |x: f64| -> [u8; 4] { tile.rgba()[((5. * scale) as usize * 300 + (x * scale) as usize) * 4..][..4].try_into().unwrap() };
+        let (left, middle, right) = (pixel(1.), pixel(50.), pixel(98.));
+        assert!(left[0] > 240 && left[2] < 15, "{left:?} at {scale}");
+        assert!(right[2] > 240 && right[0] < 15, "{right:?} at {scale}");
+        assert!((100..160).contains(&middle[0]) && (100..160).contains(&middle[2]), "{middle:?} at {scale}");
+        assert!(page.fallbacks.is_empty(), "{}", page.fallbacks);
+    }
+    // A radial one in user space: its centre its first stop.
+    let (page, mut painter) = load(
+        "<svg width=40 height=40 viewBox='0 0 40 40'><defs><radialGradient id=r cx=20 cy=20 r=20 gradientUnits=userSpaceOnUse><stop stop-color=lime /><stop offset=1 stop-color=black /></radialGradient></defs><rect width=40 height=40 fill='url(#r)'/></svg>",
+        1.,
+    );
+    let tile = painter.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: 40, height: 40 }, None).unwrap();
+    let centre = &tile.rgba()[(20 * 40 + 20) * 4..][..4];
+    let corner = &tile.rgba()[(1 * 40 + 1) * 4..][..4];
+    assert!(centre[1] > 230, "{centre:?}");
+    assert!(corner[1] < 30, "{corner:?}");
+}

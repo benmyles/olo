@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: SVG gradients
+
+*13:54* — MDN's Baseline row, Olo (top) against Chrome: the browser logos are SVGs painted with linear and radial gradients (they were blank, under a root fill=none, or flat in their first stop).
+
+![Browser: SVG gradients](2026-11-08/135456-browser-svg-gradients.png)
+
 ### Browser: MDN's header and Baseline as Chrome's
 
 *13:28* — MDN against Chrome (right): its closed search dialog hidden, its Baseline panel (a closed details) collapsed, and its icons drawn (masks named through var(), in its components' styles); the article lines up with Chrome's line for line.

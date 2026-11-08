@@ -4078,5 +4078,11 @@
   "title": "Browser: MDN's header and Baseline as Chrome's",
   "caption": "MDN against Chrome (right): its closed search dialog hidden, its Baseline panel (a closed details) collapsed, and its icons drawn (masks named through var(), in its components' styles); the article lines up with Chrome's line for line.",
   "image": "2026-11-08/132813-browser-mdn-s-header-and-baseline-as-chrome-s.png"
+ },
+ {
+  "time": "2026-11-08T13:54:56",
+  "title": "Browser: SVG gradients",
+  "caption": "MDN's Baseline row, Olo (top) against Chrome: the browser logos are SVGs painted with linear and radial gradients (they were blank, under a root fill=none, or flat in their first stop).",
+  "image": "2026-11-08/135456-browser-svg-gradients.png"
  }
 ]

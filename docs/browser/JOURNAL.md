@@ -6873,3 +6873,10 @@ the Guardian and old Reddit, looking for pages that fail outright:
   GitHub's `document.firstElementChild` (a document is a ParentNode:
   `children`, `firstElementChild`, …) and MDN's `iframe.sandbox` (a
   token list, as `relList` is).
+- **SVG gradients.** `<linearGradient>` and `<radialGradient>` paint
+  their shapes (they were their first stop's flat colour): stops,
+  `objectBoundingBox` and `userSpaceOnUse` units, `gradientTransform`,
+  `spreadMethod`, attributes and stops through `href`. A shape's own
+  `fill: url(#…)` under a root `fill="none"` painted nothing (the grammar
+  dropped the reference and the `none` was inherited). MDN's Edge,
+  Firefox and Safari logos were blank.

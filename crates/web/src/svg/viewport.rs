@@ -11,8 +11,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub struct Shape {
     pub node: NodeId,
     pub(crate) geometry: Geometry,
+    /// Its colour; a gradient's first stop when it has `gradient`.
     pub color: [u8; 4],
     pub evenodd: bool,
+    /// The gradient it is painted with, when its paint names one.
+    pub gradient: Option<std::sync::Arc<super::gradient::Gradient>>,
 }
 pub(crate) enum Geometry {
     Path(Path),
@@ -405,7 +408,42 @@ impl Viewport {
                                         _ => None,
                                     };
                                     let evenodd = matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd));
-                                    let mut add = |geometry: Geometry, color: [u8; 4], evenodd: bool| -> Result<()> {
+                                    // Gradients (in the viewport's space, by the shape's bounds).
+                                    let viewport_size = result.view_box.map_or((100., 100.), |v| (v[2] as f32, v[3] as f32));
+                                    let mut gradient_for = |attribute: &str, bounds: Option<tiny_skia::Rect>| -> Result<Option<std::sync::Arc<super::gradient::Gradient>>> {
+                                        match paint_reference(doc, node, attribute)? {
+                                            Some(reference) => super::gradient::resolve(
+                                                doc,
+                                                styles,
+                                                sources,
+                                                reference,
+                                                ctm.unwrap_or_default(),
+                                                bounds,
+                                                viewport_size,
+                                                work_limit.saturating_sub(work),
+                                                bytes_limit,
+                                                cancel,
+                                            ),
+                                            None => Ok(None),
+                                        }
+                                    };
+                                    // (A rectangle's box, at the viewBox's size for its
+                                    // percentages: it is resolved per layout.)
+                                    let bounds = match &geometry {
+                                        Geometry::Rectangle { source, transform, .. } => rectangle_bounds(source, *transform, viewport_size, cancel)?,
+                                        other => other.path(None).map(|p| p.bounds()),
+                                    };
+                                    let fill_gradient = if fill.is_some() { gradient_for("fill", bounds)? } else { None };
+                                    let stroke_gradient = match (&stroke, &stroked) {
+                                        (Some(_), Some(outline)) => gradient_for("stroke", outline.geometry().map(|p| p.bounds()))?,
+                                        _ => None,
+                                    };
+                                    for (attribute, painted, gradient) in [("fill", fill.is_some(), &fill_gradient), ("stroke", stroke.is_some() && stroked.is_some(), &stroke_gradient)] {
+                                        if painted && gradient.is_none() && paint_reference(doc, node, attribute)?.is_some() {
+                                            fallbacks.note("SVG gradient painted as its first stop", Some(node));
+                                        }
+                                    }
+                                    let mut add = |geometry: Geometry, color: [u8; 4], evenodd: bool, gradient: Option<std::sync::Arc<super::gradient::Gradient>>| -> Result<()> {
                                         if matches!(geometry, Geometry::Rectangle { .. }) {
                                             result.rectangles = result.rectangles.checked_add(1).ok_or(Error::Limit)?;
                                         }
@@ -416,14 +454,14 @@ impl Viewport {
                                                 layers[i].bounds = layers[i].bounds.map_or(Some(b), |old| old.join(&b)).or(layers[i].bounds);
                                             }
                                         }
-                                        result.shapes.push(Shape { node, geometry, color, evenodd });
+                                        result.shapes.push(Shape { node, geometry, color, evenodd, gradient });
                                         Ok(())
                                     };
                                     if let Some(color) = fill {
-                                        add(geometry, color, evenodd)?;
+                                        add(geometry, color, evenodd, fill_gradient)?;
                                     }
                                     if let (Some(color), Some(outline)) = (stroke, stroked) {
-                                        add(Geometry::Path(outline), color, false)?;
+                                        add(Geometry::Path(outline), color, false, stroke_gradient)?;
                                     }
                                 }
                             }
@@ -472,9 +510,12 @@ impl Viewport {
                                     && let Some(color) = paint(doc, styles, sources, s, node, P::Fill, P::FillOpacity, "fill", work_limit.saturating_sub(work), bytes_limit, fallbacks, cancel)?
                                     && let Some(source) = text_source(doc, node, ctm, bytes_limit, cancel)?
                                 {
+                                    if paint_reference(doc, node, "fill")?.is_some() {
+                                        fallbacks.note("SVG gradient painted as its first stop", Some(node));
+                                    }
                                     let slot = u32::try_from(result.texts.len()).map_err(|_| Error::Limit)?;
                                     result.texts.push(source);
-                                    result.shapes.push(Shape { node, geometry: Geometry::Text { slot }, color, evenodd: false });
+                                    result.shapes.push(Shape { node, geometry: Geometry::Text { slot }, color, evenodd: false, gradient: None });
                                 }
                                 skip = true;
                             }
@@ -916,9 +957,12 @@ fn mask_content<'a>(
                             && let Some(color) = paint(doc, styles, sources, s, node, P::Fill, P::FillOpacity, "fill", work_limit, bytes_limit, fallbacks, cancel)?
                             && let Some(source) = text_source(doc, node, ctm, bytes_limit, cancel)?
                         {
+                            if paint_reference(doc, node, "fill")?.is_some() {
+                                fallbacks.note("SVG gradient painted as its first stop", Some(node));
+                            }
                             let slot = u32::try_from(texts.len()).map_err(|_| Error::Limit)?;
                             texts.push(source);
-                            shapes.push(Shape { node, geometry: Geometry::Text { slot }, color, evenodd: false });
+                            shapes.push(Shape { node, geometry: Geometry::Text { slot }, color, evenodd: false, gradient: None });
                         }
                         skip = true;
                         None
@@ -933,8 +977,11 @@ fn mask_content<'a>(
                     && visible
                     && let Some(color) = paint(doc, styles, sources, s, node, P::Fill, P::FillOpacity, "fill", work_limit, bytes_limit, fallbacks, cancel)?
                 {
+                    if paint_reference(doc, node, "fill")?.is_some() {
+                        fallbacks.note("SVG gradient painted as its first stop", Some(node));
+                    }
                     let evenodd = matches!(s.value(P::FillRule), Value::Keyword(K::Evenodd));
-                    shapes.push(Shape { node, geometry, color, evenodd });
+                    shapes.push(Shape { node, geometry, color, evenodd, gradient: None });
                 }
             }
         } else {
@@ -978,18 +1025,19 @@ fn paint<'a>(
     cancel: Option<&AtomicBool>,
 ) -> Result<Option<[u8; 4]>> {
     let alpha = s.value(opacity).scalar().ok_or(Error::Invalid)?.clamp(0., 1.);
+    // A paint-server reference the property grammar dropped leaves the
+    // inherited value behind (a colour, or a root's `fill="none"`: MDN's
+    // browser logos drew nothing); the element's own attribute or inline
+    // style still says so.
+    let referenced = paint_reference(doc, node, attribute)?;
     let mut color = match s.value(property) {
-        Value::Keyword(K::None) => return Ok(None),
-        Value::Color(_) => {
-            // A paint-server reference the property grammar dropped leaves the
-            // inherited/initial colour behind; the attribute still says so.
-            let referenced = doc.attribute(node, attribute)?.map(str::trim).filter(|v| v.starts_with("url("));
+        Value::Keyword(K::None) if referenced.is_none() => return Ok(None),
+        Value::Keyword(K::None) | Value::Color(_) => {
             match referenced {
                 Some(reference) => match first_stop(doc, styles, sources, reference, work_limit, bytes_limit, cancel)? {
-                    Some(stop) => {
-                        fallbacks.note("SVG gradient painted as its first stop", Some(node));
-                        stop
-                    }
+                    // (Drawn as the gradient where its shape takes one; else
+                    // its first stop, said where so.)
+                    Some(stop) => stop,
                     None => {
                         fallbacks.note("SVG paint server not resolved", Some(node));
                         return Ok(None);
@@ -1002,6 +1050,25 @@ fn paint<'a>(
     };
     color[3] = (f64::from(color[3]) * alpha).round() as u8;
     Ok((color[3] != 0).then_some(color))
+}
+/// A rectangle's box (its percentages of `viewport`), under its transform.
+fn rectangle_bounds(source: &super::rect::Rectangle, transform: Option<tiny_skia::Transform>, viewport: (f32, f32), cancel: Option<&AtomicBool>) -> Result<Option<tiny_skia::Rect>> {
+    let mut builder = tiny_skia::PathBuilder::new();
+    let mut scratch = crate::css::math::Scratch::default();
+    source.append(&mut builder, [f64::from(viewport.0), f64::from(viewport.1)], &mut scratch, 64, cancel)?;
+    let path = match transform {
+        Some(t) => builder.finish().and_then(|p| p.transform(t)),
+        None => builder.finish(),
+    };
+    Ok(path.map(|p| p.bounds()))
+}
+/// The paint server (`url(#…)`) an element's own `fill` or `stroke` names,
+/// in its inline style or its attribute (the property grammar drops it).
+fn paint_reference<'a>(doc: &'a Document, node: NodeId, attribute: &str) -> Result<Option<&'a str>> {
+    let style_reference = doc
+        .attribute(node, "style")?
+        .and_then(|style| style.split(';').filter_map(|d| d.split_once(':')).find(|(k, _)| k.trim().eq_ignore_ascii_case(attribute)).map(|(_, v)| v.trim()).filter(|v| v.starts_with("url(")));
+    Ok(style_reference.or(doc.attribute(node, attribute)?.map(str::trim).filter(|v| v.starts_with("url("))))
 }
 /// The first stop colour of a referenced gradient, with its stop-opacity.
 fn first_stop<'a>(

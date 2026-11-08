@@ -1,6 +1,7 @@
 //! Retained SVG path geometry and initial path-only viewport compilation.
 //! Stroke/paint-server/nested SVG and full intrinsic sizing remain incomplete.
 pub(crate) mod clip;
+pub(crate) mod gradient;
 pub(crate) mod rect;
 pub(crate) mod text;
 pub(crate) mod used;

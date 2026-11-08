@@ -12,7 +12,10 @@ struct Surface {
 fn fill(out: &mut Pixmap, shape: &crate::svg::Shape, used: Option<&crate::svg::used::Geometry>, transform: Transform, mask: Option<&Mask>) {
     if let Some(path) = shape.geometry.path(used) {
         let mut paint = Paint::default();
-        paint.set_color_rgba8(shape.color[0], shape.color[1], shape.color[2], shape.color[3]);
+        match shape.gradient.as_ref().and_then(|g| g.shader()) {
+            Some(shader) => paint.shader = shader,
+            None => paint.set_color_rgba8(shape.color[0], shape.color[1], shape.color[2], shape.color[3]),
+        }
         out.fill_path(path, &paint, if shape.evenodd { FillRule::EvenOdd } else { FillRule::Winding }, transform, mask);
     }
 }
