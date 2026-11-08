@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Security Keys: a key with a PIN
+
+*00:53* — A security key with a PIN set is set up with it (asked once, not kept): the key's PIN beside the account password, a wrong one said with the tries left. Its Remove works beside Face Unlock's (the two Remove buttons had one id and lost their clicks).
+
+![Security Keys: a key with a PIN](2026-11-08/005344-security-keys-a-key-with-a-pin.png)
+
 ### Notifications: Undo Clear All and Forget
 
 *00:33* — The History window's Edit ▸ Undo brings back what Clear All or Forget took, where it was (closed at its app by now); Redo forgets it again.

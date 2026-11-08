@@ -1170,7 +1170,9 @@ something nobody here has is in "Blocked", with what it waits for.
   hmac-secret, no PIN set, a key agreement in protocol 2). *Left*: Ben's
   setup with his key (its two touches), then sudo, Passwords, polkit and
   the lock screen touched for real, and a stray touch and three in a row
-  in a text field; a key with a PIN that wants it (not asked for yet).
+  in a text field. A key with a PIN is set up with it too (2026-11-08:
+  asked once beside the password, tried headless with the software
+  key's PIN).
   Olo Doctor says when a key's FIDO node isn't the person's to open, and
   offers the rule (2026-11-05).
   *Setting up, with Ben's key* (2026-11-05): his first try "just kept

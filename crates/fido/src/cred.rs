@@ -30,18 +30,24 @@ pub struct Made {
     pub aaguid: [u8; 16],
 }
 
-/// Make a credential for `user` (a touch); `hmac-secret` on it.
-pub fn make<T: Transport>(ch: &mut Channel<T>, user: &str, wait: &Wait) -> Result<Made> {
+/// Make a credential for `user` (a touch); `hmac-secret` on it. A key
+/// with a PIN takes the PIN's `token` as proof.
+pub fn make<T: Transport>(ch: &mut Channel<T>, user: &str, token: Option<&pin::Token>, wait: &Wait) -> Result<Made> {
     let mut user_id = [0u8; 16];
     getrandom::fill(&mut user_id).map_err(|_| Error::Random)?;
-    let params = int_map(vec![
-        (1, Value::Bytes(client_data_hash("make")?)),
+    let cdh = client_data_hash("make")?;
+    let mut params = vec![
+        (1, Value::Bytes(cdh.clone())),
         (2, text_map(vec![("id", Value::Text(RP.into())), ("name", Value::Text("Olo".into()))])),
         (3, text_map(vec![("id", Value::Bytes(user_id.to_vec())), ("name", Value::Text(user.into())), ("displayName", Value::Text(user.into()))])),
         (4, Value::Array(vec![text_map(vec![("alg", Value::Integer((-7).into())), ("type", Value::Text("public-key".into()))])])),
         (6, text_map(vec![("hmac-secret", Value::Bool(true))])),
-    ]);
-    let answer = ch.cbor(MAKE_CREDENTIAL, Some(params), wait)?.ok_or(Error::Protocol("no credential"))?;
+    ];
+    if let Some(t) = token {
+        params.push((8, Value::Bytes(t.authenticate(&cdh))));
+        params.push((9, Value::Integer(t.protocol.into())));
+    }
+    let answer = ch.cbor(MAKE_CREDENTIAL, Some(int_map(params)), wait)?.ok_or(Error::Protocol("no credential"))?;
     let auth = get(&answer, 2).and_then(|a| a.as_bytes()).ok_or(Error::Protocol("no authenticator data"))?;
     let parsed = AuthData::parse(auth, true)?;
     let (id, aaguid) = parsed.credential.ok_or(Error::Protocol("no credential in the authenticator data"))?;

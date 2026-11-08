@@ -28,7 +28,8 @@ use crate::{Msg, PanelView, form::Ui, integrations::buttons, panel};
 
 enum Request {
     Look,
-    SetUp(Device, Zeroizing<String>),
+    /// A key set up with the password and, for a key with one, its PIN.
+    SetUp(Device, Zeroizing<String>, Option<Zeroizing<String>>),
     Remove(String),
 }
 
@@ -39,6 +40,8 @@ struct Plugged {
     /// What it is ("firmware 5.8.0"), or why it can't be used.
     about: Result<String, String>,
     set_up: bool,
+    /// It has a PIN, which setting it up asks for.
+    pin: bool,
 }
 
 struct Doing {
@@ -94,7 +97,7 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
             // (The layout lint: one key, set up, none being set up.)
             let mut s = sh.lock().unwrap();
             let device = Device { path: "/dev/hidraw4".into(), name: "Yubico YubiKey OTP+FIDO+CCID".into(), vendor: 0x1050, product: 0x0407 };
-            s.plugged = Some(vec![Plugged { device: device.clone(), about: Ok("firmware 5.8.0".into()), set_up: true }]);
+            s.plugged = Some(vec![Plugged { device: device.clone(), about: Ok("firmware 5.8.0".into()), set_up: true, pin: false }]);
             s.set_up = vec![Sealed {
                 name: device.name,
                 aaguid: String::new(),
@@ -120,8 +123,9 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                 while let Ok(req) = rx.recv() {
                     match req {
                         Request::Look => {}
-                        Request::SetUp(device, password) => set_up(&sh, &proxy, &me, &device, &password),
+                        Request::SetUp(device, password, pin) => set_up(&sh, &proxy, &me, &device, &password, pin.as_deref().map(String::as_str)),
                         Request::Remove(credential) => {
+                            tracing::info!("removing a security key");
                             let keys: Vec<Sealed> = olo_fido::seal::load(&me).into_iter().filter(|k| k.credential != credential).collect();
                             let mut s = sh.lock().unwrap();
                             match olo_fido::seal::save(&me, &keys) {
@@ -133,7 +137,13 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                     // Look again after anything (a burst of plugging
                     // looked at once).
                     while rx.try_recv().is_ok_and(|r| matches!(r, Request::Look)) {}
-                    let plugged = olo_fido::plugged(&me).into_iter().map(|p| Plugged { about: p.info.map(|i| about(&i)), device: p.device, set_up: p.set_up }).collect();
+                    let plugged = olo_fido::plugged(&me)
+                        .into_iter()
+                        .map(|p| {
+                            let pin = p.info.as_ref().is_ok_and(|i| i.make_credential_needs_pin());
+                            Plugged { about: p.info.map_err(|e| e.to_string()).and_then(|i| about(&i)), device: p.device, set_up: p.set_up, pin }
+                        })
+                        .collect();
                     let set_up = olo_fido::seal::load(&me);
                     let mut s = sh.lock().unwrap();
                     s.plugged = Some(plugged);
@@ -147,8 +157,9 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
     })
 }
 
-/// What a key says of itself, in a few words.
-fn about(i: &olo_fido::Info) -> String {
+/// What a key says of itself, in a few words; why it can't be used, if
+/// it can't.
+fn about(i: &olo_fido::Info) -> Result<String, String> {
     let mut parts = Vec::new();
     if let Some(f) = i.firmware_text() {
         parts.push(format!("firmware {f}"));
@@ -157,13 +168,17 @@ fn about(i: &olo_fido::Info) -> String {
         parts.push("a PIN set".into());
     }
     if !i.hmac_secret() {
-        return format!("{}: it can’t keep a secret for Olo (no hmac-secret)", parts.join(", "));
+        return Err(format!("{}: it can’t keep a secret for Olo (no hmac-secret)", parts.join(", ")));
     }
-    parts.join(", ")
+    if i.option("alwaysUv") == Some(true) {
+        return Err(format!("{}: it asks for its PIN at every use, so a touch can’t stand for your password", parts.join(", ")));
+    }
+    Ok(parts.join(", "))
 }
 
-/// Set `device` up: the password checked, then two touches.
-fn set_up(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, me: &str, device: &Device, password: &str) {
+/// Set `device` up: the password checked, then (its PIN given, if it has
+/// one) two touches.
+fn set_up(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, me: &str, device: &Device, password: &str, pin: Option<&str>) {
     let cancel = Arc::new(AtomicBool::new(false));
     {
         let mut s = sh.lock().unwrap();
@@ -195,7 +210,7 @@ fn set_up(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, me: &str, device: &Dev
         }
         proxy.send(Msg::Redraw);
     };
-    let made = olo_fido::set_up(device, me, password, &cancel, &touch);
+    let made = olo_fido::set_up(device, me, password, pin, &cancel, &touch);
     let mut s = sh.lock().unwrap();
     s.doing = None;
     match made {
@@ -222,9 +237,11 @@ pub struct State {
     /// Face unlock's box, beside the keys'.
     pub face: crate::face_unlock::State,
     link: &'static Link,
-    /// The key being set up (its password being typed).
-    setting_up: Option<Device>,
+    /// The key being set up (its password being typed), and whether it
+    /// has a PIN to type too.
+    setting_up: Option<(Device, bool)>,
     password: Entity<TextField>,
+    pin: Entity<TextField>,
 }
 
 impl State {
@@ -239,19 +256,40 @@ impl State {
             }
         })
         .detach();
-        State { face: crate::face_unlock::State::new(cx), link: link(olo_ui::proxy(cx)), setting_up: None, password }
+        let pin = olo_ui::widgets::text_field(cx, |f| f.password(true));
+        cx.subscribe(&pin, |v, _, e: &TextFieldEvent, cx| {
+            if matches!(e, TextFieldEvent::Entered)
+                && let Some(st) = state_of(v)
+            {
+                st.start(cx);
+                cx.notify();
+            }
+        })
+        .detach();
+        State { face: crate::face_unlock::State::new(cx), link: link(olo_ui::proxy(cx)), setting_up: None, password, pin }
     }
 
-    /// Set the key chosen up with the password typed.
+    /// Whether what setting up asks for is typed.
+    fn ready(&self, cx: &olo_ui::gpui::App) -> bool {
+        let Some((_, pin)) = &self.setting_up else { return false };
+        !self.password.read(cx).text().is_empty() && (!pin || !self.pin.read(cx).text().is_empty())
+    }
+
+    /// Set the key chosen up with the password (and PIN) typed.
     fn start(&mut self, cx: &mut Context<PanelView>) {
-        let typed = Zeroizing::new(self.password.read(cx).text().to_owned());
-        let Some(device) = self.setting_up.take() else { return };
-        if typed.is_empty() {
-            self.setting_up = Some(device);
+        if !self.ready(cx) {
             return;
         }
+        let Some((device, has_pin)) = self.setting_up.take() else { return };
+        let typed = Zeroizing::new(self.password.read(cx).text().to_owned());
+        let pin = has_pin.then(|| Zeroizing::new(self.pin.read(cx).text().to_owned()));
+        self.forget_typed(cx);
+        let _ = self.link.tx.send(Request::SetUp(device, typed, pin));
+    }
+
+    fn forget_typed(&mut self, cx: &mut Context<PanelView>) {
         self.password.update(cx, |f, cx| f.clear_secret(cx));
-        let _ = self.link.tx.send(Request::SetUp(device, typed));
+        self.pin.update(cx, |f, cx| f.clear_secret(cx));
     }
 }
 
@@ -292,7 +330,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             let credential = key.credential.clone();
             let idle = doing.is_none() && st.setting_up.is_none();
             ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StringView::new(line).wrap(true))).child(
-                Button::new("Remove").enabled(idle).on_click(move |_, _| {
+                // (An id of its own: Face Unlock's box beside has a Remove,
+                // and buttons with one id lose their clicks.)
+                Button::new("Remove").id(format!("key-remove-{}", key.credential)).enabled(idle).on_click(move |_, _| {
                     let _ = link.tx.send(Request::Remove(credential.clone()));
                 }),
             ));
@@ -308,12 +348,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                             let what = if set_up.is_empty() { "" } else { " (a spare)" };
                             ui.add(StringView::new(format!("{}{what}, plugged in: {about}.", key_name(&key.device.name))).wrap(true));
                             if st.setting_up.is_none() && doing.is_none() {
-                                let device = key.device.clone();
+                                let (device, pin) = (key.device.clone(), key.pin);
                                 let field = st.password.clone();
                                 ui.add(buttons(vec![
                                     Button::new("Set Up…")
+                                        .id(format!("key-set-up-{}", key.device.path.display()))
                                         .on_click(act(ui, move |st, window, cx| {
-                                            st.setting_up = Some(device.clone());
+                                            st.setting_up = Some((device.clone(), pin));
                                             field.update(cx, |f, _| f.focus(window));
                                         }))
                                         .into_any_element(),
@@ -324,20 +365,32 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 }
             }
         }
-        if let Some(device) = &st.setting_up {
-            let name = key_name(&device.name);
-            ui.add(StringView::new(format!("Setting up your {name} takes your password and two touches of the key:")).wrap(true));
-            ui.add(StringView::new("1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.").wrap(true));
+        if let Some((device, pin)) = &st.setting_up {
+            let (name, pin) = (key_name(&device.name), *pin);
+            if pin {
+                ui.add(StringView::new(format!("Setting up your {name} takes your password, its PIN and two touches of the key:")).wrap(true));
+                ui.add(StringView::new("1. Type your account password and the key’s PIN, and choose Set Up. Olo keeps the password locked so that only this key can unlock it; the PIN is asked for this once, not kept.").wrap(true));
+            } else {
+                ui.add(StringView::new(format!("Setting up your {name} takes your password and two touches of the key:")).wrap(true));
+                ui.add(StringView::new("1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.").wrap(true));
+            }
             ui.add(StringView::new(format!("2. When the key’s light starts blinking, touch {WHERE}. A touch before it blinks does nothing.")).wrap(true));
             ui.add(StringView::new("3. When it blinks again, touch it once more.").wrap(true));
-            ui.add(TextControl::new(st.password.clone()).label("Password:"));
-            let typed = !st.password.read(ui.cx).text().is_empty();
+            if pin {
+                // (The two wells lined up.)
+                let divider = crate::form::divider_for(ui.window, &["Password:", "Key’s PIN:"]);
+                ui.add(TextControl::new(st.password.clone()).label("Password:").divider(divider));
+                ui.add(TextControl::new(st.pin.clone()).label("Key’s PIN:").divider(divider));
+            } else {
+                ui.add(TextControl::new(st.password.clone()).label("Password:"));
+            }
+            let ready = st.ready(ui.cx);
             ui.add(buttons(vec![
-                Button::new("Set Up").default(true).enabled(typed).on_click(act(ui, |st, _, cx| st.start(cx))).into_any_element(),
+                Button::new("Set Up").id("key-set-up").default(true).enabled(ready).on_click(act(ui, |st, _, cx| st.start(cx))).into_any_element(),
                 Button::new("Cancel")
                     .on_click(act(ui, |st, _, cx| {
                         st.setting_up = None;
-                        st.password.update(cx, |f, cx| f.clear_secret(cx));
+                        st.forget_typed(cx);
                     }))
                     .into_any_element(),
             ]));

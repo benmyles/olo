@@ -3,7 +3,8 @@
 //! `OLO_FIDO_SOFT=FILE` as a key plugged in (its master secret kept in
 //! FILE, so a credential made in one process opens in another), touched
 //! by itself `OLO_FIDO_SOFT_TOUCH_MS` (400) after it starts waiting, or
-//! never ("never": till cancelled). Never in release builds.
+//! never ("never": till cancelled), with the PIN `OLO_FIDO_SOFT_PIN` if
+//! set (eight tries, as a YubiKey's). Never in release builds.
 
 use std::{
     collections::VecDeque,
@@ -42,13 +43,38 @@ pub struct Soft {
     /// touch came" (operation denied, as a YubiKey does when it stops
     /// waiting) at once.
     pub misses: usize,
+    /// Its PIN (making a credential then needs its token), the tries
+    /// left, and the token the PIN last gave.
+    pin: Option<String>,
+    pub pin_tries: u32,
+    token: Option<[u8; 32]>,
 }
 
 impl Soft {
     /// A key with `master` as its secret, touched `touch_after` after it
     /// starts waiting (never with `None`).
     pub fn new(master: [u8; 32], touch_after: Option<Duration>) -> Soft {
-        Soft { master, cid: [0x50, 0x4F, 0x46, 0x54], incoming: None, out: VecDeque::new(), pending: None, touch_after, agreement: None, counter: 0, touches: 0, misses: 0 }
+        Soft {
+            master,
+            cid: [0x50, 0x4F, 0x46, 0x54],
+            incoming: None,
+            out: VecDeque::new(),
+            pending: None,
+            touch_after,
+            agreement: None,
+            counter: 0,
+            touches: 0,
+            misses: 0,
+            pin: None,
+            pin_tries: 8,
+            token: None,
+        }
+    }
+
+    /// The key with a PIN set.
+    pub fn with_pin(mut self, pin: &str) -> Soft {
+        self.pin = Some(pin.to_owned());
+        self
     }
 
     /// The device it stands for.
@@ -68,7 +94,11 @@ impl Soft {
             Ok(ms) => Some(Duration::from_millis(ms.parse().unwrap_or(400))),
             Err(_) => Some(Duration::from_millis(400)),
         };
-        Some(Soft::new(master, touch))
+        let key = Soft::new(master, touch);
+        Some(match std::env::var("OLO_FIDO_SOFT_PIN") {
+            Ok(pin) if !pin.is_empty() => key.with_pin(&pin),
+            _ => key,
+        })
     }
 
     fn reply(&mut self, cid: [u8; 4], cmd: u8, data: &[u8]) {
@@ -137,22 +167,74 @@ impl Soft {
                 (1, Value::Array(vec![Value::Text("FIDO_2_0".into()), Value::Text("FIDO_2_1".into())])),
                 (2, Value::Array(vec![Value::Text("hmac-secret".into())])),
                 (3, Value::Bytes(vec![0x01; 16])),
-                (4, text_map(vec![("rk", Value::Bool(true)), ("up", Value::Bool(true)), ("clientPin", Value::Bool(false)), ("makeCredUvNotRqd", Value::Bool(true))])),
+                (
+                    4,
+                    text_map(vec![
+                        ("rk", Value::Bool(true)),
+                        ("up", Value::Bool(true)),
+                        ("clientPin", Value::Bool(self.pin.is_some())),
+                        ("pinUvAuthToken", Value::Bool(true)),
+                        ("makeCredUvNotRqd", Value::Bool(self.pin.is_none())),
+                    ]),
+                ),
                 (6, Value::Array(vec![Value::Integer(2.into()), Value::Integer(1.into())])),
                 (14, Value::Integer(0x050800.into())),
             ]))),
             ctap::CLIENT_PIN => {
                 let Some(p) = p else { return err(0x14) };
-                if get(p, 2).and_then(int) != Some(2) {
-                    return err(0x01);
+                match get(p, 2).and_then(int) {
+                    // getKeyAgreement.
+                    Some(2) => {
+                        let k = pin::random_secret().expect("random");
+                        let public = pin::cose_key(&k.public_key());
+                        self.agreement = Some(k);
+                        Answer::Now(ok(int_map(vec![(1, public)])))
+                    }
+                    // getPINRetries.
+                    Some(1) => Answer::Now(ok(int_map(vec![(3, Value::Integer(self.pin_tries.into()))]))),
+                    // getPinToken, and with permissions (making a credential).
+                    Some(sub @ (5 | 9)) => {
+                        let Some(want) = self.pin.clone() else { return err(0x35) };
+                        if self.pin_tries == 0 {
+                            return err(ctap::ERR_PIN_BLOCKED);
+                        }
+                        if sub == 9 && get(p, 9).and_then(int).is_none_or(|perm| perm & 1 == 0) {
+                            return err(0x14);
+                        }
+                        let protocol = get(p, 1).and_then(int).unwrap_or(1) as u8;
+                        let (Some(ours), Some(Ok(theirs)), Some(hash_enc)) = (self.agreement.as_ref(), get(p, 3).map(pin::cose_public), get(p, 6).and_then(|h| h.as_bytes())) else { return err(0x14) };
+                        let z = p256::ecdh::diffie_hellman(ours.to_nonzero_scalar(), theirs.as_affine());
+                        let shared = pin::derive(z.raw_secret_bytes().as_slice(), protocol, Value::Null).expect("protocol");
+                        let Ok(hash) = shared.decrypt(hash_enc) else { return err(0x14) };
+                        if hash[..] != pin::pin_hash(&want) {
+                            self.pin_tries -= 1;
+                            return err(if self.pin_tries == 0 { ctap::ERR_PIN_BLOCKED } else { ctap::ERR_PIN_INVALID });
+                        }
+                        self.pin_tries = 8;
+                        let mut token = [0u8; 32];
+                        getrandom::fill(&mut token).expect("random");
+                        self.token = Some(token);
+                        Answer::Now(ok(int_map(vec![(2, Value::Bytes(shared.encrypt(&token).expect("whole blocks")))])))
+                    }
+                    _ => err(0x01),
                 }
-                let k = pin::random_secret().expect("random");
-                let public = pin::cose_key(&k.public_key());
-                self.agreement = Some(k);
-                Answer::Now(ok(int_map(vec![(1, public)])))
             }
             ctap::MAKE_CREDENTIAL => {
                 let Some(p) = p else { return err(0x14) };
+                // With a PIN: its token's proof of the client data hash.
+                if self.pin.is_some() {
+                    let (Some(param), Some(protocol), Some(cdh)) = (get(p, 8).and_then(|a| a.as_bytes()), get(p, 9).and_then(int), get(p, 1).and_then(|c| c.as_bytes())) else {
+                        return err(ctap::ERR_PIN_REQUIRED);
+                    };
+                    let Some(token) = self.token else { return err(ctap::ERR_PIN_AUTH_INVALID) };
+                    let mut mac = <hmac::Hmac<Sha256> as KeyInit>::new_from_slice(&token).expect("any key length");
+                    mac.update(cdh);
+                    let full = mac.finalize().into_bytes();
+                    let want = if protocol == 1 { &full[..16] } else { &full[..] };
+                    if param[..] != *want {
+                        return err(ctap::ERR_PIN_AUTH_INVALID);
+                    }
+                }
                 let Some(rp) = get(p, 2).and_then(|r| r.as_map()).and_then(|m| m.iter().find(|(k, _)| k.as_text() == Some("id"))).and_then(|(_, v)| v.as_text()) else { return err(0x14) };
                 let mut nonce = [0u8; 16];
                 getrandom::fill(&mut nonce).expect("random");

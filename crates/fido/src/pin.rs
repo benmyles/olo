@@ -1,6 +1,7 @@
 //! ClientPIN's key agreement (CTAP 2.1 §6.5): a shared secret with the
 //! key over P-256 ECDH, in PIN/UV protocol 1 or 2, which `hmac-secret`
-//! encrypts its salts and its answer with.
+//! encrypts its salts and its answer with; and, for a key with a PIN, a
+//! token for it (`token`) that lets Olo make its credential.
 
 use aes::cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyIvInit, block_padding::NoPadding};
 use ciborium::Value;
@@ -103,6 +104,69 @@ impl Shared {
         let full = mac.finalize().into_bytes();
         if self.protocol == 1 { full[..16].to_vec() } else { full.to_vec() }
     }
+}
+
+/// What a PIN gives: a token that proves it to the key (each command's
+/// `pinUvAuthParam`), in the protocol it was got in.
+pub struct Token {
+    pub protocol: u8,
+    token: Zeroizing<Vec<u8>>,
+}
+
+impl Token {
+    /// `msg`'s proof (`pinUvAuthParam`): HMAC-SHA-256 with the token, its
+    /// first 16 bytes in protocol 1.
+    pub fn authenticate(&self, msg: &[u8]) -> Vec<u8> {
+        let mut mac = <hmac::Hmac<Sha256> as KeyInit>::new_from_slice(&self.token).expect("any key length");
+        mac.update(msg);
+        let full = mac.finalize().into_bytes();
+        if self.protocol == 1 { full[..16].to_vec() } else { full.to_vec() }
+    }
+}
+
+/// ClientPIN's subcommands.
+const GET_RETRIES: u8 = 0x01;
+const GET_PIN_TOKEN: u8 = 0x05;
+const GET_TOKEN_WITH_PERMISSIONS: u8 = 0x09;
+/// The permission to make a credential (`mc`).
+const PERMISSION_MC: u8 = 0x01;
+
+/// The PIN as the key takes it: SHA-256 of its UTF-8, the first 16 bytes.
+pub fn pin_hash(pin: &str) -> [u8; 16] {
+    let full = Sha256::digest(pin.as_bytes());
+    let mut h = [0u8; 16];
+    h.copy_from_slice(&full[..16]);
+    h
+}
+
+/// A token for `pin` from the key behind `ch`, to make a credential for
+/// `rp` (CTAP 2.1's with that permission where the key has it, else 2.0's
+/// getPinToken). A wrong PIN: `Error::PinWrong` with the tries left.
+pub fn token<T: Transport>(ch: &mut Channel<T>, protocol: u8, permissions: bool, pin: &str, rp: &str, wait: &Wait) -> Result<Token> {
+    let shared = agree(ch, protocol, wait)?;
+    let pin_hash_enc = shared.encrypt(&pin_hash(pin))?;
+    let mut params = vec![(1, Value::Integer(protocol.into())), (3, shared.platform_key.clone()), (6, Value::Bytes(pin_hash_enc))];
+    if permissions {
+        params.insert(1, (2, Value::Integer(GET_TOKEN_WITH_PERMISSIONS.into())));
+        params.push((9, Value::Integer(PERMISSION_MC.into())));
+        params.push((10, Value::Text(rp.into())));
+    } else {
+        params.insert(1, (2, Value::Integer(GET_PIN_TOKEN.into())));
+    }
+    let answer = match ch.cbor(CLIENT_PIN, Some(int_map(params)), wait) {
+        Ok(a) => a.ok_or(Error::Protocol("no PIN token"))?,
+        Err(Error::Ctap(crate::ctap::ERR_PIN_INVALID)) => return Err(Error::PinWrong(retries(ch, protocol, wait).ok())),
+        Err(e) => return Err(e),
+    };
+    let sealed = get(&answer, 2).and_then(|t| t.as_bytes()).ok_or(Error::Protocol("no PIN token"))?;
+    Ok(Token { protocol, token: Zeroizing::new(shared.decrypt(sealed)?.to_vec()) })
+}
+
+/// How many more PINs the key takes before it locks itself.
+pub fn retries<T: Transport>(ch: &mut Channel<T>, protocol: u8, wait: &Wait) -> Result<u32> {
+    let params = int_map(vec![(1, Value::Integer(protocol.into())), (2, Value::Integer(GET_RETRIES.into()))]);
+    let answer = ch.cbor(CLIENT_PIN, Some(params), wait)?.ok_or(Error::Protocol("no retries"))?;
+    get(&answer, 3).and_then(crate::ctap::int).map(|n| n as u32).ok_or(Error::Protocol("no retries"))
 }
 
 /// A random P-256 secret key.

@@ -55,8 +55,13 @@ pub enum Error {
     Random,
     /// The key can't make a credential with a secret (no `hmac-secret`).
     NoHmacSecret,
-    /// The key has a PIN, which making a credential needs.
+    /// The key has a PIN, which making a credential needs: asked for.
     PinNeeded,
+    /// The PIN wasn't the key's (how many more it takes, if it said).
+    PinWrong(Option<u32>),
+    /// The key wants its PIN at every use (`alwaysUv`), which a touch
+    /// standing for a password can't have.
+    PinEveryTime,
     /// No key is set up.
     NotSetUp,
     /// No key set up is plugged in.
@@ -87,13 +92,20 @@ impl fmt::Display for Error {
             Error::Hid(c) => write!(f, "The key had a USB error ({c:#04x})."),
             // (A YubiKey gives up on a touch with "operation denied".)
             Error::Ctap(ctap::ERR_USER_ACTION_TIMEOUT | ctap::ERR_OPERATION_DENIED) => write!(f, "The key wasn't touched in time."),
-            Error::Ctap(ctap::ERR_PIN_REQUIRED) => write!(f, "The key wants its PIN, which Olo doesn't ask for yet."),
+            Error::Ctap(ctap::ERR_PIN_REQUIRED) => write!(f, "The key wants its PIN."),
+            Error::Ctap(ctap::ERR_PIN_BLOCKED) => write!(f, "The key's PIN is blocked after too many wrong tries: it can only be reset (which erases the key)."),
+            Error::Ctap(ctap::ERR_PIN_AUTH_BLOCKED) => write!(f, "The key stopped taking PINs for now: unplug it, plug it in again and try once more."),
+            Error::Ctap(ctap::ERR_PIN_POLICY_VIOLATION) => write!(f, "The key doesn't take that PIN (too short?)."),
             Error::Ctap(c) => write!(f, "The key refused ({c:#04x})."),
             Error::Cbor => write!(f, "The key's answer couldn't be read."),
             Error::Protocol(what) => write!(f, "The key answered something unexpected ({what})."),
             Error::Random => write!(f, "No random numbers to be had."),
             Error::NoHmacSecret => write!(f, "This key can't keep a secret for Olo (it has no hmac-secret)."),
-            Error::PinNeeded => write!(f, "This key has a PIN, which Olo doesn't ask for yet."),
+            Error::PinNeeded => write!(f, "This key has a PIN: type it to set the key up."),
+            Error::PinWrong(Some(1)) => write!(f, "That isn't the key's PIN. One more wrong PIN blocks it."),
+            Error::PinWrong(Some(n)) => write!(f, "That isn't the key's PIN ({n} tries left)."),
+            Error::PinWrong(None) => write!(f, "That isn't the key's PIN."),
+            Error::PinEveryTime => write!(f, "This key asks for its PIN at every use, so a touch can't stand for your password."),
             Error::NotSetUp => write!(f, "No security key is set up."),
             Error::NoKey => write!(f, "None of the security keys set up is plugged in."),
             Error::WrongKey => write!(f, "That key doesn't open the password kept for it."),
@@ -204,17 +216,27 @@ fn touched<T>(which: u8, cancel: &AtomicBool, touch: &(dyn Fn(Asked) + Sync), mu
 
 /// Set key `device` up for `user`'s `password` (checked already): two
 /// touches, `touch` told as each is wanted (each asked again if the key
-/// stops waiting for it). The caller keeps the result (`seal::save`).
-pub fn set_up(device: &Device, user: &str, password: &str, cancel: &AtomicBool, touch: &(dyn Fn(Asked) + Sync)) -> Result<Sealed> {
+/// stops waiting for it). A key with a PIN takes `pin` (once: the touches
+/// after need none); without it, `Error::PinNeeded`. The caller keeps the
+/// result (`seal::save`).
+pub fn set_up(device: &Device, user: &str, password: &str, pin: Option<&str>, cancel: &AtomicBool, touch: &(dyn Fn(Asked) + Sync)) -> Result<Sealed> {
     let mut ch = busy_retry(cancel, || open(device))?;
     let info = ch.get_info()?;
     if !info.hmac_secret() {
         return Err(Error::NoHmacSecret);
     }
-    if info.make_credential_needs_pin() {
-        return Err(Error::PinNeeded);
+    if info.option("alwaysUv") == Some(true) {
+        return Err(Error::PinEveryTime);
     }
-    let made = touched(1, cancel, touch, |wait| cred::make(&mut ch, user, wait))?;
+    let token = match (info.make_credential_needs_pin(), pin) {
+        (false, _) => None,
+        (true, None) => return Err(Error::PinNeeded),
+        (true, Some(pin)) => {
+            let wait = Wait { cancel, touch: &|| {}, limit: Duration::from_secs(10) };
+            Some(pin::token(&mut ch, info.pin_protocol(), info.option("pinUvAuthToken") == Some(true), pin, cred::RP, &wait)?)
+        }
+    };
+    let made = touched(1, cancel, touch, |wait| cred::make(&mut ch, user, token.as_ref(), wait))?;
     let mut salt = [0u8; 32];
     getrandom::fill(&mut salt).map_err(|_| Error::Random)?;
     let secret = touched(2, cancel, touch, |wait| cred::secret(&mut ch, info.pin_protocol(), &made.id, &salt, wait))?;
@@ -351,7 +373,7 @@ mod tests {
         let wait = Wait { cancel: &never, touch: &touch, limit: Duration::from_secs(5) };
         for protocol in [1, 2] {
             let mut ch = soft(2);
-            let made = cred::make(&mut ch, "ben", &wait).unwrap();
+            let made = cred::make(&mut ch, "ben", None, &wait).unwrap();
             let salt = [5u8; 32];
             let secret = cred::secret(&mut ch, protocol, &made.id, &salt, &wait).unwrap();
             let s = seal::seal("Olo Soft Key", &made.aaguid, "ben", &made.id, &salt, &secret, "correct horse").unwrap();
@@ -385,7 +407,7 @@ mod tests {
         let mut key = soft::Soft::new([4; 32], Some(Duration::from_millis(30)));
         key.misses = 2;
         let mut ch = Channel::open(key).unwrap();
-        let made = touched(1, &never, &touch, |w| cred::make(&mut ch, "ben", w)).unwrap();
+        let made = touched(1, &never, &touch, |w| cred::make(&mut ch, "ben", None, w)).unwrap();
         touched(2, &never, &touch, |w| cred::secret(&mut ch, 2, &made.id, &[1; 32], w)).unwrap();
         // (The two missed asked no touch of their own: answered at once.)
         assert_eq!(*asked.lock().unwrap(), [Asked { touch: 1, again: true }, Asked { touch: 2, again: false }]);
@@ -393,8 +415,44 @@ mod tests {
         let mut key = soft::Soft::new([4; 32], Some(Duration::from_millis(30)));
         key.misses = TOUCH_TRIES as usize;
         let mut ch = Channel::open(key).unwrap();
-        let e = touched(1, &never, &touch, |w| cred::make(&mut ch, "ben", w)).unwrap_err();
+        let e = touched(1, &never, &touch, |w| cred::make(&mut ch, "ben", None, w)).unwrap_err();
         assert!(matches!(e, Error::Ctap(ctap::ERR_OPERATION_DENIED)) && e.to_string() == "The key wasn't touched in time.", "{e:?}");
+    }
+
+    /// A key with a PIN: its credential made only with the PIN's token
+    /// (2.0's getPinToken and 2.1's with permissions, both protocols); a
+    /// wrong PIN said with the tries left, blocked after the last; the
+    /// secret after needing no PIN.
+    #[test]
+    fn a_key_with_a_pin() {
+        let never = AtomicBool::new(false);
+        let wait = Wait { cancel: &never, touch: &|| {}, limit: Duration::from_secs(5) };
+        for (protocol, permissions) in [(1, false), (2, false), (2, true)] {
+            let mut ch = Channel::open(soft::Soft::new([7; 32], Some(Duration::from_millis(10))).with_pin("2468")).unwrap();
+            let info = ch.get_info().unwrap();
+            assert!(info.pin_set() && info.make_credential_needs_pin());
+            // Without its PIN: refused.
+            assert!(matches!(cred::make(&mut ch, "ben", None, &wait), Err(Error::Ctap(ctap::ERR_PIN_REQUIRED))));
+            // A wrong PIN: said, with the tries left.
+            let e = pin::token(&mut ch, protocol, permissions, "1357", cred::RP, &wait).err().unwrap();
+            assert!(matches!(e, Error::PinWrong(Some(7))), "{e:?}");
+            assert_eq!(e.to_string(), "That isn't the key's PIN (7 tries left).");
+            // Its PIN: a token that makes the credential, whose secret then
+            // needs no PIN.
+            let t = pin::token(&mut ch, protocol, permissions, "2468", cred::RP, &wait).unwrap();
+            let made = cred::make(&mut ch, "ben", Some(&t), &wait).unwrap();
+            let secret = cred::secret(&mut ch, protocol, &made.id, &[3; 32], &wait).unwrap();
+            let mut again = Channel::open(soft::Soft::new([7; 32], Some(Duration::from_millis(10))).with_pin("2468")).unwrap();
+            assert_eq!(*cred::secret(&mut again, protocol, &made.id, &[3; 32], &wait).unwrap(), *secret);
+        }
+        // Eight wrong PINs: blocked, and said so.
+        let mut ch = Channel::open(soft::Soft::new([7; 32], None).with_pin("2468")).unwrap();
+        for left in (1..8).rev() {
+            assert!(matches!(pin::token(&mut ch, 2, true, "0000", cred::RP, &wait), Err(Error::PinWrong(Some(n))) if n == left));
+        }
+        let e = pin::token(&mut ch, 2, true, "0000", cred::RP, &wait).err().unwrap();
+        assert!(matches!(e, Error::Ctap(ctap::ERR_PIN_BLOCKED)), "{e:?}");
+        assert!(e.to_string().contains("blocked"));
     }
 
     #[test]
@@ -415,7 +473,7 @@ mod tests {
         let touch = || cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         let wait = Wait { cancel: &cancel, touch: &touch, limit: Duration::from_secs(10) };
         // The window going away as the key starts waiting: cancelled at once.
-        assert!(matches!(cred::make(&mut ch, "ben", &wait), Err(Error::Cancelled)));
+        assert!(matches!(cred::make(&mut ch, "ben", None, &wait), Err(Error::Cancelled)));
         assert!(start.elapsed() < Duration::from_secs(2));
     }
 }

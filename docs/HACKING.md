@@ -6370,8 +6370,20 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   CTAPHID and CTAP2, its master secret in FILE so a credential made in
   one process opens in another) that touches itself
   `OLO_FIDO_SOFT_TOUCH_MS` (400) after it starts waiting, or never
-  ("never"); with the PAM stand-in (`OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE`),
-  `OLO_SUDO_REAL` and `OLO_POLKIT_HELPER` the whole thing runs headless.
+  ("never"), with a PIN if `OLO_FIDO_SOFT_PIN` is set (eight tries); with
+  the PAM stand-in (`OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE`, given to
+  `tsession run` itself: it doesn't pass them on), `OLO_SUDO_REAL` and
+  `OLO_POLKIT_HELPER` the whole thing runs headless.
+* **A key with a PIN**: setting it up asks for the PIN beside the
+  password, once (Preferences knows from the key's info). `olo_fido::pin::
+  token` gets a token for it (CTAP 2.1's with the make-credential
+  permission where the key offers `pinUvAuthToken`, else 2.0's
+  getPinToken), and makeCredential carries its proof. The secret after
+  needs no PIN: the `hmac-secret` assertion is made without user
+  verification at setup and at every touch alike, so it is the same
+  secret. A wrong PIN says how many tries are left. A key that wants
+  its PIN at every use (`alwaysUv`) is listed as unusable: a touch
+  couldn't stand for the password.
   `cargo run -p olo-fido --example info` asks every key plugged in what it
   is, without a touch; `--example touch` runs setting up's two touches on
   the first key plugged in (nothing kept, no password), every CTAPHID

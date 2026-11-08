@@ -87,7 +87,7 @@ fn main() {
     // (Asked again when the key gives up waiting, three times in all.)
     let mut tries = 0;
     let made = loop {
-        match cred::make(&mut ch, "olo-touch-test", &wait) {
+        match cred::make(&mut ch, "olo-touch-test", None, &wait) {
             Ok(m) => break m,
             Err(olo_fido::Error::Ctap(0x27 | 0x2F)) if tries < 2 => {
                 tries += 1;
