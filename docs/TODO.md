@@ -1733,10 +1733,16 @@ something nobody here has is in "Blocked", with what it waits for.
     2560 × 1600 screen in about 8.5 ms a frame), `--encoder vaapi`, auto
     falling back to it for AV1, and Preferences ▸ GPUs offering it where
     the driver says it encodes AV1 (asked on the panel's thread, about
-    15 ms: no cache needed). *Left*: the frames as dmabufs (CUDA's
-    external memory; VA-API's DRM PRIME import with its video processor
-    making NV12) rather than copied; auto preferring the Intel GPU on
-    battery.
+    15 ms: no cache needed). Then: the frames as dmabufs to VA-API
+    (DRM PRIME import, its video processor making NV12: 0676a351, 2.2%
+    of a core recording 4K), and auto preferring the Intel GPU for AV1 on
+    battery, both done. NVENC (2026-11-08): CUDA imports only its own
+    GPU's memory and app_server draws on the Intel GPU, so frames cross
+    to the NVIDIA GPU through the processor either way. The crossing was
+    made half as dear: a 4K recording on NVENC went from 40.1% of a core
+    to 20.2%, with frame buffers reused (each new one had been zeroed
+    page by page) and a frame the video's size encoded from where it is,
+    not copied into the canvas first.
 
 - **Terminal: light mode hard to read** (*better* 2026-11-02: text kept
   at 4.5:1 from its cell, `colors::legible`, so a dark terminal's pale
