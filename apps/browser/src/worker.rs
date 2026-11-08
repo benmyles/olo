@@ -90,6 +90,9 @@ pub enum Message {
     Traverse(String),
     /// The person chose this option (by index) of a select from its menu.
     ChooseOption(olo_web::dom::NodeId, usize),
+    /// A style sheet or font the live page waited for (without waiting)
+    /// arrived: it renders again, taking it.
+    Arrived,
 }
 /// A drop-down the person pressed, for the window to open its menu over:
 /// where it is (its border box, CSS px on the page, or in the viewport when
@@ -527,6 +530,41 @@ fn intersect(a: layout::Rect, b: layout::Rect) -> Option<layout::Rect> {
 }
 /// Whether an error only says the work was cancelled (a newer request
 /// took over), as every phase reports it.
+/// A style sheet or font the live page's scripts added: loaded when it is
+/// here; else its fetch is started without waiting (the page told when it
+/// lands, `Message::Arrived`) and `page::PENDING` answered: the page
+/// renders on with the sheets it has, as Chrome does until a sheet loads.
+#[allow(clippy::too_many_arguments)]
+fn live_resource(
+    loader: &crate::network::Loader,
+    light: &crate::network::Resource,
+    kind: page::ResourceKind,
+    base: Option<&str>,
+    href: &str,
+    cancel: &crate::network::Cancel,
+    tx: &mpsc::Sender<Message>,
+) -> page::Result<Option<page::Resource>> {
+    let url = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok();
+    if let Some(u) = &url
+        && matches!(kind, page::ResourceKind::Stylesheet | page::ResourceKind::Font)
+    {
+        let tx = tx.clone();
+        if !loader.ready_or_start(light, kind, u, cancel, Box::new(move || drop(tx.send(Message::Arrived)))) {
+            return Err(page::PENDING.into());
+        }
+    }
+    Ok(match kind {
+        page::ResourceKind::Stylesheet => {
+            let absolute = url.as_ref().map(|u| Arc::<str>::from(u.as_str()));
+            loader.stylesheet(light, base, href, cancel, |_| {}).ok().map(|s| page::Resource::Stylesheet(s, absolute))
+        }
+        page::ResourceKind::Font => url.and_then(|u| loader.font(light, u, cancel, |_| {}).ok()).map(page::Resource::Font),
+        page::ResourceKind::Image | page::ResourceKind::Script => None,
+    })
+}
+fn is_pending(error: &page::Error) -> bool {
+    error.to_string() == page::PENDING
+}
 fn is_cancellation(error: &page::Error) -> bool {
     error.to_string().ends_with("Cancelled")
 }
@@ -813,6 +851,15 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             }
                             continue;
                         }
+                        Message::Arrived => {
+                            if let Some(c) = cached.as_mut()
+                                && let Some(live) = c.live.as_mut()
+                            {
+                                live.render_again = true;
+                                live.next_due_ms = Some(0.);
+                            }
+                            continue;
+                        }
                         Message::Frame => {
                             if let Some(c) = cached.as_mut()
                                 && let Some(live) = c.live.as_mut()
@@ -994,6 +1041,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             Message::Input(input) => kept.push_back(Message::Input(input)),
                             Message::Loaded(id, result) => kept.push_back(Message::Loaded(id, result)),
                             Message::Wake => kept.push_back(Message::Wake),
+                            Message::Arrived => kept.push_back(Message::Arrived),
                             Message::Frame => kept.push_back(Message::Frame),
                             Message::Recycle(images) => drop(images),
                             Message::SharedTextures(list) => kept.push_back(Message::SharedTextures(list)),
@@ -1238,22 +1286,14 @@ fn render(
             let cancel = live.cancel.clone();
             if let Some(document) = &c.document {
                 let light = document.light();
-                let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| -> page::Result<Option<page::Resource>> {
-                    Ok(match kind {
-                        page::ResourceKind::Stylesheet => {
-                            let absolute = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok().map(|u| Arc::<str>::from(u.as_str()));
-                            loader.stylesheet(&light, base, href, &cancel, |_| {}).ok().map(|s| page::Resource::Stylesheet(s, absolute))
-                        }
-                        page::ResourceKind::Font => {
-                            let url = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok();
-                            url.and_then(|u| loader.font(&light, u, &cancel, |_| {}).ok()).map(page::Resource::Font)
-                        }
-                        page::ResourceKind::Image => None,
-                        page::ResourceKind::Script => None,
-                    })
-                };
-                if c.page.refresh(&doc, Some(&cancel), &mut resource)? && olo_web::env_on!("OLO_BROWSER_TIMING") {
-                    eprintln!("  live render: stylesheets changed, rules remade");
+                let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| live_resource(&loader, &light, kind, base, href, &cancel, &tx);
+                match c.page.refresh(&doc, Some(&cancel), &mut resource) {
+                    Ok(true) if olo_web::env_on!("OLO_BROWSER_TIMING") => eprintln!("  live render: stylesheets changed, rules remade"),
+                    Ok(_) => {}
+                    // A sheet still loading: this render with the sheets as
+                    // they were, the next once it lands.
+                    Err(e) if is_pending(&e) => {}
+                    Err(e) => return Err(e),
                 }
             }
             let host = PageHost::new(c.page.scope(), &r.key);
@@ -1484,25 +1524,13 @@ fn render(
                 let key = r.key.clone();
                 let loader = loader.clone();
                 let light = document.light();
+                let tx = tx.clone();
                 let mut measurer = measurer;
                 let timing = olo_web::env_on!("OLO_BROWSER_TIMING");
                 Box::new(move |doc: &olo_web::dom::Document, previous: Option<page::Measured>| {
                     let call = Instant::now();
                     // Stylesheets the scripts added since: the rules follow.
-                    let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| -> page::Result<Option<page::Resource>> {
-                        Ok(match kind {
-                            page::ResourceKind::Stylesheet => {
-                                let absolute = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok().map(|u| Arc::<str>::from(u.as_str()));
-                                loader.stylesheet(&light, base, href, &cancel, |_| {}).ok().map(|s| page::Resource::Stylesheet(s, absolute))
-                            }
-                            page::ResourceKind::Font => {
-                                let url = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok();
-                                url.and_then(|u| loader.font(&light, u, &cancel, |_| {}).ok()).map(page::Resource::Font)
-                            }
-                            page::ResourceKind::Image => None,
-                            page::ResourceKind::Script => None,
-                        })
-                    };
+                    let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| live_resource(&loader, &light, kind, base, href, &cancel, &tx);
                     let refresh_started = Instant::now();
                     match measurer.refresh(doc, Some(&cancel), &mut resource) {
                         Ok(true) => {
@@ -1512,6 +1540,7 @@ fn render(
                             host = PageHost::new(measurer.scope(), &key);
                         }
                         Ok(false) => {}
+                        Err(e) if is_pending(&e) => {}
                         Err(e) => eprintln!("Browser scripts: stylesheets: {e}"),
                     }
                     match measurer.measure(doc, &host, &mut shaper, viewport, previous, Some(&cancel)) {

@@ -65,6 +65,9 @@ pub struct Loader {
     /// request's (the page asks to render again while they are under way;
     /// they stop when another document loads).
     ahead: std::sync::Mutex<(Cancel, Option<Url>)>,
+    /// Who to tell when a fetch started ahead lands, by URL (a live page
+    /// rendering without the sheet it waits for).
+    waiters: Arc<std::sync::Mutex<std::collections::HashMap<String, Vec<Box<dyn FnOnce() + Send>>>>>,
 }
 /// A picture being decoded ahead: its result once there.
 #[derive(Default)]
@@ -163,6 +166,7 @@ impl Loader {
             permits: Arc::new(tokio::sync::Semaphore::new(PREFETCHES)),
             decoding: Default::default(),
             ahead: Default::default(),
+            waiters: Default::default(),
         })
     }
     fn navigation(source: &str, cwd: Option<&std::path::Path>) -> page::Result<Url> {
@@ -471,7 +475,7 @@ impl Loader {
                 inflight.insert(url.to_string(), cell.clone());
                 cell
             };
-            let (client, cache, inflight, permits) = (self.client.clone(), self.cache.clone(), self.inflight.clone(), self.permits.clone());
+            let (client, cache, inflight, permits, waiters) = (self.client.clone(), self.cache.clone(), self.inflight.clone(), self.permits.clone(), self.waiters.clone());
             let _ = cancel;
             let ahead = self.ahead.lock().unwrap().0.clone();
             let (initiator, flag, signal) = (initiator.clone(), ahead.flag.clone(), ahead.signal.clone());
@@ -502,6 +506,11 @@ impl Loader {
                     {
                         remember(&cache, url.as_str(), r);
                         inflight.lock().unwrap().remove(url.as_str());
+                    }
+                    // (Taken under the lock `ready_or_start` registers under.)
+                    let woken = waiters.lock().unwrap().remove(url.as_str()).unwrap_or_default();
+                    for wake in woken {
+                        wake();
                     }
                 };
                 tokio::select! { biased; _ = signal.cancelled() => {
@@ -542,6 +551,39 @@ impl Loader {
         match result.take() {
             Some(Decoded::Image(image)) => Some(image),
             _ => None,
+        }
+    }
+    /// Whether a style sheet or font is here to load without waiting (in the
+    /// cache, or its fetch done, whatever came of it). If not, its fetch is
+    /// started (or already going) and `wake` is called when it lands.
+    pub fn ready_or_start(&self, document: &Resource, kind: page::ResourceKind, url: &Url, cancel: &Cancel, wake: Box<dyn FnOnce() + Send>) -> bool {
+        if !matches!(url.scheme(), "http" | "https") {
+            return true;
+        }
+        let key = url.as_str();
+        let mut waiters = self.waiters.lock().unwrap();
+        if self.cache.lock().unwrap().entries.contains_key(key) {
+            return true;
+        }
+        let started = self.inflight.lock().unwrap().get(key).cloned();
+        match started {
+            Some(cell) if cell.initialized() => true,
+            Some(_) => {
+                waiters.entry(key.to_owned()).or_default().push(wake);
+                false
+            }
+            None => {
+                waiters.entry(key.to_owned()).or_default().push(wake);
+                drop(waiters);
+                self.prefetch(document, kind, &[(None, url.to_string())], cancel);
+                // Refused to start (a scheme or mixed content): loaded (and
+                // refused) as before.
+                if !self.inflight.lock().unwrap().contains_key(key) {
+                    self.waiters.lock().unwrap().remove(key);
+                    return true;
+                }
+                false
+            }
         }
     }
     /// Start fetching a page's scripts ahead (its external classic and

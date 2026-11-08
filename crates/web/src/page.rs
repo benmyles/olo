@@ -514,12 +514,12 @@ impl Measurer {
         }
         let started = std::time::Instant::now();
         let mut sheets = ua_sheets(doc, self.quirks, cancel)?;
-        let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel)?;
+        let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel).inspect_err(|_| self.checked = None)?;
         sheets.extend(loaded);
         let loaded_at = started.elapsed();
         let (rules, _, faces, _) = compile(&sheets, self.media, cancel)?;
         let compiled_at = started.elapsed();
-        let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel)?;
+        let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel).inspect_err(|_| self.checked = None)?;
         if crate::env_on!("OLO_WEB_TIMING") {
             eprintln!(
                 "  measurer sheets: {} ({} KB) loaded in {:.0} ms, compiled in {:.0} ms, fonts {:.0} ms",
@@ -1105,6 +1105,9 @@ const UA_QUIRKS: &str = concat!(
     "input:not([type=checkbox i],[type=radio i],[type=image i],[type=submit i],[type=button i],[type=reset i],[type=hidden i]){width:185px}textarea{width:201px;height:42px}",
     "img[align=left i]{margin-right:3px}img[align=right i]{margin-left:3px}",
 );
+/// What a host's resource answers for one it is still fetching (without
+/// waiting for it): the sheets are looked at again at the next render.
+pub const PENDING: &str = "Resource still loading";
 /// The user agent's sheet, and the page's `<meta name=color-scheme>` as
 /// its root's `color-scheme` when its own sheets give none (HTML §4.2.5.4).
 fn ua_sheets(doc: &Document, quirks: bool, cancel: Option<&AtomicBool>) -> Result<Vec<Sheet>> {
@@ -2098,10 +2101,12 @@ impl Page {
             return Ok(false);
         }
         let mut sheets = ua_sheets(doc, self.quirks, cancel)?;
-        let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel)?;
+        // A sheet or font still loading (the host fetches it without
+        // waiting, see `PENDING`): looked at again at the next render.
+        let (loaded, _) = load_sheets(doc, &nodes, base.as_deref(), resource, cancel).inspect_err(|_| self.sheets_checked = None)?;
         sheets.extend(loaded);
         let (rules, dependent, faces, _) = compile(&sheets, self.media, cancel)?;
-        let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel)?;
+        let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel).inspect_err(|_| self.sheets_checked = None)?;
         self.rules = rules;
         self.media_dependent = dependent;
         self.interaction_mask = self.rules.state_mask();
