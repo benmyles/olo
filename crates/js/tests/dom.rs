@@ -386,3 +386,22 @@ fn the_page_is_not_a_touch_device() {
     realm.run_page(&scripts);
     assert_eq!(realm.report().console, ["[log] false false 0 true true"]);
 }
+#[test]
+fn raw_text_elements_serialize_their_text_as_it_is() {
+    // apple.com's lazy pictures parse their sources from the <noscript>'s
+    // innerHTML (text, with scripting on), which came back escaped.
+    let page = r#"<noscript><picture><source srcset="a.jpg"></picture></noscript><style>a > b {}</style><template><p>t</p></template><p>1 &lt; 2</p><script>
+console.log(document.querySelector('noscript').innerHTML, document.querySelector('style').innerHTML, document.querySelector('template').innerHTML, document.querySelector('p').innerHTML);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    assert_eq!(realm.report().console, [r#"[log] <picture><source srcset="a.jpg"></picture> a > b {} <p>t</p> 1 &lt; 2"#]);
+}

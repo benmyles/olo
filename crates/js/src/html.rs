@@ -31,10 +31,24 @@ fn escape_attribute(s: &str, out: &mut String) {
     }
 }
 /// The HTML fragment serialisation of a node's children (`innerHTML`).
+/// Text in these is written as it is (HTML §13.3, scripting on: the
+/// parser keeps `<noscript>`'s content as text). Apple's lazy pictures
+/// read their sources from `noscript.innerHTML`, which came back escaped.
+fn raw_text(doc: &Document, node: NodeId) -> olo_web::dom::Result<bool> {
+    Ok(doc.node_type(node)? == NodeType::Element
+        && doc.namespace(node)? == Some(Namespace::Html)
+        && matches!(doc.name(node)?.unwrap_or(""), "style" | "script" | "xmp" | "iframe" | "noembed" | "noframes" | "plaintext" | "noscript"))
+}
 pub fn inner_html(doc: &Document, node: NodeId, out: &mut String, budget: &mut usize) -> olo_web::dom::Result<()> {
-    let mut child = doc.first_child(node)?;
+    let raw = raw_text(doc, node)?;
+    let container = doc.template_contents(node)?.unwrap_or(node);
+    let mut child = doc.first_child(container)?;
     while let Some(c) = child {
-        serialize(doc, c, out, budget)?;
+        if raw && doc.node_type(c)? == NodeType::Text {
+            out.push_str(doc.value(c)?.unwrap_or(""));
+        } else {
+            serialize(doc, c, out, budget)?;
+        }
         child = doc.next_sibling(c)?;
     }
     Ok(())
@@ -61,7 +75,7 @@ pub fn serialize(doc: &Document, node: NodeId, out: &mut String, budget: &mut us
             if html && is_void(name) {
                 return Ok(());
             }
-            let raw = html && matches!(name, "style" | "script" | "xmp" | "iframe" | "noembed" | "noframes" | "plaintext" | "noscript");
+            let raw = raw_text(doc, node)?;
             // A template's children are its contents fragment's.
             let container = doc.template_contents(node)?.unwrap_or(node);
             let mut child = doc.first_child(container)?;
