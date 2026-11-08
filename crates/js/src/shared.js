@@ -166,9 +166,42 @@
     static error() { return new Response('', { status: 0 }); }
     static redirect(url, status) { return new Response('', { status: status || 302, headers: { location: String(url) } }); }
   }
+  // A Request's state, in slots of its own (as a browser's internal
+  // slots): fetch() reads these, not the properties a page may redefine.
+  const requestSlots = new WeakMap();
+  const requestSlot = (r) => requestSlots.get(r);
   class Request extends Body {
-    constructor(input, init) { init = init || {}; super(init.body == null ? (input instanceof Request ? input._bytes : '') : init.body); this.url = input instanceof Request ? input.url : resolveURL(String(input)); this.method = (init.method || (input instanceof Request && input.method) || 'GET').toUpperCase(); this.headers = new Headers(init.headers || (input instanceof Request && input.headers)); this.credentials = init.credentials || 'same-origin'; this.mode = init.mode || 'cors'; this.signal = init.signal || null; this.cache = init.cache || 'default'; this.redirect = init.redirect || 'follow'; this.referrer = ''; this.keepalive = !!init.keepalive; }
-    clone() { return new Request(this.url, { method: this.method, headers: this.headers, body: this._bytes }); }
+    constructor(input, init) {
+      init = init || {};
+      const from = input instanceof Request ? requestSlot(input) : null;
+      super(init.body == null ? (from ? input._bytes : '') : init.body);
+      const headers = new Headers(init.headers || (from && from.headers));
+      if (init.body != null && !headers.has('content-type')) { const b = init.body; const t = typeof b === 'string' ? 'text/plain;charset=UTF-8' : b instanceof URLSearchParams ? 'application/x-www-form-urlencoded;charset=UTF-8' : b instanceof Blob && b.type ? b.type : null; if (t) headers.set('content-type', t); }
+      requestSlots.set(this, {
+        url: from ? from.url : resolveURL(String(input)),
+        method: String(init.method || (from && from.method) || 'GET').toUpperCase(),
+        headers,
+        credentials: init.credentials || (from && from.credentials) || 'same-origin',
+        mode: init.mode || (from && from.mode) || 'cors',
+        signal: init.signal || (from && from.signal) || null,
+        cache: init.cache || (from && from.cache) || 'default',
+        redirect: init.redirect || (from && from.redirect) || 'follow',
+        keepalive: !!(init.keepalive || (from && from.keepalive)),
+      });
+    }
+    get url() { return requestSlot(this).url; }
+    get method() { return requestSlot(this).method; }
+    get headers() { return requestSlot(this).headers; }
+    get credentials() { return requestSlot(this).credentials; }
+    get mode() { return requestSlot(this).mode; }
+    get signal() { return requestSlot(this).signal; }
+    get cache() { return requestSlot(this).cache; }
+    get redirect() { return requestSlot(this).redirect; }
+    get keepalive() { return requestSlot(this).keepalive; }
+    get referrer() { return 'about:client'; }
+    get destination() { return ''; }
+    get integrity() { return ''; }
+    clone() { return new Request(this); }
   }
   global.Headers = Headers; global.Response = Response; global.Request = Request;
   // A data: or blob: URL answered here, without the network.
@@ -187,10 +220,14 @@
   };
   const response = (r) => new Response(r.body, { status: r.status, statusText: r.status === 200 ? 'OK' : '', headers: { 'content-type': r.contentType }, url: r.url });
   global.fetch = (input, init) => new Promise((resolve, reject) => {
-    const req = input instanceof Request ? input : new Request(input, init);
-    if (req.signal && req.signal.aborted) return reject(new DOMException('The operation was aborted.', 'AbortError'));
-    if (/^(data|blob):/.test(req.url)) { try { resolve(response(global.__olo_fetchInline(req.url))); } catch (e) { reject(new TypeError('Failed to fetch: ' + (e && e.message || e))); } return; }
-    const lines = []; if (req.headers && req.headers.forEach) req.headers.forEach((v, k) => lines.push(k + ': ' + v));
-    global.__olo_fetchStart(req.url, req.method, req._bodyString(), lines.join('\n')).then((r) => resolve(response(r)), (e) => reject(new TypeError('Failed to fetch: ' + (e && e.message || e))));
+    // (A Request with an init is a new Request from both, as the spec has it.)
+    const req = input instanceof Request && init == null ? input : new Request(input, init);
+    const slot = requestSlot(req);
+    if (slot.signal && slot.signal.aborted) return reject(new DOMException('The operation was aborted.', 'AbortError'));
+    if (/^(data|blob):/.test(slot.url)) { try { resolve(response(global.__olo_fetchInline(slot.url))); } catch (e) { reject(new TypeError('Failed to fetch: ' + (e && e.message || e))); } return; }
+    (req._source ? req._all() : Promise.resolve()).then(() => {
+      const lines = []; slot.headers.forEach((v, k) => lines.push(k + ': ' + v));
+      return global.__olo_fetchStart(slot.url, slot.method, req._bodyString(), lines.join('\n'));
+    }).then((r) => resolve(response(r)), (e) => reject(new TypeError('Failed to fetch: ' + (e && e.message || e))));
   });
 })(globalThis);

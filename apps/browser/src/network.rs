@@ -139,11 +139,22 @@ impl Loader {
     /// final URL. Not cached.
     pub fn request(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
         let outgoing = Outgoing::new(method, headers, body)?;
+        if std::env::var_os("OLO_FETCH_DEBUG").is_some() {
+            eprintln!(
+                "  request {method} {url}: {:?}; body {} bytes: {}",
+                outgoing.headers.iter().map(|(n, v)| format!("{n}: {}", v.to_str().unwrap_or("?"))).collect::<Vec<_>>(),
+                body.len(),
+                String::from_utf8_lossy(&body[..body.len().min(160)])
+            );
+        }
         let mut progress = |_| {};
         let resource = self.runtime.block_on(async {
             let work = get(&self.client, url, Some(initiator.clone()), SCRIPT_LIMIT, cancel.flag.clone(), &mut progress, Kind::Fetch, false, Some(&outgoing));
             tokio::select! { biased; _ = cancel.signal.cancelled() => Err("Cancelled".into()), result = work => result }
         })?;
+        if std::env::var_os("OLO_FETCH_DEBUG").is_some() && resource.status.is_some_and(|s| s >= 400) {
+            eprintln!("  answered {:?}: {}", resource.status, String::from_utf8_lossy(&resource.bytes[..resource.bytes.len().min(600)]));
+        }
         Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string()))
     }
     /// A fetch() for scripts: status, content type, bytes, final URL.

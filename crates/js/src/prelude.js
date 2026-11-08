@@ -206,7 +206,7 @@
     insertBefore(child, ref) { if (ref == null) N.append(this, asNode(child)); else { if (N.parent(ref) !== this) throw new DOMException('The node before which the new node is to be inserted is not a child of this node.', 'NotFoundError'); N.insertBefore(this, asNode(child), ref); } return child; },
     removeChild(child) { if (N.parent(asNode(child)) !== this) throw new DOMException('The node to be removed is not a child of this node.', 'NotFoundError'); N.remove(child); return child; },
     replaceChild(node, old) { if (N.parent(asNode(old)) !== this) throw new DOMException('The node to be replaced is not a child of this node.', 'NotFoundError'); const next = N.nextSibling(old); N.remove(old); if (next) N.insertBefore(this, asNode(node), next); else N.append(this, node); return old; },
-    cloneNode(deep) { return N.clone(this, !!deep); },
+    cloneNode(deep) { return upgradeClone(N.clone(this, !!deep)); },
     contains(other) { if (!isNode(other)) return false; let n = other; while (n) { if (n === this) return true; n = N.parent(n); } return false; },
     hasChildNodes() { return N.firstChild(this) !== null; },
     getRootNode() { let n = this; while (N.parent(n)) n = N.parent(n); return n; },
@@ -229,11 +229,21 @@
   // Custom elements: after a node joins the document, upgrade and connect the
   // custom elements in it; before it leaves, disconnect them. Nothing is
   // walked while no element is defined.
+  // The custom elements in it, in shadow-including tree order (a custom
+  // element's shadow tree right after it, before its children): a host
+  // joining the document connects what its shadow tree holds too.
   const customIn = (node) => {
-    if (!definitions.size || N.nodeType(node) !== 1) return [];
+    const type = N.nodeType(node);
+    if (!definitions.size || (type !== 1 && type !== 11)) return [];
     const out = [];
-    if (N.nodeName(node).includes('-') || N.attr(node, 'is')) out.push(node);
-    for (const el of N.query(node, '*', true)) if (N.nodeName(el).includes('-') || N.attr(el, 'is')) out.push(el);
+    const add = (el) => {
+      if (!(N.nodeName(el).includes('-') || N.attr(el, 'is'))) return;
+      out.push(el);
+      const root = N.shadowRootOf(el);
+      if (root) for (const inner of customIn(root)) out.push(inner);
+    };
+    if (type === 1) add(node);
+    for (const el of N.query(node, '*', true)) add(el);
     return out;
   };
   const connected = (node) => {
@@ -242,6 +252,13 @@
       upgrade(el, N.nodeName(el).toLowerCase());
       if (el._upgraded && !el._connected && typeof el.connectedCallback === 'function') { Object.defineProperty(el, '_connected', { value: true, configurable: true, writable: true }); try { el.connectedCallback(); } catch (e) { reportError(e); } }
     }
+  };
+  // A clone's custom elements upgraded before cloneNode() or importNode()
+  // returns (HTML's custom element reactions): their constructors run on
+  // the copy, as a template stamped by a framework expects.
+  const upgradeClone = (copy) => {
+    if (definitions.size) for (const el of customIn(copy)) upgrade(el, N.nodeName(el).toLowerCase());
+    return copy;
   };
   const disconnected = (node) => {
     if (!definitions.size || !N.isConnected(node)) return;
@@ -319,12 +336,15 @@
     if (N.nodeName(node) === 'IMG') { if (!imageLoads.has(node)) loadImageElement(node); return; }
     if (N.firstChild(node)) for (const el of N.query(node, 'img', true)) if (!imageLoads.has(el)) loadImageElement(el);
   };
-  N.append = (parent, node) => { const from = N.parent(node); disconnected(node); nativeAppend(parent, node); connected(node); runScriptsIn(node); loadImagesIn(node); if (isPicture(from)) pictureChanged(from); if (isPicture(parent)) pictureChanged(parent); };
-  N.insertBefore = (parent, node, ref) => { const from = N.parent(node); disconnected(node); nativeInsertBefore(parent, node, ref); connected(node); runScriptsIn(node); loadImagesIn(node); if (isPicture(from)) pictureChanged(from); if (isPicture(parent)) pictureChanged(parent); };
+  // What an insertion brings in: the node, or a fragment's children (the
+  // fragment is empty once inserted; a template a framework stamps arrives
+  // as one, and its custom elements connect, its scripts run).
+  const arriving = (node) => (N.nodeType(node) === 11 ? N.childNodes(node) : [node]);
+  const arrived = (nodes) => { for (const n of nodes) { connected(n); runScriptsIn(n); loadImagesIn(n); } };
+  N.append = (parent, node) => { const from = N.parent(node); const nodes = arriving(node); disconnected(node); nativeAppend(parent, node); arrived(nodes); if (isPicture(from)) pictureChanged(from); if (isPicture(parent)) pictureChanged(parent); };
+  N.insertBefore = (parent, node, ref) => { const from = N.parent(node); const nodes = arriving(node); disconnected(node); nativeInsertBefore(parent, node, ref); arrived(nodes); if (isPicture(from)) pictureChanged(from); if (isPicture(parent)) pictureChanged(parent); };
   N.remove = (node) => { const from = N.parent(node); disconnected(node); nativeRemove(node); if (isPicture(from)) pictureChanged(from); };
   N.setInnerHTML = (node, markup) => { if (definitions.size) for (const c of N.childNodes(node)) disconnected(c); nativeSetInnerHTML(node, markup); if (isPicture(node)) pictureChanged(node); if (markup.indexOf('<img') !== -1) loadImagesIn(node); if (definitions.size) for (const c of N.childNodes(node)) connected(c); if (markup.indexOf('<script') !== -1 && N.nodeType(node) === 1) for (const el of N.query(node, 'script', true)) started.add(el); };
-  for (const el of N.query(N.docRoot(), 'script', true)) started.add(el);
-  for (const el of N.query(N.docRoot(), 'link', true)) linksLoaded.add(el);
   define(Node.prototype, {
     append(...args) { for (const n of nodesFrom(args)) N.append(this, n); },
     prepend(...args) { const first = N.firstChild(this); for (const n of nodesFrom(args)) { if (first) N.insertBefore(this, n, first); else N.append(this, n); } },
@@ -487,7 +507,7 @@
     scrollTop: { get() { if (this === html() || this === document.body) return global.scrollY; return N.scrollOffset(this)[1]; }, set(v) { if (this === html() || this === document.body) { global.scrollTo(global.scrollX, Number(v) || 0); return; } scrollElement(this, N.scrollOffset(this)[0], Number(v) || 0); } },
     scrollLeft: { get() { if (this === html() || this === document.body) return global.scrollX; return N.scrollOffset(this)[0]; }, set(v) { if (this === html() || this === document.body) return; scrollElement(this, Number(v) || 0, N.scrollOffset(this)[1]); } },
     shadowRoot: { get() { if (this._shadow) return this._shadow; const root = N.shadowRootOf(this); if (root) { Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this, configurable: true }); Object.defineProperty(root, 'mode', { value: 'open', configurable: true }); Object.defineProperty(root, '_declarative', { value: true, configurable: true, writable: true }); shadowRoots.add(root); } return root; } },
-    assignedSlot: { get() { return null; } },
+    assignedSlot: { get() { return assignedSlotOf(this); } },
     isContentEditable: { get() { return false; } },
     options: { get() { return listOf(N.query(this, 'option', true), HTMLOptionsCollection); } },
     selectedIndex: { get() { const o = N.query(this, 'option', true); const i = o.findIndex((x) => N.attr(x, 'selected') != null); return i; }, set(i) { const o = N.query(this, 'option', true); o.forEach((x, j) => { if (j === i) N.setAttr(x, 'selected', ''); else N.removeAttr(x, 'selected'); }); } },
@@ -672,7 +692,7 @@
     getElementsByClassName(names) { return Element.prototype.getElementsByClassName.call(this, names); },
     querySelector(sel) { return N.query(this, String(sel), false); },
     querySelectorAll(sel) { return listOf(N.query(this, String(sel), true)); },
-    importNode(n, deep) { return N.clone(asNode(n), !!deep); },
+    importNode(n, deep) { return upgradeClone(N.clone(asNode(n), !!deep)); },
     adoptNode(n) { return n; },
     write(s) { log('warn', ['document.write is not supported after parsing: ' + String(s).slice(0, 80)]); },
     writeln(s) { this.write(s); },
@@ -821,6 +841,86 @@
     const parent = name.startsWith('SVG') ? SVGGraphicsElement : (name === 'HTMLAudioElement' || name === 'HTMLVideoElement') ? HTMLMediaElement : HTMLElementCtor;
     subclass(name, parent);
   }
+  // Each element interface's own properties on its prototype, not on
+  // every element's (as a browser has them): a component's property of the
+  // same name (dom-repeat's `as`, a widget's `value`, `label`, `open`) is
+  // then its own, and `'value' in div` is false. Polymer makes no accessor
+  // for a property already in the prototype chain, so a reflecting
+  // setter left on Element looped through attributeChangedCallback.
+  {
+    const html = (n) => global['HTML' + n + 'Element'].prototype;
+    const svg = NativeSVGElement.prototype;
+    const at = (names) => names.split(' ').map((n) => (n === 'SVG' ? svg : html(n)));
+    const homes = {
+      href: 'Anchor Area Link Base SVG', src: 'Image Script IFrame Embed Input Media Source Track Frame',
+      action: 'Form', method: 'Form', enctype: 'Form', noValidate: 'Form', target: 'Anchor Area Base Form', poster: 'Video',
+      alt: 'Image Area Input', type: 'Input Button Script Link Style Source Embed Object OList Anchor Select TextArea FieldSet Output',
+      name: 'Input Button Select TextArea Form IFrame Object Map Meta Param Anchor FieldSet Output Slot Frame Details',
+      placeholder: 'Input TextArea', rel: 'Anchor Area Link Form', htmlFor: 'Label Output', label: 'Option OptGroup Track',
+      charset: 'Script Meta', media: 'Link Style Source Meta', srcset: 'Image Source Link', sizes: 'Image Source Link',
+      loading: 'Image IFrame', decoding: 'Image', crossOrigin: 'Image Script Link Media', referrerPolicy: 'Anchor Area Image IFrame Link Script',
+      integrity: 'Script Link', autocomplete: 'Input Form Select TextArea', pattern: 'Input', accept: 'Input', min: 'Input Meter', max: 'Input Meter Progress', step: 'Input',
+      httpEquiv: 'Meta', scope: 'TableCell', headers: 'TableCell', abbr: 'TableCell', axis: 'TableCell',
+      align: 'Div Paragraph Heading Table TableCell TableRow TableSection TableCol TableCaption Image IFrame HR Legend Input Embed Object',
+      valign: 'TableCell TableRow TableSection TableCol', bgColor: 'Body Table TableRow TableCell', border: 'Image Table Object',
+      cellPadding: 'Table', cellSpacing: 'Table', summary: 'Table', frame: 'Table', rules: 'Table', coords: 'Area Anchor', shape: 'Area Anchor',
+      download: 'Anchor Area', ping: 'Anchor Area', hreflang: 'Anchor Link', as: 'Link',
+      form: 'Input Button Select TextArea FieldSet Output Label Object Legend Option',
+      disabled: 'Input Button Select TextArea FieldSet OptGroup Option Link Style', checked: 'Input', defaultChecked: 'Input', selected: 'Option',
+      required: 'Input Select TextArea', readOnly: 'Input TextArea', multiple: 'Input Select', open: 'Details Dialog',
+      controls: 'Media', autoplay: 'Media', loop: 'Media', muted: 'Media', playsInline: 'Video', async: 'Script', defer: 'Script', noModule: 'Script',
+      reversed: 'OList', start: 'OList', isMap: 'Image',
+      width: 'Canvas Image IFrame Embed Object Video Input Source SVG', height: 'Canvas Image IFrame Embed Object Video Input Source SVG',
+      value: 'Input TextArea Select Option Button Data LI Meter Progress Output Param', selectionStart: 'Input TextArea', selectionEnd: 'Input TextArea',
+      defaultValue: 'Input TextArea Output', span: 'TableCol', colSpan: 'TableCell', rowSpan: 'TableCell', size: 'Input Select',
+      maxLength: 'Input TextArea', minLength: 'Input TextArea', rows: 'TextArea', cols: 'TextArea',
+      naturalWidth: 'Image', naturalHeight: 'Image', complete: 'Image', decode: 'Image', currentSrc: 'Image Media',
+      options: 'Select', selectedIndex: 'Select', elements: 'Form FieldSet', labels: 'Input Button Select TextArea Output Meter Progress',
+      validity: 'Input Button Select TextArea Output FieldSet Object', validationMessage: 'Input Button Select TextArea Output FieldSet Object',
+      willValidate: 'Input Button Select TextArea Output FieldSet Object', files: 'Input',
+      contentWindow: 'IFrame Object Frame', contentDocument: 'IFrame Object Frame', sheet: 'Link Style', text: 'Anchor Script Option Title', content: 'Template',
+    };
+    for (const prop of Object.keys(homes)) {
+      const d = Object.getOwnPropertyDescriptor(Element.prototype, prop);
+      if (!d) continue;
+      delete Element.prototype[prop];
+      for (const proto of at(homes[prop])) if (!Object.prototype.hasOwnProperty.call(proto, prop)) Object.defineProperty(proto, prop, d);
+    }
+  }
+  // A link's URL in parts (HTML's HTMLHyperlinkElementUtils): read from
+  // its resolved href, each set writes the href back.
+  for (const proto of [HTMLAnchorElement.prototype, HTMLAreaElement.prototype]) {
+    const url = (el) => { const h = N.attr(el, 'href'); if (h == null) return null; try { return new URL(resolveURL(h)); } catch (e) { return null; } };
+    for (const k of ['protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'username', 'password']) {
+      Object.defineProperty(proto, k, { configurable: true, enumerable: true, get() { const u = url(this); return u ? u[k] : (k === 'protocol' ? ':' : ''); }, set(v) { const u = url(this); if (!u) return; u[k] = v; N.setAttr(this, 'href', u.href); } });
+    }
+    Object.defineProperty(proto, 'origin', { configurable: true, enumerable: true, get() { const u = url(this); return u ? u.origin : ''; } });
+    Object.defineProperty(proto, 'toString', { configurable: true, writable: true, value() { return this.href; } });
+  }
+  // Slots (DOM's slotting, by name): the host's children a slot takes and
+  // the slot a child goes to. The first slot of a name in the shadow tree
+  // takes them; the unnamed one takes the rest (text included).
+  const slotNameOf = (n) => (N.nodeType(n) === 1 ? N.attr(n, 'slot') || '' : N.nodeType(n) === 3 ? '' : null);
+  const slotFor = (root, name) => { for (const sl of N.query(root, 'slot', true)) if ((N.attr(sl, 'name') || '') === name) return sl; return null; };
+  const assignedTo = (slot) => {
+    let root = slot; while (N.parent(root)) root = N.parent(root);
+    const host = N.shadowHost(root);
+    if (!host || slotFor(root, N.attr(slot, 'name') || '') !== slot) return [];
+    const name = N.attr(slot, 'name') || '';
+    return N.childNodes(host).filter((c) => slotNameOf(c) === name && (N.nodeType(c) === 1 || (N.nodeType(c) === 3 && N.textContent(c) !== '')));
+  };
+  const assignedSlotOf = (node) => { const host = N.parent(node); const root = host && N.nodeType(host) === 1 && N.shadowRootOf(host); const name = root ? slotNameOf(node) : null; return name == null ? null : slotFor(root, name); };
+  const flattened = (slot) => { const own = assignedTo(slot); const nodes = own.length ? own : N.childNodes(slot); const out = []; for (const n of nodes) { if (N.nodeType(n) === 1 && N.nodeName(n) === 'SLOT') out.push(...flattened(n)); else out.push(n); } return out; };
+  define(HTMLSlotElement.prototype, {
+    assignedNodes(options) { return options && options.flatten ? flattened(this) : assignedTo(this); },
+    assignedElements(options) { return this.assignedNodes(options).filter((n) => N.nodeType(n) === 1); },
+    assign() {},
+  });
+  // The parser's scripts and links (already run and loaded), wrapped only
+  // now that each tag has its class: a wrapper keeps the prototype it was
+  // made with.
+  for (const el of N.query(N.docRoot(), 'script', true)) started.add(el);
+  for (const el of N.query(N.docRoot(), 'link', true)) linksLoaded.add(el);
   global.Attr = function Attr() {}; global.NodeList = NodeList; global.HTMLCollection = HTMLCollection; global.NamedNodeMap = NamedNodeMap; global.DOMStringMap = class DOMStringMap {}; global.XMLDocument = Document; global.HTMLDocument = Document; global.HTMLFormControlsCollection = HTMLFormControlsCollection; global.HTMLOptionsCollection = HTMLOptionsCollection;
   global.Image = function Image(w, h) { const el = N.createElement('img', ''); if (w != null) N.setAttr(el, 'width', String(w)); if (h != null) N.setAttr(el, 'height', String(h)); return el; };
   global.Option = function Option(text, value, defaultSelected, selected) { const el = N.createElement('option', ''); if (text != null) N.setTextContent(el, String(text)); if (value != null) N.setAttr(el, 'value', String(value)); if (selected || defaultSelected) N.setAttr(el, 'selected', ''); return el; };
@@ -1669,13 +1769,48 @@
   global.webkitAudioContext = global.AudioContext;
   global.speechSynthesis = { speak() {}, cancel() {}, getVoices: () => [], addEventListener() {} };
   global.scheduler = { postTask: (fn) => Promise.resolve().then(fn), yield: () => Promise.resolve() };
-  global.trustedTypes = { createPolicy: (name, rules) => rules, isHTML: () => false, emptyHTML: '', emptyScript: '' };
+  // Trusted Types: a policy's values wrapped (they are strings to
+  // whatever takes them; nothing is enforced).
+  {
+    const trusted = (name) => { const T = function () { throw new TypeError('Illegal constructor'); }; Object.defineProperty(T, 'name', { value: name }); T.prototype.toString = function () { return this._value; }; T.prototype.toJSON = function () { return this._value; }; global[name] = T; return (v) => { const t = Object.create(T.prototype); Object.defineProperty(t, '_value', { value: String(v) }); return t; }; };
+    const html = trusted('TrustedHTML'), script = trusted('TrustedScript'), scriptURL = trusted('TrustedScriptURL');
+    const Policy = function TrustedTypePolicy() { throw new TypeError('Illegal constructor'); };
+    global.TrustedTypePolicy = Policy;
+    const policies = new Map();
+    const make = (wrap, rule) => function (input, ...args) { if (typeof rule !== 'function') throw new TypeError('Policy has no such rule'); const v = rule(String(input), ...args); return wrap(v == null ? '' : v); };
+    const is = (T) => (v) => v instanceof global[T];
+    global.trustedTypes = {
+      createPolicy(name, rules) { rules = rules || {}; const p = Object.create(Policy.prototype); Object.defineProperties(p, { name: { value: String(name) }, createHTML: { value: make(html, rules.createHTML) }, createScript: { value: make(script, rules.createScript) }, createScriptURL: { value: make(scriptURL, rules.createScriptURL) } }); if (name === 'default' && !policies.has('default')) this.defaultPolicy = p; policies.set(String(name), p); return p; },
+      isHTML: is('TrustedHTML'), isScript: is('TrustedScript'), isScriptURL: is('TrustedScriptURL'),
+      emptyHTML: html(''), emptyScript: script(''),
+      defaultPolicy: null,
+      getAttributeType(tag, attr) { attr = String(attr).toLowerCase(); tag = String(tag).toLowerCase(); if (attr.startsWith('on')) return 'TrustedScript'; if ((tag === 'script' && attr === 'src') || (tag === 'iframe' && attr === 'srcdoc')) return tag === 'script' ? 'TrustedScriptURL' : 'TrustedHTML'; return null; },
+      getPropertyType(tag, prop) { prop = String(prop); if (prop === 'innerHTML' || prop === 'outerHTML') return 'TrustedHTML'; tag = String(tag).toLowerCase(); if (tag === 'script') return prop === 'src' ? 'TrustedScriptURL' : prop === 'text' || prop === 'textContent' || prop === 'innerText' ? 'TrustedScript' : null; return null; },
+    };
+    global.TrustedTypePolicyFactory = function TrustedTypePolicyFactory() { throw new TypeError('Illegal constructor'); };
+    Object.setPrototypeOf(global.trustedTypes, global.TrustedTypePolicyFactory.prototype);
+  }
   global.visualViewport = { width: vw, height: vh, offsetLeft: 0, offsetTop: 0, pageLeft: 0, pageTop: 0, scale: 1, addEventListener() {}, removeEventListener() {} };
   global.cookieStore = { get: () => Promise.resolve(null), getAll: () => Promise.resolve([]), set: () => Promise.resolve(), delete: () => Promise.resolve(), addEventListener() {} };
   global.external = { AddSearchProvider() {} };
   global.onerror = null; global.onload = null; global.onresize = null; global.onscroll = null; global.onunhandledrejection = null;
   global.CustomElementRegistry.prototype = Object.getPrototypeOf(global.customElements);
   global.Node = Node; global.Element = Element; global.SVGElement = SVGElement; global.Text = Text; global.Comment = Comment; global.Document = Document; global.DocumentFragment = DocumentFragment;
+  // Interfaces of nodes the engine makes as text or comments (YouTube's
+  // ShadyDOM patches every one's prototype): their constructors, not
+  // callable, their prototypes on Text's and the node chain.
+  const nodeInterface = (name, parent) => { const f = function () { throw new TypeError('Illegal constructor'); }; Object.defineProperty(f, 'name', { value: name }); f.prototype = Object.create(parent.prototype, { constructor: { value: f, writable: true, configurable: true } }); Object.setPrototypeOf(f, parent); return f; };
+  if (!global.CharacterData) global.CharacterData = Object.getPrototypeOf(Text.prototype) && Object.getPrototypeOf(Text.prototype).constructor !== Node ? Object.getPrototypeOf(Text.prototype).constructor : Node;
+  global.CDATASection = nodeInterface('CDATASection', Text);
+  // `Window`: the global's interface (polyfills patch its prototype).
+  if (!global.Window) {
+    const proto = Object.create(Object.getPrototypeOf(global) || Object.prototype);
+    global.Window = function Window() { throw new TypeError('Illegal constructor'); };
+    global.Window.prototype = proto;
+    Object.defineProperty(proto, 'constructor', { value: global.Window, writable: true, configurable: true });
+    try { Object.setPrototypeOf(global, proto); } catch (e) { /* the global's prototype stays */ }
+  }
+  global.ProcessingInstruction = nodeInterface('ProcessingInstruction', global.CharacterData);
   Object.defineProperty(global, 'currentScript', { get() { return currentScript; } });
   global.__olo_setCurrentScript = (el) => { currentScript = el; };
 })(globalThis);
