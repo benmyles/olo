@@ -465,11 +465,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     _ => self.fan_out(keep.as_ref()),
                 }
             }
-            S::UndoArrangement => {
-                if !self.auto_undo() {
-                    self.undo_arrangement();
-                }
-            }
+            S::UndoArrangement => self.undo_window_arrangement(),
+            S::RedoArrangement => self.redo_window_arrangement(),
             S::ShowDesktop => self.show_desktop(),
             // The active display's workspaces; the others stay as they are.
             S::NextWorkspace => self.switch_workspace((self.workspace() + 1).min(workspaces - 1)),
@@ -481,6 +478,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let here = self.workspace_of(&w);
                 let to = if shortcut == S::WindowToNextWorkspace { (here + 1).min(workspaces - 1) } else { here.saturating_sub(1) };
                 if to != here {
+                    self.remember_moves(std::slice::from_ref(&w), &format!("Move to Workspace {}", to + 1));
                     self.move_to_workspace(&w, to);
                     self.restore(&w);
                 }
@@ -489,6 +487,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let Some(w) = focused else { return };
                 let to = u32::from(i);
                 if to < workspaces && to != self.workspace_of(&w) {
+                    self.remember_moves(std::slice::from_ref(&w), &format!("Move to Workspace {}", to + 1));
                     self.move_to_workspace(&w, to);
                     self.restore(&w);
                 }

@@ -5368,9 +5368,21 @@ arranging command (Tile All, Tile App, Cascade, Fan Out) first calls
 and part, and whether it was zoomed (fully or along one axis, and what
 unzooming would put back) (`Placed`, in `AnvilState::arranged`); Undo
 Window Arrangement (`undo_arrangement`, ⌃⌘Z) puts them back, a zoomed
-window zoomed again, and remembers what it replaced, so undoing again
-redoes. Agents run both with
-`{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"`.
+window zoomed again, and remembers what it replaced. The last
+arrangement is a named step (`State::arrangement`, `tiling::Arranged`),
+as an app's Edit ▸ Undo is: Cascade, Tile All, Zoom All, Fan Out, Show
+All, Arrangement (an arranger's), auto-tiling's (Auto-Tiling, Tile,
+Zoom, Balance Tiles, Move Tile, Resize Tiles), and windows moved to
+another workspace or display (Move to Workspace 2, Move to Display: the
+keys, Deskbar's Move To and Move All Windows To; `remember_moves` keeps
+each one's display and workspace). ⌃⌘Z undoes it (once: again does
+nothing), Redo Window Arrangement (⇧⌃⌘Z, `redo-arrangement`) puts it
+again; undoing turning auto-tiling on, Redo turns it on again. Deskbar's
+Window Arrangement menu names them (Undo Move to Workspace 3, Redo
+Cascade), from `Request::ArrangementUndo` and
+`Event::ArrangementUndoChanged`. Agents run them with
+`{"type":"run_shortcut","id":"fan-out"}` / `"undo-arrangement"` /
+`"redo-arrangement"`.
 
 Windowing modes (`shell/modes.rs`): each workspace of each display is
 Standard (windows stay where they are put; the default), Auto-Tiling or

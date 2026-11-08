@@ -137,6 +137,9 @@ pub enum Request {
     },
     /// The workspaces: how many each display has, and which each shows.
     Workspaces,
+    /// What Undo and Redo Window Arrangement would take back or put again,
+    /// by name (Deskbar's menu): `Reply::ArrangementUndo`.
+    ArrangementUndo,
     /// Show workspace `index` on a display (`output`, a connector; else
     /// the active one). Every display has its own workspaces, and
     /// switching one leaves the others as they are.
@@ -634,6 +637,12 @@ pub enum Reply {
         #[serde(default)]
         displays: Vec<DisplayWorkspace>,
     },
+    /// The last window arrangement (Cascade, Tile All, Move to Workspace
+    /// 2…): its name for Undo, or for Redo once undone (None: nothing).
+    ArrangementUndo {
+        undo: Option<String>,
+        redo: Option<String>,
+    },
     Outputs {
         outputs: Vec<OutputInfo>,
     },
@@ -911,6 +920,8 @@ pub enum EventKind {
     Settings,
     Outputs,
     Power,
+    /// [`Event::ArrangementUndoChanged`].
+    ArrangementUndo,
     ShortcutRecorded,
     /// [`Event::InputDevicesChanged`].
     InputDevices,
@@ -946,6 +957,12 @@ pub enum Event {
     /// Caffeinated, display asleep, brightness or app inhibitors changed.
     PowerChanged {
         status: PowerStatus,
+    },
+    /// What Undo and Redo Window Arrangement name changed: as
+    /// [`Reply::ArrangementUndo`].
+    ArrangementUndoChanged {
+        undo: Option<String>,
+        redo: Option<String>,
     },
     /// The key pressed after [`Request::RecordShortcut`], as a [`Chord`]
     /// ("Shift+Cmd+Left"); "" for Backspace or Delete alone (no keys);
@@ -1002,6 +1019,7 @@ impl Event {
             Event::SettingsChanged { .. } => EventKind::Settings,
             Event::OutputsChanged { .. } => EventKind::Outputs,
             Event::PowerChanged { .. } => EventKind::Power,
+            Event::ArrangementUndoChanged { .. } => EventKind::ArrangementUndo,
             Event::ShortcutRecorded { .. } => EventKind::ShortcutRecorded,
             Event::Painted { .. } => EventKind::Painted,
             Event::TouchContacts { .. } => EventKind::TouchContacts,

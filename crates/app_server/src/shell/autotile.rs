@@ -1883,6 +1883,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// `was`: ⌃⌘Z goes back to that.
     pub(super) fn auto_turned_on(&mut self, workspace: u32, outputs: Vec<String>, was: olo_protocol::WindowingMode) {
         self.auto.undo = Some(Undo::TurnedOn(workspace, outputs, was));
+        self.arrangement_step("Auto-Tiling", super::tiling::ArrangedKind::Auto);
     }
 
     /// Auto-tiling turned off for these: their trees go (the windows stay
@@ -1949,12 +1950,23 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     // ---- commands --------------------------------------------------------
 
-    /// The tree a command on `w` works on, if `w` is a tile; kept for ⌃⌘Z.
-    fn auto_take(&mut self, w: &WindowElement) -> Option<((u32, String), Node)> {
+    /// The tree a command on `w` works on, if `w` is a tile; kept for ⌃⌘Z,
+    /// the step called `name`.
+    fn auto_take(&mut self, w: &WindowElement, name: &str) -> Option<((u32, String), Node)> {
         let key = self.tree_of(w)?;
         let tree = self.auto.trees.remove(&key)?;
         self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone())));
+        self.arrangement_step(name, super::tiling::ArrangedKind::Auto);
         Some((key, tree))
+    }
+
+    /// Turning auto-tiling on is what ⌃⌘Z would take back: on which
+    /// workspace and displays.
+    pub(super) fn auto_turned_on_undo(&self) -> Option<(u32, Vec<String>)> {
+        match &self.auto.undo {
+            Some(Undo::TurnedOn(ws, outputs, _)) => Some((*ws, outputs.clone())),
+            _ => None,
+        }
     }
 
     fn auto_put(&mut self, key: (u32, String), tree: Node) {
@@ -1976,7 +1988,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.set_floating(w, Some(false));
             self.auto_tick();
         }
-        let Some((key, tree)) = self.auto_take(w) else { return false };
+        let Some((key, tree)) = self.auto_take(w, "Tile") else { return false };
         let centres = self.auto_centres(&tree);
         let rest = tree.without(&|n| *n == Node::Window(w.id()));
         // The rest as they were, if that fits the room they have now;
@@ -2007,7 +2019,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// beside the rest; again, the tiles as they were (or, if they have
     /// changed since, back among them).
     pub fn auto_zoom_along(&mut self, w: &WindowElement, axis: Axis) -> bool {
-        let Some((key, tree)) = self.auto_take(w) else { return false };
+        let Some((key, tree)) = self.auto_take(w, "Zoom") else { return false };
         let output = self.space.outputs().find(|o| o.name() == key.1).cloned();
         let Some(area) = output.and_then(|o| self.tile_area(&o)) else {
             self.auto.trees.insert(key, tree);
@@ -2051,6 +2063,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             return false;
         };
         self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone())));
+        self.arrangement_step("Balance Tiles", super::tiling::ArrangedKind::Auto);
         let mut ids = tree.windows();
         let order = |s: &Self, id: u64| {
             let g = s.window_by_id(id).and_then(|w| s.space.element_geometry(&w)).unwrap_or_default();
@@ -2074,6 +2087,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         let key = (self.showing(&output), output.name());
         if let Some(tree) = self.auto.trees.remove(&key) {
             self.auto.undo = Some(Undo::Tree(key, Some(tree)));
+            // (The arranger's step, its name kept: auto-tiling's to undo.)
+            if let Some(a) = &mut self.arrangement {
+                a.kind = super::tiling::ArrangedKind::Auto;
+            }
         }
         self.auto.dirty = true;
     }
@@ -2171,6 +2188,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         };
         let mut before = self.auto.trees.remove(&from);
         self.auto.undo = Some(Undo::Tree(from.clone(), before.clone()));
+        self.arrangement_step("Move Tile", super::tiling::ArrangedKind::Auto);
         let drop = drop_at(r, p);
         if from == to && drop == Drop::Swap {
             if let Some(t) = before.as_mut() {
@@ -2234,6 +2252,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some(key) = self.tree_of(w) else { return };
         let Some(mut tree) = self.auto.trees.remove(&key) else { return };
         self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone())));
+        self.arrangement_step("Resize Tiles", super::tiling::ArrangedKind::Auto);
         let parts: HashMap<u64, Part> = tree.windows().into_iter().filter_map(|i| Some((i, Self::custom_part(&self.window_by_id(i)?)?))).collect();
         // Where it can be: not past a window's least size (else the split
         // would be one place and the windows another, until they are

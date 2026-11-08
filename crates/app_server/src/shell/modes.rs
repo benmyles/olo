@@ -72,7 +72,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let shown = vec![output.clone()];
         if ws == showing && mode == WindowingMode::AutoTiling {
             let windows: Vec<WindowElement> = shown.iter().flat_map(|o| self.windows_on(o)).collect();
-            self.remember_arrangement(&windows);
+            self.remember_arrangement(&windows, "Auto-Tiling");
             self.auto_turned_on(ws, outputs.clone(), was);
         }
         self.settings.tiling.set_mode(ws, &crate::desktop::display_key(&output), mode);

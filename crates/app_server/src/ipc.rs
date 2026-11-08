@@ -363,6 +363,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::ListWindows => Reply::Windows { windows: self.window_infos_with_frames() },
+            Request::ArrangementUndo => {
+                let (undo, redo) = self.arrangement_names();
+                Reply::ArrangementUndo { undo, redo }
+            }
             Request::ActivationToken => Reply::ActivationToken { token: self.issue_activation_token() },
             Request::Activate { id } => match self.window_by_id(id) {
                 Some(w) => {
@@ -562,7 +566,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 let find = |name: &str| self.space.outputs().find(|o| o.name() == name).cloned();
                 match (find(&output), find(&to)) {
                     (Some(from), Some(to)) => {
-                        self.move_workspace(&from, index, &to, to_index.unwrap_or(index));
+                        // (Every window there moved: one step to undo.)
+                        let to_index = to_index.unwrap_or(index);
+                        let windows: Vec<crate::shell::WindowElement> =
+                            self.all_windows().into_iter().filter(|w| self.display_of(w).as_ref() == Some(&from) && self.workspace_of(w) == index).collect();
+                        if !windows.is_empty() && (from != to || index != to_index) {
+                            self.remember_moves(&windows, &if from != to { "Move to Display".to_owned() } else { format!("Move to Workspace {}", to_index + 1) });
+                        }
+                        self.move_workspace(&from, index, &to, to_index);
                         Reply::Ok
                     }
                     (None, _) => Reply::Error { message: format!("no display {output:?}") },
@@ -572,6 +583,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::MoveToWorkspace { id, index, output } => match (self.window_by_id(id), output) {
                 (Some(w), None) => {
                     w.meta().moved_on_purpose.set(true);
+                    if self.workspace_of(&w) != index {
+                        self.remember_moves(std::slice::from_ref(&w), &format!("Move to Workspace {}", index + 1));
+                    }
                     self.move_to_workspace(&w, index);
                     Reply::Ok
                 }
@@ -580,6 +594,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                     match to {
                         Some(to) => {
                             w.meta().moved_on_purpose.set(true);
+                            let other = self.display_of(&w).as_ref() != Some(&to);
+                            if other || self.workspace_of(&w) != index {
+                                self.remember_moves(std::slice::from_ref(&w), &if other { "Move to Display".to_owned() } else { format!("Move to Workspace {}", index + 1) });
+                            }
                             self.move_to_display_workspace(&w, &to, index);
                             Reply::Ok
                         }

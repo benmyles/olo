@@ -271,6 +271,7 @@ pub enum Shortcut {
     /// Put the windows back as they were before the last arrangement
     /// (again: as the arrangement had them).
     UndoArrangement,
+    RedoArrangement,
     /// Hide every window on this workspace, or bring them back.
     ShowDesktop,
     /// The next / previous of the active display's workspaces (each
@@ -577,6 +578,7 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::CascadeOthers, "cascade-others", ARRANGE, "Cascade the other windows, leaving this one", &["Ctrl+Shift+Cmd+Backslash"], &["Alt+Shift+Cmd+Backslash"], &["Ctrl+Shift+Cmd+Backslash"]),
     s(Shortcut::FanOutOthers, "fan-out-others", ARRANGE, "Fan out the other windows, leaving this one", &["Ctrl+Shift+Cmd+Slash"], &["Alt+Shift+Cmd+Slash"], &["Ctrl+Shift+Cmd+Slash"]),
     s(Shortcut::UndoArrangement, "undo-arrangement", ARRANGE, "Undo window arrangement", &["Ctrl+Cmd+Z"], &["Alt+Cmd+Z"], &["Ctrl+Cmd+Z"]),
+    s(Shortcut::RedoArrangement, "redo-arrangement", ARRANGE, "Redo window arrangement", &["Ctrl+Shift+Cmd+Z"], &["Alt+Shift+Cmd+Z"], &["Ctrl+Shift+Cmd+Z"]),
     s(Shortcut::ShowDesktop, "show-desktop", ARRANGE, "Show the desktop", &["Cmd+F3"], &["Cmd+D"], &["Ctrl+Alt+D"]),
     s(Shortcut::NextWorkspace, "next-workspace", WORKSPACES, "Next workspace", &["Ctrl+Right"], &["Ctrl+Cmd+Right"], &["Ctrl+Alt+Right"]),
     s(Shortcut::PreviousWorkspace, "previous-workspace", WORKSPACES, "Previous workspace", &["Ctrl+Left"], &["Ctrl+Cmd+Left"], &["Ctrl+Alt+Left"]),

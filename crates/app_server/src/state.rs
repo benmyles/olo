@@ -362,6 +362,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub arranged: Vec<crate::shell::tiling::Placed>,
     /// The displays (by name) when it was made.
     pub arranged_among: Vec<(String, smithay::utils::Rectangle<i32, smithay::utils::Logical>)>,
+    /// The last arrangement, by name, for Undo and Redo Window Arrangement
+    /// (`shell::tiling::Arranged`).
+    pub arrangement: Option<crate::shell::tiling::Arranged>,
     /// Window groups as of the last loop iteration (`shell::groups`).
     pub groups: crate::shell::groups::Groups,
     /// Counts shortcut recordings (a timer only ends its own).
@@ -1299,6 +1302,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             desktop_shown: Vec::new(),
             arranged: Vec::new(),
             arranged_among: Vec::new(),
+            arrangement: None,
             groups: Default::default(),
             recording_shortcut: 0,
         };

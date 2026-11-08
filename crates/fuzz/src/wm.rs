@@ -37,7 +37,7 @@ pub const TILES: [&str; 13] = [
     "tile-right-two-thirds",
 ];
 const WINDOW_EXTRA: [&str; 11] = ["zoom", "zoom-vertical", "zoom-horizontal", "restore", "center", "hide-window", "roll-up", "next-tab", "previous-tab", "next-display", "previous-display"];
-const ARRANGE_CMDS: [&str; 8] = ["tile-all", "zoom-all", "cascade-all", "fan-out", "cascade-others", "fan-out-others", "undo-arrangement", "show-desktop"];
+const ARRANGE_CMDS: [&str; 9] = ["tile-all", "zoom-all", "cascade-all", "fan-out", "cascade-others", "fan-out-others", "undo-arrangement", "redo-arrangement", "show-desktop"];
 const WORKSPACE_CMDS: [&str; 10] = [
     "next-workspace",
     "previous-workspace",
@@ -67,7 +67,7 @@ const NEAR: i32 = 12;
 /// A tab at least this wide has its middle clear of its boxes.
 const TAB_GRIP: i32 = 2 * (BOX_INSET + BOX_SIZE + 2) + 8;
 /// A Mac's keys (the default keyboard profile, olo_protocol::shortcuts).
-const KEYS: [(&str, &[u32]); 23] = [
+const KEYS: [(&str, &[u32]); 24] = [
     ("cascade-all", &[CTRL, CMD, 43]),
     ("center", &[CTRL, ALT, 46]),
     ("fan-out", &[CTRL, CMD, 53]),
@@ -87,6 +87,7 @@ const KEYS: [(&str, &[u32]); 23] = [
     ("tile-top", &[CTRL, ALT, 103]),
     ("tile-top-left", &[CTRL, ALT, 22]),
     ("undo-arrangement", &[CTRL, CMD, 44]),
+    ("redo-arrangement", &[CTRL, SHIFT, CMD, 44]),
     ("window-to-next-workspace", &[CTRL, SHIFT, 106]),
     ("zoom", &[CTRL, ALT, 28]),
     ("zoom-all", &[CTRL, ALT, CMD, 28]),

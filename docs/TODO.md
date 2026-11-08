@@ -24,17 +24,17 @@ something nobody here has is in "Blocked", with what it waits for.
   steps, runs merged, Edit ▸ Undo/Redo with the profile's keys, a
   window without a menu bar given ⌘Z by its Frame, agents and the
   palette finding them among the app's menus); Tracker (files, and the
-  desktop's icons dragged or cleaned up),
-  Preferences (every panel's settings) and Passwords (items changed,
-  made, deleted; not the Archive, which nothing takes an item out of
-  yet) on it; StyledEdit's and the Viewer's own (pictures, videos,
-  PDFs) named as it names them, text fields' typing undone a run at a
-  time, and DeskCalc's line (keys, Clear, results: ⌘Z after = brings the
-  sum back; Undo and Redo in its menu). Left, each app looked at for what should undo and put on
-  it: Deskbar's moves;
-  Terminal's tab and pane changes (a closed tab can't come back with its
-  process: say so); app_server's ⌃⌘Z window arrangement matched (named,
-  Redo); and the rest that may have something to undo.
+  desktop's icons dragged or cleaned up), Preferences (every panel's
+  settings) and Passwords (items changed, made, deleted; not the
+  Archive, which nothing takes an item out of yet) on it; StyledEdit's
+  and the Viewer's own (pictures, videos, PDFs) named as it names them;
+  text fields' typing undone a run at a time; DeskCalc's line (keys,
+  Clear, results: ⌘Z after = brings the sum back); app_server's window
+  arrangements named, with a Redo (⇧⌃⌘Z), windows moved between
+  workspaces among them (the keys', Deskbar's Move To), Deskbar's menu
+  naming them. Left, each app looked at for what should undo and put on
+  it: Terminal's tab and pane changes (a closed tab can't come back with
+  its process: say so); and the rest that may have something to undo.
 
 ## Done, waiting for Ben to try or confirm
 
