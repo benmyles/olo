@@ -851,3 +851,38 @@ fn inherited_inset_storage_and_programs_are_shared_and_counted_once() {
             + both.clip_shape_bytes
     );
 }
+#[test]
+fn an_incremental_restyle_styles_elements_added_inside_a_shadow_tree() {
+    // A code editor's new line inside a component's shadow tree (MDN's):
+    // the restyle from the previous tree took the host's subtree as
+    // unchanged and left the line unstyled (the layout failed, Stale).
+    let host = Snapshot::default();
+    let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+    let mut doc = olo_web::html::parse(Arc::from("<!doctype html><body><section><div id=h></div></section></body>"), Default::default(), None).unwrap().document;
+    let find = |doc: &olo_web::dom::Document, id: &str| {
+        let mut stack = vec![doc.root()];
+        while let Some(n) = stack.pop() {
+            if doc.attribute(n, "id").ok().flatten() == Some(id) {
+                return n;
+            }
+            stack.extend(doc.children(n).unwrap());
+        }
+        panic!("no #{id}")
+    };
+    let h = find(&doc, "h");
+    let root = doc.attach_shadow(h).unwrap();
+    let first = doc.create_element("div", olo_web::dom::Namespace::Html).unwrap();
+    doc.append_child(root, first).unwrap();
+    let sheet = rules("div{color:red}");
+    let style = |doc: &olo_web::dom::Document, previous: Option<&style::StyleTree>| {
+        let mut job = style::Job::new(doc, &sheet, defaults.clone(), style::JobOptions { previous, ..Default::default() }, Default::default(), None).unwrap();
+        while !job.step(64, |_| &host).unwrap().finished {}
+        job.finish().unwrap()
+    };
+    let before = style(&doc, None);
+    let line = doc.create_element("div", olo_web::dom::Namespace::Html).unwrap();
+    doc.append_child(root, line).unwrap();
+    let after = style(&doc, Some(&before));
+    assert!(after.iter().any(|(n, _)| n == line), "the new line in the shadow tree has a style");
+    assert!(after.iter().any(|(n, _)| n == first));
+}

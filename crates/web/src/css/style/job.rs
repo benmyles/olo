@@ -622,7 +622,12 @@ impl<'a> Job<'a> {
                         if !below.insert(a) {
                             break;
                         }
-                        at = document.parent(a).ok().flatten();
+                        // Up the composed tree, as the walk goes: a change in
+                        // a shadow tree (a code editor's lines, MDN's) is
+                        // below its host and the host's ancestors, else
+                        // their subtree was copied whole, its new elements
+                        // unstyled (the layout failed, Stale).
+                        at = document.composed_parent(a).ok().flatten().or_else(|| document.shadow_host(a));
                     }
                 }
                 Some(Incremental { tree, nodes, style_only, children, below, geometry_kept, why_not })

@@ -6880,3 +6880,20 @@ the Guardian and old Reddit, looking for pages that fail outright:
   `fill: url(#…)` under a root `fill="none"` painted nothing (the grammar
   dropped the reference and the `none` was inherited). MDN's Edge,
   Firefox and Safari logos were blank.
+- **Against Chrome, measured alone on a quiet machine** (load average
+  about 2; `compare-cost.py`: CPU while loading for 20 s, idle, while
+  scrolling; memory), Chrome → Olo: BBC load 9.6 → 4.9 CPU s, idle 5.3 →
+  0%, scroll 93 → 18%, 599 → 529 MB; apple.com 1.35 → 1.46 s, 0.5 → 0%,
+  25 → 21%, 497 → 228 MB; Wikipedia 2.0 → 1.8 s, 9 → 0%, 19 → 24%, 547
+  → 240 MB; GitHub 8.5 → 10.6 s, 33 → 35%, 58 → 69%, 501 → 534 MB (Olo
+  behind); MDN 1.3 → 2.0 s, 0 → 0%, 51 → 107% (behind).
+- **MDN scrolled at twice Chrome's CPU**: its scripts measure as it
+  scrolls, and every other measurement failed (Stale), so the next one
+  styled the page from nothing, 128 ms. A restyle from the previous
+  styles copied a shadow tree's host subtree as unchanged when the change
+  was inside it (MDN's code editor's lines): the changes' ancestors are
+  walked up the composed tree now. Each measurement 12-24 ms; MDN
+  scrolling 107% → 22.5% CPU (Chrome 46%).
+- A page's tiles are painted side by side on the CPU pool (16 at a time,
+  each pool thread a painter of its own): a repaint at 2× 0.30 → 0.21 ms
+  a tile on GitHub.
