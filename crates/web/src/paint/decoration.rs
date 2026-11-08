@@ -531,6 +531,15 @@ pub(super) fn raster(
         backgrounds(out, s, boxes, clip_path, rounded(&radii) || !transform.is_identity(), scale, region, mask, transform, engine, tree, cancel)?;
         charge(1, started);
     }
+    // Inset shadows, over the backgrounds and under the border.
+    if let Value::Shadows(shadows) = s.value(P::BoxShadow)
+        && shadows.0.iter().any(|sh| sh.inset)
+        && transform.is_identity()
+    {
+        let started = now();
+        inset_shadows(out, &shadows.0, padding_box, &inset_radii(&radii, g.border_width), current, scale, region, mask, limits.layer_bytes, cancel)?;
+        charge(7, started);
+    }
     // Borders: one colour and solid or painted as solid → the ring between
     // the outer and inner rounded rectangles; otherwise the straight painter.
     let widths = [g.border_width.top, g.border_width.right, g.border_width.bottom, g.border_width.left];
@@ -565,6 +574,72 @@ pub(super) fn raster(
         }
     }
     charge(4, started);
+    Ok(())
+}
+/// Inset box shadows (CSS Backgrounds 3 §7.1), last declared first: each
+/// the padding box less its hole (the padding box moved by the offset and
+/// shrunk by the spread, its corners with it), blurred, within the padding
+/// box. Worked out over the tile grown by the blur's reach, so tiles meet.
+#[allow(clippy::too_many_arguments)]
+fn inset_shadows(
+    out: &mut Pixmap,
+    shadows: &[crate::css::properties::Shadow<crate::css::color::Computed>],
+    padding_box: Rect,
+    padding_radii: &Radii,
+    current: crate::css::color::Color,
+    scale: f64,
+    region: DeviceRect,
+    mask: Option<&Mask>,
+    layer_bytes: usize,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
+    let Some(inside) = path(padding_box, padding_radii, scale, region) else { return Ok(()) };
+    let (w, h) = (region.width, region.height);
+    let mut within = Mask::new(w, h).ok_or(Error::Limit)?;
+    within.fill_path(&inside, FillRule::Winding, true, Transform::identity());
+    let constant = |n: &crate::css::properties::Numeric| n.expression().constant().map_or(0., |q| q.value);
+    for shadow in shadows.iter().rev().filter(|sh| sh.inset) {
+        check(cancel)?;
+        let (dx, dy, blur_radius, spread) = (constant(&shadow.x), constant(&shadow.y), constant(&shadow.blur).max(0.), constant(&shadow.spread));
+        let color = shadow.color.as_ref().map_or(current, |c| c.used(current)).srgb8_clipped();
+        if color[3] == 0 {
+            continue;
+        }
+        let sigma = blur_radius * scale / 2.;
+        let margin = if sigma > 0.3 { (sigma * 3.).ceil() as u32 + 1 } else { 0 };
+        let grown = DeviceRect { x: region.x - margin as i32, y: region.y - margin as i32, width: w + 2 * margin, height: h + 2 * margin };
+        if (grown.width as usize).saturating_mul(grown.height as usize).saturating_mul(2) > layer_bytes {
+            return Err(Error::Limit);
+        }
+        // Coverage: everywhere but the hole.
+        let hole = Rect { x: padding_box.x + dx + spread, y: padding_box.y + dy + spread, width: (padding_box.width - 2. * spread).max(0.), height: (padding_box.height - 2. * spread).max(0.) };
+        let hole_radii: Radii = padding_radii.map(|r| [(r[0] - spread).max(0.), (r[1] - spread).max(0.)]);
+        let mut coverage = Mask::new(grown.width, grown.height).ok_or(Error::Limit)?;
+        if let Some(p) = path(hole, &hole_radii, scale, grown) {
+            coverage.fill_path(&p, FillRule::Winding, true, Transform::identity());
+        }
+        coverage.invert();
+        if margin > 0 {
+            blur(coverage.data_mut(), grown.width as usize, grown.height as usize, sigma, cancel)?;
+        }
+        let mut shown = Mask::new(w, h).ok_or(Error::Limit)?;
+        {
+            let (data, cov, inner) = (shown.data_mut(), coverage.data(), within.data());
+            for y in 0..h as usize {
+                let src = (y + margin as usize) * grown.width as usize + margin as usize;
+                for x in 0..w as usize {
+                    let i = y * w as usize + x;
+                    let mut c = u32::from(cov[src + x]) * u32::from(inner[i]) / 255;
+                    if let Some(clip) = mask {
+                        c = c * u32::from(clip.data()[i]) / 255;
+                    }
+                    data[i] = c as u8;
+                }
+            }
+        }
+        let p = paint_for(color);
+        out.fill_rect(tiny_skia::Rect::from_xywh(0., 0., w as f32, h as f32).ok_or(Error::Invalid)?, &p, Transform::identity(), Some(&shown));
+    }
     Ok(())
 }
 /// A box's background colour and layers (last declared first), each

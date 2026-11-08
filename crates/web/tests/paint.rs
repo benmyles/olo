@@ -1351,3 +1351,21 @@ fn text_overflow_ellipsis_cuts_a_clipped_line_with_its_mark() {
     assert!(glyphs("text-overflow:clip", &mut p).is_empty());
     assert!(glyphs("text-overflow:ellipsis;overflow:visible", &mut p).is_empty(), "only when it clips");
 }
+
+#[test]
+fn inset_shadows_paint_inside_the_padding_box() {
+    let mut p = paint::Engine::default();
+    // A hard inset shadow 4 px from the top left; a ring of spread.
+    let s = scene("<div></div>", "div{width:40px;height:40px;margin:10px;background:white;box-shadow:inset 4px 4px 0 rgb(200,0,0)}", &mut p);
+    assert!(s.fallbacks().is_empty(), "{:?}", s.fallbacks());
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 12, 30), [200, 0, 0, 255], "inside, the shadowed left");
+    assert_eq!(pixel(&t, 30, 30), [255; 4], "the middle shows the background");
+    assert_eq!(pixel(&t, 48, 30), [255; 4], "the right edge (the hole moved right)");
+    assert_eq!(pixel(&t, 8, 30), [255; 4], "nothing outside the box");
+    let s = scene("<div></div>", "div{width:40px;height:40px;margin:10px;background:white;box-shadow:inset 0 0 0 3px rgb(0,0,200)}", &mut p);
+    let t = render(&mut p, &s);
+    assert_eq!(pixel(&t, 11, 30), [0, 0, 200, 255]);
+    assert_eq!(pixel(&t, 48, 30), [0, 0, 200, 255]);
+    assert_eq!(pixel(&t, 30, 30), [255; 4]);
+}

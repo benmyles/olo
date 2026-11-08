@@ -1230,8 +1230,9 @@ impl<'a> BuildJob<'a> {
             }
             if let Value::Shadows(list) = s.value(P::BoxShadow)
                 && list.0.iter().any(|s| s.inset)
+                && self.current_transform != NONE
             {
-                self.note("inset box-shadow not painted", id);
+                self.note("inset box-shadow under a transform not painted", id);
             }
             if decoration::rounded(&radii) {
                 let colors: Vec<[u8; 4]> = [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor].iter().map(|p| color(s, *p)).collect::<Result<_>>()?;
