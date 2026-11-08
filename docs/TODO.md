@@ -17,26 +17,10 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Undo everywhere it makes sense** (Ben, 2026-11-07: "tracker needs to
-  support undo for file/folder renames/moves/etc and also we need
-  generally and unviversally to support undo in all olo apps where it
-  makes sense"). Done so far: the kit's way (`olo_ui::undo`: named
-  steps, runs merged, Edit ▸ Undo/Redo with the profile's keys, a
-  window without a menu bar given ⌘Z by its Frame, agents and the
-  palette finding them among the app's menus); Tracker (files, and the
-  desktop's icons dragged or cleaned up), Preferences (every panel's
-  settings) and Passwords (items changed, made, deleted; not the
-  Archive, which nothing takes an item out of yet) on it; StyledEdit's
-  and the Viewer's own (pictures, videos, PDFs) named as it names them;
-  text fields' typing undone a run at a time; DeskCalc's line (keys,
-  Clear, results: ⌘Z after = brings the sum back); app_server's window
-  arrangements named, with a Redo (⇧⌃⌘Z), windows moved between
-  workspaces among them (the keys', Deskbar's Move To), Deskbar's menu
-  naming them; Terminal's tabs (moved, grouped, closed: a closed one
-  comes back as a new shell in its folder, and Undo says so) and
-  settings. Left: a tab torn off into a window of its own isn't a step
-  yet; and the rest that may have something to undo, as each is next
-  worked on.
+- **Undo for a Terminal tab torn off** into a window of its own (and
+  dropped on another's strip): a step putting it back where it was.
+  Other apps' undo as each is next worked on (the kit's way, HACKING
+  "undo::History").
 
 ## Done, waiting for Ben to try or confirm
 
@@ -2310,6 +2294,20 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Undo everywhere it makes sense**~~ (Ben, 2026-11-07: "we need
+  generally and unviversally to support undo in all olo apps where it
+  makes sense"). *Done* (a75a4ce1, e6e5c222, 29d87d5d, 777d905e, 9fd4da67, ad442f3e,
+  bbfbf7e0): the kit's way (`olo_ui::undo`: named steps, runs merged,
+  Edit ▸ Undo and Redo with the profile's keys, ⌘Z for a window without
+  a menu bar, agents and the palette among the menus); Tracker,
+  Preferences and Passwords on it; StyledEdit's and the Viewer's own
+  (pictures, videos, PDFs) named as it names them; text fields' typing
+  a run at a time; DeskCalc's keys and results; app_server's window
+  arrangements named with a Redo (⇧⌃⌘Z), moves between workspaces among
+  them, Deskbar's menu naming them; Terminal's tabs and settings, a
+  closed tab back as a new shell (and said so). A torn-off Terminal tab
+  is left, in Not started.
 
 - ~~**A resting display still looked every 100 ms**~~ (found
   2026-11-07, looking into the Intel GPU). *Done* (7af77a04): a resting
