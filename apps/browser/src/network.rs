@@ -223,10 +223,10 @@ impl Loader {
             progress(bytes.len());
             bytes
         } else {
+            // Whatever its status: a picture served with a 404 (a search
+            // engine's stand-in icon) shows, as in Chrome; one that isn't a
+            // picture fails to decode below.
             let resource = self.fetch(url, Some(&document.url), IMAGE_LIMIT, cancel, &mut progress, Kind::Image)?;
-            if resource.status.is_some_and(|s| !(200..300).contains(&s)) {
-                return Err("Image returned an unsuccessful HTTP status".into());
-            }
             resource.bytes
         };
         if looks_like_svg(&bytes) {

@@ -527,6 +527,8 @@ impl SheetBuilder {
                     }
                 }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("charset")) => {}
+                // Loaded with the sheet that imports it (page::imported).
+                StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("import")) => {}
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("namespace")) => self.issue(Issue::Invalid)?,
                 StatementKind::AtRule => self.issue(Issue::AtRule(Arc::from(rule.name().unwrap_or(""))))?,
                 _ => self.issue(Issue::Invalid)?,

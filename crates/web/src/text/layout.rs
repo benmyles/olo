@@ -180,6 +180,11 @@ impl Options {
             // keep-all and auto-phrase keep CJK words whole: not yet.
             _ => ignored.set(1),
         }
+        // Text that doesn't wrap is never cut inside a word either (CSS Text 3
+        // §5.5: overflow-wrap and break-all act only where it may wrap).
+        if matches!(style.value(P::TextWrapMode), V::Keyword(K::Nowrap)) {
+            (wrap_anywhere, break_all) = (false, false);
+        }
         for property in [P::LetterSpacing, P::WordSpacing] {
             // Applied to glyph advances when the paragraph is shaped.
             match style.used_text_spacing(property, style.font().request.size, Default::default(), cancel) {

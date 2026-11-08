@@ -211,6 +211,12 @@ impl Catalog {
     /// Match an installed family, narrowing width, then style, then weight.
     /// Full default Unicode folding is independent of language and normalization.
     pub fn select_family(&self, name: &str, request: &FontRequest, options: MatchOptions, cancelled: Option<&AtomicBool>) -> Result<Option<Selection>> {
+        self.select_family_for(name, request, options, None, cancelled)
+    }
+    /// As `select_family`, for a character: among the faces that match the
+    /// request best (one face split by `unicode-range` into several, as web
+    /// fonts are served), the one whose range holds it (CSS Fonts 4 §5.1).
+    pub fn select_family_for(&self, name: &str, request: &FontRequest, options: MatchOptions, scalar: Option<char>, cancelled: Option<&AtomicBool>) -> Result<Option<Selection>> {
         validate(request)?;
         let folded = casefold::fold(name, self.limits, cancelled)?;
         let Some(indices) = self.families.get(folded.as_ref()) else { return Ok(None) };
@@ -225,7 +231,14 @@ impl Catalog {
             let (sr, slope, shear) = slope(face, request.slant, options)?;
             let (gr, weight) = weight(face.weight, request.weight);
             let rank = (wr, sr, gr);
-            let better = best.as_ref().is_none_or(|b| rank.0.cmp(b.rank.0).then_with(|| rank.1.cmp(b.rank.1)).then_with(|| rank.2.cmp(b.rank.2)).is_lt());
+            let order = best.as_ref().map(|b| rank.0.cmp(b.rank.0).then_with(|| rank.1.cmp(b.rank.1)).then_with(|| rank.2.cmp(b.rank.2)));
+            // As good a match, but holding the character where the best so
+            // far does not.
+            let covers = |i: usize| scalar.is_none_or(|c| self.faces[i].in_range(c));
+            let better = match order {
+                None => true,
+                Some(o) => o.is_lt() || o.is_eq() && covers(index as usize) && best.as_ref().is_some_and(|b| !covers(b.index)),
+            };
             if better {
                 best = Some(Candidate { rank, index: index as usize, width, weight, slope, shear });
             }

@@ -77,6 +77,9 @@ pub struct BoxNode {
     pub absolute: bool,
     /// A list item's outside marker: positioned before its item's content.
     pub marker: bool,
+    /// A one-line field's or a select's box: its text centred in its height,
+    /// as Chrome centres it (whatever its `appearance`).
+    pub centred: bool,
     /// A table cell's column and row spans (1 elsewhere).
     pub span: [u16; 2],
     pub parent: Option<BoxId>,
@@ -373,6 +376,7 @@ impl<'a> BuildJob<'a> {
                 kind: BoxKind::Viewport,
                 absolute: false,
                 marker: false,
+                centred: false,
                 span: [1, 1],
                 parent: None,
                 first_child: None,
@@ -424,7 +428,7 @@ impl<'a> BuildJob<'a> {
         }
         self.boxes[parent.index()].last_child = Some(id);
         let absolute = matches!(kind, BoxKind::Block { absolute: true, .. });
-        self.boxes.push(BoxNode { node, style_node, kind, absolute, marker: false, span: [1, 1], parent: Some(parent), first_child: None, last_child: None, next_sibling: None });
+        self.boxes.push(BoxNode { node, style_node, kind, absolute, marker: false, centred: false, span: [1, 1], parent: Some(parent), first_child: None, last_child: None, next_sibling: None });
         self.progress.boxes = self.boxes.len();
         Ok(id)
     }
@@ -993,6 +997,7 @@ impl<'a> BuildJob<'a> {
                                 self.append_object(node, container, node, BoxKind::Block { flow_root: true, root: false, absolute: false })?;
                                 let p = self.pending.as_ref().ok_or(Error::Invalid)?;
                                 let block = self.boxes[p.text_box.index()].last_child.ok_or(Error::Invalid)?;
+                                self.boxes[block.index()].centred = control != "textarea";
                                 let restore = self.pending.take();
                                 if !text.is_empty() {
                                     self.pending(block)?;
@@ -1005,6 +1010,7 @@ impl<'a> BuildJob<'a> {
                                 self.flush()?;
                                 let id = self.add(node, node, BoxKind::Block { flow_root: true, root: false, absolute }, container)?;
                                 self.boxes[id.index()].absolute = absolute;
+                                self.boxes[id.index()].centred = control != "textarea";
                                 if !text.is_empty() {
                                     self.pending(id)?;
                                     self.append(node, id, key, &text, None)?;

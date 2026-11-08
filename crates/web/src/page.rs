@@ -1021,6 +1021,159 @@ pub type Sheet = (css::Syntax, Origin, Option<Arc<str>>, Option<u64>);
 // Within the cascade's work budget (16 M, a unit a source byte), with room
 // for the rules and declarations it ticks too.
 const CSS_BYTES: usize = 8 * 1024 * 1024;
+/// The sheets a sheet `@import`s (CSS Cascade 5 §2), each before what
+/// imports it and under the import's `layer`, `supports()` and media
+/// conditions, fetched relative to the importing sheet: at most 4 deep and
+/// 32 in all, within the page's CSS bytes.
+#[allow(clippy::too_many_arguments)]
+fn imported(
+    syntax: &css::Syntax,
+    url: Option<&str>,
+    base: Option<&str>,
+    resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+    depth: usize,
+    budget: &mut (usize, usize, usize),
+    cancel: Option<&AtomicBool>,
+) -> Result<Vec<(css::Syntax, Option<Arc<str>>)>> {
+    let mut out = Vec::new();
+    if depth >= 4 || !syntax.source().contains("@import") {
+        return Ok(out);
+    }
+    let Ok(rules) = syntax.stylesheet(cancel) else { return Ok(out) };
+    for rule in rules {
+        let name = rule.name().unwrap_or("");
+        if rule.kind() != css::StatementKind::AtRule {
+            break;
+        }
+        if name.eq_ignore_ascii_case("charset") || name.eq_ignore_ascii_case("layer") && rule.block().is_none() {
+            continue;
+        }
+        if !name.eq_ignore_ascii_case("import") {
+            break;
+        }
+        let parts: Vec<_> = rule.value().filter(|c| c.kind() != css::Kind::Whitespace).collect();
+        let Some(first) = parts.first() else { continue };
+        let href = match first.kind() {
+            css::Kind::Url | css::Kind::String => first.text(),
+            css::Kind::Function if first.text().is_some_and(|t| t.eq_ignore_ascii_case("url")) => first.children().find(|c| c.kind() == css::Kind::String).and_then(|c| c.text()),
+            _ => None,
+        };
+        let Some(href) = href else { continue };
+        // The conditions after the URL, as written.
+        let (mut layer, mut supports, mut media) = (None::<String>, None::<String>, String::new());
+        let source = syntax.source();
+        for c in &parts[1..] {
+            let text = &source[c.span().start as usize..c.span().end as usize];
+            match (c.kind(), c.text()) {
+                (css::Kind::Ident, Some(t)) if t.eq_ignore_ascii_case("layer") && media.is_empty() => layer = Some(String::new()),
+                (css::Kind::Function, Some(t)) if t.eq_ignore_ascii_case("layer") && media.is_empty() => layer = Some(text[6..text.len().saturating_sub(1)].trim().to_owned()),
+                (css::Kind::Function, Some(t)) if t.eq_ignore_ascii_case("supports") && media.is_empty() => supports = Some(text[9..text.len().saturating_sub(1)].trim().to_owned()),
+                _ => {
+                    if !media.is_empty() {
+                        media.push(' ');
+                    }
+                    media.push_str(text);
+                }
+            }
+        }
+        if let Some(condition) = &supports {
+            // `supports(display: grid)` is `@supports (display: grid)`.
+            let condition = if condition.contains(':') && !condition.starts_with('(') { format!("({condition})") } else { condition.clone() };
+            if !css::media::supports(css::Syntax::parse(Arc::from(condition.as_str()), Default::default(), cancel)?.components(), css::properties::Limits::default(), cancel) {
+                continue;
+            }
+        }
+        if budget.0 >= 32 {
+            budget.2 += 1;
+            continue;
+        }
+        budget.0 += 1;
+        let Some(Resource::Stylesheet(sheet, sheet_url)) = resource(ResourceKind::Stylesheet, url.or(base), href)? else {
+            budget.2 += 1;
+            continue;
+        };
+        if budget.1.saturating_add(sheet.source().len()) > CSS_BYTES {
+            budget.2 += 1;
+            continue;
+        }
+        budget.1 += sheet.source().len();
+        let mut nested = imported(&sheet, sheet_url.as_deref(), base, resource, depth + 1, budget, cancel)?;
+        nested.push((sheet, sheet_url));
+        for (sheet, sheet_url) in nested {
+            let mut text = sheet.source().to_string();
+            if let Some(name) = &layer {
+                text = format!("@layer {name} {{\n{text}\n}}");
+            }
+            if !media.is_empty() && !media.eq_ignore_ascii_case("all") {
+                text = under_media(&media, &text);
+            }
+            let sheet = if text.len() == sheet.source().len() { sheet } else { css::Syntax::parse(Arc::from(text), Default::default(), cancel)? };
+            out.push((sheet, sheet_url));
+        }
+    }
+    Ok(out)
+}
+/// A sheet's rules under `@media <media>`: what a `media` attribute means.
+/// (Its `@import` and `@namespace` rules can't be nested; it has none.)
+fn under_media(media: &str, text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + media.len() + 12);
+    out.push_str("@media ");
+    // A media list can't close the block early: braces leave it.
+    out.extend(media.chars().filter(|c| !matches!(c, '{' | '}' | ';')));
+    out.push_str(" {\n");
+    out.push_str(text);
+    out.push_str("\n}");
+    out
+}
+/// Whether a sheet's text has a digest its `integrity` names (SRI §3.3.5):
+/// of the strongest algorithm listed, any one matching.
+fn integrity_matches(text: &str, metadata: &str) -> bool {
+    use sha2::Digest;
+    let listed: Vec<(u8, &str)> = metadata
+        .split_ascii_whitespace()
+        .filter_map(|item| {
+            let (alg, rest) = item.split_once('-')?;
+            let digest = rest.split('?').next()?;
+            let strength = match alg.to_ascii_lowercase().as_str() {
+                "sha256" => 1,
+                "sha384" => 2,
+                "sha512" => 3,
+                _ => return None,
+            };
+            Some((strength, digest))
+        })
+        .collect();
+    // Nothing it can check: as if there were no metadata.
+    let Some(strongest) = listed.iter().map(|(s, _)| *s).max() else { return true };
+    // The bytes as served: the decoded text, with and without a byte order mark.
+    let bom = format!("\u{feff}{text}");
+    [text.as_bytes(), bom.as_bytes()].iter().any(|bytes| {
+        let digest = match strongest {
+            1 => sha2::Sha256::digest(bytes).to_vec(),
+            2 => sha2::Sha384::digest(bytes).to_vec(),
+            _ => sha2::Sha512::digest(bytes).to_vec(),
+        };
+        // (base64 or its URL-safe form, padded or not)
+        let plain = |d: &str| d.trim_end_matches('=').replace('-', "+").replace('_', "/");
+        let encoded = plain(&base64(&digest));
+        listed.iter().any(|(s, d)| *s == strongest && plain(d) == encoded)
+    })
+}
+fn base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = chunk.iter().enumerate().fold(0u32, |n, (i, &b)| n | u32::from(b) << (16 - 8 * i));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(TABLE[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
 fn load_sheets(
     doc: &Document,
     style_nodes: &[crate::dom::NodeId],
@@ -1029,8 +1182,15 @@ fn load_sheets(
     cancel: Option<&AtomicBool>,
 ) -> Result<(Vec<Sheet>, usize)> {
     enum Item<'a> {
-        Inline(crate::dom::NodeId),
-        Link(&'a str),
+        /// A `<style>`, and its `media` when it has one.
+        Inline(crate::dom::NodeId, Option<&'a str>),
+        /// A linked sheet: its href, `media` and `integrity`.
+        Link(&'a str, Option<&'a str>, Option<&'a str>),
+    }
+    // A sheet for some media only (`media="screen"`, a query): its rules
+    // under that `@media`, so they hold where it does, as the medium changes.
+    fn conditioned(media: Option<&str>) -> Option<&str> {
+        media.map(str::trim).filter(|m| !m.is_empty() && !m.eq_ignore_ascii_case("all"))
     }
     let mut items = Vec::with_capacity(style_nodes.len());
     let mut resource_issues = 0usize;
@@ -1043,24 +1203,18 @@ fn load_sheets(
                 if doc.attribute(node, "type")?.is_some_and(|t| !t.trim().is_empty() && !t.trim().eq_ignore_ascii_case("text/css")) {
                     continue;
                 }
-                if doc.attribute(node, "media")?.is_some_and(|m| !m.trim().is_empty() && !m.eq_ignore_ascii_case("all")) {
-                    resource_issues += 1;
-                    continue;
-                }
-                items.push(Item::Inline(node));
+                items.push(Item::Inline(node, conditioned(doc.attribute(node, "media")?)));
             }
             Some("link") if doc.attribute(node, "rel")?.is_some_and(|r| r.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("stylesheet"))) => {
                 let rel = doc.attribute(node, "rel")?.unwrap_or("");
-                let media = doc.attribute(node, "media")?.unwrap_or("").trim();
                 let kind = doc.attribute(node, "type")?.unwrap_or("").trim();
                 if rel.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("alternate")) || doc.attribute(node, "disabled")?.is_some() {
                     // Alternate and disabled sheets are not initially active.
-                } else if doc.attribute(node, "integrity")?.is_some_and(|v| !v.trim().is_empty()) {
-                    resource_issues += 1; // SRI validation is not implemented yet.
-                } else if !media.is_empty() && !media.eq_ignore_ascii_case("all") || !kind.is_empty() && !kind.eq_ignore_ascii_case("text/css") {
-                    resource_issues += 1;
+                } else if !kind.is_empty() && !kind.eq_ignore_ascii_case("text/css") {
+                    // Not CSS: not a style sheet, as in browsers.
                 } else if let Some(href) = doc.attribute(node, "href")? {
-                    items.push(Item::Link(href));
+                    let integrity = doc.attribute(node, "integrity")?.map(str::trim).filter(|v| !v.is_empty());
+                    items.push(Item::Link(href, conditioned(doc.attribute(node, "media")?), integrity));
                 }
             }
             _ => {}
@@ -1069,7 +1223,7 @@ fn load_sheets(
     // Where each href is linked last.
     let mut last = std::collections::HashMap::new();
     for (i, item) in items.iter().enumerate() {
-        if let Item::Link(href) = item {
+        if let Item::Link(href, ..) = item {
             last.insert(href.trim(), i);
         }
     }
@@ -1079,9 +1233,9 @@ fn load_sheets(
     // A repeated sheet's layer order, by href, for its first place.
     let mut layered = std::collections::HashMap::new();
     for (i, item) in items.iter().enumerate() {
-        if let Item::Link(href) = item
+        if let Item::Link(href, ..) = item
             && last.get(href.trim()) == Some(&i)
-            && items[..i].iter().any(|e| matches!(e, Item::Link(h) if h.trim() == href.trim()))
+            && items[..i].iter().any(|e| matches!(e, Item::Link(h, ..) if h.trim() == href.trim()))
         {
             let r = resource(ResourceKind::Stylesheet, base, href)?;
             if let Some(Resource::Stylesheet(syntax, url)) = &r
@@ -1096,12 +1250,13 @@ fn load_sheets(
     let mut first_seen = std::collections::HashSet::new();
     let mut sheets = Vec::new();
     let mut css_bytes = 0usize;
+    let mut imports = 0usize;
     for (i, item) in items.iter().enumerate() {
         if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
             return Err(paint::Error::Cancelled.into());
         }
         match item {
-            Item::Inline(node) => {
+            Item::Inline(node, media) => {
                 let mut bytes = 0usize;
                 for child in doc.children(*node)? {
                     bytes = bytes.saturating_add(doc.value(child)?.map_or(0, str::len));
@@ -1117,9 +1272,21 @@ fn load_sheets(
                         text.push_str(value)
                     }
                 }
-                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None, None));
+                let syntax = css::Syntax::parse(Arc::from(text), Default::default(), cancel)?;
+                let mut budget = (imports, css_bytes, 0);
+                let mut list = imported(&syntax, None, base, resource, 0, &mut budget, cancel)?;
+                (imports, css_bytes) = (budget.0, budget.1);
+                resource_issues += budget.2;
+                list.push((syntax, None));
+                for (syntax, url) in list {
+                    let syntax = match media {
+                        Some(m) => css::Syntax::parse(Arc::from(under_media(m, syntax.source())), Default::default(), cancel)?,
+                        None => syntax,
+                    };
+                    sheets.push((syntax, Origin::Author, url, None));
+                }
             }
-            Item::Link(href) => {
+            Item::Link(href, media, integrity) => {
                 if last.get(href.trim()) != Some(&i) {
                     // Linked again later, where it wins: here only the layers
                     // it names, at their first place.
@@ -1141,8 +1308,28 @@ fn load_sheets(
                             resource_issues += 1;
                             continue;
                         }
+                        // Subresource Integrity: a sheet whose digest is not
+                        // one the page named is not applied, as in browsers.
+                        if let Some(metadata) = integrity
+                            && !integrity_matches(syntax.source(), metadata)
+                        {
+                            eprintln!("Stylesheet {href}: its integrity digest does not match; not applied");
+                            resource_issues += 1;
+                            continue;
+                        }
                         css_bytes += bytes;
-                        sheets.push((syntax, Origin::Author, url, None));
+                        let mut budget = (imports, css_bytes, 0);
+                        let mut list = imported(&syntax, url.as_deref(), base, resource, 0, &mut budget, cancel)?;
+                        (imports, css_bytes) = (budget.0, budget.1);
+                        resource_issues += budget.2;
+                        list.push((syntax, url));
+                        for (syntax, url) in list {
+                            let syntax = match media {
+                                Some(m) => css::Syntax::parse(Arc::from(under_media(m, syntax.source())), Default::default(), cancel)?,
+                                None => syntax,
+                            };
+                            sheets.push((syntax, Origin::Author, url, None));
+                        }
                     }
                     Some(_) => return Err(paint::Error::Invalid.into()),
                     None => resource_issues += 1,
@@ -1292,10 +1479,17 @@ fn load_fonts(
             return Err(paint::Error::Cancelled.into());
         }
         let Some(css::fonts::Source::Url { url, .. }) = face.sources.iter().find(|s| s.decodable()) else {
+            if crate::env_on!("OLO_FONT_DEBUG") {
+                eprintln!("  font {}: no source it can decode", face.descriptor.family);
+            }
             resource_issues += 1;
             continue;
         };
-        match resource(ResourceKind::Font, face.base.as_deref().or(base), url)? {
+        let got = resource(ResourceKind::Font, face.base.as_deref().or(base), url)?;
+        if crate::env_on!("OLO_FONT_DEBUG") {
+            eprintln!("  font {} from {url}: {}", face.descriptor.family, if matches!(got, Some(Resource::Font(_))) { "loaded" } else { "not loaded" });
+        }
+        match got {
             Some(Resource::Font(bytes)) => {
                 font_bytes = font_bytes.checked_add(bytes.len()).ok_or(paint::Error::Limit)?;
                 if font_bytes > FONT_BYTES {
@@ -3052,5 +3246,30 @@ pub(crate) fn next_node(doc: &Document, node: crate::dom::NodeId) -> Result<Opti
         } else {
             return Ok(None);
         }
+    }
+}
+#[cfg(test)]
+mod sheet_tests {
+    use super::*;
+    #[test]
+    fn integrity_takes_the_strongest_digest_and_both_base64_forms() {
+        let css = "body{color:red}";
+        let sha384 = "8U9HYzsHbf55cFZyiWIE29+QPYQ9WO+U5uT/ViFw0TOwM2Fbbb74ZegzRV/nvwrD";
+        let sha256 = "FcQqt3aNlV7AZnGV4zkQRVeCeJOxbMPnQSx258L803E=";
+        assert!(integrity_matches(css, &format!("sha384-{sha384}")));
+        assert!(integrity_matches(css, &format!("sha256-{sha256}")));
+        // URL-safe, unpadded, with options.
+        assert!(integrity_matches(css, &format!("sha384-{}?ct=text/css", sha384.replace('+', "-").replace('/', "_"))));
+        // The strongest listed decides: a wrong sha384 fails though sha256 is right.
+        assert!(!integrity_matches(css, &format!("sha256-{sha256} sha384-AAAA")));
+        assert!(!integrity_matches("body{color:blue}", &format!("sha384-{sha384}")));
+        // Nothing it knows: as if there were none.
+        assert!(integrity_matches(css, "md5-abc"));
+        // With a byte order mark as served.
+        assert!(integrity_matches(css, &format!("sha256-{sha256}")));
+        assert_eq!(base64(b"ab"), "YWI=");
+        assert_eq!(base64(b"abc"), "YWJj");
+        assert_eq!(under_media("screen and (min-width: 600px)", "a{}"), "@media screen and (min-width: 600px) {\na{}\n}");
+        assert_eq!(under_media("x{}", "a{}"), "@media x {\na{}\n}");
     }
 }

@@ -6643,3 +6643,35 @@ journal).
   unknown.
 - **Cost:** none measurable (Stripe saved locally, median of 8 headless
   renders: style 79.1 → 78.1 ms, paint 3.4 → 3.35 ms).
+
+## 2026-11-08, late morning: DuckDuckGo end to end
+
+DuckDuckGo's HTML search (a POST form, no scripts) rendered unstyled:
+- **Linked sheets with a `media` attribute were dropped** (anything but
+  `all`: `screen`, `handheld, all`, a width query), and so were sheets
+  with an `integrity` digest. A sheet's `media` now puts its rules under
+  that `@media`, so they hold where it does and follow the medium;
+  `integrity` is checked (SHA-256/384/512, the strongest listed) and a
+  sheet that doesn't match is not applied, as in browsers.
+- **`nowrap` text broke inside a word** where `overflow-wrap: break-word`
+  applied: a title that should end in an ellipsis took two lines. Text
+  that doesn't wrap is never cut.
+- **Favicons**: ICO and BMP decode (bounded like the rest), and a picture
+  served with a 404 (DuckDuckGo's stand-in icon) shows, as in Chrome.
+- **`align-content` in block containers** (Chrome 123+): content moved
+  into the room a fixed height leaves. A one-line field's or a select's
+  text is centred in its height as Chrome centres it, whatever its
+  `appearance`, and a field's baseline is its text's (a tall field on a
+  line made the line 4 px taller).
+- Searching works end to end: typing, Enter, the POST, the results page;
+  a script's `form.submit()` posts too. Against Chrome the results page
+  matches but for 2 px a snippet line (see TODO).
+- **`@import`** was not loaded at all. Imported sheets are fetched
+  relative to the sheet importing them and cascade before it, under the
+  import's `media`, `supports()` and `layer()` (4 deep, 32 in all).
+- **Web fonts split by `unicode-range` never showed** (how Google Fonts
+  and many sites serve them): a family's first face (Cyrillic) was chosen
+  and, not holding Latin letters, the text fell back to the default font.
+  Among a family's best-matching faces the one whose range holds the
+  character is chosen (CSS Fonts 4 §5.1); Lobster from Google Fonts now
+  draws as in Chrome. `OLO_FONT_DEBUG` lists each web font's load.

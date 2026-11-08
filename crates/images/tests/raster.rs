@@ -15,7 +15,9 @@ fn encoded(format: ImageFormat) -> Vec<u8> {
 }
 #[test]
 fn bounded_bytes_decode_lossless_formats_without_files() {
-    for format in [ImageFormat::Png, ImageFormat::WebP, ImageFormat::Gif] {
+    // ICO and BMP too: the web's favicons (held to the same limits, checked
+    // on the header before any pixels are decoded).
+    for format in [ImageFormat::Png, ImageFormat::WebP, ImageFormat::Gif, ImageFormat::Ico, ImageFormat::Bmp] {
         let data = encoded(format);
         let raster = raster::decode(&data, Default::default(), None).unwrap();
         assert_eq!(raster.format, format);
@@ -33,10 +35,17 @@ fn encoded_dimensions_pixels_and_surfaces_fail_closed() {
         Limits { codec_bytes: 0, ..Default::default() },
     ] {
         assert!(matches!(raster::decode(&data, limits, None), Err(Error::Limit)), "{limits:?}");
+        // An icon or bitmap over the limits is refused the same way (its
+        // own size aside: theirs differ from the PNG's). Their codecs take no
+        // allocation cap, but allocate only for the dimensions, which are
+        // held to the pixel and surface limits before anything is decoded.
+        for format in [ImageFormat::Ico, ImageFormat::Bmp].into_iter().filter(|_| limits.encoded_bytes != data.len() - 1 && limits.codec_bytes != 0) {
+            assert!(matches!(raster::decode(&encoded(format), Limits { encoded_bytes: usize::MAX, ..limits }, None), Err(Error::Limit) | Err(Error::Decode(_))), "{format:?} {limits:?}");
+        }
     }
     assert!(raster::decode(&data, Limits { encoded_bytes: data.len(), dimension: 3, pixels: 6, surface_bytes: 24, ..Default::default() }, None).is_ok());
-    // Container/niche codecs must not bypass the tighter bounded path.
-    for format in [ImageFormat::Bmp, ImageFormat::Ico, ImageFormat::Tiff] {
+    // Formats no browser shows stay out.
+    for format in [ImageFormat::Tiff] {
         assert!(matches!(raster::decode(&encoded(format), Default::default(), None), Err(Error::Unsupported)));
     }
     let cancel = AtomicBool::new(true);

@@ -49,3 +49,39 @@ fn woff2_files_decode_to_parsable_fonts() {
         eprintln!("{path}: {} glyphs, upem {}, A bbox {bbox:?} advance {advance:?}, axes {}", face.number_of_glyphs(), face.units_per_em(), face.variation_axes().len());
     }
 }
+#[test]
+fn a_family_split_by_unicode_range_answers_each_character_from_its_face() {
+    use olo_web::{
+        css::{
+            properties::{self as p, Declaration},
+            style::{Axes, FontRequest, FontSlant},
+        },
+        font::{Builder, Descriptor, FontSet, GenericPolicy, Slopes, Span},
+    };
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf");
+    let mut b = Builder::new(Default::default());
+    b.load_file(&file, |_| {}, None).unwrap();
+    let base = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    // As Google Fonts serves a family: the same face for Cyrillic, then Latin.
+    let data: Arc<[u8]> = Arc::from(std::fs::read(&file).unwrap());
+    let face = |ranges: &[(u32, u32)]| {
+        (
+            data.clone(),
+            Descriptor {
+                family: Arc::from("Split"),
+                weight: Span::point(400.),
+                width: Span::point(100.),
+                slopes: Slopes { oblique: Some(Span::point(0.)), italic: None },
+                ranges: Some(ranges.into()),
+            },
+        )
+    };
+    let scope = base.with_faces(vec![face(&[(0x400, 0x4FF)]), face(&[(0, 0xFF)])], None).unwrap();
+    let syntax = Syntax::parse(Arc::from("Split"), Default::default(), None).unwrap();
+    let Declaration::Known { values, .. } = Declaration::parse("font-family", syntax.components(), false, Default::default(), None).unwrap() else { panic!() };
+    let p::Value::Families(families) = &values[0].value else { panic!() };
+    let request = FontRequest { size: 20., weight: 400., width: 100., slant: FontSlant::Normal, families: families.clone(), axes: Axes::default() };
+    // The first available font (a space's) is the Latin face, not the first listed.
+    let selected = scope.first_available(&request, None).unwrap();
+    assert_eq!(scope.catalog().face(selected.face).unwrap().ranges.as_deref(), Some(&[(0, 0xFF)][..]));
+}

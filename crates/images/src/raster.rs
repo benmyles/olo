@@ -81,7 +81,8 @@ fn decode_with_codec(data: &[u8], limits: Limits, cancel: Option<&AtomicBool>) -
         return Err(Error::Limit);
     }
     let format = image::guess_format(data).map_err(|_| Error::Unsupported)?;
-    if !matches!(format, ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::WebP | ImageFormat::Gif) {
+    // The web's raster formats (Chrome's, AVIF aside): favicons are ICO.
+    if !matches!(format, ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::WebP | ImageFormat::Gif | ImageFormat::Ico | ImageFormat::Bmp) {
         return Err(Error::Unsupported);
     }
     let mut reader = ImageReader::with_format(Input { cursor: Cursor::new(data), cancel }, format);

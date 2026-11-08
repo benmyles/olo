@@ -72,7 +72,8 @@ unicode-bidi = {version="0.3.18",default-features=false,features=["std"]}
 # Web fonts: WOFF2's Brotli stream and WOFF 1.0's zlib tables.
 brotli-decompressor = { version = "6", default-features = false, features = ["std"] }
 flate2 = "1"
+# Subresource Integrity: a linked sheet's digest.
+sha2 = "0.10"
 
 [dev-dependencies]
 serde_json.workspace = true
-sha2 = "0.10"

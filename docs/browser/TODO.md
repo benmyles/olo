@@ -169,6 +169,10 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   `::before`/`::after` generated content (strings, attr()).
 - [ ] Text: word-break/overflow-wrap (583), text-decoration (28),
   text-transform, counters and quotes in `content`.
+- [ ] Line height: Chrome spaces DuckDuckGo's result snippets (an inline
+  `<a>` with `line-height: 1.45` in a block with 1.6) by the inline's
+  line height, its block's strut not counting, though every reduced case
+  counts it (23.04 px); Olo counts it. Find what in that page does it.
 - [ ] Form controls: checkboxes, radio buttons and selects are drawn as
   Chrome draws them (`appearance`, `accent-color`, disabled, dark), on the
   baseline as Chrome lines them up; their hover and pressed shades, range,

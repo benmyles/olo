@@ -1838,11 +1838,11 @@ impl<'a> Job<'a> {
             // An inline-block's baseline is its last line box's (CSS 2.1
             // §10.8.1) when it has one and shows its overflow; otherwise,
             // and for other atomic inlines, the bottom margin edge.
+            // (A field's or a select's is its text's, clipped or not, as Chrome.)
             let inline_block = !measuring
                 && matches!(b.kind, BoxKind::Block { .. })
                 && matches!(s.value(P::Display), Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flow | crate::css::properties::Inner::FlowRoot, .. }))
-                && matches!(s.value(P::OverflowX), Value::Keyword(K::Visible))
-                && matches!(s.value(P::OverflowY), Value::Keyword(K::Visible));
+                && (b.centred || matches!(s.value(P::OverflowX), Value::Keyword(K::Visible)) && matches!(s.value(P::OverflowY), Value::Keyword(K::Visible)));
             // middle: its midpoint at the baseline plus half the parent's
             // x-height; top and bottom: against the line box (CSS 2.2 §10.8.1).
             let align = match s.value(P::VerticalAlign) {
@@ -2138,6 +2138,32 @@ impl<'a> Job<'a> {
                 }
                 let auto = f.cursor + if f.collapse_bottom { 0. } else { f.pending.value() };
                 let height = f.used.height(auto.max(0.));
+                // `align-content` in a block container (CSS Align 3 §5.4): its
+                // content moved down into the room its height leaves; a
+                // field's text centred, as Chrome centres it.
+                if height > auto && f.cursor > 0. {
+                    let b = &self.cache.tree.boxes[f.id.index()];
+                    let share = if b.centred {
+                        0.5
+                    } else {
+                        match self.cache.tree.style(f.id).map(|s| s.value(P::AlignContent)) {
+                            Some(Value::Keyword(K::Center)) => 0.5,
+                            Some(Value::Keyword(K::End | K::FlexEnd)) => 1.,
+                            _ => 0.,
+                        }
+                    };
+                    if share > 0. {
+                        let shift = used::grid((height - auto) * share, self.scale);
+                        let mut child = b.first_child;
+                        while let Some(c) = child {
+                            let cb = &self.cache.tree.boxes[c.index()];
+                            if !cb.absolute {
+                                self.geometry[c.index()].border_box.y += shift;
+                            }
+                            child = cb.next_sibling;
+                        }
+                    }
+                }
                 let g = &mut self.geometry[f.id.index()];
                 if f.id == self.cache.tree.root() {
                     g.border_box = Rect { x: 0., y: 0., width: f.used.width, height }

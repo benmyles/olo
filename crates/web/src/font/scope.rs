@@ -251,8 +251,10 @@ impl Scope {
     pub fn catalog(&self) -> &Arc<Catalog> {
         &self.set.catalog
     }
-    fn family(&self, name: &str, r: &FontRequest, cancelled: Option<&AtomicBool>) -> Result<Option<Selection>> {
-        self.set.catalog.select_family(name, r, self.set.options, cancelled)
+    /// The family's face for this request, and for this character among
+    /// faces split by `unicode-range`.
+    fn family(&self, name: &str, r: &FontRequest, scalar: char, cancelled: Option<&AtomicBool>) -> Result<Option<Selection>> {
+        self.set.catalog.select_family_for(name, r, self.set.options, Some(scalar), cancelled)
     }
     fn selection(&self, r: &FontRequest, scalar: char, coverage: bool, cancelled: Option<&AtomicBool>) -> Result<Option<Selection>> {
         let catalog = &self.set.catalog;
@@ -279,13 +281,13 @@ impl Scope {
             check(cancelled)?;
             match family {
                 Family::Named(name) => {
-                    if let Some(s) = self.family(name, r, cancelled)? {
+                    if let Some(s) = self.family(name, r, scalar, cancelled)? {
                         if supported(&s)? {
                             return Ok(Some(s));
                         }
                     } else {
                         for alias in self.set.policy.aliases_of(name) {
-                            if let Some(s) = self.family(alias, r, cancelled)?
+                            if let Some(s) = self.family(alias, r, scalar, cancelled)?
                                 && supported(&s)?
                             {
                                 return Ok(Some(s));
@@ -296,7 +298,7 @@ impl Scope {
                 Family::Generic(generic) => {
                     let mut available = false;
                     for name in self.set.policy.get(*generic, &self.language, scalar) {
-                        if let Some(s) = self.family(name, r, cancelled)? {
+                        if let Some(s) = self.family(name, r, scalar, cancelled)? {
                             available = true;
                             if supported(&s)? {
                                 return Ok(Some(s));
@@ -308,7 +310,7 @@ impl Scope {
                     // present face lacking this glyph advances normally.
                     if !available && GenericPolicy::complete(*generic) {
                         for name in &self.set.policy.default {
-                            if let Some(s) = self.family(name, r, cancelled)?
+                            if let Some(s) = self.family(name, r, scalar, cancelled)?
                                 && supported(&s)?
                             {
                                 return Ok(Some(s));
@@ -320,7 +322,7 @@ impl Scope {
         }
         for name in &self.set.policy.default {
             check(cancelled)?;
-            if let Some(s) = self.family(name, r, cancelled)?
+            if let Some(s) = self.family(name, r, scalar, cancelled)?
                 && supported(&s)?
             {
                 return Ok(Some(s));
@@ -340,7 +342,7 @@ impl Scope {
                 if !seen.insert(key.into_owned()) {
                     continue;
                 }
-                if let Some(s) = self.family(name, r, cancelled)?
+                if let Some(s) = self.family(name, r, scalar, cancelled)?
                     && supported(&s)?
                 {
                     return Ok(Some(s));
