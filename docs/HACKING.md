@@ -3320,14 +3320,16 @@ module's comment.
 
 ## Testing: headless sessions
 
-Every crate's tests at once: `cargo test --release --workspace --exclude
-gpui-macros --no-fail-fast` (1,459 pass, 2026-11-07). Left out and known
-to fail are vendored code's own tests needing features Olo doesn't build:
-gpui-macros' `derive_inspector_reflection` (its inspector; it doesn't
-compile, and would stop the whole run) and six of Smithay's doc examples
-(its `renderer_test`, which its own CI turns on); Smithay's 82 unit
-tests pass in the same run (not alone: `-p smithay` builds it without
-the features the workspace gives it). Run it after a change that crosses
+Every crate's tests at once: `cargo test --release --workspace
+--no-fail-fast` (1,546 pass, none fail, 2026-11-08). Nothing is left
+out: gpui-macros' `derive_inspector_reflection` is built only where its
+macro is (debug builds, or the inspector), and Smithay is its own
+dev-dependency with `renderer_test`, so its doc examples build in a
+workspace run (`-p smithay` alone still builds it without the features
+the workspace gives it). The tests marked `#[ignore]` (live, timing,
+sample-file and fixture-making ones) are in
+[IGNORED-TESTS.md](IGNORED-TESTS.md), each with how to run it without
+touching the person's session and how it last went. Run it after a change that crosses
 crates, and before saying a change is done.
 
 Never open windows on the user's screen. `tools/dev/tsession` runs a

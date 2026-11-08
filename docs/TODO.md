@@ -2221,8 +2221,8 @@ people.
   of his screen after the upgrade is their first there.
 
 - **The ignored tests that need Ben** (2026-11-08: every other one has
-  run to a verdict, the waiting entries' audit note says how): each
-  wants what only he has.
+  run to a verdict, each listed with how and its result in
+  [IGNORED-TESTS.md](IGNORED-TESTS.md)): each wants what only he has.
   - His cameras: olo-face's `this_machines_units` opens every
     `/dev/video` node to find the infrared one (his rule: his cameras
     aren't opened without him).
