@@ -1340,8 +1340,9 @@ something nobody here has is in "Blocked", with what it waits for.
   and Forget My Model; walked through headless with synthetic touches at
   2× dark). Found on the way: a w's points spilled out of its glyph's
   bitmap when emboldened (a grey box round the letter, any app), fixed
-  in GPUI. Left: QA at 1 and 1.5×, light and night, and the trainer's
-  screens as `ui_lint` tests with the new checks.
+  in GPUI. Then (done 2026-11-03, the status below): QA at 1 and 1.5×,
+  light and night, and the trainer's screens as `ui_lint` tests with the
+  new checks.
   - QA every screen and state at 1, 1.5 and 2×, light, dark and night.
   *Status* (2026-11-03): every step in every state is a `ui_lint` test
   (`ui_lint_the_palm_trainer`: 36 states, at 1280 × 800 and 1512 × 982,
@@ -1567,8 +1568,14 @@ something nobody here has is in "Blocked", with what it waits for.
     The cursor sent as metadata done too (2026-11-06, HACKING's "The
     cursor as metadata": app_server's cursor capture sessions, the
     capture following the pointer, the stream's `SPA_META_Cursor`;
-    tried headless with a reader). *Left*: a real app's go with it
-    (OBS, Chrome Remote Desktop). Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
+    tried headless with a reader). Tried with a real app (2026-11-08):
+    Olo's Chrome on an agent screen, a page's getDisplayMedia, Chrome's
+    picker's Entire Screen, then Olo's portal picker (a live thumbnail),
+    Share. The page got 1280 × 800 frames at the screen's rate with the
+    pointer in them (`cursor: always`, displaySurface monitor), and
+    Deskbar showed the share. *Left* (blocked: an account, or a program
+    not installed here): Chrome Remote Desktop's remote control (a Google
+    account and its host) and OBS. Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
     started by Olo is told it's on GNOME, so it offers Wayland sharing;
     untried, Zoom isn't installed here).
   - **The Olo touches**: the picker, a kit dialog with Screens and
@@ -2017,7 +2024,9 @@ something nobody here has is in "Blocked", with what it waits for.
     its buffer: `olo_system::presence`), and the udev rule that gives
     the session the sensor (Olo Doctor installs it). Left: try it in
     front of the machine (Ben: install the rule from Doctor, turn it
-    on); dim when looking away.
+    on), dimming included. Dim when looking away: done (2026-11-08,
+    Presence's "Dim the display while you look away"; tried headless
+    with synthetic readings).
   - The IR camera (face sign-in): built, see "Face unlock" above.
 
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it

@@ -1607,6 +1607,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     pub fn synthetic_input(&mut self, event: olo_protocol::SyntheticEvent) {
         use olo_protocol::SyntheticEvent as S;
+        // (A sensor's reading, not input: nothing wakes for it.)
+        if let S::Presence { present, attentive } = event {
+            self.presence_changed(olo_system::presence::Presence { present, attentive });
+            return;
+        }
         // As real input wakes the displays (`process_input_event`).
         let before = self.pointer.current_location();
         let pointing = matches!(event, S::Move { .. } | S::MoveBy { .. } | S::MoveOn { .. } | S::Scroll { .. } | S::Touch { .. });
@@ -1635,6 +1640,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let time = InputTime::now();
         let pointer = self.pointer.clone();
         match event {
+            // (Taken in `synthetic_input`, before anything wakes.)
+            S::Presence { .. } => {}
             S::MoveBy { dx, dy } => {
                 let from = pointer.current_location();
                 let to = self.kept_on_screens(from, from + Point::from((dx, dy)));

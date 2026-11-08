@@ -5957,9 +5957,15 @@ module: the HID sensor hub's IIO device "prox", `proximity0` someone
 there, `attention` looking; `olo_system::presence`) locks the screen
 when the person walks away (`PowerSettings::lock_when_away_seconds`)
 and wakes the displays, asleep for idleness, when they come back
-(`wake_on_return`), from Preferences ▸ Power ▸ Presence, shown only on
-a computer with one. Both off by default; app_server watches the sensor
-only while one is on (`presence_settings`): a thread waits on its buffer
+(`wake_on_return`), and dims the built-in display while someone in
+front of it looks away (`dim_when_looking_away`: `attention` 0 for
+`DIM_AFTER`, 8 s, then the panel at `DIM_TO`, 30%, of its level; back as
+they look again or touch anything; `PowerStatus::dimmed` says so). All
+three are in Preferences ▸ Power ▸ Presence, shown only on a computer
+with one. All three are off by default. `SyntheticEvent::Presence` gives app_server
+a reading as the sensor would (tests, agents: it wakes nothing by
+itself). app_server watches the sensor only while one is on
+(`presence_settings`): a thread waits on its buffer
 (`/dev/iio:deviceN`, which carries a sample only as either changes),
 `_raw` read once at the start (each read asks the sensor). Walking away
 arms a one-shot timer, not a poll. `data/udev/73-olo-presence.rules`

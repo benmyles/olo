@@ -197,6 +197,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "power", tab: "Battery & Idle", group: "Caffeinated", name: "Stay awake: no display sleep, sleep, screen saver or lock", role: "CheckBox" },
     Setting { panel: "power", tab: "Battery & Idle", group: "Presence", name: "Lock when you walk away", role: "ComboBox" },
     Setting { panel: "power", tab: "Battery & Idle", group: "Presence", name: "Wake the display when you come back", role: "CheckBox" },
+    Setting { panel: "power", tab: "Battery & Idle", group: "Presence", name: "Dim the display while you look away", role: "CheckBox" },
     Setting { panel: "power", tab: "Graphics", group: "Intel Graphics", name: "Lowest clock", role: "Slider" },
     Setting { panel: "power", tab: "Graphics", group: "Intel Graphics", name: "Highest clock", role: "Slider" },
     Setting { panel: "power", tab: "Graphics", group: "Intel Graphics", name: "Power-saving profile", role: "CheckBox" },

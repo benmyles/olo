@@ -537,6 +537,14 @@ pub enum SyntheticEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at_us: Option<u64>,
     },
+    /// What a presence sensor would say (someone there; looking at the
+    /// screen, if it says): for tests and agents, as the sensor's own
+    /// readings are taken. Not input: it wakes nothing by itself.
+    Presence {
+        present: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attentive: Option<bool>,
+    },
     /// Turn a mouse wheel by whole notches (positive: down / right).
     Wheel {
         #[serde(default)]
@@ -1061,6 +1069,10 @@ pub struct PowerStatus {
     /// the epoch; [`Request::SetAutoApprove`]).
     #[serde(default)]
     pub auto_approve_until: Option<u64>,
+    /// The built-in display is dimmed: the person looked away
+    /// (`PowerSettings::dim_when_looking_away`).
+    #[serde(default)]
+    pub dimmed: bool,
 }
 
 /// The way a window is zoomed alone (`WindowInfo::zoomed_along`).
@@ -1882,11 +1894,23 @@ pub struct PowerSettings {
     /// With a presence sensor: wake the displays (asleep for idleness)
     /// when the person comes back.
     pub wake_on_return: bool,
+    /// With a presence sensor that sees attention: dim the built-in
+    /// display while the person in front of it looks away, back as they
+    /// look again (or touch anything).
+    pub dim_when_looking_away: bool,
 }
 
 impl Default for PowerSettings {
     fn default() -> Self {
-        PowerSettings { display_off_minutes: 10, sleep_minutes: 30, sleep_on_battery_only: false, lock_on_display_off: true, lock_when_away_seconds: 0, wake_on_return: false }
+        PowerSettings {
+            display_off_minutes: 10,
+            sleep_minutes: 30,
+            sleep_on_battery_only: false,
+            lock_on_display_off: true,
+            lock_when_away_seconds: 0,
+            wake_on_return: false,
+            dim_when_looking_away: false,
+        }
     }
 }
 
