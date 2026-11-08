@@ -144,10 +144,14 @@ mod tests {
         let mut hint = Hint::new();
         hint.with_extension("opus");
         let mut format = symphonia::default::get_probe().format(&hint, mss, &FormatOptions { enable_gapless: true, ..Default::default() }, &MetadataOptions::default()).unwrap().format;
-        let track = format.default_track().unwrap().clone();
-        let mut dec = codecs().make(&track.codec_params, &DecoderOptions::default()).unwrap();
+        // The first track it can decode, as audio.rs takes it (an Ogg file
+        // may carry a picture first: Commons' .opus files with VP8).
+        let (track, mut dec) = format.tracks().iter().find_map(|t| codecs().make(&t.codec_params, &DecoderOptions::default()).ok().map(|d| (t.id, d))).expect("an Opus track");
         let (mut frames, mut energy) = (0usize, 0f64);
         while let Ok(p) = format.next_packet() {
+            if p.track_id() != track {
+                continue;
+            }
             let AudioBufferRef::F32(b) = dec.decode(&p).unwrap() else { panic!("f32") };
             frames += b.frames();
             energy += b.chan(0).iter().map(|s| (*s as f64).powi(2)).sum::<f64>();
