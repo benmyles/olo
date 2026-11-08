@@ -2010,10 +2010,29 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
                 if *elements {
                     return Err(format!("children of <{}> (elements)", name(*node)));
                 }
+                // Text alone: `:empty` on the element may flip, and with it
+                // a `:has()` testing that on an ancestor: the element and
+                // its ancestors matched again (what a whole job restyles
+                // for it; GitHub's ticking counters restyled the page
+                // whole, 5-9 ms, every tick).
                 if has_keys.empty {
-                    return Err(format!("children of <{}>: a :has() tests :empty", name(*node)));
-                }
-                if rules.uses_empty() {
+                    if !doc.is_connected(*node).unwrap_or(false) {
+                        continue;
+                    }
+                    // Only those a `:has()` testing `:empty` can match: rematching
+                    // <html> and <body> recomputes GitHub's thousands of
+                    // custom properties (2 ms each).
+                    if rules.uses_empty() {
+                        add(*node, true);
+                    }
+                    let mut at = Some(*node);
+                    while let Some(a) = at {
+                        if doc.node_type(a).ok() == Some(NodeType::Element) && has_keys.empty_subjects.reaches(doc, a) {
+                            add(a, true);
+                        }
+                        at = doc.composed_parent(a).ok().flatten();
+                    }
+                } else if rules.uses_empty() {
                     add(*node, true);
                 }
                 relayout = true;
@@ -2355,7 +2374,8 @@ fn render_once(
     let why_not_kept = match previous {
         _ if kept_layout => "",
         None => "nothing before",
-        Some(_) if !styles.geometry_kept() => "geometry changed",
+        Some(_) if !styles.geometry_kept() || !restyle_kept_geometry => "geometry changed",
+        Some(_) if relayout => "text changed",
         Some(p) if p.device_scale() != viewport.scale => "another scale",
         Some(p) => {
             if std::env::var_os("OLO_WEB_TIMING").is_some() {

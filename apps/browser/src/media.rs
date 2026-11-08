@@ -210,18 +210,25 @@ impl Player {
         let made = match picture {
             Some(olo_preview::video::Picture::Bgra { size: [w, h], data, .. }) => {
                 let [ow, oh] = fitted([w, h], shown);
-                Some((w, h, ow, oh, reduce(&data, [w, h], [ow, oh])))
+                let density = w as f64 / ow as f64;
+                olo_web::image::Image::from_premultiplied(ow as u32, oh as u32, reduce(&data, [w, h], [ow, oh]), density, Default::default(), None).ok().map(|i| (w, h, ow, oh, i))
             }
+            // Its planes as they are: the window's GPU makes RGB of them
+            // and scales them where it shows as a surface layer (made RGB
+            // here, at the size shown, only to be painted with the page).
+            // Made RGB on the processor each picture, GitHub's videos took
+            // 4-13 ms a picture, on eight threads made for it.
             Some(olo_preview::video::Picture::Yuv(frame)) => {
                 let (w, h) = (frame.width as usize, frame.height as usize);
                 let [ow, oh] = fitted([w, h], shown);
-                Some((w, h, ow, oh, reduce_yuv(&frame, [ow, oh])))
+                let density = w as f64 / ow as f64;
+                let source = frame.clone();
+                Some((w, h, ow, oh, olo_web::image::Image::deferred(ow as u32, oh as u32, density, source, move || reduce_yuv(&frame, [ow, oh]))))
             }
             _ => None,
         };
-        if let Some((w, h, ow, oh, rgba)) = made {
-            let density = w as f64 / ow as f64;
-            if let Ok(mut image) = olo_web::image::Image::from_premultiplied(ow as u32, oh as u32, rgba, density, Default::default(), None) {
+        if let Some((w, h, ow, oh, mut image)) = made {
+            {
                 // After its first picture, a surface of its own (nothing
                 // around it repainted as it plays).
                 if self.image.is_some() {

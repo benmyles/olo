@@ -445,3 +445,21 @@ fn a_new_frame_of_the_same_size_replaces_its_picture_in_place() {
     let resized = Set::new(&doc, vec![(nodes[0], frame(1, 2)), (nodes[1], frame(2, 8))], Default::default(), None).unwrap();
     assert!(!set.same_layout(&resized));
 }
+#[test]
+fn a_deferred_image_makes_its_pixels_once_and_only_when_asked() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let made = Arc::new(AtomicUsize::new(0));
+    let counter = made.clone();
+    let source: Arc<dyn std::any::Any + Send + Sync> = Arc::new(7u32);
+    let image = olo_web::image::Image::deferred(2, 1, 2., source, move || {
+        counter.fetch_add(1, Ordering::Relaxed);
+        vec![1, 2, 3, 255]
+    });
+    assert_eq!(made.load(Ordering::Relaxed), 0, "nothing made until asked");
+    assert_eq!(image.natural(), (1., 0.5));
+    assert_eq!(image.source().and_then(|s| s.downcast_ref::<u32>()), Some(&7));
+    // Short of its size: filled out opaque.
+    assert_eq!(image.rgba(), [1, 2, 3, 255, 255, 255, 255, 255]);
+    assert_eq!(image.rgba().len(), 8);
+    assert_eq!(made.load(Ordering::Relaxed), 1, "made once");
+}

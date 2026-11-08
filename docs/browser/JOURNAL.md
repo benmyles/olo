@@ -6389,3 +6389,26 @@ journal).
   output on). `compare-cost.py https://github.com/`, release builds:
   Chrome load 9.0 CPU s, idle 50%, scroll 84%, 661 MB; Olo load 8.5 CPU
   s, idle 39%, scroll 105%, 509 MB (scrolling is next).
+- **GitHub's homepage, scrolled: no whole restyles, video on the GPU.**
+  Scrolling, scripts flip `data-focused` on a `<span>` and tick counters'
+  text; each restyled the page whole (6-15 ms, twice: for the scripts'
+  layout and the render). A compound with no keys (`*` in `* > p`) was
+  counted as reached by every attribute change, though it matches
+  whatever the attributes are; only compounds nested too deep to read
+  count now, and states (`:checked`, `:disabled`) and `:dir()` are keyed
+  by the attributes behind them (a `:disabled + div` missed its input's
+  `disabled` before). Text replaced inside an element, under a `:has()`
+  testing `:empty`, rematches that element and the ancestors such a
+  `:has()` can match, not the page. And the measurement was wrong: the
+  comparison script let the other browser run while it measured one (on
+  this hybrid processor a busy browser pushes the other onto the slow
+  cores), and `tools/dev/cost` lists only threads alive at its ends: Olo
+  made eight threads a video picture to make RGB of it on the processor
+  (4-13 ms a picture), 95 threads a second, unseen. A playing video's
+  picture keeps its decoded planes now; shown as a surface layer, the
+  window's GPU makes RGB of them, scales them and rounds their corners
+  (gpui's Y'CbCr surfaces take corner radii); made RGB on the processor
+  only if it is painted with the page. GitHub with the comparison fixed
+  (each browser alone), two runs: Chrome load 9.0-9.1 CPU s, idle 35-36%,
+  scroll 61-65%; Olo load 9.5-9.6 CPU s, idle 30%, scroll 69-71%. Before
+  this (same script): Olo load 14-15 CPU s, idle 73-83%.

@@ -1600,6 +1600,8 @@ struct SurfaceParams {
     content_mask: Bounds,
     // Olo: RGB from (Y', Cb, Cr, 1): the picture's matrix and range.
     rgb_from_yuv: mat4x4<f32>,
+    // Olo: its corners rounded (a video in a rounded box).
+    corner_radii: Corners,
 }
 
 var<uniform> surface_locals: SurfaceParams;
@@ -1644,5 +1646,6 @@ fn fs_surface(input: SurfaceVarying) -> @location(0) vec4<f32> {
         1.0);
 
     let rgb = surface_locals.rgb_from_yuv * y_cb_cr;
-    return vec4<f32>(to_window(rgb.rgb), rgb.a);
+    let distance = quad_sdf(input.position.xy, surface_locals.bounds, surface_locals.corner_radii);
+    return blend_color(vec4<f32>(rgb.rgb, 1.0), saturate(0.5 - distance));
 }

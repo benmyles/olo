@@ -1485,3 +1485,45 @@ fn a_live_canvas_is_a_surface_cut_by_its_clip_and_rounded_by_its_own() {
     assert_eq!(shown[0], paint::SurfaceShown { bounds: rect(0., 0., 100., 100.), clip: Some(rect(0., 0., 60., 40.)), radii: None });
     assert_eq!(shown[1], paint::SurfaceShown { bounds: rect(0., 40., 100., 100.), clip: Some(rect(0., 40., 100., 100.)), radii: Some([10.; 4]) });
 }
+#[test]
+fn attribute_changes_reach_through_states_and_not_through_any_element() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // `:disabled + div` follows the input's `disabled` attribute (a state
+    // it reflects); `* > p` matches whatever the attributes are, so an
+    // attribute flip under it is patched, not restyled whole.
+    let mut page = olo_web::page::load(
+        Arc::from(
+            "<!doctype html><style>body{margin:0}div,p{height:20px;margin:0;background-color:red}:disabled+div{background-color:green}\
+             * > p{background-color:blue}p[data-on]{background-color:green}input{display:block;height:10px;margin:0;border:0;padding:0}</style>\
+             <input><div></div><p></p>",
+        ),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let tile = render(&mut painter, &page.scene);
+    assert_eq!(pixel(&tile, 50, 15), [255, 0, 0, 255]);
+    assert_eq!(pixel(&tile, 50, 35), [0, 0, 255, 255]);
+    let mut doc = page.document.clone();
+    let body = doc.children(doc.root()).unwrap().last().unwrap();
+    let body = doc.children(body).unwrap().last().unwrap();
+    let children = doc.children(body).unwrap();
+    let elements: Vec<_> = children.into_iter().filter(|&n| doc.name(n).unwrap().is_some()).collect();
+    doc.set_attribute(elements[0], "disabled", "").unwrap();
+    doc.set_attribute(elements[2], "data-on", "").unwrap();
+    page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    let tile = render(&mut painter, &page.scene);
+    assert_eq!(pixel(&tile, 50, 15), [0, 128, 0, 255], "the div after the input's disabled");
+    assert_eq!(pixel(&tile, 50, 35), [0, 128, 0, 255], "the p with data-on");
+}

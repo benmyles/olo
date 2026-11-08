@@ -50,6 +50,8 @@ struct SurfaceParams {
     /// Olo: RGB from (Y', Cb, Cr, 1), in columns: the picture's matrix
     /// and range (`YuvFrame::rgb_matrix`).
     rgb_from_yuv: [[f32; 4]; 4],
+    /// Olo: its corners' radii (top left, top right, bottom right, bottom left).
+    corner_radii: [f32; 4],
 }
 
 /// Olo: a video's picture's two textures (luma; chroma interleaved).
@@ -1606,6 +1608,12 @@ impl BladeRenderer {
                                         bounds: surface.bounds.into(),
                                         content_mask: surface.content_mask.bounds.into(),
                                         rgb_from_yuv: surface.frame.rgb_matrix(),
+                                        corner_radii: [
+                                            surface.corner_radii.top_left.0,
+                                            surface.corner_radii.top_right.0,
+                                            surface.corner_radii.bottom_right.0,
+                                            surface.corner_radii.bottom_left.0,
+                                        ],
                                     },
                                     t_y: pair.y_view,
                                     t_cb_cr: pair.uv_view,
@@ -1690,6 +1698,7 @@ impl BladeRenderer {
                                             true,
                                             false,
                                         ),
+                                        corner_radii: [0.; 4],
                                     },
                                     t_y,
                                     t_cb_cr,

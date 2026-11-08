@@ -4518,6 +4518,18 @@ impl Window {
     /// This method should only be called as part of the paint phase of element drawing.
     #[cfg(not(target_os = "macos"))]
     pub fn paint_yuv(&mut self, bounds: Bounds<Pixels>, frame: std::sync::Arc<crate::YuvFrame>) {
+        self.paint_yuv_rounded(bounds, Corners::default(), frame);
+    }
+
+    /// Olo: [`Window::paint_yuv`] with its corners rounded by `corner_radii`
+    /// (a video in a rounded box).
+    #[cfg(not(target_os = "macos"))]
+    pub fn paint_yuv_rounded(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        frame: std::sync::Arc<crate::YuvFrame>,
+    ) {
         use crate::PaintSurface;
 
         self.invalidator.debug_assert_paint();
@@ -4529,6 +4541,7 @@ impl Window {
             order: 0,
             bounds,
             content_mask,
+            corner_radii: corner_radii.scale(scale_factor),
             frame,
         });
     }
@@ -4549,6 +4562,7 @@ impl Window {
             order: 0,
             bounds,
             content_mask,
+            corner_radii: Corners::default(),
             image_buffer,
         });
     }

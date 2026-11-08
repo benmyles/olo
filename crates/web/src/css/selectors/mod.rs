@@ -305,6 +305,25 @@ impl Selectors {
             keys.any = true;
             self.has_keys_of_list(*list, &mut keys);
         }
+        if keys.empty {
+            let mut subject = Vec::new();
+            for (i, step) in self.steps.iter().enumerate() {
+                let tests_empty = self.tests[step.tests.start as usize..step.tests.end as usize].iter().any(|t| {
+                    let Test::Logical { mode: Logical::Has, list } = t else { return false };
+                    let mut inner = HasKeys::default();
+                    self.has_keys_of_list(*list, &mut inner);
+                    inner.empty
+                });
+                if tests_empty {
+                    subject.clear();
+                    self.compound_keys(i as u32, 0, &mut subject);
+                    if subject.is_empty() {
+                        keys.empty_subjects.universal = true;
+                    }
+                    keys.empty_subjects.add(&subject);
+                }
+            }
+        }
         keys
     }
     fn has_keys_of_list(&self, list: u32, keys: &mut HasKeys) {
@@ -379,7 +398,8 @@ impl Selectors {
                 sibling |= matches!(relation, Relation::Next | Relation::Later);
                 let mut keys: Vec<String> = Vec::new();
                 let mut keyless = false;
-                self.compound_invalidation_keys(step_index, 0, &mut keys, &mut keyless);
+                let mut unknown = false;
+                self.compound_invalidation_keys(step_index, 0, &mut keys, &mut keyless, &mut unknown);
                 let (map, any) = if sibling { (&mut out.siblings, &mut out.any_siblings) } else { (&mut out.descendants, &mut out.any_descendants) };
                 if keyless {
                     if std::env::var_os("OLO_STYLE_TIMING").is_some() {
@@ -403,6 +423,13 @@ impl Selectors {
                             .collect();
                         eprintln!("  keyless compound [{}] in {}", kinds.join("+"), self.subject_summary(complex.steps.end - 1));
                     }
+                }
+                // A compound that tests no attribute (`*`, `*:hover`)
+                // matches whatever an attribute change does: such a change
+                // reaches nothing through it (GitHub's `data-focused`
+                // flips restyled the page whole, 6-15 ms each, through a
+                // `* > …`). One nested too deep to read may test any.
+                if unknown {
                     any.extend(&reach);
                 }
                 for k in keys {
@@ -413,9 +440,10 @@ impl Selectors {
         out
     }
     /// Every key an element must carry for this compound to match it
-    /// (any one changing can change the match); `keyless` when the compound
-    /// has none (or a logical branch has none).
-    fn compound_invalidation_keys(&self, step: u32, depth: usize, out: &mut Vec<String>, keyless: &mut bool) {
+    /// (any one changing can change the match), with the attributes its
+    /// states reflect; `keyless` when the compound has none (or a logical
+    /// branch has none), `unknown` when a branch is nested too deep to read.
+    fn compound_invalidation_keys(&self, step: u32, depth: usize, out: &mut Vec<String>, keyless: &mut bool, unknown: &mut bool) {
         let step = &self.steps[step as usize];
         let tests = &self.tests[step.tests.start as usize..step.tests.end as usize];
         let mut keyed = false;
@@ -445,7 +473,7 @@ impl Selectors {
                     for &i in links {
                         let complex = &self.complexes[i as usize];
                         for inner in complex.steps.start..complex.steps.end {
-                            self.compound_invalidation_keys(inner, depth + 1, out, keyless);
+                            self.compound_invalidation_keys(inner, depth + 1, out, keyless, unknown);
                         }
                     }
                     keyed = true;
@@ -454,7 +482,12 @@ impl Selectors {
                     out.push("[lang".to_owned());
                     keyed = true;
                 }
-                Test::State(_) | Test::Structural(_) | Test::Nth(_) | Test::Dir(_) | Test::Pseudo(_) | Test::Logical { .. } => {}
+                // States an attribute sets (`:checked`, `:disabled`) and
+                // directionality follow those attributes too.
+                Test::State(state) => out.extend(state.reflected_attributes().iter().map(|a| format!("[{a}"))),
+                Test::Dir(_) => out.push("[dir".to_owned()),
+                Test::Logical { .. } => *unknown = true,
+                Test::Structural(_) | Test::Nth(_) | Test::Pseudo(_) => {}
                 Test::Type { .. } => {}
             }
         }
@@ -528,6 +561,10 @@ pub struct HasKeys {
     pub attributes: std::collections::HashSet<String>,
     /// An argument tests `:empty`: text coming or going matters.
     pub empty: bool,
+    /// The elements a compound with a `:has()` whose argument tests
+    /// `:empty` can match (by its keys): only those can flip when text
+    /// comes or goes inside them.
+    pub empty_subjects: Reach,
 }
 /// The subjects a key's change can reach: elements with one of these tags,
 /// ids, classes or attribute names (or every element, when universal).

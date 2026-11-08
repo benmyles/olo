@@ -59,6 +59,16 @@ pub struct Image {
     /// key, and whether they are premultiplied), not here: a WebGL canvas's
     /// frame never read back. Shown as a surface layer; rasterised, nothing.
     shared: Option<(u64, bool)>,
+    /// Pixels made only when something rasterises it, from a source the
+    /// window can show as it is (a video's decoded planes, which its GPU
+    /// makes RGB of and scales): see `Image::deferred`.
+    deferred: Option<Arc<Deferred>>,
+}
+/// See `Image::deferred`.
+struct Deferred {
+    make: Box<dyn Fn() -> Vec<u8> + Send + Sync>,
+    made: std::sync::OnceLock<Arc<[u8]>>,
+    source: Arc<dyn std::any::Any + Send + Sync>,
 }
 static SERIALS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 fn serial() -> u64 {
@@ -82,14 +92,24 @@ impl Image {
             return Err(Error::Invalid);
         }
         let opaque = all_opaque(&rgba);
-        Ok(Arc::new(Self { width, height, rgba: rgba.into(), density, opaque, serial: serial(), live: false, shared: None }))
+        Ok(Arc::new(Self { width, height, rgba: rgba.into(), density, opaque, serial: serial(), live: false, shared: None, deferred: None }))
     }
     /// The natural size in CSS pixels.
     /// The same pixels at another density (a `srcset` candidate chosen as
     /// `2x` has half its pixel size as its natural size): nothing copied.
     pub fn with_density(&self, density: f64) -> Arc<Self> {
         let density = if density.is_finite() && density > 0. { density } else { 1. };
-        Arc::new(Self { width: self.width, height: self.height, rgba: self.rgba.clone(), density, opaque: self.opaque, serial: serial(), live: self.live, shared: self.shared })
+        Arc::new(Self {
+            width: self.width,
+            height: self.height,
+            rgba: self.rgba.clone(),
+            density,
+            opaque: self.opaque,
+            serial: serial(),
+            live: self.live,
+            shared: self.shared,
+            deferred: self.deferred.clone(),
+        })
     }
     pub fn density(&self) -> f64 {
         self.density
@@ -150,7 +170,7 @@ impl Image {
         }
         check(cancel)?;
         let opaque = all_opaque(&rgba);
-        Ok(Arc::new(Self { width, height, rgba: rgba.into(), density: 1., opaque, serial: serial(), live: false, shared: None }))
+        Ok(Arc::new(Self { width, height, rgba: rgba.into(), density: 1., opaque, serial: serial(), live: false, shared: None, deferred: None }))
     }
     pub fn width(&self) -> u32 {
         self.width
@@ -173,7 +193,17 @@ impl Image {
     /// An image whose pixels are in shared texture `key` of the window's
     /// renderer (see the field): a live surface, `width` × `height`.
     pub fn shared(width: u32, height: u32, key: u64, premultiplied: bool) -> Arc<Self> {
-        Arc::new(Self { width: width.max(1), height: height.max(1), rgba: Arc::from(Vec::new()), density: 1., opaque: false, serial: serial(), live: true, shared: Some((key, premultiplied)) })
+        Arc::new(Self {
+            width: width.max(1),
+            height: height.max(1),
+            rgba: Arc::from(Vec::new()),
+            density: 1.,
+            opaque: false,
+            serial: serial(),
+            live: true,
+            shared: Some((key, premultiplied)),
+            deferred: None,
+        })
     }
     /// The shared texture its pixels are in, and whether premultiplied.
     pub fn shared_texture(&self) -> Option<(u64, bool)> {
@@ -185,11 +215,38 @@ impl Image {
             i.live = true;
         }
     }
+    /// An opaque `width` × `height` picture at `density` whose pixels
+    /// (premultiplied RGBA) `make` makes the first time they are asked
+    /// for, from `source`, which a window can show as it is: a playing
+    /// video's decoded planes, shown by the GPU as a surface layer, made
+    /// RGB here only when it has to be painted with the page (under an
+    /// opacity, say).
+    pub fn deferred(width: u32, height: u32, density: f64, source: Arc<dyn std::any::Any + Send + Sync>, make: impl Fn() -> Vec<u8> + Send + Sync + 'static) -> Arc<Self> {
+        let (width, height) = (width.max(1), height.max(1));
+        let deferred = Deferred { make: Box::new(make), made: std::sync::OnceLock::new(), source };
+        let density = if density.is_finite() && density > 0. { density } else { 1. };
+        Arc::new(Self { width, height, rgba: Arc::from(Vec::new()), density, opaque: true, serial: serial(), live: false, shared: None, deferred: Some(Arc::new(deferred)) })
+    }
+    /// The source of a deferred image (see `Image::deferred`).
+    pub fn source(&self) -> Option<&Arc<dyn std::any::Any + Send + Sync>> {
+        self.deferred.as_ref().map(|d| &d.source)
+    }
     pub fn rgba(&self) -> &[u8] {
-        &self.rgba
+        match &self.deferred {
+            Some(d) => d.made.get_or_init(|| {
+                let mut rgba = (d.make)();
+                // As many bytes as it says it has, whatever `make` made.
+                rgba.resize(self.width as usize * self.height as usize * 4, 255);
+                Arc::from(rgba)
+            }),
+            None => &self.rgba,
+        }
     }
     pub fn payload_bytes(&self) -> usize {
-        self.rgba.len()
+        match &self.deferred {
+            Some(d) => d.made.get().map_or(0, |r| r.len()),
+            None => self.rgba.len(),
+        }
     }
 }
 /// Document-scoped bindings to shared image allocations. Mutation invalidates
