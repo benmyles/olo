@@ -264,3 +264,23 @@ fn an_item_spanning_minmax_zero_fr_tracks_does_not_grow_them() {
     assert_eq!(rect(&p, "a").width, 100.);
     assert_eq!(rect(&p, "w").width, 300.);
 }
+#[test]
+fn an_inline_level_absolute_box_takes_its_place_in_its_line() {
+    // apple.com's iPhone Duo video: `position:absolute; transform:
+    // translate(-50%)` and no inset, in centred text: its static position
+    // is the middle of its line. A line of nothing but such a box is no
+    // line box (zero tall); the paragraph isn't split around one. As
+    // Chrome: a at (200, 0), c at (400, 18), the second paragraph one line.
+    let p = load(
+        "#w{position:relative;width:400px;text-align:center;line-height:18px}#a{position:absolute;width:50px;height:50px}#b{position:absolute;display:inline-block;width:20px;height:20px}#c{position:absolute;width:30px;height:30px}#d{position:absolute;display:block;width:10px;height:10px}</style><div id=w><div id=p1><span id=a></span></div><div id=p2>ab <span id=b></span> cd</div><div id=p3 style='text-align:right'><span id=c></span></div><div id=p4>x<div id=d></div></div></div>",
+        1.,
+    );
+    assert_eq!(rect(&p, "p1").height, 0.);
+    assert_eq!((rect(&p, "a").x, rect(&p, "a").y), (200., 0.));
+    assert_eq!(rect(&p, "p2").height, 18.);
+    let b = rect(&p, "b");
+    assert!(b.x > 190. && b.x < 210. && b.y == 0., "{b:?}");
+    assert_eq!((rect(&p, "c").x, rect(&p, "c").y), (400., 18.));
+    // A block-level one keeps a block's static position: after the line.
+    assert_eq!((rect(&p, "d").x, rect(&p, "d").y), (0., 36.));
+}

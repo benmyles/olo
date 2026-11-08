@@ -529,10 +529,11 @@ impl<'a> BuildJob<'a> {
     /// An atomic inline (inline-block, inline-flex, inline-grid, inline-table):
     /// a block formatting context that sits in its paragraph as one object.
     /// Its own content is built with the paragraph set aside, then resumed.
-    fn atomic(&mut self, node: NodeId, container: BoxId, flex_or_grid: bool) -> Result<()> {
-        self.append_object(node, container, node, BoxKind::Block { flow_root: true, root: false, absolute: false })?;
+    fn atomic(&mut self, node: NodeId, container: BoxId, flex_or_grid: bool, absolute: bool) -> Result<()> {
+        self.append_object(node, container, node, BoxKind::Block { flow_root: true, root: false, absolute })?;
         let p = self.pending.as_ref().ok_or(Error::Invalid)?;
         let block = self.boxes[p.text_box.index()].last_child.ok_or(Error::Invalid)?;
+        self.boxes[block.index()].absolute = absolute;
         if self.stack.len() >= self.limits.depth {
             return Err(Error::Limit);
         }
@@ -636,6 +637,27 @@ impl<'a> BuildJob<'a> {
         let text_box = self.pending.as_ref().ok_or(Error::Invalid)?.text_box;
         self.add(node, style, kind, text_box)?;
         Ok(())
+    }
+    /// An absolutely positioned box that was inline-level, in a block
+    /// container's flow: it stays in its paragraph, as an object taking no
+    /// room, so its static position is where it would have been in its
+    /// line (CSS 2.2 §10.3.7; the paragraph isn't split around it).
+    fn in_line(&self, s: &Style, absolute: bool, container: BoxId) -> bool {
+        absolute
+            && s.inline_origin()
+            && self.boxes.get(container.index()).is_some_and(|b| matches!(b.kind, BoxKind::Block { .. }))
+            && self
+                .styles
+                .snapshot(self.boxes[container.index()].style_node)
+                .is_some_and(|c| matches!(c.value(Property::Display), Value::Display(Display::Box { inner: Inner::Flow | Inner::FlowRoot, .. })))
+    }
+    /// An absolute box of `kind` as an object in its paragraph (`in_line`).
+    fn absolute_object(&mut self, node: NodeId, container: BoxId, kind: BoxKind) -> Result<BoxId> {
+        self.append_object(node, container, node, kind)?;
+        let text_box = self.pending.as_ref().ok_or(Error::Invalid)?.text_box;
+        let id = self.boxes[text_box.index()].last_child.ok_or(Error::Invalid)?;
+        self.boxes[id.index()].absolute = true;
+        Ok(id)
     }
     fn text(&mut self, node: NodeId, container: BoxId, style: impl Into<StyleKey>) -> Result<()> {
         let value = self.document.value(node)?.ok_or(Error::Invalid)?;
@@ -784,7 +806,7 @@ impl<'a> BuildJob<'a> {
                                 // Keep its space: the viewport's attribute size, else SVG's default object size.
                                 self.note("SVG not rendered", node);
                                 let natural = replaced_natural(self.document, node, [300., 150.])?;
-                                self.replaced(node, display, container, natural, absolute)?;
+                                self.replaced(node, display, container, natural, absolute, self.in_line(s, absolute, container))?;
                                 continue;
                             }
                         };
@@ -797,6 +819,9 @@ impl<'a> BuildJob<'a> {
                         self.vectors.push(source);
                         match display {
                             Display::Box { outer: Outer::Inline, .. } if !absolute => self.append_object(node, container, node, BoxKind::InlineVector { vector })?,
+                            _ if self.in_line(s, absolute, container) => {
+                                self.absolute_object(node, container, BoxKind::BlockVector { vector })?;
+                            }
                             _ => {
                                 self.flush()?;
                                 let id = self.add(node, node, BoxKind::BlockVector { vector }, container)?;
@@ -851,11 +876,14 @@ impl<'a> BuildJob<'a> {
                             // reserves the attribute size and otherwise shows nothing.
                             self.note("image not decoded", node);
                             let natural = replaced_natural(self.document, node, [0., 0.])?;
-                            self.replaced(node, display, container, natural, absolute)?;
+                            self.replaced(node, display, container, natural, absolute, self.in_line(s, absolute, container))?;
                             continue;
                         };
                         match display {
                             Display::Box { outer: Outer::Inline, .. } if !absolute && !floated => self.append_object(node, container, node, BoxKind::InlineImage { image })?,
+                            _ if self.in_line(s, absolute, container) => {
+                                self.absolute_object(node, container, BoxKind::BlockImage { image })?;
+                            }
                             _ => {
                                 self.flush()?;
                                 let id = self.add(node, node, BoxKind::BlockImage { image }, container)?;
@@ -932,7 +960,7 @@ impl<'a> BuildJob<'a> {
                             _ => [300., 150.],
                         };
                         let natural = if name == "input" || name == "textarea" || name == "select" { default } else { replaced_natural(self.document, node, default)? };
-                        self.replaced(node, display, container, natural, absolute)?;
+                        self.replaced(node, display, container, natural, absolute, self.in_line(s, absolute, container))?;
                         continue;
                     }
                     match display {
@@ -950,7 +978,7 @@ impl<'a> BuildJob<'a> {
                             if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline | Keyword::Middle)) {
                                 self.note("vertical-align on an atomic inline", node);
                             }
-                            self.atomic(node, container, matches!(inner, Inner::Flex | Inner::Grid))?;
+                            self.atomic(node, container, matches!(inner, Inner::Flex | Inner::Grid), false)?;
                         }
                         Display::Box { outer: Outer::Inline, inner, list_item } => {
                             if inner == Inner::Ruby {
@@ -988,6 +1016,10 @@ impl<'a> BuildJob<'a> {
                             match inner {
                                 Inner::Flow | Inner::FlowRoot | Inner::Flex | Inner::Grid | Inner::Table => {}
                                 Inner::Ruby => self.note("ruby as block", node),
+                            }
+                            if !list_item && self.in_line(s, absolute, container) {
+                                self.atomic(node, container, matches!(inner, Inner::Flex | Inner::Grid), true)?;
+                                continue;
                             }
                             self.flush()?;
                             let root = self.boxes[container.index()].kind == BoxKind::Viewport;
@@ -1083,9 +1115,10 @@ fn replaced_natural(document: &Document, node: NodeId, default: [f32; 2]) -> Res
 impl BuildJob<'_> {
     /// Add an unrendered replaced element with the given natural size as an
     /// atomic inline or a block, following its display.
-    fn replaced(&mut self, node: NodeId, display: Display, container: BoxId, natural: [f32; 2], absolute: bool) -> Result<()> {
+    fn replaced(&mut self, node: NodeId, display: Display, container: BoxId, natural: [f32; 2], absolute: bool, in_line: bool) -> Result<()> {
         match display {
             Display::Box { outer: Outer::Inline, .. } if !absolute => self.append_object(node, container, node, BoxKind::InlineReplaced { natural }),
+            _ if in_line => self.absolute_object(node, container, BoxKind::BlockReplaced { natural }).map(|_| ()),
             _ => {
                 self.flush()?;
                 let id = self.add(node, node, BoxKind::BlockReplaced { natural }, container)?;

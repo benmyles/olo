@@ -66,14 +66,20 @@ impl Job<'_> {
         Ok(self.cache.tree.get(id).ok_or(Error::Invalid)?.absolute)
     }
     pub(super) fn defer_absolute(&mut self, id: BoxId) -> Result<()> {
-        if self.absolute.len() >= self.limits.boxes {
-            return Err(Error::Limit);
-        }
         let parent = self.stack.last().ok_or(Error::Invalid)?;
         // The next block would start at the cursor plus the pending margin; in a
         // flex row it would start where the row's cursor is. Both are the
         // static position's block-axis estimate for a hypothetical block box.
         let static_position = Point { x: 0., y: parent.cursor + parent.pending.value() };
+        self.defer_absolute_at(id, static_position)
+    }
+    /// Defer an absolute box with its static position, in its parent's
+    /// content box (an inline-level one's: its place in its line).
+    pub(super) fn defer_absolute_at(&mut self, id: BoxId, static_position: Point) -> Result<()> {
+        if self.absolute.len() >= self.limits.boxes {
+            return Err(Error::Limit);
+        }
+        let parent = self.stack.last().ok_or(Error::Invalid)?;
         if let Some(&at) = self.absolute_indices.get(&id) {
             self.absolute[at].queries = parent.queries;
             self.absolute[at].static_position = static_position;

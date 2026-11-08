@@ -1699,11 +1699,21 @@ impl<'a> Job<'a> {
         }
         self.progress.lines += l.lines().len();
         self.progress.texts += 1;
-        let through = l.lines().is_empty();
+        // Lines holding only absolutely positioned boxes' places are no
+        // line boxes: margins collapse through a paragraph of them.
+        let through = l.lines().iter().all(|line| line.phantom);
         self.geometry[id.index()] = Geometry { border_box: Rect { x: 0., y: 0., width: available, height: l.height() }, ..Default::default() };
         for placed in l.object_fragments() {
             let index = image_geometry.binary_search_by_key(&placed.at, |(_, _, at)| *at).map_err(|_| Error::Invalid)?;
             let (child, mut g, _) = image_geometry[index];
+            if cache.tree.boxes[child.index()].absolute {
+                // Its static position: where it is in the line, at the
+                // line box's top.
+                let line = l.lines().get(placed.line as usize).ok_or(Error::Invalid)?;
+                let top = l.baseline(placed.line as usize).ok_or(Error::Invalid)? - line.ascent;
+                self.defer_absolute_at(child, Point { x: placed.x, y: top })?;
+                continue;
+            }
             g.border_box.x = placed.x + g.margin.left;
             g.border_box.y = l.baseline(placed.line as usize).ok_or(Error::Invalid)? - placed.ascent + g.margin.top;
             self.geometry[child.index()] = g;
@@ -1735,6 +1745,12 @@ impl<'a> Job<'a> {
                 return Err(Error::Invalid);
             }
             let at = boundary(prepared, raw)?;
+            // An absolutely positioned box's place: no room in the line.
+            if b.absolute {
+                objects.push(inline::Object { at, advance: 0., ascent: 0., descent: 0., placeholder: true });
+                image_geometry.push((child, Geometry::default(), at));
+                continue;
+            }
             let middle = matches!(s.value(P::VerticalAlign), Value::Keyword(K::Middle));
             let (g, margin) = if matches!(b.kind, BoxKind::Block { .. }) {
                 // An atomic inline: laid out already, or measured when this
@@ -1769,7 +1785,7 @@ impl<'a> Job<'a> {
             } else {
                 height
             };
-            objects.push(inline::Object { at, advance: g.border_box.width + margin.horizontal(), ascent, descent: height - ascent });
+            objects.push(inline::Object { at, advance: g.border_box.width + margin.horizontal(), ascent, descent: height - ascent, placeholder: false });
             image_geometry.push((child, g, at));
         }
         Ok((objects, image_geometry))
@@ -1886,7 +1902,7 @@ impl<'a> Job<'a> {
                 let mut child = f.next;
                 while let Some(c) = child {
                     let b = &self.cache.tree.boxes[c.index()];
-                    if matches!(b.kind, BoxKind::Block { .. }) {
+                    if matches!(b.kind, BoxKind::Block { .. }) && !b.absolute {
                         break;
                     }
                     child = b.next_sibling;
@@ -1951,7 +1967,7 @@ impl<'a> Job<'a> {
                         let mut atomic = b.first_child;
                         while let Some(c) = atomic {
                             let cb = &self.cache.tree.boxes[c.index()];
-                            if matches!(cb.kind, BoxKind::Block { .. }) {
+                            if matches!(cb.kind, BoxKind::Block { .. }) && !cb.absolute {
                                 break;
                             }
                             atomic = cb.next_sibling;

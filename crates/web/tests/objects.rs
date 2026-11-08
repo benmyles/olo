@@ -77,7 +77,7 @@ fn atomic_items_fit_without_glyphs_and_expand_only_their_own_line() {
         assert_eq!(t.object_count(), 1);
         let object_run = t.paragraph().runs.iter().find(|r| r.range == (1..4)).unwrap();
         assert!(object_run.glyphs.is_empty());
-        let o = Object { at: 1, advance: 13.125, ascent: 30., descent: 0. };
+        let o = Object { at: 1, advance: 13.125, ascent: 30., descent: 0., placeholder: false };
         let l = fit(&mut e, t.clone(), vec![o], 100., false, budget);
         assert_eq!(l.lines().len(), 2);
         assert_eq!(l.lines()[0].advance, 53.125);
@@ -101,7 +101,7 @@ fn objects_keep_bidi_order_nowrap_and_fractional_advances() {
     for rtl in [false, true] {
         for wrap in [false, true] {
             let t = text(&mut e, &s, "\u{fffc}\u{fffc}", rtl, wrap, 1);
-            let os = vec![Object { at: 0, advance: 13.125, ascent: 5., descent: 0. }, Object { at: 3, advance: 7.75, ascent: 8., descent: 0. }];
+            let os = vec![Object { at: 0, advance: 13.125, ascent: 5., descent: 0., placeholder: false }, Object { at: 3, advance: 7.75, ascent: 8., descent: 0., placeholder: false }];
             let l = fit(&mut e, t, os, 15., rtl, 1);
             assert_eq!(l.lines().len(), if wrap { 2 } else { 1 });
             assert_eq!(l.height(), if wrap { 40. } else { 20. });
@@ -122,10 +122,10 @@ fn object_metadata_and_metrics_are_mandatory_bounded_and_cancellable() {
     assert!(matches!(missing.step(1), Err(layout::Error::Invalid)));
     assert!(matches!(missing.step(1), Err(layout::Error::Failed)));
     drop(missing);
-    for input in [vec![], vec![Object { at: 1, advance: 1., ascent: 1., descent: 0. }], vec![Object { at: 0, advance: f64::NAN, ascent: 1., descent: 0. }]] {
+    for input in [vec![], vec![Object { at: 1, advance: 1., ascent: 1., descent: 0., placeholder: false }], vec![Object { at: 0, advance: f64::NAN, ascent: 1., descent: 0., placeholder: false }]] {
         assert!(layout::Job::new(&mut e, t.clone(), Default::default(), Default::default(), None).unwrap().with_objects(input).is_err());
     }
-    let object = Object { at: 0, advance: 1., ascent: 1., descent: 0. };
+    let object = Object { at: 0, advance: 1., ascent: 1., descent: 0., placeholder: false };
     assert!(matches!(
         layout::Job::new(&mut e, t.clone(), Default::default(), layout::Limits { fragments: 0, ..Default::default() }, None).unwrap().with_objects(vec![object]),
         Err(layout::Error::Limit)
@@ -182,6 +182,7 @@ fn independent_chrome_atomic_object_positions_and_line_metrics() {
                         advance: o["width"].as_f64().unwrap() + o["ml"].as_f64().unwrap() + o["mr"].as_f64().unwrap(),
                         ascent: o["height"].as_f64().unwrap() + o["mt"].as_f64().unwrap() + o["mb"].as_f64().unwrap(),
                         descent: 0.,
+                        placeholder: false,
                     })
                     .collect();
                 let mut j = layout::Job::for_style_with_spacing_at_scale(

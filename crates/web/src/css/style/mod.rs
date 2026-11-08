@@ -526,6 +526,8 @@ pub struct Style {
     line_height: f64,
     dependencies: Dependencies,
     root: bool,
+    /// Absolutely positioned, and inline-level before that made it a block.
+    inline_origin: bool,
 }
 impl Style {
     /// The identity of what this style paints with (its values and font;
@@ -550,6 +552,12 @@ impl Style {
     }
     pub fn dependencies(&self) -> Dependencies {
         self.dependencies
+    }
+    /// An absolutely positioned box that was inline-level before its
+    /// position made it a block: its static position (an auto inset's
+    /// fallback) is where it would have been in its line (CSS 2.2 §10.3.7).
+    pub fn inline_origin(&self) -> bool {
+        self.inline_origin
     }
     #[allow(clippy::too_many_arguments)] // Coherent parent/root/host snapshots and explicit worker bounds.
     pub fn compute(
@@ -615,7 +623,17 @@ impl Style {
             compute::PHASES[5].fetch_add(c.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
         }
         check(cancelled)?;
-        Ok(Self { defaults, values, customs: computed.customs, axes: computed.axes, font: computed.font, line_height: computed.line_height, dependencies: computed.dependencies, root: options.root })
+        Ok(Self {
+            defaults,
+            values,
+            customs: computed.customs,
+            axes: computed.axes,
+            font: computed.font,
+            line_height: computed.line_height,
+            dependencies: computed.dependencies,
+            root: options.root,
+            inline_origin: computed.inline_origin,
+        })
     }
     /// This style with one value replaced, sharing everything else.
     pub fn with_value(&self, property: Property, value: Value) -> Self {
@@ -634,6 +652,7 @@ impl Style {
             line_height: self.line_height,
             dependencies: self.dependencies,
             root: self.root,
+            inline_origin: self.inline_origin,
         }
     }
     pub fn value(&self, property: Property) -> &Value {

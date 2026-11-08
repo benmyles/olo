@@ -7,6 +7,7 @@ pub(super) struct Computed {
     pub axes: Axes,
     pub line_height: f64,
     pub dependencies: Dependencies,
+    pub inline_origin: bool,
 }
 enum Source<'a> {
     Inherited(&'a Value),
@@ -519,7 +520,7 @@ pub(super) fn values(
         values.sort_unstable_by_key(|e| e.property as u16);
     }
     lap(&mut clock, 2);
-    coupled::apply(&mut values, defaults, parent, axes, options)?;
+    let inline_origin = coupled::apply(&mut values, defaults, parent, axes, options)?;
     lap(&mut clock, 3);
     let customs = customs(defaults, cascade, &mut resolver, parent, limits, cancelled)?;
     lap(&mut clock, 4);
@@ -528,5 +529,5 @@ pub(super) fn values(
     if bytes > limits.retained_bytes {
         return Err(Error::Limit);
     }
-    Ok(Computed { values, customs, font, axes, line_height, dependencies })
+    Ok(Computed { values, customs, font, axes, line_height, dependencies, inline_origin })
 }

@@ -369,3 +369,20 @@ p.insertBefore(s, p.firstChild);
     assert_eq!(urls, ["https://example.test/made.png", "https://example.test/real.png"]);
     assert_eq!(realm.report().errors, Vec::<String>::new());
 }
+#[test]
+fn the_page_is_not_a_touch_device() {
+    // apple.com laid itself out for a tablet: Modernizr-style checks.
+    let page =
+        r#"<script>console.log('ontouchstart' in window, 'ontouchstart' in document.documentElement, navigator.maxTouchPoints, 'onclick' in window, matchMedia('(pointer: fine)').matches)</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    assert_eq!(realm.report().console, ["[log] false false 0 true true"]);
+}

@@ -611,6 +611,9 @@ pub struct Line {
     /// inline boxes (half-leading model) and atomic inlines.
     pub ascent: f64,
     pub descent: f64,
+    /// Holds only absolutely positioned boxes' places (and collapsible
+    /// space): zero-height, and margins collapse through it.
+    pub phantom: bool,
 }
 pub struct Layout {
     text: Arc<Text>,
@@ -938,6 +941,7 @@ impl<'a> Job<'a> {
                 end: Kind::Required,
                 ascent: self.options.baseline,
                 descent: self.options.line_height - self.options.baseline,
+                phantom: false,
             });
             self.progress.lines = 1;
             self.progress.work = 1;
@@ -1292,10 +1296,14 @@ impl<'a> Job<'a> {
             ascent = ascent.max((a + half) / scale + snap(s.shift));
             descent = descent.max(s.line_height - (a + half) / scale - snap(s.shift));
         }
+        let mut phantom = false;
         if let Some(objects) = &mut self.objects {
             let (a, d) = objects.line(self.lines.len(), &self.fragments[first..], self.options, self.limits, self.cancel)?;
             ascent = ascent.max(a);
             descent = descent.max(d);
+            if objects.placeholders_only(&self.fragments[first..], self.text.prepared.text(), collapses(self.text.whitespace)) {
+                (ascent, descent, phantom) = (0., 0., true);
+            }
         }
         if ![ascent, descent].iter().all(|v| v.is_finite()) {
             return Err(Error::Invalid);
@@ -1312,6 +1320,7 @@ impl<'a> Job<'a> {
             end: point.kind,
             ascent,
             descent,
+            phantom,
         });
         self.begin_line();
         Ok(())

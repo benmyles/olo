@@ -9,6 +9,9 @@ pub struct Object {
     pub advance: f64,
     pub ascent: f64,
     pub descent: f64,
+    /// An absolutely positioned box's place in the line (no size): a line
+    /// holding only these (and collapsible space) is no line box.
+    pub placeholder: bool,
 }
 /// A placed atomic item. Its vertical origin is the line baseline minus ascent.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -104,6 +107,25 @@ impl Objects {
             return Err(Error::Invalid);
         }
         Ok((ascent, descent))
+    }
+    /// Whether these fragments are placeholders and collapsible space
+    /// only, with a placeholder among them: the line is then zero-height
+    /// (CSS 2.2 §9.4.2, no in-flow content).
+    pub fn placeholders_only(&self, fragments: &[Fragment], text: &str, collapsible: bool) -> bool {
+        let mut any = false;
+        for f in fragments {
+            match self.at(f.source.start) {
+                Some(o) if o.placeholder => any = true,
+                Some(_) => return false,
+                None => {
+                    let t = text.get(f.source.start as usize..f.source.end as usize).unwrap_or("x");
+                    if !(collapsible && t.chars().all(|c| matches!(c, ' ' | '\t' | '\n' | '\u{200b}'))) {
+                        return false;
+                    }
+                }
+            }
+        }
+        any
     }
     pub fn finish(self) -> Box<LayoutObjects> {
         Box::new(LayoutObjects { placed: self.placed.into_boxed_slice() })

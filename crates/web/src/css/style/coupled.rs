@@ -25,7 +25,9 @@ fn blockify(display: Display) -> Display {
         d => d,
     }
 }
-pub(super) fn apply(values: &mut Vec<Entry>, defaults: &Defaults, parent: Option<&Style>, axes: Axes, options: Options) -> Result<()> {
+/// Returns whether the box was inline-level before an absolute or fixed
+/// position blockified it (its static position is then in its line).
+pub(super) fn apply(values: &mut Vec<Entry>, defaults: &Defaults, parent: Option<&Style>, axes: Axes, options: Options) -> Result<bool> {
     use Property as P;
     let x = keyword(values, defaults, P::OverflowX)?;
     let y = keyword(values, defaults, P::OverflowY)?;
@@ -47,7 +49,9 @@ pub(super) fn apply(values: &mut Vec<Entry>, defaults: &Defaults, parent: Option
         display = Display::Box { outer: Outer::Block, inner: Inner::Flow, list_item: false };
     }
     let item = matches!(options.layout_parent.map(|p| p.display), Some(Display::Box { inner: Inner::Flex | Inner::Grid, .. }));
-    if options.root || item || matches!(position, Keyword::Absolute | Keyword::Fixed) || float != Keyword::None {
+    let positioned = matches!(position, Keyword::Absolute | Keyword::Fixed);
+    let inline_origin = positioned && !options.root && !item && matches!(display, Display::Box { outer: Outer::Inline, .. });
+    if options.root || item || positioned || float != Keyword::None {
         display = blockify(display);
     }
     // Orthogonal inline flows establish an independent formatting context.
@@ -58,5 +62,5 @@ pub(super) fn apply(values: &mut Vec<Entry>, defaults: &Defaults, parent: Option
         *inner = Inner::FlowRoot;
     }
     set(values, P::Display, Value::Display(display));
-    Ok(())
+    Ok(inline_origin)
 }
