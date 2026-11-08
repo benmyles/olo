@@ -785,6 +785,13 @@ impl<'a> Job<'a> {
                 }
             }
         }
+        // An iframe's `frameborder="0"` (or "no"): no border (HTML §15.4.4).
+        if name == "iframe"
+            && let Some(value) = attribute("frameborder")?
+            && (value.trim() == "0" || value.trim().eq_ignore_ascii_case("no"))
+        {
+            push(self, "border-style", "none".to_owned(), hints)?;
+        }
         if matches!(name, "body" | "table" | "tr" | "td" | "th" | "thead" | "tbody" | "tfoot" | "div" | "marquee" | "col" | "colgroup")
             && let Some(value) = attribute("bgcolor")?
         {

@@ -1771,3 +1771,26 @@ fn a_declarative_shadow_root_renders_with_its_own_sheet() {
     let doc = &page.document;
     assert_eq!(doc.shadow_roots().len(), 1);
 }
+#[test]
+fn an_iframe_with_frameborder_0_has_no_border() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    let page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0}</style><iframe width=40 height=20 frameborder=0></iframe><iframe width=40 height=20></iframe>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let borders = page.scene.commands().iter().filter(|c| matches!(c.primitive, paint::Primitive::Border { .. })).count();
+    assert_eq!(borders, 1, "only the iframe without frameborder=0 has its border");
+}

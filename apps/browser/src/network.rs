@@ -75,7 +75,15 @@ pub struct Resource {
 impl Loader {
     pub fn new() -> page::Result<Self> {
         Ok(Self {
-            client: Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(Duration::from_secs(20)).timeout(Duration::from_secs(60)).user_agent(olo_js::USER_AGENT).build()?,
+            // Responses' headers up to 256 KB as Chrome takes them (hyper's
+            // 16 KB default refused YouTube's: an HTTP/2 stream error).
+            client: Client::builder()
+                .http2_max_header_list_size(256 * 1024)
+                .redirect(reqwest::redirect::Policy::none())
+                .connect_timeout(Duration::from_secs(20))
+                .timeout(Duration::from_secs(60))
+                .user_agent(olo_js::USER_AGENT)
+                .build()?,
             runtime: tokio::runtime::Builder::new_current_thread().enable_all().build()?,
             cache: Default::default(),
         })
@@ -469,7 +477,18 @@ async fn get(
                             },
                         );
                     }
-                    let mut response = request.send().await?;
+                    // (With what it came from: "error sending request" alone
+                    // says nothing of DNS, TLS or the connection.)
+                    let mut response = request.send().await.map_err(|e| {
+                        let mut text = e.to_string();
+                        let mut source = std::error::Error::source(&e);
+                        while let Some(cause) = source {
+                            text.push_str(": ");
+                            text.push_str(&cause.to_string());
+                            source = cause.source();
+                        }
+                        page::Error::from(text.as_str())
+                    })?;
                     let status = response.status();
                     if matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308)
                         && let Some(location) = response.headers().get(header::LOCATION)

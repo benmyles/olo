@@ -6545,3 +6545,16 @@ journal).
   black). Blink's arithmetic, its `Dark()` and `Light()` on the brightest
   channel, a too-dark colour lightened first, and black inset grey 154
   over 238: five measured cases match Chrome to the unit.
+- **Frames run their scripts; YouTube loads at all.** A frame's scripts
+  now run once before it renders, in a realm of its own (half a second of
+  its timers, three of wall clock): what they build shows (a test child's
+  script-made paragraph and its timer's change, as Chrome). YouTube was
+  unreachable from Olo, page or embed: its responses' headers pass
+  hyper's 16 KB HTTP/2 limit, read as a stream protocol error; the client
+  takes 256 KB as Chrome does (and request errors now say what they came
+  from). An embed renders YouTube's own page in its frame. Also: a
+  document without a charset whose bytes are valid UTF-8 is read as UTF-8
+  (Chrome detects it; Olo read windows-1252, "frame’s" came out
+  "frameâ€™s"), and `frameborder="0"` takes an iframe's border away.
+  Open: the embed's layout (its text column narrower than Chrome's, the
+  logo missing), frames' input, live frames.

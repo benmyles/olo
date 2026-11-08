@@ -9,6 +9,7 @@ pub fn encoding(bytes: &[u8], protocol: Option<&str>) -> (&'static Encoding, usi
     if let Some(choice) = protocol.and_then(|s| Encoding::for_label(s.as_bytes())) {
         return (choice, 0);
     }
+    let whole = bytes;
     let bytes = &bytes[..bytes.len().min(1024)];
     if bytes.starts_with(b"<\0?\0x\0") {
         return (UTF_16LE, 0);
@@ -128,7 +129,11 @@ pub fn encoding(bytes: &[u8], protocol: Option<&str>) -> (&'static Encoding, usi
             return (charset, 0);
         }
     }
-    (xml_encoding(bytes).unwrap_or(WINDOWS_1252), 0)
+    // Undeclared: what the bytes are, as Chrome detects it (HTML §13.2.3.2
+    // lets a browser guess): valid UTF-8 with anything beyond ASCII is
+    // UTF-8 (pages and files saved without a charset), else windows-1252.
+    let detected = if !whole.is_ascii() && std::str::from_utf8(whole).is_ok() { UTF_8 } else { WINDOWS_1252 };
+    (xml_encoding(bytes).unwrap_or(detected), 0)
 }
 fn xml_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
     if !bytes.starts_with(b"<?xml") {
@@ -192,4 +197,15 @@ fn content_encoding(value: &[u8]) -> Option<&'static Encoding> {
         return Encoding::for_label(&value[start..at]);
     }
     None
+}
+#[cfg(test)]
+mod detection_tests {
+    use super::*;
+    #[test]
+    fn undeclared_utf8_is_utf8_and_other_bytes_windows_1252() {
+        assert_eq!(encoding("<p>frame\u{2019}s</p>".as_bytes(), None).0, UTF_8);
+        assert_eq!(encoding(b"<p>caf\xe9</p>", None).0, WINDOWS_1252);
+        assert_eq!(encoding(b"<p>plain</p>", None).0, WINDOWS_1252);
+        assert_eq!(encoding(b"<meta charset=windows-1252><p>frame\xe2\x80\x99s", None).0, WINDOWS_1252);
+    }
 }

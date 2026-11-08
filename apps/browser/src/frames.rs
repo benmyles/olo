@@ -165,7 +165,54 @@ fn start(src: String, size: [u32; 2], made: Arc<Mutex<Made>>, cancel: network::C
                     page::ResourceKind::Font => None,
                 })
             };
-            let frame = page::load_assets(html, &host, &scope, &mut shaper, &mut painter, host.viewport, Some(&cancel), |_, _| {}, resource)?;
+            // Its scripts, run once before it renders (a realm of its own,
+            // its timers run for half a second of its own time): what they
+            // build (an embed's player, a widget) is what shows.
+            let dark = key.palette.is_dark();
+            let mut run = |doc: olo_web::dom::Document, quirks: bool, _: page::Measurer| -> page::Result<olo_web::dom::Document> {
+                let url = document.url.to_string();
+                let scripts: Vec<olo_js::Script> = olo_js::page_scripts(&doc, &url)
+                    .into_iter()
+                    .filter_map(|(source, name, module, node)| match source {
+                        olo_js::Source::Inline(text) => Some(olo_js::Script { source: text, name, module, node: Some(node) }),
+                        olo_js::Source::External(u) => {
+                            let at = url::Url::parse(&u).ok()?;
+                            loader.script(&document, at, &cancel, |_| {}).ok().map(|text| olo_js::Script { source: Arc::from(text), name: u, module, node: Some(node) })
+                        }
+                    })
+                    .collect();
+                if scripts.is_empty() {
+                    return Ok(doc);
+                }
+                let config = olo_js::Config {
+                    url,
+                    viewport: (f64::from(size[0]) / key.scale, f64::from(size[1]) / key.scale),
+                    scale: key.scale,
+                    quirks,
+                    dark,
+                    budget_ms: 500.,
+                    wall_seconds: 3.,
+                    ..Default::default()
+                };
+                let fetcher: olo_js::Fetcher = {
+                    let (loader, cancel, from) = (loader.clone(), cancel.clone(), document.url.clone());
+                    Box::new(move |url: &str, method: &str, body: &str, headers: &str| {
+                        let url = url::Url::parse(url).map_err(|e| e.to_string())?;
+                        if method == "GET" && headers.is_empty() {
+                            let (status, content_type, body, final_url) = loader.text(&from, url, &cancel).map_err(|e| e.to_string())?;
+                            return Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url });
+                        }
+                        let (status, content_type, body, final_url) = loader.request(&from, url, method, headers, body.as_bytes(), &cancel).map_err(|e| e.to_string())?;
+                        Ok(olo_js::Fetched { status, content_type, body, url: final_url })
+                    })
+                };
+                let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), None).map_err(|e| page::Error::from(e.as_str()))?;
+                realm.run_page(&scripts);
+                Ok(realm.snapshot())
+            };
+            let media = olo_web::css::media::Media::screen(host.viewport.width, host.viewport.height, key.scale, dark);
+            let prepared = page::prepare_scripted(html, &scope, media, false, Some(&cancel), |_, _| {}, resource, |_, _| {}, Some(&mut run))?;
+            let frame = page::finish(prepared, &host, &mut shaper, &mut painter, host.viewport, Some(&cancel), |_, _| {})?;
             let tile = painter.raster(&frame.scene, paint::DeviceRect { x: 0, y: 0, width: size[0], height: size[1] }, Some(&cancel))?;
             Image::from_premultiplied(size[0], size[1], tile.into_rgba(), key.scale, Default::default(), Some(&cancel)).map_err(|e| format!("frame picture: {e}").into())
         })();
