@@ -128,7 +128,10 @@ impl Engine {
                     if wanted.contains(&open) {
                         break;
                     }
-                    let (group, layer) = layers.pop().unwrap();
+                    let (group, mut layer) = layers.pop().unwrap();
+                    if let Some(m) = &scene.groups[group as usize].filter {
+                        filter_colors(&mut layer, m);
+                    }
                     let opacity = scene.groups[group as usize].opacity;
                     let group_mask = self.group_mask(scene, group, scale, region, cancel)?;
                     let target: &mut Pixmap = match layers.last_mut() {
@@ -401,7 +404,10 @@ impl Engine {
                 d[4]
             );
         }
-        while let Some((group, layer)) = layers.pop() {
+        while let Some((group, mut layer)) = layers.pop() {
+            if let Some(m) = &scene.groups[group as usize].filter {
+                filter_colors(&mut layer, m);
+            }
             let opacity = scene.groups[group as usize].opacity;
             let group_mask = self.group_mask(scene, group, scale, region, cancel)?;
             let target: &mut Pixmap = match layers.last_mut() {
@@ -428,5 +434,24 @@ impl Engine {
         };
         super::decoration::mask_layers(&mut surface, s, m.outer, scale, region, transform, self, tree, cancel)?;
         Ok(Some(Mask::from_pixmap(surface.as_ref(), tiny_skia::MaskType::Alpha)))
+    }
+}
+/// A `filter`'s colour matrix (rows R, G, B, A over unpremultiplied R, G,
+/// B, A, 1) applied to every pixel of a group's layer.
+fn filter_colors(layer: &mut Pixmap, m: &[f32; 20]) {
+    for px in layer.data_mut().chunks_exact_mut(4) {
+        let a = f32::from(px[3]) / 255.;
+        // A transparent pixel stays so unless the matrix gives alpha from
+        // nothing (an alpha offset), which no colour function does.
+        if a == 0. && m[19] == 0. {
+            continue;
+        }
+        let c = if a > 0. { [f32::from(px[0]) / 255. / a, f32::from(px[1]) / 255. / a, f32::from(px[2]) / 255. / a, a] } else { [0., 0., 0., 0.] };
+        let row = |r: usize| (m[r * 5] * c[0] + m[r * 5 + 1] * c[1] + m[r * 5 + 2] * c[2] + m[r * 5 + 3] * c[3] + m[r * 5 + 4]).clamp(0., 1.);
+        let alpha = row(3);
+        for i in 0..3 {
+            px[i] = (row(i) * alpha * 255. + 0.5) as u8;
+        }
+        px[3] = (alpha * 255. + 0.5) as u8;
     }
 }

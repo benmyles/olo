@@ -118,6 +118,10 @@ pub struct Group {
     pub opacity: f32,
     /// A `mask-image` the group composites through (CSS Masking 1 §7).
     pub mask: Option<MaskRef>,
+    /// Its `filter`'s colour functions as one matrix (see
+    /// `decoration::color_matrix`), applied to what the group painted
+    /// before it composites.
+    pub filter: Option<[f32; 20]>,
 }
 /// The box whose mask images, over its border box, mask a group.
 #[derive(Clone, Copy, Debug)]
@@ -2029,13 +2033,24 @@ impl<'a> BuildJob<'a> {
                         }
                         _ => None,
                     };
-                    if opacity < 1. || mask.is_some() {
+                    // filter: the box and its content through its colour
+                    // functions, as one group (blur and drop-shadow not yet).
+                    let filter = match s.value(P::Filter) {
+                        Value::Filters(f) => {
+                            if f.0.iter().any(|f| matches!(f, crate::css::properties::Filter::Blur(_) | crate::css::properties::Filter::Other)) {
+                                self.note("filter blur()/drop-shadow()/url() not drawn", id);
+                            }
+                            crate::css::properties::color_matrix(&f.0)
+                        }
+                        _ => None,
+                    };
+                    if opacity < 1. || mask.is_some() || filter.is_some() {
                         if self.groups.len() >= self.limits.commands {
                             return Err(Error::Limit);
                         }
                         let index = self.groups.len() as u32;
-                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask });
-                        if mask.is_none() {
+                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask, filter });
+                        if mask.is_none() && filter.is_none() {
                             self.group_owners.push((id, index));
                         }
                         self.current_group = index;
@@ -2053,7 +2068,10 @@ impl<'a> BuildJob<'a> {
                         matches!(p.value(P::Display), Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flex | crate::css::properties::Inner::Grid, .. }))
                     });
                     let z = if positioned || item { z } else { None };
-                    let stacking = z.is_some() || opacity < 1. || isolated || transformed != parent_transform || layered || mask.is_some();
+                    // (A filter other than none makes one, as it would whatever
+                    // it does to colours.)
+                    let filtered = !matches!(s.value(P::Filter), Value::Keyword(K::None));
+                    let stacking = z.is_some() || opacity < 1. || isolated || transformed != parent_transform || layered || mask.is_some() || filtered;
                     if positioned || stacking {
                         if self.contexts.len() >= self.limits.commands {
                             return Err(Error::Limit);
@@ -2247,7 +2265,7 @@ impl<'a> BuildJob<'a> {
         let alone = |mut g: u32| {
             while g != NONE {
                 let group = &self.groups[g as usize];
-                if members[g as usize] != 1 || group.mask.is_some() {
+                if members[g as usize] != 1 || group.mask.is_some() || group.filter.is_some() {
                     return false;
                 }
                 g = group.parent;

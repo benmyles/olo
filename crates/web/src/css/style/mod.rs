@@ -384,6 +384,7 @@ fn paint_only(p: Property) -> bool {
             | P::BorderLeftColor
             | P::BoxShadow
             | P::BackdropFilter
+            | P::Filter
             | P::Visibility
             | P::ZIndex
             | P::PointerEvents

@@ -611,13 +611,128 @@ pub(super) fn parse_repeats(parts: &[Component<'_>]) -> Result<Value> {
     }
     Ok(Value::Repeats(Repeats(out.into())))
 }
-/// A `backdrop-filter` function: `blur()` (its standard deviation) and
-/// `saturate()` shown; the others kept, to be said not to be.
+/// A `filter` or `backdrop-filter` function (Filter Effects 1 §13):
+/// `blur()` (its standard deviation), the colour functions by their
+/// amounts (1 or 100% as they are; `hue-rotate` in degrees), and those
+/// not drawn yet (`drop-shadow()`, `url()`), kept to be said not to be.
 #[derive(Clone, Debug)]
 pub enum Filter {
     Blur(Numeric),
     Saturate(f64),
+    Brightness(f64),
+    Contrast(f64),
+    Grayscale(f64),
+    HueRotate(f64),
+    Invert(f64),
+    Opacity(f64),
+    Sepia(f64),
     Other,
+}
+/// The 4x5 matrix (rows R, G, B, A over unpremultiplied R, G, B, A, 1)
+/// the colour functions of a filter list make, composed in their order;
+/// none when they leave colours as they are (or there are none).
+pub fn color_matrix(filters: &[Filter]) -> Option<[f32; 20]> {
+    let identity = |m: &mut [f64; 20]| {
+        *m = [0.; 20];
+        m[0] = 1.;
+        m[6] = 1.;
+        m[12] = 1.;
+        m[18] = 1.;
+    };
+    let mut total = [0f64; 20];
+    identity(&mut total);
+    let mut any = false;
+    for f in filters {
+        let mut m = [0f64; 20];
+        identity(&mut m);
+        // Filter Effects 1 §13 and §15's matrices.
+        let rgb = |m: &mut [f64; 20], k: [f64; 9]| {
+            for r in 0..3 {
+                for c in 0..3 {
+                    m[r * 5 + c] = k[r * 3 + c];
+                }
+            }
+        };
+        match *f {
+            Filter::Saturate(s) => {
+                rgb(&mut m, [0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s, 0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s, 0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s])
+            }
+            Filter::Grayscale(g) => {
+                let a = 1. - g.clamp(0., 1.);
+                rgb(
+                    &mut m,
+                    [
+                        0.2126 + 0.7874 * a,
+                        0.7152 - 0.7152 * a,
+                        0.0722 - 0.0722 * a,
+                        0.2126 - 0.2126 * a,
+                        0.7152 + 0.2848 * a,
+                        0.0722 - 0.0722 * a,
+                        0.2126 - 0.2126 * a,
+                        0.7152 - 0.7152 * a,
+                        0.0722 + 0.9278 * a,
+                    ],
+                )
+            }
+            Filter::Sepia(v) => {
+                let a = 1. - v.clamp(0., 1.);
+                rgb(&mut m, [0.393 + 0.607 * a, 0.769 - 0.769 * a, 0.189 - 0.189 * a, 0.349 - 0.349 * a, 0.686 + 0.314 * a, 0.168 - 0.168 * a, 0.272 - 0.272 * a, 0.534 - 0.534 * a, 0.131 + 0.869 * a])
+            }
+            Filter::HueRotate(deg) => {
+                let (s, c) = deg.to_radians().sin_cos();
+                rgb(
+                    &mut m,
+                    [
+                        0.213 + c * 0.787 - s * 0.213,
+                        0.715 - c * 0.715 - s * 0.715,
+                        0.072 - c * 0.072 + s * 0.928,
+                        0.213 - c * 0.213 + s * 0.143,
+                        0.715 + c * 0.285 + s * 0.140,
+                        0.072 - c * 0.072 - s * 0.283,
+                        0.213 - c * 0.213 - s * 0.787,
+                        0.715 - c * 0.715 + s * 0.715,
+                        0.072 + c * 0.928 + s * 0.072,
+                    ],
+                )
+            }
+            Filter::Brightness(b) => {
+                for i in [0, 6, 12] {
+                    m[i] = b;
+                }
+            }
+            Filter::Contrast(c) => {
+                for (i, o) in [(0, 4), (6, 9), (12, 14)] {
+                    m[i] = c;
+                    m[o] = 0.5 - 0.5 * c;
+                }
+            }
+            Filter::Invert(v) => {
+                let v = v.clamp(0., 1.);
+                for (i, o) in [(0, 4), (6, 9), (12, 14)] {
+                    m[i] = 1. - 2. * v;
+                    m[o] = v;
+                }
+            }
+            Filter::Opacity(o) => m[18] = o.clamp(0., 1.),
+            Filter::Blur(_) | Filter::Other => continue,
+        }
+        any = true;
+        // total = m after total: m x total (4x5 as 5x5 with a last row of 0 0 0 0 1).
+        let mut next = [0f64; 20];
+        for r in 0..4 {
+            for c in 0..5 {
+                let mut v = if c == 4 { m[r * 5 + 4] } else { 0. };
+                for k in 0..4 {
+                    v += m[r * 5 + k] * total[k * 5 + c];
+                }
+                next[r * 5 + c] = v;
+            }
+        }
+        total = next;
+    }
+    let mut identity_matrix = [0f64; 20];
+    identity(&mut identity_matrix);
+    (any && total.iter().zip(identity_matrix.iter()).any(|(a, b)| (a - b).abs() > 1e-6)).then(|| total.map(|v| v as f32))
 }
 #[derive(Clone, Debug)]
 pub struct Filters(pub Arc<[Filter]>);
@@ -629,7 +744,14 @@ impl Filters {
         self.0.len() == other.0.len()
             && self.0.iter().zip(other.0.iter()).all(|(a, b)| match (a, b) {
                 (Filter::Blur(x), Filter::Blur(y)) => x.same(y),
-                (Filter::Saturate(x), Filter::Saturate(y)) => x == y,
+                (Filter::Saturate(x), Filter::Saturate(y))
+                | (Filter::Brightness(x), Filter::Brightness(y))
+                | (Filter::Contrast(x), Filter::Contrast(y))
+                | (Filter::Grayscale(x), Filter::Grayscale(y))
+                | (Filter::HueRotate(x), Filter::HueRotate(y))
+                | (Filter::Invert(x), Filter::Invert(y))
+                | (Filter::Opacity(x), Filter::Opacity(y))
+                | (Filter::Sepia(x), Filter::Sepia(y)) => x == y,
                 (Filter::Other, Filter::Other) => true,
                 _ => false,
             })
@@ -646,7 +768,19 @@ impl Filters {
         Ok(Self(out.into()))
     }
 }
-/// `backdrop-filter`: `none | <filter-function>+` (Filter Effects 2 §2).
+/// An amount: a number, or a percentage of 1 (nonnegative); `default`
+/// when none is given.
+fn amount(args: &[Component<'_>], default: f64) -> Result<f64> {
+    match args {
+        [] => Ok(default),
+        [a] if matches!(a.kind(), Kind::Number | Kind::Integer) => Ok(a.number().ok_or(Error::Invalid)?.value),
+        [a] if matches!(a.kind(), Kind::Percentage | Kind::IntegerPercentage) => Ok(a.number().ok_or(Error::Invalid)?.value / 100.),
+        _ => Err(Error::Invalid),
+    }
+    .and_then(|v| if v < 0. { Err(Error::Invalid) } else { Ok(v) })
+}
+/// `filter` and `backdrop-filter`: `none | <filter-function>+` (Filter
+/// Effects 1 §6, 2 §2).
 pub(super) fn parse_filters(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     if let [c] = parts
         && is(*c, "none")
@@ -667,13 +801,22 @@ pub(super) fn parse_filters(parts: &[Component<'_>], limits: Limits, cancelled: 
                 [a] => Filter::Blur(Numeric::compile(*a, NumericKind::Length, Range::Nonnegative, limits, cancelled)?),
                 _ => return Err(Error::Invalid),
             },
-            "saturate" => match args.as_slice() {
-                [] => Filter::Saturate(1.),
-                [a] if matches!(a.kind(), Kind::Number | Kind::Integer) => Filter::Saturate(a.number().ok_or(Error::Invalid)?.value.max(0.)),
-                [a] if matches!(a.kind(), Kind::Percentage | Kind::IntegerPercentage) => Filter::Saturate(a.number().ok_or(Error::Invalid)?.value.max(0.) / 100.),
+            "saturate" => Filter::Saturate(amount(&args, 1.)?),
+            "brightness" => Filter::Brightness(amount(&args, 1.)?),
+            "contrast" => Filter::Contrast(amount(&args, 1.)?),
+            // Amounts past 100% are 100%.
+            "grayscale" => Filter::Grayscale(amount(&args, 1.)?.min(1.)),
+            "invert" => Filter::Invert(amount(&args, 1.)?.min(1.)),
+            "opacity" => Filter::Opacity(amount(&args, 1.)?.min(1.)),
+            "sepia" => Filter::Sepia(amount(&args, 1.)?.min(1.)),
+            "hue-rotate" => match args.as_slice() {
+                [] => Filter::HueRotate(0.),
+                [a] if matches!(a.kind(), Kind::Number | Kind::Integer) && a.number().is_some_and(|n| n.value == 0.) => Filter::HueRotate(0.),
+                // An angle (its constant in degrees), as rotate() takes one.
+                [a] => Filter::HueRotate(Numeric::compile(*a, NumericKind::Angle, Range::All, limits, cancelled)?.expression().constant().ok_or(Error::Invalid)?.value),
                 _ => return Err(Error::Invalid),
             },
-            "brightness" | "contrast" | "grayscale" | "hue-rotate" | "invert" | "opacity" | "sepia" | "drop-shadow" | "url" => Filter::Other,
+            "drop-shadow" | "url" => Filter::Other,
             _ => return Err(Error::Invalid),
         });
         if out.len() > 32 {
@@ -893,7 +1036,22 @@ mod filter_tests {
         assert!(matches!(&f[1], Filter::Blur(n) if n.expression().constant().is_some_and(|q| q.value == 20.)));
         let (p, f) = filters("-webkit-backdrop-filter: saturate(1.5) brightness(1.1)").unwrap();
         assert_eq!(p, Property::BackdropFilter);
-        assert!(matches!(f[0], Filter::Saturate(s) if (s - 1.5).abs() < 1e-9) && matches!(f[1], Filter::Other));
+        assert!(matches!(f[0], Filter::Saturate(s) if (s - 1.5).abs() < 1e-9) && matches!(f[1], Filter::Brightness(b) if (b - 1.1).abs() < 1e-9));
         assert!(filters("backdrop-filter: blur(4px) wobble(2)").is_none());
+    }
+    #[test]
+    fn colour_filters_make_one_matrix() {
+        let m = |text: &str| color_matrix(&filters(text).unwrap().1);
+        let apply = |m: [f32; 20], c: [f32; 4]| -> [f32; 4] { std::array::from_fn(|r| (0..4).map(|k| m[r * 5 + k] * c[k]).sum::<f32>() + m[r * 5 + 4]) };
+        assert!(m("filter: grayscale(0) brightness(100%)").is_none(), "identity");
+        let gray = apply(m("filter: grayscale(1)").unwrap(), [1., 0., 0., 1.]);
+        assert!((gray[0] - 0.2126).abs() < 1e-4 && (gray[1] - 0.2126).abs() < 1e-4 && (gray[2] - 0.2126).abs() < 1e-4);
+        let inverted = apply(m("filter: invert(100%)").unwrap(), [0.2, 0.5, 1., 1.]);
+        assert!((inverted[0] - 0.8).abs() < 1e-4 && (inverted[1] - 0.5).abs() < 1e-4 && inverted[2].abs() < 1e-4);
+        // In order: brightness(2) then contrast(0) is grey whatever the colour.
+        let grey = apply(m("filter: brightness(2) contrast(0)").unwrap(), [0.1, 0.9, 0.3, 1.]);
+        assert!(grey[..3].iter().all(|v| (v - 0.5).abs() < 1e-4));
+        assert!(filters("filter: grayscale(-1)").is_none());
+        assert!(matches!(filters("filter: hue-rotate(0.5turn)").unwrap().1[0], Filter::HueRotate(d) if (d - 180.).abs() < 1e-9));
     }
 }
