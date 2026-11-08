@@ -180,7 +180,7 @@ pub struct Tracker {
     next_job: u64,
     /// Edit ▸ Undo and Redo, for every window; and the jobs running whose
     /// outcome becomes a step (what to call it, and why it runs).
-    pub history: undo::History,
+    pub history: undo::History<undo::Change>,
     recording: HashMap<u64, (String, undo::Purpose)>,
     status: Option<EntityId>,
     /// Long jobs say when they're done; Show opens where the items went.
@@ -1281,6 +1281,9 @@ impl Tracker {
 
     /// A step done here and now (a rename, a new folder: no job).
     fn done(&mut self, name: &str, change: undo::Change, cx: &mut Context<Self>) {
+        if change.is_empty() {
+            return;
+        }
         self.history.done(name, change);
         self.refresh_menus(cx);
     }
@@ -1347,7 +1350,7 @@ impl Tracker {
                     }
                 });
             }
-            self.history.record(purpose, undo::Step { name, change });
+            self.history.record(purpose, name, change);
         }
         self.refresh_menus(cx);
         self.reload_all(cx);

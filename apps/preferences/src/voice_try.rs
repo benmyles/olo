@@ -607,8 +607,13 @@ mod tests {
         let now = Settings::default();
         let v = variants(now);
         assert_eq!(v[0].1, Settings { enabled: true, ..now });
-        // Each other noise level, the level the other way, the other mode.
-        assert_eq!(v.len(), 1 + 3 + 1 + 1);
+        // Each other noise level, the other noise model, the level the
+        // other way, the other mode.
+        assert_eq!(v.len(), 1 + 3 + 1 + 1 + 1);
+        assert!(v.iter().any(|(name, s)| s.model == voice::Model::LowDelay && name.contains("Low Delay")), "{v:?}");
+        // With noise off, no model to try.
+        let off = variants(Settings { noise: voice::Noise::Off, ..now });
+        assert!(off.iter().all(|(_, s)| s.model == now.model), "{off:?}");
         let mut seen = std::collections::HashSet::new();
         assert!(v.iter().all(|(_, s)| seen.insert(format!("{s:?}"))), "{v:?}");
         assert!(v.iter().all(|(name, _)| !name.is_empty()));

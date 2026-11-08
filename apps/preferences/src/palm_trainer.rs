@@ -825,7 +825,7 @@ impl TrainerWindow {
                     Some((model, report)) if report.better_than_baseline() => {
                         let kept = model.clone();
                         w.prefs.update(cx, |p, cx| {
-                            p.edit(cx, move |s| {
+                            p.edit_as(cx, "", "Palm Model", move |s| {
                                 s.touchpad.filter.palm_model = Some(kept);
                                 s.touchpad.filter.use_palm_model = true;
                             })

@@ -40,6 +40,12 @@ impl MenuField {
 
     /// Its name for agents, with no label shown: a field in a grid, named
     /// by its row and column ("Processors in Power Saver").
+    /// What it's called: its label, else its `name` (an undo step's name,
+    /// the settings index's).
+    pub fn title(&self) -> Option<SharedString> {
+        self.label.clone().or_else(|| self.name.clone())
+    }
+
     pub fn name(mut self, name: impl Into<SharedString>) -> Self {
         self.name = Some(name.into());
         self

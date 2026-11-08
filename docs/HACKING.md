@@ -2153,6 +2153,23 @@ event reaches it.
   that notifies itself for everything (Terminal's `Shell`, which
   redraws for output) gains nothing from it.
   `Menu::keys_from(bar)` gives a context menu the bar's keys.
+- `undo::History<C>`: Undo and Redo, one way for every app. A step is
+  named for what it did ("Rename", "“Volume”") and holds what the app
+  needs to take it back (`C`); `done` records one (`done_merging` folds
+  a run of the same thing into one step: a slider dragged, a field typed
+  in, while each comes within 1.5 s and nothing was undone); Undo takes
+  the last off (`take_undo`), the app takes it back and records what that
+  did with `Purpose::Undo` for Redo, and the other way round, so both
+  lists hold what was done and a step goes back and forth; something new
+  forgets Redo's. `edit_items(menu)` adds Edit ▸ Undo *name* and Redo
+  *name* (commands `undo`, `redo`, the profile's keys). A window with no
+  menu bar takes the profile's Undo and Redo keys with `undo::keys(window,
+  cx, |redo, window, cx| …)`: its Frame gives them when nothing in it
+  took them (a text field's ⌘Z is its own). Agents and the command
+  palette find Undo and Redo among the app's menus (the bar's, or
+  `agent::set_menus`). Tracker (files: undo.rs) and Preferences
+  (settings: undo.rs) use it; what's left is in TODO ("Undo everywhere
+  it makes sense").
 - `WindowOptions::floating()`: the xdg-toplevel-tag `floating`, so
   app_server floats it over auto-tiled windows. `child()`: the window
   belongs to the app's window that has the keyboard (its xdg parent:
@@ -4133,6 +4150,17 @@ opened, its own `panel::State` and text fields).
   `SetSettings` (collapsed to the newest) and `ConfigureOutput`. A control's
   change goes to `Prefs::edit`, which sends the settings and draws every
   panel again; nothing blocks.
+* **Undo and Redo** (undo.rs, `olo_ui::undo`): every change made with a
+  panel's control is a step, kept as the settings it changed (each by its
+  JSON path, what it was and what it became), named for the control
+  (`form.rs`: a check box's or a slider's label, a menu's, else its box's
+  title: Undo “Space at the edges”; Reset, Defaults, Revert, Restore from
+  Backup by theirs). Undo puts back just those settings and Redo makes
+  them what they became, so what changed meanwhile elsewhere (Deskbar, an
+  agent, another panel) stays. A slider dragged or a field typed in is one
+  step. ⌘Z and ⇧⌘Z in any panel's window (no menu bar: `undo::keys`), and
+  Edit ▸ Undo and Redo for the command palette and agents
+  (`agent::set_menus`; `{"invoke":"undo"}`). One history for every panel.
 * Each panel module has `ui(ui: &mut form::Ui, ..)`: `form.rs` collects the
   panel's controls top to bottom, each bound to its part of the settings
   (`ui.check(label, value, |s, v| s.x = v)`, `slider`, `menu`, `choose`,

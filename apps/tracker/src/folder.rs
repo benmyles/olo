@@ -1300,7 +1300,7 @@ impl Render for FolderWin {
         let can_paste = crate::can_paste(cx);
         let undo = self.app.upgrade().map(|a| {
             let h = &a.read(cx).history;
-            [h.undo_label(), h.redo_label()]
+            [(h.undo_label(), h.can_undo()), (h.redo_label(), h.can_redo())]
         });
         let menus = self.menus(can_paste, &places, &undo.unwrap_or_else(|| [("Undo".into(), false), ("Redo".into(), false)]));
         let (app, key) = (self.app.clone(), self.key());

@@ -93,7 +93,7 @@ fn fade(ui: &mut Ui) {
         let back = st.last_display_off.unwrap_or(10);
         let mut remember = None;
         v.prefs.update(cx, |p, cx| {
-            p.edit(cx, |s| {
+            p.edit_as(cx, "", "Screen Saver", |s| {
                 if on {
                     s.power.display_off_minutes = back;
                 } else {

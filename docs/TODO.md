@@ -18,16 +18,17 @@ something nobody here has is in "Blocked", with what it waits for.
 - **Undo everywhere it makes sense** (Ben, 2026-11-07: "tracker needs to
   support undo for file/folder renames/moves/etc and also we need
   generally and unviversally to support undo in all olo apps where it
-  makes sense"). Tracker's is done (undo.rs: rename, move, copy,
-  duplicate, new folder, links, pastes and drops, Move to Trash,
-  restore; see HACKING.md, Tracker). Left: one kit-wide way for every
-  app (`olo_ui`: an undo history a window keeps, Edit ▸ Undo/Redo named
-  by what they'd undo, agents able to read and drive it; Tracker's moved
-  onto it), and each app looked at for what should undo: what has its
-  own already (text fields, StyledEdit, the Viewer's picture edits,
-  app_server's ⌃⌘Z window arrangement) moved onto it or matched to it;
-  Preferences' changes, Passwords' edits, Deskbar's and the desktop's
-  moves, Terminal's tab and pane changes, and the rest.
+  makes sense"). Done so far: the kit's way (`olo_ui::undo`: named
+  steps, runs merged, Edit ▸ Undo/Redo with the profile's keys, a
+  window without a menu bar given ⌘Z by its Frame, agents and the
+  palette finding them among the app's menus); Tracker (files) and
+  Preferences (every panel's settings) on it. Left, each app looked at
+  for what should undo and put on it: StyledEdit's and the Viewer's own
+  undo (and text fields') matched to it or moved onto it; Passwords'
+  edits; Deskbar's and the desktop's moves (icons placed, replicants);
+  Terminal's tab and pane changes (a closed tab can't come back with its
+  process: say so); app_server's ⌃⌘Z window arrangement matched (named,
+  Redo); and the rest (Notes, DeskCalc's tape, …).
 
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for

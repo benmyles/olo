@@ -48,6 +48,11 @@ pub struct Slider {
 }
 
 impl Slider {
+    /// Its label, if it has one (an undo step's name).
+    pub fn title(&self) -> Option<SharedString> {
+        self.label.clone()
+    }
+
     pub fn new(id: impl Into<SharedString>, value: f32, range: std::ops::RangeInclusive<f32>) -> Slider {
         Slider { id: id.into(), value, lo: *range.start(), hi: *range.end(), label: None, value_text: None, limits: None, fill: None, step: 0.0, width: None, enabled: true, on_change: None }
     }
