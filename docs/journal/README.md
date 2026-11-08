@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-08
+
+### Browser: GitHub's video on the GPU
+
+*01:49* — GitHub's homepage video, rounded in its box, now goes to the window as its decoded planes: the GPU makes RGB of them, scales and rounds them. Olo at rest on GitHub: 30% of a core to Chrome's 35%; it was 73-83%.
+
+![Browser: GitHub's video on the GPU](2026-11-08/014959-browser-github-s-video-on-the-gpu.png)
+
 ## 2026-11-07
 
 ### Browser: GitHub's file list
