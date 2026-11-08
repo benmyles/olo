@@ -738,7 +738,7 @@ mod tests {
     #[ignore]
     fn through_a_backup() {
         let bus = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
-        assert!(bus.contains("/tmp/olo-dev/"), "not a private test bus: {bus}");
+        assert!(bus.contains("/var/tmp/olo-dev/"), "not a private test bus: {bus}");
         assert!(std::env::var("XDG_CONFIG_HOME").is_ok_and(|c| c.starts_with("/var/tmp/")), "not a scratch config directory");
         match std::env::var("OLO_BACKUP_TEST").as_deref() {
             Ok("make") => {

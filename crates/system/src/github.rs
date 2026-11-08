@@ -155,7 +155,7 @@ mod tests {
     #[ignore]
     fn tokens_from_a_keyring() {
         let bus = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
-        assert!(bus.contains("/tmp/olo-dev/"), "not a private test bus: {bus}");
+        assert!(bus.contains("/var/tmp/olo-dev/"), "not a private test bus: {bus}");
         // SAFETY: a test of its own (ignored, run alone).
         unsafe {
             std::env::remove_var("GH_TOKEN");
