@@ -385,7 +385,16 @@ ignored tests that need Ben".)
   Tracker, StyledEdit, Olo Doctor (two suggestions, nothing wrong, no
   other desktop's daemons) and Preferences in dark. Three of the
   2026-11-07 journal pictures were broken (1× shots cropped as if 2×):
-  retaken.
+  retaken. Then the boot splash, never seen in that VM: its text-mode
+  kickstart had left the installer's serial console and no rhgb on the
+  kernel's line (fixed in the check's kickstart; the VM's own set as a
+  stock install's), after which Plymouth showed Olo's theme there, from
+  the start-up image Setup made (`plymouth-set-default-theme`: olo; the
+  theme in the initramfs). Booted on a GPU Olo can't draw on, the seat
+  never went to GDM: SELinux kept olo-login (xdm_t) from it, fixed
+  (a6e4f95d: systemd starts GDM through olo-login's OnFailure=; GDM's
+  login screen 6 s after Olo's splash there). The desktop at 2× (the
+  VM's own), 1.5× and 1×, changed while it ran: crisp at each.
   Left for Ben: publishing a release (a GitHub release of
   benmyles/olo with tools/release.sh's four files: Setup takes the
   newest one's archive; until then it needs `--bundle URL`), then a
@@ -2442,6 +2451,13 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A computer Olo's login screen can't show on was left at the
+  console**~~ (found 2026-11-08 in the installer check's VM on a plain
+  GPU). *Done* (same day, a6e4f95d): olo-login stepped aside but, as a
+  display manager to SELinux, may not start GDM or even see its unit;
+  its unit's OnFailure= has systemd do it. Olo Doctor's Update fixes
+  login screens already installed.
 
 - ~~**What the ignored tests found, run for the waiting entries**~~
   (2026-11-08). *Done* (same day): olo-system's `is_realtime` read
