@@ -632,3 +632,36 @@ fn text_and_comments_have_element_siblings() {
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] 8 b null i b"]);
 }
+#[test]
+fn unhandled_rejections_are_reported_and_cancellable() {
+    // A rejection no handler takes is an error, as Chrome logs it; one
+    // handled later in the same turn, or cancelled by an
+    // `unhandledrejection` listener, is not.
+    let (report, _) = run("<script>
+        Promise.reject(new Error('lost'));
+        const late = Promise.reject(new Error('caught late')); late.catch(() => {});
+        (async () => { throw new TypeError('in async'); })();
+        </script>");
+    assert_eq!(report.errors.len(), 2, "{:?}", report.errors);
+    assert!(report.errors[0].starts_with("Uncaught (in promise) Error: lost"), "{}", report.errors[0]);
+    assert!(report.errors[1].starts_with("Uncaught (in promise) TypeError: in async"), "{}", report.errors[1]);
+    let (report, _) = run("<script>
+        addEventListener('unhandledrejection', (e) => { console.log('seen', e.reason.message, e.promise instanceof Promise); e.preventDefault(); });
+        Promise.reject(new Error('handled by the page'));
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] seen handled by the page true"]);
+}
+#[test]
+fn documents_have_element_children_and_iframes_a_sandbox_list() {
+    // GitHub's `document.firstElementChild.classList`, MDN's
+    // `iframe.sandbox.toString()`: both threw (silently, in promises).
+    let (report, _) = run("<iframe id=f sandbox='allow-scripts allow-forms'></iframe><a id=a rel='noopener external'></a><div id=d></div><script>
+        console.log(document.firstElementChild.tagName, document.lastElementChild.tagName, document.childElementCount, document.children.length);
+        const f = document.getElementById('f');
+        console.log(f.sandbox.toString(), f.sandbox.contains('allow-forms'), f.sandbox.length);
+        console.log(document.getElementById('a').relList.contains('external'), 'sandbox' in document.getElementById('d'));
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] HTML HTML 1 1", "[log] allow-scripts allow-forms true 2", "[log] true false"]);
+}

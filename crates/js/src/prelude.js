@@ -516,6 +516,10 @@
     className: reflect('class'),
     classList: { get() { return new DOMTokenList(this, 'class'); } },
     part: { get() { return new DOMTokenList(this, 'part'); } },
+    // Token lists other elements reflect (an iframe's sandbox, a link's
+    // rel), on their own interfaces (`homes`).
+    sandbox: { get() { return new DOMTokenList(this, 'sandbox'); } },
+    relList: { get() { return new DOMTokenList(this, 'rel'); } },
     slot: reflect('slot'),
     attributes: { get() { const el = this; const list = listOf(N.attrNames(this).map((name) => ({ name, localName: name, value: N.attr(el, name), nodeName: name, nodeValue: N.attr(el, name), ownerElement: el, specified: true })), NamedNodeMap); list.getNamedItem = (n) => list.find((a) => a.name === String(n).toLowerCase()) || null; return list; } },
     children: { get() { return elementChildren(this); } },
@@ -796,6 +800,9 @@
     innerHTML: { get() { return N.innerHTML(this); }, set(v) { N.setInnerHTML(this, String(v)); } },
     styleSheets: { get() { return []; } }, adoptedStyleSheets: { get() { return this._adopted || (this._adopted = []); }, set(v) { this._adopted = Array.from(v || []); for (const sheet of this._adopted) (sheet._roots || (sheet._roots = new Set())).add(this); syncShadowAdopted(this); } },
   });
+  // A document is a ParentNode too: its element children (GitHub's
+  // `document.firstElementChild.classList`, the <html> element).
+  for (const k of ['children', 'childElementCount', 'firstElementChild', 'lastElementChild']) if (!Object.prototype.hasOwnProperty.call(Document.prototype, k)) Object.defineProperty(Document.prototype, k, Object.getOwnPropertyDescriptor(DocumentFragment.prototype, k));
   // A shadow root's adoptedStyleSheets (Lit's components' styles): their
   // rules in one hidden <style> first in the root, which the engine styles
   // the shadow tree from (scoped to it, as its own <style>s are).
@@ -939,7 +946,7 @@
       action: 'Form', method: 'Form', enctype: 'Form', noValidate: 'Form', target: 'Anchor Area Base Form', poster: 'Video',
       alt: 'Image Area Input', type: 'Input Button Script Link Style Source Embed Object OList Anchor Select TextArea FieldSet Output',
       name: 'Input Button Select TextArea Form IFrame Object Map Meta Param Anchor FieldSet Output Slot Frame Details',
-      placeholder: 'Input TextArea', rel: 'Anchor Area Link Form', htmlFor: 'Label Output', label: 'Option OptGroup Track',
+      placeholder: 'Input TextArea', rel: 'Anchor Area Link Form', relList: 'Anchor Area Link Form', sandbox: 'IFrame', htmlFor: 'Label Output', label: 'Option OptGroup Track',
       charset: 'Script Meta', media: 'Link Style Source Meta', srcset: 'Image Source Link', sizes: 'Image Source Link',
       loading: 'Image IFrame', decoding: 'Image', crossOrigin: 'Image Script Link Media', referrerPolicy: 'Anchor Area Image IFrame Link Script',
       integrity: 'Script Link', autocomplete: 'Input Form Select TextArea', pattern: 'Input', accept: 'Input', min: 'Input Meter', max: 'Input Meter Progress', step: 'Input',
@@ -2392,6 +2399,11 @@
   global.cookieStore = { get: () => Promise.resolve(null), getAll: () => Promise.resolve([]), set: () => Promise.resolve(), delete: () => Promise.resolve(), addEventListener() {} };
   global.external = { AddSearchProvider() {} };
   global.onerror = null; global.onload = null; global.onresize = null; global.onscroll = null; global.onunhandledrejection = null;
+  // A promise rejected with no handler: `unhandledrejection` on the window
+  // (cancelable: a page that handles it keeps it out of the log); whether
+  // to log it.
+  global.PromiseRejectionEvent = class PromiseRejectionEvent extends Event { constructor(type, init) { super(type, init); this.promise = init && init.promise; this.reason = init && init.reason; } };
+  global.__olo_unhandledRejection = (promise, reason) => { const ev = new global.PromiseRejectionEvent('unhandledrejection', { cancelable: true, promise, reason }); dispatch(global, ev); return !ev.defaultPrevented; };
   global.CustomElementRegistry.prototype = Object.getPrototypeOf(global.customElements);
   global.Node = Node; global.Element = Element; global.SVGElement = SVGElement; global.Text = Text; global.Comment = Comment; global.Document = Document; global.DocumentFragment = DocumentFragment;
   // Interfaces of nodes the engine makes as text or comments (YouTube's

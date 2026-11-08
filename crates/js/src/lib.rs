@@ -475,6 +475,8 @@ impl Realm {
         isolate.add_near_heap_limit_callback(near_heap_limit, Arc::as_ptr(&guard) as *mut std::ffi::c_void);
         watch(&guard);
         isolate.set_slot(state.clone());
+        isolate.set_slot(Rejections::default());
+        isolate.set_promise_reject_callback(promise_rejected);
         modules::install(&mut isolate);
         modules::enter(&state);
         let context = {
@@ -763,6 +765,7 @@ impl Realm {
                 Err(_) => break,
             }
         }
+        self.report_rejections();
         let after = self.state.borrow().document.revision();
         let wants_frame = frame.is_some() && self.call_prelude_number("__olo_wants_frame", 0.).is_ok_and(|v| v > 0.);
         Advanced { next_due_ms, changed: after != before, spent_ms: started.elapsed().as_secs_f64() * 1000., ticks, wants_frame }
@@ -1146,7 +1149,48 @@ impl Realm {
         self.pump();
         let _ = self.call_prelude("__olo_lifecycle", &["load"]);
         self.pump();
+        self.report_rejections();
         self.finish_report()
+    }
+    /// Promises rejected with no handler since the last look (and none
+    /// added since): `unhandledrejection` fired on the window for each, and
+    /// those not cancelled reported as Chrome logs them, "Uncaught (in
+    /// promise)" (an error in a promise was silent: Lit's hydration threw
+    /// so on MDN, unseen).
+    fn report_rejections(&mut self) {
+        let pending = match self.isolate.get_slot::<Rejections>() {
+            Some(r) => std::mem::take(&mut *r.0.borrow_mut()),
+            None => return,
+        };
+        if pending.is_empty() || self.guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            return;
+        }
+        let state = self.state.clone();
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let global = context.global(tc);
+        let handler = v8::String::new(tc, "__olo_unhandledRejection").and_then(|n| global.get(tc, n.into())).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok());
+        for (promise, reason) in pending.into_iter().take(64) {
+            let (promise, reason) = (v8::Local::new(tc, promise), v8::Local::new(tc, reason));
+            // Cancelled by the page's handler: not logged.
+            let logged = handler.and_then(|f| f.call(tc, global.into(), &[promise.into(), reason])).is_none_or(|v| v.boolean_value(tc));
+            tc.reset();
+            if !logged {
+                continue;
+            }
+            let text = reason.to_object(tc).and_then(|o| v8::String::new(tc, "stack").and_then(|k| o.get(tc, k.into()))).filter(|v| v.is_string()).unwrap_or(reason).to_rust_string_lossy(tc);
+            tc.reset();
+            let line = format!("Uncaught (in promise) {}", text.chars().take(2000).collect::<String>());
+            let mut s = state.borrow_mut();
+            if s.report.errors.len() < 500 {
+                s.report.errors.push(line.clone());
+            }
+            if s.report.console.len() < 500 {
+                s.report.console.push(format!("[error] {line}"));
+            }
+        }
     }
     fn over_time(&self) -> bool {
         let s = self.state.borrow();
@@ -3474,4 +3518,29 @@ pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String, bool, No
     }
     classic.extend(asynchronous);
     classic
+}
+
+/// Promises rejected with no handler, waiting to be reported (an isolate
+/// slot of their own: a rejection can come while a native holds the
+/// realm's state).
+#[derive(Default)]
+struct Rejections(std::rc::Rc<RefCell<Vec<(v8::Global<v8::Promise>, v8::Global<v8::Value>)>>>);
+extern "C" fn promise_rejected(message: v8::PromiseRejectMessage) {
+    v8::callback_scope!(unsafe scope, &message);
+    let Some(pending) = scope.get_slot::<Rejections>().map(|r| r.0.clone()) else { return };
+    let promise = message.get_promise();
+    match message.get_event() {
+        v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
+            let reason = message.get_value().unwrap_or_else(|| v8::undefined(scope).into());
+            let mut pending = pending.borrow_mut();
+            if pending.len() < 256 {
+                pending.push((v8::Global::new(scope, promise), v8::Global::new(scope, reason)));
+            }
+        }
+        // A handler came after all (before the report): not unhandled.
+        v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
+            pending.borrow_mut().retain(|(p, _)| v8::Local::new(scope, p) != promise);
+        }
+        _ => {}
+    }
 }

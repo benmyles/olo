@@ -6866,3 +6866,10 @@ the Guardian and old Reddit, looking for pages that fail outright:
   threw inside its update, and the next update rendered the component's
   content a second time (MDN's language menu showed twice). Every site
   built on Lit SSR hydrates now.
+- **Errors in promises are reported.** A promise rejected with no
+  handler was silent; it fires `unhandledrejection` on the window now and,
+  not cancelled, is logged "Uncaught (in promise)" with its stack, as
+  Chrome logs it. That showed what else had been failing quietly:
+  GitHub's `document.firstElementChild` (a document is a ParentNode:
+  `children`, `firstElementChild`, …) and MDN's `iframe.sandbox` (a
+  token list, as `relList` is).
