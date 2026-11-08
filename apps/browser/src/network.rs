@@ -131,6 +131,15 @@ impl Loader {
         let resource = self.fetch(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Fetch)?;
         Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string()))
     }
+    /// A media file (a `<video>`'s), whole, up to `limit` bytes: its bytes
+    /// and its type. Not kept in the cache (it is held by its player).
+    pub fn media(&self, initiator: &Url, url: Url, limit: usize, cancel: &Cancel) -> page::Result<(Vec<u8>, String)> {
+        let resource = self.fetch(url, Some(initiator), limit, cancel, |_| {}, Kind::Fetch)?;
+        if resource.status.is_some_and(|s| !(200..300).contains(&s)) {
+            return Err(format!("HTTP {}", resource.status.unwrap_or(0)).into());
+        }
+        Ok((resource.bytes, resource.mime.as_ref().map(ToString::to_string).unwrap_or_default()))
+    }
     /// An image: a raster format decoded here, or an SVG handed to `svg`
     /// (the engine rasterises it).
     pub fn image(

@@ -3880,5 +3880,11 @@
   "title": "Browser: GitHub's sign-up form by container queries",
   "caption": "Chrome (left) and Olo (right) at 1000 \u00d7 700: the e-mail field and its button on one line (@container rules), the label alone in the field (::placeholder opacity 0). Olo's heading is mid-way through its typing animation; the mascot under the buttons is still missing in Olo.",
   "image": "2026-11-07/175822-browser-github-s-sign-up-form-by-container-queri.png"
+ },
+ {
+  "time": "2026-11-07T18:18:45",
+  "title": "Browser: GitHub's hero film plays",
+  "caption": "Chrome (left, its first frame) and Olo (right, a later frame of the same HEVC film) at 1000 \u00d7 700: Olo's own player decodes it, each picture made the size it shows at.",
+  "image": "2026-11-07/181845-browser-github-s-hero-film-plays.png"
  }
 ]

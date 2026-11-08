@@ -198,6 +198,8 @@ enum Pass {
 /// due, and what has been rendered.
 struct Live {
     realm: olo_js::Realm,
+    /// The page's `<video>` players.
+    players: crate::media::Players,
     /// A render is wanted although the document is unchanged (a canvas's
     /// readback was in flight at the last one).
     render_again: bool,
@@ -809,6 +811,49 @@ fn render(
         }
         live.next_due_ms = advanced.next_due_ms;
         live.wants_frame = advanced.wants_frame;
+        // Videos: their pictures due now, their events, what the scripts
+        // asked of them; the page's clock wakes for the next picture.
+        let mut media_changed = false;
+        if let Some(base) = c.document.as_ref().map(|d| d.url.clone()) {
+            let started = Instant::now();
+            // Where each video shows, in device pixels (its content box).
+            let layout = c.page.scene.layout().clone();
+            let index: HashMap<olo_web::dom::NodeId, layout::BoxId> = if live.players.is_empty() {
+                HashMap::new()
+            } else {
+                layout
+                    .cache()
+                    .tree()
+                    .iter()
+                    .filter(|(_, b)| {
+                        matches!(
+                            b.kind,
+                            layout::BoxKind::BlockImage { .. }
+                                | layout::BoxKind::InlineImage { .. }
+                                | layout::BoxKind::BlockReplaced { .. }
+                                | layout::BoxKind::InlineReplaced { .. }
+                                | layout::BoxKind::Block { .. }
+                        )
+                    })
+                    .map(|(id, b)| (b.node, id))
+                    .collect()
+            };
+            let scale = r.key.scale;
+            let shown = |node: olo_web::dom::NodeId| -> Option<[u32; 2]> {
+                let g = layout.geometry(*index.get(&node)?)?;
+                let c = g.content_box();
+                Some([(c.width * scale).round() as u32, (c.height * scale).round() as u32])
+            };
+            let step = live.players.step(&mut live.realm, loader, &base, &live.cancel, &shown);
+            if step.changed && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                eprintln!("  videos: a picture in {:.1} ms", started.elapsed().as_secs_f64() * 1000.);
+            }
+            media_changed = step.changed;
+            if let Some(next) = step.next {
+                let due = live.started.elapsed().as_secs_f64() * 1000. + next.as_secs_f64() * 1000.;
+                live.next_due_ms = Some(live.next_due_ms.map_or(due, |d| d.min(due)));
+            }
+        }
         live.stats.0 += 1;
         live.stats.1 += advanced.spent_ms;
         live.ticks += advanced.ticks;
@@ -840,7 +885,7 @@ fn render(
         let revision = live.realm.revision();
         // The document changed, a readback is in flight, or a canvas was
         // drawn on (its drawing shows only through a render).
-        if revision != live.rendered || live.render_again || live.realm.canvases_dirty() || c.page.animating() {
+        if revision != live.rendered || live.render_again || live.realm.canvases_dirty() || c.page.animating() || media_changed {
             if !frame {
                 // Changes between frames show at the next frame.
                 live.render_due = true;
@@ -879,7 +924,11 @@ fn render(
             if std::env::var_os("OLO_CANVAS_DEBUG").is_some() {
                 eprintln!("  canvases before render: {}", live.realm.canvas_states());
             }
-            let canvases = live.realm.canvases();
+            let mut canvases = live.realm.canvases();
+            canvases.extend(live.players.images());
+            if media_changed && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                eprintln!("  live render with {} bound pictures (videos {})", canvases.len(), live.players.images().len());
+            }
             // Canvases whose frame is in a shared texture: refused below if
             // the scene can't show them as a surface.
             live.shared_frames = canvases.iter().filter_map(|(n, i)| i.shared_texture().map(|(k, _)| (*n, k))).collect();
@@ -1174,6 +1223,7 @@ fn render(
             let render_again = realm.canvases_pending();
             live_slot = Some(Live {
                 realm,
+                players: Default::default(),
                 render_again,
                 loads,
                 cancel: live_cancel.clone(),

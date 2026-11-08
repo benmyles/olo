@@ -2,6 +2,7 @@
 //! document links. Full web compatibility is an active, uncompleted goal.
 mod history;
 mod links;
+mod media;
 mod navigation;
 mod network;
 mod worker;

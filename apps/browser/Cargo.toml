@@ -10,6 +10,7 @@ olo-ui.workspace = true
 olo-theme.workspace = true
 olo-xdg.workspace = true
 olo-images.workspace = true
+olo-preview.workspace = true
 # System font files are mapped, not read: the OS pages in what is used.
 memmap2 = "0.9"
 data-url = "0.3.2"

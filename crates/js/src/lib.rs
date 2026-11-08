@@ -59,6 +59,35 @@ impl Default for Config {
         Self { url: "about:blank".into(), viewport: (1000., 700.), scale: 1., user_agent: USER_AGENT.into(), language: "en-US".into(), quirks: false, dark: false, budget_ms: 3000., wall_seconds: 8. }
     }
 }
+/// A media element's state as its player has it (HTMLMediaElement).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Media {
+    pub paused: bool,
+    pub ended: bool,
+    /// Seconds.
+    pub time: f64,
+    /// Seconds; NaN until known.
+    pub duration: f64,
+    pub width: u32,
+    pub height: u32,
+    /// HTML's readyState: 0 nothing, 1 metadata, 2 a picture, 4 enough.
+    pub ready: u8,
+}
+impl Default for Media {
+    fn default() -> Self {
+        Self { paused: true, ended: false, time: 0., duration: f64::NAN, width: 0, height: 0, ready: 0 }
+    }
+}
+/// What a page's script asked of a media element.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MediaCommand {
+    Play,
+    Pause,
+    /// To this many seconds.
+    Seek(f64),
+    /// Its source changed or `load()`: start over.
+    Load,
+}
 /// A fetched resource for `fetch` and `XMLHttpRequest`.
 pub struct Fetched {
     pub status: u16,
@@ -214,6 +243,10 @@ struct State {
     modules: modules::Modules,
     /// A navigation the page asked for (location, a form), not yet taken.
     navigation: Option<(String, bool)>,
+    /// What the browser's players report of each `<video>` and `<audio>`.
+    media: HashMap<NodeId, Media>,
+    /// What the scripts asked of them since the browser last looked.
+    media_commands: Vec<(NodeId, MediaCommand)>,
     next_request: u64,
     /// Workers by id, with what they need to be made.
     workers: HashMap<u32, worker::Handle>,
@@ -370,6 +403,8 @@ impl Realm {
             in_flight: HashMap::new(),
             modules: modules::Modules::with_map(import_map),
             navigation: None,
+            media: HashMap::new(),
+            media_commands: Vec::new(),
             next_request: 1,
             workers: HashMap::new(),
             next_worker: 1,
@@ -731,6 +766,44 @@ impl Realm {
     /// Animating WebGL canvases that would draw their frames into textures
     /// of the window's renderer (shown with no copy): each with its size and
     /// its GPU's UUID (the window's must match). Each is asked for once.
+    /// Whether an element has an attribute now.
+    pub fn has_attribute(&self, node: NodeId, name: &str) -> bool {
+        self.state.borrow().document.attribute(node, name).ok().flatten().is_some()
+    }
+    /// What the scripts asked of media elements since last asked.
+    pub fn take_media_commands(&self) -> Vec<(NodeId, MediaCommand)> {
+        std::mem::take(&mut self.state.borrow_mut().media_commands)
+    }
+    /// A media element's player reports its state, and the events that
+    /// came with the change (`loadedmetadata`, `playing`, `timeupdate`,
+    /// `ended`…), dispatched at the element in that order.
+    pub fn media_update(&mut self, node: NodeId, media: Media, events: &[&str]) {
+        self.state.borrow_mut().media.insert(node, media);
+        if events.is_empty() {
+            return;
+        }
+        let guard = self.guard.clone();
+        if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            return;
+        }
+        let _busy = Busy::new(&guard);
+        let state = self.state.clone();
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let global = context.global(tc);
+        let names: Vec<v8::Local<v8::Value>> = events.iter().map(|e| string(tc, e)).collect();
+        let names = v8::Array::new_with_elements(tc, &names);
+        if let Some(element) = wrap(tc, &state, node)
+            && let Some(name) = v8::String::new(tc, "__olo_mediaEvents")
+            && let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
+            && f.call(tc, global.into(), &[element.into(), names.into()]).is_none()
+        {
+            let error = exception_text(tc, "media");
+            state.borrow_mut().report.errors.push(error);
+        }
+    }
     /// A person scrolled a box (the wheel over it) to `offset`, already
     /// clamped: the document keeps it, and the box's `scroll` event fires.
     pub fn scroll_box(&mut self, node: NodeId, offset: [f64; 2]) -> bool {
@@ -1079,6 +1152,8 @@ impl State {
             in_flight: HashMap::new(),
             modules: Default::default(),
             navigation: None,
+            media: HashMap::new(),
+            media_commands: Vec::new(),
             next_request: 1,
             workers: HashMap::new(),
             next_worker: 1,
@@ -1621,6 +1696,8 @@ const NATIVES: &[&str] = &[
     "matchMedia",
     "scrollOffset",
     "setScrollOffset",
+    "media",
+    "mediaCommand",
     "imagePixels",
     "glCreate",
     "glOp",
@@ -2374,11 +2451,24 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             if let Some(n) = node(scope, 0) {
                 let mut s = state.borrow_mut();
                 let kind = name.as_str();
-                let values = s.measured().and_then(|m| match kind {
+                let mut values = s.measured().and_then(|m| match kind {
                     "rect" => m.border_box(n).map(|r| [r.x, r.y, r.width, r.height]),
                     "paddingRect" => m.padding_box(n).map(|r| [r.x, r.y, r.width, r.height]),
                     _ => m.scroll_size(n).map(|(w, h)| [0., 0., w, h]),
                 });
+                // Where the scrolled boxes around it have moved it to.
+                if kind != "scrollSize"
+                    && s.document.any_scrolled()
+                    && let Some(v) = values.as_mut()
+                {
+                    let mut at = s.document.parent(n).ok().flatten();
+                    while let Some(a) = at {
+                        let o = s.document.scroll_offset(a);
+                        v[0] -= o[0];
+                        v[1] -= o[1];
+                        at = s.document.parent(a).ok().flatten();
+                    }
+                }
                 drop(s);
                 match values {
                     Some(v) => {
@@ -2386,6 +2476,58 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                         rv.set(v8::Array::new_with_elements(scope, &items).into());
                     }
                     None => rv.set_null(),
+                }
+            }
+        }
+        // A media element's state: [paused, ended, time, duration, width,
+        // height, readyState], as its player last said (or as it starts).
+        "media" => {
+            if let Some(n) = node(scope, 0) {
+                let m = state.borrow().media.get(&n).copied().unwrap_or_default();
+                let items: Vec<v8::Local<v8::Value>> = vec![
+                    v8::Boolean::new(scope, m.paused).into(),
+                    v8::Boolean::new(scope, m.ended).into(),
+                    v8::Number::new(scope, m.time).into(),
+                    v8::Number::new(scope, m.duration).into(),
+                    v8::Number::new(scope, f64::from(m.width)).into(),
+                    v8::Number::new(scope, f64::from(m.height)).into(),
+                    v8::Number::new(scope, f64::from(m.ready)).into(),
+                ];
+                rv.set(v8::Array::new_with_elements(scope, &items).into());
+            }
+        }
+        // play(), pause(), currentTime = t, load(): for the browser's player.
+        "mediaCommand" => {
+            if let Some(n) = node(scope, 0) {
+                let kind = arg_string(scope, &args, 1);
+                let value = args.get(2).number_value(scope).unwrap_or(0.);
+                let command = match kind.as_str() {
+                    "play" => Some(MediaCommand::Play),
+                    "pause" => Some(MediaCommand::Pause),
+                    "seek" if value.is_finite() => Some(MediaCommand::Seek(value.max(0.))),
+                    "load" => Some(MediaCommand::Load),
+                    _ => None,
+                };
+                if let Some(c) = command {
+                    let mut s = state.borrow_mut();
+                    // What it will be once the player has it, for scripts
+                    // reading it back at once (`v.play(); v.paused`).
+                    let m = s.media.entry(n).or_default();
+                    match c {
+                        MediaCommand::Play => {
+                            m.paused = false;
+                            m.ended = false;
+                        }
+                        MediaCommand::Pause => m.paused = true,
+                        MediaCommand::Seek(t) => {
+                            m.time = if m.duration.is_finite() { t.min(m.duration) } else { t };
+                            m.ended = false;
+                        }
+                        MediaCommand::Load => *m = Media::default(),
+                    }
+                    if s.media_commands.len() < 4096 {
+                        s.media_commands.push((n, c));
+                    }
                 }
             }
         }

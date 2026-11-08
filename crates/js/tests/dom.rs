@@ -260,3 +260,43 @@ document.addEventListener('scroll', () => console.log('document saw it'));
     let (doc, _) = realm.finish();
     assert_eq!(doc.scroll_offset(s), [0., 45.]);
 }
+#[test]
+fn media_elements_play_through_the_browsers_player() {
+    let page = r#"<video id=v src="film.mp4" muted></video><script>
+const v = document.getElementById('v');
+console.log(v instanceof HTMLMediaElement, v.paused, v.readyState, isNaN(v.duration), v.muted, v.canPlayType('video/mp4') !== '', v.HAVE_FUTURE_DATA, HTMLMediaElement.HAVE_METADATA);
+for (const e of ['play', 'loadedmetadata', 'playing', 'timeupdate', 'ended']) v.addEventListener(e, () => console.log(e, v.paused, v.currentTime, v.duration));
+v.play();
+console.log('after play', v.paused);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let v = find(&parsed.document, "v");
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    assert_eq!(realm.take_media_commands(), [(v, olo_js::MediaCommand::Play)]);
+    realm.advance(10., std::time::Duration::from_secs(1));
+    let media = olo_js::Media { paused: false, ended: false, time: 0., duration: 4., width: 640, height: 360, ready: 4 };
+    realm.media_update(v, media, &["loadedmetadata", "playing"]);
+    realm.media_update(v, olo_js::Media { time: 4., paused: true, ended: true, ..media }, &["timeupdate", "ended"]);
+    let report = realm.report();
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(
+        report.console,
+        [
+            "[log] true true 0 true true true 3 1",
+            "[log] after play false",
+            "[log] play false 0 NaN",
+            "[log] loadedmetadata false 0 4",
+            "[log] playing false 0 4",
+            "[log] timeupdate true 4 4",
+            "[log] ended true 4 4"
+        ]
+    );
+}

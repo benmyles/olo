@@ -867,6 +867,19 @@ pub fn probe(input: &Input) -> Result<Info, String> {
                 _ => {}
             }
         }
+        // AV1 and HEVC as `hvc1` the mp4 crate doesn't know: found by
+        // walking the boxes, as the decoder finds them.
+        if !info.picture {
+            let found = input
+                .open()
+                .ok()
+                .and_then(|(mut f, len)| media::mp4_av1(&mut f, len).map(|t| (t.width, t.height)))
+                .or_else(|| input.open().ok().and_then(|(mut f, len)| media::mp4_hevc(&mut f, len).map(|t| (t.width, t.height))));
+            if let Some((w, h)) = found {
+                info.picture = true;
+                (info.width, info.height) = (u32::from(w), u32::from(h));
+            }
+        }
     }
     Ok(info)
 }

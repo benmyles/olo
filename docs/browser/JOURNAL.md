@@ -6220,3 +6220,19 @@ journal).
   73 ms before (two renders) and 99 after, layout 6 and 10, the form now
   as Chrome's. Its `::placeholder { opacity: 0 }` hides the placeholder
   under the label now too.
+- **Video.** GitHub's hero film was an empty grey frame. `<video>` now
+  plays through Olo's own player (H.264, HEVC, AV1 and VP9, decoded
+  natively): fetched on a thread, each picture reduced to the size it
+  shows at (an area filter on a few threads, 3 ms for 2560 x 1726 to
+  934 x 630, its density keeping its natural size) and bound to the
+  element as a live image. Scripts get the media API (play, pause,
+  currentTime, readyState, events); GitHub's player waited for
+  `canplay` with `readyState >= v.HAVE_FUTURE_DATA`, the constant read
+  off the element, which only the interface had. Its probe missed HEVC
+  as `hvc1` (fixed in olo-preview). Cost while it plays at 1000 px:
+  172% of a core in all (the page thread 89%: every new picture, the
+  video's or the WebGL mascot's, re-renders the page, 84 renders a second
+  at 6 ms; the decoder 49%). Next: swap a new picture into the scene
+  without a render, and decode on the GPU.
+- **Also.** Scripts' `getBoundingClientRect` follows box scrolls;
+  `console.log(NaN)` prints NaN (it printed null).

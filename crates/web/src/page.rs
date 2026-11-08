@@ -239,6 +239,7 @@ pub const UA: &str = concat!(
     // buttons in 13.33px Arial, fields white with an inset border, buttons
     // grey with an outset one, text areas monospace; one line where a
     // field is, its text vertically centred by the field's layout.
+    "video{object-fit:contain}",
     "input,textarea,select,button{display:inline-block;font:13.3333px Arial,sans-serif;letter-spacing:normal;word-spacing:normal;text-align:start;color:#000;box-sizing:content-box}",
     "input{padding:1px 2px;border:2px inset #767676;background-color:#fff;width:177px;white-space:pre;overflow:clip}",
     "input::placeholder,textarea::placeholder{color:#757575}",

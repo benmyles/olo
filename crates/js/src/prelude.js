@@ -12,7 +12,7 @@
       else Object.defineProperty(target, name, Object.assign({ configurable: true, enumerable: true }, d));
     }
   };
-  const log = (level, args) => N.log(level, args.map((a) => { try { return typeof a === 'string' ? a : (a instanceof Error ? (a.stack || String(a)) : JSON.stringify(a)); } catch (e) { return String(a); } }).join(' '));
+  const log = (level, args) => N.log(level, args.map((a) => { try { return typeof a === 'string' ? a : typeof a === 'number' || typeof a === 'bigint' || typeof a === 'undefined' || typeof a === 'symbol' || typeof a === 'function' ? String(a) : (a instanceof Error ? (a.stack || String(a)) : JSON.stringify(a)); } catch (e) { return String(a); } }).join(' '));
   const console = {};
   for (const level of ['log', 'info', 'debug', 'warn', 'error', 'trace', 'dir', 'table']) console[level] = (...args) => log(level, args);
   for (const name of ['group', 'groupCollapsed', 'groupEnd', 'time', 'timeEnd', 'timeLog', 'count', 'countReset', 'assert', 'clear', 'profile', 'profileEnd']) console[name] = () => {};
@@ -536,7 +536,10 @@
     getAnimations() { return animations.filter((a) => a.effect && a.effect.target === this && a.playState !== 'idle'); },
     attachShadow(init) { const root = N.createFragment(); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open' }); return root; },
     requestFullscreen() { return Promise.resolve(); },
-    play() { return Promise.resolve(); }, pause() {}, load() {},
+    play() { if (!isMedia(this)) return Promise.resolve(); N.mediaCommand(this, 'play', 0); queueMedia(this, ['play']); return Promise.resolve(); },
+    pause() { if (!isMedia(this) || N.media(this)[0]) return; N.mediaCommand(this, 'pause', 0); queueMedia(this, ['pause']); },
+    load() { if (isMedia(this)) N.mediaCommand(this, 'load', 0); },
+    canPlayType(type) { return /^(video|audio)\/(mp4|webm)|^video\/x-matroska/i.test(String(type)) ? 'maybe' : ''; },
     getContext(kind) { if (N.nodeName(this) !== 'CANVAS') return null; kind = String(kind); if (kind === '2d') { if (!this._ctx2d) Object.defineProperty(this, '_ctx2d', { value: new CanvasRenderingContext2D(this) }); return this._ctx2d; } return null; }, toDataURL() { return 'data:,'; }, toBlob(cb) { if (cb) cb(null); }, captureStream() { return null; }, transferControlToOffscreen() { return new OffscreenCanvas(this.width, this.height); },
     setPointerCapture() {}, releasePointerCapture() {}, hasPointerCapture() { return false; },
     computedStyleMap() { return new Map(); },
@@ -802,6 +805,38 @@
     decl.getPropertyValue = (name) => { name = propName(name); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(name)] !== undefined ? defaults[camel(name)] : ''; };
     return new Proxy(decl, { get(target, key) { if (typeof key !== 'string') return undefined; if (key in target) return target[key]; const name = kebab(key); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(key)] !== undefined ? defaults[camel(key)] : ''; }, set() { return true; } });
   };
+  // Media elements: their state is what the browser's player last said
+  // (N.media); play(), pause() and currentTime go to it (N.mediaCommand),
+  // and its events come back through __olo_mediaEvents.
+  const isMedia = (el) => { const n = N.nodeName(el); return n === 'VIDEO' || n === 'AUDIO'; };
+  const queueMedia = (el, names) => setTimeout(() => { for (const name of names) el.dispatchEvent(new Event(name)); }, 0);
+  global.__olo_mediaEvents = (el, names) => { for (const name of names) el.dispatchEvent(new Event(name)); };
+  const mediaProps = {
+    paused: { get() { return N.media(this)[0]; } },
+    ended: { get() { return N.media(this)[1]; } },
+    currentTime: { get() { return N.media(this)[2]; }, set(v) { N.mediaCommand(this, 'seek', Number(v) || 0); queueMedia(this, ['seeking', 'seeked', 'timeupdate']); } },
+    duration: { get() { return N.media(this)[3]; } },
+    videoWidth: { get() { return N.media(this)[4]; } },
+    videoHeight: { get() { return N.media(this)[5]; } },
+    readyState: { get() { return N.media(this)[6]; } },
+    networkState: { get() { return N.media(this)[6] >= 4 ? 1 : 2; } },
+    seeking: { get() { return false; } },
+    currentSrc: { get() { const s = this.getAttribute('src') || (this.querySelector('source[src]') || { getAttribute() { return ''; } }).getAttribute('src'); return s ? new URL(s, document.baseURI).href : ''; } },
+    muted: { get() { return this._muted ?? this.hasAttribute('muted'); }, set(v) { this._muted = !!v; } },
+    defaultMuted: { get() { return this.hasAttribute('muted'); }, set(v) { if (v) this.setAttribute('muted', ''); else this.removeAttribute('muted'); } },
+    volume: { get() { return this._volume ?? 1; }, set(v) { this._volume = Number(v); } },
+    playbackRate: { get() { return this._rate ?? 1; }, set(v) { this._rate = Number(v); } },
+    loop: { get() { return this.hasAttribute('loop'); }, set(v) { if (v) this.setAttribute('loop', ''); else this.removeAttribute('loop'); } },
+    autoplay: { get() { return this.hasAttribute('autoplay'); }, set(v) { if (v) this.setAttribute('autoplay', ''); else this.removeAttribute('autoplay'); } },
+    buffered: { get() { const d = N.media(this)[3]; return { length: isFinite(d) ? 1 : 0, start() { return 0; }, end() { return isFinite(d) ? d : 0; } }; } },
+    played: { get() { return { length: 0, start() { return 0; }, end() { return 0; } }; } },
+    seekable: { get() { const d = N.media(this)[3]; return { length: isFinite(d) ? 1 : 0, start() { return 0; }, end() { return isFinite(d) ? d : 0; } }; } },
+  };
+  for (const ctor of [global.HTMLMediaElement]) Object.defineProperties(ctor.prototype, mediaProps);
+  // The constants on the interface and on every element (`v.HAVE_FUTURE_DATA`).
+  const MEDIA_CONSTANTS = { HAVE_NOTHING: 0, HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2, HAVE_FUTURE_DATA: 3, HAVE_ENOUGH_DATA: 4, NETWORK_EMPTY: 0, NETWORK_IDLE: 1, NETWORK_LOADING: 2, NETWORK_NO_SOURCE: 3 };
+  Object.assign(global.HTMLMediaElement, MEDIA_CONSTANTS);
+  for (const [k, v] of Object.entries(MEDIA_CONSTANTS)) Object.defineProperty(global.HTMLMediaElement.prototype, k, { value: v, enumerable: true });
   // A box's scroll (scrollTop, scrollTo): the engine clamps it and keeps
   // it; its `scroll` event (which doesn't bubble) follows in a task, once
   // however many scrolls came before it.

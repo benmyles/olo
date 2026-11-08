@@ -829,8 +829,9 @@ impl<'a> BuildJob<'a> {
                         self.append(node, container, node, kind.carrier(), Some(kind))?;
                         continue;
                     }
-                    // A canvas the scripts drew on is an image of its pixels.
-                    let drawn_canvas = name == Some("canvas") && self.images.as_ref().is_some_and(|images| images.index(node).is_some());
+                    // A canvas the scripts drew on is an image of its pixels; a
+                    // video showing a picture, an image of that picture.
+                    let drawn_canvas = matches!(name, Some("canvas" | "video")) && self.images.as_ref().is_some_and(|images| images.index(node).is_some());
                     if name == Some("img") || drawn_canvas {
                         if display == Display::Contents {
                             continue;

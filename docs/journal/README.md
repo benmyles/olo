@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: GitHub's hero film plays
+
+*18:18* — Chrome (left, its first frame) and Olo (right, a later frame of the same HEVC film) at 1000 × 700: Olo's own player decodes it, each picture made the size it shows at.
+
+![Browser: GitHub's hero film plays](2026-11-07/181845-browser-github-s-hero-film-plays.png)
+
 ### Browser: GitHub's sign-up form by container queries
 
 *17:58* — Chrome (left) and Olo (right) at 1000 × 700: the e-mail field and its button on one line (@container rules), the label alone in the field (::placeholder opacity 0). Olo's heading is mid-way through its typing animation; the mascot under the buttons is still missing in Olo.
