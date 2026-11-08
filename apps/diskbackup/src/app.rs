@@ -13,6 +13,7 @@ use olo_ui::{
     file_panel::{self, FilePanel, PanelResult},
     gpui::{self, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Window, WindowHandle, div, px},
     metrics as m, style, theme,
+    undo::{History, Purpose},
     widgets::{BBox, Button, CheckBox, MenuField, StringView, TextControl, TextField, TextFieldEvent},
 };
 
@@ -41,8 +42,54 @@ const HOURLY: &[(u32, &str)] = &[(0, "None"), (12, "12 hours"), (24, "24 hours")
 const DAILY: &[(u32, &str)] = &[(0, "None"), (7, "7 days"), (14, "14 days"), (30, "30 days"), (90, "90 days")];
 const WEEKLY: &[(u32, &str)] = &[(0, "None"), (4, "4 weeks"), (8, "8 weeks"), (12, "12 weeks"), (26, "26 weeks"), (52, "52 weeks")];
 const MONTHLY: &[(u32, &str)] = &[(0, "None"), (6, "6 months"), (12, "12 months"), (24, "24 months"), (60, "5 years"), (u32::MAX, "Forever")];
+/// A settings change, for Edit ▸ Undo: the settings before it and after.
+/// Undo puts back only what it changed (the service or a setup may have
+/// changed others since).
+#[derive(Debug, Clone)]
+pub struct Changed {
+    before: Settings,
+    after: Settings,
+}
+
+/// What a change is called (Edit ▸ Undo *Keep*), by what it changed.
+fn step_name(a: &Settings, b: &Settings) -> &'static str {
+    if a.paths != b.paths {
+        if b.paths.len() > a.paths.len() { "Add Folder" } else { "Remove Folder" }
+    } else if a.exclude_groups != b.exclude_groups {
+        "Leave Out"
+    } else if a.excludes != b.excludes {
+        "Patterns"
+    } else if a.every_minutes != b.every_minutes {
+        "Back Up Every"
+    } else if a.on_battery != b.on_battery {
+        "Also on Battery"
+    } else if a.keep != b.keep {
+        "Keep"
+    } else if a.upload_kbs != b.upload_kbs || a.download_kbs != b.download_kbs {
+        "Speed"
+    } else if a.in_deskbar != b.in_deskbar {
+        "Show in Deskbar"
+    } else {
+        ""
+    }
+}
+
+/// `now` with what `before` → `after` changed put back to `before`.
+fn put_back(now: &mut Settings, before: &Settings, after: &Settings) {
+    macro_rules! each {
+        ($($f:ident),*) => {
+            $(if before.$f != after.$f {
+                now.$f = before.$f.clone();
+            })*
+        };
+    }
+    each!(enabled, target, paths, exclude_groups, excludes, every_minutes, keep, upload_kbs, download_kbs, on_battery, one_file_system, key_in_passwords, in_deskbar);
+}
+
 pub struct Disk {
     pub settings: Settings,
+    /// Edit ▸ Undo and Redo of the settings changed here.
+    history: History<Changed>,
     pub state: State,
     /// What was last said (and whether it's an error).
     note: Option<(String, bool)>,
@@ -63,7 +110,19 @@ impl Disk {
     pub fn new(proxy: Proxy) -> Disk {
         let changed = proxy.clone();
         let watch = olo_ui::watch::watch([State::path(), Settings::path()], move |_| changed.send(Msg::Changed));
-        Disk { settings: Settings::load(), state: State::load(), note: None, busy: false, win: None, restore: None, versions: Vec::new(), drive: None, proxy, _watch: watch }
+        Disk {
+            settings: Settings::load(),
+            history: History::default(),
+            state: State::load(),
+            note: None,
+            busy: false,
+            win: None,
+            restore: None,
+            versions: Vec::new(),
+            drive: None,
+            proxy,
+            _watch: watch,
+        }
     }
 
     pub fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
@@ -179,17 +238,45 @@ impl Disk {
         olo_ui::open_or_raise(self.win, cx, options, move |window, cx| cx.new(|cx| MainWindow::new(app, window, cx)), |a, w| a.win = w);
     }
 
-    /// The settings changed with `f` (the service follows them at once).
+    /// The settings changed with `f` (the service follows them at once):
+    /// a step for Edit ▸ Undo (typing the patterns, one a run).
     fn change(&mut self, f: impl FnOnce(&mut Settings), cx: &mut Context<Self>) {
         let mut s = self.settings.clone();
         f(&mut s);
         if s != self.settings {
-            if let Err(e) = s.save() {
-                self.note = Some((format!("Couldn’t save the settings: {e}"), true));
+            let name = step_name(&self.settings, &s);
+            let step = Changed { before: self.settings.clone(), after: s.clone() };
+            if name == "Patterns" {
+                self.history.done_merging("patterns", name, step, |was, now| was.after = now.after);
+            } else {
+                self.history.done(name, step);
             }
-            self.settings = s;
-            cx.notify();
+            self.save(s, cx);
         }
+    }
+
+    fn save(&mut self, s: Settings, cx: &mut Context<Self>) {
+        if let Err(e) = s.save() {
+            self.note = Some((format!("Couldn’t save the settings: {e}"), true));
+        }
+        self.settings = s;
+        cx.notify();
+    }
+
+    /// Edit ▸ Undo (`redo` false) or Redo: what the step changed put
+    /// back, the rest left as it is now.
+    pub fn undo_redo(&mut self, redo: bool, cx: &mut Context<Self>) {
+        let Some(step) = (if redo { self.history.take_redo() } else { self.history.take_undo() }) else { return };
+        let mut s = self.settings.clone();
+        put_back(&mut s, &step.change.before, &step.change.after);
+        let purpose = if redo { Purpose::Redo } else { Purpose::Undo };
+        self.history.record(purpose, step.name, Changed { before: step.change.after, after: step.change.before });
+        self.save(s, cx);
+    }
+
+    /// Edit ▸ Undo and Redo, named for their steps.
+    pub fn edit_menu(&self) -> Menu {
+        self.history.edit_items(Menu::new("Edit"))
     }
 
     /// A menu's or a button's command.
@@ -219,6 +306,8 @@ impl Disk {
                 });
             }
             "keep-key" => self.keep_key(cx),
+            "undo" => self.undo_redo(false, cx),
+            "redo" => self.undo_redo(true, cx),
             "restore" => self.open_restore(cx),
             "quit" => cx.quit(),
             _ => {}
@@ -437,7 +526,16 @@ impl MainWindow {
             let text = field.read(cx).text().to_owned();
             to.update(cx, |d, cx| d.change(|s| s.excludes = text.split([',', '\n']).map(|p| p.trim().to_owned()).filter(|p| !p.is_empty()).collect(), cx));
         });
-        let observe = cx.observe(&app, |_, _, cx| cx.notify());
+        let observe = cx.observe(&app, |w: &mut MainWindow, app, cx| {
+            // (Put back by Undo: the field says so. What's being typed
+            // stays as typed while it means the same.)
+            let now = app.read(cx).settings.excludes.clone();
+            let typed: Vec<String> = w.patterns.read(cx).text().split([',', '\n']).map(|p| p.trim().to_owned()).filter(|p| !p.is_empty()).collect();
+            if typed != now {
+                w.patterns.update(cx, |f, cx| f.set_text(now.join(", "), cx));
+            }
+            cx.notify();
+        });
         MainWindow { app, patterns, _sub: sub, _observe: observe }
     }
 }
@@ -638,6 +736,7 @@ impl Render for MainWindow {
                     .key("w")
                     .item("Quit", "quit")
                     .key("q"),
+                d.edit_menu(),
             ],
             move |c, window, cx| match c {
                 "close" => window.remove_window(),
@@ -645,5 +744,33 @@ impl Render for MainWindow {
             },
         );
         div().size_full().flex().flex_col().child(bar).child(body)
+    }
+}
+
+#[cfg(test)]
+mod undo_tests {
+    use super::*;
+
+    /// Undo puts back what its step changed, and leaves what changed
+    /// since (the service, a setup) as it is now.
+    #[test]
+    fn undo_puts_back_only_what_the_step_changed() {
+        let before = Settings::default();
+        let mut after = before.clone();
+        after.every_minutes = before.every_minutes + 15;
+        assert_eq!(step_name(&before, &after), "Back Up Every");
+        let mut now = after.clone();
+        now.in_deskbar = !before.in_deskbar;
+        now.enabled = !before.enabled;
+        put_back(&mut now, &before, &after);
+        assert_eq!(now.every_minutes, before.every_minutes);
+        assert_eq!((now.in_deskbar, now.enabled), (!before.in_deskbar, !before.enabled), "changed since: kept");
+        let mut more = before.clone();
+        more.paths.push("~/Music".into());
+        assert_eq!(step_name(&before, &more), "Add Folder");
+        assert_eq!(step_name(&more, &before), "Remove Folder");
+        more = before.clone();
+        more.keep.daily += 1;
+        assert_eq!(step_name(&before, &more), "Keep");
     }
 }

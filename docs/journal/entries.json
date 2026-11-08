@@ -3604,5 +3604,11 @@
   "title": "Disk Usage: Undo Move to Trash",
   "caption": "Edit \u25b8 Undo puts what Disk Usage moved to the Trash back where it was (its sizes back in the chart); Redo moves it again. Deleting for good still says it can't be undone.",
   "image": "2026-11-08/002025-disk-usage-undo-move-to-trash.png"
+ },
+ {
+  "time": "2026-11-08T00:27:00",
+  "title": "DiskBackup: Edit \u25b8 Undo for its settings",
+  "caption": "Each settings change in DiskBackup's window is a step named for what it changed (Leave Out, Keep, Speed, Patterns typed as one run); Undo puts back only that, leaving what the service or a setup changed since.",
+  "image": "2026-11-08/002700-diskbackup-edit-undo-for-its-settings.png"
  }
 ]
