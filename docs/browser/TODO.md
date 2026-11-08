@@ -38,9 +38,9 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.
-- [ ] A page's tiles are painted one after another on its thread (about
-  0.25 ms each at 1×; a full repaint at 2× is some 100 tiles): paint
-  them side by side on the CPU pool.
+- [x] A page's tiles were painted one after another on its thread: up to
+  16 at a time are painted side by side on the CPU pool now (each pool
+  thread a painter of its own), shown in order.
 - [x] A page's first module graph was fetched with a thread per module
   waiting on the network (`modules::fetch_all`): they start as tasks on
   the network runtime (the page waits for the graph either way).

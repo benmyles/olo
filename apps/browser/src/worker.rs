@@ -1492,6 +1492,8 @@ fn render(
         let _static_sheets = previous.as_ref().map(|c| c.page.parsed_sheets());
         *cached = None;
         painter.clear_image_cache();
+        // (The pool's tile painters let go of theirs too.)
+        TILE_PAINTERS.fetch_add(1, Ordering::Relaxed);
         cache.clear();
         proxy.send(Reply::Status(r.id, if pass == Pass::Scripted { "Running scripts…" } else { "Loading…" }.into()));
         let (document, source, mut images) = match previous {
@@ -2316,6 +2318,9 @@ fn render(
             },
         };
         let mut layer_tiles = Vec::new();
+        // This stratum's tiles in order: cached, or to paint (key, signature).
+        let mut pending: Vec<(paint::DeviceRect, std::result::Result<Arc<RenderImage>, ((i32, i32), u64)>)> = Vec::new();
+        let mut misses = 0usize;
         for y in (y0..y1).step_by(256) {
             for x in (x0..x1).step_by(256) {
                 if r.cancel.load(Ordering::Relaxed) {
@@ -2381,36 +2386,28 @@ fn render(
                 // Each stratum's tiles apart in the cache (x stays below 2^16).
                 // Each stratum's tiles apart (a moved layer's x may be negative).
                 let key = if matches!(stratum.kind, paint::LayerKind::Moved(_)) { (x ^ ((si as i32 + 1) << 24), y) } else { (x | ((si as i32) << 16), y) };
-                let image = if let Some((image, stamp, kept)) = cache.get_mut(&key)
+                if let Some((image, stamp, kept)) = cache.get_mut(&key)
                     && *kept == signature
                 {
                     *stamp = *clock;
-                    image.clone()
+                    pending.push((region, Ok(image.clone())));
                 } else {
-                    let tile = painter.raster_stratum(scene, si, region, si == 0, Some(&r.cancel))?;
-                    let mut bytes = tile.into_rgba();
-                    to_bgra(&mut bytes);
-                    let image = olo_ui::widgets::image_view::from_premultiplied_bgra(256, 256, bytes).ok_or("Tile upload failed")?;
-                    if cache.len() >= 512 {
-                        let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;
-                        cache.remove(&key);
-                    }
-                    cache.insert(key, (image.clone(), *clock, signature));
-                    repainted += 1;
-                    image
-                };
+                    pending.push((region, Err((key, signature))));
+                    misses += 1;
+                }
                 total += 1;
-                if si == 0 {
-                    tiles.push((region, image));
-                    if last.elapsed() > Duration::from_millis(120) {
+                // Painted a few at a time (side by side), shown in order.
+                if misses >= TILES_AT_ONCE {
+                    flush_tiles(&mut pending, scene, si, painter, cache, clock, &r.cancel, &mut repainted, &mut tiles, &mut layer_tiles)?;
+                    misses = 0;
+                    if si == 0 && last.elapsed() > Duration::from_millis(120) {
                         proxy.send(Reply::Batch(r.id, std::mem::take(&mut tiles)));
                         last = Instant::now();
                     }
-                } else {
-                    layer_tiles.push((region, image));
                 }
             }
         }
+        flush_tiles(&mut pending, scene, si, painter, cache, clock, &r.cancel, &mut repainted, &mut tiles, &mut layer_tiles)?;
         if si > 0 {
             // Its boxes' backdrops, under its tiles.
             let backdrops = match stratum.kind {
@@ -2924,4 +2921,78 @@ mod tests {
             assert_eq!(max_scroll(&key, 0.), 0);
         }
     }
+}
+
+/// How many tiles are painted together (side by side on the CPU pool)
+/// before they are shown.
+const TILES_AT_ONCE: usize = 16;
+/// The tile painters of the CPU pool's threads (a painter's glyph and
+/// shadow caches are its own), dropped when the page's images are
+/// (`TILE_PAINTERS`'s generation moves on).
+static TILE_PAINTERS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+thread_local! {
+    static TILE_PAINTER: std::cell::RefCell<(u64, paint::Engine)> = std::cell::RefCell::new((0, paint::Engine::default()));
+}
+/// A tile painted, made BGRA for the window.
+fn paint_tile(painter: &mut paint::Engine, scene: &paint::Scene, stratum: usize, region: paint::DeviceRect, cancel: &std::sync::atomic::AtomicBool) -> std::result::Result<Vec<u8>, paint::Error> {
+    let tile = painter.raster_stratum(scene, stratum, region, stratum == 0, Some(cancel))?;
+    let mut bytes = tile.into_rgba();
+    to_bgra(&mut bytes);
+    Ok(bytes)
+}
+/// The pending tiles shown, in order: the cached as they are, the others
+/// painted (side by side when there are several) and cached.
+#[allow(clippy::too_many_arguments)]
+fn flush_tiles(
+    pending: &mut Vec<(paint::DeviceRect, std::result::Result<Arc<RenderImage>, ((i32, i32), u64)>)>,
+    scene: &paint::Scene,
+    stratum: usize,
+    painter: &mut paint::Engine,
+    cache: &mut HashMap<(i32, i32), (Arc<RenderImage>, u64, u64)>,
+    clock: &mut u64,
+    cancel: &crate::network::Cancel,
+    repainted: &mut usize,
+    tiles: &mut Vec<(paint::DeviceRect, Arc<RenderImage>)>,
+    layer_tiles: &mut Vec<(paint::DeviceRect, Arc<RenderImage>)>,
+) -> page::Result<()> {
+    use rayon::prelude::*;
+    let regions: Vec<paint::DeviceRect> = pending.iter().filter(|(_, t)| t.is_err()).map(|(r, _)| *r).collect();
+    let flag: &std::sync::atomic::AtomicBool = cancel;
+    // (OLO_SERIAL_TILES: one painter, in turn, for comparing.)
+    let painted: Vec<std::result::Result<Vec<u8>, paint::Error>> = if regions.len() < 2 || olo_web::env_on!("OLO_SERIAL_TILES") {
+        regions.iter().map(|&region| paint_tile(painter, scene, stratum, region, flag)).collect()
+    } else {
+        let generation = TILE_PAINTERS.load(Ordering::Relaxed);
+        regions
+            .par_iter()
+            .map(|&region| {
+                TILE_PAINTER.with(|p| {
+                    let mut p = p.borrow_mut();
+                    if p.0 != generation {
+                        *p = (generation, paint::Engine::default());
+                    }
+                    paint_tile(&mut p.1, scene, stratum, region, flag)
+                })
+            })
+            .collect()
+    };
+    let mut painted = painted.into_iter();
+    for (region, tile) in pending.drain(..) {
+        let image = match tile {
+            Ok(image) => image,
+            Err((key, signature)) => {
+                let bytes = painted.next().ok_or("Tile lost")??;
+                let image = olo_ui::widgets::image_view::from_premultiplied_bgra(256, 256, bytes).ok_or("Tile upload failed")?;
+                if cache.len() >= 512 {
+                    let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;
+                    cache.remove(&key);
+                }
+                cache.insert(key, (image.clone(), *clock, signature));
+                *repainted += 1;
+                image
+            }
+        };
+        if stratum == 0 { tiles.push((region, image)) } else { layer_tiles.push((region, image)) }
+    }
+    Ok(())
 }
