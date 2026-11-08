@@ -33,6 +33,15 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   alpha (a second VP8 or VP9 stream, BlockAddID 1): `next_frame` now
   goes into BlockAdditions and BlockMore and keeps that BlockAdditional
   as `Frame::additional` (Telegram's video stickers, olo-images' `webm`).
+- **mp4 0.14.0** (MIT): a video's sample entry (`avc1`, `hev1`,
+  `vp09`) was read as if its configuration box came first, so an H.264
+  MP4 whose `avc1` has its `pasp` or `colr` before its `avcC`, as many
+  encoders write it, wouldn't open at all ("avcc not found": Chromium's
+  bear-1280x720.mp4 among them), and `vp09` took whatever came first for
+  its `vpcC`. The patch (`find_child` in `src/mp4box/mod.rs`, used by
+  `avc1.rs`, `hev1.rs` and `vp09.rs`, marked "Olo:") looks through the
+  entry's boxes for it. Its sample-file doc example fails as published
+  (the file isn't in the crate).
 - **brush-interactive 0.4.0** (MIT): brush's line editor gives no way in
   for its hints or for the lines entered. The patch adds `src/hooks.rs`
   (`set_hooks`: a program's own hinter, given the shell's folder and last

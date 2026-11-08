@@ -1766,7 +1766,9 @@ mod tests {
         let mut sh = m.lock().unwrap();
         // (Three, or as many as it queues: two of 1080p's, by their bytes.)
         let want = |sh: &Shared| 3.min(if sh.ahead == 0 { 3 } else { sh.ahead });
-        while sh.queue.len() < want(&sh) && !sh.eof {
+        // (Until the worker ends too: one that fails says why, here, rather
+        // than leaving this waiting for pictures that won't come.)
+        while sh.queue.len() < want(&sh) && !sh.eof && !worker.is_finished() {
             sh = cv.wait_timeout(sh, Duration::from_millis(50)).unwrap().0;
         }
         let pts: Vec<f64> = sh.queue.iter().map(|f| f.pts).collect();
@@ -1774,7 +1776,9 @@ mod tests {
         sh.stop = true;
         drop(sh);
         cv.notify_all();
-        worker.join().unwrap().unwrap();
+        if let Err(e) = worker.join().unwrap() {
+            panic!("{name} @ {target}: {e} (pictures before it: {pts:?})");
+        }
         assert!(pts.len() >= wanted, "{name} @ {target}: {pts:?}");
         // The first picture is the one showing at the target.
         assert!((pts[0] - target).abs() < 0.05, "{name} @ {target}: {pts:?}");
