@@ -254,6 +254,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let (id, keyboard) = (w.app_id(), &self.settings.keyboard);
             if keyboard.terminal_apps.contains(&id) {
                 Focus::Terminal
+            } else if olo_protocol::app_keys::CHROMIUM_APPS.contains(&id.as_str()) {
+                Focus::Chrome
             } else if keyboard.browser_apps.contains(&id) {
                 Focus::Browser
             } else if id.starts_with("olo.") {

@@ -2,8 +2,10 @@
 //! sheet, over everything (Keyboard Shortcuts: ⇧⌘/ on a Mac, Win+Shift+/
 //! on Windows, Alt+Shift+/ on BeOS, as a Mac's Help is ⌘?). app_server
 //! starts `olo-palette --shortcuts`, which hands it to the running copy.
-//! The front app's own come first (its menus' keys, as it shows them),
-//! then text editing's, then the desktop's (app_server's), each group a
+//! The front app's own come first (its menus' keys, as it shows them;
+//! Chrome's, which has no menus to read, from the profile: `app_keys`'
+//! Chrome table, sent as Chrome takes them by app_server), then text
+//! editing's, then the desktop's (app_server's), each group a
 //! card in columns. Esc, a click outside or the keys again put it away.
 
 use olo_kit_base::masonry;
@@ -48,15 +50,41 @@ pub fn learn(proxy: Proxy) {
             Some(Reply::Windows { windows }) => windows.into_iter().find(|w| w.focused),
             _ => None,
         };
+        let app_id = front.as_ref().map(|w| w.app_id.clone());
         let menus = front.and_then(|w| w.pid).and_then(|p| u32::try_from(p).ok()).and_then(commands::menus);
-        proxy.send(Learned { profile: profile.name.clone(), groups: groups(&profile, menus.as_ref()) });
+        proxy.send(Learned { profile: profile.name.clone(), groups: groups(&profile, menus.as_ref(), app_id.as_deref()) });
     });
 }
 
-/// The sheet's cards: the front app's menus (by menu), text editing, then
-/// app_server's groups.
-pub fn groups(profile: &KeyboardProfile, menus: Option<&commands::Menus>) -> Vec<Group> {
+/// Chrome's keys on the sheet, by card: its title and the commands' ids.
+const CHROME_CARDS: &[(&str, &[&str])] = &[
+    ("Chrome: Tabs and Windows", &["chrome.new-tab", "chrome.reopen-tab", "chrome.close-tab", "chrome.new-window", "chrome.incognito", "chrome.close-window", "chrome.quit"]),
+    ("Chrome: Going Places", &["chrome.location", "chrome.back", "chrome.forward", "chrome.home", "chrome.reload", "chrome.hard-reload", "chrome.find-next", "chrome.find-previous"]),
+    ("Chrome: View", &["chrome.zoom-in", "chrome.zoom-out", "chrome.actual-size", "chrome.full-screen", "chrome.bookmarks-bar"]),
+    ("Chrome: Bookmarks and History", &["chrome.bookmark", "chrome.bookmark-manager", "chrome.history", "chrome.downloads", "chrome.clear-data"]),
+    ("Chrome: Developer", &["chrome.devtools", "chrome.console", "chrome.view-source"]),
+];
+
+/// The sheet's cards: the front app's menus (by menu; Chrome's keys for a
+/// Chromium browser, `front` its app id), text editing, then app_server's
+/// groups.
+pub fn groups(profile: &KeyboardProfile, menus: Option<&commands::Menus>, front: Option<&str>) -> Vec<Group> {
     let mut out = Vec::new();
+    if menus.is_none() && front.is_some_and(|a| olo_protocol::app_keys::CHROMIUM_APPS.contains(&a)) {
+        for (title, ids) in CHROME_CARDS {
+            let rows: Vec<(String, String)> = ids
+                .iter()
+                .filter_map(|id| {
+                    let e = shortcuts::entry(id)?;
+                    let keys = e.keys(profile);
+                    (!keys.is_empty()).then(|| (e.title.to_owned(), keys.iter().map(|c| c.label(profile.platform)).collect::<Vec<_>>().join("  ")))
+                })
+                .collect();
+            if !rows.is_empty() {
+                out.push(Group { title: (*title).to_owned(), rows });
+            }
+        }
+    }
     if let Some(menus) = menus {
         let app = our_app(&menus.app_id).map_or_else(|| menus.app_id.clone(), |(name, _)| name.to_owned());
         for e in menus.entries.iter().filter(|e| e.keys.is_some()) {
@@ -257,16 +285,26 @@ mod tests {
         };
         let menus = commands::Menus { app_id: "olo.tracker".into(), entries: vec![entry("File", "Open", Some("⌘O")), entry("File", "Get Info…", Some("⌘I")), entry("Edit", "Select All", None)] };
         let mac = KeyboardProfile::default();
-        let g = groups(&mac, Some(&menus));
+        let g = groups(&mac, Some(&menus), Some("olo.tracker"));
         assert_eq!(g[0], Group { title: "Tracker: File".into(), rows: vec![("Open".into(), "⌘O".into()), ("Get Info".into(), "⌘I".into())] });
         assert_eq!(g[1].title, "Text");
         assert_eq!(g[1].rows[0], ("Start or end of the line".into(), "⌘←  ⌘→".into()));
         let switching = g.iter().find(|g| g.title == shortcuts::SWITCHING).unwrap();
         assert!(switching.rows.contains(&("Switch applications (Twitcher)".into(), "⌘⇥".into())));
         // Windows' names.
-        let w = groups(&KeyboardProfile::builtin(Platform::Windows), None);
+        let w = groups(&KeyboardProfile::builtin(Platform::Windows), None, None);
         assert_eq!(w[0].rows[0].1, "Home  End");
         let desktop = w.iter().find(|g| g.title == shortcuts::DESKTOP).unwrap();
         assert!(desktop.rows.contains(&("Keyboard shortcuts".into(), "Win+Shift+/".into())));
+        // Chrome in front: its keys first, as the profile has them.
+        let c = groups(&mac, None, Some("google-chrome"));
+        assert_eq!(c[0].title, "Chrome: Tabs and Windows");
+        assert_eq!(c[0].rows[0], ("New Tab".into(), "⌘T".into()));
+        let tools = c.iter().find(|g| g.title == "Chrome: Bookmarks and History").unwrap();
+        assert!(tools.rows.contains(&("History".into(), "⌘Y".into())), "{:?}", tools.rows);
+        let w = groups(&KeyboardProfile::builtin(Platform::Windows), None, Some("chromium"));
+        assert!(w.iter().any(|g| g.rows.contains(&("History".into(), "Ctrl+H".into()))));
+        // Not for another browser.
+        assert!(groups(&mac, None, Some("firefox")).iter().all(|g| !g.title.starts_with("Chrome")));
     }
 }

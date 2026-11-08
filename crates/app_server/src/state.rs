@@ -1387,6 +1387,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         }
         state.presence_settings();
         state.keymap.set_bindings(olo_protocol::shortcuts::bindings(&state.settings.keyboard.profile));
+        state.keymap.set_chrome(olo_protocol::app_keys::chrome_keys(&state.settings.keyboard.profile));
         if let Some(found) = state.power.displays_found.take() {
             let _ = state.handle.insert_source(found, |event, _, state| {
                 if let smithay::reexports::calloop::channel::Event::Msg(found) = event {

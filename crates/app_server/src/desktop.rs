@@ -2009,6 +2009,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.regroup_apps(&regrouped);
         }
         self.keymap.set_bindings(olo_protocol::shortcuts::bindings(&self.settings.keyboard.profile));
+        self.keymap.set_chrome(olo_protocol::app_keys::chrome_keys(&self.settings.keyboard.profile));
         // Fewer workspaces: the windows on those gone join the last, and
         // a display showing one goes to it (with its windows).
         let last = self.settings.workspace_count.max(1) - 1;

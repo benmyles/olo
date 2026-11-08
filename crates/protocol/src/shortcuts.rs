@@ -1059,6 +1059,27 @@ mod tests {
         assert!(assign(&mut p, "viewer.crop", "Cmd+T".parse().ok()).is_empty());
     }
 
+    /// Each of Chrome's commands says what Chrome takes for it, and a
+    /// profile's keys for them come with that.
+    #[test]
+    fn chrome_keys_say_what_chrome_takes() {
+        let chrome: Vec<&str> = crate::app_keys::APP_KEYS.iter().filter(|k| k.app == Some("google-chrome")).map(|k| k.id).collect();
+        let native: Vec<&str> = crate::app_keys::CHROME_NATIVE.iter().map(|(id, _)| *id).collect();
+        assert_eq!(chrome, native);
+        for (id, n) in crate::app_keys::CHROME_NATIVE {
+            assert!(n.parse::<Chord>().is_ok(), "{id}: {n}");
+        }
+        let keys = crate::app_keys::chrome_keys(&KeyboardProfile::default());
+        assert!(keys.contains(&("Cmd+Y".parse().unwrap(), "Ctrl+H".parse().unwrap())));
+        assert!(keys.contains(&("Ctrl+Cmd+F".parse().unwrap(), "F11".parse().unwrap())));
+        // Changed in the profile: the new keys stand for it.
+        let mut p = KeyboardProfile::default();
+        assign(&mut p, "chrome.history", "Shift+Cmd+H".parse().ok());
+        let keys = crate::app_keys::chrome_keys(&p);
+        assert!(keys.contains(&("Shift+Cmd+H".parse().unwrap(), "Ctrl+H".parse().unwrap())));
+        assert!(!keys.iter().any(|(from, _)| *from == "Cmd+Y".parse().unwrap()));
+    }
+
     #[test]
     fn profiles_say_when_they_are_changed() {
         let mut p = KeyboardProfile::default();

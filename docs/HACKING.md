@@ -5247,6 +5247,23 @@ in the editor, and left to the window's menu in a field). (The egui
 kit's `mac_text_keys` did this; it went with egui on 2026-11-02, and
 until 2026-11-03 ⌘← moved a word in Olo's own text.)
 
+Chrome's own keys are in the profile too (`app_keys`, app
+`google-chrome`, listed as Chrome in Preferences ▸ Keyboard ▸ Shortcuts
+and changed there as any app's): New Tab, Reopen Closed Tab, Open
+Location, Back, History, Downloads, Developer Tools, Enter Full Screen
+and the rest, each platform's as Chrome has them there (BeOS's as a
+Mac's, Alt its command key). In Chrome and the browsers that are Chrome
+underneath (`CHROMIUM_APPS`: Chromium, Brave, Edge; `keymap::Focus::
+Chrome`) each is sent as what Linux Chrome takes for that command
+(`CHROME_NATIVE`, `app_keys::chrome_keys`, `Keymap::set_chrome`, set
+with the bindings), before the other programs' translations: a Mac's
+⌘Y is History (Ctrl+H), ⌥⌘I the developer tools (Ctrl+Shift+I), ⌃⌘F
+full screen (F11), ⌘Q quits (Ctrl+Shift+Q), ⌥⌘L Downloads (Ctrl+J);
+one that's the same there passes as it is. Tried in a tsession with
+Chrome 157 (a scratch profile readied as on a screen): ⌘Y opened
+History, ⌥⌘I the developer tools, ⌃⌘F made it full screen; Firefox's ⌘Y
+is still Ctrl+Y (`chrome_gets_its_own_keys`).
+
 The kit (`keyboard.rs`) follows the profile from app_server's settings
 (`keyboard::profile`, `platform`, `command_key`). Every menu bar and
 context menu gets its keys from it (`keyboard::resolve`, in
@@ -5264,7 +5281,10 @@ Usage), and Terminal's own are `keyboard::is_own_shortcut`.
 
 The shortcuts sheet (`Shortcut::ShortcutHelp`: ⇧⌘/, Win+Shift+/,
 Alt+Shift+/) is the palette's (`olo-palette --shortcuts`, sheet.rs): the
-front app's menu keys (`commands::menus`, as it shows them), text
+front app's menu keys (`commands::menus`, as it shows them; for a
+Chromium browser, which has no menus to read, Chrome's keys from the
+profile in five cards: tabs and windows, going places, view, bookmarks
+and history, developer), text
 editing's for the platform, then app_server's by group, as cards in
 columns (`masonry`), in a scroll view when they don't all fit; Esc, a
 click outside or the keys again put it away. Its text is in the

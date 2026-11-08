@@ -20,8 +20,6 @@ something nobody here has is in "Blocked", with what it waits for.
 Leftovers found in finished entries (2026-11-08 audit: each checked
 against the code, still not there):
 
-- **Shortcuts for programs that aren't Olo's** (the shortcut profiles'
-  "Not yet"): Chrome's own keys in the shortcuts sheet and the profile.
 - **app_server keeps its big buffers** (its "Left", 2026-11-02): a
   screenshot's 31 MB texture and read-back kept for reuse, not left to
   Mesa's 3-second cache (Screenshot's live resize, 18–21 ms then).
@@ -2343,6 +2341,12 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Shortcuts for programs that aren't Olo's**~~ (the shortcut
+  profiles' "Not yet"). *Done* (2026-11-08): Chrome's own keys are in
+  every profile (Preferences lists and changes them), sent to Chrome
+  (and Chromium, Brave, Edge) as Linux Chrome takes them, and on the
+  shortcuts sheet when Chrome is in front.
 
 - ~~**Window menu: tile with…**~~ (the window menu's other "Not yet").
   *Done* (2026-11-08): Tile With ▸ lists the other windows on the
