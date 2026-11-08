@@ -653,6 +653,18 @@
   // ---------- Document
   const cookies = new Map();
   let readyState = 'loading';
+  let pendingWrite = null;
+  const flushWrites = () => {
+    const w = pendingWrite; pendingWrite = null;
+    if (!w || !w.html) return;
+    const parent = N.parent(w.script); if (!parent) return;
+    const holder = N.createElement('div', '');
+    N.setInnerHTML(holder, w.html);
+    // (Written scripts run, as the parser's do; innerHTML's would not.)
+    for (const el of N.query(holder, 'script', true)) started.delete(el);
+    const next = N.nextSibling(w.script);
+    for (const c of N.childNodes(holder)) { if (next) N.insertBefore(parent, c, next); else N.append(parent, c); }
+  };
   define(Document.prototype, {
     documentElement: { get() { return html(); } },
     head: { get() { return N.query(documentNode, 'html > head', false); } },
@@ -696,7 +708,17 @@
     querySelectorAll(sel) { return listOf(N.query(this, String(sel), true)); },
     importNode(n, deep) { return upgradeClone(N.clone(asNode(n), !!deep)); },
     adoptNode(n) { return n; },
-    write(s) { log('warn', ['document.write is not supported after parsing: ' + String(s).slice(0, 80)]); },
+    // document.write while the page's scripts first run (the document
+    // parsed already): what a script writes goes in after it, parsed when
+    // it is done (the writes of one script together, so a tag may span
+    // them), scripts written so running; after that, a warning (it would
+    // replace the document).
+    write(...parts) {
+      const text = parts.map(String).join('');
+      if (readyState !== 'loading' || !currentScript || !N.isConnected(currentScript)) { log('warn', ['document.write is not supported after parsing: ' + text.slice(0, 80)]); return; }
+      if (!pendingWrite || pendingWrite.script !== currentScript) { flushWrites(); pendingWrite = { script: currentScript, html: '' }; Promise.resolve().then(flushWrites); }
+      pendingWrite.html += text;
+    },
     writeln(s) { this.write(s); },
     open() { return this; }, close() {},
     execCommand() { return false; }, queryCommandSupported() { return false; }, queryCommandEnabled() { return false; }, queryCommandState() { return false; },
