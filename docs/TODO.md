@@ -103,9 +103,15 @@ something nobody here has is in "Blocked", with what it waits for.
   ▸ Noise model), 0 with noise suppression off; the "cycle a source fed
   by another stream is behind" was the old probe's (pw-record is
   scheduled asynchronously), not Olo's. Left: Ben to choose the default
-  once he's heard both (Try It compares them). tract still allocates
-  ~850 times a frame on the realtime thread (its tensors): a plan with
-  its buffers made once would take that away.
+  once he's heard both (Try It compares them). tract allocates ~850
+  times a frame on the realtime thread (each op's output tensors), but
+  that costs nothing measurable (2026-11-08, DeepFilterNet3, 3 runs
+  each): with mimalloc's thread-local free lists in place of glibc's,
+  a frame back to back was 239-252 µs against 244-249, and paced every
+  10 ms the median was 591-607 µs against 592-607, the tails noisy
+  either way. A frame's time is streaming the weights, not the heap, so
+  ops writing into buffers made once (a change to every op in tract)
+  isn't worth it.
 
 - **Preferences ▸ Deskbar's own icon** (with the image model's key Ben
   added, 2026-11-07): an upright grey panel with status lights and a
