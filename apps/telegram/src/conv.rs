@@ -868,6 +868,8 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
     let mut paint: Paints = Vec::new();
     let mut hits: Vec<AnyElement> = Vec::new();
     let mut overlay: Vec<AnyElement> = Vec::new();
+    // A voice message being recorded: held or not, its time and levels.
+    let rec = tg.voice.as_ref().map(|v| (v.held, v.seconds, v.levels.iter().copied().collect::<Vec<f32>>()));
     let Some(conv) = tg.conv.as_mut() else { return div().into_any_element() };
     let (x0, y0, w, h) = (f32::from(rect.origin.x), f32::from(rect.origin.y), f32::from(rect.size.width), f32::from(rect.size.height));
     let mut y = y0 + m::SPACING;
@@ -899,7 +901,11 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
     let well = Bounds::from_corners(point(attach.right() + px(4.0), px(y)), point(send.origin.x - px(8.0), px(y + field_h)));
     let inner = Bounds::from_corners(point(well.origin.x + px(14.0), well.origin.y + px(8.0)), point(well.right() - px(14.0), well.bottom() - px(8.0)));
     let can_send = !conv.text(cx).trim().is_empty() || !conv.files.is_empty();
+    // Nothing to send: the button records a voice message instead.
+    let mic = rec.is_none() && !can_send && !editing;
     let hint = match chat.kind {
+        // (The recording's strip is over it: nothing to show through.)
+        _ if rec.is_some() => "",
         ChatKind::Channel => "Broadcast",
         _ if editing => "Edit message",
         _ => "Message",
@@ -908,6 +914,7 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
     {
         let look = look.clone();
         let (attach_hot, send_hot, x_hot) = (is_hot("attach"), is_hot("send"), is_hot("cancel-reply"));
+        let rec = rec.clone();
         let file_hots: Vec<bool> = (0..files.len()).map(|i| is_hot(&format!("unstage:{i}"))).collect();
         let (quote, files) = (quote.clone(), files.clone());
         paint.push(Box::new(move |window, cx| {
@@ -957,8 +964,13 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
                 close_mark(window, xr.center(), if hot { c(p.panel_text) } else { style::disabled_text(&p) });
                 olo_ui::agent::record(window, cx, olo_ui::agent::Node::button(format!("Remove {whole}"), xr));
             }
-            paperclip(window, attach.center(), if attach_hot { look.accent } else { style::disabled_text(&p) });
-            olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Attach Files", attach));
+            if rec.is_some() {
+                close_mark(window, attach.center(), if attach_hot { c(p.panel_text) } else { style::disabled_text(&p) });
+                olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Cancel Recording", attach));
+            } else {
+                paperclip(window, attach.center(), if attach_hot { look.accent } else { style::disabled_text(&p) });
+                olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Attach Files", attach));
+            }
             let well = style::snap(window, well);
             window.paint_quad(olo_ui::gpui::quad(
                 well,
@@ -968,15 +980,37 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
                 c(olo_ui::palette::mix(p.panel_background, p.panel_text, 0.22)),
                 olo_ui::gpui::BorderStyle::Solid,
             ));
-            let face = if can_send { look.accent } else { look.accent.opacity(0.35) };
-            let face = if send_hot && can_send { bubble::blend(face, black(), 0.1) } else { face };
-            disc(window, send.center(), 17.0, face);
-            plane(window, send.center(), white());
-            olo_ui::agent::record(
-                window,
-                cx,
-                olo_ui::agent::Node { role: "Button", name: Some(if editing { "Save" } else { "Send" }.into()), bounds: send, enabled: can_send, clickable: can_send, ..Default::default() },
-            );
+            match &rec {
+                // Held: red while it records, paler away from it (let go
+                // there, it's thrown away).
+                Some((true, ..)) => {
+                    let red = c(p.failure);
+                    disc(window, send.center(), 17.0, if send_hot { red } else { red.opacity(0.45) });
+                    microphone(window, send.center(), white());
+                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Send Voice Message", send));
+                }
+                Some((false, ..)) => {
+                    disc(window, send.center(), 17.0, if send_hot { bubble::blend(look.accent, black(), 0.1) } else { look.accent });
+                    plane(window, send.center(), white());
+                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Send Voice Message", send));
+                }
+                None if mic => {
+                    disc(window, send.center(), 17.0, if send_hot { bubble::blend(look.accent, black(), 0.1) } else { look.accent });
+                    microphone(window, send.center(), white());
+                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Record Voice Message", send));
+                }
+                None => {
+                    let face = if can_send { look.accent } else { look.accent.opacity(0.35) };
+                    let face = if send_hot && can_send { bubble::blend(face, black(), 0.1) } else { face };
+                    disc(window, send.center(), 17.0, face);
+                    plane(window, send.center(), white());
+                    olo_ui::agent::record(
+                        window,
+                        cx,
+                        olo_ui::agent::Node { role: "Button", name: Some(if editing { "Save" } else { "Send" }.into()), bounds: send, enabled: can_send, clickable: can_send, ..Default::default() },
+                    );
+                }
+            }
         }));
     }
     if let Some((_, x, _)) = &quote {
@@ -988,19 +1022,35 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
         hits.push(crate::hit(me, &format!("unstage:{i}"), *xr).on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::Unstage(i), window, cx))).into_any_element());
     }
     let t = me.clone();
-    hits.push(crate::hit(me, "attach", attach).on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::Attach, window, cx))).into_any_element());
+    if rec.is_some() {
+        hits.push(crate::hit(me, "attach", attach).on_click(move |_, _, cx| t.update(cx, |tg, cx| tg.voice_end(false, cx))).into_any_element());
+    } else {
+        hits.push(crate::hit(me, "attach", attach).on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::Attach, window, cx))).into_any_element());
+    }
     let t = me.clone();
-    hits.push(
-        crate::hit(me, "send", send)
-            .on_click(move |_, window, cx| {
-                t.update(cx, |tg, cx| {
-                    if tg.conv.as_ref().is_some_and(|c| !c.text(cx).trim().is_empty() || !c.files.is_empty()) {
-                        tg.conv_act(Act::Send, window, cx);
-                    }
-                })
+    let send_hit = match &rec {
+        // Held: let go on it, it's sent; away from it, thrown away.
+        Some((true, ..)) => {
+            let out = me.clone();
+            crate::hit(me, "send", send)
+                .on_mouse_up(MouseButton::Left, move |_, _, cx| t.update(cx, |tg, cx| tg.voice_release(true, cx)))
+                .on_mouse_up_out(MouseButton::Left, move |_, _, cx| out.update(cx, |tg, cx| tg.voice_release(false, cx)))
+        }
+        Some((false, ..)) => crate::hit(me, "send", send).on_click(move |_, _, cx| t.update(cx, |tg, cx| tg.voice_end(true, cx))),
+        // Pressed, it records; let go soon (a click), it goes on.
+        None if mic => crate::hit(me, "send", send).on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            cx.stop_propagation();
+            t.update(cx, |tg, cx| tg.voice_start(true, cx))
+        }),
+        None => crate::hit(me, "send", send).on_click(move |_, window, cx| {
+            t.update(cx, |tg, cx| {
+                if tg.conv.as_ref().is_some_and(|c| !c.text(cx).trim().is_empty() || !c.files.is_empty()) {
+                    tg.conv_act(Act::Send, window, cx);
+                }
             })
-            .into_any_element(),
-    );
+        }),
+    };
+    hits.push(send_hit.into_any_element());
     // The field itself; Escape puts a reply or edit away.
     let field = conv.field.clone();
     if std::mem::take(&mut conv.focus_field) {
@@ -1017,7 +1067,10 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
             .on_key_down(move |e: &KeyDownEvent, window, cx| {
                 if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
                     t.update(cx, |tg, cx| {
-                        if tg.conv.as_ref().is_some_and(|c| c.reply.is_some() || c.edit.is_some()) {
+                        if tg.voice.is_some() {
+                            tg.voice_end(false, cx);
+                            cx.stop_propagation();
+                        } else if tg.conv.as_ref().is_some_and(|c| c.reply.is_some() || c.edit.is_some()) {
                             tg.conv_act(Act::CancelReply, window, cx);
                             cx.stop_propagation();
                         }
@@ -1027,13 +1080,88 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
             .child(field)
             .into_any_element(),
     );
+    // Recording: the field gives way to the recording's time and levels
+    // (drawn over it; it keeps the keyboard, for Escape).
+    let strip = rec.map(|(held, seconds, levels)| {
+        let send_hot = is_hot("send");
+        canvas(|_, _, _| {}, move |_, _, window, cx| voice_strip(window, cx, well, held, send_hot, seconds, &levels)).absolute().inset_0()
+    });
     div()
         .absolute()
         .inset_0()
         .child(canvas(|_, _, _| {}, move |_, _, window, cx| paint.into_iter().for_each(|f| f(window, cx))).absolute().inset_0())
         .children(hits)
         .children(overlay)
+        .children(strip)
         .into_any_element()
+}
+
+/// A recording's strip, in the field's well: a red dot and the time,
+/// then the last levels as bars (newest at the right), and while it's
+/// held what letting go does.
+fn voice_strip(window: &mut Window, cx: &mut App, well: Bounds<Pixels>, held: bool, send_hot: bool, seconds: f32, levels: &[f32]) {
+    let p = theme::palette(cx);
+    let well = style::snap(window, well);
+    window.paint_quad(olo_ui::gpui::quad(
+        well,
+        px(18.0),
+        c(p.document_background),
+        style::hairline(window),
+        c(olo_ui::palette::mix(p.panel_background, p.panel_text, 0.22)),
+        olo_ui::gpui::BorderStyle::Solid,
+    ));
+    let mid = well.center().y;
+    let x = well.origin.x + px(16.0);
+    disc(window, point(x + px(4.0), mid), 4.0, c(p.failure));
+    let s = seconds as u32;
+    let time = format!("{}:{:02}", s / 60, s % 60);
+    let font = style::ui_font(FontWeight::NORMAL);
+    let t = style::label(window, cx, x + px(14.0), mid, Align::Left, time.clone(), bubble::TEXT, font.clone(), c(p.document_text));
+    let hint = match (held, send_hot) {
+        (true, true) => "Let go to send, or move away to cancel",
+        (true, false) => "Let go to cancel",
+        (false, _) => "",
+    };
+    let right = well.right() - px(16.0);
+    let hint_w = if hint.is_empty() { px(0.0) } else { style::text_width(window, hint, style::DETAIL_SIZE, font.clone()).ceil() + px(12.0) };
+    if !hint.is_empty() {
+        style::label(window, cx, right, mid, Align::Right, hint, style::DETAIL_SIZE, font, style::disabled_text(&p));
+    }
+    // Bars: 2 points wide, 4 apart, as loud as each 100 ms was (from
+    // -50 dB to the top).
+    let (from, to) = (t.right() + px(12.0), right - hint_w);
+    let n = (f32::from(to - from) / 4.0).floor().max(0.0) as usize;
+    let tall = f32::from(well.size.height) - 16.0;
+    let ink = c(p.document_text).opacity(0.55);
+    for (i, &l) in levels.iter().rev().take(n).enumerate() {
+        let db = 20.0 * l.max(1e-5).log10();
+        let k = ((db + 50.0) / 50.0).clamp(0.0, 1.0);
+        let h = (2.0 + k * (tall - 2.0)).round();
+        let bx = to - px(4.0 * (i + 1) as f32);
+        let bar = style::snap(window, Bounds { origin: point(bx, mid - px(h / 2.0)), size: size(px(2.0), px(h)) });
+        window.paint_quad(olo_ui::gpui::fill(bar, ink).corner_radii(px(1.0)));
+    }
+    let name = if held { format!("Recording a voice message, {time}") } else { format!("Recording a voice message, {time}: Send Voice Message or Cancel Recording") };
+    // (Where the field's text would be, inside the well.)
+    let inner = Bounds::from_corners(point(well.origin.x + px(14.0), well.origin.y + px(8.0)), point(well.right() - px(14.0), well.bottom() - px(8.0)));
+    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Label", name: Some(name.into()), bounds: inner, enabled: true, ..Default::default() });
+}
+
+/// The record button's microphone: a capsule on a stand.
+fn microphone(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
+    let at = |dx: f32, dy: f32| point(cc.x + px(dx), cc.y + px(dy));
+    window.paint_quad(olo_ui::gpui::fill(Bounds::from_corners(at(-3.0, -9.0), at(3.0, 2.0)), ink).corner_radii(px(3.0)));
+    let mut path = PathBuilder::stroke(px(1.5));
+    for i in 0..=12 {
+        let a = std::f32::consts::PI * i as f32 / 12.0;
+        let q = at(5.5 * a.cos(), -2.5 + 5.5 * a.sin());
+        if i == 0 { path.move_to(q) } else { path.line_to(q) }
+    }
+    if let Ok(path) = path.build() {
+        window.paint_path(path, ink);
+    }
+    window.paint_segment(at(0.0, 3.0), at(0.0, 7.0), px(1.5), false, ink);
+    window.paint_segment(at(-3.5, 7.5), at(3.5, 7.5), px(1.5), true, ink);
 }
 
 fn close_mark(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {

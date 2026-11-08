@@ -20,9 +20,8 @@ something nobody here has is in "Blocked", with what it waits for.
 Leftovers found in finished entries (2026-11-08 audit: each checked
 against the code, still not there):
 
-- **Telegram: record voice notes; animated stickers move** (its "Not
-  yet", done 2026-10-29): hold to record a voice note (Opus, in
-  process), and animated stickers (Lottie, WebM) play, not just their
+- **Telegram: animated stickers move** (its "Not yet", done
+  2026-10-29): animated stickers (Lottie, WebM) play, not just their
   first frame.
 - **Auto-tiling: master and stack, one transaction, a layout picker**
   (its "Not yet", done 2026-10-28): a master-and-stack layout as dwm's,
@@ -2352,6 +2351,12 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Telegram: record voice notes**~~ (its "Not yet", 2026-10-29).
+  *Done* (2026-11-08): with nothing to send, the send button is a
+  microphone; hold it to record (let go on it to send, away to cancel),
+  or click it to record until Send, × or Escape; Opus in Ogg coded in
+  process (rusty-opus, kept to SILK after measuring it against libopus).
 
 - ~~**Passwords' SSH agent: allow with a touch or a look**~~ (its "Left",
   2026-11-05). *Done* (2026-11-08): the Allow alert for a terminal

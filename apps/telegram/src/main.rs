@@ -10,11 +10,12 @@ mod conv;
 mod list;
 mod pics;
 mod store;
+mod voice;
 mod when;
 
 use std::{
     cell::Cell,
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
@@ -82,6 +83,13 @@ pub struct Tg {
     /// Play or open this once it's downloaded.
     when_fetched: Option<(Pic, bool)>,
     next_local: u64,
+    /// A voice message being recorded, and the last one's token.
+    pub voice: Option<Recording>,
+    voice_token: u64,
+    /// Voice messages ended before the microphone opened (sent or not),
+    /// and those finishing to be sent: where to.
+    voice_ended: HashMap<u64, bool>,
+    voice_to: HashMap<u64, (ChatId, Option<MsgId>, Option<MsgId>)>,
     focused: bool,
     /// What's typed in each chat's field, kept when switching.
     drafts: HashMap<ChatId, String>,
@@ -126,6 +134,28 @@ pub struct Tg {
     /// Quitting, once they're sent or by then.
     quitting: Option<Instant>,
 }
+
+/// A voice message being recorded (`voice.rs`), in the chat open.
+pub struct Recording {
+    pub token: u64,
+    chat: ChatId,
+    topic: Option<MsgId>,
+    pub since: Instant,
+    /// Held down: let go on the button it's sent, away from it thrown
+    /// away. Not held (a click started it, or Chat ▸ Record Voice
+    /// Message): Send or Cancel ends it.
+    pub held: bool,
+    rec: Option<voice::Recorder>,
+    /// The last levels (0–1), newest last, and the seconds so far.
+    pub levels: VecDeque<f32>,
+    pub seconds: f32,
+    typing_sent: f64,
+}
+
+/// Levels the composer keeps for its bars.
+pub const LEVELS: usize = 120;
+/// Let go sooner than this, the press was a click: it goes on recording.
+const HOLD: Duration = Duration::from_millis(300);
 
 /// How long quitting waits for the changes still on their way (they're
 /// kept and sent next time if it gives up).
@@ -274,6 +304,10 @@ impl Tg {
     }
 
     fn open_chat(&mut self, chat: ChatId, topic: Option<MsgId>, cx: &mut Context<Self>) {
+        // A voice message being recorded is for the chat it was begun in.
+        if self.voice.as_ref().is_some_and(|v| v.chat != chat || v.topic != topic) {
+            self.voice_end(false, cx);
+        }
         // Keep what was being written in the chat we leave.
         let text = self.field.read(cx).text().to_owned();
         if let Some(mut c) = self.conv.take() {
@@ -360,6 +394,153 @@ impl Tg {
         self.store.pending(pending);
         self.field.update(cx, |f, cx| f.set_text("", cx));
         cx.notify();
+    }
+
+    /// Redraw the composer alone (a voice message's level, ten a second).
+    fn redraw_composer(&self, cx: &mut Context<Self>) {
+        if let Some(p) = self.pane(Kind::Composer) {
+            let app: &mut App = cx;
+            app.notify(p);
+        }
+    }
+
+    /// Start recording a voice message in the chat open: `held` while
+    /// the button is held down, else until Send or Cancel.
+    pub fn voice_start(&mut self, held: bool, cx: &mut Context<Self>) {
+        let Some(c) = &self.conv else { return };
+        if self.voice.is_some() || c.edit.is_some() {
+            return;
+        }
+        self.voice_token += 1;
+        let token = self.voice_token;
+        // (What's playing would be recorded too.)
+        self.player = None;
+        self.backend.send(Cmd::Typing { chat: c.chat, topic: c.topic, doing: Doing::RecordingVoice });
+        self.voice = Some(Recording { token, chat: c.chat, topic: c.topic, since: Instant::now(), held, rec: None, levels: VecDeque::new(), seconds: 0.0, typing_sent: now() });
+        // The field keeps the keyboard (pressing the button took it), for
+        // Escape.
+        if let Some(c) = &mut self.conv {
+            c.focus_field = true;
+        }
+        voice::start(token, olo_ui::proxy(cx));
+        cx.notify();
+    }
+
+    /// The button let go, over it or not.
+    pub fn voice_release(&mut self, over: bool, cx: &mut Context<Self>) {
+        let Some(v) = &mut self.voice else { return };
+        if !v.held {
+            return;
+        }
+        if v.since.elapsed() < HOLD {
+            // A click: it goes on till Send or Cancel.
+            v.held = false;
+            return self.redraw_composer(cx);
+        }
+        self.voice_end(over, cx);
+    }
+
+    /// End the recording: sent, or thrown away.
+    pub fn voice_end(&mut self, send: bool, cx: &mut Context<Self>) {
+        let Some(mut v) = self.voice.take() else { return };
+        if let Some(c) = &mut self.conv {
+            c.focus_field = true;
+        }
+        if send {
+            let reply = self.conv.as_mut().filter(|c| c.chat == v.chat).and_then(|c| c.reply.take());
+            self.voice_to.insert(v.token, (v.chat, v.topic, reply));
+        } else {
+            self.backend.send(Cmd::Typing { chat: v.chat, topic: v.topic, doing: Doing::Stopped });
+        }
+        match v.rec.take() {
+            Some(rec) if send => rec.finish(v.token, olo_ui::proxy(cx)),
+            Some(rec) => rec.cancel(),
+            // Still opening the microphone: done once it's open.
+            None => _ = self.voice_ended.insert(v.token, send),
+        }
+        cx.notify();
+    }
+
+    fn voice_msg(&mut self, msg: voice::Msg, cx: &mut Context<Self>) {
+        match msg {
+            voice::Msg::Started(token, Ok(rec)) => {
+                if let Some(v) = self.voice.as_mut().filter(|v| v.token == token) {
+                    v.rec = Some(rec);
+                } else if let Some(send) = self.voice_ended.remove(&token) {
+                    if send { rec.finish(token, olo_ui::proxy(cx)) } else { rec.cancel() }
+                } else {
+                    rec.cancel();
+                }
+            }
+            voice::Msg::Started(token, Err(why)) => {
+                self.voice_ended.remove(&token);
+                self.voice_to.remove(&token);
+                if let Some(v) = self.voice.take_if(|v| v.token == token) {
+                    self.backend.send(Cmd::Typing { chat: v.chat, topic: v.topic, doing: Doing::Stopped });
+                    self.banner.say(format!("The microphone can’t be recorded ({why})."), Duration::from_secs(8));
+                    cx.notify();
+                }
+            }
+            voice::Msg::Level(token, level, seconds) => {
+                let Some(v) = self.voice.as_mut().filter(|v| v.token == token) else { return };
+                v.levels.push_back(level);
+                while v.levels.len() > LEVELS {
+                    v.levels.pop_front();
+                }
+                v.seconds = seconds;
+                // Telegram's "recording a voice message", kept up.
+                if now() - v.typing_sent > 5.0 {
+                    v.typing_sent = now();
+                    self.backend.send(Cmd::Typing { chat: v.chat, topic: v.topic, doing: Doing::RecordingVoice });
+                }
+                if seconds >= voice::LONGEST {
+                    return self.voice_end(true, cx);
+                }
+                self.redraw_composer(cx);
+            }
+            voice::Msg::Done(token, result) => {
+                let Some((chat, topic, reply)) = self.voice_to.remove(&token) else { return };
+                let note = match result {
+                    Ok(note) if note.seconds >= voice::SHORTEST => note,
+                    Ok(note) => {
+                        let _ = std::fs::remove_file(&note.path);
+                        self.backend.send(Cmd::Typing { chat, topic, doing: Doing::Stopped });
+                        self.banner.say("Hold the microphone button down while you speak, or click it to record until you click Send.".to_owned(), Duration::from_secs(6));
+                        return cx.notify();
+                    }
+                    Err(why) => {
+                        self.banner.say(format!("The voice message couldn’t be recorded ({why})."), Duration::from_secs(8));
+                        return cx.notify();
+                    }
+                };
+                self.next_local += 1;
+                let local = self.next_local;
+                let size = std::fs::metadata(&note.path).map_or(0, |m| m.len());
+                let reply_to = reply.and_then(|r| {
+                    let m = self.store.threads.get(&(chat, None))?.msgs.get(&r)?;
+                    Some(olo_tg::model::ReplyTo { id: r, from: m.from.as_ref().map(|f| f.name.clone()), text: Some(m.summary()) })
+                });
+                let pending = Message {
+                    id: i32::MAX,
+                    chat,
+                    from: self.me.as_ref().map(|m| olo_tg::model::Sender { id: m.id, name: "You".into(), photo: None }),
+                    date: when::now(),
+                    out: true,
+                    reply_to,
+                    media: Some(Media::Voice { duration: note.seconds, waveform: note.waveform.clone(), size }),
+                    topic,
+                    pending: Some((local, Pending::Sending)),
+                    ..Message::default()
+                };
+                let voice = Some((note.path, note.seconds, note.waveform));
+                self.backend.send(Cmd::Send(Outgoing { chat, topic, reply_to: reply, voice, local, ..Outgoing::default() }));
+                if let Some(c) = self.conv.as_mut().filter(|c| c.chat == chat) {
+                    c.at_bottom = true;
+                }
+                self.store.pending(pending);
+                cx.notify();
+            }
+        }
     }
 
     fn notify_new(&mut self, m: &Message) {
@@ -1017,7 +1198,12 @@ impl Tg {
             .enabled(ready)
             .item("Deselect All Chats", "deselect-chats")
             .enabled(!self.chosen.is_empty());
-        let mut chat_menu = Menu::new("Chat").item("Attach Files…", "attach").key("o").enabled(chat.is_some()).item("Chat Info", "info").key("i").enabled(chat.is_some()).separator();
+        let mut chat_menu = Menu::new("Chat").item("Attach Files…", "attach").key("o").enabled(chat.is_some());
+        chat_menu = match &self.voice {
+            None => chat_menu.item("Record Voice Message", "record-voice").enabled(chat.is_some() && self.conv.as_ref().is_some_and(|c| c.edit.is_none())),
+            Some(_) => chat_menu.item("Send Voice Message", "send-voice").item("Cancel Recording", "cancel-voice"),
+        };
+        chat_menu = chat_menu.item("Chat Info", "info").key("i").enabled(chat.is_some()).separator();
         if self.chosen.len() > 1 {
             chat_menu = self.chats_menu(chat_menu);
         } else if let Some(c) = chat {
@@ -1059,6 +1245,9 @@ impl Tg {
             "contacts" => self.open_contacts(cx),
             "find" => self.search.update(cx, |s, cx| s.focus(window, cx)),
             "attach" => self.attach(cx),
+            "record-voice" => self.voice_start(false, cx),
+            "send-voice" => self.voice_end(true, cx),
+            "cancel-voice" => self.voice_end(false, cx),
             "info" => {
                 if let Some(chat) = self.conv.as_ref().map(|c| c.chat) {
                     self.open_info(chat, cx);
@@ -1121,6 +1310,10 @@ impl Tg {
     fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
         let message = match message.downcast::<Event>() {
             Ok(e) => return self.event(*e, cx),
+            Err(m) => m,
+        };
+        let message = match message.downcast::<voice::Msg>() {
+            Ok(m) => return self.voice_msg(*m, cx),
             Err(m) => m,
         };
         let message = match message.downcast::<pics::Decoded>() {
@@ -1833,6 +2026,10 @@ fn main() {
                 player: None,
                 when_fetched: None,
                 next_local: 0,
+                voice: None,
+                voice_token: 0,
+                voice_ended: HashMap::new(),
+                voice_to: HashMap::new(),
                 focused: true,
                 drafts: HashMap::new(),
                 kept: Vec::new(),

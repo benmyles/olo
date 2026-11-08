@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Telegram: voice messages recorded
+
+*03:37* — Nothing to send, Telegram's send button is a microphone: hold it and speak (the time and live levels in the field), let go on it to send, away from it to cancel; a click records until Send, × or Escape. Opus in Ogg, coded in process (rusty-opus, kept to SILK). Shown at 2× with a test's fake microphone.
+
+![Telegram: voice messages recorded](2026-11-08/033705-telegram-voice-messages-recorded.png)
+
 ### Passwords: a terminal's op or ssh allowed with a touch or a look
 
 *03:14* — The Allow alert for a terminal session's op, or its first SSH signature, now says what else allows it (Touch ID, a security key set up, face unlock) and waits for it while open: a touch here took it away and op went on. Shown at 2× with a test's soft key.

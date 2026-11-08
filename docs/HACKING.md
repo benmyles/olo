@@ -3391,7 +3391,11 @@ a dead socket), so tests never reach the real speakers or volume. To
 test sound, run `olo-fakesound SOCKET` (olo-preview): it speaks the
 PulseAudio protocol, plays nothing, and logs each stream once a second
 (bytes consumed in real time, corked or not, loudness); start the app with
-`$T run NAME PULSE_SERVER=unix:SOCKET …`.
+`$T run NAME PULSE_SERVER=unix:SOCKET …`. Its microphone hears 440 Hz,
+or with `FAKESOUND_MIC=FILE` (16-bit mono at 48 kHz) that file from each
+recording's start: speech for a voice message (olo-voice's
+`tests/data/*.raw`, 16 kHz, brought up), never the person's own
+microphone.
 
 The headless server renders on the GPU's render node and announces it
 in dmabuf feedback, so GL clients (Chrome) get hardware GL
@@ -13520,5 +13524,48 @@ A Telegram client of Olo's own: MTProto in process through grammers
   and next chat), and
   every row, bubble and button in view is in the agents' tree (a
   scrolled list's rows painted beyond its edges aren't).
-* **Not yet**: recording voice notes (no Opus encoder in Rust yet), and
-  animated stickers show their first frame.
+* **Voice messages, recorded** (`apps/telegram/src/voice.rs`): with
+  nothing to send, the send button is a microphone. Held down, it
+  records: the field gives way to a strip (a red dot, the time, the last
+  levels as bars, a level every 100 ms, newest at the right, -50 dB to
+  the top) saying what letting go does; let go on the button it's sent,
+  away from it (the button pales) thrown away. Let go within `HOLD`
+  (300 ms), the press was a click: it goes on recording, the button a
+  paper plane (Send Voice Message) and the paperclip a × (Cancel
+  Recording), as Escape is; Chat ▸ Record Voice Message does the same
+  (and then Send Voice Message, Cancel Recording), for agents. Shorter
+  than half a second, it isn't sent (the banner says how). The default
+  microphone (`olo_system::recording::Capture`, mono 48 kHz, opened and
+  closed on a thread: each a round trip to the sound server) is coded as
+  it comes on the sound client's thread to Ogg Opus in the cache's
+  `voice/` (`olo_video::opus`, a page a second; left from before, gone
+  after a day), at 24 kb/s; its loudest sample each 100 ms makes the
+  waveform (100 bars, 0–31, packed by the backend) and the strip's bars.
+  The chat sees "recording a voice message" (every 5 s, `Doing::
+  RecordingVoice`; Stopped when it's thrown away); a voice message
+  playing stops (the microphone would hear it); switching chats throws
+  the recording away; it stops by itself after an hour. Sent, it's
+  `Outgoing::voice` (the file, seconds, waveform) and a pending bubble as
+  a text is. Measured (release, demo account, `olo-fakesound` with
+  `FAKESOUND_MIC` playing olo-voice's test speech, 2×): idle with the
+  chat open 0.0% of a core, no wakeups; recording 2.9% (the sound
+  thread 2.1%, coding and the fake server's 100 wakeups a second, a real
+  one's 40 ms fragments a quarter of that; the window 0.8%: 9.9 frames a
+  second of the composer alone, 0.69 ms each). The file, parsed (each
+  page's CRC) and decoded again: 11.23 s, 20 kb/s, lined up with the
+  speech to the sample at 5.6 dB, what the encoder gives (below).
+* **Not yet**: animated stickers show their first frame.
+
+**Ogg Opus** (`olo_video::opus::OggOpus`): mono 48 kHz pushed in any
+amounts, coded in 20 ms frames by rusty-opus (pure Rust), written a page
+(RFC 7845) a second with OpusHead (the pre-skip, `PRE_SKIP`) and
+OpusTags first and the last page's position trimming the end to what
+was given. Kept to SILK (wideband, VoIP, the voice hint): measured
+against the system's libopus 1.6 in a scratch program (decoding
+rusty-opus's packets exactly as `opus-decoder` does), SILK matches
+libopus's own encoder (5.6 and 8.6 dB on olo-voice's two test voices,
+17 on a chirp, at 24, 32 and 64 kb/s), but rusty-opus's CELT and hybrid
+modes, which it chose at 64 kb/s or for a tone at 32, came out at −1
+to −3 dB where libopus had 6 to 17. Its speech comes 328 samples late,
+not libopus's 312, so that's the pre-skip (the test checks the decoded
+sound lines up).
