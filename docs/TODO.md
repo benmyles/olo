@@ -1490,6 +1490,16 @@ need Ben".)
     stays: the keyboard itself in Preferences ▸ Keyboard (its picture,
     function row, Fn/Globe, keypad), and Touch ID left out, said so
     there. (Apple: support.apple.com/guide/security/secf60513daa)
+    *Listened to* (2026-11-08, Ben asking again: "make sure the apple
+    external keyboard works too with touch id"; one sudo, his OK): its
+    Touch ID interface (2) claimed alone as root, its bulk endpoint
+    (0x85) read for 45 s while he touched the sensor: nothing at all.
+    Unpaired it says nothing; pairing needs a Secure Enclave Apple
+    attests. Nothing published since has a way in either (the one
+    userspace driver for these keyboards leaves Touch ID alone: "only
+    authenticates against a paired Mac"). At a desk with it, Olo's
+    other ways stand in: the ThinkPad's reader (a finger enrolled
+    2026-11-08), the face, a YubiKey.
   - *Done* (2026-11-04): Preferences ▸ Keyboard ▸ Keyboards knows it
     (`olo_protocol::keyboards`): a box with its picture, maker and model,
     keypad and connection, and why its Touch ID isn't used. Its own

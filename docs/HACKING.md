@@ -5168,7 +5168,9 @@ gets a box of its own above, with its picture, what it is (maker,
 model, keypad, how it connects) and what of it Olo can't use: the Magic
 Keyboard with Touch ID's sensor (A2520) is sealed to the Mac it's
 paired with (`TouchId::SealedToAMac`; TODO's "Keyboards we know" has
-how that was found). An Apple Magic Keyboard (2021 or 2024, `fn_row`)
+how that was found: and, listened to unpaired, its Touch ID interface
+claimed alone and its endpoint read for 45 s with a finger on the
+sensor, it sent nothing at all, 2026-11-08). An Apple Magic Keyboard (2021 or 2024, `fn_row`)
 has its own there too: "Use F1, F2, etc. as standard function keys"
 (`KeyboardSettings::fkeys_first`, by its name: app_server turns its top
 row round, `apple_keys::fkeys_first`, from hid-apple's table, so it
