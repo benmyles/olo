@@ -378,14 +378,22 @@ fn list_style(parts: &[Component<'_>], limits: Limits, cancelled: Option<&Atomic
         Assignment { property: Property::ListStyleImage, value: image },
     ])
 }
-/// `text-decoration: <line>+ || <style> || <color>` (CSS Text Decoration 3
-/// §2.4); a thickness is not supported.
+/// `text-decoration: <line>+ || <style> || <color> || <thickness>` (CSS
+/// Text Decoration 4 §2.4).
 fn text_decoration(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Assignments> {
-    if parts.is_empty() || parts.len() > 4 {
+    if parts.is_empty() || parts.len() > 5 {
         return Err(Error::Invalid);
     }
-    let (mut line, mut style, mut color) = (None, None, None);
+    let (mut line, mut style, mut color, mut thickness) = (None, None, None, None);
     for c in parts {
+        // A thickness: a length or percentage, `auto` or `from-font`.
+        if thickness.is_none()
+            && let Ok(v) = component(Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto, Keyword::FromFont]), *c, limits, cancelled)
+            && !(c.kind() == Kind::Ident && !(c.text().is_some_and(|t| t.eq_ignore_ascii_case("auto") || t.eq_ignore_ascii_case("from-font"))))
+        {
+            thickness = Some(v);
+            continue;
+        }
         if c.kind() == Kind::Ident {
             let name = c.text().unwrap();
             if let Some((_, k)) = [("none", Keyword::None), ("underline", Keyword::Underline), ("overline", Keyword::Overline), ("line-through", Keyword::LineThrough)]
@@ -421,6 +429,7 @@ fn text_decoration(parts: &[Component<'_>], limits: Limits, cancelled: Option<&A
         Assignment { property: Property::TextDecorationLine, value: Value::Keyword(line.unwrap_or(Keyword::None)) },
         Assignment { property: Property::TextDecorationStyle, value: Value::Keyword(style.unwrap_or(Keyword::Solid)) },
         Assignment { property: Property::TextDecorationColor, value: color.unwrap_or(Value::Color(color::Value::CurrentColor)) },
+        Assignment { property: Property::TextDecorationThickness, value: thickness.unwrap_or(Value::Keyword(Keyword::Auto)) },
     ])
 }
 /// `text-wrap: <'text-wrap-mode'> || <'text-wrap-style'>` (CSS Text 4 §5.1).

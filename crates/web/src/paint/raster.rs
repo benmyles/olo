@@ -196,7 +196,7 @@ impl Engine {
             let kind = match &c.primitive {
                 Primitive::Image { .. } => 0,
                 Primitive::Vector { .. } => 1,
-                Primitive::Fill { .. } => 2,
+                Primitive::Fill { .. } | Primitive::Wave { .. } => 2,
                 Primitive::Border { .. } => 3,
                 Primitive::Decoration { .. } => 4,
                 Primitive::Text { .. } | Primitive::Glyph { .. } => 5,
@@ -305,6 +305,26 @@ impl Engine {
                     let s = tree.style(*owner).ok_or(Error::Invalid)?;
                     let g = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
                     super::decoration::raster(out, s, g, *outer, scale, region, mask.as_ref(), ct, self, tree, cancel)?;
+                }
+                // A wavy decoration: a sine stroked across its bounds.
+                Primitive::Wave { color, thickness, wavelength, .. } => {
+                    let b = c.bounds;
+                    let (mid, amplitude) = (b.y + b.height / 2., b.height / 2. - f64::from(*thickness));
+                    let mut path = tiny_skia::PathBuilder::new();
+                    let steps = ((b.width / f64::from(*wavelength)) * 16.).ceil().clamp(2., 4096.) as usize;
+                    for k in 0..=steps {
+                        let x = b.x + b.width * k as f64 / steps as f64;
+                        let y = mid - amplitude * ((x - b.x) / f64::from(*wavelength) * std::f64::consts::TAU).sin();
+                        let (px, py) = ((x * scale - f64::from(region.x)) as f32, (y * scale - f64::from(region.y)) as f32);
+                        if k == 0 { path.move_to(px, py) } else { path.line_to(px, py) }
+                    }
+                    if let Some(path) = path.finish() {
+                        let mut paint = tiny_skia::Paint::default();
+                        paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
+                        paint.anti_alias = true;
+                        let stroke = tiny_skia::Stroke { width: (f64::from(*thickness) * scale) as f32, ..Default::default() };
+                        out.stroke_path(&path, &paint, &stroke, ct, mask.as_ref());
+                    }
                 }
                 Primitive::Border { owner, colors, styles } => {
                     let b = scene.layout.geometry(*owner).ok_or(Error::Invalid)?.border_width;

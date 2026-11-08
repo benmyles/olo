@@ -41,6 +41,14 @@ pub enum Primitive {
         /// Each side's style (top, right, bottom, left).
         styles: [super::border::Style; 4],
     },
+    /// A wavy text decoration across its bounds: its line `thickness`
+    /// thick, `wavelength` long a wave (CSS px), about the bounds' middle.
+    Wave {
+        owner: BoxId,
+        color: [u8; 4],
+        thickness: f32,
+        wavelength: f32,
+    },
     /// Shadows, backgrounds (colour, gradients) and borders with rounded
     /// corners, painted from the owner's style; `outer` is its border box.
     Decoration {
@@ -99,6 +107,32 @@ pub struct Command {
     /// Under a box with a `backdrop-filter` on the page (that box): painted
     /// in a layer of its own, over what is under it blurred.
     pub(super) backdrop: Option<BoxId>,
+}
+/// A text's decoration as its style says: line, colour, style, and its
+/// thickness and an underline's offset from the baseline (CSS px) when
+/// given (else the font's).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Deco {
+    line: K,
+    color: [u8; 4],
+    style: K,
+    thickness: Option<f64>,
+    offset: Option<f64>,
+}
+impl Deco {
+    fn of(s: &Style, line: K, color: [u8; 4]) -> Self {
+        let font_size = s.value(P::FontSize).scalar().unwrap_or(16.);
+        // A length (px when computed), or a percentage of the font size.
+        let length = |p: P| match s.value(p) {
+            Value::Numeric(n) => n.expression().constant().map(|q| if q.ty.kind() == Some(crate::css::math::Dimension::Percentage) { q.value / 100. * font_size } else { q.value }),
+            _ => None,
+        };
+        let style = match s.value(P::TextDecorationStyle) {
+            Value::Keyword(k) => *k,
+            _ => K::Solid,
+        };
+        Deco { line, color, style, thickness: length(P::TextDecorationThickness).map(|t| t.max(0.)), offset: length(P::TextUnderlineOffset) }
+    }
 }
 /// The axis-aligned bounds of `r` mapped through `m`.
 pub(super) fn aabb(m: [f64; 6], r: Rect) -> Rect {
@@ -336,6 +370,7 @@ impl Scene {
         | Primitive::Decoration { owner, .. }
         | Primitive::Border { owner, .. }
         | Primitive::Fill { owner, .. }
+        | Primitive::Wave { owner, .. }
         | Primitive::Glyph { owner, .. } = self.commands.get(command as usize)?.primitive
         {
             self.layout.cache().tree().get(owner).map(|b| b.node)
@@ -559,6 +594,12 @@ impl Scene {
                     styles.hash(&mut h);
                     style_identity(*owner, &mut h);
                 }
+                Primitive::Wave { color, thickness, wavelength, .. } => {
+                    7u8.hash(&mut h);
+                    color.hash(&mut h);
+                    thickness.to_bits().hash(&mut h);
+                    wavelength.to_bits().hash(&mut h);
+                }
                 Primitive::Decoration { owner, outer } => {
                     4u8.hash(&mut h);
                     rect(*outer, &mut h);
@@ -597,6 +638,7 @@ impl Scene {
                     Primitive::Vector { .. } => "vector",
                     Primitive::Fill { .. } => "fill",
                     Primitive::Border { .. } => "border",
+                    Primitive::Wave { .. } => "wave",
                     Primitive::Decoration { .. } => "decoration",
                     Primitive::Text { .. } => "text",
                     Primitive::Glyph { .. } => "glyph",
@@ -911,9 +953,12 @@ impl Scene {
                 // The painting box's own style: a pseudo-element's (apple's
                 // `body::before` scrim over its nav takes no pointer events).
                 let owner = match c.primitive {
-                    Primitive::Image { owner, .. } | Primitive::Vector { owner, .. } | Primitive::Decoration { owner, .. } | Primitive::Border { owner, .. } | Primitive::Fill { owner, .. } => {
-                        Some(owner)
-                    }
+                    Primitive::Image { owner, .. }
+                    | Primitive::Vector { owner, .. }
+                    | Primitive::Decoration { owner, .. }
+                    | Primitive::Border { owner, .. }
+                    | Primitive::Fill { owner, .. }
+                    | Primitive::Wave { owner, .. } => Some(owner),
                     Primitive::Glyph { owner, .. } => Some(owner),
                     Primitive::Text { .. } => None,
                 };
@@ -1553,7 +1598,7 @@ impl<'a> BuildJob<'a> {
         }
         // Styles are immutable for this build. Consecutive glyphs usually
         // belong to the same span: resolve/convert its paint color once.
-        let mut paint_color: Option<(u32, [u8; 4], Option<([u8; 4], K)>, bool)> = None;
+        let mut paint_color: Option<(u32, [u8; 4], Option<Deco>, bool)> = None;
         let mut image_owners = Vec::new();
         if HAS_IMAGES {
             let mut child = layout.cache().tree().get(id).ok_or(Error::Invalid)?.first_child;
@@ -1688,7 +1733,7 @@ impl<'a> BuildJob<'a> {
                 // A shifted run (superscript) draws above the line's baseline.
                 let baseline = baseline - (text.shift(f) * scale).round() / scale;
                 let mut pen = 0i64;
-                let mut segment: Option<(u32, Point, [u8; 4], Rect, u32, Option<([u8; 4], K)>)> = None;
+                let mut segment: Option<(u32, Point, [u8; 4], Rect, u32, Option<Deco>)> = None;
                 for gi in f.glyphs.clone() {
                     check(self.cancel)?;
                     self.progress.glyphs += 1;
@@ -1724,9 +1769,12 @@ impl<'a> BuildJob<'a> {
                                 let o = s.value(P::Opacity).scalar().unwrap_or(1.).clamp(0., 1.);
                                 c[3] = (f64::from(c[3]) * o).round() as u8;
                             }
-                            // text-decoration-line, in text-decoration-color.
+                            // text-decoration-line, in text-decoration-color, its
+                            // style, thickness and (an underline's) offset.
                             let deco = match s.value(P::TextDecorationLine) {
-                                Value::Keyword(k @ (K::Underline | K::Overline | K::LineThrough)) if c[3] != 0 => Some((fade(s.used_color(P::TextDecorationColor)?.srgb8_clipped(), opacity), *k)),
+                                Value::Keyword(k @ (K::Underline | K::Overline | K::LineThrough)) if c[3] != 0 => {
+                                    Some(Deco::of(s, *k, fade(s.used_color(P::TextDecorationColor)?.srgb8_clipped(), opacity)))
+                                }
                                 _ => None,
                             };
                             // Under `background-clip: text`, transparent
@@ -1816,27 +1864,73 @@ impl<'a> BuildJob<'a> {
         origin: Point,
         color: [u8; 4],
         bounds: Rect,
-        deco: Option<([u8; 4], K)>,
+        deco: Option<Deco>,
         end_x: f64,
         baseline: f64,
         font: &Arc<crate::text::shaping::GlyphFont>,
         size: f64,
     ) -> Result<()> {
-        if let Some((line_color, line)) = deco
-            && line_color[3] != 0
+        if let Some(d) = deco
+            && d.color[3] != 0
             && end_x > origin.x
         {
-            let (position, thickness, x_height, ascent, _) = self.line_metrics(font);
+            let (position, font_thickness, x_height, ascent, _) = self.line_metrics(font);
             let factor = size / f64::from(font.units_per_em());
             let scale = self.layout.device_scale();
-            let thickness = ((thickness * factor * scale).round() / scale).max(1. / scale);
-            let y = match line {
-                K::Underline => baseline - position * factor,
+            let thickness = ((d.thickness.unwrap_or(font_thickness * factor) * scale).round() / scale).max(1. / scale);
+            let y = match d.line {
+                // text-underline-offset from the baseline when given, else the font's.
+                K::Underline => match d.offset {
+                    Some(o) => baseline + o,
+                    None => baseline - position * factor,
+                },
                 K::LineThrough => baseline - x_height * factor / 2. - thickness / 2.,
                 _ => baseline - ascent * factor,
             };
             let y = (y * scale).round() / scale;
-            self.emit(group, false, Rect { x: origin.x, y, width: end_x - origin.x, height: thickness }, Primitive::Fill { color: line_color, owner: id, radii: [0.; 4] }, clip)?;
+            let width = end_x - origin.x;
+            let fill = |x: f64, y: f64, w: f64, h: f64, round: bool| {
+                (Rect { x, y, width: w, height: h }, Primitive::Fill { color: d.color, owner: id, radii: if round { [(h / 2.) as f32; 4] } else { [0.; 4] } })
+            };
+            let mut lines: Vec<(Rect, Primitive)> = Vec::new();
+            match d.style {
+                K::Double => {
+                    // Two lines, the gap between them as thick as each.
+                    lines.push(fill(origin.x, y, width, thickness, false));
+                    lines.push(fill(origin.x, y + 2. * thickness, width, thickness, false));
+                }
+                K::Dotted => {
+                    // Round dots the thickness across, two apart.
+                    let step = 2. * thickness;
+                    let mut x = origin.x;
+                    while x + thickness <= end_x + 0.01 && lines.len() < 2048 {
+                        lines.push(fill(x, y, thickness, thickness, true));
+                        x += step;
+                    }
+                }
+                K::Dashed => {
+                    // Dashes three thick long, two apart.
+                    let (dash, gap) = (3. * thickness, 2. * thickness);
+                    let mut x = origin.x;
+                    while x < end_x && lines.len() < 2048 {
+                        lines.push(fill(x, y, dash.min(end_x - x), thickness, false));
+                        x += dash + gap;
+                    }
+                }
+                K::Wavy => {
+                    // A wave about the line: a 9-thickness wavelength, rising
+                    // two thicknesses each way (Chrome's at 1px: 9 and 4).
+                    let amplitude = (2. * thickness).max(1.5);
+                    // (Hanging from the line, as Chrome draws it: its crests at
+                    // the underline's position.)
+                    let bounds = Rect { x: origin.x, y: y - thickness / 2., width, height: 2. * (amplitude + thickness) };
+                    lines.push((bounds, Primitive::Wave { owner: id, color: d.color, thickness: thickness as f32, wavelength: (9. * thickness).max(6.) as f32 }));
+                }
+                _ => lines.push(fill(origin.x, y, width, thickness, false)),
+            }
+            for (bounds, primitive) in lines {
+                self.emit(group, false, bounds, primitive, clip)?;
+            }
         }
         if bounds.width > 0. && bounds.height > 0. {
             self.emit(group, true, bounds, Primitive::Text { owner: id, fragment, glyphs, origin, color, fill: self.current_text_fill }, clip)?;
