@@ -1804,9 +1804,15 @@ fn render(
                 Some(m) => Placement::Moved {
                     dx: (m.translate[0] * scale).round() as i32,
                     dy: (m.translate[1] * scale).round() as i32,
+                    // A clip along one axis only (`overflow-x: hidden`) is
+                    // unbounded along the other: kept within a range whose
+                    // size fits (±1e30 saturated to i32's ends, and their
+                    // difference wrapped to a clip 0 tall: apple.com's
+                    // carousel showed nothing).
                     clip: m.clip.map(|c| {
-                        let (x0, y0) = ((c.x * scale).floor() as i32, (c.y * scale).floor() as i32);
-                        let (x1, y1) = (((c.x + c.width) * scale).ceil() as i32, ((c.y + c.height) * scale).ceil() as i32);
+                        let device = |v: f64| v.clamp(-f64::from(1 << 28), f64::from(1 << 28)) as i32;
+                        let (x0, y0) = (device((c.x * scale).floor()), device((c.y * scale).floor()));
+                        let (x1, y1) = (device(((c.x + c.width) * scale).ceil()), device(((c.y + c.height) * scale).ceil()));
                         paint::DeviceRect { x: x0, y: y0, width: (x1 - x0).max(0) as u32, height: (y1 - y0).max(0) as u32 }
                     }),
                 },
