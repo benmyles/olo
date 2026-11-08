@@ -152,6 +152,12 @@ pub fn pane(window: &Window, b: Bounds<Pixels>) {
     });
 }
 
+/// `b` is a control's frame, round its agent rect (a text field's well):
+/// what the eye goes by in a row of controls.
+pub fn frame(window: &Window, b: Bounds<Pixels>) {
+    with_parts(window, |parts, _| parts.frames.push(kb(b)));
+}
+
 /// `b` is a scroll view's viewport: what it cuts is scrolled out of
 /// sight, not cut off. (ScrollView and ColumnListView say it.)
 pub fn scroll_area(window: &Window, b: Bounds<Pixels>) {

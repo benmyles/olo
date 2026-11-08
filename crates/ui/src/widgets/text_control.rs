@@ -59,6 +59,8 @@ impl RenderOnce for TextControl {
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
                 let fill = if enabled { style::c(p.document_background) } else { style::c(p.panel_background) };
+                // (The field is seen by its frame: the review's gaps.)
+                crate::review::frame(window, b);
                 style::fill_rect(window, style::inset(window, b, 2.0), fill);
                 window.with_element_opacity((!enabled).then_some(super::control::DISABLED_OPACITY), |window| style::sunken(window, b, &p, focused));
             },

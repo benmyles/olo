@@ -244,6 +244,9 @@ pub struct Parts {
     pub containers: Vec<Rect>,
     /// Tab views' panes: a window's pages are in them.
     pub panes: Vec<Rect>,
+    /// What a control is seen by where its agent rect is only part of it:
+    /// a text field's frame (its well), round the text area its rect is.
+    pub frames: Vec<Rect>,
 }
 
 /// A control agents read and use (the window's agent tree as painted):
@@ -679,7 +682,17 @@ fn section_of(p: &Parts, r: &Rect) -> Option<usize> {
 /// A row of controls one height (buttons along the bottom) spaced
 /// unevenly by a point or few.
 fn uneven_gaps(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
-    let shown: Vec<Rect> = showing(p).filter(|c| matches!(c.role.as_str(), "Button" | "CheckBox" | "RadioButton" | "ComboBox" | "PopUpButton" | "TextInput")).map(|c| c.shown()).collect();
+    // (A text field by its frame, as it's seen: its rect is the text area
+    // inside, whose insets round on their own and came out two device
+    // pixels apart at 1.25×, the frames' gaps even.)
+    let seen = |c: &Control| {
+        let r = c.shown();
+        if c.role != "TextInput" {
+            return r;
+        }
+        p.frames.iter().filter(|f| f.expand(SAME).contains_rect(r)).min_by(|a, b| a.area().total_cmp(&b.area())).map_or(r, |f| f.intersect(c.clip))
+    };
+    let shown: Vec<Rect> = showing(p).filter(|c| matches!(c.role.as_str(), "Button" | "CheckBox" | "RadioButton" | "ComboBox" | "PopUpButton" | "TextInput")).map(seen).collect();
     let rounding = 1.0 / ppp + 0.01;
     let mut rows: Vec<Vec<Rect>> = Vec::new();
     for r in shown {
