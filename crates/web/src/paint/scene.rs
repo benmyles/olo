@@ -374,6 +374,14 @@ fn is_translation(m: [f64; 6]) -> bool {
     (m[0] - 1.).abs() < 1e-9 && m[1].abs() < 1e-9 && m[2].abs() < 1e-9 && (m[3] - 1.).abs() < 1e-9 && m[4].is_finite() && m[5].is_finite()
 }
 /// A run of commands in paint order that are shown the same way.
+/// A scene's paint inputs as an identity, and its matrices
+/// (`Scene::paint_state`).
+pub struct PaintState {
+    serial: u64,
+    rest: u64,
+    transforms: Box<[[f64; 6]]>,
+    images: Vec<(u32, u64)>,
+}
 pub struct Stratum {
     pub kind: LayerKind,
     pub(super) index: index::Index,
@@ -790,6 +798,78 @@ impl Scene {
             g.opacity.to_bits().hash(&mut h);
         }
         (self.commands_serial as usize, h.finish())
+    }
+    /// What its tiles are painted from, kept to tell a next scene what it
+    /// changed (`changed_region`).
+    pub fn paint_state(&self) -> PaintState {
+        use std::hash::{Hash, Hasher};
+        let mut h = signature_hasher();
+        self.strata.len().hash(&mut h);
+        let tree = self.layout.cache().tree();
+        tree.images().map_or(0, |set| set.backgrounds_identity()).hash(&mut h);
+        for g in self.groups.iter() {
+            g.opacity.to_bits().hash(&mut h);
+        }
+        // The pictures image commands show, by command (a canvas's next
+        // frame changes its own tiles only).
+        let images = self
+            .commands
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| if let Primitive::Image { image, .. } = c.primitive { Some((i as u32, tree.image(image).map_or(0, |im| im.serial()))) } else { None })
+            .collect();
+        PaintState { serial: self.commands_serial, rest: h.finish(), transforms: self.transforms.clone(), images }
+    }
+    /// Where (document space) this scene paints otherwise than the scene
+    /// `old` was the state of, when it has the same commands and only
+    /// some matrices moved (an animated transform): the commands under
+    /// those, where they were and where they are. None when it may differ
+    /// anywhere (other commands, pictures, opacities; a moved command
+    /// fixed, sticky or in a layer apart, whose tiles are elsewhere).
+    pub fn changed_region(&self, old: &PaintState) -> Option<Vec<Rect>> {
+        let now = self.paint_state();
+        if now.serial != old.serial || now.rest != old.rest || now.transforms.len() != old.transforms.len() {
+            return None;
+        }
+        let changed: Vec<bool> = now.transforms.iter().zip(old.transforms.iter()).map(|(a, b)| a.iter().zip(b.iter()).any(|(x, y)| x.to_bits() != y.to_bits())).collect();
+        let mut region = Vec::new();
+        // New pictures: where their commands show them.
+        if now.images.len() != old.images.len() {
+            return None;
+        }
+        for (&(i, a), &(j, b)) in now.images.iter().zip(old.images.iter()) {
+            if i != j {
+                return None;
+            }
+            if a != b {
+                let c = &self.commands[i as usize];
+                if c.fixed || c.sticky.is_some() || c.moved.is_some() {
+                    return None;
+                }
+                region.push(extent_of(c, &now.transforms));
+                if c.transform != NONE {
+                    region.push(extent_of(c, &old.transforms));
+                }
+            }
+        }
+        if !changed.iter().any(|&c| c) {
+            return Some(region);
+        }
+        // A clip moved: what it cuts may show anywhere it was or is.
+        if self.clips.iter().any(|c| c.transform != NONE && changed[c.transform as usize]) {
+            return None;
+        }
+        for c in self.commands.iter() {
+            if c.transform == NONE || !changed[c.transform as usize] {
+                continue;
+            }
+            if c.fixed || c.sticky.is_some() || c.moved.is_some() || region.len() >= 256 {
+                return None;
+            }
+            region.push(extent_of(c, &now.transforms));
+            region.push(extent_of(c, &old.transforms));
+        }
+        Some(region)
     }
     /// How many surface layers (live canvases shown apart) it has.
     pub fn surface_count(&self) -> usize {

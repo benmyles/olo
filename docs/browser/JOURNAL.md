@@ -6935,3 +6935,11 @@ the Guardian and old Reddit, looking for pages that fail outright:
   the same, layouts 0 boxes different. GitHub against Chrome (machine
   busy, load average 10): load 9.4 / 11.0 CPU s vs 9.0 / 10.4, idle 33 /
   37% vs 37 / 41%; scrolling still behind.
+- **An animation's frame looks only at the tiles it changes.** A frame
+  whose scene changed only in some matrices (an animated transform) or in
+  some pictures (a canvas's next frame) keeps the other tiles' signatures:
+  fixed, sticky and moved layers whole, page layers away from what moved
+  (`Scene::changed_region`). GitHub's animated home page: its tile pass
+  0.71 → 0.28 ms a frame at 120 Hz. `OLO_TILE_CHECK` makes every reused
+  signature again and compares: 292,233 the same across GitHub, apple.com,
+  Stripe and BBC.

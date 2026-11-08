@@ -724,6 +724,10 @@ struct Cached {
     /// The last scene's paint identity (and size) and its tiles'
     /// signatures, by stratum and place.
     paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+    /// The last painted scene's paint inputs, for telling what the next
+    /// changed (`Scene::changed_region`), and the size it was painted at.
+    paint_state: Option<paint::PaintState>,
+    paint_size: Option<(u32, u32, u64)>,
     tile_signatures: TileMap<Option<u64>>,
     navigation: u64,
     focus_targets: Option<Arc<crate::navigation::FocusTargets>>,
@@ -1891,6 +1895,8 @@ fn render(
             targets_revision: 0,
             label_cache: None,
             paint_identity: None,
+            paint_state: None,
+            paint_size: None,
             tile_signatures: Default::default(),
             anchor_scroll: None,
         });
@@ -2171,6 +2177,11 @@ fn render(
     // The tiles' signatures, kept for a next scene that paints the same.
     let identity = (scene.paint_identity(), r.key.width, r.key.height, scene.device_scale().to_bits());
     let same_paint = cached.paint_identity == Some(identity);
+    // Only some matrices moved since (an animated transform): the tiles
+    // away from what they move keep their signatures (GitHub's animation
+    // looked at every tile every frame, 1.3 ms).
+    let moved_region =
+        if same_paint || cached.paint_size != Some((r.key.width, r.key.height, scene.device_scale().to_bits())) { None } else { cached.paint_state.as_ref().and_then(|old| scene.changed_region(old)) };
     let previous_signatures = std::mem::take(&mut cached.tile_signatures);
     let mut signatures: TileMap<Option<u64>> = TileMap::with_capacity_and_hasher(previous_signatures.len(), Default::default());
     let backdrop_boxes = backdrop_boxes(scene.layout(), scale);
@@ -2367,7 +2378,29 @@ fn render(
                 } else {
                     // The scene paints what the last did (only moved layers
                     // placed anew): the tile's signature then is the last one's.
-                    let known = if same_paint { previous_signatures.get(&(si, x, y)).copied() } else { None };
+                    // (What changed is never fixed, sticky or in a moved layer:
+                    // those strata are as they were; page strata, away from it.)
+                    let untouched = || {
+                        moved_region.as_ref().is_some_and(|region| match stratum.kind {
+                            paint::LayerKind::Fixed | paint::LayerKind::Sticky(_) | paint::LayerKind::Moved(_) => true,
+                            paint::LayerKind::Page | paint::LayerKind::Backdrop(_) => {
+                                region.iter().all(|m| m.x >= tile_rect.x + tile_rect.width || m.x + m.width <= tile_rect.x || m.y >= tile_rect.y + tile_rect.height || m.y + m.height <= tile_rect.y)
+                            }
+                            _ => false,
+                        })
+                    };
+                    let known = if same_paint || untouched() { previous_signatures.get(&(si, x, y)).copied() } else { None };
+                    // OLO_TILE_CHECK: a reused signature against one made anew.
+                    if let Some(known) = known
+                        && olo_web::env_on!("OLO_TILE_CHECK")
+                    {
+                        let (fresh, any) = scene.stratum_tile_signature(si, tile_rect, Some(&r.cancel))?;
+                        use std::hash::{Hash, Hasher};
+                        let mut h = olo_web::paint::signature_hasher();
+                        (fresh, si).hash(&mut h);
+                        let fresh = (si == 0 || any).then(|| h.finish());
+                        eprintln!("tile check: {}", if fresh == known { "the same" } else { "DIFFERS" });
+                    }
                     let signature = match known {
                         Some(known) => known,
                         None => {
@@ -2421,6 +2454,8 @@ fn render(
     }
     TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);
     cached.paint_identity = Some(identity);
+    cached.paint_state = Some(scene.paint_state());
+    cached.paint_size = Some((r.key.width, r.key.height, scene.device_scale().to_bits()));
     cached.tile_signatures = signatures;
     // A canvas whose frame is in a shared texture but which the scene shows
     // otherwise (under a transform, in a group): read back from now on.
