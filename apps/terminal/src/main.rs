@@ -643,6 +643,8 @@ pub(crate) struct Terminal {
     /// Tabs whose close an Undo or Redo asked for (asked first if busy):
     /// what their step is when they close.
     closing_as: HashMap<u64, olo_ui::undo::Purpose>,
+    /// A Redo moving a tab into a window of its own: its step's purpose.
+    detaching_as: Option<olo_ui::undo::Purpose>,
     settings: Settings,
     metrics: Option<Metrics>,
     /// The desktop's palette now (its look, its mode).
@@ -1505,6 +1507,8 @@ impl Terminal {
     /// Tab `shell` into a window of its own (`torn` off the strip: under
     /// the pointer).
     fn detach(&mut self, cx: &mut Cx, win: WindowId, shell: u64, torn: bool) -> Option<WindowId> {
+        // (Undo puts it back where it was.)
+        let step = self.detaching(win, shell).filter(|_| matches!(self.windows.get(&win), Some(Win::Term(t)) if t.tabs.len() > 1));
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return None };
         let i = t.position(shell).filter(|_| t.tabs.len() > 1)?;
         let mut tab = t.take(i);
@@ -1522,6 +1526,9 @@ impl Terminal {
         let id = cx.open_window(options);
         self.windows.insert(id, Win::Term(Box::new(win)));
         self.auto_group(cx, id);
+        if let Some(step) = step {
+            self.detached(step);
+        }
         Some(id)
     }
 }
@@ -2859,6 +2866,7 @@ fn main() {
                 windows: HashMap::new(),
                 history: Default::default(),
                 closing_as: HashMap::new(),
+                detaching_as: None,
                 settings: Settings::load(),
                 metrics: None,
                 look: look.clone(),

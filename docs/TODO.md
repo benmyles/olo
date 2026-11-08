@@ -17,10 +17,7 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Undo for a Terminal tab torn off** into a window of its own (and
-  dropped on another's strip): a step putting it back where it was.
-  Other apps' undo as each is next worked on (the kit's way, HACKING
-  "undo::History").
+(Nothing yet.)
 
 ## Done, waiting for Ben to try or confirm
 
@@ -2306,8 +2303,9 @@ people.
   a run at a time; DeskCalc's keys and results; app_server's window
   arrangements named with a Redo (⇧⌃⌘Z), moves between workspaces among
   them, Deskbar's menu naming them; Terminal's tabs and settings, a
-  closed tab back as a new shell (and said so). A torn-off Terminal tab
-  is left, in Not started.
+  closed tab back as a new shell (and said so), a tab moved into a
+  window of its own put back. Other apps' undo as each is next worked
+  on (the kit's way, HACKING "undo::History").
 
 - ~~**A resting display still looked every 100 ms**~~ (found
   2026-11-07, looking into the Intel GPU). *Done* (7af77a04): a resting

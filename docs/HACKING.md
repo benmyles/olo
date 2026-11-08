@@ -9455,6 +9455,9 @@ back (`ops::put_back`); one cut short is finished by the next.
 **Undo** (undo.rs, `olo_ui::undo`): Edit ▸ Undo and Redo for a window's
 tabs moved along the strip (Move Tab, Move Group) or into and out of
 groups (Group: their order and groups put back, by each tab's shell), a
+tab moved into a window of its own (torn off, or Move Tab to New Window;
+Undo puts it back where it was, in its group, from wherever it went,
+its window going if that was its last tab; Redo moves it out again), a
 tab closed, and Terminal's settings (Text Size, a run of Bigger one
 step; Colors; Tabs; sudo Passwords in a Window). A closed tab's process
 can't come back: Undo opens a new shell in its folder, where it was, in
@@ -9464,7 +9467,8 @@ runs in it (`closing_as`). Its keys are Terminal's own in the profile
 (`terminal.undo`, `terminal.redo`: ⌘Z and ⇧⌘Z, Ctrl+Shift+Z and
 Ctrl+Shift+Y, Alt+Z and Alt+Shift+Z), so they never reach the shell.
 Checked headless: a tab opened in ~/work and closed, ⌘Z brings a new
-shell there in its place, ⇧⌘Z closes it again.
+shell there in its place, ⇧⌘Z closes it again; a tab moved to a new
+window, ⌘Z, ⇧⌘Z, ⌘Z: 2, 1, 2, 1 windows.
 
 The shells don't run in Terminal: they run in **olo-termd**
 (`src/termd.rs`, a second binary of the same package), one per display,

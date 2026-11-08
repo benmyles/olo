@@ -40,6 +40,19 @@ pub(crate) enum TabStep {
         window: WindowId,
         shell: u64,
     },
+    /// A tab moved into a window of its own (torn off, Move to New
+    /// Window): the window, place and group it came from.
+    Detached {
+        shell: u64,
+        from: WindowId,
+        at: usize,
+        group: Option<Group>,
+    },
+    /// A tab put back in `window` by Undo (Redo moves it out again).
+    Rejoined {
+        shell: u64,
+        window: WindowId,
+    },
     Settings(Kept),
 }
 
@@ -132,6 +145,20 @@ impl Terminal {
         cx.redraw_all();
     }
 
+    /// Tab `shell` of `win` about to get a window of its own: where it
+    /// was, for Undo.
+    pub(crate) fn detaching(&self, win: WindowId, shell: u64) -> Option<TabStep> {
+        let Some(Win::Term(t)) = self.windows.get(&win) else { return None };
+        let at = t.position(shell)?;
+        Some(TabStep::Detached { shell, from: win, at, group: t.tabs[at].group.and_then(|g| t.groups.get(g)).cloned() })
+    }
+
+    /// It did (`step` from `detaching`): a step, done or redone.
+    pub(crate) fn detached(&mut self, step: TabStep) {
+        let purpose = self.detaching_as.take().unwrap_or(Purpose::Do);
+        self.record(purpose, "Move to New Window", step);
+    }
+
     /// Edit ▸ Undo (`redo` false) or Redo.
     pub(crate) fn undo_redo(&mut self, cx: &mut Cx, redo: bool) {
         let Some(step) = (if redo { self.history.take_redo() } else { self.history.take_undo() }) else { return };
@@ -190,12 +217,60 @@ impl Terminal {
                 self.closing_as.insert(shell, purpose);
                 self.close_tab_requested(cx, window, shell, if redo { "Edit ▸ Redo Close Tab" } else { "Edit ▸ Undo" });
             }
+            TabStep::Detached { shell, from, at, group } => {
+                if self.tab_back(cx, shell, from, at, group) {
+                    self.record(purpose, &step.name, TabStep::Rejoined { shell, window: from });
+                }
+            }
+            TabStep::Rejoined { shell, window } => {
+                self.detaching_as = Some(purpose);
+                if self.detach(cx, window, shell, false).is_none() {
+                    self.detaching_as = None;
+                }
+            }
             TabStep::Settings(k) => {
                 let now = self.kept();
                 self.put_settings(cx, k);
                 self.record(purpose, &step.name, TabStep::Settings(now));
             }
         }
+    }
+
+    /// Tab `shell` (wherever it is now) back into window `to`, as its tab
+    /// `at`, in `group` (by name; made again if gone). Its window goes if
+    /// it was its last tab. False if it or `to` is gone.
+    fn tab_back(&mut self, cx: &mut Cx, shell: u64, to: WindowId, at: usize, group: Option<Group>) -> bool {
+        let Some((now, i)) = self.find_shell(shell) else { return false };
+        if now == to || !matches!(self.windows.get(&to), Some(Win::Term(_))) {
+            return false;
+        }
+        let Some(Win::Term(t)) = self.windows.get_mut(&now) else { return false };
+        let mut tab = if t.tabs.len() == 1 {
+            let Some(Win::Term(mut t)) = self.windows.remove(&now) else { return false };
+            cx.close_window(now);
+            t.tabs.remove(0)
+        } else {
+            let tab = t.take(i);
+            t.tidy();
+            cx.redraw(now);
+            tab
+        };
+        let Some(Win::Term(t)) = self.windows.get_mut(&to) else { return false };
+        tab.group = group.map(|g| match t.groups.iter().position(|x| x.name == g.name) {
+            Some(i) => i,
+            None => {
+                t.groups.push(g);
+                t.groups.len() - 1
+            }
+        });
+        tab.rang = false;
+        let at = at.min(t.tabs.len());
+        t.tabs.insert(at, tab);
+        t.select(at);
+        t.tidy();
+        cx.redraw(to);
+        cx.activate(to);
+        true
     }
 
     /// A new shell in `cwd` as tab `at` of `win` (in group `into`): its id.
