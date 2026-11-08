@@ -66,7 +66,9 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
   units against the container (they read the viewport).
 - [ ] GitHub's "More ways" cards stay pinned (sticky, stacked) while the
   page scrolls in Chrome; in Olo they scroll by.
-- [ ] `background-clip: text` (apple.com's gradient subhead).
+- [x] `background-clip: text` (apple.com's gradient subhead), on block
+  boxes. Open: on an inline box, and comma-separated `background-clip`
+  lists.
 - [x] Lazy images' timer loop: web-vitals' capturing window `load`
   listener got every image's load event (load events don't reach the
   window now). Open: `loading=lazy` images still never load.
@@ -116,7 +118,7 @@ Next, in impact order (each removes a fallback kind or a visible gap):
 - [x] Paint: gradients, border-radius, box-shadow, rounded overflow clips.
 - [x] Paint: `url()` background images (size, position, repeat), CSS
   transforms, opacity groups.
-- [ ] Paint: `background-clip: text`, inset shadows, dashed/dotted
+- [ ] Paint: inset shadows, dashed/dotted
   borders, inline backgrounds, rounded borders with differing sides,
   `filter`, `mask-image`, `mix-blend-mode`, SVG `<text>`, `<use>`,
   `<mask>` (Stripe's Sign in button).

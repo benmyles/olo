@@ -6290,3 +6290,11 @@ journal).
   now take the flex fraction their items need (§11.7.1). Layout on
   BBC's page 5.5 ms before, 5.6 after. A placeholder's `::placeholder`
   opacity now applies when it is painted (GitHub's shows on focus).
+- **`background-clip: text`**: apple.com's "PROLED XDR Display" subtitle
+  is a yellow-to-blue gradient clipped to its glyphs over transparent
+  text, and was missing. The glyphs under such a box now raster into a
+  mask the box's backgrounds paint through. Gradient layers also follow
+  `background-size`, `-position` and `-repeat` now (they filled the
+  whole box: apple's 300%-wide shine layers would have washed the
+  subtitle out), and a background colour clipped to the padding or
+  content box no longer paints under the border.

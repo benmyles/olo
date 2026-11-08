@@ -3886,5 +3886,11 @@
   "title": "Browser: GitHub's hero film plays",
   "caption": "Chrome (left, its first frame) and Olo (right, a later frame of the same HEVC film) at 1000 \u00d7 700: Olo's own player decodes it, each picture made the size it shows at.",
   "image": "2026-11-07/181845-browser-github-s-hero-film-plays.png"
+ },
+ {
+  "time": "2026-11-07T20:10:48",
+  "title": "Browser: background-clip: text",
+  "caption": "apple.com's 'PROLED XDR Display' subtitle, a gradient clipped to its glyphs: Chrome above, Olo below. Gradients also now take background-size, position and repeat.",
+  "image": "2026-11-07/201048-browser-background-clip-text.png"
  }
 ]

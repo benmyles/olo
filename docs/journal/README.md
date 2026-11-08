@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: background-clip: text
+
+*20:10* — apple.com's 'PROLED XDR Display' subtitle, a gradient clipped to its glyphs: Chrome above, Olo below. Gradients also now take background-size, position and repeat.
+
+![Browser: background-clip: text](2026-11-07/201048-browser-background-clip-text.png)
+
 ### Browser: GitHub's hero film plays
 
 *18:18* — Chrome (left, its first frame) and Olo (right, a later frame of the same HEVC film) at 1000 × 700: Olo's own player decodes it, each picture made the size it shows at.
