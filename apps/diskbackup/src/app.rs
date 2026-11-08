@@ -246,7 +246,10 @@ impl Disk {
 
     pub fn open(&mut self, cx: &mut Context<Self>) {
         let app = cx.entity();
-        let options = WindowOptions::new("DiskBackup", 1060.0, 560.0).fits_content();
+        // (A form, at the size of what it shows: it floats, never zoomed
+        // in Focus or put in a tile. Ben, 2026-11-08: "diskbackup looks
+        // silly in focus mode".)
+        let options = WindowOptions::new("DiskBackup", 1060.0, 560.0).fits_content().floating();
         olo_ui::open_or_raise(self.win, cx, options, move |window, cx| cx.new(|cx| MainWindow::new(app, window, cx)), |a, w| a.win = w);
     }
 

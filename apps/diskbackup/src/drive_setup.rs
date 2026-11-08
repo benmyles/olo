@@ -392,7 +392,8 @@ impl DriveSetup {
 
 /// The window's options.
 pub fn options() -> olo_ui::WindowOptions {
-    olo_ui::WindowOptions::new("Back Up to Google Drive", 640.0, 600.0).fits_content()
+    // (A form, as DiskBackup's window: it floats.)
+    olo_ui::WindowOptions::new("Back Up to Google Drive", 640.0, 600.0).fits_content().floating()
 }
 
 #[allow(unused_imports)]

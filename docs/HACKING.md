@@ -13009,6 +13009,12 @@ serves the fake for trying the window by hand). The layout review no
 longer counts a button's default ring as crowded lines, however wide the
 button (`layout_review::crowded_lines`).
 
+DiskBackup's window and the setup window are forms at the size of what
+they show, so they float (`WindowOptions::floating`): never zoomed by
+Focus or put in a tile (Ben, 2026-11-08: "diskbackup looks silly in focus
+mode"). Restore and Versions, browsers of what a backup holds, are
+windows like Tracker's.
+
 **Agent Setup** (`agent_setup.rs`; the setup window's Let an Agent Do
 It…; Ben, 2026-11-08: "an "Agent Setup" feature to disk backup where an
 agent can do the google drive oauth/app setup"): an agent does the steps.
