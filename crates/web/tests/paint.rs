@@ -137,16 +137,25 @@ fn inline_spacing_moves_glyphs_without_block_axis_padding_moving_the_line() {
 }
 
 #[test]
-fn unimplemented_inline_backgrounds_cannot_disappear_on_empty_or_nested_boxes() {
+fn inline_backgrounds_paint_and_an_empty_one_says_it_is_not() {
     let mut b = Builder::new(Default::default());
     b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
     let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
     let host = native_host::NativeHost(scope.clone());
-    for body in ["<span></span>", "<span><span style='background-color:transparent'>A</span></span>"] {
+    for (body, notes) in [("<span></span>", vec![("empty inline background not painted", 1)]), ("<span><span style='background-color:transparent'>A</span></span>", vec![])] {
         let source = format!("<!doctype html><style>{BASE}span{{padding-left:5px;background-color:red}}</style>{body}");
-        let page = olo_web::page::load(source.into(), &host, &scope, &mut Shaper::default(), &mut paint::Engine::default(), layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {})
-            .unwrap();
-        assert_eq!(page.fallbacks.counts(), vec![("inline background not painted", 1)], "{body}");
+        let mut p = paint::Engine::default();
+        let page = olo_web::page::load(source.into(), &host, &scope, &mut Shaper::default(), &mut p, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).unwrap();
+        assert_eq!(page.fallbacks.counts(), notes, "{body}");
+        if notes.is_empty() {
+            // The outer span's background under the inner one's text, its
+            // padding before it.
+            let t = render(&mut p, &page.scene);
+            let reds = (0..100).flat_map(|y| (0..100).map(move |x| (x, y))).filter(|&(x, y)| pixel(&t, x, y) == [255, 0, 0, 255]).count();
+            assert!(reds > 40, "{reds}");
+            let first = (0..100).flat_map(|y| (0..100).map(move |x| (x, y))).filter(|&(x, y)| pixel(&t, x, y) == [255, 0, 0, 255]).min_by_key(|&(x, _)| x).unwrap();
+            assert_eq!(first.0, 0, "its padding");
+        }
     }
 }
 #[test]

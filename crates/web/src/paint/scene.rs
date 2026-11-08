@@ -1056,7 +1056,7 @@ pub struct BuildJob<'a> {
     fallbacks: layout::Fallbacks,
     failed: bool,
     /// Text decoration metrics per font (see `line_metrics`).
-    font_lines: std::collections::HashMap<usize, (f64, f64, f64, f64)>,
+    font_lines: std::collections::HashMap<usize, (f64, f64, f64, f64, f64)>,
 }
 fn color(s: &Style, p: P) -> Result<[u8; 4]> {
     Ok(s.used_color(p)?.srgb8_clipped())
@@ -1339,18 +1339,61 @@ impl<'a> BuildJob<'a> {
         let layout = self.layout.clone();
         let text = layout.text_layout(id).ok_or(Error::Invalid)?;
         let controls = layout.cache().tree().controls(source);
-        // Include empty/nested boxes: checking only glyph ownership misses
-        // a visible background on an empty padded span or an outer inline.
-        for b in layout.cache().tree().inline_boxes(source).ok_or(Error::Invalid)? {
-            check(self.cancel)?;
-            let s = layout.cache().tree().styles().snapshot(b.node).ok_or(Error::Stale)?;
-            if visible(s) && color(s, P::BackgroundColor)?[3] != 0 {
-                self.fallbacks.note("inline background not painted", Some(b.node));
-                break;
-            }
-        }
+        let inline_boxes = layout.cache().tree().inline_boxes(source).ok_or(Error::Invalid)?;
         let source = layout.cache().tree().text_source(source).ok_or(Error::Invalid)?;
         let prepared = text.text().prepared();
+        // Inline boxes with a background colour (`<code>`, `<mark>`, a
+        // highlighted span): each line's piece of their content area, grown
+        // by their padding (horizontally at their first and last piece),
+        // painted under their glyphs (CSS 2.2 §10.6.1, Appendix E step 7).
+        let to_output = |byte: u32| -> u32 {
+            match prepared.mapping_at_source(byte) {
+                Some(m) if m.kind != crate::text::prepare::MappingKind::Removed => m.output.start + (byte - m.input.start).min(m.output.end - m.output.start),
+                Some(m) => m.output.start,
+                None => prepared.text().len() as u32,
+            }
+        };
+        let mut backgrounds: Vec<(Range<u32>, [u8; 4], [f64; 4], bool, bool)> = Vec::new();
+        for b in inline_boxes {
+            check(self.cancel)?;
+            let s = layout.cache().tree().styles().snapshot(b.node).ok_or(Error::Stale)?;
+            let c = color(s, P::BackgroundColor)?;
+            if !visible(s) || c[3] == 0 {
+                continue;
+            }
+            if matches!(s.value(P::BackgroundImage), Value::Images(_)) {
+                self.fallbacks.note("inline background image not painted", Some(b.node));
+            }
+            if decoration::rounded(&decoration::radii(s, Rect { x: 0., y: 0., width: 100., height: 100. })) {
+                self.fallbacks.note("inline background corners drawn square", Some(b.node));
+            }
+            let pad = |p| s.value(p).scalar().unwrap_or(0.).max(0.);
+            let range = to_output(b.range.start)..to_output(b.range.end);
+            if range.is_empty() {
+                if pad(P::PaddingLeft) + pad(P::PaddingRight) > 0. {
+                    self.fallbacks.note("empty inline background not painted", Some(b.node));
+                }
+                continue;
+            }
+            // Its edges lie before its first glyph and after its last by its
+            // padding and by the margins and paddings of the boxes in it
+            // that start (or end) there too.
+            let (mut lead, mut trail) = (pad(P::PaddingLeft), pad(P::PaddingRight));
+            for d in inline_boxes {
+                if std::ptr::eq(d, b) || d.range.start < b.range.start || d.range.end > b.range.end {
+                    continue;
+                }
+                let Some(ds) = layout.cache().tree().styles().snapshot(d.node) else { continue };
+                let edge = |p| ds.value(p).scalar().unwrap_or(0.);
+                if d.range.start == b.range.start && d.first {
+                    lead += edge(P::MarginLeft) + edge(P::PaddingLeft).max(0.);
+                }
+                if d.range.end == b.range.end && d.last {
+                    trail += edge(P::MarginRight) + edge(P::PaddingRight).max(0.);
+                }
+            }
+            backgrounds.push((range, c, [pad(P::PaddingTop), trail, pad(P::PaddingBottom), lead], b.first, b.last));
+        }
         // Styles are immutable for this build. Consecutive glyphs usually
         // belong to the same span: resolve/convert its paint color once.
         let mut paint_color: Option<(u32, [u8; 4], Option<([u8; 4], K)>, bool)> = None;
@@ -1375,6 +1418,44 @@ impl<'a> BuildJob<'a> {
             // bounds agree with the actual glyph placement.
             let scale = layout.device_scale();
             let baseline = ((at.y + text.baseline(li).ok_or(Error::Invalid)?) * scale).round() / scale;
+            for (range, c, pad, first, last) in &backgrounds {
+                let (mut x0, mut x1, mut ascent, mut descent) = (f64::INFINITY, f64::NEG_INFINITY, 0f64, 0f64);
+                let (mut starts, mut ends) = (false, false);
+                for fi in line.fragments.clone() {
+                    let f = &text.fragments()[fi as usize];
+                    if f.source.end <= range.start || f.source.start >= range.end {
+                        continue;
+                    }
+                    let run = text.run(f).ok_or(Error::Invalid)?;
+                    let factor = run.size / f64::from(run.font.units_per_em());
+                    let mut pen = 0i64;
+                    for gi in f.glyphs.clone() {
+                        let g = run.glyphs[gi as usize];
+                        let gx = at.x + f.x + pen as f64 * factor;
+                        pen += i64::from(g.x_advance);
+                        if range.contains(&g.cluster) {
+                            x0 = x0.min(gx);
+                            x1 = x1.max(at.x + f.x + pen as f64 * factor);
+                        }
+                    }
+                    let (_, _, _, a, d) = self.line_metrics(&run.font);
+                    ascent = ascent.max(a * factor);
+                    descent = descent.max(d * factor);
+                    starts |= f.source.start <= range.start;
+                    ends |= f.source.end >= range.end;
+                }
+                if x0 < x1 {
+                    if starts && *first {
+                        x0 -= pad[3];
+                    }
+                    if ends && *last {
+                        x1 += pad[1];
+                    }
+                    let snap = |v: f64| (v * scale).round() / scale;
+                    let (y0, y1) = (snap(baseline - ascent - pad[0]), snap(baseline + descent + pad[2]));
+                    self.emit(group, true, Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, Primitive::Fill { color: *c, owner: id }, clip)?;
+                }
+            }
             for fi in line.fragments.clone() {
                 let f = &text.fragments()[fi as usize];
                 if HAS_IMAGES && f.glyphs.is_empty() && !image_owners.is_empty() {
@@ -1509,7 +1590,7 @@ impl<'a> BuildJob<'a> {
             && line_color[3] != 0
             && end_x > origin.x
         {
-            let (position, thickness, x_height, ascent) = self.line_metrics(font);
+            let (position, thickness, x_height, ascent, _) = self.line_metrics(font);
             let factor = size / f64::from(font.units_per_em());
             let scale = self.layout.device_scale();
             let thickness = ((thickness * factor * scale).round() / scale).max(1. / scale);
@@ -1528,7 +1609,7 @@ impl<'a> BuildJob<'a> {
     }
     /// A font's underline position (above the baseline, usually negative)
     /// and thickness, x-height and ascent, in font units, kept per font.
-    fn line_metrics(&mut self, font: &Arc<crate::text::shaping::GlyphFont>) -> (f64, f64, f64, f64) {
+    fn line_metrics(&mut self, font: &Arc<crate::text::shaping::GlyphFont>) -> (f64, f64, f64, f64, f64) {
         let key = Arc::as_ptr(font) as usize;
         if let Some(m) = self.font_lines.get(&key) {
             return *m;
@@ -1538,9 +1619,9 @@ impl<'a> BuildJob<'a> {
             Ok(face) => {
                 let (position, thickness) = face.underline_metrics().map_or((-upem / 10., upem / 14.), |u| (f64::from(u.position), f64::from(u.thickness).max(1.)));
                 let x_height = face.x_height().map_or(upem / 2., f64::from);
-                (position, thickness, x_height, f64::from(face.ascender()))
+                (position, thickness, x_height, f64::from(face.ascender()), -f64::from(face.descender()))
             }
-            Err(_) => (-upem / 10., upem / 14., upem / 2., upem * 0.8),
+            Err(_) => (-upem / 10., upem / 14., upem / 2., upem * 0.8, upem * 0.2),
         };
         if self.font_lines.len() < 256 {
             self.font_lines.insert(key, m);
