@@ -130,6 +130,15 @@ pub enum Request {
     UngroupWindow {
         id: WindowId,
     },
+    /// All of an app's windows grouped (each grouping by itself again,
+    /// wherever it was: taken out, or put in another group by hand) or
+    /// all taken out, each on its own, and the app's grouping
+    /// (`TilingSettings::ungrouped_apps`) on or off to match: Deskbar's
+    /// Group All Windows and Ungroup All Windows.
+    GroupApp {
+        app_id: String,
+        grouped: bool,
+    },
     /// Move a window's tab to `index` among its group's tabs.
     MoveTab {
         id: WindowId,

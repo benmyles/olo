@@ -446,6 +446,13 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Some(_) => Reply::Error { message: format!("window {id} isn't in a group") },
                 None => not_found(),
             },
+            Request::GroupApp { app_id, grouped } => {
+                if self.group_app(&app_id, grouped) {
+                    Reply::Ok
+                } else {
+                    Reply::Error { message: format!("{app_id} has no windows") }
+                }
+            }
             Request::MoveTab { id, index } => match self.window_by_id(id) {
                 Some(w) if self.move_tab(&w, index as usize) => Reply::Ok,
                 Some(_) => Reply::Error { message: format!("window {id} isn't in a group") },

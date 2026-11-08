@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Deskbar: Group All Windows, as the windows are
+
+*12:05* — Deskbar's menu for an app says what its windows are, not a setting: Group All Windows when they aren't all in one group (here one was taken out by hand), Ungroup All Windows when they are. Group All puts every one back in; Ungroup All takes each out in a cascade, every tab showing. Before, Group Windows was ticked whenever the app's grouping was on, even with windows out of the group.
+
+![Deskbar: Group All Windows, as the windows are](2026-11-08/120547-deskbar-group-all-windows-as-the-windows-are.png)
+
 ### Security ▸ Sign In: Touch ID, Face Unlock and Security Keys together
 
 *11:50* — Preferences ▸ Security has two tabs. Sign In has every way in besides the password, each standing for it wherever it's asked, all at once. Touch ID, which was a panel of its own, is a box beside Face Unlock and Security Keys. The Passwords tab has Passwords' and programs' secrets settings. The old names (touchid, fingerprint, passwords) open the right tab.

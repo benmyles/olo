@@ -3706,5 +3706,11 @@
   "title": "Security \u25b8 Sign In: Touch ID, Face Unlock and Security Keys together",
   "caption": "Preferences \u25b8 Security has two tabs. Sign In has every way in besides the password, each standing for it wherever it's asked, all at once. Touch ID, which was a panel of its own, is a box beside Face Unlock and Security Keys. The Passwords tab has Passwords' and programs' secrets settings. The old names (touchid, fingerprint, passwords) open the right tab.",
   "image": "2026-11-08/115020-security-sign-in-touch-id-face-unlock-and-securi.png"
+ },
+ {
+  "time": "2026-11-08T12:05:47",
+  "title": "Deskbar: Group All Windows, as the windows are",
+  "caption": "Deskbar's menu for an app says what its windows are, not a setting: Group All Windows when they aren't all in one group (here one was taken out by hand), Ungroup All Windows when they are. Group All puts every one back in; Ungroup All takes each out in a cascade, every tab showing. Before, Group Windows was ticked whenever the app's grouping was on, even with windows out of the group.",
+  "image": "2026-11-08/120547-deskbar-group-all-windows-as-the-windows-are.png"
  }
 ]

@@ -844,7 +844,32 @@ impl Deskbar {
         if olo_ui::moving::menus_offer() && team.windows.iter().any(|w| w.kept) {
             m = m.submenu(Menu::agent_screens(if several { "Move All to Agent Screen" } else { "Move to Agent Screen" }, &self.status.agent_screens, ""));
         }
-        m.separator().item("Group Windows", "group-windows").checked(!self.tiling.ungrouped_apps.contains(&app)).enabled(!app.is_empty())
+        // Said as it is (Ben, 2026-11-08: "no checks/ticks just the option
+        // changes based on the state"): grouped, Ungroup All; else Group All.
+        let grouped = self.all_grouped(&team.windows, !self.tiling.ungrouped_apps.contains(&app));
+        let (label, cmd) = if grouped { ("Ungroup All Windows", "ungroup-all") } else { ("Group All Windows", "group-all") };
+        m.separator().item(label, cmd).enabled(!app.is_empty())
+    }
+
+    /// Whether all of a team's windows are grouped, as they show now:
+    /// wherever two or more show together (a display's workspace, not
+    /// minimized, ones that can be grouped), all in one group. With fewer
+    /// showing, as the app's grouping is set (`grouping`), so a window
+    /// opening later joins or doesn't.
+    fn all_grouped(&self, windows: &[WindowInfo], grouping: bool) -> bool {
+        let shown: Vec<&WindowInfo> = windows.iter().filter(|w| w.groupable && !w.minimized && w.workspace == self.showing(w.output.as_deref())).collect();
+        let mut together = false;
+        for w in &shown {
+            let here: Vec<&&WindowInfo> = shown.iter().filter(|o| o.output == w.output && o.workspace == w.workspace).collect();
+            if here.len() < 2 {
+                continue;
+            }
+            together = true;
+            if w.group.is_none() || here.iter().any(|o| o.group != w.group) {
+                return false;
+            }
+        }
+        together || grouping
     }
 
     /// The battery's menu (right click): the power mode, and Power's
@@ -1235,9 +1260,9 @@ impl Deskbar {
             request(Request::Activate { id });
             return;
         }
-        if cmd == "group-windows" {
-            if let Some(app) = self.windows.iter().find(|w| team_key_ == team_key(w)).map(|w| w.app_id.clone()) {
-                olo_ui::settings::set_groups_windows(&app, self.tiling.ungrouped_apps.contains(&app));
+        if cmd == "group-all" || cmd == "ungroup-all" {
+            if let Some(app_id) = self.windows.iter().find(|w| team_key_ == team_key(w)).map(|w| w.app_id.clone()) {
+                request(Request::GroupApp { app_id, grouped: cmd == "group-all" });
             }
             return;
         }

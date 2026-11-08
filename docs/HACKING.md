@@ -5886,8 +5886,21 @@ arranging command on a window behind brings it to the front first
 window leaving a group gets its own tab back and steps out by `CASCADE`
 so it isn't hidden. Grouping is on for every app; the ones a person
 turns off are `TilingSettings::ungrouped_apps` (app ids), toggled by
-Group Windows in Deskbar's team menu and in Tracker's menu for an app
-(`olo_ui::settings::groups_windows` / `set_groups_windows`). A group's
+Group Windows in Tracker's menu for an app
+(`olo_ui::settings::groups_windows` / `set_groups_windows`). Deskbar's
+team menu says what its windows are, not the setting (Ben, 2026-11-08:
+"it should not be checked unless they are all grouped … no checks/ticks
+just the option changes based on the state"): Ungroup All Windows when,
+wherever two or more of them show together, they're all in one group
+(with fewer showing, as the setting is), else Group All Windows.
+`Request::GroupApp` does it (`group_app`): grouped, every one of the
+app's windows groups by itself again (`Auto`, wherever it was: taken out,
+or put in another group by hand) and the setting goes on; ungrouped,
+each is taken out (`Alone`), the group's front window staying where it
+is and the others stepped out a `CASCADE` each, each brought in front
+of the last so every tab shows, and the setting goes off. Before this,
+the menu's tick was the setting alone, so it showed ticked with a window
+taken out by hand. A group's
 frame is never smaller than any of its windows can be (`least_frame`).
 A window that joins a group it can't be as small as draws bigger only
 on that side: `keep_on_screen` fits to the screen only the sides an app

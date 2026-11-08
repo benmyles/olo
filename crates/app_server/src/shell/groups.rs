@@ -978,6 +978,81 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         true
     }
 
+    /// All of `app`'s windows grouped (`grouped`), each grouping by itself
+    /// again wherever it was (taken out, or put with others by hand), or
+    /// each taken out on its own, its group's front window staying where
+    /// it is and the others stepped out a cascade's step each, each in
+    /// front of the last (so every tab shows, the last focused); and the
+    /// app's grouping set to match, saved and told (Deskbar's Group All
+    /// Windows and Ungroup All Windows). False if it has no windows.
+    pub fn group_app(&mut self, app: &str, grouped: bool) -> bool {
+        let windows: Vec<WindowElement> = self.all_windows().into_iter().filter(|w| w.app_id() == app).collect();
+        if windows.is_empty() || app.is_empty() {
+            return false;
+        }
+        if self.groups_app(app) != grouped {
+            let mut s = self.settings.clone();
+            if grouped {
+                s.tiling.ungrouped_apps.retain(|a| a != app);
+            } else {
+                s.tiling.ungrouped_apps.push(app.to_owned());
+            }
+            self.set_settings(s);
+        }
+        if grouped {
+            for w in &windows {
+                *w.meta().grouping.borrow_mut() = Grouping::Auto;
+            }
+            self.sync_groups();
+            tracing::info!(app, windows = windows.len(), "all of an app's windows grouped");
+            return true;
+        }
+        // Each group's tabs in order, the front one staying.
+        let mut done: Vec<WindowElement> = Vec::new();
+        for w in &windows {
+            if done.contains(w) {
+                continue;
+            }
+            let mates = self.groups.mates(w);
+            if mates.is_empty() {
+                *w.meta().grouping.borrow_mut() = Grouping::Alone;
+                done.push(w.clone());
+                continue;
+            }
+            let front = self.space.elements().rev().find(|o| mates.contains(o)).cloned();
+            let ours: Vec<WindowElement> = in_tab_order(&mates).into_iter().filter(|o| o.app_id() == app && Some(o) != front.as_ref()).collect();
+            let Some(frame) = front.as_ref().and_then(|f| self.space.element_geometry(f)) else { continue };
+            for (i, o) in ours.iter().enumerate() {
+                if !self.take_out_of_group(o) {
+                    continue;
+                }
+                {
+                    let mut d = o.decoration();
+                    d.tab_width = None;
+                    d.tab_offset = 0;
+                }
+                self.forget_tile(o);
+                let step = CASCADE * (i as i32 + 1);
+                let to = self.reachable(Rectangle::new(frame.loc + Point::from((step, step)), frame.size));
+                self.set_frame(o, to, false);
+                // Each in front of the last, as a cascade: every tab shows.
+                self.focus_window(o);
+            }
+            // The front one alone too, where it is (its app's; one left
+            // with others' windows stays with them).
+            if let Some(f) = front.filter(|f| f.app_id() == app) {
+                if !self.take_out_of_group(&f) {
+                    *f.meta().grouping.borrow_mut() = Grouping::Alone;
+                }
+                done.push(f);
+            }
+            done.extend(mates);
+        }
+        self.sync_groups();
+        tracing::info!(app, windows = windows.len(), "all of an app's windows taken out of their groups");
+        true
+    }
+
     /// Apps whose windows are grouped again (Group Windows turned back
     /// on): their windows taken out by hand go back in too.
     pub fn regroup_apps(&mut self, apps: &[String]) {
