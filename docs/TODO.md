@@ -49,18 +49,22 @@ screen; and the installer check from scratch in a VM. Found and fixed
 a pasp before their avcC not opening (66af29d4), the MacBook palm
 model's tests judging a ThinkPad run (138f0c16), two keyring tests
 (4b4ed710), the Opus file test's track (f9536320), the seek tests
-hanging on a decoder's error. Not run, and why: those that change
-this machine's settings (the mic's mute, no output, the input's
-volume, a monitor's brightness, dconf), wake its fingerprint reader,
-presence sensor or cameras, count toward PAM's lockout, or play
-sound; the real Claude Code and Codex, and Google Drive (Ben's
-accounts); the MacBook's palm captures, an AirPods capture and the
-ffmpeg-made clips (not here: where Olo's own encoders made a stand-in,
-the tests ran on it, the encoder-switch recording played across its
-switch, a 300-picture HEVC clip decoded whole, B-frames in Chromium's
-bear; the clips' own lengths and sizes they assert didn't hold); make_default_model (it rewrites the
-shipped model) and make_4k60_y4m (vpxenc); with_gcr (a handshake by
-hand).)
+hanging on a decoder's error. Then the rest that could run without
+Ben: the sound tests that change settings, in a private PipeWire
+sandbox (mute, no output, the input rewritten, devices, who
+listens); dconf's write on a private bus (read back there, Ben's own
+untouched); the backlight and the Studio Display written as they
+were (full, nothing seen to change); the presence sensor read (the
+sensor hub's, not a camera); the fingerprint start and stop against
+fake-readers (fixed to report a stopped scan as fprintd does,
+3948c7e6) and a wrong password against a PAM stand-in, neither
+touching Ben's reader or PAM; gcr's own handshake (it reads
+"olo-secret" from Olo's reply); and every Viewer sample test on the
+samples made as HACKING says (ffmpeg's testsrc2 through SVT-AV1,
+libvpx, NVENC; the JCT-VC stream remuxed): all pass, and the 4K60
+VP9 from make_4k60_y4m played by the Viewer to its end on Intel's
+GPU, nothing dropped. What's left needs Ben: in Blocked, "The
+ignored tests that need Ben".)
 
 - **Telegram's video stickers: their see-through parts on real ones**
   (2026-11-08; Done has the work): WebM stickers play, their alpha the
@@ -2194,6 +2198,28 @@ people.
   kept screenshot buffers (the target texture, smithay's spare
   read-back) run on that path too and were tried only headless: a shot
   of his screen after the upgrade is their first there.
+
+- **The ignored tests that need Ben** (2026-11-08: every other one has
+  run; the waiting entries' audit note says how): each wants what only
+  he has.
+  - His cameras: olo-face's `this_machines_units` opens every
+    `/dev/video` node to find the infrared one (his rule: his cameras
+    aren't opened without him).
+  - His accounts: Token Pool's
+    `claude_code_on_its_subscription_through_the_proxy`,
+    `codex_on_its_subscription_through_the_proxy` and
+    `codex_daemon_follows_the_pool` (the real Claude Code and Codex on
+    his subscriptions), DiskBackup's `serve_google` (his Google Drive).
+  - His real PAM stack and reader: `live_wrong_password` against
+    /etc/pam.d runs his face unlock (the IR camera) and counts toward
+    faillock, and `live_start_and_stop` wakes his fingerprint reader;
+    both pass against stand-ins (a PAM service of the test's own,
+    fake-readers).
+  - Data on his other machines or devices: the MacBook's palm captures
+    (`on_real_hands`, `what_the_runs_dont_show`, `make_default_model`,
+    on the Mac), a raw capture of a pad for `replay_capture`
+    (OLO_TOUCH_CAPTURE, recorded at his pad), and an AirPods capture with
+    libfdk's decode of it (`decodes_a_capture_as_libfdk_does`).
 
 - **The ThinkPad's leftovers that are work, not a try** (from its entry
   above; each blocked on the hardware in hand or Ben's say):
