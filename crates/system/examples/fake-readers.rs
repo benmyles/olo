@@ -29,7 +29,9 @@ impl Manager {
     }
 }
 
-struct Device(std::sync::Arc<Opts>);
+/// The options, and the scan under way: its flag set once it has said
+/// how it went (its finger's answer, or a stop's).
+struct Device(std::sync::Arc<Opts>, std::sync::Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>);
 
 #[zbus::interface(name = "net.reactivated.Fprint.Device")]
 impl Device {
@@ -49,15 +51,28 @@ impl Device {
     fn verify_start(&self, finger: &str, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
         println!("fprintd: VerifyStart {finger}");
         let (result, after, emitter) = (if self.0.finger == "match" { "verify-match" } else { "verify-no-match" }, self.0.after, emitter.into_owned());
+        let said = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        *self.1.lock().unwrap() = Some(said.clone());
         std::thread::spawn(move || {
             std::thread::sleep(after);
-            println!("fprintd: VerifyStatus {result}");
-            let _ = futures_lite::future::block_on(Device::verify_status(&emitter, result, true));
+            // (Unless a stop said first.)
+            if !said.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                println!("fprintd: VerifyStatus {result}");
+                let _ = futures_lite::future::block_on(Device::verify_status(&emitter, result, true));
+            }
         });
     }
 
-    fn verify_stop(&self) {
+    /// As fprintd does (device.c, `verify_cb` and `report_verify_status`):
+    /// a scan stopped before it said anything reports "verify-no-match",
+    /// done, the cancel's result, so a client waiting on the scan wakes.
+    async fn verify_stop(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
         println!("fprintd: VerifyStop");
+        let said = self.1.lock().unwrap().take();
+        if said.is_some_and(|s| !s.swap(true, std::sync::atomic::Ordering::SeqCst)) {
+            println!("fprintd: VerifyStatus verify-no-match (stopped)");
+            let _ = Device::verify_status(&emitter, "verify-no-match", true).await;
+        }
     }
 
     #[zbus(property, name = "scan-type")]
@@ -105,7 +120,7 @@ fn main() -> zbus::Result<()> {
         .name("net.reactivated.Fprint")?
         .name("org.olo.Face1")?
         .serve_at("/net/reactivated/Fprint/Manager", Manager)?
-        .serve_at("/net/reactivated/Fprint/Device/0", Device(opts.clone()))?
+        .serve_at("/net/reactivated/Fprint/Device/0", Device(opts.clone(), std::sync::Mutex::new(None)))?
         .serve_at("/org/olo/Face1", Face(opts.clone()))?
         .build()?;
     println!("fake readers on {bus}: finger {}, face {}, after {:?}", opts.finger, opts.face, opts.after);
