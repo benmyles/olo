@@ -22,10 +22,19 @@ are all done, and are in Done, newest first.)
 
 ## Done, waiting for Ben to try or confirm
 
-(Audited again 2026-11-08, all 50: each is done, and what's left in each
-is Ben's alone: his accounts (Google, GitHub, 1Password), his hands,
-face, keys, dock or displays at the machine, his upgrade, or his say on
-how it looks and sounds.)
+(Audited again 2026-11-08, all 50 then: each is done, and what's left in
+each is Ben's alone: his accounts (Google, GitHub, 1Password), his
+hands, face, keys, dock or displays at the machine, his upgrade, or his
+say on how it looks and sounds.)
+
+- **Telegram's video stickers: their see-through parts on real ones**
+  (2026-11-08; Done has the work): WebM stickers play, their alpha the
+  second stream's luma as it is (0–255, as libvpx's decoders take it).
+  The only VP9 files with alpha to be had here (Chromium's test bear,
+  and its odd-sized one) carry a flat alpha (68 throughout), and nothing
+  here encodes VP9 to make one that varies, so a sticker's transparent
+  background has only been seen flat. Left (Ben): a video sticker in one
+  of his chats, its edges against the chat's ground.
 
 - **DiskBackup** (Ben, 2026-11-07, after the work items before it):
   "build DiskBackup which is an olo native app and service for
@@ -2131,7 +2140,10 @@ people.
   through MultiRenderer's mapping, re-acquired per GPU. Blocked on trying
   it: only a DRM seat runs that path (vkms, which needs root: Ben's OK
   for vkms stands, but sudo here asks for his face or approval, and he
-  isn't at the computer), and his own session isn't for trying it.
+  isn't at the computer), and his own session isn't for trying it. The
+  kept screenshot buffers (the target texture, smithay's spare
+  read-back) run on that path too and were tried only headless: a shot
+  of his screen after the upgrade is their first there.
 
 - **The ThinkPad's leftovers that are work, not a try** (from its entry
   above; each blocked on the hardware in hand or Ben's say):
