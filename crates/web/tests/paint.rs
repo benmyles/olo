@@ -1993,3 +1993,48 @@ fn pictures_not_here_yet_show_when_they_land() {
     assert_eq!(px(&page, &mut p, 5, 5), [255, 0, 0, 255], "the picture");
     assert_eq!(px(&page, &mut p, 5, 15), [255, 0, 0, 255], "the background");
 }
+
+#[test]
+fn pictures_styles_name_later_are_noted_where_the_styles_changed() {
+    use olo_web::page;
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    // Enough elements for the style tree's several chunks; the last ones
+    // change, so the change is in a chunk of its own.
+    let html = format!("<!doctype html><style>:root{{--c:url(c.png)}}div{{height:2px}}</style>{}<div id=x></div><div id=y></div>", "<div></div>".repeat(150));
+    let mut shaper = Shaper::default();
+    let mut p = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    let mut page = page::load(Arc::from(html), &host, &scope, &mut shaper, &mut p, viewport, None, |_, _| {}).unwrap();
+    assert!(!page.note_pictures(), "none named");
+    let find = |page: &page::Page, id: &str| {
+        let mut stack = vec![page.document.root()];
+        while let Some(n) = stack.pop() {
+            if page.document.attribute(n, "id").ok().flatten() == Some(id) {
+                return n;
+            }
+            stack.extend(page.document.children(n).unwrap());
+        }
+        panic!("{id}")
+    };
+    let mut set = |page: &mut page::Page, id: &str, style: &str| {
+        let node = find(page, id);
+        let mut doc = page.document.clone();
+        doc.set_attribute(node, "style", style).unwrap();
+        page.rerender(doc, Vec::new(), &host, &mut shaper, &mut p, viewport, None, |_, _| {}).unwrap();
+    };
+    // A script names one through a custom property.
+    set(&mut page, "x", "background-image:var(--c)");
+    assert!(page.note_pictures(), "named through var()");
+    assert_eq!(page.late_images(), 1);
+    assert!(!page.note_pictures(), "the same tree: not looked in again");
+    // Another element changes, naming none.
+    set(&mut page, "y", "color:red");
+    assert!(!page.note_pictures());
+    // Then one names another picture.
+    set(&mut page, "y", "mask-image:url(d.png)");
+    assert!(page.note_pictures(), "a second picture");
+    assert_eq!(page.late_images(), 2);
+}

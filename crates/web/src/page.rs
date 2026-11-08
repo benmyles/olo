@@ -76,8 +76,9 @@ pub struct Page {
     sheet_ids: Vec<(crate::dom::NodeId, u64)>,
     /// The document and revision the sheets were last looked for at.
     sheets_checked: Option<(u64, u64)>,
-    /// The style tree its pictures were last looked for in (`note_pictures`).
-    pictures_scanned: usize,
+    /// The style tree its pictures were last looked for in
+    /// (`note_pictures`): the next looks only where a tree differs from it.
+    pictures_scanned: Option<Arc<StyleTree>>,
     media: css::media::Media,
     /// Whether any stylesheet has `@media` rules, so only such pages recompile.
     pub media_dependent: bool,
@@ -2193,23 +2194,25 @@ pub fn finish_with(
         base_scope,
         sheet_ids,
         sheets_checked: None,
-        pictures_scanned: 0,
+        pictures_scanned: None,
     })
 }
 impl Page {
     /// The pictures its styles name (`background-image`, `mask-image`, as
     /// computed: through `var()`, inline styles, rules scripts added) that
     /// it has none of, taken as late ones (`bind_late` fetches and binds
-    /// them): whether any came. Looked for once per style tree.
+    /// them): whether any came. Looked for once per style tree, in the
+    /// styles it doesn't share with the tree looked in before (GitHub's
+    /// animations make a new tree each frame, 9 of 2,578 styles patched:
+    /// the whole scan was a fifth of its page thread while scrolling).
     pub fn note_pictures(&mut self) -> bool {
         let styles = self.scene.layout().cache().tree().styles().clone();
-        let at = Arc::as_ptr(&styles) as usize;
-        if at == self.pictures_scanned {
+        if self.pictures_scanned.as_ref().is_some_and(|s| Arc::ptr_eq(s, &styles)) {
             return false;
         }
-        self.pictures_scanned = at;
+        let before = self.pictures_scanned.replace(styles.clone());
         let mut added = false;
-        for (_, style) in styles.iter() {
+        for (_, style) in styles.styles_unshared(before.as_deref()) {
             for property in [css::properties::Property::BackgroundImage, css::properties::Property::MaskImage] {
                 let style::Value::Images(images) = style.value(property) else { continue };
                 for image in images.0.iter().flatten() {

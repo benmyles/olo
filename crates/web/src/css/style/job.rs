@@ -179,6 +179,16 @@ impl StyleTree {
         tree.geometry_kept = true;
         Some(tree)
     }
+    /// Its styles not shared with `other` (all of them without one): a
+    /// patched copy shares all but the chunks it patched, so what is new
+    /// since `other` is found without looking at every style.
+    pub fn styles_unshared<'s>(&'s self, other: Option<&'s StyleTree>) -> impl Iterator<Item = (NodeId, &'s Style)> + 's {
+        let all: Box<dyn Iterator<Item = usize> + 's> = match other {
+            Some(other) => Box::new(self.styles.unshared(&other.styles)),
+            None => Box::new(0..self.styles.len()),
+        };
+        all.map(|i| &self.styles[i]).map(|s| (s.node, &s.style))
+    }
     /// Whether every element of `other` has a transform where this tree's
     /// has one, entry for entry: compared only where they don't share
     /// their styles (a patched tree shares all but what it patched).

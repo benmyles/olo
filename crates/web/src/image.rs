@@ -256,30 +256,29 @@ pub struct Set {
     revision: u64,
     bindings: Box<[(NodeId, Arc<Image>)]>,
     /// `background-image` images by the URL as written in the stylesheet.
-    backgrounds: HashMap<Arc<str>, Arc<Image>>,
+    backgrounds: Arc<Backgrounds>,
     bytes: usize,
 }
-impl Set {
-    pub fn new(document: &Document, bindings: Vec<(NodeId, Arc<Image>)>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
-        Self::with_backgrounds(document, bindings, HashMap::new(), limits, cancel)
-    }
-    pub fn with_backgrounds(
-        document: &Document,
-        mut bindings: Vec<(NodeId, Arc<Image>)>,
-        backgrounds: HashMap<Arc<str>, Arc<Image>>,
-        limits: Limits,
-        cancel: Option<&AtomicBool>,
-    ) -> Result<Arc<Self>, Error> {
-        check(cancel)?;
-        if bindings.len() > limits.bindings || bindings.len() > u32::MAX as usize {
-            return Err(Error::Limit);
-        }
+/// A set's `background-image` pictures, shared by the sets made from it
+/// (a rebind each revision, a canvas's every frame): what they cost and
+/// their identity worked out once, not per set or per frame.
+struct Backgrounds {
+    by_url: HashMap<Arc<str>, Arc<Image>>,
+    /// The distinct pictures, by address.
+    unique: HashSet<usize>,
+    bytes: usize,
+    pixels: usize,
+    /// A hash of the URLs and pictures (`Set::backgrounds_identity`).
+    identity: u64,
+}
+impl Backgrounds {
+    fn new(by_url: HashMap<Arc<str>, Arc<Image>>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
+        use std::hash::{Hash, Hasher};
         let mut unique = HashSet::new();
-        let mut bytes = 0usize;
-        let mut pixels = 0usize;
-        for image in backgrounds.values() {
+        let (mut bytes, mut pixels) = (0usize, 0usize);
+        for image in by_url.values() {
             check(cancel)?;
-            if unique.insert(Arc::as_ptr(image)) {
+            if unique.insert(Arc::as_ptr(image) as usize) {
                 bytes = bytes.checked_add(image.payload_bytes()).ok_or(Error::Limit)?;
                 pixels = pixels.checked_add(image.payload_bytes() / 4).ok_or(Error::Limit)?;
                 if bytes > limits.bytes || pixels > limits.pixels {
@@ -287,12 +286,49 @@ impl Set {
                 }
             }
         }
+        let mut keys: Vec<(&Arc<str>, usize)> = by_url.iter().map(|(k, v)| (k, Arc::as_ptr(v) as usize)).collect();
+        keys.sort_by(|a, b| a.0.cmp(b.0));
+        let mut h = std::hash::DefaultHasher::new();
+        for (k, v) in keys {
+            k.hash(&mut h);
+            v.hash(&mut h);
+        }
+        Ok(Arc::new(Self { by_url, unique, bytes, pixels, identity: h.finish() }))
+    }
+}
+impl Set {
+    pub fn new(document: &Document, bindings: Vec<(NodeId, Arc<Image>)>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
+        Self::with_backgrounds(document, bindings, HashMap::new(), limits, cancel)
+    }
+    pub fn with_backgrounds(
+        document: &Document,
+        bindings: Vec<(NodeId, Arc<Image>)>,
+        backgrounds: HashMap<Arc<str>, Arc<Image>>,
+        limits: Limits,
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Arc<Self>, Error> {
+        check(cancel)?;
+        let backgrounds = Backgrounds::new(backgrounds, limits, cancel)?;
+        Self::build(document, bindings, backgrounds, limits, cancel)
+    }
+    fn build(document: &Document, mut bindings: Vec<(NodeId, Arc<Image>)>, backgrounds: Arc<Backgrounds>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
+        check(cancel)?;
+        if bindings.len() > limits.bindings || bindings.len() > u32::MAX as usize {
+            return Err(Error::Limit);
+        }
+        if backgrounds.bytes > limits.bytes || backgrounds.pixels > limits.pixels {
+            return Err(Error::Limit);
+        }
+        let mut unique = HashSet::new();
+        let mut bytes = backgrounds.bytes;
+        let mut pixels = backgrounds.pixels;
         for (node, image) in &bindings {
             check(cancel)?;
             if document.namespace(*node).map_err(Error::Dom)? != Some(Namespace::Html) || !matches!(document.name(*node).map_err(Error::Dom)?, Some("img" | "canvas" | "video" | "iframe")) {
                 return Err(Error::Invalid);
             }
-            if unique.insert(Arc::as_ptr(image)) {
+            let at = Arc::as_ptr(image) as usize;
+            if !backgrounds.unique.contains(&at) && unique.insert(at) {
                 bytes = bytes.checked_add(image.payload_bytes()).ok_or(Error::Limit)?;
                 pixels = pixels.checked_add(image.payload_bytes() / 4).ok_or(Error::Limit)?;
                 if bytes > limits.bytes || pixels > limits.pixels {
@@ -341,7 +377,10 @@ impl Set {
             .into_iter()
             .filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas" | "video" | "iframe")))
             .collect();
-        let mut all = self.backgrounds.clone();
+        if backgrounds.is_empty() {
+            return Self::build(document, bindings, self.backgrounds.clone(), limits, cancel);
+        }
+        let mut all = self.backgrounds.by_url.clone();
         all.extend(backgrounds);
         Self::with_backgrounds(document, bindings, all, limits, cancel)
     }
@@ -354,7 +393,7 @@ impl Set {
             .into_iter()
             .filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas" | "video" | "iframe")))
             .collect();
-        Self::with_backgrounds(document, bindings, self.backgrounds.clone(), limits, cancel)
+        Self::build(document, bindings, self.backgrounds.clone(), limits, cancel)
     }
     /// A set from bindings alone.
     pub fn from_bindings(document: &Document, bindings: Vec<(NodeId, Arc<Image>)>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
@@ -420,19 +459,12 @@ impl Set {
     }
     /// A hash of the background images' identities (URL and pixels): the
     /// same across rebinds, so painted tiles can tell they are unchanged.
+    /// (Worked out once, when the set's backgrounds were.)
     pub fn backgrounds_identity(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut keys: Vec<(&Arc<str>, usize)> = self.backgrounds.iter().map(|(k, v)| (k, Arc::as_ptr(v) as usize)).collect();
-        keys.sort_by(|a, b| a.0.cmp(b.0));
-        let mut h = std::hash::DefaultHasher::new();
-        for (k, v) in keys {
-            k.hash(&mut h);
-            v.hash(&mut h);
-        }
-        h.finish()
+        self.backgrounds.identity
     }
     pub fn background(&self, url: &str) -> Option<&Arc<Image>> {
-        self.backgrounds.get(url)
+        self.backgrounds.by_url.get(url)
     }
     pub fn payload_bytes(&self) -> usize {
         self.bytes + std::mem::size_of_val(self.bindings.as_ref())
