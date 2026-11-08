@@ -225,7 +225,7 @@ pub(crate) fn run_tune(tuning: &Tuning) -> Result<String, String> {
     let json = serde_json::to_string(tuning).map_err(|e| e.to_string())?;
     // (Polkit asks for the password with Olo's agent: there's no way
     // across to root in process. In tests, as this user: nothing changes.)
-    let mut cmd = if std::env::var_os("OLO_REAL_SESSION").is_some() && std::env::var_os("OLO_SCREEN").is_none() {
+    let mut cmd = if olo_system::env::at_the_computer() {
         let mut c = Command::new("pkexec");
         c.arg("--disable-internal-agent").arg(&tune);
         c

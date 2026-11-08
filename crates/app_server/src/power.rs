@@ -418,6 +418,17 @@ fn run(job: Job, w: &mut Worker) {
     }
 }
 
+/// A screen nobody sits at (an agent's: `OLO_SCREEN`) is never idle: no
+/// saver, no blanking, no sleep and no lock, whatever its settings say.
+/// olo-screen writes them so, but the "agent" screen started its saver
+/// five minutes after an in-place restart, then locked itself with the
+/// person's lock screen, and stayed locked through every restart after
+/// (2026-11-07). Its lock comes only when asked for (`Request::Lock`).
+fn unattended() -> bool {
+    static UNATTENDED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *UNATTENDED.get_or_init(|| std::env::var_os("OLO_SCREEN").is_some_and(|s| !s.is_empty()))
+}
+
 impl<B: Backend> AnvilState<B> {
     /// Watch the presence sensor while a setting wants it (locking when
     /// the person walks away, waking when they come back), not otherwise:
@@ -540,7 +551,7 @@ impl<B: Backend> AnvilState<B> {
         }
         let settings = self.settings.power.clone();
         let p = &mut self.power;
-        let awake = p.caffeinated || !p.inhibitors.is_empty() || !p.keep_awake.is_empty();
+        let awake = p.caffeinated || !p.inhibitors.is_empty() || !p.keep_awake.is_empty() || unattended();
         if awake {
             p.last_activity = Instant::now();
         }

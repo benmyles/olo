@@ -62,7 +62,7 @@ fn start() -> Result<(Child, ChildStdin, BufReader<ChildStdout>), String> {
     let direct = std::env::var("OLO_NET_ADMIN").is_ok_and(|v| v == "direct");
     let mut cmd = if direct {
         Command::new(&helper)
-    } else if std::env::var_os("OLO_REAL_SESSION").is_some() && std::env::var_os("OLO_SCREEN").is_none() {
+    } else if olo_system::env::at_the_computer() {
         // (Polkit asks with Olo's agent; there's no way across to root in
         // process.)
         let mut c = Command::new("pkexec");

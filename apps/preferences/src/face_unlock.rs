@@ -62,7 +62,7 @@ fn sources() -> Option<(PathBuf, PathBuf, PathBuf)> {
 /// `olo-faced ARGS` as root, through polkit (its first line of output
 /// starting "error: " is what went wrong).
 fn as_root(faced: &Path, args: &[&str]) -> Result<(), String> {
-    if std::env::var_os("OLO_REAL_SESSION").is_none() || std::env::var_os("OLO_SCREEN").is_some() {
+    if !olo_system::env::at_the_computer() {
         return Err("Face unlock is installed only in the person's own session (polkit asks there).".into());
     }
     let out = std::process::Command::new("pkexec").arg("--disable-internal-agent").arg(faced).args(args).output().map_err(|e| e.to_string())?;

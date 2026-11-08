@@ -11158,7 +11158,13 @@ there moves the person's pointer or takes their focus. It runs the
 person's programs and files (their HOME), but with app_server settings
 of its own (`OLO_APP_SERVER_SETTINGS`, a copy of the person's at 1×
 unless asked, with no lock, screen saver, display sleep or system
-sleep), silent unless `--sound` (`PULSE_SERVER` pointed at nothing),
+sleep; app_server on a screen, `OLO_SCREEN` set, is never idle
+whatever its settings say: the "agent" screen once started its saver
+after an in-place restart and locked itself, 2026-11-07; it locks only
+when asked, `Request::Lock`, and its lock screen leaves the person's
+fingerprint reader, security key and camera alone, as everything
+outside their own session does: `olo_system::env::at_the_computer`),
+silent unless `--sound` (`PULSE_SERVER` pointed at nothing),
 without `DISPLAY` (X programs would show on the person's screen), and on
 a D-Bus session bus of its own (below, "A screen's own bus"). Screens
 are listed in `$XDG_RUNTIME_DIR/olo-screens/NAME.json` (the session's
