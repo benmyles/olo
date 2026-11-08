@@ -2226,14 +2226,19 @@ people.
   - His cameras: olo-face's `this_machines_units` opens every
     `/dev/video` node to find the infrared one (his rule: his cameras
     aren't opened without him).
-  - His real PAM stack and reader: `live_wrong_password` against
-    /etc/pam.d runs his face unlock (the IR camera) and counts toward
-    faillock, and `live_start_and_stop` wakes his fingerprint reader;
-    both pass against stand-ins (a PAM service of the test's own,
-    fake-readers).
+  - His fingerprint reader: `live_start_and_stop` claims it and starts a
+    verification, one of his approvals (his rule: his camera and his
+    approvals are his). Passes against fake-readers. (The real
+    `live_wrong_password` has run: password-auth here is pam_unix alone,
+    no face, reader or faillock; denied after its 1.9 s delay, one
+    authentication failure in the journal for it.)
   - The MacBook's palm captures, on the Mac (`on_real_hands`,
     `what_the_runs_dont_show`, `make_default_model`, which makes the
     shipped model from them).
+  - The Viewer's original sample clips, if they're kept anywhere (the
+    Mac?): not on this machine (/ and /home searched). The tests ran
+    and pass on clips of the same names made as HACKING says (ffmpeg's
+    testsrc2 through SVT-AV1, libvpx, NVENC; the JCT-VC stream).
 
 - **The ThinkPad's leftovers that are work, not a try** (from its entry
   above; each blocked on the hardware in hand or Ben's say):
