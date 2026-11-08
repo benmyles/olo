@@ -886,3 +886,34 @@ fn an_incremental_restyle_styles_elements_added_inside_a_shadow_tree() {
     assert!(after.iter().any(|(n, _)| n == line), "the new line in the shadow tree has a style");
     assert!(after.iter().any(|(n, _)| n == first));
 }
+#[test]
+fn like_siblings_share_styles_only_where_their_matches_agree() {
+    // Style sharing takes a sibling's style only when the tests met on the
+    // element answer the same (its place, :has(), :empty); keys inside
+    // :is() reject non-matching elements early but never matching ones.
+    let host = Snapshot::default();
+    let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+    let doc = olo_web::html::parse(
+        Arc::from("<!doctype html><body><ul><li>a</li><li>b</li><li>c</li><li><b>d</b></li><li></li></ul><div class=nav><p><i>in</i></p></div><p><i>out</i></p></body>"),
+        Default::default(),
+        None,
+    )
+    .unwrap()
+    .document;
+    let sheet = rules("li{color:red} li:nth-child(2){color:lime} li:has(b){color:blue} li:empty{color:aqua} :is(.nav p) i{color:navy} i{color:gray}");
+    let mut job = style::Job::new(&doc, &sheet, defaults, Default::default(), Default::default(), None).unwrap();
+    while !job.step(64, |_| &host).unwrap().finished {}
+    let tree = job.finish().unwrap();
+    let color = |name: &str, n: usize| -> [u8; 4] {
+        let node = tree.iter().map(|(node, _)| node).filter(|&node| doc.name(node).ok().flatten() == Some(name)).nth(n).unwrap();
+        let (_, style) = tree.iter().find(|(x, _)| *x == node).unwrap();
+        rgba(style, P::Color)
+    };
+    assert_eq!(color("li", 0), [255, 0, 0, 255]);
+    assert_eq!(color("li", 1), [0, 255, 0, 255], "the second, by its place");
+    assert_eq!(color("li", 2), [255, 0, 0, 255], "shares the first's");
+    assert_eq!(color("li", 3), [0, 0, 255, 255], "by what it holds");
+    assert_eq!(color("li", 4), [0, 255, 255, 255], "empty");
+    assert_eq!(color("i", 0), [0, 0, 128, 255], "under .nav p");
+    assert_eq!(color("i", 1), [128, 128, 128, 255], "not under .nav");
+}
