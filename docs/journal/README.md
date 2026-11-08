@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Browser: Shoelace's dialog, a styled web component
+
+*03:28* — shoelace.style's sl-dialog, a Lit component styled from its shadow tree's adopted sheets: centred over a dimmed page, its buttons Shoelace's own.
+
+![Browser: Shoelace's dialog, a styled web component](2026-11-08/032849-browser-shoelace-s-dialog-a-styled-web-component.png)
+
 ### Browser: apple.com at 2x against Chrome
 
 *03:14* — Top Olo, bottom Chrome, both at a device scale of 2: the headline and the gradient-clipped subhead pixel for pixel.

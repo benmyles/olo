@@ -831,6 +831,10 @@ impl Document {
     pub fn is_defined(&self, node: NodeId) -> Result<bool> {
         Ok(!self.name(node)?.is_some_and(|n| n.contains('-')) || self.defined.contains(&node))
     }
+    /// Whether any element hosts a shadow root.
+    pub fn has_shadows(&self) -> bool {
+        !self.shadows.is_empty()
+    }
     pub fn shadow_root(&self, host: NodeId) -> Option<NodeId> {
         if self.shadows.is_empty() { None } else { self.shadows.get(&host).copied() }
     }

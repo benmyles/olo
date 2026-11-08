@@ -4006,5 +4006,11 @@
   "title": "Browser: apple.com at 2x against Chrome",
   "caption": "Top Olo, bottom Chrome, both at a device scale of 2: the headline and the gradient-clipped subhead pixel for pixel.",
   "image": "2026-11-08/031456-browser-apple-com-at-2x-against-chrome.png"
+ },
+ {
+  "time": "2026-11-08T03:28:49",
+  "title": "Browser: Shoelace's dialog, a styled web component",
+  "caption": "shoelace.style's sl-dialog, a Lit component styled from its shadow tree's adopted sheets: centred over a dimmed page, its buttons Shoelace's own.",
+  "image": "2026-11-08/032849-browser-shoelace-s-dialog-a-styled-web-component.png"
  }
 ]

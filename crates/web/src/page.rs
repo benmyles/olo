@@ -494,6 +494,14 @@ impl Measurer {
         }
         let (ids, base, nodes) = sheet_identities(doc)?;
         self.checked = Some((doc.id(), doc.revision()));
+        if std::env::var_os("OLO_SHEET_DEBUG").is_some() {
+            eprintln!(
+                "  refresh: {} sheet elements ({} in shadow trees), {}",
+                nodes.len(),
+                nodes.iter().filter(|&&n| doc.shadow_scope(n).is_some()).count(),
+                if ids == self.sheet_ids { "as before" } else { "changed" }
+            );
+        }
         if ids == self.sheet_ids {
             return Ok(false);
         }
@@ -1336,6 +1344,13 @@ fn gather(
     }
     // The ordered small list avoids a second walk of all text/elements. Base
     // discovery is complete before any resource is fetched.
+    // With those in shadow trees (a scripted document's components), as
+    // `sheet_identities` finds them: the page's identities and its sheets
+    // must be of the same elements (else a later refresh finds nothing
+    // changed while the shadow trees' sheets were never loaded).
+    if doc.has_shadows() {
+        style_nodes = sheet_identities(&doc)?.2;
+    }
     let (loaded_sheets, sheet_issues) = load_sheets(&doc, &style_nodes, base.as_deref(), &mut resource, cancel)?;
     sheets.extend(loaded_sheets);
     resource_issues += sheet_issues;
@@ -1631,6 +1646,9 @@ impl Page {
     /// returns whether the rules were made again.
     pub fn refresh(&mut self, doc: &Document, cancel: Option<&AtomicBool>, resource: &mut impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>) -> Result<bool> {
         let (ids, base, nodes) = sheet_identities(doc)?;
+        if std::env::var_os("OLO_SHEET_DEBUG").is_some() {
+            eprintln!("  page refresh: {} sheet elements, {}", nodes.len(), if ids == self.sheet_ids { "as before" } else { "changed" });
+        }
         if ids == self.sheet_ids {
             return Ok(false);
         }

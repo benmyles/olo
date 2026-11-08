@@ -6507,3 +6507,11 @@ journal).
   matches at both but for the advertisement slot (an iframe Olo leaves
   empty) and a subscription banner Chrome showed. GitHub was serving
   504s to both browsers at the time.
+- **Shoelace's dialog as a modal.** Its components were styled for the
+  scripts' measurements but not on screen: the page made from the
+  scripted document gathered its sheets with a walk of the light DOM while
+  its sheet identities came from the shadow-aware one, so a later refresh
+  found nothing changed and the shadow trees' sheets were never loaded.
+  Both come from the same walk now. The dialog shows centred over a
+  dimmed page, its buttons and the sidebar's as Shoelace draws them.
+  Open: its primary button is light blue where Chrome's is orange.
