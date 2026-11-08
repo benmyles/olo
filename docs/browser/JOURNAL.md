@@ -6298,3 +6298,23 @@ journal).
   whole box: apple's 300%-wide shine layers would have washed the
   subtitle out), and a background colour clipped to the padding or
   content box no longer paints under the border.
+- **apple.com, top to bottom, again.** Most pictures below the first were
+  missing: its lazy loader replaces each `<picture>` with one parsed from
+  its `<noscript>` text, and an `<img>` parsed from a script's markup
+  loaded only when a script asked about it. Images now load as they join
+  the document, and a `<picture>` whose sources change chooses again.
+  Its Music tiles then took the 226 px fallback over the 122 px artwork:
+  `noscript.innerHTML` came back escaped (outerHTML wrote raw-text
+  elements as they are; innerHTML didn't look at the parent).
+- **apple took Olo for a tablet** (`touch no-desktop tablet` on `<html>`)
+  because `ontouchstart` was defined on window and elements; without a
+  touchscreen Chrome has none.
+- **Inline-level absolute boxes** stay in their paragraph as objects with
+  no size: their static position is their place in the line (the iPhone
+  Duo video, `translate(-50%)` with no inset in centred text, sat at the
+  left edge), a line of only such boxes is zero tall, and the paragraph
+  isn't split around them. Five boxes checked against Chrome's numbers.
+- **An SVG with only a viewBox** fills the available width at its ratio
+  (the Music, Fitness+ and Arcade logos were 300 px wide), and **a moved
+  layer clipped on one axis** shows: its ±1e30 clip wrapped to 0 tall in
+  device pixels, blanking the entertainment carousel.

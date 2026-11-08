@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: apple.com's carousel and lazy pictures
+
+*20:51* — Olo on apple.com: the entertainment carousel (blank before: a one-axis clip wrapped to 0 tall), the Fitness+, Arcade and Music logos at their size, the Music artwork from its noscript sources.
+
+![Browser: apple.com's carousel and lazy pictures](2026-11-07/205112-browser-apple-com-s-carousel-and-lazy-pictures.png)
+
 ### Browser: background-clip: text
 
 *20:10* — apple.com's 'PROLED XDR Display' subtitle, a gradient clipped to its glyphs: Chrome above, Olo below. Gradients also now take background-size, position and repeat.

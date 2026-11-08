@@ -69,6 +69,15 @@ apple.com and bbc.com (JOURNAL 2026-11-07, late), open:
 - [x] `background-clip: text` (apple.com's gradient subhead), on block
   boxes. Open: on an inline box, and comma-separated `background-clip`
   lists.
+- [x] apple.com scrolled through: lazy pictures load (images a script
+  inserts, `<picture>` sources changed, `noscript.innerHTML` as text),
+  no touch handlers (it served the tablet page), inline-level absolute
+  boxes at their place in the line, SVGs with only a viewBox fill the
+  width, a moved layer clipped on one axis shows. Open: `backdrop-filter`
+  (its nav: the page shows sharp through it; the fixed layer is
+  composited apart from the page, so the blur belongs in the window's
+  compositor), a space collapsed across an absolute box in a line (2 px),
+  its iPhone Duo subhead animation, inline backgrounds.
 - [x] Lazy images' timer loop: web-vitals' capturing window `load`
   listener got every image's load event (load events don't reach the
   window now). Open: `loading=lazy` images still never load.
