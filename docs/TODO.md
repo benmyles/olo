@@ -17,7 +17,34 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-(Nothing yet.)
+Leftovers found in finished entries (2026-11-08 audit: each checked
+against the code, still not there):
+
+- **Always on Top, from a window's menu** (the window menu's "Not yet",
+  done 2026-10-28): a window kept above the others on its workspace
+  until turned off; app_server keeps the state, the tab's menu and the
+  palette say it, agents set it.
+- **The overview: drag a window to another workspace; add a workspace**
+  (its "Not yet", done 2026-10-28): a window dragged onto another
+  workspace's pane moves there; a pane at the end adds a workspace.
+- **Passwords' SSH agent: allow with a touch or a look** (its "Left",
+  done 2026-11-05): the Allow for a terminal session's first signature
+  also answered by a security key's touch or face unlock, as unlocking
+  is.
+- **Telegram: record voice notes; animated stickers move** (its "Not
+  yet", done 2026-10-29): hold to record a voice note (Opus, in
+  process), and animated stickers (Lottie, WebM) play, not just their
+  first frame.
+- **Auto-tiling: master and stack, one transaction, a layout picker**
+  (its "Not yet", done 2026-10-28): a master-and-stack layout as dwm's,
+  every tile resized in one transaction, and a picker of layouts.
+- **Window menu: tile with…** (the window menu's other "Not yet"):
+  tile a window beside one chosen from a list.
+- **Shortcuts for programs that aren't Olo's** (the shortcut profiles'
+  "Not yet"): Chrome's own keys in the shortcuts sheet and the profile.
+- **app_server keeps its big buffers** (its "Left", 2026-11-02): a
+  screenshot's 31 MB texture and read-back kept for reuse, not left to
+  Mesa's 3-second cache (Screenshot's live resize, 18–21 ms then).
 
 ## Done, waiting for Ben to try or confirm
 
