@@ -921,8 +921,25 @@ fn main() {
         let messages = view.clone();
         olo_ui::message_handler(cx, move |message, cx| {
             if message.is::<worker::Reply>() {
-                if let Some(v) = messages.borrow().as_ref() {
-                    v.update(cx, |v, cx| v.reply(*message.downcast::<worker::Reply>().unwrap(), cx));
+                let reply = *message.downcast::<worker::Reply>().unwrap();
+                if let worker::Reply::Navigate { id, url, replace } = reply {
+                    // The page's own navigation (a script, a form): as a link's,
+                    // replacing the history entry when it asked to.
+                    if let Some(v) = messages.borrow().as_ref()
+                        && let Some(handle) = handle
+                        && v.read(cx).id == id
+                    {
+                        let _ = handle.update(cx, |_, w, cx| {
+                            v.update(cx, |v, cx| {
+                                if replace {
+                                    v.history.location(url.clone());
+                                }
+                                v.navigate(url, w, cx)
+                            })
+                        });
+                    }
+                } else if let Some(v) = messages.borrow().as_ref() {
+                    v.update(cx, |v, cx| v.reply(reply, cx));
                 }
             } else if message.is::<Launch>() {
                 let launch = *message.downcast::<Launch>().unwrap();

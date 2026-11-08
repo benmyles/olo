@@ -210,6 +210,8 @@ struct State {
     in_flight: HashMap<u64, Option<NodeId>>,
     /// The modules loaded so far, by URL.
     modules: modules::Modules,
+    /// A navigation the page asked for (location, a form), not yet taken.
+    navigation: Option<(String, bool)>,
     next_request: u64,
     /// Workers by id, with what they need to be made.
     workers: HashMap<u32, worker::Handle>,
@@ -365,6 +367,7 @@ impl Realm {
             requests: Vec::new(),
             in_flight: HashMap::new(),
             modules: modules::Modules::with_map(import_map),
+            navigation: None,
             next_request: 1,
             workers: HashMap::new(),
             next_worker: 1,
@@ -651,6 +654,11 @@ impl Realm {
     }
     /// The last layout made for the scripts' measurements, if any: a render
     /// of the same document keeps its styles and texts.
+    /// The navigation the page asked for since the last call (its URL and
+    /// whether it replaces the current history entry).
+    pub fn take_navigation(&self) -> Option<(String, bool)> {
+        self.state.borrow_mut().navigation.take()
+    }
     pub fn last_measured(&self) -> Option<Arc<olo_web::layout::Layout>> {
         self.state.borrow().measured.as_ref().map(|m| m.layout().clone())
     }
@@ -1020,6 +1028,7 @@ impl State {
             requests: Vec::new(),
             in_flight: HashMap::new(),
             modules: Default::default(),
+            navigation: None,
             next_request: 1,
             workers: HashMap::new(),
             next_worker: 1,
@@ -1533,6 +1542,11 @@ const NATIVES: &[&str] = &[
     "matches",
     "layoutGeneration",
     "wallNow",
+    "navigate",
+    "controlValue",
+    "setControlValue",
+    "controlChecked",
+    "setControlChecked",
     "cssProperties",
     "innerHTML",
     "setInnerHTML",
@@ -1863,6 +1877,38 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             if let Some(n) = node(scope, 0) {
                 let text = arg_string(scope, &args, 1);
                 let _ = state.borrow_mut().document.set_value(n, text);
+            }
+        }
+        // A form control's current value and checkedness (the document's
+        // control state, which the engine shows).
+        // A navigation the page asked for: the window goes there.
+        "navigate" => {
+            let url = arg_string(scope, &args, 0);
+            let replace = args.get(1).boolean_value(scope);
+            state.borrow_mut().navigation = Some((url, replace));
+        }
+        "controlValue" => {
+            if let Some(n) = node(scope, 0) {
+                let value = state.borrow().document.control_value(n).map(|v| v.into_owned()).unwrap_or_default();
+                rv.set(string(scope, &value));
+            }
+        }
+        "setControlValue" => {
+            if let Some(n) = node(scope, 0) {
+                let value = arg_string(scope, &args, 1);
+                let _ = state.borrow_mut().document.set_control_value(n, &value);
+            }
+        }
+        "controlChecked" => {
+            if let Some(n) = node(scope, 0) {
+                let checked = state.borrow().document.control_checked(n).unwrap_or(false);
+                rv.set(v8::Boolean::new(scope, checked).into());
+            }
+        }
+        "setControlChecked" => {
+            if let Some(n) = node(scope, 0) {
+                let checked = args.get(1).boolean_value(scope);
+                let _ = state.borrow_mut().document.set_control_checked(n, checked);
             }
         }
         "textContent" => {

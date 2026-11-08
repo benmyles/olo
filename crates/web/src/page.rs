@@ -233,6 +233,18 @@ pub const UA: &str = concat!(
     // With scripting, <noscript> holds its markup as raw text (HTML §13.2):
     // never shown.
     "@media (scripting:enabled){noscript{display:none!important}}",
+    // Form controls, as Chrome draws them (HTML §15.5): text fields and
+    // buttons in 13.33px Arial, fields white with an inset border, buttons
+    // grey with an outset one, text areas monospace; one line where a
+    // field is, its text vertically centred by the field's layout.
+    "input,textarea,select,button{display:inline-block;font:13.3333px Arial,sans-serif;letter-spacing:normal;word-spacing:normal;text-transform:none;text-indent:0;text-shadow:none;text-align:start;color:#000;box-sizing:content-box}",
+    "input{padding:1px 2px;border:2px inset #767676;background-color:#fff;width:177px;white-space:pre;overflow:clip}",
+    "input::placeholder,textarea::placeholder{color:#757575}",
+    "textarea{padding:2px;border:1px solid #767676;background-color:#fff;font-family:monospace;width:195px;height:36px;white-space:pre-wrap;overflow:auto}",
+    "select{border:1px solid #767676;border-radius:0;background-color:#efefef;padding:0 20px 0 4px;white-space:pre;color:#000}",
+    "input[type=submit],input[type=reset],input[type=button],button{padding:1px 6px;border:2px outset #000;background-color:#efefef;color:#000;width:auto;text-align:center;box-sizing:border-box}",
+    "input[type=checkbox],input[type=radio]{width:13px;height:13px;padding:0;border:0;margin:3px 3px 3px 4px;background-color:transparent;box-sizing:border-box}",
+    "input[type=hidden]{display:none!important}",
     "li{display:list-item}ul,menu,dir{list-style-type:disc;padding-inline-start:40px;margin-block:1em}ol{list-style-type:decimal;padding-inline-start:40px;margin-block:1em}",
     ":is(ul,ol,menu,dir) :is(ul,ol,menu,dir){margin-block:0}:is(ol,ul,menu,dir) ul{list-style-type:circle}:is(ol,ul,menu,dir) :is(ol,ul,menu,dir) ul{list-style-type:square}",
     "table{display:table;border-spacing:2px;box-sizing:border-box}caption{display:table-caption;text-align:center}colgroup{display:table-column-group}col{display:table-column}",
@@ -1710,7 +1722,7 @@ fn dirty_nodes(doc: &Document, revision: u64) -> Option<std::collections::HashSe
     let mut nodes = Vec::with_capacity(changes.len());
     for (_, change) in changes {
         nodes.push(match change {
-            Change::Node(n) | Change::Attribute { node: n, .. } | Change::Style(n) | Change::Text { node: n, .. } | Change::Children { node: n, .. } => *n,
+            Change::Node(n) | Change::Attribute { node: n, .. } | Change::Style(n) | Change::Text { node: n, .. } | Change::Children { node: n, .. } | Change::Control(n) => *n,
             Change::Unknown => return None,
         });
     }
@@ -1792,6 +1804,15 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
                 add(*node, true);
             }
             crate::dom::Change::Node(n) => return Err(format!("<{}> attributes", name(*n))),
+            // A control's value: its own style matched again (its states), and
+            // what it shows laid out again.
+            crate::dom::Change::Control(n) => {
+                if has_keys.any {
+                    return Err(format!("<{}>'s value: a :has() may test it", name(*n)));
+                }
+                add(*n, true);
+                relayout = true;
+            }
             // Text alone changes no element's style, bar `:empty` on its
             // parent (matched again) and a `:has()` testing that (not
             // patched), and those only when text appeared or went.

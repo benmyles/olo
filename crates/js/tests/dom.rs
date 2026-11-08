@@ -131,3 +131,66 @@ Promise.resolve().then(() => console.log(JSON.stringify(document.getElementById(
     assert_eq!(report.console, ["[log] 1 .a", "[log] 3 4 .b{color:blue}", "[log] IndexSizeError", "[log] 1 true", "[log] \".a{color:red}\\n.b{color:blue}\""]);
     let _ = doc;
 }
+fn find(doc: &olo_web::dom::Document, id: &str) -> olo_web::dom::NodeId {
+    let mut stack = vec![doc.root()];
+    while let Some(n) = stack.pop() {
+        if doc.attribute(n, "id").ok().flatten() == Some(id) {
+            return n;
+        }
+        stack.extend(doc.children(n).unwrap());
+    }
+    panic!("no #{id}")
+}
+#[test]
+fn typing_ticking_and_submitting_a_form() {
+    use olo_js::{Input, InputKind};
+    let page = r#"<form id=f action="/search"><input id=q name=q value="ol"><input id=c type=checkbox name=lucky><select name=s><option value=a>A<option value=b selected>B</select><button id=go>Go</button></form><script>
+const q = document.getElementById('q');
+q.addEventListener('input', (e) => console.log('input', e.inputType, q.value));
+document.getElementById('c').addEventListener('change', (e) => console.log('change', e.target.checked));
+document.getElementById('f').addEventListener('submit', () => console.log('submit'));
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let (q, c) = (find(&parsed.document, "q"), find(&parsed.document, "c"));
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/dir/page.html")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/dir/page.html".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., buttons: 0, modifiers: 0 };
+    let key = |k: &str, text: Option<&str>| at(InputKind::Key { down: true, key: k.into(), code: String::new(), text: text.map(Into::into) });
+    realm.input(&at(InputKind::Down), Some(q));
+    realm.input(&at(InputKind::Up), Some(q));
+    realm.input(&key("o", Some("o")), None);
+    realm.input(&key("x", Some("x")), None);
+    realm.input(&key("Backspace", None), None);
+    realm.input(&at(InputKind::Down), Some(c));
+    realm.input(&at(InputKind::Up), Some(c));
+    realm.input(&at(InputKind::Down), Some(q));
+    realm.input(&at(InputKind::Up), Some(q));
+    realm.input(&key("Enter", None), None);
+    let report = realm.report();
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] input insertText olo", "[log] input insertText olox", "[log] input deleteContentBackward olo", "[log] change true", "[log] submit"]);
+    assert_eq!(realm.take_navigation(), Some(("https://example.test/search?q=olo&lucky=on&s=b".to_owned(), false)));
+    let (doc, _) = realm.finish();
+    assert_eq!(doc.control_value(q).unwrap(), "olo");
+}
+#[test]
+fn responses_stream_their_bodies_and_take_streams() {
+    let (report, _) = run(r#"<script>
+const r = new Response('hello');
+const reader = r.body.getReader();
+reader.read().then(({ done, value }) => {
+  console.log(done, new TextDecoder().decode(value));
+  const s = new ReadableStream({ start(c) { c.enqueue(new Uint8Array([104, 105])); c.enqueue(new Uint8Array([33])); c.close(); } });
+  return new Response(s).arrayBuffer();
+}).then((b) => console.log(new TextDecoder().decode(new Uint8Array(b))));
+</script>"#);
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] false hello", "[log] hi!"]);
+}

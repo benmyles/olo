@@ -101,16 +101,62 @@
   global.__olo_blob = (u) => blobs.get(String(u)) || null;
   // Network: Headers, Request, Response over bytes; fetch.
   class Headers { constructor(init) { this._m = new Map(); if (init instanceof Headers) init.forEach((v, k) => this.append(k, v)); else if (Array.isArray(init)) for (const [k, v] of init) this.append(k, v); else if (init) for (const k of Object.keys(init)) this.append(k, init[k]); } append(k, v) { k = String(k).toLowerCase(); this._m.set(k, this._m.has(k) ? this._m.get(k) + ', ' + v : String(v)); } set(k, v) { this._m.set(String(k).toLowerCase(), String(v)); } get(k) { const v = this._m.get(String(k).toLowerCase()); return v === undefined ? null : v; } has(k) { return this._m.has(String(k).toLowerCase()); } delete(k) { this._m.delete(String(k).toLowerCase()); } forEach(fn, t) { for (const [k, v] of this._m) fn.call(t, v, k, this); } keys() { return this._m.keys(); } values() { return this._m.values(); } entries() { return this._m.entries(); } [Symbol.iterator]() { return this._m.entries(); } getSetCookie() { return []; } }
+  // Streams (WHATWG Streams, the reading half): a source's chunks queued
+  // through its controller, read in order by a reader or `for await`.
+  class ReadableStream {
+    constructor(source) {
+      this._queue = []; this._closed = false; this._error = null; this._waiters = []; this.locked = false;
+      const controller = { enqueue: (v) => { this._queue.push(v); this._wake(); }, close: () => { this._closed = true; this._wake(); }, error: (e) => { this._error = e || new Error('The stream errored.'); this._wake(); }, get desiredSize() { return 1; } };
+      this._pull = source && typeof source.pull === 'function' ? () => source.pull(controller) : null;
+      if (source && typeof source.start === 'function') { try { const r = source.start(controller); if (r && typeof r.catch === 'function') r.catch((e) => controller.error(e)); } catch (e) { controller.error(e); } }
+    }
+    _wake() { for (const f of this._waiters.splice(0)) f(); }
+    getReader() {
+      const self = this;
+      this.locked = true;
+      return {
+        read() {
+          return new Promise((resolve, reject) => {
+            const step = () => {
+              if (self._queue.length) return resolve({ done: false, value: self._queue.shift() });
+              if (self._error) return reject(self._error);
+              if (self._closed) return resolve({ done: true, value: undefined });
+              self._waiters.push(step);
+              if (self._pull) { const pull = self._pull; try { const r = pull(); if (r && typeof r.catch === 'function') r.catch((e) => { self._error = e; self._wake(); }); } catch (e) { self._error = e; self._wake(); } }
+            };
+            step();
+          });
+        },
+        releaseLock() { self.locked = false; },
+        cancel() { self._closed = true; self._queue = []; self._wake(); return Promise.resolve(); },
+        get closed() { return new Promise((resolve) => { const c = () => { if (self._closed) resolve(); else self._waiters.push(c); }; c(); }); },
+      };
+    }
+    cancel() { this._closed = true; this._queue = []; this._wake(); return Promise.resolve(); }
+    [Symbol.asyncIterator]() { const r = this.getReader(); return { next: () => r.read(), return: () => { r.releaseLock(); return Promise.resolve({ done: true, value: undefined }); } }; }
+    pipeThrough(transform) { return transform && transform.readable ? transform.readable : this; }
+    tee() { return [this, this]; }
+    static from(iterable) { return new ReadableStream({ async start(c) { for await (const v of iterable) c.enqueue(v); c.close(); } }); }
+  }
+  global.ReadableStream = ReadableStream;
+  // All of a stream's chunks, as bytes.
+  const readAll = async (stream) => { const r = stream.getReader(); const chunks = []; for (;;) { const { done, value } = await r.read(); if (done) break; chunks.push(toBytes(value)); } return concat(chunks); };
   class Body {
-    constructor(body) { this._bytes = toBytes(body); this.bodyUsed = false; }
+    constructor(body) { if (body instanceof ReadableStream) { this._source = body; this._bytes = new Uint8Array(0); } else this._bytes = toBytes(body); this.bodyUsed = false; }
+    _all() { this.bodyUsed = true; if (!this._source) return Promise.resolve(this._bytes); const source = this._source; this._source = null; return readAll(source).then((b) => (this._bytes = b)); }
     _bodyString() { return this._bytes.length ? decodeText(this._bytes) : ''; }
-    text() { this.bodyUsed = true; return Promise.resolve(decodeText(this._bytes)); }
+    text() { return this._all().then(decodeText); }
     json() { return this.text().then((t) => JSON.parse(t)); }
-    arrayBuffer() { this.bodyUsed = true; return Promise.resolve(bufferOf(this._bytes)); }
-    bytes() { this.bodyUsed = true; return Promise.resolve(new Uint8Array(this._bytes)); }
-    blob() { this.bodyUsed = true; return Promise.resolve(new Blob([this._bytes], { type: (this.headers && this.headers.get('content-type')) || '' })); }
+    arrayBuffer() { return this._all().then(bufferOf); }
+    bytes() { return this._all().then((b) => new Uint8Array(b)); }
+    blob() { return this._all().then((b) => new Blob([b], { type: (this.headers && this.headers.get('content-type')) || '' })); }
     formData() { return Promise.resolve(new FormData()); }
-    get body() { return null; }
+    // The bytes as a stream (one chunk), or the stream it was made from.
+    get body() {
+      if (this._source) return this._source;
+      if (!this._stream) { const bytes = this._bytes; this._stream = new ReadableStream({ start(c) { if (bytes.length) c.enqueue(new Uint8Array(bytes)); c.close(); } }); }
+      return this._stream;
+    }
   }
   class Response extends Body {
     constructor(body, init) { super(body); init = init || {}; this.status = init.status === undefined ? 200 : init.status; this.statusText = init.statusText || ''; this.headers = new Headers(init.headers); this.url = init.url || ''; this.type = 'basic'; this.redirected = false; }

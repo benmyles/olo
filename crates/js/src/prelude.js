@@ -431,10 +431,12 @@
     title: reflect('title'), lang: reflect('lang'), dir: reflect('dir'), tabIndex: reflect('tabindex', 'number'), accessKey: reflect('accesskey'), draggable: reflect('draggable', 'bool'), contentEditable: reflect('contenteditable'), spellcheck: reflect('spellcheck', 'bool'),
     href: reflect('href', 'url'), src: reflect('src', 'url'), action: reflect('action', 'url'), poster: reflect('poster', 'url'),
     alt: reflect('alt'), type: reflect('type'), name: reflect('name'), placeholder: reflect('placeholder'), rel: reflect('rel'), target: reflect('target'), method: reflect('method'), htmlFor: reflect('for'), label: reflect('label'), charset: reflect('charset'), media: reflect('media'), srcset: reflect('srcset'), sizes: reflect('sizes'), loading: reflect('loading'), decoding: reflect('decoding'), crossOrigin: reflect('crossorigin'), referrerPolicy: reflect('referrerpolicy'), integrity: reflect('integrity'), nonce: reflect('nonce'), role: reflect('role'), autocomplete: reflect('autocomplete'), pattern: reflect('pattern'), min: reflect('min'), max: reflect('max'), step: reflect('step'), accept: reflect('accept'), enctype: reflect('enctype'), httpEquiv: reflect('http-equiv'), scope: reflect('scope'), headers: reflect('headers'), abbr: reflect('abbr'), axis: reflect('axis'), align: reflect('align'), valign: reflect('valign'), bgColor: reflect('bgcolor'), border: reflect('border'), cellPadding: reflect('cellpadding'), cellSpacing: reflect('cellspacing'), summary: reflect('summary'), frame: reflect('frame'), rules: reflect('rules'), coords: reflect('coords'), shape: reflect('shape'), download: reflect('download'), ping: reflect('ping'), hreflang: reflect('hreflang'), as: reflect('as'), form: { get() { return this.closest('form'); } },
-    disabled: reflect('disabled', 'bool'), checked: reflect('checked', 'bool'), selected: reflect('selected', 'bool'), required: reflect('required', 'bool'), readOnly: reflect('readonly', 'bool'), multiple: reflect('multiple', 'bool'), autofocus: reflect('autofocus', 'bool'), open: reflect('open', 'bool'), controls: reflect('controls', 'bool'), autoplay: reflect('autoplay', 'bool'), loop: reflect('loop', 'bool'), muted: reflect('muted', 'bool'), playsInline: reflect('playsinline', 'bool'), async: reflect('async', 'bool'), defer: reflect('defer', 'bool'), noValidate: reflect('novalidate', 'bool'), reversed: reflect('reversed', 'bool'), isMap: reflect('ismap', 'bool'), noModule: reflect('nomodule', 'bool'),
+    disabled: reflect('disabled', 'bool'), checked: { get() { return N.controlChecked(this); }, set(v) { N.setControlChecked(this, !!v); if (v && (N.attr(this, 'type') || '').toLowerCase() === 'radio') uncheckGroup(this); } }, defaultChecked: reflect('checked', 'bool'), selected: reflect('selected', 'bool'), required: reflect('required', 'bool'), readOnly: reflect('readonly', 'bool'), multiple: reflect('multiple', 'bool'), autofocus: reflect('autofocus', 'bool'), open: reflect('open', 'bool'), controls: reflect('controls', 'bool'), autoplay: reflect('autoplay', 'bool'), loop: reflect('loop', 'bool'), muted: reflect('muted', 'bool'), playsInline: reflect('playsinline', 'bool'), async: reflect('async', 'bool'), defer: reflect('defer', 'bool'), noValidate: reflect('novalidate', 'bool'), reversed: reflect('reversed', 'bool'), isMap: reflect('ismap', 'bool'), noModule: reflect('nomodule', 'bool'),
     width: { get() { const v = N.attr(this, 'width'); if (v == null) { const n = N.nodeName(this); if (n === 'CANVAS') return 300; if (n === 'IMG') { const r = N.rect(this); if (r && r[2] > 0) return Math.round(r[2]); const z = imageSizeOf(this); return z ? z[0] : 0; } return 0; } return parseInt(v, 10) || 0; }, set(v) { N.setAttr(this, 'width', String(v)); if (N.nodeName(this) === 'CANVAS') { Object.defineProperty(this, '_sized', { value: true, configurable: true }); N.canvasSize(this, parseInt(v, 10) || 0, this.height); } } },
     height: { get() { const v = N.attr(this, 'height'); if (v == null) { const n = N.nodeName(this); if (n === 'CANVAS') return 150; if (n === 'IMG') { const r = N.rect(this); if (r && r[3] > 0) return Math.round(r[3]); const z = imageSizeOf(this); return z ? z[1] : 0; } return 0; } return parseInt(v, 10) || 0; }, set(v) { N.setAttr(this, 'height', String(v)); if (N.nodeName(this) === 'CANVAS') { Object.defineProperty(this, '_sized', { value: true, configurable: true }); N.canvasSize(this, this.width, parseInt(v, 10) || 0); } } },
-    value: { get() { const tag = N.nodeName(this); if (tag === 'TEXTAREA') return N.textContent(this); if (tag === 'SELECT') { const o = N.query(this, 'option[selected]', false) || N.query(this, 'option', false); return o ? o.value : ''; } if (tag === 'OPTION') { const v = N.attr(this, 'value'); return v == null ? N.textContent(this) : v; } const v = this._value; return v !== undefined ? v : (N.attr(this, 'value') || ''); }, set(v) { const tag = N.nodeName(this); if (tag === 'TEXTAREA') N.setTextContent(this, String(v)); else Object.defineProperty(this, '_value', { value: String(v), writable: true, configurable: true }); } },
+    value: { get() { const tag = N.nodeName(this); if (tag === 'INPUT' || tag === 'TEXTAREA') return N.controlValue(this); if (tag === 'SELECT') { const o = N.query(this, 'option[selected]', false) || N.query(this, 'option', false); return o ? o.value : ''; } if (tag === 'OPTION') { const v = N.attr(this, 'value'); return v == null ? N.textContent(this) : v; } const v = this._value; return v !== undefined ? v : (N.attr(this, 'value') || ''); }, set(v) { const tag = N.nodeName(this); v = v == null ? '' : String(v); if (tag === 'INPUT' || tag === 'TEXTAREA') { N.setControlValue(this, v); caretOf.set(this, v.length); } else if (tag === 'SELECT') { for (const o of N.query(this, 'option', true)) { if (o.value === v) N.setAttr(o, 'selected', ''); else N.removeAttr(o, 'selected'); } } else Object.defineProperty(this, '_value', { value: v, writable: true, configurable: true }); } },
+    selectionStart: { get() { return caretOf.has(this) ? caretOf.get(this) : this.value.length; }, set(v) { caretOf.set(this, Math.max(0, Math.min(Number(v) || 0, this.value.length))); } },
+    selectionEnd: { get() { return caretOf.has(this) ? caretOf.get(this) : this.value.length; }, set(v) { caretOf.set(this, Math.max(0, Math.min(Number(v) || 0, this.value.length))); } },
     defaultValue: reflect('value'),
     start: reflect('start', 'number'), span: reflect('span', 'number'), colSpan: reflect('colspan', 'number'), rowSpan: reflect('rowspan', 'number'), size: reflect('size', 'number'), maxLength: reflect('maxlength', 'number'), minLength: reflect('minlength', 'number'), rows: reflect('rows', 'number'), cols: reflect('cols', 'number'),
     naturalWidth: { get() { const z = imageSizeOf(this); return z ? z[0] : 0; } }, naturalHeight: { get() { const z = imageSizeOf(this); return z ? z[1] : 0; } },
@@ -508,9 +510,9 @@
     insertAdjacentText(where, text) { this.insertAdjacentNodes(where, [N.createText(String(text))]); },
     getBoundingClientRect() { const r = N.rect(this); return r ? new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]) : new DOMRect(0, 0, 0, 0); },
     getClientRects() { const r = N.rect(this); return listOf(r ? [new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3])] : [], global.DOMRectList); },
-    focus() { focusElement(this); }, blur() { if (activeElement === this) focusElement(null); }, select() {}, setSelectionRange() {}, scrollIntoView() {}, scrollTo() {}, scrollBy() {}, scroll() {},
-    click() { dispatch(this, Object.assign(new MouseEvent('click', { bubbles: true, cancelable: true }), { isTrusted: false })); },
-    submit() {}, reset() {}, requestSubmit() {}, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
+    focus() { focusElement(this); }, blur() { if (activeElement === this) focusElement(null); }, select() { caretOf.set(this, this.value.length); }, setSelectionRange(a) { caretOf.set(this, Math.max(0, Math.min(Number(a) || 0, this.value.length))); }, scrollIntoView() {}, scrollTo() {}, scrollBy() {}, scroll() {},
+    click() { const el = this; if (N.attr(el, 'disabled') != null && ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(N.nodeName(el))) return; activate(el, () => { const ev = Object.assign(new MouseEvent('click', { bubbles: true, cancelable: true }), { isTrusted: false }); dispatch(el, ev); return ev; }); },
+    submit() { if (N.nodeName(this) === 'FORM') submitForm(this, null, false); }, reset() { if (N.nodeName(this) === 'FORM') for (const c of N.query(this, 'input,textarea', true)) N.setControlValue(c, N.nodeName(c) === 'TEXTAREA' ? N.textContent(c) : (N.attr(c, 'value') || '')); }, requestSubmit(submitter) { if (N.nodeName(this) === 'FORM') submitForm(this, submitter || null, true); }, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
     animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), null); a.play(); return a; },
     getAnimations() { return animations.filter((a) => a.effect && a.effect.target === this && a.playState !== 'idle'); },
     attachShadow(init) { const root = N.createFragment(); Object.defineProperty(this, '_shadow', { value: root, configurable: true }); Object.defineProperty(root, 'host', { value: this }); Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open' }); return root; },
@@ -717,8 +719,10 @@
   const resolveURL = (s) => { try { return new URL(s, N.url()).href; } catch (e) { return String(s); } };
   const pageURL = new URL(N.url());
   const location = {};
-  for (const k of ['href', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'origin']) Object.defineProperty(location, k, { get() { return pageURL[k]; }, set(v) { if (k === 'href') log('warn', ['navigation requested: ' + v]); else pageURL[k] = v; }, enumerable: true });
-  Object.assign(location, { assign(u) { log('warn', ['navigation requested: ' + u]); }, replace(u) { log('warn', ['navigation requested: ' + u]); }, reload() {}, toString() { return pageURL.href; }, ancestorOrigins: listOf([]) });
+  // Navigation: the window goes there (a fragment of this page, a scroll).
+  const navigate = (u, replace) => { const url = resolveURL(String(u)); N.navigate(url, !!replace); };
+  for (const k of ['href', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'origin']) Object.defineProperty(location, k, { get() { return pageURL[k]; }, set(v) { if (k === 'href') { navigate(v); return; } if (k === 'origin') return; const u = new URL(pageURL.href); u[k] = v; navigate(u.href); }, enumerable: true });
+  Object.assign(location, { assign(u) { navigate(u); }, replace(u) { navigate(u, true); }, reload() { navigate(pageURL.href, true); }, toString() { return pageURL.href; }, ancestorOrigins: listOf([]) });
   global.location = location;
   const history = { length: 1, state: null, scrollRestoration: 'auto', pushState(state, title, url) { this.state = state; if (url != null) { const u = new URL(String(url), pageURL.href); pageURL.href = u.href; } }, replaceState(state, title, url) { this.pushState(state, title, url); }, back() {}, forward() {}, go() {} };
   global.history = history;
@@ -884,19 +888,135 @@
   let hoverTarget = null, pressTarget = null, activeElement = null;
   const FOCUSABLE = 'a[href],button,input,select,textarea,summary,[tabindex],[contenteditable]';
   const ancestors = (el) => { const out = []; let n = el; while (n && N.nodeType(n) === 1) { out.push(n); n = N.parent(n); } return out; };
+  // Form controls: the caret of each field, the value it had when focused
+  // (a change event when it leaves changed), and what the person's input
+  // does by default (typing, ticking, submitting).
+  const caretOf = new WeakMap();
+  const valueAtFocus = new WeakMap();
+  const TEXT_TYPES = ['', 'text', 'search', 'email', 'url', 'tel', 'password', 'number'];
+  const typeOf = (el) => (N.attr(el, 'type') || '').trim().toLowerCase();
+  const editable = (el) => {
+    const tag = N.nodeName(el);
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA') return false;
+    if (N.attr(el, 'disabled') != null || N.attr(el, 'readonly') != null) return false;
+    return tag === 'TEXTAREA' || TEXT_TYPES.includes(typeOf(el));
+  };
+  const formOf = (el) => { const id = N.attr(el, 'form'); if (id) { const f = documentNode.getElementById(id); if (f) return f; } return el.closest ? el.closest('form') : null; };
+  const uncheckGroup = (el) => {
+    const name = N.attr(el, 'name');
+    if (!name) return;
+    const form = formOf(el);
+    for (const o of N.query(form || documentNode, 'input', true)) if (o !== el && typeOf(o) === 'radio' && N.attr(o, 'name') === name && formOf(o) === form) N.setControlChecked(o, false);
+  };
+  const isSubmitter = (el) => { const tag = N.nodeName(el); if (tag === 'BUTTON') { const t = typeOf(el); return t === '' || t === 'submit'; } return tag === 'INPUT' && (typeOf(el) === 'submit' || typeOf(el) === 'image'); };
+  // The form's data set (HTML §4.10.21.4), in tree order.
+  const formEntries = (form, submitter) => {
+    const out = [];
+    for (const c of N.query(form, 'input,select,textarea,button', true)) {
+      if (formOf(c) !== form || N.attr(c, 'disabled') != null || c.closest('fieldset[disabled]')) continue;
+      const name = N.attr(c, 'name');
+      const tag = N.nodeName(c), t = typeOf(c);
+      if (tag === 'BUTTON' || ['submit', 'image', 'reset', 'button'].includes(t)) { if (c === submitter && name) out.push([name, c.value]); continue; }
+      if (!name || t === 'file') continue;
+      if ((t === 'checkbox' || t === 'radio') && !N.controlChecked(c)) continue;
+      if (tag === 'SELECT') { const options = N.query(c, 'option', true); const chosen = options.filter((o) => N.attr(o, 'selected') != null); for (const o of (chosen.length ? chosen : options.slice(0, 1))) out.push([name, o.value]); continue; }
+      out.push([name, (t === 'checkbox' || t === 'radio') && N.attr(c, 'value') == null ? 'on' : c.value]);
+    }
+    return out;
+  };
+  const submitForm = (form, submitter, event) => {
+    if (event) { const ev = new Event('submit', { bubbles: true, cancelable: true }); ev.submitter = submitter || null; if (!dispatch(form, ev)) return; }
+    const method = ((submitter && N.attr(submitter, 'formmethod')) || N.attr(form, 'method') || 'get').trim().toLowerCase();
+    const action = resolveURL((submitter && N.attr(submitter, 'formaction')) || N.attr(form, 'action') || pageURL.href);
+    const entries = formEntries(form, submitter);
+    if (method === 'dialog') return;
+    if (method === 'get') { const u = new URL(action); u.search = new URLSearchParams(entries).toString(); navigate(u.href); return; }
+    log('warn', ['form ' + method.toUpperCase() + ' to ' + action + ' is not supported yet']);
+  };
+  // Implicit submission (Enter in a field): the form's first submit
+  // button clicked, else the form submitted if it has one field.
+  const implicitSubmit = (el) => {
+    const form = formOf(el);
+    if (!form) return;
+    const button = N.query(form, 'button,input', true).find((b) => formOf(b) === form && isSubmitter(b));
+    if (button) { if (N.attr(button, 'disabled') == null) button.click(); return; }
+    submitForm(form, null, true);
+  };
+  const editText = (el, kind, data) => {
+    const value = N.controlValue(el);
+    let caret = caretOf.has(el) ? Math.min(caretOf.get(el), value.length) : value.length;
+    let next = value, at = caret;
+    if (kind === 'insertText' || kind === 'insertLineBreak') { next = value.slice(0, caret) + data + value.slice(caret); at = caret + data.length; }
+    else if (kind === 'deleteContentBackward') { if (!caret) return; next = value.slice(0, caret - 1) + value.slice(caret); at = caret - 1; }
+    else if (kind === 'deleteContentForward') { if (caret >= value.length) return; next = value.slice(0, caret) + value.slice(caret + 1); }
+    const before = new InputEvent('beforeinput', { bubbles: true, cancelable: true, composed: true, inputType: kind, data: data || null });
+    if (!dispatch(el, before)) return;
+    const max = parseInt(N.attr(el, 'maxlength'), 10);
+    if (max >= 0 && next.length > max && next.length > value.length) return;
+    N.setControlValue(el, next);
+    caretOf.set(el, at);
+    dispatch(el, new InputEvent('input', { bubbles: true, composed: true, inputType: kind, data: data || null }));
+  };
+  global.__olo_submitForm = submitForm;
   const focusElement = (el) => {
     const old = activeElement && N.isConnected(activeElement) ? activeElement : null;
     if (el === old) return;
+    if (old && editable(old) && valueAtFocus.has(old) && valueAtFocus.get(old) !== N.controlValue(old)) dispatch(old, new Event('change', { bubbles: true }));
+    if (el && editable(el)) { valueAtFocus.set(el, N.controlValue(el)); if (!caretOf.has(el)) caretOf.set(el, N.controlValue(el).length); }
     activeElement = el;
     if (old) { dispatch(old, new FocusEvent('blur', { relatedTarget: el })); dispatch(old, new FocusEvent('focusout', { bubbles: true, relatedTarget: el })); }
     if (el) { dispatch(el, new FocusEvent('focus', { relatedTarget: old })); dispatch(el, new FocusEvent('focusin', { bubbles: true, relatedTarget: old })); }
   };
+  // A click and what it does by default (HTML's activation behaviour): a
+  // checkbox or radio toggled before the click (put back if it was
+  // cancelled), a label's control activated, a submit button's form
+  // submitted, a reset button's reset.
+  const activate = (target, click) => {
+    const control = (target.closest && target.closest('input,button,label,a')) || null;
+    const toggle = control && N.nodeName(control) === 'INPUT' && ['checkbox', 'radio'].includes(typeOf(control)) && N.attr(control, 'disabled') == null ? control : null;
+    const was = toggle ? N.controlChecked(toggle) : false;
+    if (toggle) { if (typeOf(toggle) === 'radio') { if (!was) { N.setControlChecked(toggle, true); uncheckGroup(toggle); } } else N.setControlChecked(toggle, !was); }
+    const ev = click();
+    if (ev && ev.defaultPrevented) { if (toggle) N.setControlChecked(toggle, was); return; }
+    if (toggle) { if (was !== N.controlChecked(toggle)) { dispatch(toggle, new Event('input', { bubbles: true, composed: true })); dispatch(toggle, new Event('change', { bubbles: true })); } return; }
+    if (!control || N.attr(control, 'disabled') != null) return;
+    const tag = N.nodeName(control);
+    if (tag === 'LABEL') {
+      const id = N.attr(control, 'for');
+      const labelled = id ? documentNode.getElementById(id) : N.query(control, 'input,select,textarea,button', false);
+      if (labelled && labelled !== target && !control.contains(target.closest ? target.closest('input,select,textarea,button') : null)) { if (['checkbox', 'radio'].includes(typeOf(labelled)) || isSubmitter(labelled)) labelled.click(); else focusElement(labelled); }
+      return;
+    }
+    if (isSubmitter(control)) { const form = formOf(control); if (form) submitForm(form, control, true); return; }
+    if ((tag === 'BUTTON' || tag === 'INPUT') && typeOf(control) === 'reset') { const form = formOf(control); if (form) for (const c of N.query(form, 'input,textarea', true)) { const v = N.nodeName(c) === 'TEXTAREA' ? N.textContent(c) : (N.attr(c, 'value') || ''); N.setControlValue(c, v); } }
+  };
+  // Event handler IDL attributes (HTML §8.1.8.2): `onclick` and the rest,
+  // null until set, on elements, the document and the window (React
+  // tests 'oninput' in document; without it, it takes IE's path).
+  {
+    const common = ['abort', 'animationend', 'animationiteration', 'animationstart', 'auxclick', 'beforeinput', 'blur', 'cancel', 'canplay', 'canplaythrough', 'change', 'click', 'close', 'contextmenu', 'copy', 'cut', 'dblclick', 'drag', 'dragend', 'dragenter', 'dragleave', 'dragover', 'dragstart', 'drop', 'durationchange', 'ended', 'error', 'focus', 'focusin', 'focusout', 'gotpointercapture', 'input', 'invalid', 'keydown', 'keypress', 'keyup', 'load', 'loadeddata', 'loadedmetadata', 'loadstart', 'lostpointercapture', 'mousedown', 'mouseenter', 'mouseleave', 'mousemove', 'mouseout', 'mouseover', 'mouseup', 'paste', 'pause', 'play', 'playing', 'pointercancel', 'pointerdown', 'pointerenter', 'pointerleave', 'pointermove', 'pointerout', 'pointerover', 'pointerup', 'progress', 'ratechange', 'reset', 'resize', 'scroll', 'scrollend', 'seeked', 'seeking', 'select', 'selectionchange', 'selectstart', 'stalled', 'submit', 'suspend', 'timeupdate', 'toggle', 'touchcancel', 'touchend', 'touchmove', 'touchstart', 'transitioncancel', 'transitionend', 'transitionrun', 'transitionstart', 'volumechange', 'waiting', 'wheel'];
+    const windowOnly = ['afterprint', 'beforeprint', 'beforeunload', 'hashchange', 'languagechange', 'message', 'messageerror', 'offline', 'online', 'pagehide', 'pageshow', 'popstate', 'rejectionhandled', 'storage', 'unhandledrejection', 'unload'];
+    const handlers = new WeakMap();
+    const define = (target, names) => {
+      for (const name of names) {
+        const key = 'on' + name;
+        if (Object.prototype.hasOwnProperty.call(target, key)) continue;
+        Object.defineProperty(target, key, { configurable: true, enumerable: true, get() { const m = handlers.get(this); return (m && m[key]) || null; }, set(v) { let m = handlers.get(this); if (!m) { m = {}; handlers.set(this, m); } m[key] = typeof v === 'function' ? v : null; } });
+      }
+    };
+    define(Element.prototype, common);
+    define(Object.getPrototypeOf(documentNode), common.concat(['readystatechange', 'visibilitychange', 'fullscreenchange', 'pointerlockchange']));
+    define(global, common.concat(windowOnly));
+  }
   global.__olo_input = (json, target) => {
     const i = JSON.parse(json);
     scrollXY[0] = 0;
     scrollXY[1] = i.scrollY;
     global.scrollY = global.pageYOffset = i.scrollY;
-    if (!target || !N.isConnected(target)) target = document.body || documentNode;
+    // Pointer events target elements: text under the pointer is its
+    // parent's (UI Events §4.3).
+    while (target && N.nodeType(target) !== 1 && N.parent(target)) target = N.parent(target);
+    if (!target || !N.isConnected(target) || N.nodeType(target) !== 1) target = document.body || documentNode;
     const base = { bubbles: true, cancelable: true, composed: true, view: global, clientX: i.x, clientY: i.y - i.scrollY, pageX: i.x, pageY: i.y, screenX: i.x, screenY: i.y - i.scrollY, buttons: i.buttons, shiftKey: !!(i.modifiers & 1), ctrlKey: !!(i.modifiers & 2), altKey: !!(i.modifiers & 4), metaKey: !!(i.modifiers & 8) };
     let prevented = false;
     const fire = (Ctor, type, at, extra) => { const ev = new Ctor(type, Object.assign({}, base, extra || {})); ev.isTrusted = true; if (!dispatch(at, ev)) prevented = true; return ev; };
@@ -924,7 +1044,7 @@
       case 'up': {
         fire(PointerEvent, 'pointerup', target, { button: 0, buttons: 0 });
         fire(MouseEvent, 'mouseup', target, { button: 0, buttons: 0 });
-        if (pressTarget && N.isConnected(pressTarget)) { const chain = ancestors(pressTarget); const common = ancestors(target).find((el) => chain.includes(el)) || null; if (common) { fire(PointerEvent, 'click', common, { button: 0, buttons: 0, detail: 1 }); } }
+        if (pressTarget && N.isConnected(pressTarget)) { const chain = ancestors(pressTarget); const common = ancestors(target).find((el) => chain.includes(el)) || null; if (common) activate(common, () => fire(PointerEvent, 'click', common, { button: 0, buttons: 0, detail: 1 })); }
         pressTarget = null;
         break;
       }
@@ -934,6 +1054,21 @@
         const init = { key: i.key, code: i.code, repeat: false, keyCode: i.key.length === 1 ? i.key.toUpperCase().charCodeAt(0) : ({ Enter: 13, Escape: 27, Tab: 9, Backspace: 8, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, ' ': 32 }[i.key] || 0) };
         const ev = fire(KeyboardEvent, i.down ? 'keydown' : 'keyup', at, init);
         if (i.down && i.text && !ev.defaultPrevented) fire(KeyboardEvent, 'keypress', at, Object.assign({ charCode: i.text.charCodeAt(0) }, init));
+        // A field's editing, the default of a key not prevented.
+        if (i.down && !ev.defaultPrevented && editable(at) && !(i.modifiers & 10)) {
+          const area = N.nodeName(at) === 'TEXTAREA';
+          const value = N.controlValue(at), caret = caretOf.has(at) ? Math.min(caretOf.get(at), value.length) : value.length;
+          if (i.key === 'Enter') { if (area) editText(at, 'insertLineBreak', '\n'); else implicitSubmit(at); }
+          else if (i.key === 'Backspace') editText(at, 'deleteContentBackward');
+          else if (i.key === 'Delete') editText(at, 'deleteContentForward');
+          else if (i.key === 'ArrowLeft') caretOf.set(at, Math.max(0, caret - 1));
+          else if (i.key === 'ArrowRight') caretOf.set(at, Math.min(value.length, caret + 1));
+          else if (i.key === 'Home') caretOf.set(at, 0);
+          else if (i.key === 'End') caretOf.set(at, value.length);
+          else if (i.text && i.text >= ' ' && i.text !== '\u007f') editText(at, 'insertText', i.text);
+        } else if (i.down && !ev.defaultPrevented && i.key === ' ' && at && N.nodeName(at) === 'INPUT' && ['checkbox', 'radio'].includes(typeOf(at))) {
+          activate(at, () => fire(MouseEvent, 'click', at, { detail: 0 }));
+        }
         break;
       }
       case 'scroll': dispatch(documentNode, new Event('scroll', { bubbles: true })); break;

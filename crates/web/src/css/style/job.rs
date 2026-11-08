@@ -442,6 +442,7 @@ impl<'a> Job<'a> {
                         .take(12)
                         .map(|(_, c)| match c {
                             crate::dom::Change::Node(n) => format!("node <{}>", name(*n)),
+                            crate::dom::Change::Control(n) => format!("<{}>'s value", name(*n)),
                             crate::dom::Change::Attribute { node: n, name: a, old, new } => {
                                 format!(
                                     "<{}> {a}: {:?} -> {:?}",
@@ -485,6 +486,15 @@ impl<'a> Job<'a> {
                         // the attribute, descendants when a selector does.
                         // (A keyless :has() argument tests states or structure,
                         // which an inline style cannot change.)
+                        // A control's value or checkedness: its own
+                        // states (:checked, :placeholder-shown), what it shows.
+                        crate::dom::Change::Control(n) => {
+                            geometry_kept = false;
+                            nodes.insert(*n);
+                            if uses_has {
+                                dirty_ancestors(*n, &mut nodes);
+                            }
+                        }
                         crate::dom::Change::Style(n) => {
                             style_only.insert(*n);
                             if uses_has && has_keys.attributes.contains("style") {
@@ -914,7 +924,7 @@ impl<'a> Job<'a> {
             self.tree.slots[node.slot() as usize] = NonZeroU32::new(index as u32 + 1);
             self.account.add(&self.tree.styles[index].style);
             let mut pseudos = 0usize;
-            for pseudo in [PseudoElement::Before, PseudoElement::After] {
+            for pseudo in [PseudoElement::Before, PseudoElement::After, PseudoElement::Placeholder] {
                 if let Some(&p) = inc.tree.pseudos.get(&(node, pseudo)) {
                     let style = inc.tree.styles[p as usize].style.clone();
                     let at = self.tree.styles.len() as u32;
@@ -1243,7 +1253,7 @@ impl<'a> Job<'a> {
             }
             let pseudos = self.compute_pseudos(node, &style, &h)?;
             // The pseudo-elements must be the ones there before.
-            for pseudo in [PseudoElement::Before, PseudoElement::After] {
+            for pseudo in [PseudoElement::Before, PseudoElement::After, PseudoElement::Placeholder] {
                 if self.tree.pseudos.contains_key(&(node, pseudo)) != pseudos.iter().any(|(p, _)| *p == pseudo) {
                     return Ok(Err(format!("<{}>'s {pseudo:?} came or went", name(self, node))));
                 }
@@ -1475,6 +1485,44 @@ impl<'a> Job<'a> {
                 continue;
             }
             out.push((pseudo, style));
+        }
+        // A text field's or area's placeholder: styled by `::placeholder`
+        // rules, no `content` needed (the field shows it while empty).
+        if self.rules.has_pseudo(PseudoElement::Placeholder)
+            && matches!(self.document.name(node).map_err(Error::Dom)?, Some("input" | "textarea"))
+            && self.document.attribute(node, "placeholder").map_err(Error::Dom)?.is_some()
+        {
+            self.tick()?;
+            let cascade = self
+                .rules
+                .match_element_with_hints(
+                    &dom,
+                    node,
+                    selectors::MatchOptions { quirks: self.options.quirks, pseudo: Some(PseudoElement::Placeholder), ..Default::default() },
+                    None,
+                    None,
+                    Some(element as &dyn cascade::Inherited),
+                    self.limits.cascade,
+                    self.limits.matching,
+                    &mut self.scratch,
+                    Some(&self.ancestors),
+                    self.cancelled,
+                )
+                .map_err(Error::cascade)?;
+            let root = self.root.map(|i| &self.tree.styles[i].style);
+            let style = Style::compute_reusing(
+                self.defaults.clone(),
+                &cascade,
+                Some(element),
+                root,
+                None,
+                Some(&mut self.fonts),
+                host,
+                Options { root: false, layout_parent: None, ..Default::default() },
+                self.limits.style,
+                self.cancelled,
+            )?;
+            out.push((PseudoElement::Placeholder, style));
         }
         Ok(out)
     }

@@ -293,8 +293,19 @@ pub enum Change {
     /// `elements` when an element was among them (text alone cannot
     /// change what an ancestor's `:has()` finds, bar `:empty`).
     Children { node: NodeId, elements: bool },
+    /// A form control's current value or checkedness changed (typed,
+    /// ticked, set by a script): what it shows, and `:checked`,
+    /// `:placeholder-shown` and the like.
+    Control(NodeId),
     /// A change the log does not describe: everything may have changed.
     Unknown,
+}
+/// A form control's state apart from its attributes; None where the
+/// attribute still decides (a value never edited: the `value` attribute).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ControlState {
+    pub value: Option<Arc<str>>,
+    pub checked: Option<bool>,
 }
 /// How many changes the log keeps before giving up on describing them.
 const CHANGES: usize = 1 << 16;
@@ -325,6 +336,10 @@ pub struct Document {
     /// Names and their atoms, shared with snapshots, copied on a new name.
     names: Arc<Vec<Arc<str>>>,
     atoms: Arc<HashMap<Arc<str>, Atom>>,
+    /// Form controls' current state, apart from their attributes (HTML's
+    /// value and checkedness: what the person typed or ticked), shared
+    /// with snapshots.
+    controls: Arc<HashMap<NodeId, ControlState>>,
     name_bytes: usize,
     limits: Limits,
 }
@@ -369,6 +384,7 @@ impl Document {
             owned_bytes: 0,
             names: Arc::new(Vec::new()),
             atoms: Arc::new(HashMap::new()),
+            controls: Arc::new(HashMap::new()),
             name_bytes: 0,
             limits,
         })
@@ -416,6 +432,54 @@ impl Document {
     /// A mutation the log cannot describe: restyles start over.
     fn bump(&mut self) -> Result<()> {
         self.bump_with(Change::Unknown)
+    }
+    /// A control's state (None: as its attributes say).
+    pub fn control(&self, id: NodeId) -> Option<&ControlState> {
+        self.controls.get(&id)
+    }
+    /// A control's current value: the edited one, else its `value`
+    /// attribute (a `<textarea>`'s, its text).
+    pub fn control_value(&self, id: NodeId) -> Result<std::borrow::Cow<'_, str>> {
+        if let Some(v) = self.controls.get(&id).and_then(|c| c.value.as_deref()) {
+            return Ok(std::borrow::Cow::Borrowed(v));
+        }
+        if self.name(id)? == Some("textarea") {
+            let mut text = String::new();
+            for child in self.children(id)? {
+                if let Some(v) = self.value(child)? {
+                    text.push_str(v);
+                }
+            }
+            return Ok(std::borrow::Cow::Owned(text));
+        }
+        Ok(std::borrow::Cow::Borrowed(self.attribute(id, "value")?.unwrap_or("")))
+    }
+    /// Set a control's current value (typed, or by a script's `value`).
+    pub fn set_control_value(&mut self, id: NodeId, value: &str) -> Result<bool> {
+        self.resolve(id)?;
+        if self.controls.get(&id).and_then(|c| c.value.as_deref()) == Some(value) {
+            return Ok(false);
+        }
+        Arc::make_mut(&mut self.controls).entry(id).or_default().value = Some(Arc::from(value));
+        self.bump_with(Change::Control(id))?;
+        Ok(true)
+    }
+    /// Set a checkbox's or radio button's checkedness.
+    pub fn set_control_checked(&mut self, id: NodeId, checked: bool) -> Result<bool> {
+        self.resolve(id)?;
+        if self.controls.get(&id).and_then(|c| c.checked) == Some(checked) {
+            return Ok(false);
+        }
+        Arc::make_mut(&mut self.controls).entry(id).or_default().checked = Some(checked);
+        self.bump_with(Change::Control(id))?;
+        Ok(true)
+    }
+    /// Whether a checkbox or radio button is checked now.
+    pub fn control_checked(&self, id: NodeId) -> Result<bool> {
+        match self.controls.get(&id).and_then(|c| c.checked) {
+            Some(c) => Ok(c),
+            None => Ok(self.attribute(id, "checked")?.is_some()),
+        }
     }
     fn bump_with(&mut self, change: Change) -> Result<()> {
         self.revision = self.revision.checked_add(1).ok_or(Error::RevisionOverflow)?;

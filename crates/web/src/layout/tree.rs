@@ -859,6 +859,44 @@ impl<'a> BuildJob<'a> {
                         }
                         continue;
                     }
+                    // Text fields, text areas, selects and buttons show their
+                    // text: a block (inline-block by the user-agent sheet)
+                    // holding its value, else its placeholder (in the
+                    // `::placeholder` style).
+                    if let Some(control @ ("input" | "textarea" | "select")) = name
+                        && display != Display::Contents
+                        && let Some((text, placeholder)) = control_text(self.document, node, control)?
+                    {
+                        let key: StyleKey =
+                            if placeholder && self.styles.pseudo(node, PseudoElement::Placeholder).is_some() { StyleKey::pseudo(node, PseudoElement::Placeholder) } else { node.into() };
+                        // An empty field or button is still a line tall.
+                        let text = if text.is_empty() && control != "textarea" { "\u{200b}".to_owned() } else { text };
+                        match display {
+                            Display::Box { outer: Outer::Inline, .. } if !absolute && !floated => {
+                                self.append_object(node, container, node, BoxKind::Block { flow_root: true, root: false, absolute: false })?;
+                                let p = self.pending.as_ref().ok_or(Error::Invalid)?;
+                                let block = self.boxes[p.text_box.index()].last_child.ok_or(Error::Invalid)?;
+                                let restore = self.pending.take();
+                                if !text.is_empty() {
+                                    self.pending(block)?;
+                                    self.append(node, block, key, &text, None)?;
+                                }
+                                self.flush()?;
+                                self.pending = restore;
+                            }
+                            _ => {
+                                self.flush()?;
+                                let id = self.add(node, node, BoxKind::Block { flow_root: true, root: false, absolute }, container)?;
+                                self.boxes[id.index()].absolute = absolute;
+                                if !text.is_empty() {
+                                    self.pending(id)?;
+                                    self.append(node, id, key, &text, None)?;
+                                    self.flush()?;
+                                }
+                            }
+                        }
+                        continue;
+                    }
                     if let Some(name @ ("input" | "textarea" | "select" | "video" | "audio" | "iframe" | "object" | "embed" | "canvas")) = name {
                         if display == Display::Contents {
                             continue;
@@ -1092,4 +1130,82 @@ fn marker_text(kind: Keyword, ordinal: i64) -> String {
         Keyword::UpperRoman => format!("{}.\u{a0}", roman(ordinal, true)),
         _ => format!("{ordinal}.\u{a0}"),
     }
+}
+
+/// What a text-showing control shows, and whether it is its placeholder:
+/// a text field's value (a password's as bullets), a text area's, a
+/// select's chosen option, a button input's label; None for the controls
+/// drawn as boxes (checkboxes, radios, ranges, colours, files, images).
+fn control_text(doc: &Document, node: NodeId, name: &str) -> Result<Option<(String, bool)>> {
+    let kind = doc.attribute(node, "type")?.unwrap_or("").trim().to_ascii_lowercase();
+    match name {
+        "input" => {
+            let label = |default: &str| -> Result<Option<(String, bool)>> { Ok(Some((doc.attribute(node, "value")?.map_or_else(|| default.to_owned(), str::to_owned), false))) };
+            match kind.as_str() {
+                "submit" => return label("Submit"),
+                "reset" => return label("Reset"),
+                "button" => return label(""),
+                "checkbox" | "radio" | "range" | "color" | "file" | "image" | "hidden" => return Ok(None),
+                _ => {}
+            }
+        }
+        "select" => {
+            // The selected option's text, else the first option's.
+            let mut first = None;
+            let mut chosen = None;
+            let mut stack: Vec<NodeId> = doc.children(node)?.collect();
+            stack.reverse();
+            while let Some(n) = stack.pop() {
+                match doc.name(n)? {
+                    Some("option") => {
+                        if first.is_none() {
+                            first = Some(n);
+                        }
+                        if doc.attribute(n, "selected")?.is_some() && chosen.is_none() {
+                            chosen = Some(n);
+                        }
+                    }
+                    Some("optgroup") => {
+                        let mut kids: Vec<NodeId> = doc.children(n)?.collect();
+                        kids.reverse();
+                        stack.extend(kids);
+                    }
+                    _ => {}
+                }
+            }
+            let Some(option) = chosen.or(first) else { return Ok(Some((String::new(), false))) };
+            let mut text = String::new();
+            let mut stack = vec![option];
+            while let Some(n) = stack.pop() {
+                if doc.node_type(n)? == crate::dom::NodeType::Text
+                    && let Some(v) = doc.value(n)?
+                {
+                    text.push_str(v);
+                }
+                let mut kids: Vec<NodeId> = doc.children(n)?.collect();
+                kids.reverse();
+                stack.extend(kids);
+                if text.len() > 4096 {
+                    break;
+                }
+            }
+            return Ok(Some((text.split_whitespace().collect::<Vec<_>>().join(" "), false)));
+        }
+        _ => {}
+    }
+    let value = doc.control_value(node)?;
+    if value.is_empty() {
+        let placeholder = doc.attribute(node, "placeholder")?.unwrap_or("");
+        return Ok(Some((placeholder.replace(['\r', '\n'], " "), !placeholder.is_empty())));
+    }
+    Ok(Some((
+        if kind == "password" {
+            "\u{2022}".repeat(value.chars().count())
+        } else if name == "input" {
+            value.replace(['\r', '\n'], " ")
+        } else {
+            value.into_owned()
+        },
+        false,
+    )))
 }

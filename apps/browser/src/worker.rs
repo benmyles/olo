@@ -147,6 +147,12 @@ pub enum Reply {
     SharedWanted(u64, Vec<(olo_web::dom::NodeId, u32, u32, [u8; 16])>),
     /// Shared textures the page let go of, for the window to free.
     DropShared(Vec<u64>),
+    /// The page's scripts (or a form it submitted) sent it to `url`.
+    Navigate {
+        id: u64,
+        url: String,
+        replace: bool,
+    },
     Error(u64, String),
 }
 /// Which pass of a page: the static page first, shown at once, then the
@@ -568,6 +574,12 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                 };
                                 live.realm.input(&input, target);
                                 live.loads.dispatch(&mut live.realm);
+                                // A link, form or script sent the page elsewhere.
+                                if let Some((url, replace)) = live.realm.take_navigation()
+                                    && let Some(r) = &last
+                                {
+                                    proxy.send(Reply::Navigate { id: r.id, url, replace });
+                                }
                                 if live.realm.revision() != live.rendered {
                                     // What the person did shows at once, not at the next frame.
                                     live.next_due_ms = Some(0.);
@@ -704,6 +716,9 @@ fn render(
         }
         let advanced = live.realm.advance_frame(now_ms, Duration::from_millis(30), Some(frame));
         live.usage.cpu_ms += advanced.spent_ms;
+        if let Some((url, replace)) = live.realm.take_navigation() {
+            proxy.send(Reply::Navigate { id: r.id, url, replace });
+        }
         // Its scripts stopped (memory, a hang): the page stays as it was
         // last shown, its realm (and the memory it held) let go.
         if let Some(why) = live.realm.stopped() {
