@@ -196,7 +196,8 @@ say on how it looks and sounds.)
   know: Performance mode puts Intel's GPU on Fastest, its lowest clock
   held at 1600 MHz (`/etc/olo/gpus.json`), so whenever it wakes it runs
   fast; Balanced and Power Saver don't. What it did find: app_server's
-  100 ms look at resting displays (Not started).
+  100 ms look at resting displays (done since, 7af77a04: "A resting
+  display still looked every 100 ms" in Done).
 
 - **Syntax colouring for justfiles in the Viewer** (Ben, 2026-11-07:
   "add syntax highlighting for justfiles to viewer"). A just grammar of
@@ -1984,8 +1985,13 @@ say on how it looks and sounds.)
     and running now (checked 2026-11-08, read-only: /proc/asound and the
     kernel's log): a `sof-soundwire` card for the P1 Gen 9 with Speaker,
     Microphone, Jack In/Out and three HDMI devices, the CS35L56
-    amplifiers' tuning and calibration applied, so the driver is there.
-    Left: Ben to hear them (the speakers and microphone in use).
+    amplifiers' tuning and calibration applied, so the driver is there;
+    PipeWire offers the Speaker, Headphones and HDMI outputs and the Mic
+    input (`pactl list short sinks/sources`), and Olo Doctor's "no driver"
+    finding is cleared (the card's device is the DSP's, 0000:00:1f.3).
+    Not played: a sound out of the speakers unasked, at 6 a.m., would be
+    in Ben's room. Left: Ben to hear them (the speakers and microphone in
+    use).
   - Sound: None as the output (the Sonos isn't forced on), kept across
     logins.
   - The microphone key (F4) mutes the microphone in use, shown on
@@ -2401,6 +2407,11 @@ people.
   Stack (dwm's: a new window the main one, the rest stacked each as
   tall), chosen from Deskbar's windowing mode menu or Preferences ▸
   Windows; every tile changing size sent in one round, landing together.
+  Each picker tried: Deskbar's submenu, and Preferences ▸ Windows's
+  pop-up (four tiles two by two: chosen, the setting saved, the note
+  changed, the tiles laid out again at once; a stack of three at 800
+  points too short for Activity Monitor's and Logs' least heights, so
+  the fitting rearranged them, as least sizes always win).
 
 - ~~**Telegram: video stickers move**~~ (the rest of its "Not yet",
   2026-10-29). *Done* (2026-11-08): WebM stickers (VP9 with its alpha
