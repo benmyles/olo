@@ -96,7 +96,7 @@ struct State {
     closed: bool,
 }
 type Shared = Rc<RefCell<State>>;
-const NATIVES: &[&str] = &["log", "postMessage", "fetchSync", "fetchStart", "runScript", "now", "url", "userAgent", "close", "digest", "hmac", "randomBytes"];
+const NATIVES: &[&str] = &["log", "postMessage", "fetchSync", "fetchStart", "runScript", "now", "url", "userAgent", "close", "digest", "hmac", "randomBytes", "aes", "pbkdf2", "hkdf"];
 
 #[allow(clippy::too_many_arguments)]
 fn run(
@@ -303,8 +303,33 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
     let name = args.data().to_rust_string_lossy(scope);
     match name.as_str() {
         // Web Crypto, as the page's (see the page's natives).
-        "digest" | "hmac" | "randomBytes" => {
+        "digest" | "hmac" | "randomBytes" | "aes" | "pbkdf2" | "hkdf" => {
             let out = match name.as_str() {
+                "aes" => {
+                    let mode = arg_string(scope, &args, 0);
+                    let encrypt = args.get(1).boolean_value(scope);
+                    let counter = args.get(6).number_value(scope).unwrap_or(128.) as usize;
+                    crate::crypto::aes(
+                        &mode,
+                        encrypt,
+                        &crate::arg_body(scope, &args, 2),
+                        &crate::arg_body(scope, &args, 3),
+                        &crate::arg_body(scope, &args, 4),
+                        &crate::arg_body(scope, &args, 5),
+                        counter,
+                    )
+                }
+                "pbkdf2" => {
+                    let hash = arg_string(scope, &args, 0);
+                    let iterations = args.get(3).number_value(scope).unwrap_or(0.).clamp(0., f64::from(u32::MAX)) as u32;
+                    let bits = args.get(4).number_value(scope).unwrap_or(0.).max(0.) as usize;
+                    crate::crypto::pbkdf2(&hash, &crate::arg_body(scope, &args, 1), &crate::arg_body(scope, &args, 2), iterations, bits)
+                }
+                "hkdf" => {
+                    let hash = arg_string(scope, &args, 0);
+                    let bits = args.get(4).number_value(scope).unwrap_or(0.).max(0.) as usize;
+                    crate::crypto::hkdf(&hash, &crate::arg_body(scope, &args, 1), &crate::arg_body(scope, &args, 2), &crate::arg_body(scope, &args, 3), bits)
+                }
                 "digest" => {
                     let algorithm = arg_string(scope, &args, 0);
                     crate::crypto::digest(&algorithm, &crate::arg_body(scope, &args, 1))

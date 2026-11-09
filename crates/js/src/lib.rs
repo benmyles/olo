@@ -2131,6 +2131,9 @@ const NATIVES: &[&str] = &[
     "digest",
     "hmac",
     "randomBytes",
+    "aes",
+    "pbkdf2",
+    "hkdf",
     "compatMode",
     "animationRemove",
     "structuredClone",
@@ -3098,8 +3101,28 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         }
         // Web Crypto: digest(name, bytes), hmac(hash, key, bytes) (null for
         // an algorithm it doesn't know), randomBytes(n).
-        "digest" | "hmac" | "randomBytes" => {
+        "digest" | "hmac" | "randomBytes" | "aes" | "pbkdf2" | "hkdf" => {
             let out = match name {
+                // aes(mode, encrypt, key, iv, data, additionalData, counterBits)
+                "aes" => {
+                    let mode = arg_string(scope, &args, 0);
+                    let encrypt = args.get(1).boolean_value(scope);
+                    let counter = args.get(6).number_value(scope).unwrap_or(128.) as usize;
+                    crypto::aes(&mode, encrypt, &arg_body(scope, &args, 2), &arg_body(scope, &args, 3), &arg_body(scope, &args, 4), &arg_body(scope, &args, 5), counter)
+                }
+                // pbkdf2(hash, password, salt, iterations, bits)
+                "pbkdf2" => {
+                    let hash = arg_string(scope, &args, 0);
+                    let iterations = args.get(3).number_value(scope).unwrap_or(0.).clamp(0., f64::from(u32::MAX)) as u32;
+                    let bits = args.get(4).number_value(scope).unwrap_or(0.).max(0.) as usize;
+                    crypto::pbkdf2(&hash, &arg_body(scope, &args, 1), &arg_body(scope, &args, 2), iterations, bits)
+                }
+                // hkdf(hash, key, salt, info, bits)
+                "hkdf" => {
+                    let hash = arg_string(scope, &args, 0);
+                    let bits = args.get(4).number_value(scope).unwrap_or(0.).max(0.) as usize;
+                    crypto::hkdf(&hash, &arg_body(scope, &args, 1), &arg_body(scope, &args, 2), &arg_body(scope, &args, 3), bits)
+                }
                 "digest" => {
                     let algorithm = arg_string(scope, &args, 0);
                     crypto::digest(&algorithm, &arg_body(scope, &args, 1))

@@ -325,23 +325,92 @@
     clone() { return new Request(this); }
   }
   global.Headers = Headers; global.Response = Response; global.Request = Request;
-  // Web Crypto: strong random values; digests, HMAC keys and signatures
-  // (native); other algorithms reject as unsupported.
+  // Web Crypto: strong random values; digests, HMAC, AES (GCM, CBC, CTR),
+  // PBKDF2 and HKDF (native); other algorithms (RSA, elliptic curves)
+  // reject as unsupported.
   const unsupported = () => Promise.reject(new DOMException('Unsupported algorithm', 'NotSupportedError'));
   const algorithmName = (a) => String(typeof a === 'string' ? a : a && a.name || '').toUpperCase();
   const hashName = (h) => algorithmName(h).replace(/^SHA(\d)/, 'SHA-$1');
   class CryptoKey { constructor(type, algorithm, extractable, usages, raw) { this.type = type; this.algorithm = algorithm; this.extractable = !!extractable; this.usages = Array.from(usages || []); Object.defineProperty(this, '_raw', { value: raw }); } }
   global.CryptoKey = CryptoKey;
+  // Base64url (JWK's) to bytes and back.
+  const fromB64url = (t) => { const s = atob(String(t).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(t).length + 3) % 4)); const b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b; };
+  const toB64url = (b) => { let s = ''; for (const x of b) s += String.fromCharCode(x); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+  const AES = ['AES-GCM', 'AES-CBC', 'AES-CTR', 'AES-KW'];
+  // A secret key of an algorithm Web Crypto names (AES, HMAC, or a
+  // derivation's base key) from raw bytes.
+  const secretKey = (algorithm, raw, extractable, usages) => {
+    const name = algorithmName(algorithm);
+    if (AES.includes(name)) {
+      if (![16, 24, 32].includes(raw.length)) return null;
+      return new CryptoKey('secret', { name, length: raw.length * 8 }, extractable, usages, raw);
+    }
+    if (name === 'HMAC') return new CryptoKey('secret', { name: 'HMAC', hash: { name: hashName(algorithm.hash) }, length: raw.length * 8 }, extractable, usages, raw);
+    if (name === 'PBKDF2' || name === 'HKDF') return new CryptoKey('secret', { name }, false, usages, raw);
+    return null;
+  };
+  const blockBits = (hash) => (/384|512/.test(hashName(hash)) ? 1024 : 512);
+  const derive = (algorithm, key, bits) => {
+    const name = algorithmName(algorithm);
+    if (!key || !key._raw || algorithmName(key.algorithm) !== name) return null;
+    if (name === 'PBKDF2') return N.pbkdf2(hashName(algorithm.hash), key._raw, toBytes(algorithm.salt), Number(algorithm.iterations) || 0, bits);
+    if (name === 'HKDF') return N.hkdf(hashName(algorithm.hash), key._raw, toBytes(algorithm.salt), toBytes(algorithm.info || new Uint8Array(0)), bits);
+    return null;
+  };
+  const crypt = (encrypt) => (algorithm, key, data) => {
+    try {
+      const name = algorithmName(algorithm);
+      if (!key || !key._raw || algorithmName(key.algorithm) !== name || !['AES-GCM', 'AES-CBC', 'AES-CTR'].includes(name)) return unsupported();
+      if (name === 'AES-GCM' && algorithm.tagLength !== undefined && Number(algorithm.tagLength) !== 128) return unsupported();
+      const iv = toBytes(name === 'AES-CTR' ? algorithm.counter : algorithm.iv);
+      const out = N.aes(name, encrypt, key._raw, iv, toBytes(data), toBytes(algorithm.additionalData || new Uint8Array(0)), Number(algorithm.length) || 128);
+      if (out) return Promise.resolve(bufferOf(out));
+      return Promise.reject(new DOMException(encrypt ? 'The operation failed for an operation-specific reason' : 'The operation failed for an operation-specific reason', 'OperationError'));
+    } catch (e) { return Promise.reject(e); }
+  };
   const subtle = {
     digest(algorithm, data) { try { const out = N.digest(hashName(algorithm), toBytes(data)); return out ? Promise.resolve(bufferOf(out)) : unsupported(); } catch (e) { return Promise.reject(e); } },
     importKey(format, keyData, algorithm, extractable, usages) {
-      if (format === 'raw' && algorithmName(algorithm) === 'HMAC') { const raw = toBytes(keyData); return Promise.resolve(new CryptoKey('secret', { name: 'HMAC', hash: { name: hashName(algorithm.hash) }, length: raw.length * 8 }, extractable, usages, raw)); }
+      try {
+        let raw = null;
+        if (format === 'raw') raw = new Uint8Array(toBytes(keyData));
+        else if (format === 'jwk' && keyData && keyData.kty === 'oct' && keyData.k) raw = fromB64url(keyData.k);
+        const key = raw && secretKey(algorithm, raw, extractable, usages);
+        return key ? Promise.resolve(key) : unsupported();
+      } catch (e) { return Promise.reject(e); }
+    },
+    exportKey(format, key) {
+      if (!key || !key._raw) return unsupported();
+      if (!key.extractable) return Promise.reject(new DOMException('key is not extractable', 'InvalidAccessError'));
+      if (format === 'raw') return Promise.resolve(bufferOf(key._raw));
+      if (format === 'jwk') {
+        const name = algorithmName(key.algorithm), bits = key._raw.length * 8;
+        const alg = AES.includes(name) ? 'A' + bits + name.slice(4) : name === 'HMAC' ? 'HS' + key.algorithm.hash.name.slice(4) : undefined;
+        return Promise.resolve({ kty: 'oct', k: toB64url(key._raw), alg, ext: true, key_ops: key.usages.slice() });
+      }
       return unsupported();
     },
-    exportKey(format, key) { return format === 'raw' && key && key.extractable && key._raw ? Promise.resolve(bufferOf(key._raw)) : unsupported(); },
+    generateKey(algorithm, extractable, usages) {
+      const name = algorithmName(algorithm);
+      const bits = AES.includes(name) ? Number(algorithm.length) : name === 'HMAC' ? Number(algorithm.length) || blockBits(algorithm.hash) : 0;
+      if (!bits || bits % 8 || bits > 4096) return unsupported();
+      const key = secretKey(algorithm, N.randomBytes(bits / 8), extractable, usages);
+      return key ? Promise.resolve(key) : unsupported();
+    },
+    encrypt: crypt(true),
+    decrypt: crypt(false),
+    deriveBits(algorithm, key, length) {
+      try { const out = derive(algorithm, key, Number(length)); return out ? Promise.resolve(bufferOf(out)) : unsupported(); } catch (e) { return Promise.reject(e); }
+    },
+    deriveKey(algorithm, key, derivedType, extractable, usages) {
+      const name = algorithmName(derivedType);
+      const bits = AES.includes(name) ? Number(derivedType.length) : name === 'HMAC' ? Number(derivedType.length) || blockBits(derivedType.hash) : 0;
+      if (!bits) return unsupported();
+      return subtle.deriveBits(algorithm, key, bits).then((raw) => { const k = secretKey(derivedType, new Uint8Array(raw), extractable, usages); if (!k) throw new DOMException('Unsupported algorithm', 'NotSupportedError'); return k; });
+    },
     sign(algorithm, key, data) { if (algorithmName(algorithm) !== 'HMAC' || !key || !key._raw) return unsupported(); const out = N.hmac(key.algorithm.hash.name, key._raw, toBytes(data)); return out ? Promise.resolve(bufferOf(out)) : unsupported(); },
     verify(algorithm, key, signature, data) { return subtle.sign(algorithm, key, data).then((s) => { const a = new Uint8Array(s), b = toBytes(signature); if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i]; return d === 0; }); },
-    generateKey: unsupported, deriveKey: unsupported, deriveBits: unsupported, encrypt: unsupported, decrypt: unsupported, wrapKey: unsupported, unwrapKey: unsupported,
+    wrapKey: unsupported, unwrapKey: unsupported,
   };
   global.crypto = {
     getRandomValues(a) { if (!ArrayBuffer.isView(a)) throw new TypeError('getRandomValues takes an integer array'); if (a.byteLength > 65536) throw new DOMException('Too many bytes', 'QuotaExceededError'); new Uint8Array(a.buffer, a.byteOffset, a.byteLength).set(N.randomBytes(a.byteLength)); return a; },

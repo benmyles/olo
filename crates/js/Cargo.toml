@@ -26,3 +26,10 @@ sha1 = "0.11"
 sha2 = "0.11"
 hmac = "0.13"
 getrandom = "0.3"
+# Web Crypto's AES (GCM, CBC, CTR), PBKDF2 and HKDF.
+aes = "0.8"
+aes-gcm = "0.10"
+cbc = { version = "0.1", features = ["alloc"] }
+ctr = "0.9"
+pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
+hkdf = "0.13"

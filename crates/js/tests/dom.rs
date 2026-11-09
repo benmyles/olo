@@ -798,3 +798,28 @@ fn document_position_and_custom_elements_without_walking_everything() {
     // following, preceding, contains+following, contained+preceding, disconnected; both connected in order.
     assert_eq!(report.console, ["[log] 4,2,20,10,1,one two"]);
 }
+#[test]
+fn web_crypto_encrypts_and_derives_keys() {
+    let (report, _) = run("<body><script>\
+        (async () => {\
+          const s = crypto.subtle;\
+          const key = await s.importKey('raw', new Uint8Array(32).fill(7), 'AES-GCM', true, ['encrypt', 'decrypt']);\
+          const iv = new Uint8Array(12).fill(1);\
+          const sealed = await s.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode('hello'));\
+          const opened = new TextDecoder().decode(await s.decrypt({ name: 'AES-GCM', iv }, key, sealed));\
+          const jwk = await s.exportKey('jwk', key);\
+          const again = await s.importKey('jwk', jwk, { name: 'AES-GCM' }, false, ['decrypt']);\
+          const reopened = new TextDecoder().decode(await s.decrypt({ name: 'AES-GCM', iv }, again, sealed));\
+          let tampered = 'opened';\
+          try { const t = new Uint8Array(sealed); t[0] ^= 1; await s.decrypt({ name: 'AES-GCM', iv }, key, t); } catch (e) { tampered = e.name; }\
+          const base = await s.importKey('raw', new TextEncoder().encode('password'), 'PBKDF2', false, ['deriveBits', 'deriveKey']);\
+          const bits = new Uint8Array(await s.deriveBits({ name: 'PBKDF2', salt: new TextEncoder().encode('salt'), iterations: 2, hash: 'SHA-1' }, base, 160));\
+          const derived = await s.deriveKey({ name: 'PBKDF2', salt: new Uint8Array(8), iterations: 10, hash: 'SHA-256' }, base, { name: 'AES-CBC', length: 256 }, false, ['encrypt']);\
+          const made = await s.generateKey({ name: 'AES-CTR', length: 128 }, true, ['encrypt']);\
+          console.log([sealed.byteLength, opened, reopened, tampered, Array.from(bits.slice(0, 4), (b) => b.toString(16).padStart(2, '0')).join(''), derived.algorithm.length, made.algorithm.length].join(','));\
+        })();\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    // 5 bytes and the tag; RFC 6070's test 2 begins ea6c014d.
+    assert_eq!(report.console, ["[log] 21,hello,hello,OperationError,ea6c014d,256,128"]);
+}
