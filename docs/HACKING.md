@@ -2553,6 +2553,19 @@ event reaches it.
   `.on_menu(f)` a secondary click (the row and where), and
   `.on_select_all(f)` ⌘A while it has the keyboard; a plain click with
   others chosen chooses that one alone (Agent Screens).
+- `widgets::SidePane` and `side_divider(&pane, x, top, height, name)`
+  (a pane beside the rest the person sizes and puts away: a chat list,
+  a source list, an inspector): the app keeps an `Entity<SidePane>`
+  (`SidePane::new(width, min).restored(width, collapsed)`, observed),
+  lays its pane out `pane.read(cx).shown(total, rest)` wide (0 put
+  away), and puts the divider at that edge; the divider sizes it
+  (down to `min`), puts it away dragged on past half that, brings it
+  back dragged out from the window's edge (a grip stays there), and a
+  double click does either. View ▸ Hide/Show Sidebar is `toggle()`,
+  its item `.key("s")` for every app's keys (`app.sidebar`: ⌥⌘S, as
+  Finder's was; a kit app's keys have no Control of their own, so ⌃⌘S
+  would be ⌘S). Agents read a Splitter (its width, or "hidden").
+  Telegram's chat list (View ▸ Hide Chat List).
 - `widgets::TabView::new(id, labels, selected).on_select(f)` with the
   chosen tab's content as its child (BTabView: slanted folder tabs over
   a raised panel, the content inside `WINDOW_INSET`; `Tab`s to agents).

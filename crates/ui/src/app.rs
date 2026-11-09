@@ -486,7 +486,15 @@ impl Render for Frame {
                 crate::menu::press_in(e.position, window, cx)
             })
             // Text cut short: its whole in a tip (`cut`), at once with ⌘.
-            .on_mouse_move(|e: &gpui::MouseMoveEvent, window, cx| crate::cut::moved(window, cx, e.position, crate::cut::command_held(&e.modifiers)))
+            // (Not while a button is held: a divider or a selection dragged
+            // over cut text has no tip.)
+            .on_mouse_move(|e: &gpui::MouseMoveEvent, window, cx| {
+                if e.pressed_button.is_some() {
+                    crate::cut::left(window, cx, false);
+                } else {
+                    crate::cut::moved(window, cx, e.position, crate::cut::command_held(&e.modifiers))
+                }
+            })
             .on_modifiers_changed(|e: &gpui::ModifiersChangedEvent, window, cx| crate::cut::modifiers(window, cx, window.mouse_position(), crate::cut::command_held(&e.modifiers)))
             .on_action(|_: &FocusNext, window, _| window.focus_next())
             .on_action(|_: &FocusPrev, window, _| window.focus_prev())

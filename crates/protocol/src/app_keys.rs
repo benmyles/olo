@@ -141,6 +141,10 @@ pub const APP_KEYS: &[AppKey] = &[
     k("app.bigger", None, "bigger", "Bigger text", &["Cmd+Equal"], &["Ctrl+Equal"], &["Alt+Equal"]),
     k("app.smaller", None, "smaller", "Smaller text", &["Cmd+Minus"], &["Ctrl+Minus"], &["Alt+Minus"]),
     k("app.default-size", None, "default-size", "Text at its own size", &["Cmd+0"], &["Ctrl+0"], &["Alt+0"]),
+    // A side pane put away or brought back (`olo_ui::widgets::SidePane`):
+    // View ▸ Hide Sidebar, ⌥⌘S as Finder's was (⌃⌘S is ⌘S to a kit app:
+    // its keys have no Control of their own).
+    k("app.sidebar", None, "sidebar", "Hide or show the sidebar", &["Alt+Cmd+S"], &["Ctrl+Alt+S"], &["Alt+Cmd+S"]),
     // Tracker: Finder's on a Mac, Explorer's on Windows, Tracker's on BeOS.
     // (A new window: ⌘N as Finder's, Ctrl+N as Explorer's; BeOS's Tracker
     // had none, Alt+N its New Folder.)

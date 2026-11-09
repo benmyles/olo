@@ -29,8 +29,8 @@ use olo_ui::{
     file_panel::{self, FilePanel, PanelResult},
     gpui::{
         AnyElement, AnyView, App, AppContext as _, Bounds, ClipboardItem, Context, CursorStyle, Div, Entity, EntityId, ExternalPaths, FocusHandle, FontWeight, Hitbox, HitboxBehavior,
-        InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, SharedString, Stateful,
-        StatefulInteractiveElement as _, StyleRefinement, Styled as _, Task, WeakEntity, Window, WindowHandle, canvas, div, point, px, size, white,
+        InteractiveElement as _, IntoElement, KeyDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, SharedString, Stateful, StatefulInteractiveElement as _,
+        StyleRefinement, Styled as _, Task, WeakEntity, Window, WindowHandle, canvas, div, point, px, size, white,
     },
     instance::{self, Launch},
     metrics as m,
@@ -53,6 +53,9 @@ struct Saved {
     topic: Option<MsgId>,
     folder: Option<i32>,
     list_width: Option<f32>,
+    /// The chat list put away (View ▸ Hide Chat List).
+    #[serde(default)]
+    list_hidden: bool,
 }
 
 /// The Deskbar clock's style (24-hour or not).
@@ -70,7 +73,8 @@ pub struct Tg {
     view: list::View,
     found: list::Found,
     conv: Option<conv::Conv>,
-    list_width: f32,
+    /// The chat list beside the conversation: its width, or put away.
+    side: Entity<olo_ui::widgets::SidePane>,
     h24: bool,
     notes: Notifier,
     /// Each chat's notification, updated as more come.
@@ -120,8 +124,6 @@ pub struct Tg {
     chosen_from: Option<ChatId>,
     list_hover: Option<usize>,
     list_top: Rc<Cell<f32>>,
-    /// The divider being dragged: where it was pressed and the width then.
-    grip: Option<(f32, f32)>,
     /// A redraw due (a flash going out, typing gone quiet, a voice
     /// message's progress).
     wake: Due,
@@ -1203,7 +1205,7 @@ impl Tg {
         cx.notify();
     }
 
-    fn menus(&self) -> Vec<Menu> {
+    fn menus(&self, cx: &App) -> Vec<Menu> {
         let ready = matches!(self.status, Status::Online | Status::Updating | Status::Connecting | Status::Offline(_) | Status::Waiting(_));
         let chat = self.conv.as_ref().and_then(|c| self.store.chats.get(&c.chat));
         let file = Menu::new("File").item("Contacts", "contacts").key("k").enabled(ready).separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
@@ -1244,7 +1246,11 @@ impl Tg {
             .item("Previous Chat", "prev")
             .key("up")
             .item("Next Chat", "next")
-            .key("down");
+            .key("down")
+            .separator()
+            .item(if self.side.read(cx).collapsed() { "Show Chat List" } else { "Hide Chat List" }, "sidebar")
+            // (Every app's keys for it: `app.sidebar`, ⌥⌘S.)
+            .key("s");
         let account = Menu::new("Account")
             .item(self.me.as_ref().map_or_else(|| "Not Signed In".into(), |m| m.name.clone()), "me")
             .enabled(false)
@@ -1286,6 +1292,10 @@ impl Tg {
                 self.view.archive = false;
                 self.view.unknown = false;
             }
+            "sidebar" => self.side.update(cx, |s, cx| {
+                s.toggle();
+                cx.notify();
+            }),
             "archive" => {
                 self.view.archive = true;
                 self.view.unknown = false;
@@ -1410,8 +1420,14 @@ impl Tg {
         }
     }
 
-    fn saved(&self) -> Saved {
-        Saved { chat: self.conv.as_ref().map(|c| c.chat), topic: self.conv.as_ref().and_then(|c| c.topic), folder: self.view.folder, list_width: Some(self.list_width) }
+    fn saved(&self, cx: &App) -> Saved {
+        Saved {
+            chat: self.conv.as_ref().map(|c| c.chat),
+            topic: self.conv.as_ref().and_then(|c| c.topic),
+            folder: self.view.folder,
+            list_width: Some(self.side.read(cx).width()),
+            list_hidden: self.side.read(cx).collapsed(),
+        }
     }
 }
 
@@ -1420,7 +1436,7 @@ impl Render for Tg {
         let me = cx.entity();
         self.focused = window.is_window_active();
         let bar_me = me.clone();
-        let bar = MenuBar::of(&me, |tg: &Self, _| tg.menus(), move |cmd, window, cx| bar_me.update(cx, |tg, cx| tg.command(cmd, window, cx)));
+        let bar = MenuBar::of(&me, |tg: &Self, cx| tg.menus(cx), move |cmd, window, cx| bar_me.update(cx, |tg, cx| tg.command(cmd, window, cx)));
         let p = theme::palette(cx);
         let vs = window.viewport_size();
         let top = olo_ui::menu::BAR_HEIGHT;
@@ -1459,9 +1475,10 @@ impl Render for Tg {
                 // were at 1.5× only: at 1.25× the list's pane, laid out as a
                 // root of its own, ran a pixel past the window).
                 let fw = f32::from(full.size.width);
-                let lw = (self.list_width.clamp(list::MIN_WIDTH, (fw - 320.0).max(list::MIN_WIDTH)) / 2.0).round() * 2.0;
+                // (Away: none of it, the conversation the whole width.)
+                let lw = (self.side.read(cx).shown(fw, 320.0) / 2.0).round() * 2.0;
                 let left = style::snap(window, Bounds { origin: full.origin, size: size(px(lw), full.size.height) });
-                let rx = style::snap_coord(window, px(lw) + style::hairline(window));
+                let rx = if lw > 0.0 { style::snap_coord(window, px(lw) + style::hairline(window)) } else { full.origin.x };
                 let right = style::snap(window, Bounds::from_corners(point(rx, full.origin.y), full.bottom_right()));
                 // Changes on their way to Telegram: a line under the list.
                 let (pending, total, waiting) = self.sync;
@@ -1492,11 +1509,13 @@ impl Render for Tg {
                 } else {
                     left
                 };
-                if let Some((_, p)) = self.panes.iter().find(|p| p.0 == Kind::List) {
-                    layer = layer.child(pane(p, self.list_rect));
+                if lw > 0.0 {
+                    if let Some((_, p)) = self.panes.iter().find(|p| p.0 == Kind::List) {
+                        layer = layer.child(pane(p, self.list_rect));
+                    }
+                    let shadow = c(p.shadow);
+                    layer = layer.child(canvas(|_, _, _| {}, move |_, _, window, _| style::vline(window, left.right(), left.origin.y, left.bottom(), shadow)).absolute().inset_0());
                 }
-                let shadow = c(p.shadow);
-                layer = layer.child(canvas(|_, _, _| {}, move |_, _, window, _| style::vline(window, left.right(), left.origin.y, left.bottom(), shadow)).absolute().inset_0());
                 if self.conv.is_some() {
                     // The conversation over its composer, as tall as its
                     // text (up to eight lines).
@@ -1531,32 +1550,11 @@ impl Render for Tg {
                             .child(EmptyState::new("No chat selected").icon("telegram").detail(detail)),
                     );
                 }
-                // The divider between them, dragged to size the list.
-                let grip = Bounds { origin: point(px(lw - 2.0), full.origin.y), size: size(px(5.0), full.size.height) };
-                let t = me.clone();
-                layer = layer.child(
-                    div()
-                        .id("list-grip")
-                        .absolute()
-                        .left(grip.origin.x)
-                        .top(grip.origin.y)
-                        .w(grip.size.width)
-                        .h(grip.size.height)
-                        .cursor(CursorStyle::ResizeLeftRight)
-                        .on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, _, cx| {
-                            t.update(cx, |tg, _| tg.grip = Some((f32::from(e.position.x), lw)));
-                            cx.stop_propagation();
-                        })
-                        .child(
-                            canvas(
-                                |_, _, _| {},
-                                move |b, _, window, cx| {
-                                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Splitter", name: Some("Chat List Width".into()), bounds: b, enabled: true, ..Default::default() })
-                                },
-                            )
-                            .size_full(),
-                        ),
-                );
+                // The divider between them: dragged to size the list, or
+                // put it away for the conversation's room (the kit's
+                // SidePane: past its narrowest, a double click, View ▸
+                // Hide Chat List), and out again from the window's edge.
+                layer = layer.child(olo_ui::widgets::side_divider(&self.side, lw, f32::from(full.origin.y), f32::from(full.size.height), "Chat List"));
                 // A problem to tell, across the conversation's top.
                 if let (Some(text), Some(until)) = (self.banner.text().cloned(), self.banner.until()) {
                     self.wake_in(until.saturating_duration_since(Instant::now()), cx);
@@ -1617,26 +1615,10 @@ impl Render for Tg {
                 .child(button_row().child(Button::new("Quit Now").on_click(move |_, cx| quit_now.update(cx, |_, cx| cx.quit()))));
             layer = layer.child(div().absolute().inset_0().flex().items_center().justify_center().bg(c(p.shadow).opacity(0.25)).child(sheet));
         }
-        let (t_move, t_up, t_drop) = (me.clone(), me.clone(), me.clone());
+        let t_drop = me.clone();
         div()
             .size_full()
             .relative()
-            .on_mouse_move(move |e: &MouseMoveEvent, _, cx| {
-                t_move.update(cx, |tg, cx| {
-                    if let Some((x, w)) = tg.grip {
-                        if e.pressed_button != Some(MouseButton::Left) {
-                            tg.grip = None;
-                            return;
-                        }
-                        let nw = (w + f32::from(e.position.x) - x).max(list::MIN_WIDTH);
-                        if (nw - tg.list_width).abs() >= 0.5 {
-                            tg.list_width = nw;
-                            cx.notify();
-                        }
-                    }
-                })
-            })
-            .on_mouse_up(MouseButton::Left, move |_: &MouseUpEvent, _, cx| t_up.update(cx, |tg, _| tg.grip = None))
             .on_drop(move |paths: &ExternalPaths, _, cx| {
                 t_drop.update(cx, |tg, cx| {
                     if let Some(c) = &mut tg.conv {
@@ -2045,7 +2027,11 @@ fn main() {
                 view: list::View { folder: restored.folder, ..list::View::default() },
                 found: list::Found::default(),
                 conv: None,
-                list_width: restored.list_width.unwrap_or(list::WIDTH),
+                side: {
+                    let side = cx.new(|_| olo_ui::widgets::SidePane::new(list::WIDTH, list::MIN_WIDTH).restored(restored.list_width, restored.list_hidden));
+                    cx.observe(&side, |_, _, cx| cx.notify()).detach();
+                    side
+                },
                 h24: false,
                 notes: Notifier::new(olo_ui::proxy(cx), "Telegram", "olo-telegram"),
                 chat_notes: HashMap::new(),
@@ -2079,7 +2065,6 @@ fn main() {
                 chosen_from: None,
                 list_hover: None,
                 list_top: Rc::default(),
-                grip: None,
                 wake: Due::default(),
                 title: "Telegram".into(),
                 panes: Vec::new(),
@@ -2136,6 +2121,6 @@ fn main() {
         let messages = tg.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |t, cx| t.message(message, cx)));
         let saving = tg.clone();
-        olo_ui::on_upgrade(cx, move |cx| serde_json::to_string(&saving.read(cx).saved()).ok());
+        olo_ui::on_upgrade(cx, move |cx| serde_json::to_string(&saving.read(cx).saved(cx)).ok());
     });
 }

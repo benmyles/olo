@@ -65,12 +65,28 @@ struct Seen {
     over: Option<SharedString>,
 }
 
-/// A frame of `window` is being drawn: what's cut is looked for again
-/// when the pointer next moves.
+/// A frame of `window` is being drawn (all of it but what's over it all):
+/// what's cut is looked for again when the pointer next moves; and a tip
+/// in play (shown, or about to) whose text isn't under the pointer any
+/// more goes now (a pane put away under it, a row scrolled off: Ben,
+/// 2026-11-09, a chat's preview still tipped over the conversation once
+/// Telegram's chat list was put away). Only while a tip is in play: else
+/// nothing a frame.
 pub(crate) fn painted(window: &Window, cx: &mut App) {
-    if let Some(seen) = cx.try_global::<Cuts>().is_some().then(|| cx.global_mut::<Cuts>()).and_then(|c| c.0.get_mut(&window.window_handle().window_id())) {
-        seen.stale = true;
+    let Some(seen) = cx.try_global::<Cuts>().is_some().then(|| cx.global_mut::<Cuts>()).and_then(|c| c.0.get_mut(&window.window_handle().window_id())) else { return };
+    seen.stale = true;
+    let Some(over) = seen.over.clone() else { return };
+    let at = window.mouse_position();
+    let still = cuts_in(window.paint_records_so_far()).iter().rev().find(|(b, _)| b.contains(&at)).map(|(b, full)| key_of(b, full));
+    if still.as_ref() != Some(&over) {
+        seen.over = None;
+        crate::tip::hover(window, cx, over, "", Bounds::default(), false);
     }
+}
+
+/// A cut text's tip's key: where it is, and what it says.
+fn key_of(b: &Bounds<Pixels>, full: &SharedString) -> SharedString {
+    SharedString::from(format!("cut:{:?}:{full}", b.origin))
 }
 
 /// The pointer moved to `at` in `window` (with ⌘ held, `now`: its tip
@@ -85,7 +101,7 @@ pub(crate) fn moved(window: &mut Window, cx: &mut App, at: Point<Pixels>, now: b
         }
         // (The last painted: the one on top.)
         let under = seen.cuts.iter().rev().find(|(b, _)| b.contains(&at)).cloned();
-        let key = under.as_ref().map(|(b, full)| SharedString::from(format!("cut:{:?}:{full}", b.origin)));
+        let key = under.as_ref().map(|(b, full)| key_of(b, full));
         if key == seen.over {
             // The same: its tip as it is, unless ⌘ asks for it now.
             if now && let (Some(key), Some((b, full))) = (key, under) {
