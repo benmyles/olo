@@ -7150,3 +7150,16 @@ OffscreenCanvas WebGL in workers). CreepJS: no lies; its audio, WebGL,
 fonts (FontFace) and SVG text tests fail on what Olo lacks. Each page's
 prelude costs 34 ms against 24 (a realm's setup; it is compiled from a
 code cache now); reading DOM getters costs 6% more.
+
+Later the same day: `innerText` is the rendered text (it was
+textContent: a page's `<style>` rules came with it); `FontFace` and
+`document.fonts` exist (CreepJS's font test runs; `local()` finds this
+machine's fonts as Chrome does); getBoundingClientRect follows CSS
+transforms; scripts run in HTML's order (a module in the head after an
+inline script in the body: browserscan.net's results never came, now
+"Normal"); errors' stacks show none of Olo's frames; an invalid selector
+throws Chrome's SyntaxError. Plain objects had been named
+"CustomElementRegistry" (customElements was one, its prototype
+Object's): fixed. pixelscan.net doesn't load: its Cloudflare holds a
+connection whose TLS handshake isn't a browser's (curl's too), which only
+a Chrome-like ClientHello (BoringSSL) gets past.

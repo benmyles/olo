@@ -116,9 +116,8 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   150 of Chrome's 1,230 globals); XPath (document.evaluate); the
   navigation API; live iframes (contentWindow is null); a broken image's
   16×16 box and icon; SVG text and geometry (getComputedTextLength,
-  getBBox, x/width/...); getBoundingClientRect through CSS transforms;
-  the prelude's frames in error stacks; a Range moved by the document's
-  mutations; adopted sheets and FontFaces applied through a hidden
+  getBBox, x/width/...); getBoundingClientRect under a parent's
+  `perspective`; a Range moved by the document's mutations; adopted sheets and FontFaces applied through a hidden
   <style> in the head (a page can find it): a sheet of the document's own,
   outside its DOM; SVG text metrics need the scene's shaped text where
   scripts measure (the layout has no shaper); BrowserScan's logo (huge,
