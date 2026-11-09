@@ -245,6 +245,9 @@ struct State {
     ids: Vec<*mut NodeId>,
     templates: Option<Templates>,
     fetcher: Option<Fetcher>,
+    /// Elements by id and by name, for `getElementById` and the window's
+    /// named properties.
+    names: Names,
     /// The page's canvases, by element, drawn by its scripts.
     canvases: HashMap<NodeId, canvas::Canvas>,
     /// The page's WebGL canvases, by element, drawn by the GPU.
@@ -434,6 +437,7 @@ impl Realm {
             wrappers: HashMap::new(),
             ids: Vec::new(),
             templates: None,
+            names: Names::default(),
             fetcher,
             canvases: HashMap::new(),
             gl: HashMap::new(),
@@ -494,7 +498,11 @@ impl Realm {
             v8::Global::new(scope, context)
         };
         let mut realm = Self { isolate, context, state, guard };
+        let started = std::time::Instant::now();
         realm.run(PRELUDE, "prelude.js").map_err(|e| format!("prelude: {e}"))?;
+        if std::env::var_os("OLO_JS_TIMING").is_some() {
+            eprintln!("  prelude ({} KB): {:.1} ms", PRELUDE.len() / 1024, started.elapsed().as_secs_f64() * 1000.);
+        }
         Ok(realm)
     }
     /// WebGL calls made and seconds spent in them since last taken.
@@ -1131,12 +1139,15 @@ impl Realm {
     /// Run the page's scripts in order, fire the document's lifecycle events
     /// and the timers due within the budget.
     pub fn run_page(&mut self, scripts: &[Script]) -> Report {
+        // OLO_JS_TIMING: each script's time (and the lifecycle's).
+        let timing = std::env::var_os("OLO_JS_TIMING").is_some();
         for script in scripts {
             if self.over_time() {
                 self.state.borrow_mut().report.errors.push("scripts stopped: out of time".into());
                 break;
             }
             self.state.borrow_mut().report.scripts += 1;
+            let started = std::time::Instant::now();
             if script.module {
                 let _ = self.run_module(&script.source, &script.name);
             } else {
@@ -1144,11 +1155,18 @@ impl Realm {
                 let _ = self.run(&script.source, &script.name);
                 self.set_current_script(None);
             }
+            if timing {
+                eprintln!("  script {} ({} KB{}): {:.1} ms", script.name, script.source.len() / 1024, if script.module { ", module" } else { "" }, started.elapsed().as_secs_f64() * 1000.);
+            }
         }
+        let started = std::time::Instant::now();
         let _ = self.call_prelude("__olo_lifecycle", &["DOMContentLoaded"]);
         self.pump();
         let _ = self.call_prelude("__olo_lifecycle", &["load"]);
         self.pump();
+        if timing {
+            eprintln!("  DOMContentLoaded and load, with what they ran: {:.1} ms", started.elapsed().as_secs_f64() * 1000.);
+        }
         self.report_rejections();
         self.finish_report()
     }
@@ -1337,6 +1355,7 @@ impl State {
             wrappers: HashMap::new(),
             ids: Vec::new(),
             templates: None,
+            names: Names::default(),
             fetcher: None,
             canvases: HashMap::new(),
             gl: HashMap::new(),
@@ -1583,9 +1602,14 @@ fn named_global(scope: &mut v8::PinScope, key: v8::Local<v8::Name>, _args: v8::P
     if name.is_empty() || name.len() > 256 {
         return v8::Intercepted::kNo;
     }
-    let found = {
-        let s = state.borrow();
-        find_by_id(&s.document, &name).or_else(|| find_by_name(&s.document, &name))
+    let lookup = |names: &Names| names.ids.get(&name).or_else(|| names.names.get(&name)).copied();
+    let found = match state.try_borrow_mut() {
+        Ok(mut s) => {
+            let s = &mut *s;
+            lookup(s.names.current(&s.document))
+        }
+        // Asked while a native holds the state: the index as it is, if current.
+        Err(_) => state.try_borrow().ok().and_then(|s| (s.names.revision == Some(s.document.revision())).then(|| lookup(&s.names)).flatten()),
     };
     match found.and_then(|n| wrap(scope, &state, n)) {
         Some(obj) => {
@@ -1761,22 +1785,74 @@ fn attribute_name(state: &Shared, node: NodeId, name: String) -> String {
     if html && name.bytes().any(|b| b.is_ascii_uppercase()) { name.to_ascii_lowercase() } else { name }
 }
 /// The first form, img, iframe, embed or object with this `name`.
-fn find_by_name(doc: &Document, name: &str) -> Option<NodeId> {
-    let mut stack = vec![doc.root()];
-    let mut seen = 0usize;
-    while let Some(n) = stack.pop() {
-        seen += 1;
-        if seen > 1 << 20 {
-            return None;
+/// The document's elements by id, and its forms, images, frames, embeds
+/// and objects by name (the first of each in tree order), as of a
+/// revision: made in one walk, and kept while the changes since cannot
+/// have moved an id or a name. V8 asks the window's named properties for
+/// every global it doesn't know yet (each `global.X = ` of the prelude,
+/// each `typeof X` of a page), and each was two walks of the document:
+/// 290 ms of MDN's prelude, 7,000 elements.
+#[derive(Default)]
+struct Names {
+    revision: Option<u64>,
+    ids: HashMap<String, NodeId>,
+    names: HashMap<String, NodeId>,
+}
+impl Names {
+    fn current(&mut self, doc: &Document) -> &Self {
+        let revision = doc.revision();
+        if self.revision == Some(revision) {
+            return self;
         }
-        if doc.node_type(n) == Ok(NodeType::Element) && matches!(doc.name(n), Ok(Some("form" | "img" | "iframe" | "embed" | "object"))) && doc.attribute(n, "name") == Ok(Some(name)) {
-            return Some(n);
+        let kept = self.revision.and_then(|r| doc.changes_since(r)).is_some_and(|changes| {
+            changes.iter().all(|(_, change)| match change {
+                olo_web::dom::Change::Attribute { name, .. } => !matches!(name.as_ref(), "id" | "name"),
+                olo_web::dom::Change::Style(_) | olo_web::dom::Change::Text { .. } | olo_web::dom::Change::Control(_) => true,
+                olo_web::dom::Change::Children { elements, .. } => !elements,
+                olo_web::dom::Change::Node(_) | olo_web::dom::Change::Unknown => false,
+            })
+        });
+        if !kept {
+            self.ids.clear();
+            self.names.clear();
+            let mut next = doc.first_child(doc.root()).ok().flatten();
+            let mut stack = Vec::new();
+            while let Some(n) = next {
+                if doc.node_type(n).ok() == Some(NodeType::Element) {
+                    if let Some(id) = doc.attribute(n, "id").ok().flatten().filter(|id| !id.is_empty())
+                        && !self.ids.contains_key(id)
+                    {
+                        self.ids.insert(id.to_owned(), n);
+                    }
+                    if matches!(doc.name(n), Ok(Some("form" | "img" | "iframe" | "embed" | "object")))
+                        && let Some(name) = doc.attribute(n, "name").ok().flatten()
+                        && !self.names.contains_key(name)
+                    {
+                        self.names.insert(name.to_owned(), n);
+                    }
+                }
+                // Depth first, in tree order.
+                next = match doc.first_child(n).ok().flatten() {
+                    Some(child) => {
+                        stack.push(n);
+                        Some(child)
+                    }
+                    None => {
+                        let mut at = Some(n);
+                        loop {
+                            let Some(a) = at else { break None };
+                            if let Some(sibling) = doc.next_sibling(a).ok().flatten() {
+                                break Some(sibling);
+                            }
+                            at = stack.pop();
+                        }
+                    }
+                };
+            }
         }
-        let Ok(children) = doc.children(n) else { continue };
-        let children: Vec<NodeId> = children.collect();
-        stack.extend(children.into_iter().rev());
+        self.revision = Some(revision);
+        self
     }
-    None
 }
 /// One DOM class: a constructor nobody may call, with an internal field for
 /// the node, installed on the global object.
@@ -2709,8 +2785,8 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         "byId" => {
             let id = arg_string(scope, &args, 0);
             let found = {
-                let s = state.borrow();
-                find_by_id(&s.document, &id)
+                let s = &mut *state.borrow_mut();
+                s.names.current(&s.document).ids.get(&id).copied()
             };
             match found.and_then(|n| wrap(scope, &state, n)) {
                 Some(o) => rv.set(o.into()),
@@ -3422,25 +3498,6 @@ fn select(doc: &Document, root: NodeId, selector: &str, quirks: bool, all: bool,
         stack.extend(children.into_iter().rev());
     }
     Ok(out)
-}
-fn find_by_id(doc: &Document, id: &str) -> Option<NodeId> {
-    if id.is_empty() {
-        return None;
-    }
-    let mut stack = vec![doc.root()];
-    while let Some(n) = stack.pop() {
-        if doc.node_type(n).ok() == Some(NodeType::Element) && doc.attribute(n, "id").ok().flatten() == Some(id) {
-            return Some(n);
-        }
-        let mut children = Vec::new();
-        let mut child = doc.first_child(n).ok().flatten();
-        while let Some(c) = child {
-            children.push(c);
-            child = doc.next_sibling(c).ok().flatten();
-        }
-        stack.extend(children.into_iter().rev());
-    }
-    None
 }
 /// Where a script's source comes from: inline text, or a URL to fetch.
 pub enum Source {

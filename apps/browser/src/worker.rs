@@ -471,6 +471,12 @@ struct Live {
 /// WebGL on the GPU), reviewed each second: over budget, it draws every
 /// second, then fourth, then eighth display frame; well under again, back
 /// to every frame. A page's animation slows rather than the machine.
+/// The CPU time the calling thread has had (milliseconds; from the
+/// kernel's scheduler statistics, to the nanosecond), for telling work
+/// from waiting in timings.
+fn thread_cpu_ms() -> f64 {
+    std::fs::read_to_string("/proc/thread-self/schedstat").ok().and_then(|s| s.split_whitespace().next()?.parse::<f64>().ok()).map_or(0., |ns| ns / 1e6)
+}
 struct Usage {
     cpu_ms: f64,
     gpu_ms: f64,
@@ -1663,6 +1669,7 @@ fn render(
                 })
             };
             let started = Instant::now();
+            let started_cpu = thread_cpu_ms();
             // Images the scripts load (textures, canvas sources, `img`
             // elements they make): the page's own at once, others fetched
             // on their own threads and delivered to the live page.
@@ -1733,7 +1740,7 @@ fn render(
                 waiting_since: None,
             });
             eprintln!(
-                "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
+                "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms ({:.0} ms of this thread's CPU)",
                 report.scripts,
                 report.errors.len(),
                 report.console.len(),
@@ -1743,8 +1750,18 @@ fn render(
                 report.layout_ms,
                 report.revision_before,
                 report.revision_after,
-                started.elapsed().as_secs_f64() * 1000.
+                started.elapsed().as_secs_f64() * 1000.,
+                thread_cpu_ms() - started_cpu
             );
+            // OLO_JS_PROFILE: where the natives' time went while the page's
+            // scripts first ran, the top fifteen.
+            if olo_web::env_on!("OLO_JS_PROFILE") {
+                let profile = olo_js::take_native_profile();
+                let total: f64 = profile.iter().map(|p| p.2).sum();
+                let calls: u64 = profile.iter().map(|p| p.1).sum();
+                let top: Vec<String> = profile.iter().take(15).map(|(name, n, t)| format!("{name} {n}×{:.1} ms", t * 1000.)).collect();
+                eprintln!("  natives while the scripts first ran: {calls} calls in {:.0} ms: {}", total * 1000., top.join(", "));
+            }
             for line in report.console.iter().take(50) {
                 eprintln!("  console: {line}");
             }

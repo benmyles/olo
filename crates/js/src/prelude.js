@@ -945,7 +945,7 @@
       href: 'Anchor Area Link Base SVG', src: 'Image Script IFrame Embed Input Media Source Track Frame',
       action: 'Form', method: 'Form', enctype: 'Form', noValidate: 'Form', target: 'Anchor Area Base Form', poster: 'Video',
       alt: 'Image Area Input', type: 'Input Button Script Link Style Source Embed Object OList Anchor Select TextArea FieldSet Output',
-      name: 'Input Button Select TextArea Form IFrame Object Map Meta Param Anchor FieldSet Output Slot Frame Details',
+      name: 'Input Button Select TextArea Form IFrame Object Map Meta Param Anchor FieldSet Output Slot Frame Details Image Embed',
       placeholder: 'Input TextArea', rel: 'Anchor Area Link Form', relList: 'Anchor Area Link Form', sandbox: 'IFrame', htmlFor: 'Label Output', label: 'Option OptGroup Track',
       charset: 'Script Meta', media: 'Link Style Source Meta', srcset: 'Image Source Link', sizes: 'Image Source Link',
       loading: 'Image IFrame', decoding: 'Image', crossOrigin: 'Image Script Link Media', referrerPolicy: 'Anchor Area Image IFrame Link Script',

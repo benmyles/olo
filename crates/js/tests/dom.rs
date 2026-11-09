@@ -665,3 +665,25 @@ fn documents_have_element_children_and_iframes_a_sandbox_list() {
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] HTML HTML 1 1", "[log] allow-scripts allow-forms true 2", "[log] true false"]);
 }
+/// `getElementById` and the window's named properties follow the
+/// document as scripts change it (they are answered from an index kept
+/// while no id or name could have moved): the first in tree order wins.
+#[test]
+fn ids_and_names_follow_the_document() {
+    let (report, _) = run("<body><p id=a>1</p><div><p id=a>2</p></div><form name=f></form><script>\
+        const log = (...v) => console.log(v.join(' '));\
+        log(document.getElementById('a').textContent, typeof window.a, window.f && window.f.tagName, typeof window.nothing);\
+        const b = document.createElement('i'); b.id = 'b'; document.body.prepend(b);\
+        log(document.getElementById('b') === b, window.b === b);\
+        document.getElementById('a').id = 'c';\
+        log(document.getElementById('a').textContent, document.getElementById('c').textContent);\
+        b.remove();\
+        log(document.getElementById('b'), typeof window.b);\
+        b.setAttribute('id', 'z'); document.body.append(b);\
+        log(document.getElementById('z') === b, document.getElementById('b'));\
+        const img = document.createElement('img'); img.name = 'pic'; document.body.append(img);\
+        log(window.pic === img, img.getAttribute('name'));\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] 1 object FORM undefined", "[log] true true", "[log] 2 1", "[log]  undefined", "[log] true ", "[log] true pic"]);
+}
