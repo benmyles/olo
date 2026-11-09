@@ -976,3 +976,21 @@ fn builtins_keep_their_own_string_tags() {
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] true function [object FontFaceSet]", "[log] [object z] [object CustomElementRegistry] true 0"]);
 }
+/// Errors' stacks show none of Olo's own frames (Chrome's DOM, native,
+/// shows none): an error thrown inside querySelector starts at the page's
+/// call; a page's Error.prepareStackTrace gets only the page's frames.
+#[test]
+fn stacks_show_the_page_s_frames_only() {
+    let (report, _) = run("<body><script>\
+        function mine() { try { document.querySelector('!!'); } catch (e) { return e.stack; } }\
+        const s = mine(); console.log(s.split('\\n')[0], /prelude/.test(s), /at mine/.test(s.split('\\n')[1]));\
+        Error.prepareStackTrace = (e, sites) => sites.map((x) => x.getFunctionName()).join(',');\
+        function viaEach() { let st; [1].forEach(() => { st = new Error('x').stack; }); return st; }\
+        console.log(viaEach()); Error.prepareStackTrace = undefined;\
+        try { Object.create(document.querySelector).toString(); } catch (e) { console.log(e.stack.split('\\n')[1].trim().split(' (')[0]); }\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console[0], "[log] SyntaxError: Failed to execute 'querySelector' on 'Document': '!!' is not a valid selector. false true");
+    assert!(report.console[1].starts_with("[log] ,forEach,viaEach"), "{:?}", report.console);
+    assert_eq!(report.console[2], "[log] at Function.toString");
+}

@@ -539,6 +539,7 @@ impl Realm {
         isolate.set_slot(state.clone());
         isolate.set_slot(Rejections::default());
         isolate.set_promise_reject_callback(promise_rejected);
+        isolate.set_prepare_stack_trace_callback(prepare_stack_trace);
         modules::install(&mut isolate);
         modules::enter(&state);
         let context = {
@@ -2174,6 +2175,81 @@ pub(crate) fn error_frames(scope: &mut v8::PinScope<'_, '_>, value: v8::Local<v8
     }
     out
 }
+/// An error's stack as V8 makes it, without Olo's own frames: the
+/// prelude's (and the builtins it called), which Chrome's DOM, native,
+/// never shows. A page's Error.prepareStackTrace gets the frames kept.
+pub(crate) fn prepare_stack_trace<'s>(scope: &mut v8::PinScope<'s, '_>, error: v8::Local<'s, v8::Value>, sites: v8::Local<'s, v8::Array>) -> v8::Local<'s, v8::Value> {
+    let file_of = |scope: &mut v8::PinScope<'s, '_>, site: v8::Local<'s, v8::Value>| -> Option<String> {
+        let site = v8::Local::<v8::Object>::try_from(site).ok()?;
+        let key = v8::String::new(scope, "getFileName")?;
+        let f = v8::Local::<v8::Function>::try_from(site.get(scope, key.into())?).ok()?;
+        let name = f.call(scope, site.into(), &[])?;
+        (!name.is_null_or_undefined()).then(|| name.to_rust_string_lossy(scope))
+    };
+    // (OLO_PRELUDE_FRAMES keeps them, to debug the prelude.)
+    static KEEP: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let keep = *KEEP.get_or_init(|| std::env::var_os("OLO_PRELUDE_FRAMES").is_some());
+    let olo = |file: &Option<String>| !keep && matches!(file.as_deref(), Some("prelude.js" | "worker prelude"));
+    let count = sites.length();
+    let files: Vec<Option<String>> = (0..count).map(|i| sites.get_index(scope, i).and_then(|s| file_of(scope, s))).collect();
+    let mut kept: Vec<v8::Local<v8::Value>> = Vec::with_capacity(count as usize);
+    for i in 0..count as usize {
+        if olo(&files[i]) {
+            continue;
+        }
+        // A builtin (no file) that Olo's code called: not in Chrome's
+        // (unless it threw: Function.prototype.toString's, under Olo's).
+        if i > 0 && files[i].is_none() && files.get(i + 1).is_some_and(olo) {
+            continue;
+        }
+        if let Some(site) = sites.get_index(scope, i as u32) {
+            kept.push(site);
+        }
+    }
+    let kept_array = v8::Array::new_with_elements(scope, &kept);
+    // The page's own Error.prepareStackTrace, if it set one.
+    let context = scope.get_current_context();
+    let global = context.global(scope);
+    if let Some(key) = v8::String::new(scope, "Error")
+        && let Some(ctor) = global.get(scope, key.into()).and_then(|e| v8::Local::<v8::Object>::try_from(e).ok())
+        && let Some(key) = v8::String::new(scope, "prepareStackTrace")
+        && let Some(f) = ctor.get(scope, key.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
+    {
+        return f.call(scope, ctor.into(), &[error, kept_array.into()]).unwrap_or_else(|| v8::undefined(scope).into());
+    }
+    // V8's own: the error's name and message, then a line a frame.
+    let mut text = String::new();
+    if let Ok(object) = v8::Local::<v8::Object>::try_from(error) {
+        let read = |scope: &mut v8::PinScope<'s, '_>, k: &str| -> Option<String> {
+            let key = v8::String::new(scope, k)?;
+            let v = object.get(scope, key.into())?;
+            (!v.is_undefined()).then(|| v.to_rust_string_lossy(scope))
+        };
+        let name = read(scope, "name").unwrap_or_else(|| "Error".into());
+        let message = read(scope, "message").unwrap_or_default();
+        text = if name.is_empty() {
+            message
+        } else if message.is_empty() {
+            name
+        } else {
+            format!("{name}: {message}")
+        };
+    } else {
+        text = error.to_rust_string_lossy(scope);
+    }
+    for site in kept {
+        let line = v8::Local::<v8::Object>::try_from(site).ok().and_then(|site| {
+            let key = v8::String::new(scope, "toString")?;
+            let f = v8::Local::<v8::Function>::try_from(site.get(scope, key.into())?).ok()?;
+            Some(f.call(scope, site.into(), &[])?.to_rust_string_lossy(scope))
+        });
+        if let Some(line) = line {
+            text.push_str("\n    at ");
+            text.push_str(&line);
+        }
+    }
+    string(scope, &text)
+}
 /// The machine as Chrome tells pages of it: its processors online (not the
 /// share of them Olo's cgroup lets it use) and its memory in GB, rounded to
 /// a power of two between 0.25 and 32. Read once.
@@ -2457,6 +2533,23 @@ const NATIVES: &[&str] = &[
     "language",
     "count",
 ];
+/// A DOMException of `name` thrown (Chrome's errors for what the DOM
+/// refuses), else a TypeError.
+fn throw_dom(scope: &mut v8::PinScope, name: &str, message: &str) {
+    let global = scope.get_current_context().global(scope);
+    let exception = (|| {
+        let key = v8::String::new(scope, "DOMException")?;
+        let ctor = v8::Local::<v8::Function>::try_from(global.get(scope, key.into())?).ok()?;
+        let args = [string(scope, message), string(scope, name)];
+        ctor.new_instance(scope, &args).map(Into::into)
+    })();
+    match exception {
+        Some(e) => {
+            scope.throw_exception(e);
+        }
+        None => throw(scope, &format!("{name}: {message}")),
+    }
+}
 fn throw(scope: &mut v8::PinScope, message: &str) {
     let message = v8::String::new(scope, message).unwrap();
     let exception = v8::Exception::type_error(scope, message);
@@ -3166,7 +3259,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 });
             }
             match result {
-                Err(e) => throw(scope, &format!("SyntaxError: '{selector}' is not a valid selector ({e})")),
+                Err(_) => throw_dom(scope, "SyntaxError", &format!("'{selector}' is not a valid selector.")),
                 Ok(nodes) if matching => rv.set_bool(!nodes.is_empty()),
                 Ok(nodes) if all => rv.set(nodes_array(scope, &state, &nodes)),
                 Ok(nodes) => match nodes.first().and_then(|n| wrap(scope, &state, *n)) {

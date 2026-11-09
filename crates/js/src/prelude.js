@@ -16,6 +16,9 @@
     }
   };
   const consoleText = (N.hidden || global).__olo_consoleText;
+  // An invalid selector: Chrome's SyntaxError, saying which method of which
+  // interface refused it.
+  const selectorError = (e, method, owner) => (e && e.name === 'SyntaxError' && e instanceof DOMException ? new DOMException("Failed to execute '" + method + "' on '" + owner + "': " + e.message, 'SyntaxError') : e);
   const log = (level, args) => N.log(level, args.map(consoleText).join(' '));
   const console = {};
   for (const level of ['log', 'info', 'debug', 'warn', 'error', 'trace', 'dir', 'table']) console[level] = (...args) => log(level, args);
@@ -600,12 +603,12 @@
     setAttributeNode(attr) { N.setAttr(this, attr.name, attr.value); return null; },
     removeAttributeNode(attr) { N.removeAttr(this, attr.name); return attr; },
     toggleAttribute(name, force) { const has = N.attr(this, String(name)) != null; if (force === true || (force === undefined && !has)) { N.setAttr(this, String(name), ''); return true; } N.removeAttr(this, String(name)); return false; },
-    querySelector(sel) { return N.query(this, String(sel), false); },
-    querySelectorAll(sel) { return listOf(N.query(this, String(sel), true)); },
-    matches(sel) { return N.matches(this, String(sel)); },
+    querySelector(sel) { try { return N.query(this, String(sel), false); } catch (e) { throw selectorError(e, 'querySelector', 'Element'); } },
+    querySelectorAll(sel) { try { return listOf(N.query(this, String(sel), true)); } catch (e) { throw selectorError(e, 'querySelectorAll', 'Element'); } },
+    matches(sel) { try { return N.matches(this, String(sel)); } catch (e) { throw selectorError(e, 'matches', 'Element'); } },
     webkitMatchesSelector(sel) { return N.matches(this, String(sel)); },
     msMatchesSelector(sel) { return N.matches(this, String(sel)); },
-    closest(sel) { let n = this; while (n && N.nodeType(n) === 1) { if (N.matches(n, String(sel))) return n; n = N.parent(n); } return null; },
+    closest(sel) { try { let n = this; while (n && N.nodeType(n) === 1) { if (N.matches(n, String(sel))) return n; n = N.parent(n); } return null; } catch (e) { throw selectorError(e, 'closest', 'Element'); } },
     getElementsByTagName(name) { name = String(name); return collectionOf(name === '*' ? N.query(this, '*', true) : N.query(this, name, true)); },
     getElementsByTagNameNS(ns, name) { return collectionOf(N.query(this, String(name), true)); },
     getElementsByClassName(names) { const sel = String(names).trim().split(/\s+/).filter(Boolean).map((c) => '.' + CSS.escape(c)).join(''); return collectionOf(sel ? N.query(this, sel, true) : []); },
@@ -789,8 +792,8 @@
     getElementsByTagName(name) { return Element.prototype.getElementsByTagName.call(this, name); },
     getElementsByTagNameNS(ns, name) { return collectionOf(N.query(this, String(name), true)); },
     getElementsByClassName(names) { return Element.prototype.getElementsByClassName.call(this, names); },
-    querySelector(sel) { return N.query(this, String(sel), false); },
-    querySelectorAll(sel) { return listOf(N.query(this, String(sel), true)); },
+    querySelector(sel) { try { return N.query(this, String(sel), false); } catch (e) { throw selectorError(e, 'querySelector', 'Document'); } },
+    querySelectorAll(sel) { try { return listOf(N.query(this, String(sel), true)); } catch (e) { throw selectorError(e, 'querySelectorAll', 'Document'); } },
     importNode(n, deep) { return upgradeClone(N.clone(asNode(n), !!deep)); },
     adoptNode(n) { return n; },
     // document.write while the page's scripts first run (the document
@@ -817,7 +820,7 @@
   define(DocumentFragment.prototype, {
     children: { get() { return elementChildren(this); } }, childElementCount: { get() { return N.children(this).length; } },
     firstElementChild: { get() { return N.children(this)[0] || null; } }, lastElementChild: { get() { const c = N.children(this); return c[c.length - 1] || null; } },
-    querySelector(sel) { return N.query(this, String(sel), false); }, querySelectorAll(sel) { return listOf(N.query(this, String(sel), true)); },
+    querySelector(sel) { try { return N.query(this, String(sel), false); } catch (e) { throw selectorError(e, 'querySelector', 'DocumentFragment'); } }, querySelectorAll(sel) { try { return listOf(N.query(this, String(sel), true)); } catch (e) { throw selectorError(e, 'querySelectorAll', 'DocumentFragment'); } },
     getElementById(id) { return N.query(this, '#' + CSS.escape(String(id)), false); },
     innerHTML: { get() { return N.innerHTML(this); }, set(v) { N.setInnerHTML(this, String(v)); } },
     styleSheets: { get() { return []; } }, adoptedStyleSheets: { get() { return this._adopted || (this._adopted = []); }, set(v) { this._adopted = Array.from(v || []); for (const sheet of this._adopted) (sheet._roots || (sheet._roots = new Set())).add(this); syncShadowAdopted(this); } },

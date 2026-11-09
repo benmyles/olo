@@ -152,6 +152,7 @@ fn run(
         },
     };
     let mut isolate = v8::Isolate::new(v8::CreateParams::default());
+    isolate.set_prepare_stack_trace_callback(crate::prepare_stack_trace);
     *slot.lock().unwrap() = Some(isolate.thread_safe_handle());
     isolate.set_slot(state.clone());
     let context = {
