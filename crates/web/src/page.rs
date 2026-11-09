@@ -3330,6 +3330,49 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
         Some(entry) => entry.1 |= rematch,
         None => nodes.push((node, rematch)),
     };
+    // A change inside an element a `:has()` tests: only its ancestors'
+    // `:has()` can flip (no argument has a sibling combinator, else the
+    // elements beside them too: not patched), so they are matched again,
+    // with what selectors reach from a `:has()` there. (YouTube's style
+    // attributes, which a `:has([style])` tests, restyled its page whole,
+    // 129 times as it loaded, 365 ms.)
+    let (has_down, has_beside) = invalidation.reach_of(std::iter::once(":has".to_owned()));
+    // With a sibling combinator in an argument (`:has(+ .x)`, `:has(~ .x
+    // .y)`), the elements before it and before each ancestor too: a
+    // `:has()` there reaches it through them.
+    let has_ancestors = |node: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| -> bool {
+        let element = |n: crate::dom::NodeId| doc.node_type(n).ok() == Some(crate::dom::NodeType::Element);
+        let mut subject = |a: crate::dom::NodeId, reached: &mut Vec<crate::dom::NodeId>| {
+            reached.push(a);
+            reached_from(doc, a, &has_down, &has_beside, reached);
+        };
+        let mut at = Some(node);
+        while let Some(a) = at {
+            if has_keys.siblings {
+                let mut before = doc.previous_sibling(a).ok().flatten();
+                while let Some(b) = before {
+                    if element(b) {
+                        subject(b, reached);
+                    }
+                    if reached.len() > 512 {
+                        return false;
+                    }
+                    before = doc.previous_sibling(b).ok().flatten();
+                }
+            }
+            let parent = doc.parent(a).ok().flatten();
+            if let Some(p) = parent
+                && element(p)
+            {
+                subject(p, reached);
+            }
+            if reached.len() > 512 {
+                return false;
+            }
+            at = parent;
+        }
+        true
+    };
     for (_, change) in changes {
         // A detached element (one a script is making) has no style to
         // patch, and nothing in the document follows it.
@@ -3341,7 +3384,13 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
         match change {
             crate::dom::Change::Style(n) => {
                 if has_keys.attributes.contains("style") {
-                    return Err("a :has() tests [style]".to_owned());
+                    let mut reached = Vec::new();
+                    if !has_ancestors(*n, &mut reached) {
+                        return Err(format!("a :has() tests [style]: over 512 elements to match again ({} before giving up)", reached.len()));
+                    }
+                    for a in reached {
+                        add(a, true);
+                    }
                 }
                 // No selector tests the style attribute (the usual case):
                 // its change matches nothing anew, whatever keyless
@@ -3357,7 +3406,13 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
             crate::dom::Change::Attribute { node, name: attribute, old, new } => {
                 let keys = style::attribute_keys(attribute, old.as_deref(), new.as_deref());
                 if has_keys.attribute_flips(attribute, old.as_deref(), new.as_deref()) || keys.iter().skip(1).any(|k| has_keys.has_key(k)) {
-                    return Err(format!("<{}> {attribute}: a :has() tests it", name(*node)));
+                    let mut reached = Vec::new();
+                    if !has_ancestors(*node, &mut reached) {
+                        return Err(format!("<{}> {attribute}: a :has() tests it", name(*node)));
+                    }
+                    for a in reached {
+                        add(a, true);
+                    }
                 }
                 let (down, beside) = invalidation.reach_of(keys.into_iter());
                 add(*node, true);

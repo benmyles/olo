@@ -1863,6 +1863,62 @@ fn a_class_that_selectors_reach_from_restyles_what_they_reach() {
     }
 }
 #[test]
+fn a_style_attribute_a_has_tests_restyles_what_has_it() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // YouTube's sheets: a `:has()` testing the style attribute, one with a
+    // sibling combinator. Patched (the elements before and above the one
+    // changed matched again), not the page restyled whole.
+    let mut page = olo_web::page::load(
+        Arc::from(
+            "<!doctype html><style>body{margin:0}div{height:10px;background-color:white}\
+             .a:has(+ .b[style]){background-color:green}.c:has(i[style]){background-color:blue}</style>\
+             <div class=a></div><div class=b id=b></div><div class=c><p style='margin:0'><i id=i></i></p></div>",
+        ),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let rows = |page: &olo_web::page::Page, painter: &mut paint::Engine| {
+        let tile = render(painter, &page.scene);
+        [5, 25].map(|y| pixel(&tile, 50, y))
+    };
+    let white = [255, 255, 255, 255];
+    assert_eq!(rows(&page, &mut painter), [white; 2]);
+    let find = |doc: &olo_web::dom::Document, id: &str| {
+        let mut stack = vec![doc.root()];
+        while let Some(n) = stack.pop() {
+            if doc.attribute(n, "id").ok().flatten() == Some(id) {
+                return n;
+            }
+            stack.extend(doc.children(n).unwrap());
+        }
+        panic!("no #{id}")
+    };
+    for (id, style, expected) in
+        [("b", Some("color:red"), [[0, 128, 0, 255], white]), ("i", Some("color:red"), [[0, 128, 0, 255], [0, 0, 255, 255]]), ("b", None, [white, [0, 0, 255, 255]]), ("i", None, [white; 2])]
+    {
+        let mut doc = page.document.clone();
+        let n = find(&doc, id);
+        match style {
+            Some(v) => drop(doc.set_attribute(n, "style", v).unwrap()),
+            None => drop(doc.remove_attribute(n, "style").unwrap()),
+        }
+        page.rerender(doc, Vec::new(), &host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+        assert_eq!(rows(&page, &mut painter), expected, "#{id} style {style:?}");
+    }
+}
+#[test]
 fn a_declarative_shadow_root_renders_with_its_own_sheet() {
     let mut b = Builder::new(Default::default());
     b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
