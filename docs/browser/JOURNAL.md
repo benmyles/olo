@@ -7106,7 +7106,47 @@ the Guardian and old Reddit, looking for pages that fail outright:
   far from the view go and come back as they near it, as Chrome's do.
 - **Web Crypto's AES.** Amazon's bot check imports an AES-GCM key, which
   Olo refused (it had digests and HMAC): a blank page. AES (GCM, CBC,
-  CTR), PBKDF2 and HKDF now, natively; Amazon's home loads. Amazon tells
-  AI agents their access violates its terms (Chrome under remote
-  debugging is turned away so): the agent stopped testing it there.
+  CTR), PBKDF2 and HKDF now, natively; Amazon's home loads. (Amazon turns
+  Chrome under remote debugging away as an "unauthorized AI agent"; Ben:
+  Olo is a browser people use there, so it is tested there, looking only,
+  no shopping.)
 
+
+## 2026-11-09: Olo presents as the Chrome it renders like
+
+Ben asked that, as far as any site can tell, Olo be Chrome: its fingerprint
+Chrome's to the small details bot checkers look at, so no person using Olo
+is taken for a bot. Requests already went out as Chrome 157's (user agent,
+client hints, headers in Chrome's order). Now what a page reads:
+
+- **Its global, navigator and DOM.** A fingerprint probe reads 149 values;
+  95 differed from Chrome's, 13 do now (6 of them the test's own: window
+  size, focus, history). The shape comes from Chrome itself
+  (`tools/dev/chrome-shape.js`, evaluated in Chrome): the global's 1,230
+  properties in Chrome's order, navigator on its prototype, plugins,
+  userAgentData, `window.chrome`, and every DOM prototype as Chrome has it
+  (HTMLDocument, CharacterData and DocumentType where they belong; each
+  member on the prototype Chrome puts it on, in its order). WebGL names
+  the GPU as ANGLE does ("ANGLE (Intel, Mesa Intel(R) Graphics (PTL),
+  OpenGL ES 3.2)"). Interfaces Chrome has and Olo doesn't are there,
+  unconstructible as Chrome's mostly are; those a page can construct in
+  Chrome are left out (NYT's player made VTTCues of one), except events,
+  made for real.
+- **Its functions, as Chrome's.** CreepJS reads 124 API members and found
+  45 lying: getters that answered on the prototype (Chrome's throw
+  "Illegal invocation"), methods that were constructors. 0 now. Every
+  prelude function reads as native code.
+- **Nothing that tells of automation.** Logging an error read its stack,
+  which pages watch for (DevTools or CDP attached): the console now reads
+  nothing of the page's. A worker's navigator says what the page's does.
+- **On the way, real gaps.** Range was a placeholder: it is the DOM's now,
+  its rectangles Chrome's to the pixel. An inline element's border took no
+  room and wasn't painted. `new Text()`, `new DocumentFragment()` threw.
+
+Checkers: bot.sannysoft.com fails 3 rows (10 before): a broken image's
+16×16 box, and canvases in a live iframe. deviceandbrowserinfo.com: no
+longer "automated with CDP"; its worker test still differs (no
+OffscreenCanvas WebGL in workers). CreepJS: no lies; its audio, WebGL,
+fonts (FontFace) and SVG text tests fail on what Olo lacks. Each page's
+prelude costs 34 ms against 24 (a realm's setup; it is compiled from a
+code cache now); reading DOM getters costs 6% more.

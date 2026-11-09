@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-09
+
+### Browser: inline borders
+
+*01:16* — An inline element's border (a padded, bordered span) took no room on its line and wasn't painted; now it is, on each line's piece, and getClientRects gives each line's border box as Chrome does (Chrome, Olo before, Olo now).
+
+![Browser: inline borders](2026-11-09/011600-browser-inline-borders.png)
+
 ## 2026-11-08
 
 ### Browser: SVG gradients

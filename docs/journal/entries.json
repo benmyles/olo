@@ -4084,5 +4084,11 @@
   "title": "Browser: SVG gradients",
   "caption": "MDN's Baseline row, Olo (top) against Chrome: the browser logos are SVGs painted with linear and radial gradients (they were blank, under a root fill=none, or flat in their first stop).",
   "image": "2026-11-08/135456-browser-svg-gradients.png"
+ },
+ {
+  "time": "2026-11-09T01:16:00",
+  "title": "Browser: inline borders",
+  "caption": "An inline element's border (a padded, bordered span) took no room on its line and wasn't painted; now it is, on each line's piece, and getClientRects gives each line's border box as Chrome does (Chrome, Olo before, Olo now).",
+  "image": "2026-11-09/011600-browser-inline-borders.png"
  }
 ]

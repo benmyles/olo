@@ -100,10 +100,26 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   it changes, input passed in, postMessage both ways.
   Amazon's AWS WAF passes since Web Crypto has AES (2026-11-08). What is
   missing is standard behaviour (iframes' scripts), and Olo presenting as
-  the Chrome it is compatible with (its user agent, client hints, request
-  headers, navigator, TLS and HTTP/2), as other browsers built for
-  Chrome's web do. (Amazon shows Chrome under remote debugging "Access
-  restricted"; agents may still check its pages render, looking only.)
+  the Chrome it is compatible with (2026-11-09: requests, navigator, the
+  global and DOM prototypes, WebGL, API functions as Chrome's; JOURNAL).
+  (Amazon shows Chrome under remote debugging "Access restricted"; agents
+  may still check its pages render, looking only.)
+- [ ] Presenting as Chrome, what's left (2026-11-09): TLS and HTTP/2 as
+  Chrome's (rustls can't make its ClientHello: GREASE, ALPS, its suites
+  and extension order; h2's pseudo-header order differs; BoringSSL wants
+  cmake); OffscreenCanvas with WebGL, in pages and workers (a worker's GPU
+  reads NA); the constructible interfaces Olo lacks (FontFace, Observable
+  and EventTarget.when, OfflineAudioContext and Web Audio, WebCodecs,
+  MediaRecorder, RTCPeerConnection, CompressionStream, URLPattern, ...:
+  150 of Chrome's 1,230 globals); XPath (document.evaluate); the
+  navigation API; live iframes (contentWindow is null); a broken image's
+  16×16 box and icon; SVG text and geometry (getComputedTextLength,
+  getBBox, x/width/...); getBoundingClientRect through CSS transforms;
+  innerText includes <style>'s text; the prelude's frames in error
+  stacks; a Range moved by the document's mutations.
+- [ ] A realm's prelude costs 34 ms (24 before presenting as Chrome), most
+  of it running the prelude: a V8 startup snapshot of it would make a
+  realm in a few ms (its top level made page-independent first).
 - [x] YouTube: its home as Chrome's, icons within a second (2026-11-08:
   idle callbacks took their timeout as a delay; Cache Storage kept nothing).
 - [ ] Selectors are compiled again with every compile of a page's sheets
