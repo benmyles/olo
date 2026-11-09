@@ -33,6 +33,8 @@ pub struct Google {
     pub tokens: usize,
     pub chunked: usize,
     pub misplaced: usize,
+    /// How long each request takes to be answered.
+    pub latency: std::time::Duration,
 }
 
 struct Request {
@@ -161,181 +163,190 @@ pub fn serve(google: Arc<Mutex<Google>>) -> String {
     std::thread::spawn(move || {
         for conn in listener.incoming() {
             let Ok(mut conn) = conn else { continue };
-            let Some(req) = read_request(&conn, &google) else { continue };
-            let mut g = google.lock().unwrap();
-            g.requests += 1;
-            if req.path == "/token" {
-                let form: HashMap<String, String> = std::str::from_utf8(&req.body).unwrap().split('&').filter_map(|kv| kv.split_once('=')).map(|(k, v)| (k.to_owned(), unescape(v))).collect();
-                assert_eq!(form["client_secret"], "GOCSPX-secret");
-                g.tokens += 1;
-                if form["grant_type"] == "authorization_code" {
-                    assert_eq!(form["code"], "the-code");
-                    assert!(form["code_verifier"].len() >= 43);
-                    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(br#"{"email":"me@example.com"}"#);
-                    json(&mut conn, 200, serde_json::json!({ "access_token": "t0", "expires_in": 3600, "refresh_token": "the-refresh", "id_token": format!("h.{payload}.s") }));
-                } else {
-                    assert_eq!(form["refresh_token"], "the-refresh");
-                    json(&mut conn, 200, serde_json::json!({ "access_token": format!("t{}", g.tokens), "expires_in": 3600 }));
-                }
-                continue;
-            }
-            if !req.path.starts_with("/upload/session/") && req.headers.get("authorization").is_none_or(|a| !a.starts_with("Bearer t")) {
-                json(&mut conn, 401, serde_json::json!({ "error": { "message": "no token" } }));
-                continue;
-            }
-            if g.expire > 0 && !req.path.starts_with("/upload/session/") {
-                g.expire -= 1;
-                json(&mut conn, 401, serde_json::json!({ "error": { "message": "Invalid Credentials" } }));
-                continue;
-            }
-            if g.slow_down > 0 && req.method == "GET" {
-                g.slow_down -= 1;
-                json(&mut conn, 429, serde_json::json!({ "error": { "message": "Rate Limit Exceeded" } }));
-                continue;
-            }
-            match (req.method.as_str(), req.path.as_str()) {
-                // Whose Drive, and its space (15 GB, as a free account's).
-                ("GET", "/drive/v3/about") => {
-                    let used: usize = g.files.values().map(|(_, _, c)| c.len()).sum();
-                    json(&mut conn, 200, serde_json::json!({ "user": { "emailAddress": "me@example.com" }, "storageQuota": { "limit": "16106127360", "usage": used.to_string() } }));
-                }
-                ("GET", "/drive/v3/files") => {
-                    let q = req.query.get("q").cloned().unwrap_or_default();
-                    let folder = q.contains("mimeType");
-                    let mut hits: Vec<(String, String, usize)> =
-                        g.files.iter().filter(|(_, (n, p, _))| matches(&q, n, p, folder, n == "Olo DiskBackup")).map(|(id, (n, _, c))| (id.clone(), n.clone(), c.len())).collect();
-                    hits.sort_by(|a, b| a.1.cmp(&b.1));
-                    // Two a page.
-                    let from: usize = req.query.get("pageToken").and_then(|p| p.parse().ok()).unwrap_or(0);
-                    // (With each file's MD5, as Drive's md5Checksum.)
-                    let page: Vec<serde_json::Value> = hits
-                        .iter()
-                        .skip(from)
-                        .take(2)
-                        .map(|(id, n, size)| {
-                            use md5::Digest as _;
-                            let sum: String = md5::Md5::digest(&g.files[id].2).iter().map(|b| format!("{b:02x}")).collect();
-                            serde_json::json!({ "id": id, "name": n, "size": size.to_string(), "md5Checksum": sum })
-                        })
-                        .collect();
-                    let mut v = serde_json::json!({ "files": page });
-                    if from + 2 < hits.len() {
-                        v["nextPageToken"] = (from + 2).to_string().into();
-                    }
-                    json(&mut conn, 200, v);
-                }
-                ("POST", "/drive/v3/files") => {
-                    let meta: serde_json::Value = serde_json::from_slice(&req.body).unwrap();
-                    g.next += 1;
-                    let id = format!("id{}", g.next);
-                    g.files.insert(id.clone(), (meta["name"].as_str().unwrap().to_owned(), "root".into(), Vec::new()));
-                    json(&mut conn, 200, serde_json::json!({ "id": id }));
-                }
-                (m, p) if p.starts_with("/upload/drive/v3/files") => {
-                    let existing = p.strip_prefix("/upload/drive/v3/files/").map(str::to_owned);
-                    if req.query.get("uploadType").map(String::as_str) == Some("multipart") {
-                        let ct = &req.headers["content-type"];
-                        let boundary = format!("--{}", ct.split("boundary=").nth(1).unwrap());
-                        let body = &req.body;
-                        let find = |from: usize, pat: &[u8]| body[from..].windows(pat.len()).position(|w| w == pat).map(|i| i + from).unwrap();
-                        let meta_start = find(0, b"\r\n\r\n") + 4;
-                        let meta_end = find(meta_start, boundary.as_bytes()) - 2;
-                        let meta: serde_json::Value = serde_json::from_slice(&body[meta_start..meta_end]).unwrap();
-                        let data_start = find(meta_end + 2, b"\r\n\r\n") + 4;
-                        let data_end = find(data_start, format!("\r\n{boundary}--").as_bytes());
-                        let data = body[data_start..data_end].to_vec();
-                        let id = match existing {
-                            Some(id) => {
-                                assert_eq!(m, "PATCH");
-                                g.files.get_mut(&id).unwrap().2 = data;
-                                id
-                            }
-                            None => {
-                                g.next += 1;
-                                let id = format!("id{}", g.next);
-                                g.files.insert(id.clone(), (meta["name"].as_str().unwrap().to_owned(), meta["parents"][0].as_str().unwrap().to_owned(), data));
-                                id
-                            }
-                        };
-                        json(&mut conn, 200, serde_json::json!({ "id": id }));
+            // (Each request on its own, as Google's are: several at once
+            // overlap; each answered after `latency`, as over a network.)
+            let (google, at) = (google.clone(), at.clone());
+            std::thread::spawn(move || {
+                let latency = google.lock().unwrap().latency;
+                std::thread::sleep(latency);
+                let Some(req) = read_request(&conn, &google) else { return };
+                let mut g = google.lock().unwrap();
+                g.requests += 1;
+                if req.path == "/token" {
+                    let form: HashMap<String, String> = std::str::from_utf8(&req.body).unwrap().split('&').filter_map(|kv| kv.split_once('=')).map(|(k, v)| (k.to_owned(), unescape(v))).collect();
+                    assert_eq!(form["client_secret"], "GOCSPX-secret");
+                    g.tokens += 1;
+                    if form["grant_type"] == "authorization_code" {
+                        assert_eq!(form["code"], "the-code");
+                        assert!(form["code_verifier"].len() >= 43);
+                        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(br#"{"email":"me@example.com"}"#);
+                        json(&mut conn, 200, serde_json::json!({ "access_token": "t0", "expires_in": 3600, "refresh_token": "the-refresh", "id_token": format!("h.{payload}.s") }));
                     } else {
-                        let meta: serde_json::Value = serde_json::from_slice(&req.body).unwrap_or_default();
-                        let total: usize = req.headers["x-upload-content-length"].parse().unwrap();
+                        assert_eq!(form["refresh_token"], "the-refresh");
+                        json(&mut conn, 200, serde_json::json!({ "access_token": format!("t{}", g.tokens), "expires_in": 3600 }));
+                    }
+                    return;
+                }
+                if !req.path.starts_with("/upload/session/") && req.headers.get("authorization").is_none_or(|a| !a.starts_with("Bearer t")) {
+                    json(&mut conn, 401, serde_json::json!({ "error": { "message": "no token" } }));
+                    return;
+                }
+                if g.expire > 0 && !req.path.starts_with("/upload/session/") {
+                    g.expire -= 1;
+                    json(&mut conn, 401, serde_json::json!({ "error": { "message": "Invalid Credentials" } }));
+                    return;
+                }
+                if g.slow_down > 0 && req.method == "GET" {
+                    g.slow_down -= 1;
+                    json(&mut conn, 429, serde_json::json!({ "error": { "message": "Rate Limit Exceeded" } }));
+                    return;
+                }
+                match (req.method.as_str(), req.path.as_str()) {
+                    // Whose Drive, and its space (15 GB, as a free account's).
+                    ("GET", "/drive/v3/about") => {
+                        let used: usize = g.files.values().map(|(_, _, c)| c.len()).sum();
+                        json(&mut conn, 200, serde_json::json!({ "user": { "emailAddress": "me@example.com" }, "storageQuota": { "limit": "16106127360", "usage": used.to_string() } }));
+                    }
+                    ("GET", "/drive/v3/files") => {
+                        let q = req.query.get("q").cloned().unwrap_or_default();
+                        let folder = q.contains("mimeType");
+                        let mut hits: Vec<(String, String, usize)> =
+                            g.files.iter().filter(|(_, (n, p, _))| matches(&q, n, p, folder, n == "Olo DiskBackup")).map(|(id, (n, _, c))| (id.clone(), n.clone(), c.len())).collect();
+                        hits.sort_by(|a, b| a.1.cmp(&b.1));
+                        // Two a page.
+                        let from: usize = req.query.get("pageToken").and_then(|p| p.parse().ok()).unwrap_or(0);
+                        // (With each file's MD5, as Drive's md5Checksum.)
+                        let page: Vec<serde_json::Value> = hits
+                            .iter()
+                            .skip(from)
+                            .take(2)
+                            .map(|(id, n, size)| {
+                                use md5::Digest as _;
+                                let sum: String = md5::Md5::digest(&g.files[id].2).iter().map(|b| format!("{b:02x}")).collect();
+                                serde_json::json!({ "id": id, "name": n, "size": size.to_string(), "md5Checksum": sum })
+                            })
+                            .collect();
+                        let mut v = serde_json::json!({ "files": page });
+                        if from + 2 < hits.len() {
+                            v["nextPageToken"] = (from + 2).to_string().into();
+                        }
+                        json(&mut conn, 200, v);
+                    }
+                    ("POST", "/drive/v3/files") => {
+                        let meta: serde_json::Value = serde_json::from_slice(&req.body).unwrap();
                         g.next += 1;
-                        let sid = format!("{}", g.next);
-                        g.sessions.insert(sid.clone(), (existing, meta["name"].as_str().unwrap_or("").to_owned(), meta["parents"][0].as_str().unwrap_or("").to_owned(), Vec::new(), total));
-                        respond(&mut conn, 200, &[("Location", format!("{at}/upload/session/{sid}"))], b"");
-                    }
-                }
-                ("PUT", p) if p.starts_with("/upload/session/") => {
-                    let sid = p.rsplit('/').next().unwrap().to_owned();
-                    let range = req.headers["content-range"].clone();
-                    let (existing, name, parent, mut got, total) = g.sessions.get(&sid).cloned().unwrap();
-                    if !range.starts_with("bytes */") {
-                        let start: usize = range.trim_start_matches("bytes ").split('-').next().unwrap().parse().unwrap();
-                        // (Not from where it got to: refused, and said.)
-                        if start != got.len() {
-                            eprintln!("a piece from {start}, where it got to {}", got.len());
-                            g.misplaced += 1;
-                            json(&mut conn, 400, serde_json::json!({ "error": { "message": "not where it got to" } }));
-                            continue;
-                        }
-                        // The first piece of the first upload: cut off part way.
-                        if g.cut > 0 {
-                            g.cut -= 1;
-                            let keep = req.body.len() / 2 / (256 << 10) * (256 << 10);
-                            got.extend_from_slice(&req.body[..keep]);
-                            g.sessions.get_mut(&sid).unwrap().3 = got;
-                            drop(conn);
-                            continue;
-                        }
-                        got.extend_from_slice(&req.body);
-                        g.sessions.get_mut(&sid).unwrap().3 = got.clone();
-                    }
-                    if got.len() < total {
-                        let mut h = vec![];
-                        if !got.is_empty() {
-                            h.push(("Range", format!("bytes=0-{}", got.len() - 1)));
-                        }
-                        respond(&mut conn, 308, &h, b"");
-                    } else {
-                        let id = match existing {
-                            Some(id) => {
-                                g.files.get_mut(&id).unwrap().2 = got;
-                                id
-                            }
-                            None => {
-                                g.next += 1;
-                                let id = format!("id{}", g.next);
-                                g.files.insert(id.clone(), (name, parent, got));
-                                id
-                            }
-                        };
+                        let id = format!("id{}", g.next);
+                        g.files.insert(id.clone(), (meta["name"].as_str().unwrap().to_owned(), "root".into(), Vec::new()));
                         json(&mut conn, 200, serde_json::json!({ "id": id }));
                     }
-                }
-                ("GET", p) if p.starts_with("/drive/v3/files/") => {
-                    let id = p.rsplit('/').next().unwrap();
-                    let Some((_, _, data)) = g.files.get(id) else {
-                        json(&mut conn, 404, serde_json::json!({ "error": { "message": "File not found" } }));
-                        continue;
-                    };
-                    match req.headers.get("range") {
-                        Some(r) => {
-                            let (a, b) = r.trim_start_matches("bytes=").split_once('-').unwrap();
-                            let (a, b): (usize, usize) = (a.parse().unwrap(), b.parse().unwrap());
-                            respond(&mut conn, 206, &[], &data[a..=b.min(data.len() - 1)]);
+                    (m, p) if p.starts_with("/upload/drive/v3/files") => {
+                        let existing = p.strip_prefix("/upload/drive/v3/files/").map(str::to_owned);
+                        if req.query.get("uploadType").map(String::as_str) == Some("multipart") {
+                            let ct = &req.headers["content-type"];
+                            let boundary = format!("--{}", ct.split("boundary=").nth(1).unwrap());
+                            let body = &req.body;
+                            let find = |from: usize, pat: &[u8]| body[from..].windows(pat.len()).position(|w| w == pat).map(|i| i + from).unwrap();
+                            let meta_start = find(0, b"\r\n\r\n") + 4;
+                            let meta_end = find(meta_start, boundary.as_bytes()) - 2;
+                            let meta: serde_json::Value = serde_json::from_slice(&body[meta_start..meta_end]).unwrap();
+                            let data_start = find(meta_end + 2, b"\r\n\r\n") + 4;
+                            let data_end = find(data_start, format!("\r\n{boundary}--").as_bytes());
+                            let data = body[data_start..data_end].to_vec();
+                            let id = match existing {
+                                Some(id) => {
+                                    assert_eq!(m, "PATCH");
+                                    g.files.get_mut(&id).unwrap().2 = data;
+                                    id
+                                }
+                                None => {
+                                    g.next += 1;
+                                    let id = format!("id{}", g.next);
+                                    g.files.insert(id.clone(), (meta["name"].as_str().unwrap().to_owned(), meta["parents"][0].as_str().unwrap().to_owned(), data));
+                                    id
+                                }
+                            };
+                            json(&mut conn, 200, serde_json::json!({ "id": id }));
+                        } else {
+                            let meta: serde_json::Value = serde_json::from_slice(&req.body).unwrap_or_default();
+                            let total: usize = req.headers["x-upload-content-length"].parse().unwrap();
+                            g.next += 1;
+                            let sid = format!("{}", g.next);
+                            g.sessions.insert(sid.clone(), (existing, meta["name"].as_str().unwrap_or("").to_owned(), meta["parents"][0].as_str().unwrap_or("").to_owned(), Vec::new(), total));
+                            respond(&mut conn, 200, &[("Location", format!("{at}/upload/session/{sid}"))], b"");
                         }
-                        None => respond(&mut conn, 200, &[], data),
                     }
+                    ("PUT", p) if p.starts_with("/upload/session/") => {
+                        let sid = p.rsplit('/').next().unwrap().to_owned();
+                        let range = req.headers["content-range"].clone();
+                        let (existing, name, parent, mut got, total) = g.sessions.get(&sid).cloned().unwrap();
+                        if !range.starts_with("bytes */") {
+                            let start: usize = range.trim_start_matches("bytes ").split('-').next().unwrap().parse().unwrap();
+                            // (Not from where it got to: refused, and said.)
+                            if start != got.len() {
+                                eprintln!("a piece from {start}, where it got to {}", got.len());
+                                g.misplaced += 1;
+                                json(&mut conn, 400, serde_json::json!({ "error": { "message": "not where it got to" } }));
+                                return;
+                            }
+                            // The first piece of the first upload: cut off part way.
+                            if g.cut > 0 {
+                                g.cut -= 1;
+                                let keep = req.body.len() / 2 / (256 << 10) * (256 << 10);
+                                got.extend_from_slice(&req.body[..keep]);
+                                g.sessions.get_mut(&sid).unwrap().3 = got;
+                                drop(conn);
+                                return;
+                            }
+                            got.extend_from_slice(&req.body);
+                            g.sessions.get_mut(&sid).unwrap().3 = got.clone();
+                        }
+                        if got.len() < total {
+                            let mut h = vec![];
+                            if !got.is_empty() {
+                                h.push(("Range", format!("bytes=0-{}", got.len() - 1)));
+                            }
+                            respond(&mut conn, 308, &h, b"");
+                        } else {
+                            let id = match existing {
+                                Some(id) => {
+                                    g.files.get_mut(&id).unwrap().2 = got;
+                                    id
+                                }
+                                None => {
+                                    g.next += 1;
+                                    let id = format!("id{}", g.next);
+                                    g.files.insert(id.clone(), (name, parent, got));
+                                    id
+                                }
+                            };
+                            json(&mut conn, 200, serde_json::json!({ "id": id }));
+                        }
+                    }
+                    ("GET", p) if p.starts_with("/drive/v3/files/") => {
+                        let id = p.rsplit('/').next().unwrap();
+                        let Some((_, _, data)) = g.files.get(id) else {
+                            json(&mut conn, 404, serde_json::json!({ "error": { "message": "File not found" } }));
+                            return;
+                        };
+                        match req.headers.get("range") {
+                            Some(r) => {
+                                let (a, b) = r.trim_start_matches("bytes=").split_once('-').unwrap();
+                                let (a, b): (usize, usize) = (a.parse().unwrap(), b.parse().unwrap());
+                                respond(&mut conn, 206, &[], &data[a..=b.min(data.len() - 1)]);
+                            }
+                            None => respond(&mut conn, 200, &[], data),
+                        }
+                    }
+                    ("DELETE", p) if p.starts_with("/drive/v3/files/") => {
+                        let id = p.rsplit('/').next().unwrap().to_owned();
+                        let gone = g.files.remove(&id).is_some();
+                        // (A folder: what's in it too, as Drive does.)
+                        g.files.retain(|_, (_, parent, _)| *parent != id);
+                        respond(&mut conn, if gone { 204 } else { 404 }, &[], b"");
+                    }
+                    _ => json(&mut conn, 400, serde_json::json!({ "error": { "message": format!("{} {} isn't served", req.method, req.path) } })),
                 }
-                ("DELETE", p) if p.starts_with("/drive/v3/files/") => {
-                    let id = p.rsplit('/').next().unwrap();
-                    let gone = g.files.remove(id).is_some();
-                    respond(&mut conn, if gone { 204 } else { 404 }, &[], b"");
-                }
-                _ => json(&mut conn, 400, serde_json::json!({ "error": { "message": format!("{} {} isn't served", req.method, req.path) } })),
-            }
+            });
         }
     });
     base

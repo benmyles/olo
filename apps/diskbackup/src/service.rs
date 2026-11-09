@@ -24,6 +24,14 @@
 //! found missing or damaged are repaired by the next tidy, done at once:
 //! what's whole in them salvaged, the rest let go of, so the next backup
 //! sends it again.
+//!
+//! Upgraded (olo-session's SIGURG: this program's file was replaced), it
+//! stops what's under way the way that keeps its place (a backup keeps
+//! what it got through), notes what that was (`Kept::resume`), and becomes
+//! the new version in the same process, which goes straight on with it:
+//! the backup resumes, the tidy or validation runs again. Erasing is let
+//! finish first. It isn't said as a stop, and olo-session doesn't stop it
+//! meanwhile (`mark_waiting`).
 
 use std::{
     os::unix::net::UnixListener,
@@ -54,6 +62,9 @@ enum Event {
     Erase,
     /// Validate these (fully, if so).
     Validate(Vec<Id>, bool),
+    /// Upgraded: the loop becomes the new version (once what's under way
+    /// has stopped).
+    Upgrade,
 }
 
 /// What the loop was asked meanwhile (as it waited, or backed up).
@@ -83,7 +94,7 @@ impl Asked {
                 self.validate.extend(ids);
                 self.validate_full |= full;
             }
-            Ok(Event::Settings) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Ok(Event::Settings | Event::Upgrade) | Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return false,
         }
         true
@@ -94,6 +105,42 @@ impl Asked {
 /// be raised again: only a new process can): it ends once it's not busy,
 /// and olo-session starts it again, at the session's, then this one.
 static RESTART: AtomicBool = AtomicBool::new(false);
+
+/// Upgraded: what's under way stops, and this process becomes the new
+/// version (Ben, 2026-11-08: "make sure that upgrades will work properly
+/// when a backup is underway it should seamlessly still move over to the
+/// new process and resume there").
+static UPGRADE: AtomicBool = AtomicBool::new(false);
+/// Erasing every backup: let finish before the upgrade, not stopped.
+static ERASING: AtomicBool = AtomicBool::new(false);
+
+/// What the new version goes on with (an upgrade stopped it, or it was
+/// asked and not done yet).
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+struct Resume {
+    back_up: bool,
+    tidy: bool,
+    validate: Vec<String>,
+    validate_full: bool,
+}
+
+static RESUME: Mutex<Option<Resume>> = Mutex::new(None);
+
+/// The upload limit every store paces itself by (its count of bytes let
+/// through: what's sent, live), and the open backup's pack being sent.
+static UP: std::sync::OnceLock<Arc<olo_diskbackup::Limit>> = std::sync::OnceLock::new();
+static SENDING: Mutex<Option<Arc<std::sync::atomic::AtomicU64>>> = Mutex::new(None);
+/// Stop asked (Stop, an upgrade): said at once, though the backup sees it
+/// only once the pack it's sending has gone.
+static CANCEL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
+
+/// Noted for the new version.
+fn resume(f: impl FnOnce(&mut Resume)) {
+    if let Ok(mut r) = RESUME.lock() {
+        f(r.get_or_insert_with(Resume::default));
+    }
+}
 
 /// What's kept between runs of the service (in the state folder).
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -114,6 +161,9 @@ struct Kept {
     /// connecting again to the same keeps it; moving elsewhere starts
     /// afresh).
     target: Option<Target>,
+    /// What to go on with at once (the version before was upgraded part
+    /// way through it).
+    resume: Option<Resume>,
 }
 
 /// Each of this computer's backups' last check, by id (hex).
@@ -298,6 +348,16 @@ struct Opened {
 }
 
 pub fn run() -> ExitCode {
+    // Blocks under 16 MiB from the heap, reused (a chunk's buffers, about
+    // 1 MiB each, a few a chunk), and the heap's top kept to 32 MiB, not
+    // pages mapped and zeroed afresh for each: what glibc reached by itself
+    // when packs were 16 MiB (freeing one raised both), and doesn't for a
+    // 128 MiB one. A third slower without (seven times the page faults).
+    // SAFETY: plain settings of the allocator's, before any threads.
+    unsafe {
+        libc::mallopt(libc::M_MMAP_THRESHOLD, 16 << 20);
+        libc::mallopt(libc::M_TRIM_THRESHOLD, 32 << 20);
+    }
     // One at a time (Doctor's Start It, olo-session's, by hand).
     let st = State::load();
     if st.pid != 0 && st.pid != std::process::id() && std::fs::read_to_string(format!("/proc/{}/comm", st.pid)).is_ok_and(|c| c.trim() == "olo-diskbackup") {
@@ -310,8 +370,26 @@ pub fn run() -> ExitCode {
     }
     let (tx, rx) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));
+    let _ = CANCEL.set(cancel.clone());
     let limits = Arc::new(Limits::new());
+    let _ = UP.set(limits.up.clone());
     listen(tx.clone(), cancel.clone());
+    // Upgraded: what's under way stops (keeping its place; erasing is let
+    // finish), and the loop becomes the new version.
+    {
+        let (tx, cancel) = (Mutex::new(tx.clone()), cancel.clone());
+        olo_kit_base::restore::on_upgrade(move || {
+            tracing::info!("diskbackup: upgraded: stopping what's under way, to go on with it as the new version");
+            UPGRADE.store(true, Relaxed);
+            // (Not stopped by olo-session meanwhile: keeping what's done
+            // can take a moment.)
+            olo_kit_base::restore::mark_waiting(true);
+            if !ERASING.load(Relaxed) {
+                cancel.store(true, Relaxed);
+            }
+            let _ = tx.lock().map(|t| t.send(Event::Upgrade));
+        });
+    }
     let _watch = olo_kit_base::watch::watch([Settings::path()], {
         let (tx, limits) = (Mutex::new(tx.clone()), limits.clone());
         move |_| {
@@ -337,6 +415,14 @@ pub fn run() -> ExitCode {
     let mut kept_target = k.target.clone();
     let mut open: Option<Opened> = None;
     let mut asked = Asked::default();
+    // Upgraded part way through something: on with it at once.
+    if let Some(r) = &k.resume {
+        tracing::info!("diskbackup: the new version, going on with {r:?}");
+        asked.now = r.back_up;
+        asked.tidy = r.tidy;
+        asked.validate = r.validate.iter().filter_map(|h| Id::from_hex(h)).collect();
+        asked.validate_full = r.validate_full;
+    }
     let mut looked_for_leftovers = false;
     let save = |st: &State, forgotten: u32, target: &Option<Target>| {
         let k = Kept {
@@ -349,13 +435,38 @@ pub fn run() -> ExitCode {
             checks: CHECKS.lock().map(|c| c.clone()).unwrap_or_default(),
             repair: to_repair().iter().map(Id::hex).collect(),
             target: target.clone(),
+            resume: RESUME.lock().ok().and_then(|r| r.clone()),
         };
         if let Some(dir) = kept_path().parent() {
             let _ = std::fs::create_dir_all(dir);
         }
         let _ = std::fs::write(kept_path(), serde_json::to_vec(&k).unwrap_or_default());
     };
+    // (What was to go on with, gone on with: no longer kept.)
+    if k.resume.is_some() {
+        save(&st, forgotten, &kept_target);
+    }
     loop {
+        // Upgraded: what's asked and not done, and what an upgrade stopped,
+        // noted; then the new version, in this process.
+        if UPGRADE.load(Relaxed) {
+            resume(|r| {
+                r.back_up |= asked.now;
+                r.tidy |= asked.tidy;
+                r.validate.extend(asked.validate.iter().map(Id::hex));
+                r.validate_full |= asked.validate_full;
+            });
+            save(&st, forgotten, &kept_target);
+            olo_kit_base::restore::mark_waiting(false);
+            tracing::info!("diskbackup: becoming the new version");
+            let e = olo_kit_base::restore::exec_new_version();
+            tracing::warn!("diskbackup: couldn't become the new version ({e}): going on as this one");
+            UPGRADE.store(false, Relaxed);
+            if let Ok(mut r) = RESUME.lock() {
+                *r = None;
+            }
+            cancel.store(false, Relaxed);
+        }
         let settings = Settings::load();
         limits.follow(&settings);
         // A priority this process can't take: ended, to be started again
@@ -461,7 +572,7 @@ pub fn run() -> ExitCode {
         if std::mem::take(&mut asked.tidy) {
             cancel.store(false, Relaxed);
             match opened(&settings, &mut open, &limits) {
-                Ok(_) => tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten),
+                Ok(_) => tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten, Doing::Pruning),
                 Err(e) => tracing::warn!("diskbackup: can't tidy: {e}"),
             }
             save(&st, forgotten, &kept_target);
@@ -497,7 +608,7 @@ pub fn run() -> ExitCode {
             && (tidy_due(st.tidied.as_ref(), open.as_ref().is_some_and(|o| o.repo.damaged_index_files() > 0)) || !to_repair().is_empty())
         {
             cancel.store(false, Relaxed);
-            tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten);
+            tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten, Doing::Pruning);
         }
         save(&st, forgotten, &kept_target);
     }
@@ -537,17 +648,37 @@ fn on_battery() -> bool {
 fn reporting<T>(st: &mut State, doing: Doing, progress: &Progress, f: impl FnOnce() -> T) -> T {
     st.doing = doing;
     st.next = None;
-    st.progress = Some(olo_protocol::diskbackup::Progress { started: now(), ..Default::default() });
+    // (Started: as it was said just before, the counts from nothing.)
+    let current = st.progress.as_ref().map(|p| p.current.clone()).unwrap_or_default();
+    st.progress = Some(olo_protocol::diskbackup::Progress { started: now(), current, ..Default::default() });
     let _ = st.save();
     let done = AtomicBool::new(false);
     let base = st.clone();
     std::thread::scope(|s| {
         let reporter = s.spawn(|| {
+            // Every 2 s; a new stage or step (Stopping, tidying's next) at
+            // once, looked for four times a second (two atomics: what goes
+            // on between, the file it's at, waits the 2 s).
+            let mut said = (u8::MAX, u8::MAX);
+            let mut last = std::time::Instant::now();
+            // Sent, live: the upload limit's count since this began; the
+            // pack being sent, from when it was first seen.
+            let passed = || UP.get().map_or(0, |l| l.passed());
+            let from = passed();
+            let (mut pack, mut pack_from) = (0u64, 0u64);
             while !done.load(Relaxed) {
-                std::thread::park_timeout(Duration::from_secs(2));
+                std::thread::park_timeout(Duration::from_millis(250));
                 if done.load(Relaxed) {
                     break;
                 }
+                let stopping = CANCEL.get().is_some_and(|c| c.load(Relaxed));
+                let stage = if stopping && matches!(base.doing, Doing::BackingUp) { olo_diskbackup::backup::STOPPING } else { progress.stage.load(Relaxed) };
+                let now_at = (stage, progress.step.load(Relaxed));
+                if now_at == said && last.elapsed() < Duration::from_secs(2) {
+                    continue;
+                }
+                said = now_at;
+                last = std::time::Instant::now();
                 let mut now = base.clone();
                 if let Some(p) = now.progress.as_mut() {
                     p.files = progress.files.load(Relaxed);
@@ -559,7 +690,18 @@ fn reporting<T>(st: &mut State, doing: Doing, progress: &Progress, f: impl FnOnc
                     p.total_bytes = progress.total_bytes.load(Relaxed);
                     p.estimated = progress.estimated.load(Relaxed);
                     p.resuming = progress.resuming.load(Relaxed);
-                    p.stage = match progress.stage.load(Relaxed) {
+                    let now_passed = passed();
+                    p.uploaded = p.uploaded.max(now_passed - from);
+                    let sending = SENDING.lock().ok().and_then(|s| s.clone()).map_or(0, |s| s.load(Relaxed));
+                    if sending != pack {
+                        (pack, pack_from) = (sending, now_passed);
+                    }
+                    p.sending = sending;
+                    p.sending_done = if sending > 0 { now_passed - pack_from } else { 0 };
+                    p.upload_limit = UP.get().map_or(0, |l| l.get());
+                    p.step = progress.step.load(Relaxed) as u32;
+                    p.steps = if p.step > 0 { olo_diskbackup::prune::STEPS as u32 } else { 0 };
+                    p.stage = match stage {
                         olo_diskbackup::backup::COUNTING => Stage::Counting,
                         olo_diskbackup::backup::SAVING => Stage::Saving,
                         olo_diskbackup::backup::CHECKING => Stage::Checking,
@@ -593,6 +735,14 @@ fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: 
     st.unfinished = unfinished();
     let time = now();
     let ok = result.is_ok();
+    // Stopped for an upgrade: no stop, said; the new version goes on.
+    if !ok && UPGRADE.load(Relaxed) {
+        resume(|r| r.back_up = true);
+        st.doing = Doing::Idle;
+        st.progress = None;
+        let _ = st.save();
+        return false;
+    }
     st.last = Some(match result {
         Ok((snapshots, summary, gone, check)) => {
             st.snapshots = snapshots;
@@ -633,7 +783,7 @@ fn tidy_due(t: Option<&Tidied>, damaged: bool) -> bool {
 /// Tidy: with the backup to itself (another computer using it: next
 /// time), this computer's snapshots past keeping forgotten (the settings
 /// may have changed since the last backup), then what only they used freed.
-fn tidy(settings: &Settings, st: &mut State, open: &mut Option<Opened>, cancel: &AtomicBool, forgotten: &mut u32) {
+fn tidy(settings: &Settings, st: &mut State, open: &mut Option<Opened>, cancel: &AtomicBool, forgotten: &mut u32, doing: Doing) {
     let Some(o) = open.as_mut() else { return };
     let lock = match o.repo.lock(true) {
         Ok(l) => l,
@@ -643,8 +793,14 @@ fn tidy(settings: &Settings, st: &mut State, open: &mut Option<Opened>, cancel: 
         }
     };
     let progress = Progress::default();
-    let result = reporting(st, Doing::Pruning, &progress, || {
+    let result = reporting(st, doing, &progress, || {
+        if let Ok(mut c) = progress.current.lock() {
+            *c = "Reading the index again".into();
+        }
         o.repo.refresh()?;
+        if let Ok(mut c) = progress.current.lock() {
+            *c = "Letting go of backups past keeping".into();
+        }
         let all = o.repo.snapshots()?;
         let host = host();
         let mine: Vec<(Id, Snapshot)> = all.iter().filter(|(_, s)| s.host == host).cloned().collect();
@@ -670,6 +826,14 @@ fn tidy(settings: &Settings, st: &mut State, open: &mut Option<Opened>, cancel: 
     }
     publish(o);
     st.unfinished = unfinished();
+    // Stopped for an upgrade: the new version tidies.
+    if result.is_err() && UPGRADE.load(Relaxed) {
+        resume(|r| r.tidy = true);
+        st.doing = Doing::Idle;
+        st.progress = None;
+        let _ = st.save();
+        return;
+    }
     st.tidied = Some(match result {
         Ok((p, snapshots)) => {
             st.snapshots = snapshots as u32;
@@ -702,7 +866,25 @@ fn opened<'a>(settings: &Settings, open: &'a mut Option<Opened>, limits: &Limits
         *open = None;
         let store = target::store(&settings.target, limits)?;
         let key = target::key()?;
-        let repo = Repo::open(store, key, Some(target::cache())).map_err(|e| e.to_string())?;
+        let repo = match Repo::open(store, key, Some(target::cache())) {
+            Ok(r) => r,
+            Err(olo_diskbackup::Error::NoRepository) => {
+                // Erased on another computer and made again (a new folder,
+                // by the same name): the settings follow it there, and the
+                // loop opens it as they change.
+                if let Target::GoogleDrive { account, folder } = &settings.target
+                    && let Some(moved) = target::drive_folder_moved(folder)
+                {
+                    tracing::info!("diskbackup: the backups' folder in Google Drive is another now (erased elsewhere, made again): following it");
+                    let mut s = Settings::load();
+                    s.target = Target::GoogleDrive { account: account.clone(), folder: moved };
+                    let _ = s.save();
+                    return Err("the backups' folder in Google Drive was made again elsewhere: following it there".into());
+                }
+                return Err(olo_diskbackup::Error::NoRepository.to_string());
+            }
+            Err(e) => return Err(e.to_string()),
+        };
         if repo.damaged_index_files() > 0 {
             tracing::warn!("diskbackup: {} index files are damaged: their packs read back from their own lists, and the files let go of at the next tidying", repo.damaged_index_files());
         }
@@ -746,7 +928,14 @@ fn back_up(settings: &Settings, open: &mut Option<Opened>, limits: &Limits, canc
         None => olo_diskbackup::backup::count(&opts, cancel, progress).map_err(|e| e.to_string())?,
     }
     let host = opts.host.clone();
-    let (id, snapshot) = backup(&mut o.repo, &opts, parent, cancel, progress).map_err(|e| e.to_string())?;
+    if let Ok(mut s) = SENDING.lock() {
+        *s = Some(o.repo.sending.clone());
+    }
+    let made = backup(&mut o.repo, &opts, parent, cancel, progress);
+    if let Ok(mut s) = SENDING.lock() {
+        *s = None;
+    }
+    let (id, snapshot) = made.map_err(|e| e.to_string())?;
     let summary = snapshot.summary.clone();
     // Validated fast, now it's made: everything it needs in the store, its
     // lists read back from there, checksums compared, a sample read back.
@@ -840,6 +1029,7 @@ fn set_priority(p: Priority) -> bool {
 fn validate(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, ids: &[Id], full: bool) {
     let progress = Progress::default();
     let mut newest = None;
+    let started = now();
     let result = reporting(st, Doing::Validating, &progress, || -> Result<usize, String> {
         let o = opened(settings, open, limits)?;
         // (Shared, as a backup's: nobody tidies meanwhile.)
@@ -860,7 +1050,18 @@ fn validate(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limi
                     }
                     done += 1;
                 }
-                Err(olo_diskbackup::Error::Cancelled) => return Err(olo_protocol::diskbackup::STOPPED.into()),
+                Err(olo_diskbackup::Error::Cancelled) => {
+                    // Stopped for an upgrade: the new version validates
+                    // what's left of them.
+                    if UPGRADE.load(Relaxed) {
+                        let left: Vec<String> = ids.iter().filter(|i| CHECKS.lock().map_or(true, |c| c.get(&i.hex()).is_none_or(|c| c.time < started))).map(Id::hex).collect();
+                        resume(|r| {
+                            r.validate = left;
+                            r.validate_full = full;
+                        });
+                    }
+                    return Err(olo_protocol::diskbackup::STOPPED.into());
+                }
                 Err(e) => {
                     note_check(id, &Check { time: now(), full, error: Some(e.to_string()), ..Default::default() }, &[]);
                     return Err(e.to_string());
@@ -891,15 +1092,36 @@ fn validate(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limi
 /// one).
 #[allow(clippy::too_many_arguments)]
 fn delete(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, ids: &[Id], unfinished: bool, forgotten: &mut u32) {
+    // Said at once (opening the backup can take a moment), then as it goes.
+    let what = match (ids.len(), unfinished) {
+        (0, _) => "the unfinished backup".to_owned(),
+        (1, false) => "a backup".to_owned(),
+        (n, false) => format!("{n} backups"),
+        (1, true) => "a backup and the unfinished one".to_owned(),
+        (n, true) => format!("{n} backups and the unfinished one"),
+    };
+    let deleting = Doing::Deleting { what };
+    st.doing = deleting.clone();
+    st.next = None;
+    let say = |st: &mut State, what: &str| {
+        if let Some(p) = st.progress.as_mut() {
+            p.current = what.into();
+        }
+        let _ = st.save();
+    };
+    st.progress = Some(olo_protocol::diskbackup::Progress { started: now(), ..Default::default() });
+    say(st, &format!("Opening the backup in {}", settings.target.describe()));
     let o = match opened(settings, open, limits) {
         Ok(o) => o,
         Err(e) => {
             tracing::warn!("diskbackup: can't delete backups: {e}");
-            return;
+            return done(st);
         }
     };
+    say(st, "Waiting till nothing else is using the backup");
     match o.repo.lock(true) {
         Ok(lock) => {
+            say(st, if unfinished && ids.is_empty() { "Deleting its list" } else { "Deleting their lists" });
             let mut gone = 0;
             for id in ids {
                 match o.repo.forget(id) {
@@ -930,21 +1152,71 @@ fn delete(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits
         }
         Err(e) => {
             tracing::warn!("diskbackup: can't delete backups now: {e}");
-            return;
+            return done(st);
         }
     }
-    tidy(settings, st, open, cancel, forgotten);
+    tidy(settings, st, open, cancel, forgotten, deleting);
+    // (A tidy that couldn't start says nothing: idle again all the same.)
+    done(st);
+}
+
+/// `f` when what it's given goes (a function's end, however it ends).
+fn scopeguard(f: impl FnOnce()) -> impl Drop {
+    struct Guard<F: FnOnce()>(Option<F>);
+    impl<F: FnOnce()> Drop for Guard<F> {
+        fn drop(&mut self) {
+            if let Some(f) = self.0.take() {
+                f();
+            }
+        }
+    }
+    Guard(Some(f))
+}
+
+/// Idle again, said.
+fn done(st: &mut State) {
+    if st.doing != Doing::Idle {
+        st.doing = Doing::Idle;
+        st.progress = None;
+        let _ = st.save();
+    }
 }
 
 /// Every backup there deleted (this computer's and any other's: they share
 /// it), and a new, empty one made with the same key, to start fresh. Said
 /// as it goes (Erasing: so many of so many).
 fn erase_all(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool) {
+    // (Let finish, an upgrade or not.)
+    ERASING.store(true, Relaxed);
+    let _erasing = scopeguard(|| ERASING.store(false, Relaxed));
     let progress = Progress::default();
     let result = reporting(st, Doing::Erasing, &progress, || -> Result<(), String> {
         let o = opened(settings, open, limits)?;
         let store = o.repo.store().clone();
         let lock = o.repo.lock(true).map_err(|e| e.to_string())?;
+        // Google Drive: its folder deleted whole, one request however many
+        // files, and made again, empty; the settings follow it there (and
+        // another computer's find it by its name).
+        if let Target::GoogleDrive { account, folder } = &settings.target {
+            if let Ok(mut c) = progress.current.lock() {
+                *c = "Deleting the backups’ folder in Google Drive".into();
+            }
+            let new = target::erase_drive(account, folder)?;
+            drop(lock);
+            if let Ok(mut c) = progress.current.lock() {
+                *c = "Making it again, empty".into();
+            }
+            let mut s = Settings::load();
+            s.target = new.clone();
+            s.save().map_err(|e| e.to_string())?;
+            *open = None;
+            if let Ok(mut l) = LOOKUP.lock() {
+                *l = None;
+            }
+            let _ = std::fs::remove_dir_all(target::cache());
+            Repo::init(target::store(&new, limits)?, target::key()?, Some(target::cache())).map_err(|e| e.to_string())?;
+            return Ok(());
+        }
         let names: Vec<String> = store.list("").map_err(|e| e.to_string())?.into_iter().map(|(n, _)| n).filter(|n| !n.starts_with("locks/")).collect();
         progress.total_files.store(names.len() as u64, Relaxed);
         // The config last: until it goes, it's still a backup (a stop half

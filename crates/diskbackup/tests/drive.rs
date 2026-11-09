@@ -148,6 +148,18 @@ fn sign_in_then_back_up_restore_and_tidy() {
     let after: usize = google.lock().unwrap().files.values().map(|f| f.2.len()).sum();
     assert!(after + (19 << 20) < before, "{pruned:?}: {before} → {after}");
 
+    // Erased: the folder deleted whole (one request), found no more, and
+    // made again, empty, by its name.
+    let requests = google.lock().unwrap().requests;
+    let drive = Drive::new(client.clone(), signed.refresh_token.clone(), signed.email.clone(), folder.clone(), limits.0.clone(), limits.1.clone(), endpoints.clone());
+    drive.delete_folder().unwrap();
+    assert!(google.lock().unwrap().requests - requests <= 2, "one request (a token at most besides)");
+    assert!(google.lock().unwrap().files.values().all(|f| f.1 != folder), "nothing left in it");
+    assert_eq!(Drive::find_folder(&client, &signed.refresh_token, &endpoints).unwrap(), None);
+    let again = Drive::folder(&client, &signed.refresh_token, &endpoints).unwrap();
+    assert_ne!(again, folder);
+    assert_eq!(Drive::find_folder(&client, &signed.refresh_token, &endpoints).unwrap(), Some(again));
+
     let g = google.lock().unwrap();
     assert_eq!((g.slow_down, g.expire, g.cut, g.misplaced), (0, 0, 0, 0), "every fault met, every piece where it belongs");
     eprintln!("{} requests, {} token fetches, {} chunked bodies", g.requests, g.tokens, g.chunked);

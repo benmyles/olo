@@ -136,6 +136,9 @@ pub struct Limit {
     bytes_per_second: std::sync::atomic::AtomicU64,
     /// When what was let through so far is paid off.
     paid: std::sync::Mutex<Option<std::time::Instant>>,
+    /// Bytes let through, all told (what's sent, as it goes: a pack's
+    /// progress while it's sent, and "sent" moving smoothly).
+    passed: std::sync::atomic::AtomicU64,
 }
 
 impl Limit {
@@ -153,8 +156,18 @@ impl Limit {
         self.bytes_per_second.load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    /// Bytes let through so far, all told.
+    pub fn passed(&self) -> u64 {
+        self.passed.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// `n` bytes are about to go: wait as long as the limit asks.
     pub fn take(&self, n: u64) {
+        self.pay(n);
+        self.passed.fetch_add(n, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn pay(&self, n: u64) {
         let rate = self.get();
         if rate == 0 || n == 0 {
             return;

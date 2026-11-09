@@ -184,6 +184,12 @@ pub enum Doing {
     Erasing,
     /// Backups read back and checked (Validate).
     Validating,
+    /// Backups deleted as asked (Delete…): `what` (“the unfinished
+    /// backup”, “2 backups”), then the space only they took freed, said as
+    /// it goes (a tidy's steps).
+    Deleting {
+        what: String,
+    },
 }
 
 /// A backup or restore under way.
@@ -207,6 +213,16 @@ pub struct Progress {
     pub stage: Stage,
     /// Going on from a backup that didn't finish (`State::unfinished`).
     pub resuming: bool,
+    /// Tidying (or deleting): its step, of how many (0: not tidying).
+    pub step: u32,
+    pub steps: u32,
+    /// The pack being sent (its size; 0: none), and how much of it has
+    /// gone: what a stop waits for.
+    pub sending: u64,
+    pub sending_done: u64,
+    /// Bytes a second it may send (0: no limit), to say how long that
+    /// takes.
+    pub upload_limit: u64,
 }
 
 /// Where a backup is.
@@ -503,5 +519,181 @@ pub fn call(request: &Request) -> Result<Reply, String> {
         Ok(Reply::Error { message }) => Err(message),
         Ok(r) => Ok(r),
         Err(e) => Err(e.to_string()),
+    }
+}
+
+/// How DiskBackup says what it's doing, the same in its window and in
+/// Deskbar (Ben, 2026-11-08: "it's also not entirely clear to me what it
+/// means and what it's doing like what is read vs new and i'm backing up
+/// my whole home dir which is hundreds of gigs so why doesn't it say
+/// anything about that"). A backup goes *through* everything it backs up
+/// (a file unchanged since the last backup is taken as it was, not read
+/// again); what the backup didn't have yet is *new to the backup*; that
+/// is *sent*, compressed and encrypted.
+pub mod words {
+    use super::{Progress, Settings, Stage};
+
+    /// "820 KB", "12.4 MB", "2.31 GB", "1.20 TB".
+    pub fn size(b: u64) -> String {
+        match b {
+            0..1_000_000 => format!("{} KB", b.div_ceil(1000)),
+            1_000_000..1_000_000_000 => format!("{:.1} MB", b as f64 / 1e6),
+            1_000_000_000..1_000_000_000_000 => format!("{:.2} GB", b as f64 / 1e9),
+            _ => format!("{:.2} TB", b as f64 / 1e12),
+        }
+    }
+
+    /// "312,004".
+    pub fn count(n: u64) -> String {
+        let s = n.to_string();
+        let mut out = String::new();
+        for (i, ch) in s.chars().enumerate() {
+            if i > 0 && (s.len() - i).is_multiple_of(3) {
+                out.push(',');
+            }
+            out.push(ch);
+        }
+        out
+    }
+
+    /// "1 file", "12 files".
+    pub fn plural(n: u64, what: &str) -> String {
+        if n == 1 { format!("1 {what}") } else { format!("{} {what}s", count(n)) }
+    }
+
+    /// What's backed up: "your home folder", "~/Documents", "3 folders".
+    pub fn what(s: &Settings) -> String {
+        match s.paths.as_slice() {
+            [p] if p == "~" => "your home folder".into(),
+            [p] => p.clone(),
+            ps => format!("{} folders", ps.len()),
+        }
+    }
+
+    /// "about 6 minutes left", "about 2 hours left", "less than a minute
+    /// left".
+    pub fn left(secs: i64) -> String {
+        let minutes = |n: i64| if n == 1 { "a minute".to_owned() } else { format!("{n} minutes") };
+        match secs {
+            ..60 => "less than a minute left".into(),
+            60..5400 => format!("about {} left", minutes((secs + 30) / 60)),
+            _ => format!("about {} hours left", (secs + 1800) / 3600),
+        }
+    }
+
+    impl Progress {
+        /// How much is gone through, of how much: "2.30 GB of 412.00 GB
+        /// gone through", "of about" by the last backup's, and past that,
+        /// "660.6 MB gone through, more than the last backup's 524.3 MB".
+        pub fn gone_through(&self) -> String {
+            match (self.estimated, self.bytes > self.total_bytes) {
+                (true, true) => format!("{} gone through, more than the last backup’s {}", size(self.bytes), size(self.total_bytes)),
+                (true, false) => format!("{} of about {} gone through", size(self.bytes), size(self.total_bytes)),
+                _ => format!("{} of {} gone through", size(self.bytes), size(self.total_bytes)),
+            }
+        }
+
+        /// Files, the same way: "1,651 of 312,004 files", "126 files, more
+        /// than the last backup’s 100".
+        pub fn of_files(&self) -> String {
+            match (self.estimated, self.files > self.total_files) {
+                (true, true) => format!("{}, more than the last backup’s {}", plural(self.files, "file"), count(self.total_files)),
+                (true, false) => format!("{} of about {}", count(self.files), plural(self.total_files, "file")),
+                _ => format!("{} of {}", count(self.files), plural(self.total_files, "file")),
+            }
+        }
+
+        /// A pack being sent: how much of it has gone, and (with an upload
+        /// limit) about how long the rest takes, seconds.
+        pub fn sending_left(&self) -> Option<(u64, Option<i64>)> {
+            if self.sending == 0 {
+                return None;
+            }
+            let done = self.sending_done.min(self.sending);
+            let left = (self.upload_limit > 0).then(|| ((self.sending - done) / self.upload_limit) as i64);
+            Some((done, left))
+        }
+
+        /// How a backup under way stands at `at` (seconds since 1970): how
+        /// much of it is gone through (0 to 1), and, once there's enough
+        /// to go by, how long is left (seconds).
+        pub fn how_far(&self, at: i64) -> (f32, Option<i64>) {
+            if self.total_bytes == 0 {
+                return (0.0, None);
+            }
+            // (The plan was the last backup's: never more than all of it,
+            // while it's still going.)
+            let done = (self.bytes as f64 / self.total_bytes as f64).min(0.99);
+            let spent = (at - self.started).max(0) as f64;
+            let left = (done > 0.02 && spent >= 10.0).then(|| (spent * (1.0 - done) / done).round() as i64);
+            (done as f32, left)
+        }
+
+        /// The backup under way in lines, plainly (`s`: what it backs up),
+        /// at `at`: what it's doing; how far through how much, and how long
+        /// is left; files of files; what's new to the backup, and sent.
+        pub fn lines(&self, s: &Settings, at: i64) -> Vec<String> {
+            match self.stage {
+                Stage::Counting => {
+                    vec![format!("Getting ready to back up {}: counting what’s there", what(s)), format!("{} and {} found so far", plural(self.total_files, "file"), size(self.total_bytes))]
+                }
+                Stage::Saving => vec!["Finishing the backup: writing its lists".into()],
+                Stage::Checking => vec!["Validating the backup just made".into()],
+                Stage::Stopping => match self.sending_left() {
+                    Some((done, left)) => vec![
+                        format!("Stopping: finishing sending a pack, {} of {}{}", size(done), size(self.sending), left.map(|l| format!(" ({})", self::left(l))).unwrap_or_default()),
+                        "Then what’s done is kept, so the next backup goes on from there".into(),
+                    ],
+                    None => vec!["Stopping: keeping what’s done, so the next goes on from there".into()],
+                },
+                Stage::Reading => {
+                    let (done, left) = self.how_far(at);
+                    let mut through = format!("{} ({:.0}%)", self.gone_through(), done * 100.0);
+                    if let Some(l) = left {
+                        through.push_str(&format!(" · {}", self::left(l)));
+                    }
+                    vec![
+                        format!("{} {}", if self.resuming { "Resuming the backup of" } else { "Backing up" }, what(s)),
+                        through,
+                        self.of_files(),
+                        format!("{} new to the backup · {} sent", size(self.new_bytes), size(self.uploaded)),
+                    ]
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// Plain words: what, how far through how much, how long, files,
+        /// what's new and sent.
+        #[test]
+        fn a_backup_said_plainly() {
+            let s = Settings::default();
+            let p = Progress {
+                started: 1000,
+                files: 1651,
+                bytes: 23_000_000_000,
+                new_bytes: 1_600_000_000,
+                uploaded: 1_200_000_000,
+                total_files: 312_004,
+                total_bytes: 412_000_000_000,
+                stage: Stage::Reading,
+                ..Default::default()
+            };
+            assert_eq!(
+                p.lines(&s, 1600),
+                ["Backing up your home folder", "23.00 GB of 412.00 GB gone through (6%) · about 3 hours left", "1,651 of 312,004 files", "1.60 GB new to the backup · 1.20 GB sent",]
+            );
+            let more = Progress { estimated: true, files: 126, total_files: 100, bytes: 660_600_000, total_bytes: 524_300_000, ..p.clone() };
+            assert_eq!(more.gone_through(), "660.6 MB gone through, more than the last backup’s 524.3 MB");
+            assert_eq!(more.of_files(), "126 files, more than the last backup’s 100");
+            let counting = Progress { stage: Stage::Counting, total_files: 120_345, total_bytes: 210_400_000_000, ..Default::default() };
+            assert_eq!(counting.lines(&s, 0)[1], "120,345 files and 210.40 GB found so far");
+            assert_eq!(left(50), "less than a minute left");
+            assert_eq!(left(6 * 60), "about 6 minutes left");
+        }
     }
 }

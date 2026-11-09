@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Stopping a backup, said as it goes
+
+*22:56* — Stopping the moment Stop is clicked (or an upgrade asks): the pack being sent finished first, how much of it and how long, then what's done is kept for the next to go on from.
+
+![Stopping a backup, said as it goes](2026-11-08/225647-stopping-a-backup-said-as-it-goes.png)
+
+### DiskBackup says what it's doing, plainly
+
+*22:56* — What it backs up (your home folder), how far through how much (more than the last backup's, when it is), files, time left, then what's new to the backup and what's sent, compressed and encrypted; Deskbar's menu says the same.
+
+![DiskBackup says what it's doing, plainly](2026-11-08/225646-diskbackup-says-what-it-s-doing-plainly.png)
+
 ### Connecting Google Drive again: the sign-in from before filled in
 
 *21:34* — After Disconnect, Connect Google Drive… fills in the client made before and folds the steps away (Show the Steps); with them shown the window now fits 1280 x 800 (708 points).

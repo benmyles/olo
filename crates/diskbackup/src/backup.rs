@@ -54,6 +54,8 @@ pub struct Progress {
     pub resuming: AtomicBool,
     /// Files read (the rest taken as they were).
     pub read: AtomicU64,
+    /// Tidying's step (1 to `prune::STEPS`; 0: not tidying).
+    pub step: AtomicU8,
 }
 
 /// What's done so far is kept (an unfinished snapshot) this often.
@@ -243,6 +245,7 @@ pub fn backup(repo: &mut Repo, opts: &Options, parent: Option<(Id, &Snapshot)>, 
                 let _ = w.keep_unfinished();
             }
             let _ = w.repo.write_index();
+            w.repo.let_go();
             return Err(e);
         }
     };
@@ -261,7 +264,9 @@ pub fn backup(repo: &mut Repo, opts: &Options, parent: Option<(Id, &Snapshot)>, 
         summary,
         extra: Vec::new(),
     };
-    let id = repo.save_snapshot(&snapshot)?;
+    let id = repo.save_snapshot(&snapshot);
+    repo.let_go();
+    let id = id?;
     // Finished: the unfinished ones (this one's own, and those it went on
     // from) aren't needed any more.
     for u in others.iter().chain(saved.iter()) {

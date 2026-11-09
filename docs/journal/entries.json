@@ -3772,5 +3772,17 @@
   "title": "Connecting Google Drive again: the sign-in from before filled in",
   "caption": "After Disconnect, Connect Google Drive\u2026 fills in the client made before and folds the steps away (Show the Steps); with them shown the window now fits 1280 x 800 (708 points).",
   "image": "2026-11-08/213421-connecting-google-drive-again-the-sign-in-from-b.png"
+ },
+ {
+  "time": "2026-11-08T22:56:46",
+  "title": "DiskBackup says what it's doing, plainly",
+  "caption": "What it backs up (your home folder), how far through how much (more than the last backup's, when it is), files, time left, then what's new to the backup and what's sent, compressed and encrypted; Deskbar's menu says the same.",
+  "image": "2026-11-08/225646-diskbackup-says-what-it-s-doing-plainly.png"
+ },
+ {
+  "time": "2026-11-08T22:56:47",
+  "title": "Stopping a backup, said as it goes",
+  "caption": "Stopping the moment Stop is clicked (or an upgrade asks): the pack being sent finished first, how much of it and how long, then what's done is kept for the next to go on from.",
+  "image": "2026-11-08/225647-stopping-a-backup-said-as-it-goes.png"
  }
 ]

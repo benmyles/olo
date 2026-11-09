@@ -26,7 +26,10 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    sync::atomic::{AtomicBool, Ordering::Relaxed},
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
+    },
     time::Instant,
 };
 
@@ -36,7 +39,7 @@ use crate::{
     Error, Result,
     backup::Progress,
     crypto::Id,
-    repo::{DATA, Entry, PACK_TARGET, Repo, TREE, TREES, decode, pack_name},
+    repo::{DATA, Entry, Repo, TREE, TREES, decode, pack_name},
 };
 
 /// What tidying did.
@@ -69,17 +72,83 @@ pub struct Pruned {
 
 /// A pack this much unused (tenths) is copied from.
 const SPARSE_TENTHS: u64 = 3;
-/// Packs under this size are put together once there are `SMALL_COUNT`.
-const SMALL: u64 = (PACK_TARGET / 4) as u64;
+/// Packs under a quarter of their kind's size are put together once there
+/// are `SMALL_COUNT`.
 const SMALL_COUNT: usize = 8;
 /// An index file holds at most this many blobs; smaller ones are put
 /// together once there are `SMALL_COUNT`.
 const INDEX_FILE: usize = 65_536;
 
+/// Tidying's steps (`Progress::step`), each said as it starts, with how
+/// many of how many when it knows (`files` of `total_files`; deleting,
+/// `bytes` freed of `total_bytes` too).
+pub const STEPS: u8 = 5;
+
+/// Step `n`, `what` it is, starting (its counts from nothing).
+fn step(progress: &Progress, n: u8, what: &str) {
+    progress.step.store(n, Relaxed);
+    for c in [&progress.files, &progress.total_files, &progress.bytes, &progress.total_bytes] {
+        c.store(0, Relaxed);
+    }
+    say(progress, what);
+}
+
 fn say(progress: &Progress, what: impl Into<String>) {
     if let Ok(mut c) = progress.current.lock() {
         *c = what.into();
     }
+}
+
+/// Workers deleting at once: a slow store's requests overlap (Google
+/// Drive's take a few hundred milliseconds each, one after another).
+const DELETERS: usize = 8;
+
+/// `names` (each with its size) deleted from the store, `DELETERS` at a
+/// time, said as they go (how many of how many, bytes freed of how many);
+/// each only while tidying still has the backup to itself. Stopped, or one
+/// failing: the rest left for the next tidy (nothing names them by then).
+/// The bytes freed.
+fn delete_all(repo: &Repo, names: &[(String, u64)], cancel: &AtomicBool, progress: &Progress) -> Result<u64> {
+    if names.is_empty() {
+        return Ok(0);
+    }
+    let held = repo.exclusive()?;
+    let store = repo.store.clone();
+    progress.total_files.store(names.len() as u64, Relaxed);
+    progress.total_bytes.store(names.iter().map(|(_, s)| s).sum(), Relaxed);
+    let next = AtomicUsize::new(0);
+    let failed: Mutex<Option<Error>> = Mutex::new(None);
+    std::thread::scope(|s| {
+        for _ in 0..DELETERS.min(names.len()) {
+            s.spawn(|| {
+                loop {
+                    if cancel.load(Relaxed) || failed.lock().map_or(true, |f| f.is_some()) {
+                        break;
+                    }
+                    let Some((name, size)) = names.get(next.fetch_add(1, Relaxed)) else { break };
+                    match held.check().and_then(|()| store.delete(name).map_err(Error::from)) {
+                        Ok(()) => {
+                            progress.files.fetch_add(1, Relaxed);
+                            progress.bytes.fetch_add(*size, Relaxed);
+                        }
+                        Err(e) => {
+                            if let Ok(mut f) = failed.lock() {
+                                f.get_or_insert(e);
+                            }
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+    });
+    if let Some(e) = failed.into_inner().ok().flatten() {
+        return Err(e);
+    }
+    if cancel.load(Relaxed) {
+        return Err(Error::Cancelled);
+    }
+    Ok(progress.bytes.load(Relaxed))
 }
 
 /// Tidy `repo` (which must hold its exclusive lock: [`Repo::lock`]).
@@ -93,6 +162,7 @@ pub fn prune(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Resul
 /// backup sends again, of the files still as they were.
 pub fn repair(repo: &mut Repo, damaged: &HashSet<Id>, cancel: &AtomicBool, progress: &Progress) -> Result<Pruned> {
     let r = run(repo, damaged, cancel, progress);
+    repo.let_go();
     // The index read again as it is now, whatever happened.
     repo.checkpoints = true;
     repo.written.clear();
@@ -125,7 +195,7 @@ fn run(repo: &mut Repo, damaged_packs: &HashSet<Id>, cancel: &AtomicBool, progre
     let mut out = Pruned::default();
 
     // 1. The index as the store has it, and the packs there.
-    say(progress, "Looking at what's kept");
+    step(progress, 1, "Looking at what's kept");
     let index_files = repo.store.list("index")?;
     let mut files: Vec<(String, Packs)> = Vec::new();
     let mut by_pack: HashMap<Id, Vec<Entry>> = HashMap::new();
@@ -168,8 +238,14 @@ fn run(repo: &mut Repo, damaged_packs: &HashSet<Id>, cancel: &AtomicBool, progre
     // the tidying, to be tried again, rather than be let go of.
     let named: HashSet<Id> = packs.iter().map(|p| p.id).collect();
     let mut unreadable: Vec<(Id, u64)> = Vec::new();
-    for (id, size) in present.iter().filter(|(id, _)| !named.contains(id)) {
+    let unnamed: Vec<(&Id, &u64)> = present.iter().filter(|(id, _)| !named.contains(id)).collect();
+    if !unnamed.is_empty() {
+        say(progress, "Reading the lists of packs no index names");
+        progress.total_files.store(unnamed.len() as u64, Relaxed);
+    }
+    for (id, size) in unnamed {
         stop()?;
+        progress.files.fetch_add(1, Relaxed);
         match repo.pack_header(id, *size) {
             Ok(mut entries) => {
                 entries.sort_by_key(|e| e.offset);
@@ -184,7 +260,7 @@ fn run(repo: &mut Repo, damaged_packs: &HashSet<Id>, cancel: &AtomicBool, progre
 
     // 2. What the snapshots use (unfinished ones too: the next backup goes
     // on from them).
-    say(progress, "Looking at what the snapshots use");
+    step(progress, 2, "Looking at what the backups use");
     let used = used(repo, cancel, progress)?;
 
     // Each used blob kept once: in the pack most used, first.
@@ -207,7 +283,7 @@ fn run(repo: &mut Repo, damaged_packs: &HashSet<Id>, cancel: &AtomicBool, progre
             delete.push(i);
         } else if damaged_packs.contains(&p.id) || (all - kept) * 10 > all * SPARSE_TENTHS {
             repack.push(i);
-        } else if p.size < SMALL {
+        } else if p.size < (repo.pack_size(p.trees) / 4) as u64 {
             small.push(i);
         }
     }
@@ -234,13 +310,14 @@ fn run(repo: &mut Repo, damaged_packs: &HashSet<Id>, cancel: &AtomicBool, progre
     // 3. What's used of each pack copied from, into new ones.
     repo.checkpoints = false;
     let stored = repo.stored;
-    for (k, i) in repack.iter().enumerate() {
+    step(progress, 3, "Copying what's still used out of packs mostly unused");
+    progress.total_files.store(repack.len() as u64, Relaxed);
+    for i in repack.iter() {
         stop()?;
-        say(progress, format!("Putting packs together ({} of {})", k + 1, repack.len()));
         let p = &packs[*i];
         let whole = repo.pack_bytes(&p.id, p.trees)?;
         out.bytes_read += whole.len() as u64;
-        progress.bytes.fetch_add(whole.len() as u64, Relaxed);
+        progress.files.fetch_add(1, Relaxed);
         for e in &p.keep {
             match whole.get(e.offset as usize..(e.offset + e.len) as usize) {
                 // (Whole, as sealed: copied without opening it further.)
@@ -258,7 +335,7 @@ fn run(repo: &mut Repo, damaged_packs: &HashSet<Id>, cancel: &AtomicBool, progre
     // 4. The index files naming what goes, written again: what's kept of
     // each pack that stays, and the new packs.
     stop()?;
-    say(progress, "Writing the index");
+    step(progress, 4, "Writing the index");
     let kept: HashSet<(Id, u32)> = packs.iter().filter(|p| !going.contains(&p.id)).flat_map(|p| p.keep.iter().map(move |e| (p.id, e.offset))).collect();
     let mut merged: BTreeMap<Id, Vec<Entry>> = BTreeMap::new();
     for i in &rewrite {
@@ -299,21 +376,15 @@ fn run(repo: &mut Repo, damaged_packs: &HashSet<Id>, cancel: &AtomicBool, progre
     }
     out.bytes_written = repo.stored - stored;
 
-    // 5. The old index files, then the packs (nothing names them now).
-    say(progress, "Letting go of what isn't used");
-    for name in rewrite.iter().map(|i| &files[*i].0).chain(damaged.iter().copied()) {
-        if !written.contains(name) {
-            repo.check_exclusive()?;
-            repo.store.delete(name)?;
-        }
-    }
+    // 5. The old index files, then the packs (nothing names them now),
+    // several at once.
+    step(progress, 5, "Deleting what isn't used");
+    let old: Vec<(String, u64)> = rewrite.iter().map(|i| files[*i].0.clone()).chain(damaged.iter().map(|n| (*n).clone())).filter(|n| !written.contains(n)).map(|n| (n, 0)).collect();
+    delete_all(repo, &old, cancel, progress)?;
     out.packs_deleted = (delete.len() + unindexed.len()) as u64;
-    let doomed = delete.iter().chain(repack.iter()).map(|i| (packs[*i].id, packs[*i].size)).chain(unindexed);
-    for (id, size) in doomed {
-        repo.check_exclusive()?;
-        repo.store.delete(&pack_name(&id))?;
-        out.bytes_deleted += size;
-    }
+    let doomed: Vec<(String, u64)> = delete.iter().chain(repack.iter()).map(|i| (pack_name(&packs[*i].id), packs[*i].size)).chain(unindexed.iter().map(|(id, size)| (pack_name(id), *size))).collect();
+    step(progress, 5, "Deleting what isn't used");
+    out.bytes_deleted = delete_all(repo, &doomed, cancel, progress)?;
     out.size = stored_size(repo)?;
     out.seconds = started.elapsed().as_secs_f64();
     Ok(out)

@@ -45,7 +45,7 @@ const DESTINATION: usize = 4;
 /// Busy with something that can be stopped (a backup, a tidy, erasing,
 /// validating).
 fn busy_with(st: &State) -> bool {
-    matches!(st.doing, Doing::BackingUp | Doing::Pruning | Doing::Erasing | Doing::Validating)
+    matches!(st.doing, Doing::BackingUp | Doing::Pruning | Doing::Erasing | Doing::Validating | Doing::Deleting { .. })
 }
 
 /// What a backup takes "every": minutes, and what it's called.
@@ -169,29 +169,6 @@ pub fn took(secs: f64) -> String {
     }
 }
 
-/// How a backup under way stands: how much of it is done (0 to 1), and,
-/// once there's enough to go by, how long is left (seconds).
-pub fn how_far(p: &Progress, at: i64) -> (f32, Option<i64>) {
-    if p.total_bytes == 0 {
-        return (0.0, None);
-    }
-    // (The plan was the last backup's: never more than all of it, while
-    // it's still going.)
-    let done = (p.bytes as f64 / p.total_bytes as f64).min(0.99);
-    let spent = (at - p.started).max(0) as f64;
-    let left = (done > 0.02 && spent >= 10.0).then(|| (spent * (1.0 - done) / done).round() as i64);
-    (done as f32, left)
-}
-
-/// "about 6 minutes left", "about 2 hours left", "less than a minute left".
-fn left_words(secs: i64) -> String {
-    match secs {
-        ..60 => "less than a minute left".into(),
-        60..5400 => format!("about {} left", minutes((secs + 30) / 60)),
-        _ => format!("about {} hours left", (secs + 1800) / 3600),
-    }
-}
-
 /// What's kept, said plainly: "Every backup from the last hour, then one
 /// an hour for 24 hours, one a day for 14 days, one a week for 8 weeks and
 /// one a month for 24 months."
@@ -276,7 +253,7 @@ pub fn check_words(c: Option<&Check>) -> String {
         how.push(format!("{} as sent, by {} checksums", plural(c.by_checksum, "pack"), if c.by_checksum == 1 { "its" } else { "their" }));
     }
     if c.sampled > 0 {
-        how.push(format!("{} read back whole", plural(c.sampled, "sample")));
+        how.push(format!("{} read back", plural(c.sampled, "sample")));
     }
     let how = if how.is_empty() { String::new() } else { format!(" ({})", how.join("; ")) };
     format!("Validated {}: everything it needs is there{how}. Validate Fully reads it all back.", ago(c.time))
@@ -296,10 +273,11 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
             let title = match progress.stage {
                 Stage::Counting => "Getting ready: counting what to back up",
                 Stage::Reading if progress.resuming => "Resuming the backup",
-                Stage::Reading => "Backing up",
+                // ("Backing up your home folder": what, said.)
+                Stage::Reading => return reading_headline(&progress, s),
                 Stage::Saving => "Finishing the backup",
                 Stage::Checking => return ("Checking the backup".into(), format!("Everything it needs looked for, in {}.", s.target.describe()), false),
-                Stage::Stopping => return ("Stopping the backup".into(), "Keeping what it’s done so far, so the next goes on from there.".into(), false),
+                Stage::Stopping => return ("Stopping the backup".into(), "Finishing what’s being sent, then keeping what’s done.".into(), false),
             };
             // (Reading: the file it's at, under the title; where it goes
             // is in Destination.)
@@ -313,7 +291,18 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
             }
             return (title.into(), format!("{to}."), false);
         }
-        Doing::Pruning => return ("Tidying old backups".into(), format!("Letting go of backups past keeping, and freeing the space only they took. {to}."), false),
+        Doing::Pruning => return ("Tidying old backups".into(), format!("Freeing the space only backups past keeping took, in {}.", s.target.describe()), false),
+        Doing::Deleting { what } => {
+            let one = what == "the unfinished backup" || what == "a backup";
+            let title = if what == "the unfinished backup" {
+                "Deleting the unfinished backup"
+            } else if one {
+                "Deleting a backup"
+            } else {
+                "Deleting backups"
+            };
+            return (title.into(), format!("Then the space only {} took is freed, in {}.", if one { "it" } else { "they" }, s.target.describe()), false);
+        }
         Doing::Restoring => return ("Restoring".into(), to, false),
         Doing::Erasing => return ("Erasing every backup".into(), format!("{to}. The next backup starts afresh."), false),
         Doing::Validating => return ("Validating backups".into(), format!("Every byte read back and checked, from {}.", s.target.describe()), false),
@@ -344,6 +333,20 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
         }
         (None, _) => ("Not backed up yet".into(), format!("{to}. {}", if s.automatic { "The first backup starts in a moment." } else { "Click Back Up Now to make the first." }), false),
     }
+}
+
+/// Backing up, reading: what (your home folder), and the file it's at.
+fn reading_headline(p: &Progress, s: &Settings) -> (String, String, bool) {
+    let title = format!("Backing up {}", olo_protocol::diskbackup::words::what(s));
+    if p.current.is_empty() {
+        return (title, format!("To {}.", s.target.describe()), false);
+    }
+    let home = target::home().display().to_string();
+    let current = match p.current.strip_prefix(&home) {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => format!("~{rest}"),
+        _ => p.current.clone(),
+    };
+    (title, format!("Now: {current}"), false)
 }
 
 /// Something to see to, in a line: a small mark, what's wrong, and the
@@ -585,7 +588,6 @@ impl MainWindow {
         let dim = |t: String| StringView::new(t).wrap(true).dim(true);
         let line = |t: String| StringView::new(t).wrap(true);
         let mut col = div().flex().flex_col().gap(px(m::TIGHT));
-        let about = if pr.estimated { "about " } else { "" };
         match (&st.doing, pr.stage) {
             (Doing::BackingUp, Stage::Counting) => {
                 col = col.child(line(format!("Counting what there is to back up: {}, {} so far.", plural(pr.total_files, "file"), size(pr.total_bytes))));
@@ -599,20 +601,38 @@ impl MainWindow {
                 col = col.child(StatusBar::new(done).label(label).trailing(format!("{:.0}%", done * 100.0)));
                 col = col.child(line(if pr.current.is_empty() { "Looking at what’s there…".into() } else { format!("{}…", pr.current) }));
             }
+            // Stopping: the pack being sent, finished first (then what's
+            // done is kept).
+            (Doing::BackingUp, Stage::Stopping) => {
+                let (bar, label, then) = match pr.sending_left() {
+                    Some((done, left)) => (
+                        done as f32 / pr.sending as f32,
+                        format!("Finishing sending a pack: {} of {}", size(done), size(pr.sending)),
+                        format!("Then what’s done is kept, so the next backup goes on from there{}.", left.map(|l| format!(" ({})", olo_protocol::diskbackup::words::left(l))).unwrap_or_default()),
+                    ),
+                    None => (1.0, "Keeping what’s done…".to_owned(), "So the next backup goes on from there.".to_owned()),
+                };
+                col = col.child(StatusBar::new(bar.min(1.0)).label(label).trailing(format!("{:.0}%", bar.min(1.0) * 100.0)));
+                col = col.child(line(format!("{}, {} new to the backup, {} sent so far.", pr.of_files(), size(pr.new_bytes), size(pr.uploaded))));
+                col = col.child(dim(then));
+            }
             (Doing::BackingUp, stage) => {
-                let (done, left) = how_far(pr, now());
+                let (done, left) = pr.how_far(now());
                 let saving = stage == Stage::Saving;
-                let label = if saving { "Writing the backup’s lists…".to_owned() } else { format!("{} of {about}{}", size(pr.bytes), size(pr.total_bytes)) };
+                // How far through all of it (what's unchanged since the
+                // last backup is gone through without being read again).
+                let label = if saving { "Writing the backup’s lists…".to_owned() } else { pr.gone_through() };
                 col = col.child(StatusBar::new(if saving { 1.0 } else { done }).label(label).trailing(format!("{:.0}%", if saving { 100.0 } else { done * 100.0 })));
-                let mut words = format!("{} of {about}{}", count(pr.files), plural(pr.total_files, "file"));
+                let mut words = pr.of_files();
                 if let Some(l) = left.filter(|_| !saving) {
-                    words.push_str(&format!(" · {}", left_words(l)));
+                    words.push_str(&format!(" · {}", olo_protocol::diskbackup::words::left(l)));
                 }
+                col = col.child(line(words));
+                // What the backup didn't have yet, and that sent.
                 let spent = (now() - pr.started).max(1) as f64;
                 let rate = pr.uploaded as f64 / spent;
                 let limit = if s.upload_kbs > 0 { format!(", at most {}", speed_label(s.upload_kbs)) } else { String::new() };
-                words.push_str(&format!(" · {} new · {} sent ({}/s{limit})", size(pr.new_bytes), size(pr.uploaded), size(rate as u64)));
-                col = col.child(line(words));
+                col = col.child(dim(format!("{} new to the backup · {} sent, compressed and encrypted ({}/s{limit})", size(pr.new_bytes), size(pr.uploaded), size(rate as u64))));
                 // Each folder's turn (they're gone through in order).
                 if s.paths.len() > 1 {
                     let mut paths: Vec<(String, std::path::PathBuf)> = s.paths.iter().map(|p| (folder_name(p), target::expand(p))).collect();
@@ -632,10 +652,29 @@ impl MainWindow {
             }
             (Doing::Erasing, _) => {
                 let done = if pr.total_files == 0 { 0.0 } else { pr.files as f32 / pr.total_files as f32 };
-                col = col.child(StatusBar::new(done).label(format!("Deleting {} of {}", count(pr.files), count(pr.total_files))).trailing(format!("{:.0}%", done * 100.0)));
+                // (Google Drive: its folder deleted whole, one step.)
+                let label = if pr.total_files == 0 {
+                    format!("{}…", if pr.current.is_empty() { "Getting ready" } else { &pr.current })
+                } else {
+                    format!("Deleting {} of {}", count(pr.files), count(pr.total_files))
+                };
+                col = col.child(StatusBar::new(done).label(label).trailing(format!("{:.0}%", done * 100.0)));
             }
-            (Doing::Pruning, _) => {
-                col = col.child(line(if pr.current.is_empty() { "Tidying…".into() } else { format!("Tidying: {}…", pr.current) }));
+            // Tidying, or deleting (a tidy after): the step it's on, how
+            // many of how many, and (deleting what isn't used) what's freed.
+            (Doing::Pruning | Doing::Deleting { .. }, _) => {
+                let what = if pr.current.is_empty() { "Getting ready".to_owned() } else { pr.current.clone() };
+                let done = if pr.total_files == 0 { 0.0 } else { (pr.files as f32 / pr.total_files as f32).min(1.0) };
+                let label = match (pr.total_files, pr.files) {
+                    (0, 0) => format!("{what}…"),
+                    (0, n) => format!("{what}: {}", count(n)),
+                    (t, n) => format!("{what}: {} of {}", count(n), count(t)),
+                };
+                col = col.child(StatusBar::new(done).label(label).trailing(if pr.total_files == 0 { String::new() } else { format!("{:.0}%", done * 100.0) }));
+                let step = if pr.steps > 0 { format!("Step {} of {}", pr.step.max(1), pr.steps) } else { "Starting".into() };
+                let freed = if pr.total_bytes > 0 { format!(" · {} of {} freed", size(pr.bytes), size(pr.total_bytes)) } else { String::new() };
+                let spent = took((now() - pr.started).max(0) as f64);
+                col = col.child(dim(format!("{step}{freed} · {spent} so far")));
             }
             _ => {}
         }
@@ -1087,14 +1126,14 @@ mod tests {
     fn how_far_and_how_long() {
         let t = now();
         let p = Progress { started: t - 100, bytes: 25, total_bytes: 100, ..Default::default() };
-        let (done, left) = how_far(&p, t);
+        let (done, left) = p.how_far(t);
         assert!((done - 0.25).abs() < 1e-6);
         assert_eq!(left, Some(300), "a quarter in 100 s: 300 s to go");
         // Past the plan (it grew): never done while it runs.
         let p = Progress { started: t - 100, bytes: 150, total_bytes: 100, ..Default::default() };
-        assert!(how_far(&p, t).0 <= 0.99);
+        assert!(p.how_far(t).0 <= 0.99);
         // Too soon to say.
-        assert_eq!(how_far(&Progress { started: t - 3, bytes: 1, total_bytes: 100, ..Default::default() }, t).1, None);
+        assert_eq!(Progress { started: t - 3, bytes: 1, total_bytes: 100, ..Default::default() }.how_far(t).1, None);
     }
 
     #[test]
@@ -1124,11 +1163,15 @@ mod tests {
         st.last_ok = None;
         st.doing = Doing::BackingUp;
         st.progress = Some(Progress { stage: Stage::Reading, current: format!("{}/Music/a.flac", target::home().display()), ..Default::default() });
-        assert_eq!(headline(&st, &s), ("Backing up".into(), "Now: ~/Music/a.flac".into(), false));
+        assert_eq!(headline(&st, &s), ("Backing up your home folder".into(), "Now: ~/Music/a.flac".into(), false));
         st.progress = Some(Progress { stage: Stage::Reading, resuming: true, ..Default::default() });
         assert_eq!(headline(&st, &s).0, "Resuming the backup");
         st.doing = Doing::Validating;
         assert_eq!(headline(&st, &s).0, "Validating backups");
+        st.doing = Doing::Deleting { what: "the unfinished backup".into() };
+        assert_eq!(headline(&st, &s), ("Deleting the unfinished backup".into(), "Then the space only it took is freed, in /backups.".into(), false));
+        st.doing = Doing::Deleting { what: "2 backups and the unfinished one".into() };
+        assert_eq!(headline(&st, &s).0, "Deleting backups");
         st.pid = 0;
         assert!(headline(&st, &s).2);
     }
@@ -1147,7 +1190,7 @@ mod tests {
         assert!(check_words(Some(&whole)).starts_with("Validated fully just now: all it needs (3.0 MB) read back"));
         let fast = Check { full: false, by_checksum: 12, sampled: 1, ..whole.clone() };
         assert_eq!(check_cell(Some(&fast)), "✓ Fast");
-        assert_eq!(check_words(Some(&fast)), "Validated just now: everything it needs is there (12 packs as sent, by their checksums; 1 sample read back whole). Validate Fully reads it all back.");
+        assert_eq!(check_words(Some(&fast)), "Validated just now: everything it needs is there (12 packs as sent, by their checksums; 1 sample read back). Validate Fully reads it all back.");
         let home = target::home().display().to_string();
         let bad = Check { problems: vec!["2 of its packs are missing".into()], files: vec![format!("{home}/a.bin")], files_affected: 3, ..whole.clone() };
         assert_eq!(check_cell(Some(&bad)), "✗ Damaged");

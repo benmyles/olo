@@ -23,8 +23,14 @@ use crate::{
     store::Store,
 };
 
-/// A pack goes up once it's this big (few large objects for a slow store).
-pub const PACK_TARGET: usize = 16 << 20;
+/// A pack of chunks goes up once it's this big: few large objects for a
+/// slow store (Ben, 2026-11-08: "the link is pretty fast i think 128mb is
+/// fine"). It's held whole in memory till it's sent (its room reserved at
+/// once, so it's never copied to grow).
+pub const PACK_TARGET: usize = 128 << 20;
+/// A pack of trees (folders' lists), smaller: they're small, change with
+/// every backup, and a tree pack is fetched whole to read one of them.
+pub const TREE_PACK_TARGET: usize = 16 << 20;
 /// The index goes up at least this often while packs do.
 const CHECKPOINT: Duration = Duration::from_secs(5 * 60);
 /// The repository format.
@@ -141,11 +147,16 @@ pub struct Repo {
     /// The index goes up every `CHECKPOINT` (not while tidying: that
     /// writes its own).
     pub(crate) checkpoints: bool,
+    /// How big each kind of pack gets (chunks', trees').
+    pack_size: [usize; 2],
     lock: crate::lock::Registered,
     /// One compressor for every blob (not one made for each).
     zstd: zstd::bulk::Compressor<'static>,
     /// What went up, sealed, since opened.
     pub stored: u64,
+    /// The size of the pack being sent now (0: none), for whoever says how
+    /// a stop is going (the store's speed limit counts its bytes).
+    pub sending: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 pub(crate) fn pack_name(id: &Id) -> String {
@@ -207,9 +218,11 @@ impl Repo {
             written: Vec::new(),
             last_index: Instant::now(),
             checkpoints: true,
+            pack_size: [PACK_TARGET, TREE_PACK_TARGET],
             lock: Default::default(),
             zstd: zstd::bulk::Compressor::new(3)?,
             stored: 0,
+            sending: Default::default(),
         };
         repo.refresh()?;
         Ok(repo)
@@ -233,11 +246,30 @@ impl Repo {
     }
 
     /// Held, and the only one (to tidy).
+    /// The only lock, held (for workers of tidying's to check as they go).
+    pub(crate) fn exclusive(&self) -> Result<std::sync::Arc<crate::lock::Held>> {
+        match self.lock.get() {
+            Some(held) if held.exclusive => held.check().map(|()| held),
+            _ => Err(Error::Busy("tidying needs the backup to itself".into())),
+        }
+    }
+
     pub(crate) fn check_exclusive(&self) -> Result<()> {
         match self.lock.get() {
             Some(held) if held.exclusive => held.check(),
             _ => Err(Error::Busy("tidying needs the backup to itself".into())),
         }
+    }
+
+    /// Packs this big from now on, chunks' and trees' (tests: small ones,
+    /// to have several).
+    pub fn set_pack_sizes(&mut self, data: usize, trees: usize) {
+        self.pack_size = [data, trees];
+    }
+
+    /// How big a pack of trees (`true`) or of chunks gets.
+    pub(crate) fn pack_size(&self, trees: bool) -> usize {
+        self.pack_size[if trees { TREES } else { DATA }]
     }
 
     /// The repository's own id.
@@ -400,12 +432,18 @@ impl Repo {
     /// its kind.
     pub(crate) fn put_sealed(&mut self, mut e: Entry, sealed: &[u8]) -> Result<()> {
         let which = if e.flags & TREE != 0 { TREES } else { DATA };
+        let target = self.pack_size[which];
         let w = &mut self.writers[which];
+        // (A pack of chunks: its whole room at once, so it's never copied
+        // to grow; pages untouched cost nothing. Its list goes on the end.)
+        if which == DATA && w.data.capacity() == 0 {
+            w.data.reserve_exact(target + crate::chunker::MAX + (1 << 20));
+        }
         e.offset = w.data.len() as u32;
         w.entries.push(e);
         w.data.extend_from_slice(sealed);
         self.pending.insert(e.id);
-        if w.data.len() >= PACK_TARGET {
+        if w.data.len() >= target {
             self.finish_pack(which)?;
         }
         Ok(())
@@ -540,7 +578,10 @@ impl Repo {
         pack.extend_from_slice(&(header.len() as u32).to_le_bytes());
         let pid = self.key.id(&pack);
         let name = pack_name(&pid);
-        self.store.put(&name, &pack)?;
+        self.sending.store(pack.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        let put = self.store.put(&name, &pack);
+        self.sending.store(0, std::sync::atomic::Ordering::Relaxed);
+        put?;
         self.stored += pack.len() as u64;
         // (Its checksum, to compare with the store's when it's checked.)
         if self.store.keeps_checksums() {
@@ -556,10 +597,25 @@ impl Repo {
             self.pending.remove(&e.id);
         }
         self.written.push((pid, entries));
+        // (Its room kept for the next pack, while a backup runs: a fresh
+        // 128 MiB each time is pages faulted in and zeroed again, a third
+        // slower. `let_go` gives it back.)
+        if which == DATA {
+            pack.clear();
+            self.writers[DATA].data = pack;
+        }
         if self.checkpoints && self.last_index.elapsed() >= CHECKPOINT {
             self.write_index()?;
         }
         Ok(())
+    }
+
+    /// The room kept for packs of chunks given back (a backup or a tidy
+    /// done: nothing's held while the service waits).
+    pub fn let_go(&mut self) {
+        if self.writers[DATA].entries.is_empty() {
+            self.writers[DATA].data = Vec::new();
+        }
     }
 
     /// The index of the packs gone up since it last did, up.

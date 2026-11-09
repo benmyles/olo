@@ -12529,8 +12529,17 @@ when nothing finished for three days (or three of its intervals). Its
 status (`status::Backup`) holds only what the glyph and tip say, so the
 state file's progress every 2 s while it runs draws nothing (measured:
 5 frames in 20 s with a write every 2 s, 3 without, 0.0–0.1% of a
-core); the menu reads the state as it opens: what it's doing (files,
-read, new), the last and the next, Back Up Now or Stop, Pause or Resume
+core); the menu reads the state as it opens: what it's doing, in
+DiskBackup's own words (`Progress::lines`, `olo_protocol::diskbackup::
+words`, the window's too; Ben, 2026-11-08: "it's also not entirely clear
+to me what it means … what is read vs new and i'm backing up my whole
+home dir which is hundreds of gigs so why doesn't it say anything about
+that"): what it backs up (your home folder), how far through how much
+and how long is left, files of files, what's new to the backup and
+sent; counting what's there first; a stop finishing the pack it's
+sending; a stop said calmly, with what it got through; deleting, how
+many of how many; the last and the next, Back Up Now or Stop (Stop
+Tidying, Validating, Deleting), Pause or Resume
 Backups (`olo-diskbackup --now`, `--stop`, `--set enabled=…`), Restore
 Files… (`olo-diskbackup --restore-window`) and DiskBackup…. The speaker's menu has None first
 among the outputs (below). The tray's battery and links
@@ -12784,10 +12793,23 @@ in layers; done so far, **the engine** (crates/diskbackup):
   the same content anywhere is kept once, and ids say nothing without
   the key). Each is compressed (zstd 3, unless that saves under 3%) and
   sealed (XChaCha20-Poly1305, a random nonce each).
-- **Packs** of about 16 MiB (`data/xx/<id>`): few large objects suit a
-  slow store; each ends with its own sealed list of what it holds, so the
-  index can be made again from the packs. Trees go in packs of their own,
-  which the local cache keeps whole (still sealed): walking a snapshot
+- **Packs** of about 128 MiB (`data/xx/<id>`; `PACK_TARGET`, Ben,
+  2026-11-08: "the link is pretty fast i think 128mb is fine"): few large
+  objects suit a slow store (a terabyte is about 8,000, listed by Drive
+  1,000 a request); each ends with its own sealed list of what it holds,
+  so the index can be made again from the packs. A pack is held whole in
+  memory till it's sent: its room is reserved at once and kept for the
+  next while a backup runs (`Repo::let_go` gives it back after), and the
+  service keeps glibc's thresholds where 16 MiB packs had them (blocks
+  under 16 MiB from the heap, its top trimmed past 32 MiB): else every
+  chunk's buffers are pages mapped and zeroed afresh. Measured (a first
+  backup of 313 MB to a folder): 0.92–1.02 s as with 16 MiB packs
+  (0.98–0.99), 38.6k page faults (36k; 289k before the fixes), 164 MB at
+  most while it runs (72), 33 MB once idle (47). Tests keep 16 MiB packs
+  (`Repo::set_pack_sizes`) to have several. Trees go in packs of their
+  own, of 16 MiB (`TREE_PACK_TARGET`: small, changing with every backup,
+  fetched whole to read one), which the local cache keeps whole (still
+  sealed): walking a snapshot
   (the next backup's unchanged files, browsing to restore, tidying) reads
   the disk, never a slow store. **The index** (`index/<id>`, sealed) says
   where each blob is; it's read at open (cached locally: index files never
@@ -12967,7 +12989,9 @@ in layers; done so far, **the engine** (crates/diskbackup):
   a max upload/download speed"): bytes a second each way, 0 for none,
   changed live; a store paces its transfers a 256 KiB piece at a time
   (`Throttled` for one that doesn't pace itself), up to a quarter second's
-  worth at once, so the network never sees a burst at full speed.
+  worth at once, so the network never sees a burst at full speed. It
+  counts what it lets through (`Limit::passed`): what's sent, live, and a
+  pack's progress while a stop waits for it (`Repo::sending`).
 
 **The service** (apps/diskbackup, `olo-diskbackup --service`; olo-session
 runs it in the logged-in session): every thread at the priority chosen
@@ -12985,9 +13009,25 @@ week), its settings change (inotify) or it's asked on its socket
 Snapshots, Delete, Erase All). `Snapshots` lists this backup's snapshots
 (`SnapshotInfo`: when, files, size, new and changed, stored, how long),
 `Delete { snapshots }` forgets those (the exclusive lock) and tidies at
-once, `EraseAll` deletes everything the store holds (its config last:
-stopped half way, it's still a backup) and makes a new one there with
-the same key (`Doing::Erasing`, its progress files of all). A backup's
+once (`Doing::Deleting { what }`, said the moment it's asked: opening the
+backup, its lists, then the tidy's steps), `EraseAll` deletes everything
+the store holds (its config last: stopped half way, it's still a backup)
+and makes a new one there with the same key (`Doing::Erasing`, its
+progress files of all); on Google Drive it deletes the backups' folder
+whole, in one request however many files (`Drive::delete_folder`; Ben:
+"can we just have it delete the olo backup folder in gdrive then
+re-create it"), and makes it again, the settings following the new
+folder; another computer finds it by its name when its own is gone
+(`target::drive_folder_moved`, from `opened`). 6.7 s on our own Google
+at 400 ms a request, opening and all. Tidying says its step (1 to 5:
+what's kept, what the backups use, copying what's still used out of
+packs mostly unused, the index, deleting what isn't used), with how many
+of how many, and while deleting, what's freed of how much; it deletes 8
+at a time (`DELETERS`), each still under the only lock, Stop looked for
+before each (5.8 s → 3.8 s for 6 packs at 400 ms a request, the rest
+being listings; the more packs, the more it saves). The state is written
+every 2 s while something runs, and at once (within a quarter second)
+when its stage or tidying's step changes or Stop is asked. A backup's
 plan: the last snapshot's totals ("about", `Progress::estimated`), or,
 for the first, a count of what there is first (`backup::count`, the
 same walk without reading: `Stage::Counting`); then `Stage::Reading`
@@ -13010,8 +13050,25 @@ fully (`Doing::Validating`, its progress bytes read back of the packs'
 total, the pack it's at), one after another, each one's `Check` (`full`,
 `by_checksum`, `sampled`) kept by snapshot id across restarts (the state
 folder, forgotten with the snapshot). Stopped, a backup says
-`Stage::Stopping` while what's done so far is kept (the window says so
-the moment Stop is clicked, and Stop is off). The bad packs a check finds are kept too, and the
+`Stage::Stopping` at once (the service's state, from the stop itself:
+the backup sees it only once the pack it's sending has gone), with that
+pack's progress (`Progress::sending`, `sending_done`, and how long at the
+upload limit), then what's done is kept: up to a pack's worth to wait
+(at 2 MB/s, about a minute; the window says so the moment Stop is
+clicked, and Stop is off). **Upgrades** (Ben: "make sure that upgrades
+will work properly when a backup is underway it should seamlessly still
+move over to the new process and resume there"): olo-session's SIGURG
+(`olo_kit_base::restore::on_upgrade`) stops what's under way the way
+that keeps its place (erasing is let finish), marks the service as
+finishing something (`mark_waiting`, so olo-session doesn't stop it at
+90 s), notes what to go on with (`Kept::resume`: the backup, the tidy,
+the backups being validated, and what was asked and not done), and the
+loop becomes the new version in the same process
+(`exec_new_version`), which goes straight on: "Resuming the backup", no
+stop said. Checked: the binary replaced as an install does it, mid
+backup at 2 MB/s, Stopping within half a second, the pack it was sending
+15 → 127 of 134 MB in 55 s, then the same process as the new version,
+resuming; idle, at once. The bad packs a check finds are kept too, and the
 tidy right after repairs them (`repair`; a tidy that can't take the lock
 leaves them for the next). Doctor says when the last backup checked
 isn't whole (`diskbackup:damaged`, Back Up Now). With nowhere to back up
@@ -13068,11 +13125,15 @@ up, a header says whether your files are safe (`headline`: "Backed up
 where to and when next, the last one's figures) beside Restore… and Back
 Up Now (Stop while it runs); while a backup runs, the file it's at is
 the header's second line (`StringView::cut`) and the whole width under
-it the plan: a bar of bytes against the plan's ("of about" when
-estimated), files of files, time left (`how_far`: once 2% and ten
-seconds are done), what's new, what's sent and how fast, against the
-upload limit; each folder's turn (✓ ▸ ○) when there are several; erasing,
-a bar of what's deleted; checking after a backup, and validating, a bar
+it the plan: "Backing up your home folder" (what), a bar of what's gone
+through against the plan's (by the last backup's: "of about", and past
+it "more than the last backup's"), files of files, time left (once 2%
+and ten seconds are done), then what's new to the backup and what's sent,
+compressed and encrypted, how fast, against the upload limit (Ben: "what
+is read vs new"); each folder's turn (✓ ▸ ○) when there are several;
+stopping, the pack it's finishing sending, of how much, and how long;
+tidying and deleting, the step, how many of how many and what's freed;
+erasing, a bar of what's deleted; checking after a backup, and validating, a bar
 of what's read back and the pack it's at. "Resuming the backup" when it
 goes on from an unfinished one. Idle, a dim line under the last one's
 figures says what an unfinished backup got through and that the next

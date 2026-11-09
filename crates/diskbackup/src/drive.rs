@@ -150,16 +150,36 @@ impl Drive {
         Drive { http: oauth::agent(), endpoints, client, refresh, account, folder, token: Mutex::new(None), ids: Mutex::new(HashMap::new()), up, down }
     }
 
-    /// The backups' folder in `account`'s Drive (found, else made): its id.
-    pub fn folder(client: &Client, refresh: &str, endpoints: &Endpoints) -> Result<String, String> {
+    /// The backups' folder in `account`'s Drive, if it's there: its id.
+    pub fn find_folder(client: &Client, refresh: &str, endpoints: &Endpoints) -> Result<Option<String>, String> {
         let d = Drive::new(client.clone(), refresh.to_owned(), String::new(), String::new(), Arc::default(), Arc::default(), endpoints.clone());
         let q = format!("name = '{FOLDER}' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false");
         let url = format!("{}/drive/v3/files?q={}&fields=files(id)&spaces=drive", d.endpoints.api, oauth::escape(&q));
         let resp = d.call(|http, token| http.get(&url).header("Authorization", format!("Bearer {token}")).call()).map_err(|e| e.to_string())?;
         let v = d.json(resp).map_err(|e| e.to_string())?;
-        if let Some(id) = v.pointer("/files/0/id").and_then(|i| i.as_str()) {
-            return Ok(id.to_owned());
+        Ok(v.pointer("/files/0/id").and_then(|i| i.as_str()).map(str::to_owned))
+    }
+
+    /// The backups' folder deleted, everything in it with it, for good (not
+    /// to the trash): Erase All Backups in one request, not one a file.
+    pub fn delete_folder(&self) -> io::Result<()> {
+        let url = format!("{}/drive/v3/files/{}", self.endpoints.api, self.folder);
+        let resp = self.call(|http, token| http.delete(&url).header("Authorization", format!("Bearer {token}")).call())?;
+        if let Ok(mut ids) = self.ids.lock() {
+            ids.clear();
         }
+        match resp.status().as_u16() {
+            200..300 | 404 => Ok(()),
+            s => Err(other(format!("Google Drive: {s} {}", message(&text(resp))))),
+        }
+    }
+
+    /// The backups' folder in `account`'s Drive (found, else made): its id.
+    pub fn folder(client: &Client, refresh: &str, endpoints: &Endpoints) -> Result<String, String> {
+        if let Some(id) = Drive::find_folder(client, refresh, endpoints)? {
+            return Ok(id);
+        }
+        let d = Drive::new(client.clone(), refresh.to_owned(), String::new(), String::new(), Arc::default(), Arc::default(), endpoints.clone());
         let meta = serde_json::json!({ "name": FOLDER, "mimeType": "application/vnd.google-apps.folder" }).to_string();
         let url = format!("{}/drive/v3/files?fields=id", d.endpoints.api);
         let resp = d

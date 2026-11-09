@@ -620,31 +620,8 @@ pub(crate) fn clock(t: i64) -> String {
     }
 }
 
-pub(crate) fn size(b: u64) -> String {
-    match b {
-        0..1_000_000 => format!("{} KB", b.div_ceil(1000)),
-        1_000_000..1_000_000_000 => format!("{:.1} MB", b as f64 / 1e6),
-        1_000_000_000..1_000_000_000_000 => format!("{:.2} GB", b as f64 / 1e9),
-        _ => format!("{:.2} TB", b as f64 / 1e12),
-    }
-}
-
-pub(crate) fn count(n: u64) -> String {
-    let s = n.to_string();
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(ch);
-    }
-    out
-}
-
-/// "1 file", "12 files".
-pub(crate) fn plural(n: u64, what: &str) -> String {
-    if n == 1 { format!("1 {what}") } else { format!("{} {what}s", count(n)) }
-}
+// (Said as Deskbar says them.)
+pub(crate) use olo_protocol::diskbackup::words::{count, plural, size};
 
 pub(crate) fn speed_label(kbs: u64) -> String {
     match kbs {

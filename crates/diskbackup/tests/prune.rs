@@ -62,6 +62,13 @@ fn same(a: &Path, b: &Path) {
     }
 }
 
+/// `r` with packs of 16 MiB, as they were (these tests want several in a
+/// backup of tens of MiB).
+fn small(mut r: Repo) -> Repo {
+    r.set_pack_sizes(16 << 20, 16 << 20);
+    r
+}
+
 #[test]
 fn forget_then_prune() {
     let base = temp("main");
@@ -200,7 +207,7 @@ fn stopped_backup_goes_on() {
     let cancel = Arc::new(AtomicBool::new(false));
     let trip: Arc<dyn Store> = Arc::new(Tripwire { inner: LocalStore::new(base.join("store")), cancel: cancel.clone() });
     let key = Key::generate();
-    let mut repo = Repo::init(trip, key.clone(), None).unwrap();
+    let mut repo = small(Repo::init(trip, key.clone(), None).unwrap());
     let excludes = Excludes::none();
     let opts = Options { paths: vec![src.clone()], excludes: &excludes, host: "test".into(), one_file_system: true };
     let progress = Progress::default();
@@ -208,7 +215,7 @@ fn stopped_backup_goes_on() {
     drop(repo);
 
     let store: Arc<dyn Store> = Arc::new(LocalStore::new(base.join("store")));
-    let mut repo = Repo::open(store, key, None).unwrap();
+    let mut repo = small(Repo::open(store, key, None).unwrap());
     let go = AtomicBool::new(false);
     let (_, s) = backup(&mut repo, &opts, None, &go, &progress).unwrap();
     assert!(s.summary.new_bytes <= (40 << 20) - (15 << 20), "the first pack not sent again: {:?}", s.summary);
@@ -401,7 +408,7 @@ fn stopped_backup_kept_and_resumed() {
     let cancel = Arc::new(AtomicBool::new(false));
     let trip: Arc<dyn Store> = Arc::new(Tripwire { inner: LocalStore::new(base.join("store")), cancel: cancel.clone() });
     let key = Key::generate();
-    let mut repo = Repo::init(trip, key.clone(), Some(base.join("cache"))).unwrap();
+    let mut repo = small(Repo::init(trip, key.clone(), Some(base.join("cache"))).unwrap());
     let excludes = Excludes::none();
     let opts = Options { paths: vec![src.clone()], excludes: &excludes, host: "test".into(), one_file_system: true };
     let progress = Progress::default();
@@ -409,7 +416,7 @@ fn stopped_backup_kept_and_resumed() {
     drop(repo);
 
     let store: Arc<dyn Store> = Arc::new(LocalStore::new(base.join("store")));
-    let mut repo = Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap();
+    let mut repo = small(Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap());
     assert!(repo.snapshots().unwrap().is_empty(), "no backup to restore from");
     let unfinished = repo.unfinished().unwrap();
     assert_eq!(unfinished.len(), 1);
@@ -427,7 +434,7 @@ fn stopped_backup_kept_and_resumed() {
     assert!(size(&*store) >= before - (1 << 20), "kept: {} of {before}", size(&*store));
 
     // Gone on from: what it holds isn't read again.
-    let mut repo = Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap();
+    let mut repo = small(Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap());
     let progress = Progress::default();
     let (_, s) = backup(&mut repo, &opts, None, &go, &progress).unwrap();
     assert!(progress.resuming.load(std::sync::atomic::Ordering::Relaxed));
@@ -461,7 +468,7 @@ fn checked_damaged_repaired() {
     let store_dir = base.join("store");
     let store: Arc<dyn Store> = Arc::new(LocalStore::new(&store_dir));
     let key = Key::generate();
-    let mut repo = Repo::init(store.clone(), key.clone(), Some(base.join("cache"))).unwrap();
+    let mut repo = small(Repo::init(store.clone(), key.clone(), Some(base.join("cache"))).unwrap());
     let excludes = Excludes::none();
     let opts = Options { paths: vec![src.clone()], excludes: &excludes, host: "test".into(), one_file_system: true };
     let (cancel, progress) = (AtomicBool::new(false), Progress::default());
@@ -493,7 +500,7 @@ fn checked_damaged_repaired() {
     repair(&mut repo, &bad, &cancel, &progress).unwrap();
     drop(lock);
     assert!(!hurt.exists(), "the damaged pack let go of");
-    let mut repo = Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap();
+    let mut repo = small(Repo::open(store.clone(), key.clone(), Some(base.join("cache"))).unwrap());
     let (id1, _) = repo.snapshots().unwrap().pop().unwrap();
     let (_, s2) = backup(&mut repo, &opts, Some((id1, &s1)), &cancel, &progress).unwrap();
     assert!(s2.summary.new_bytes > 0, "what was lost, sent again: {:?}", s2.summary);

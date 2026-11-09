@@ -95,11 +95,14 @@ fn set_up_then_back_up() {
 
 /// A Google of our own for trying the app's setup window by hand (headless):
 /// served for `OLO_FAKE_GOOGLE_SECONDS` (120), its address written to
-/// `OLO_FAKE_GOOGLE_AT`.
+/// `OLO_FAKE_GOOGLE_AT`, each request answered after
+/// `OLO_FAKE_GOOGLE_LATENCY_MS`.
 #[test]
 #[ignore]
 fn serve_google() {
-    let api = google::serve(Arc::new(Mutex::new(google::Google::default())));
+    // (`OLO_FAKE_GOOGLE_LATENCY_MS`: each request that slow, as Google's.)
+    let latency = std::env::var("OLO_FAKE_GOOGLE_LATENCY_MS").ok().and_then(|m| m.parse().ok()).map(Duration::from_millis).unwrap_or_default();
+    let api = google::serve(Arc::new(Mutex::new(google::Google { latency, ..Default::default() })));
     std::fs::write(std::env::var("OLO_FAKE_GOOGLE_AT").unwrap_or_else(|_| "/var/tmp/olo-fake-google".into()), &api).unwrap();
     let secs = std::env::var("OLO_FAKE_GOOGLE_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(120);
     std::thread::sleep(Duration::from_secs(secs));

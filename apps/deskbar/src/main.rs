@@ -1504,23 +1504,39 @@ fn backup_menu(clock: &olo_protocol::ClockSettings) -> Menu {
         }
         if n == 1 { "1 file".to_owned() } else { format!("{grouped} files") }
     };
-    let size = |b: u64| if b >= 1_000_000_000 { format!("{:.1} GB", b as f64 / 1e9) } else { format!("{:.0} MB", b as f64 / 1e6) };
     let mut said: Vec<String> = Vec::new();
     match &st.doing {
-        Doing::BackingUp => {
-            let p = st.progress.clone().unwrap_or_default();
-            said.push(format!("Backing up: {}, {} read, {} new", count(p.files), size(p.bytes), size(p.new_bytes)));
-        }
+        // What, how far through how much, how long, files, what's new
+        // and sent: DiskBackup's own words (its window says the same).
+        Doing::BackingUp => said.extend(st.progress.clone().unwrap_or_default().lines(&s, now)),
         Doing::Pruning => said.push("Tidying: letting go of old snapshots".into()),
         Doing::Restoring => said.push("Restoring".into()),
         Doing::Erasing => said.push("Erasing every backup, to start fresh".into()),
         Doing::Validating => said.push("Validating backups: reading them back".into()),
+        Doing::Deleting { what } => {
+            let p = st.progress.clone().unwrap_or_default();
+            said.push(if p.total_files > 0 { format!("Deleting {what}: {} of {}", count(p.files), count(p.total_files)) } else { format!("Deleting {what}") });
+        }
         Doing::Waiting { why } => said.push(format!("Waiting: {why}")),
         Doing::Idle if st.pid == 0 => said.push("The DiskBackup service isn’t running".into()),
         Doing::Idle => {}
     }
     match (&st.last, st.last_ok) {
-        (Some(l), ok) if l.error.is_some() => {
+        // Stopped by the person: calmly, and what it got through.
+        (Some(l), ok) if l.stopped() && st.doing == Doing::Idle => {
+            said.push(format!("You stopped the backup {}", when(l.time)));
+            if let Some(u) = &st.unfinished {
+                said.push(if u.files > 0 {
+                    format!("{} ({}) done so far: Back Up Now goes on", olo_protocol::diskbackup::words::plural(u.files, "file"), olo_protocol::diskbackup::words::size(u.bytes))
+                } else {
+                    "Back Up Now goes on from where it got to".into()
+                });
+            }
+            if let Some(t) = ok {
+                said.push(format!("Last backed up whole {}", when(t)));
+            }
+        }
+        (Some(l), ok) if l.error.is_some() && st.doing == Doing::Idle => {
             let mut why = l.error.clone().unwrap_or_default();
             if why.chars().count() > 60 {
                 why = format!("{}…", why.chars().take(59).collect::<String>());
@@ -1541,9 +1557,15 @@ fn backup_menu(clock: &olo_protocol::ClockSettings) -> Menu {
     for line in said {
         m = m.item(line, "").enabled(false);
     }
-    let busy = matches!(st.doing, Doing::BackingUp | Doing::Pruning);
+    let busy = matches!(st.doing, Doing::BackingUp | Doing::Pruning | Doing::Validating | Doing::Deleting { .. });
     m = m.separator();
-    m = if busy { m.item(if st.doing == Doing::Pruning { "Stop Tidying" } else { "Stop Backing Up" }, "backup:stop") } else { m.item("Back Up Now", "backup:now").enabled(st.pid != 0 && s.enabled) };
+    let stop = match st.doing {
+        Doing::Pruning => "Stop Tidying",
+        Doing::Validating => "Stop Validating",
+        Doing::Deleting { .. } => "Stop Deleting",
+        _ => "Stop Backing Up",
+    };
+    m = if busy { m.item(stop, "backup:stop") } else { m.item("Back Up Now", "backup:now").enabled(st.pid != 0 && s.enabled) };
     m = if s.enabled { m.item("Pause Backups", "backup:enabled=off") } else { m.item("Resume Backups", "backup:enabled=on") };
     m.separator().item("Restore Files…", "run:olo-diskbackup --restore-window").item("DiskBackup…", "run:olo-diskbackup")
 }

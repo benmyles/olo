@@ -106,6 +106,27 @@ pub fn forget_google() -> Result<(), String> {
     }
 }
 
+/// Erase All Backups on Google Drive: its backups' folder deleted whole
+/// (one request, however many files: Ben, 2026-11-08: "can we just have it
+/// delete the olo backup folder in gdrive then re-create it so it's
+/// empty? wouldn't that be much quicker?"), and made again, empty; the
+/// target with the new folder.
+pub fn erase_drive(account: &str, folder: &str) -> Result<Target, String> {
+    let g = google()?;
+    let d = olo_diskbackup::drive::Drive::new(g.client.clone(), g.refresh_token.clone(), account.to_owned(), folder.to_owned(), Arc::default(), Arc::default(), endpoints());
+    d.delete_folder().map_err(|e| e.to_string())?;
+    let folder = olo_diskbackup::drive::Drive::folder(&g.client, &g.refresh_token, &endpoints())?;
+    Ok(Target::GoogleDrive { account: account.to_owned(), folder })
+}
+
+/// The backups' folder in Google Drive as it is now, if it's another than
+/// `folder` (another computer erased them all: a new folder, by the same
+/// name).
+pub fn drive_folder_moved(folder: &str) -> Option<String> {
+    let g = google().ok()?;
+    olo_diskbackup::drive::Drive::find_folder(&g.client, &g.refresh_token, &endpoints()).ok().flatten().filter(|f| f != folder)
+}
+
 /// Where backups go, as it is now (`look_at`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Where {

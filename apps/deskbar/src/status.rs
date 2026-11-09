@@ -121,6 +121,7 @@ pub fn backup() -> Option<Backup> {
         Doing::Restoring => Some("Restoring"),
         Doing::Erasing => Some("Erasing"),
         Doing::Validating => Some("Validating"),
+        Doing::Deleting { .. } => Some("Deleting"),
         _ => None,
     };
     let off = if st.pid == 0 {

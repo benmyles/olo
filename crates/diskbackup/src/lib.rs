@@ -14,7 +14,8 @@
 //!   (`crypto`: HMAC-SHA-256 under a key of the repository's, so ids say
 //!   nothing about content). Each is compressed (zstd, unless that saves
 //!   nothing) and sealed (XChaCha20-Poly1305).
-//! - **Packs.** Chunks go up in packs of about 16 MiB (`data/…`): few large
+//! - **Packs.** Chunks go up in packs of about 128 MiB (`data/…`; trees in
+//!   their own, of 16 MiB): few large
 //!   objects suit a slow store. A pack ends with its own sealed list of what
 //!   it holds, so the index can always be made again from the packs.
 //! - **The index** (`index/…`): where each chunk is, sealed, a file a flush.

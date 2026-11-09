@@ -16,9 +16,10 @@
 //!   checksum of each (Google Drive's MD5), each pack's compared with the
 //!   one summed as it was sent (`sums`, in the cache: it arrived and stayed
 //!   as sent, nothing fetched; one that differs is fetched and checked);
-//!   and a few of its data packs read back whole (`SAMPLES`: about one in
-//!   a hundred, one to four), those never read back first, so over time
-//!   the samples go round them all.
+//!   and samples read back: from a few of its data packs (`SAMPLES`: one
+//!   in ten, one to eight; those never read back whole first), a run of
+//!   its blobs side by side (`SAMPLE_BYTES`, one ranged read each, never
+//!   the whole 128 MiB pack), each opened and checked against its id.
 //! - Full (Validate Fully): every pack it uses fetched and checked that
 //!   way, whatever was checked before, and each blob of the backup's in it
 //!   opened and checked against its own id, as a restore would.
@@ -71,10 +72,12 @@ fn packs(n: u64) -> String {
     if n == 1 { "one of its packs is".into() } else { format!("{n} of its packs are") }
 }
 
-/// Data packs read back as samples (fast): one in this many, …
-const SAMPLE_ONE_IN: usize = 100;
-/// … at most this many.
-const SAMPLES: usize = 4;
+/// Data packs sampled (fast): one in this many, …
+const SAMPLE_ONE_IN: usize = 10;
+/// … at most this many, …
+const SAMPLES: usize = 8;
+/// … a run of blobs of about this much read back from each.
+const SAMPLE_BYTES: u32 = 4 << 20;
 
 /// A blob where it's kept: its id, offset, length (sealed) and flags.
 type Place = (Id, u32, u32, u8);
@@ -230,8 +233,8 @@ pub fn check(repo: &Repo, snapshot: &Snapshot, full: bool, cancel: &AtomicBool, 
         }
     }
     out.by_checksum = by_checksum.len() as u64;
-    // A few data packs as samples: those never read back first, then those
-    // the checksums didn't cover.
+    // A few data packs to sample: those never read back whole first, then
+    // those the checksums didn't cover.
     let mut samples: HashSet<Id> = HashSet::new();
     if !full {
         let data: Vec<Id> = by_pack.iter().filter(|(p, b)| !trees_only(b) && !out.bad_packs.contains(p) && !differs.contains(p)).map(|(p, _)| *p).collect();
@@ -243,12 +246,11 @@ pub fn check(repo: &Repo, snapshot: &Snapshot, full: bool, cancel: &AtomicBool, 
     }
 
     // 5. Fetched whole and checked: if `full`, every pack; else the tree
-    // packs not checked before, the samples, and any whose checksum
-    // differs.
+    // packs not checked before, and any whose checksum differs.
     let fetch: Vec<(&Id, &Vec<Place>)> =
-        by_pack.iter().filter(|(p, _)| !out.bad_packs.contains(p)).filter(|(p, blobs)| full || (trees_only(blobs) && !before.contains(p)) || samples.contains(p) || differs.contains(p)).collect();
-    progress.total_files.store(fetch.len() as u64, Relaxed);
-    progress.total_bytes.store(fetch.iter().map(|(p, _)| present.get(p).copied().unwrap_or(0)).sum(), Relaxed);
+        by_pack.iter().filter(|(p, _)| !out.bad_packs.contains(p)).filter(|(p, blobs)| full || (trees_only(blobs) && !before.contains(p)) || differs.contains(p)).collect();
+    progress.total_files.store((fetch.len() + samples.len()) as u64, Relaxed);
+    progress.total_bytes.store(fetch.iter().map(|(p, _)| present.get(p).copied().unwrap_or(0)).sum::<u64>() + samples.len() as u64 * SAMPLE_BYTES as u64, Relaxed);
     let mut damaged = 0u64;
     for (i, (pack, blobs)) in fetch.iter().enumerate() {
         stop()?;
@@ -276,6 +278,43 @@ pub fn check(repo: &Repo, snapshot: &Snapshot, full: bool, cancel: &AtomicBool, 
         }
         out.packs_read += 1;
     }
+    // 6. Samples (fast): from each pack chosen, a run of its blobs side by
+    // side from a place at random (about `SAMPLE_BYTES`: one ranged read),
+    // each opened and checked against its id, as a restore would.
+    for (i, pack) in samples.iter().enumerate() {
+        stop()?;
+        say(&format!("Reading back sample {} of {}", i + 1, samples.len()));
+        let mut blobs: Vec<Place> = by_pack.get(pack).cloned().unwrap_or_default();
+        blobs.sort_by_key(|b| b.1);
+        let Some(start) = shuffled((0..blobs.len()).collect()).first().copied() else { continue };
+        let mut run = vec![blobs[start]];
+        let mut size = blobs[start].2;
+        while let Some(next) = blobs.get(start + run.len()) {
+            let last = run[run.len() - 1];
+            if next.1 != last.1 + last.2 || size + next.2 > SAMPLE_BYTES {
+                break;
+            }
+            size += next.2;
+            run.push(*next);
+        }
+        let from = run[0].1;
+        let data = repo.store.get_range(&pack_name(pack), from as u64, size as u64)?;
+        out.bytes_read += data.len() as u64;
+        progress.bytes.fetch_add(data.len() as u64, Relaxed);
+        progress.files.fetch_add(1, Relaxed);
+        let mut whole = true;
+        for (id, offset, len, flags) in &run {
+            let at = (offset - from) as usize;
+            if !data.get(at..at + *len as usize).is_some_and(|sealed| unseal(&repo.key, id, sealed, *flags).is_ok()) {
+                whole = false;
+                bad.insert(*id);
+            }
+        }
+        if !whole {
+            damaged += 1;
+            out.bad_packs.push(*pack);
+        }
+    }
     if damaged > 0 {
         out.problems.push(format!("{} damaged (not as it was written)", packs(damaged)).replace("are damaged (not as it was", "are damaged (not as they were"));
     }
@@ -293,7 +332,7 @@ pub fn check(repo: &Repo, snapshot: &Snapshot, full: bool, cancel: &AtomicBool, 
         bad.extend(unreadable);
     }
 
-    // 6. What that leaves unable to come back.
+    // 7. What that leaves unable to come back.
     if !bad.is_empty() {
         say("Finding the files it affects");
         affected(repo, snapshot, &bad, &mut out)?;
