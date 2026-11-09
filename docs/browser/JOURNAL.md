@@ -7163,3 +7163,11 @@ throws Chrome's SyntaxError. Plain objects had been named
 Object's): fixed. pixelscan.net doesn't load: its Cloudflare holds a
 connection whose TLS handshake isn't a browser's (curl's too), which only
 a Chrome-like ClientHello (BoringSSL) gets past.
+
+Then the cost of all this: every page's (and frame's) scripting ran the
+whole prelude, 468 KB, to set itself up, 17 ms, 23 once presenting as
+Chrome. The prelude no longer touches the page it is for until a last
+step binds it (its document, URL, viewport, clock, screen), so it is run
+once into a V8 startup snapshot, kept on disk; a page's realm is that
+snapshot read back, bound: **4.3 ms**. The prelude's part of a page in
+the browser went from 25 ms to 1.

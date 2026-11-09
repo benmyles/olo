@@ -122,9 +122,9 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   outside its DOM; SVG text metrics need the scene's shaped text where
   scripts measure (the layout has no shaper); BrowserScan's logo (huge,
   clipped text) and its cards' icons.
-- [ ] A realm's prelude costs 34 ms (24 before presenting as Chrome), most
-  of it running the prelude: a V8 startup snapshot of it would make a
-  realm in a few ms (its top level made page-independent first).
+- [x] A realm made from a V8 snapshot of the prelude (2026-11-09): 4.3 ms,
+  where running the prelude took 17-23. A worker's prelude still runs in
+  full (shared.js, worker.js): a snapshot of its own would do the same.
 - [x] YouTube: its home as Chrome's, icons within a second (2026-11-08:
   idle callbacks took their timeout as a delay; Cache Storage kept nothing).
 - [ ] Selectors are compiled again with every compile of a page's sheets
