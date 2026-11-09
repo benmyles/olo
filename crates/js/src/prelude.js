@@ -840,13 +840,196 @@
     }
     N.setTextContent(el, text);
   };
-  class Range {
-    constructor() { this.startContainer = documentNode; this.endContainer = documentNode; this.startOffset = 0; this.endOffset = 0; this.collapsed = true; this.commonAncestorContainer = documentNode; }
-    setStart(n, o) { this.startContainer = n; this.startOffset = o; } setEnd(n, o) { this.endContainer = n; this.endOffset = o; } setStartBefore(n) { this.setStart(N.parent(n), 0); } setStartAfter(n) { this.setStart(N.parent(n), 0); } setEndBefore(n) { this.setEnd(N.parent(n), 0); } setEndAfter(n) { this.setEnd(N.parent(n), 0); }
-    selectNode(n) { this.startContainer = this.endContainer = N.parent(n) || n; } selectNodeContents(n) { this.startContainer = this.endContainer = n; } collapse() {} cloneRange() { return new Range(); } detach() {} deleteContents() {} extractContents() { return N.createFragment(); } cloneContents() { return N.createFragment(); } insertNode(n) { N.append(this.startContainer, n); } surroundContents() {}
-    getBoundingClientRect() { return new DOMRect(0, 0, 0, 0); } getClientRects() { return listOf([]); } toString() { return ''; }
+  // Ranges (DOM §5): boundary points (a node and an offset in it), their
+  // order, what is contained, and the algorithms that cut, copy, remove,
+  // insert and surround; the rectangles of what they hold (CSSOM View
+  // §6.2): an element's own, a text node's characters as laid out. (A
+  // range isn't moved by the document's other mutations yet.)
+  const rangeLength = (n) => { const t = N.nodeType(n); return t === 10 ? 0 : t === 3 || t === 4 || t === 7 || t === 8 ? N.data(n).length : N.childNodes(n).length; };
+  const rangeIndex = (n) => { const p = N.parent(n); return p ? N.childNodes(p).indexOf(n) : 0; };
+  const rangeRoot = (n) => { let r = n; for (let p = N.parent(r); p; p = N.parent(r)) r = p; return r; };
+  const isData = (n) => { const t = N.nodeType(n); return t === 3 || t === 4 || t === 7 || t === 8; };
+  const inclusiveAncestor = (a, n) => { for (let x = n; x; x = N.parent(x)) if (x === a) return true; return false; };
+  // -1, 0, 1: (a, ao) before, at, after (b, bo).
+  const comparePoints = (a, ao, b, bo) => {
+    if (a === b) return ao === bo ? 0 : ao < bo ? -1 : 1;
+    if (N.treeOrder(a, b) === 1) return -comparePoints(b, bo, a, ao);
+    if (inclusiveAncestor(a, b)) { let child = b; while (N.parent(child) !== a) child = N.parent(child); if (rangeIndex(child) < ao) return 1; }
+    return -1;
+  };
+  const rangeError = (name, message) => new DOMException(message, name);
+  class AbstractRange {
+    constructor() { throw new TypeError('Illegal constructor'); }
+    get startContainer() { return this._sc; } get startOffset() { return this._so; } get endContainer() { return this._ec; } get endOffset() { return this._eo; }
+    get collapsed() { return this._sc === this._ec && this._so === this._eo; }
+  }
+  class StaticRange extends AbstractRange {
+    constructor(init) {
+      const r = Object.create(new.target.prototype);
+      if (!init || typeof init !== 'object') throw new TypeError("Failed to construct 'StaticRange': 1 argument required, but only 0 present.");
+      for (const k of ['startContainer', 'endContainer']) { const t = init[k] && N.nodeType(init[k]); if (t === 10 || t === 2) throw rangeError('InvalidNodeTypeError', "Failed to construct 'StaticRange': The supplied node is incorrect or has an incorrect ancestor for this operation."); }
+      r._sc = init.startContainer; r._so = init.startOffset >>> 0; r._ec = init.endContainer; r._eo = init.endOffset >>> 0;
+      return r;
+    }
+  }
+  class Range extends AbstractRange {
+    constructor() { const r = Object.create(new.target.prototype); r._sc = r._ec = documentNode; r._so = r._eo = 0; return r; }
+    get commonAncestorContainer() { let c = this._sc; while (!inclusiveAncestor(c, this._ec)) c = N.parent(c); return c; }
+    _check(node, offset) {
+      if (!node || N.nodeType(node) === undefined) throw new TypeError("parameter 1 is not of type 'Node'.");
+      if (N.nodeType(node) === 10) throw rangeError('InvalidNodeTypeError', 'The node provided is a doctype, which is not a valid boundary point.');
+      if (offset > rangeLength(node)) throw rangeError('IndexSizeError', 'The offset ' + offset + ' is larger than the node\'s length (' + rangeLength(node) + ').');
+    }
+    setStart(node, offset) { offset = offset >>> 0; this._check(node, offset); if (rangeRoot(node) !== rangeRoot(this._sc) || comparePoints(node, offset, this._ec, this._eo) > 0) { this._ec = node; this._eo = offset; } this._sc = node; this._so = offset; }
+    setEnd(node, offset) { offset = offset >>> 0; this._check(node, offset); if (rangeRoot(node) !== rangeRoot(this._sc) || comparePoints(node, offset, this._sc, this._so) < 0) { this._sc = node; this._so = offset; } this._ec = node; this._eo = offset; }
+    _parentOf(node) { const p = N.parent(node); if (!p) throw rangeError('InvalidNodeTypeError', 'the given Node has no parent.'); return p; }
+    setStartBefore(node) { this.setStart(this._parentOf(node), rangeIndex(node)); }
+    setStartAfter(node) { this.setStart(this._parentOf(node), rangeIndex(node) + 1); }
+    setEndBefore(node) { this.setEnd(this._parentOf(node), rangeIndex(node)); }
+    setEndAfter(node) { this.setEnd(this._parentOf(node), rangeIndex(node) + 1); }
+    collapse(toStart) { if (toStart) { this._ec = this._sc; this._eo = this._so; } else { this._sc = this._ec; this._so = this._eo; } }
+    selectNode(node) { const p = this._parentOf(node); const i = rangeIndex(node); this._sc = this._ec = p; this._so = i; this._eo = i + 1; }
+    selectNodeContents(node) { if (N.nodeType(node) === 10) throw rangeError('InvalidNodeTypeError', 'The node provided is of type \'DocumentType\'.'); this._sc = this._ec = node; this._so = 0; this._eo = rangeLength(node); }
+    compareBoundaryPoints(how, source) {
+      how = Number(how);
+      if (how < 0 || how > 3) throw rangeError('NotSupportedError', 'The comparison method provided must be one of \'START_TO_START\', \'START_TO_END\', \'END_TO_END\', or \'END_TO_START\'.');
+      if (rangeRoot(this._sc) !== rangeRoot(source._sc)) throw rangeError('WrongDocumentError', 'The source range is in a different document than this range.');
+      const [a, ao, b, bo] = how === 0 ? [this._sc, this._so, source._sc, source._so] : how === 1 ? [this._ec, this._eo, source._sc, source._so] : how === 2 ? [this._ec, this._eo, source._ec, source._eo] : [this._sc, this._so, source._ec, source._eo];
+      return comparePoints(a, ao, b, bo);
+    }
+    comparePoint(node, offset) {
+      if (rangeRoot(node) !== rangeRoot(this._sc)) throw rangeError('WrongDocumentError', 'The node provided and this Range are not in the same tree.');
+      offset = offset >>> 0; this._check(node, offset);
+      if (comparePoints(node, offset, this._sc, this._so) < 0) return -1;
+      if (comparePoints(node, offset, this._ec, this._eo) > 0) return 1;
+      return 0;
+    }
+    isPointInRange(node, offset) {
+      if (rangeRoot(node) !== rangeRoot(this._sc)) return false;
+      offset = offset >>> 0; this._check(node, offset);
+      return comparePoints(node, offset, this._sc, this._so) >= 0 && comparePoints(node, offset, this._ec, this._eo) <= 0;
+    }
+    intersectsNode(node) {
+      if (rangeRoot(node) !== rangeRoot(this._sc)) return false;
+      const p = N.parent(node); if (!p) return true;
+      const i = rangeIndex(node);
+      return comparePoints(p, i, this._ec, this._eo) < 0 && comparePoints(p, i + 1, this._sc, this._so) > 0;
+    }
+    _contains(node) { return rangeRoot(node) === rangeRoot(this._sc) && comparePoints(node, 0, this._sc, this._so) > 0 && comparePoints(node, rangeLength(node), this._ec, this._eo) < 0; }
+    _partial(node) { return inclusiveAncestor(node, this._sc) !== inclusiveAncestor(node, this._ec); }
+    // The nodes from the start to the end, in tree order (under the common
+    // ancestor).
+    _nodes() {
+      const out = [], common = this.commonAncestorContainer;
+      const end = this._ec === common || isData(this._ec) ? null : N.childNodes(this._ec)[this._eo] || null;
+      const visit = (n) => { for (const c of N.childNodes(n)) { if (c === end) return false; out.push(c); if (visit(c) === false) return false; } return true; };
+      visit(common);
+      return out;
+    }
+    _cut(clone) {
+      const fragment = global.document.createDocumentFragment();
+      if (this.collapsed) return fragment;
+      const [os, oso, oe, oeo] = [this._sc, this._so, this._ec, this._eo];
+      if (os === oe && isData(os)) {
+        const c = os.cloneNode(false); c.data = N.data(os).substr(oso, oeo - oso); fragment.appendChild(c);
+        if (!clone) os.replaceData(oso, oeo - oso, '');
+        return fragment;
+      }
+      const common = this.commonAncestorContainer;
+      const children = N.childNodes(common);
+      const firstPartial = inclusiveAncestor(os, oe) ? null : children.find((c) => this._partial(c)) || null;
+      const lastPartial = inclusiveAncestor(oe, os) ? null : [...children].reverse().find((c) => this._partial(c)) || null;
+      const contained = children.filter((c) => this._contains(c));
+      if (contained.some((c) => N.nodeType(c) === 10)) throw rangeError('HierarchyRequestError', 'The Range contains a doctype.');
+      let newNode, newOffset;
+      if (!clone) {
+        if (inclusiveAncestor(os, oe)) { newNode = os; newOffset = oso; } else { let ref = os; while (!inclusiveAncestor(N.parent(ref), oe)) ref = N.parent(ref); newNode = N.parent(ref); newOffset = rangeIndex(ref) + 1; }
+      }
+      const sub = (a, ao, b, bo) => { const r = new Range(); r._sc = a; r._so = ao; r._ec = b; r._eo = bo; return r._cut(clone); };
+      if (firstPartial && isData(firstPartial)) { const c = firstPartial.cloneNode(false); c.data = N.data(firstPartial).slice(oso); fragment.appendChild(c); if (!clone) firstPartial.replaceData(oso, rangeLength(firstPartial) - oso, ''); }
+      else if (firstPartial) { const c = firstPartial.cloneNode(false); fragment.appendChild(c); c.appendChild(sub(os, oso, firstPartial, rangeLength(firstPartial))); }
+      for (const child of contained) fragment.appendChild(clone ? child.cloneNode(true) : child);
+      if (lastPartial && isData(lastPartial)) { const c = lastPartial.cloneNode(false); c.data = N.data(lastPartial).slice(0, oeo); fragment.appendChild(c); if (!clone) lastPartial.replaceData(0, oeo, ''); }
+      else if (lastPartial) { const c = lastPartial.cloneNode(false); fragment.appendChild(c); c.appendChild(sub(lastPartial, 0, oe, oeo)); }
+      if (!clone) { this._sc = this._ec = newNode; this._so = this._eo = newOffset; }
+      return fragment;
+    }
+    extractContents() { return this._cut(false); }
+    cloneContents() { return this._cut(true); }
+    deleteContents() {
+      if (this.collapsed) return;
+      const [os, oso, oe, oeo] = [this._sc, this._so, this._ec, this._eo];
+      if (os === oe && isData(os)) { os.replaceData(oso, oeo - oso, ''); return; }
+      const remove = this._nodes().filter((n) => this._contains(n) && !this._contains(N.parent(n)));
+      let newNode, newOffset;
+      if (inclusiveAncestor(os, oe)) { newNode = os; newOffset = oso; } else { let ref = os; while (!inclusiveAncestor(N.parent(ref), oe)) ref = N.parent(ref); newNode = N.parent(ref); newOffset = rangeIndex(ref) + 1; }
+      if (isData(os)) os.replaceData(oso, rangeLength(os) - oso, '');
+      for (const n of remove) { const p = N.parent(n); if (p) p.removeChild(n); }
+      if (isData(oe)) oe.replaceData(0, oeo, '');
+      this._sc = this._ec = newNode; this._so = this._eo = newOffset;
+    }
+    insertNode(node) {
+      const start = this._sc, t = N.nodeType(start);
+      if (t === 7 || t === 8 || (t === 3 && !N.parent(start)) || start === node) throw rangeError('HierarchyRequestError', 'The node to be inserted is not allowed here.');
+      let ref = t === 3 ? start : N.childNodes(start)[this._so] || null;
+      const parent = ref ? N.parent(ref) : start;
+      if (t === 3) ref = start.splitText(this._so);
+      if (node === ref) ref = N.nextSibling(ref);
+      if (N.parent(node)) N.parent(node).removeChild(node);
+      let newOffset = ref ? rangeIndex(ref) : rangeLength(parent);
+      newOffset += N.nodeType(node) === 11 ? rangeLength(node) : 1;
+      parent.insertBefore(node, ref);
+      if (this.collapsed) { this._ec = parent; this._eo = newOffset; }
+    }
+    surroundContents(newParent) {
+      if (this._nodes().some((n) => N.nodeType(n) !== 3 && this._partial(n))) throw rangeError('InvalidStateError', 'The Range has partially selected a non-Text node.');
+      const t = N.nodeType(newParent);
+      if (t === 9 || t === 10 || t === 11) throw rangeError('InvalidNodeTypeError', 'The node provided is of a type that may not be used to surround a range.');
+      const fragment = this.extractContents();
+      while (N.firstChild(newParent)) newParent.removeChild(N.firstChild(newParent));
+      this.insertNode(newParent);
+      newParent.appendChild(fragment);
+      this.selectNode(newParent);
+    }
+    cloneRange() { const r = new Range(); r._sc = this._sc; r._so = this._so; r._ec = this._ec; r._eo = this._eo; return r; }
+    detach() {}
+    toString() {
+      const [os, oso, oe, oeo] = [this._sc, this._so, this._ec, this._eo];
+      if (os === oe && N.nodeType(os) === 3) return N.data(os).slice(oso, oeo);
+      let s = N.nodeType(os) === 3 ? N.data(os).slice(oso) : '';
+      for (const n of this._nodes()) if (N.nodeType(n) === 3 && this._contains(n)) s += N.data(n);
+      if (N.nodeType(oe) === 3) s += N.data(oe).slice(0, oeo);
+      return s;
+    }
+    // CSSOM View §6.2: each element selected whose parent isn't, its
+    // rectangles; each text node's selected characters, theirs.
+    getClientRects() {
+      const rects = [];
+      const text = (n, a, b) => { const v = N.textRects(n, a, b) || []; for (let i = 0; i + 3 < v.length; i += 4) rects.push(new DOMRect(v[i] - scrollXY[0], v[i + 1] - scrollXY[1], v[i + 2], v[i + 3])); };
+      const [os, oso, oe, oeo] = [this._sc, this._so, this._ec, this._eo];
+      if (os === oe && N.nodeType(os) === 3) { text(os, oso, oeo); return listOf(rects, global.DOMRectList); }
+      if (N.nodeType(os) === 3) text(os, oso, rangeLength(os));
+      for (const n of this._nodes()) {
+        if (!this._contains(n)) continue;
+        if (N.nodeType(n) === 1 && !this._contains(N.parent(n))) for (const r of n.getClientRects()) rects.push(r);
+        else if (N.nodeType(n) === 3) text(n, 0, rangeLength(n));
+      }
+      if (N.nodeType(oe) === 3 && oe !== os) text(oe, 0, oeo);
+      return listOf(rects, global.DOMRectList);
+    }
+    getBoundingClientRect() {
+      const rects = [...this.getClientRects()];
+      const solid = rects.filter((r) => r.width !== 0 || r.height !== 0);
+      const use = solid.length ? solid : rects;
+      if (!use.length) return new DOMRect(0, 0, 0, 0);
+      let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+      for (const x of use) { l = Math.min(l, x.left); t = Math.min(t, x.top); r = Math.max(r, x.right); b = Math.max(b, x.bottom); }
+      return new DOMRect(l, t, r - l, b - t);
+    }
     createContextualFragment(html) { const tmp = N.createElement('div', ''); N.setInnerHTML(tmp, String(html)); const f = N.createFragment(); for (const c of N.childNodes(tmp)) N.append(f, c); return f; }
   }
+  for (const [k, v] of [['START_TO_START', 0], ['START_TO_END', 1], ['END_TO_END', 2], ['END_TO_START', 3]]) { Object.defineProperty(Range, k, { value: v, enumerable: true }); Object.defineProperty(Range.prototype, k, { value: v, enumerable: true }); }
+  global.AbstractRange = AbstractRange; global.StaticRange = StaticRange;
   global.Range = Range;
   // TreeWalker (DOM §6.2): each step from the current node, never a list
   // of the whole subtree (Lit walks every template it clones from the

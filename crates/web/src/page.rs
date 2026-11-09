@@ -903,7 +903,7 @@ impl Measurer {
         };
         phases[4] = started.elapsed().as_secs_f64() * 1000. - phases[..4].iter().sum::<f64>();
         phases[5] = started.elapsed().as_secs_f64() * 1000.;
-        Ok(Measured { layout, document_size: Default::default(), inlines: Default::default(), index, revision: doc.revision(), viewport, phases, defaults, path })
+        Ok(Measured { layout, document_size: Default::default(), inlines: Default::default(), text_spans: Default::default(), index, revision: doc.revision(), viewport, phases, defaults, path })
     }
 }
 /// One layout of the document, queried by node.
@@ -913,6 +913,9 @@ pub struct Measured {
     /// Inline elements' pieces in the paragraphs (text source, source range),
     /// by element: made the first time one is measured.
     inlines: std::sync::OnceLock<(crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>>, Vec<Option<layout::BoxId>>)>,
+    /// Each text node's spans in the text sources (source, byte range),
+    /// found once (Range.getClientRects).
+    text_spans: std::sync::OnceLock<crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>>>,
     index: crate::dom::NodeMap<layout::BoxId>,
     revision: u64,
     viewport: layout::Viewport,
@@ -1010,9 +1013,12 @@ impl Measured {
     /// An inline element (one with no box of its own): the union of its
     /// text's fragments on their lines, each a line's ascent and descent
     /// tall, as Chrome measures one's content area.
-    fn inline_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
+    /// The inline elements' pieces of each text source, and each source's
+    /// text box (what its lines are laid out in), found once.
+    #[allow(clippy::type_complexity)]
+    fn inline_index(&self) -> &(crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>>, Vec<Option<layout::BoxId>>) {
         let tree = self.layout.cache().tree();
-        let (inlines, text_boxes) = self.inlines.get_or_init(|| {
+        self.inlines.get_or_init(|| {
             let mut map: crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>> = Default::default();
             let mut source = 0u32;
             while tree.text_source(source).is_some() {
@@ -1031,7 +1037,10 @@ impl Measured {
                 }
             }
             (map, boxes)
-        });
+        })
+    }
+    fn inline_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
+        let (inlines, text_boxes) = self.inline_index();
         let mut union: Option<layout::Rect> = None;
         for (source, range) in inlines.get(&node)? {
             let Some(container) = text_boxes.get(*source as usize).copied().flatten() else { continue };
@@ -1046,7 +1055,9 @@ impl Measured {
                     if f.source.end <= range.start || f.source.start >= range.end {
                         continue;
                     }
-                    let r = layout::Rect { x: origin.x + content.0 + f.x, y: origin.y + content.1 + baseline - line.ascent, width: f.advance, height: line.ascent + line.descent };
+                    // (Its font's content area, as Chrome measures an inline.)
+                    let (above, below) = text.content_area(f);
+                    let r = layout::Rect { x: origin.x + content.0 + f.x, y: origin.y + content.1 + baseline - text.shift(f) - above, width: f.advance, height: above + below };
                     union = Some(match union {
                         None => r,
                         Some(u) => {
@@ -1058,6 +1069,92 @@ impl Measured {
             }
         }
         union
+    }
+    /// Where a text node's characters `start..end` (UTF-16 offsets, as a
+    /// Range has them) are laid out: a rectangle a line, in page
+    /// coordinates (Range.getClientRects). Where whitespace was collapsed
+    /// the node's offsets are placed in proportion along what it became.
+    pub fn text_rects(&self, doc: &Document, node: crate::dom::NodeId, start: u32, end: u32) -> Vec<layout::Rect> {
+        let mut out = Vec::new();
+        let Some(raw) = doc.value(node).ok().flatten() else { return out };
+        // UTF-16 offsets to bytes of the node's text.
+        let byte_at = |unit: u32| {
+            let mut units = 0u32;
+            for (i, c) in raw.char_indices() {
+                if units >= unit {
+                    return i as u32;
+                }
+                units += c.len_utf16() as u32;
+            }
+            raw.len() as u32
+        };
+        let (from, to) = (byte_at(start.min(end)), byte_at(end.max(start)));
+        let spans = self.text_spans.get_or_init(|| {
+            let tree = self.layout.cache().tree();
+            let mut map: crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>> = Default::default();
+            let mut source = 0u32;
+            while let Some(text_source) = tree.text_source(source) {
+                for span in text_source.spans.iter() {
+                    map.entry(span.node).or_default().push((source, span.range.clone()));
+                }
+                source += 1;
+            }
+            map
+        });
+        for (source, range) in spans.get(&node).map(Vec::as_slice).unwrap_or(&[]) {
+            let Some(container) = self.inline_index().1.get(*source as usize).copied().flatten() else { continue };
+            let (Some(text), Some(origin)) = (self.layout.text_layout(container), self.layout.bounds(container)) else { continue };
+            let content = self.layout.geometry(container).map_or((0., 0.), |g| {
+                let c = g.content_box();
+                (c.x - g.border_box.x, c.y - g.border_box.y)
+            });
+            {
+                let span_range = range;
+                let len = span_range.end - span_range.start;
+                let scale = |b: u32| if raw.len() as u32 == len || raw.is_empty() { b.min(len) } else { ((u64::from(b) * u64::from(len)) / raw.len() as u64) as u32 };
+                let (a, z) = (span_range.start + scale(from), span_range.start + scale(to));
+                for (i, line) in text.lines().iter().enumerate() {
+                    let Some(baseline) = text.baseline(i) else { continue };
+                    for f in &text.fragments()[line.fragments.start as usize..line.fragments.end as usize] {
+                        let collapsed = a == z;
+                        if (!collapsed && (f.source.end <= a || f.source.start >= z)) || (collapsed && (a < f.source.start || a > f.source.end)) {
+                            continue;
+                        }
+                        // The fragment's part from `a` to `z`, by its glyphs'
+                        // advances (left to right in the fragment).
+                        let (mut left, mut right) = (0., f.advance);
+                        if let Some(run) = text.run(f) {
+                            let unit = run.size / f64::from(run.font.units_per_em());
+                            let glyphs = run.glyphs.get(f.glyphs.start as usize..f.glyphs.end as usize).unwrap_or(&[]);
+                            let total: f64 = glyphs.iter().map(|g| f64::from(g.x_advance) * unit).sum();
+                            let stretch = if total > 0. { f.advance / total } else { 1. };
+                            let mut x = 0.;
+                            let (mut l, mut r) = (None, None);
+                            for g in glyphs {
+                                let cluster = g.cluster;
+                                if l.is_none() && cluster >= a {
+                                    l = Some(x);
+                                }
+                                if r.is_none() && cluster >= z {
+                                    r = Some(x);
+                                }
+                                x += f64::from(g.x_advance) * unit * stretch;
+                            }
+                            left = l.unwrap_or(x);
+                            right = r.unwrap_or(x).max(left);
+                            if f.level % 2 == 1 {
+                                (left, right) = (f.advance - right, f.advance - left);
+                            }
+                        }
+                        // (Its font's content area, as Chrome measures text.)
+                        let (above, below) = text.content_area(f);
+                        let y = origin.y + content.1 + baseline - text.shift(f) - above;
+                        out.push(layout::Rect { x: origin.x + content.0 + f.x + left, y, width: right - left, height: above + below });
+                    }
+                }
+            }
+        }
+        out
     }
     /// The padding box (clientWidth/clientHeight, clientTop/clientLeft).
     pub fn padding_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {

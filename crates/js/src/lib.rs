@@ -2283,7 +2283,35 @@ fn install(scope: &mut v8::PinScope<'_, '_>, state: &Shared) -> Result<(), Strin
     });
     Ok(())
 }
-fn illegal_constructor(scope: &mut v8::PinScope, _args: v8::FunctionCallbackArguments, _rv: v8::ReturnValue) {
+fn illegal_constructor(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv: v8::ReturnValue) {
+    // Text, Comment and DocumentFragment are constructed as in Chrome
+    // (`new Text('x')`, `new DocumentFragment()`): a node of the document,
+    // of a subclass's prototype when one extends them.
+    let class = args.data().to_rust_string_lossy(scope);
+    if !args.new_target().is_undefined()
+        && matches!(class.as_str(), "Text" | "Comment" | "DocumentFragment")
+        && let Some(state) = scope.get_slot::<Shared>().cloned()
+    {
+        let text = if args.length() > 0 && !args.get(0).is_undefined() { args.get(0).to_rust_string_lossy(scope) } else { String::new() };
+        let created = {
+            let mut s = state.borrow_mut();
+            match class.as_str() {
+                "Text" => s.document.create_text(text).ok(),
+                "Comment" => s.document.create_comment(text).ok(),
+                _ => s.document.create_fragment().ok(),
+            }
+        };
+        if let Some(object) = created.and_then(|n| wrap(scope, &state, n)) {
+            if let Ok(target) = v8::Local::<v8::Object>::try_from(args.new_target())
+                && let Some(key) = v8::String::new(scope, "prototype")
+                && let Some(proto) = target.get(scope, key.into()).filter(|p| p.is_object())
+            {
+                object.set_prototype(scope, proto);
+            }
+            rv.set(object.into());
+            return;
+        }
+    }
     let message = v8::String::new(scope, "Illegal constructor").unwrap();
     let exception = v8::Exception::type_error(scope, message);
     scope.throw_exception(exception);
@@ -2404,6 +2432,7 @@ const NATIVES: &[&str] = &[
     "glOp",
     "rect",
     "paddingRect",
+    "textRects",
     "scrollSize",
     "computed",
     "docSize",
@@ -3466,6 +3495,31 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     }
                     None => rv.set_null(),
                 }
+            }
+        }
+        // A text node's characters start..end as laid out, a rectangle a
+        // line ([x, y, width, height, ...]; Range.getClientRects).
+        "textRects" => {
+            if let Some(n) = node(scope, 0) {
+                let start = args.get(1).uint32_value(scope).unwrap_or(0);
+                let end = args.get(2).uint32_value(scope).unwrap_or(u32::MAX);
+                let mut s = state.borrow_mut();
+                s.measured();
+                let s = &mut *s;
+                let mut rects = s.measured.as_ref().map(|m| m.text_rects(&s.document, n, start, end)).unwrap_or_default();
+                if s.document.any_scrolled() {
+                    let mut at = s.document.parent(n).ok().flatten();
+                    while let Some(a) = at {
+                        let o = s.document.scroll_offset(a);
+                        for r in &mut rects {
+                            r.x -= o[0];
+                            r.y -= o[1];
+                        }
+                        at = s.document.parent(a).ok().flatten();
+                    }
+                }
+                let flat: Vec<v8::Local<v8::Value>> = rects.iter().flat_map(|r| [r.x, r.y, r.width, r.height]).map(|x| v8::Number::new(scope, x).into()).collect();
+                rv.set(v8::Array::new_with_elements(scope, &flat).into());
             }
         }
         "setFocused" => {

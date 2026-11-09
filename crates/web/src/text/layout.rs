@@ -99,6 +99,10 @@ pub struct Options {
     pub width: f64,
     pub line_height: f64,
     pub baseline: f64,
+    /// The paragraph font's ascent and descent at its size, on the device
+    /// grid: its text's content area (Range.getClientRects measures text
+    /// by it, as Chrome does, not by the line).
+    pub content: [f64; 2],
     pub align: Align,
     pub rtl: bool,
     pub last_align: Option<Align>,
@@ -139,6 +143,7 @@ impl Default for Options {
             width: 800.,
             line_height: 20.,
             baseline: 16.,
+            content: [16., 4.],
             align: Align::Start,
             rtl: false,
             last_align: None,
@@ -222,6 +227,7 @@ impl Options {
             width,
             line_height: style.line_height(),
             baseline: ((metrics.ascent * scale).round() + ((style.line_height() * scale - (metrics.ascent * scale).round() - (-metrics.descent * scale).round()) / 2.).floor()) / scale,
+            content: [(metrics.ascent * scale).round() / scale, (-metrics.descent * scale).round() / scale],
             align: text_align,
             rtl: style.axes().direction == crate::css::style::Direction::Rtl,
             last_align,
@@ -626,6 +632,10 @@ pub struct Layout {
     fragments: Box<[Fragment]>,
     owned: Box<[Arc<Run>]>,
     objects: Option<Box<objects::LayoutObjects>>,
+    /// The paragraph font's content area and the device grid's scale (see
+    /// `Options::content`).
+    content: [f64; 2],
+    scale: f64,
 }
 impl Layout {
     /// `text-box-trim` (CSS Inline 3 §5.1): the first line box starts
@@ -677,6 +687,15 @@ impl Layout {
     }
     pub fn run(&self, fragment: &Fragment) -> Option<&Run> {
         if fragment.run & OWNED == 0 { self.text.paragraph.runs.get(fragment.run as usize) } else { self.owned.get((fragment.run & !OWNED) as usize).map(Arc::as_ref) }
+    }
+    /// A fragment's text content area, (ascent, descent) on the device
+    /// grid: its styled run's font's, else the paragraph's.
+    pub fn content_area(&self, fragment: &Fragment) -> (f64, f64) {
+        let scale = self.scale;
+        match self.run(fragment).and_then(|run| self.text.paragraph.styles.get(run.style as usize)) {
+            Some(s) => ((s.ascent * scale).round() / scale, (s.descent * scale).round() / scale),
+            None => (self.content[0], self.content[1]),
+        }
     }
     pub fn baseline(&self, line: usize) -> Option<f64> {
         (line < self.lines.len()).then(|| self.lines[..line].iter().map(|l| l.gap + l.ascent + l.descent).sum::<f64>() + self.lines[line].gap + self.lines[line].ascent)
@@ -1372,6 +1391,8 @@ impl<'a> Job<'a> {
             fragments: self.fragments.into_boxed_slice(),
             owned: self.owned.into_boxed_slice(),
             objects: self.objects.map(|o| o.finish()),
+            content: self.options.content,
+            scale: self.options.pixel_scale.unwrap_or(1.),
         })
     }
 }

@@ -907,3 +907,48 @@ fn a_logged_error_s_stack_is_not_formatted() {
     assert!(report.console[0].starts_with("[log] Error: quiet"), "{:?}", report.console);
     assert_eq!(report.console[1], "[log] false");
 }
+/// `new Text()`, `new Comment()` and `new DocumentFragment()` make nodes,
+/// as in Chrome (CreepJS builds its frames in a `new DocumentFragment()`).
+#[test]
+fn text_comments_and_fragments_are_constructed() {
+    let (report, _) = run("<body><div id=d></div><script>\
+        const d = document.getElementById('d');\
+        const f = new DocumentFragment(); f.appendChild(new Text('a')); f.appendChild(new Comment('b'));\
+        d.appendChild(f);\
+        class Mine extends Text {} const m = new Mine('c'); d.append(m);\
+        console.log(d.textContent, d.childNodes.length, m instanceof Mine, m instanceof Text, new Text().data === '');\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] ac 3 true true true"]);
+}
+/// Ranges (DOM §5): boundary points, comparison, the text they hold, cut,
+/// copy, insert and surround. (Their rectangles need a layout: checked in
+/// the browser.)
+#[test]
+fn ranges_hold_cut_and_measure() {
+    let (report, _) = run("<body><p id=p>Hello <b>bold</b> world</p><div id=box style=\"width:50px;height:20px\"></div><script>\
+        const p = document.getElementById('p'); const r = document.createRange();\
+        r.setStart(p.firstChild, 2); r.setEnd(p.lastChild, 3);\
+        console.log(r.toString(), r.collapsed, r.commonAncestorContainer === p, r.startOffset, r.endOffset);\
+        const f = r.cloneContents(); console.log(f.childNodes.length, f.textContent, p.textContent);\
+        const all = document.createRange(); all.selectNode(document.getElementById('box'));\
+        console.log(all.startOffset, all.endOffset);\
+        console.log(r.comparePoint(p.firstChild, 0), r.isPointInRange(p.firstChild, 4), r.intersectsNode(p.childNodes[1]), r.compareBoundaryPoints(Range.START_TO_END, all));\
+        const x = r.extractContents(); console.log(x.textContent, p.textContent, r.collapsed);\
+        const s = document.createRange(); s.selectNodeContents(p); const em = document.createElement('em'); s.surroundContents(em); console.log(p.innerHTML);\
+        const st = new StaticRange({ startContainer: p, startOffset: 0, endContainer: p, endOffset: 1 }); console.log(st.collapsed, st.endOffset, r instanceof AbstractRange);\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(
+        report.console,
+        [
+            "[log] llo bold wo false true 2 3",
+            "[log] 3 llo bold wo Hello bold world",
+            "[log] 1 2",
+            "[log] -1 true true -1",
+            "[log] llo bold wo Herld true",
+            "[log] <em>Herld</em>",
+            "[log] false 1 true",
+        ]
+    );
+}
