@@ -169,6 +169,7 @@ impl Prepared {
             base_scope: self.base_scope.clone(),
             quirks: self.quirks,
             sheet_ids: self.sheet_ids.clone(),
+            sheets: self.sheets.clone(),
             base: self.base.clone(),
             checked: None,
             late: self.late.len(),
@@ -639,6 +640,9 @@ pub struct Measurer {
     late: usize,
     /// How its rules changed, compilation to compilation.
     changes: RuleChanges,
+    /// The sheets its rules were compiled from (what a change added or
+    /// took away, see `document_sheets_reach`).
+    sheets: Vec<Sheet>,
 }
 impl Measurer {
     /// How many pictures the page was prepared without (still on their
@@ -676,7 +680,9 @@ impl Measurer {
         sheets.extend(loaded);
         let loaded_at = started.elapsed();
         let (rules, _, faces, _) = compile(&sheets, self.media, cancel)?;
-        self.changes.record(self.rules.generation(), rules.generation(), sheets_changed_within(doc, &self.sheet_ids, &ids));
+        let media = self.media;
+        self.changes.record(self.rules.generation(), rules.generation(), sheets_changed_within(doc, &self.sheet_ids, &ids, || document_sheets_reach(doc, &self.sheets, &sheets, media)));
+        self.sheets = sheets.clone();
         let compiled_at = started.elapsed();
         let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel).inspect_err(|_| self.checked = None)?;
         if crate::env_on!("OLO_WEB_TIMING") {
@@ -2137,6 +2143,9 @@ impl RuleChanges {
         if from == to {
             return;
         }
+        if crate::env_on!("OLO_SHEET_DEBUG") {
+            eprintln!("  rules {from} -> {to}: {}", hosts.as_ref().map_or("the document's sheets changed".to_owned(), |h| format!("{} hosts' trees", h.len())));
+        }
         self.0.push((from, to, hosts.map(Into::into)));
         if self.0.len() > 16 {
             self.0.remove(0);
@@ -2163,7 +2172,12 @@ impl RuleChanges {
 /// `new` (sheet identities, `sheet_identities`), when the document's own
 /// sheets are as they were; none otherwise (a sheet now outside the
 /// document counts as the document's).
-fn sheets_changed_within(doc: &Document, old: &[(crate::dom::NodeId, u64)], new: &[(crate::dom::NodeId, u64)]) -> Option<Vec<crate::dom::NodeId>> {
+fn sheets_changed_within(
+    doc: &Document,
+    old: &[(crate::dom::NodeId, u64)],
+    new: &[(crate::dom::NodeId, u64)],
+    document_reach: impl FnOnce() -> Option<Vec<crate::dom::NodeId>>,
+) -> Option<Vec<crate::dom::NodeId>> {
     let by_tree = |ids: &[(crate::dom::NodeId, u64)]| {
         let mut trees: std::collections::HashMap<Option<crate::dom::NodeId>, Vec<(crate::dom::NodeId, u64)>> = std::collections::HashMap::new();
         for &(node, id) in ids {
@@ -2172,19 +2186,92 @@ fn sheets_changed_within(doc: &Document, old: &[(crate::dom::NodeId, u64)], new:
         trees
     };
     let (old, new) = (by_tree(old), by_tree(new));
-    if old.get(&None) != new.get(&None) {
-        return None;
-    }
     let mut hosts = Vec::new();
+    // The document's own sheets: what their rules added or taken away
+    // reach, else everything.
+    if old.get(&None) != new.get(&None) {
+        let reach = document_reach();
+        if crate::env_on!("OLO_SHEET_DEBUG") {
+            eprintln!(
+                "  document sheets {} -> {}: {}",
+                old.get(&None).map_or(0, Vec::len),
+                new.get(&None).map_or(0, Vec::len),
+                reach.as_ref().map_or("everything restyled".to_owned(), |r| format!("{} elements reached", r.len()))
+            );
+        }
+        hosts.extend(reach?);
+    }
     for tree in old.keys().chain(new.keys()) {
         let Some(root) = tree else { continue };
         if old.get(tree) != new.get(tree) {
-            hosts.push(doc.shadow_host(*root)?);
+            // (A tree whose host is gone (a feed's post let go) has nothing
+            // left to restyle; that gave the whole page up.)
+            if let Some(host) = doc.shadow_host(*root).filter(|h| doc.is_connected(*h).unwrap_or(false)) {
+                hosts.push(host);
+            }
         }
     }
     hosts.sort_unstable_by_key(|n| n.slot());
     hosts.dedup();
     Some(hosts)
+}
+/// The elements (each with its subtree) the rules of the document's sheets
+/// added or taken away (`old` to `new`) can restyle: those carrying a key
+/// their subjects address (an id, class, type or attribute; the root).
+/// None when it can't be told: a rule that can match any element, the
+/// sheets only reordered, at-rules whose reach is the page's (fonts,
+/// keyframes, layers, imports), or too many. (Reddit's feed adds and
+/// takes away <link>ed sheets as it loads posts: the page restyled whole,
+/// 105-120 ms, each time.)
+fn document_sheets_reach(doc: &Document, old: &[Sheet], new: &[Sheet], media: css::media::Media) -> Option<Vec<crate::dom::NodeId>> {
+    let documents = |list: &[Sheet]| -> Vec<Sheet> { list.iter().filter(|s| s.3.is_none() && s.1 == Origin::Author).cloned().collect() };
+    let (old, new) = (documents(old), documents(new));
+    let same = |a: &Sheet, b: &Sheet| (Arc::ptr_eq(&a.0, &b.0) || a.0.source() == b.0.source()) && a.2 == b.2;
+    let added: Vec<&Sheet> = new.iter().filter(|s| !old.iter().any(|t| same(s, t))).collect();
+    let removed: Vec<&Sheet> = old.iter().filter(|s| !new.iter().any(|t| same(s, t))).collect();
+    if added.is_empty() && removed.is_empty() {
+        return None;
+    }
+    let mut builder = SheetBuilder::new(Default::default()).with_media(media);
+    for s in added.iter().chain(&removed) {
+        let text = s.0.source();
+        if let Some(at) = ["@font-face", "@keyframes", "@layer", "@import", "@property", "@counter-style", "@scope", "@container", "@font-feature-values"].iter().find(|a| text.contains(*a)) {
+            if crate::env_on!("OLO_SHEET_DEBUG") {
+                eprintln!("  document sheet reach: {at} in a sheet added or taken away ({} bytes)", text.len());
+            }
+            return None;
+        }
+        builder.add_scoped_sheet_from(&s.0, s.1, s.2.clone(), None, None).ok()?;
+    }
+    let Some(keys) = builder.finish(None).ok()?.subject_keys() else {
+        if crate::env_on!("OLO_SHEET_DEBUG") {
+            eprintln!("  document sheet reach: a rule that can match any element");
+        }
+        return None;
+    };
+    let mut out = Vec::new();
+    let mut stack = vec![doc.root()];
+    while let Some(n) = stack.pop() {
+        if let Ok(children) = doc.children(n) {
+            stack.extend(children);
+        }
+        if doc.node_type(n).ok() != Some(NodeType::Element) {
+            continue;
+        }
+        let name = doc.name(n).ok().flatten().unwrap_or("");
+        let hit = keys.types.iter().any(|t| t.eq_ignore_ascii_case(name))
+            || (keys.root && doc.parent(n).ok().flatten() == Some(doc.root()))
+            || doc.attribute(n, "id").ok().flatten().is_some_and(|id| keys.ids.contains(id))
+            || doc.attribute(n, "class").ok().flatten().is_some_and(|c| c.split_ascii_whitespace().any(|c| keys.classes.contains(c)))
+            || (!keys.attributes.is_empty() && keys.attributes.iter().any(|a| doc.attribute(n, a).ok().flatten().is_some()));
+        if hit {
+            out.push(n);
+            if out.len() > 2000 {
+                return None;
+            }
+        }
+    }
+    Some(out)
 }
 fn sheet_identities(doc: &Document) -> Result<(Vec<(crate::dom::NodeId, u64)>, Option<String>, Vec<crate::dom::NodeId>)> {
     use std::hash::{Hash, Hasher};
@@ -2912,7 +2999,8 @@ impl Page {
             }
         }
         let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel).inspect_err(|_| self.sheets_checked = None)?;
-        self.rule_changes.record(self.rules.generation(), rules.generation(), sheets_changed_within(doc, &self.sheet_ids, &ids));
+        let media = self.media;
+        self.rule_changes.record(self.rules.generation(), rules.generation(), sheets_changed_within(doc, &self.sheet_ids, &ids, || document_sheets_reach(doc, &self.sheets, &sheets, media)));
         self.rules = rules;
         self.media_dependent = dependent;
         self.interaction_mask = self.rules.state_mask();

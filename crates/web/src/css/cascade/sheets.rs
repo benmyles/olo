@@ -83,6 +83,15 @@ pub struct ContainerFrame {
 struct Layer {
     children: Vec<u32>,
 }
+/// See `RuleSet::subject_keys`.
+#[derive(Default, Debug)]
+pub struct SubjectKeys {
+    pub ids: std::collections::HashSet<Arc<str>>,
+    pub classes: std::collections::HashSet<Arc<str>>,
+    pub types: std::collections::HashSet<Arc<str>>,
+    pub attributes: std::collections::HashSet<Arc<str>>,
+    pub root: bool,
+}
 /// Rules by their subject's key: an element's candidates are the rules
 /// keyed by its id, classes and type, plus the universal ones.
 #[derive(Default)]
@@ -789,6 +798,25 @@ impl RuleSet {
     }
     pub fn depends_on_descendants(&self) -> bool {
         self.selectors.depends_on_descendants()
+    }
+    /// What the document's rules (not a shadow tree's) address: their
+    /// subjects' ids, classes, types and attributes, and whether some
+    /// address the root; None when one can match any element (its subject
+    /// has none of these). What a sheet added or taken away can restyle.
+    pub fn subject_keys(&self) -> Option<SubjectKeys> {
+        let mut keys = SubjectKeys::default();
+        let buckets = std::iter::once(self.index.element.get(&None)).chain(self.index.pseudo.values().map(|s| s.get(&None))).flatten();
+        for b in buckets {
+            if !b.universal.is_empty() {
+                return None;
+            }
+            keys.ids.extend(b.ids.keys().cloned());
+            keys.classes.extend(b.classes.keys().cloned());
+            keys.types.extend(b.types.keys().cloned());
+            keys.attributes.extend(b.attributes.keys().cloned());
+            keys.root |= !b.root.is_empty();
+        }
+        Some(keys)
     }
     pub fn has_keys(&self) -> &selectors::HasKeys {
         &self.has_keys

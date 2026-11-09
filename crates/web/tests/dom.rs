@@ -489,3 +489,29 @@ fn a_full_change_log_is_compacted_not_forgotten() {
     assert_eq!(a_change, Some((Some("first".into()), Some("last".into()))));
     assert!(changes.iter().any(|(_, c)| matches!(c, olo_web::dom::Change::Attribute { node, .. } if *node == b)));
 }
+
+/// Compacted, the log forgets what changed in nodes never yet in the
+/// document (no styles hold them; their insertion is logged on the node
+/// they go under), and keeps the rest: a node once in the document and
+/// taken out keeps its changes (it may come back).
+#[test]
+fn a_compacted_log_forgets_nodes_never_in_the_document() {
+    let mut doc = document();
+    let root = doc.root();
+    let html = element(&mut doc, "html");
+    doc.append_child(root, html).unwrap();
+    let removed = element(&mut doc, "div");
+    doc.append_child(html, removed).unwrap();
+    doc.detach(removed).unwrap();
+    let from = doc.revision();
+    let fresh = element(&mut doc, "div");
+    for i in 0..140_000 {
+        doc.set_attribute(fresh, "data-i", i.to_string()).unwrap();
+    }
+    doc.set_attribute(removed, "class", "x").unwrap();
+    doc.set_attribute(html, "class", "y").unwrap();
+    let changes = doc.changes_since(from).expect("the log still reaches back");
+    let on = |n: NodeId| changes.iter().any(|(_, c)| matches!(c, olo_web::dom::Change::Attribute { node, .. } if *node == n));
+    assert!(on(removed) && on(html));
+    assert!(changes.len() < 10_000, "{} changes", changes.len());
+}

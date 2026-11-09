@@ -502,7 +502,12 @@ impl<'a> Job<'a> {
                 let changed_within = match options.changed_within {
                     _ if tree.generation == options.generation => None,
                     Some((generation, hosts)) if generation == tree.generation => Some(hosts),
-                    _ => return None,
+                    other => {
+                        if crate::env_on!("OLO_STYLE_TIMING") {
+                            eprintln!("  incremental off: rules generation {} -> {}, changed within {:?}", tree.generation, options.generation, other.map(|(g, h)| (g, h.len())));
+                        }
+                        return None;
+                    }
                 };
                 if tree.document != document.id() {
                     return None;

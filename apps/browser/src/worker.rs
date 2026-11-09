@@ -1538,7 +1538,11 @@ fn render(
             live.rendered = revision;
             // The log of changes before this render (and the last
             // measurement) has served: dropped, so snapshots stay cheap.
-            live.realm.forget_changes_before(revision);
+            // Not those since the styles' revision: a render that kept its
+            // styles (a paint-only change) leaves them older than what it
+            // rendered, and their next restyle reads the changes since
+            // (Reddit's feed restyled whole, 105-135 ms, the log gone).
+            live.realm.forget_changes_before(revision.min(c.page.styles().document_revision()));
             live.last_render = Instant::now();
             live.stats.2 += 1;
             live.stats.3 += started.elapsed().as_secs_f64() * 1000.;

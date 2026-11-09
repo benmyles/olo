@@ -359,6 +359,11 @@ pub struct Document {
     /// Changes since `changes_from`, each with the revision it made.
     changes: Vec<(u64, Change)>,
     changes_from: u64,
+    /// By slot: nodes never yet in the document (made and not inserted
+    /// under a connected node since). No styles were ever made for them,
+    /// so what changes in them while so is no style's to follow (see
+    /// `compact_changes`).
+    fresh: Vec<u64>,
     source: Arc<str>,
     /// In shared chunks: the document's snapshot, taken every frame of a
     /// live page, copies the chunks' pointers, and a script's change copies
@@ -475,6 +480,7 @@ impl Document {
             revision: 0,
             changes: Vec::new(),
             changes_from: 0,
+            fresh: Vec::new(),
             source,
             nodes: {
                 let mut n = crate::chunked::Chunked::new();
@@ -715,8 +721,37 @@ impl Document {
                 }
             }
         }
-        let mut kept: Vec<(u64, Change)> = merged.into_values().filter(|(_, c)| !matches!(c, Change::Attribute { old, new, .. } if old == new)).collect();
+        // A node never yet in the document: no reader's styles have it, and
+        // its insertion is logged on the connected node it goes under.
+        let fresh = |s: &Self, n: &NodeId| s.resolve(*n).is_ok_and(|at| s.is_fresh(at));
+        let mut kept: Vec<(u64, Change)> = merged
+            .into_values()
+            .filter(|(_, c)| !matches!(c, Change::Attribute { old, new, .. } if old == new))
+            .filter(|(_, c)| match c {
+                Change::Attribute { node, .. } | Change::Node(node) | Change::Style(node) | Change::Text { node, .. } | Change::Children { node, .. } | Change::Control(node) => !fresh(self, node),
+                Change::Unknown => true,
+            })
+            .collect();
         kept.sort_unstable_by_key(|(r, _)| *r);
+        if crate::env_on!("OLO_STYLE_TIMING") {
+            let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
+            for (_, c) in &kept {
+                let k = match c {
+                    Change::Attribute { name, .. } => format!("attr {name}"),
+                    Change::Node(_) => "node".into(),
+                    Change::Style(_) => "style".into(),
+                    Change::Text { .. } => "text".into(),
+                    Change::Children { .. } => "children".into(),
+                    Change::Control(_) => "control".into(),
+                    Change::Unknown => "unknown".into(),
+                };
+                *kinds.entry(k).or_default() += 1;
+            }
+            let mut top: Vec<_> = kinds.into_iter().collect();
+            top.sort_by(|a, b| b.1.cmp(&a.1));
+            top.truncate(8);
+            eprintln!("  change log compacted to {} ({top:?})", kept.len());
+        }
         self.changes = kept;
     }
     /// The changes made after `revision`, oldest first, or None when the log
@@ -764,6 +799,7 @@ impl Document {
         };
         self.live_nodes += 1;
         self.revision += 1; // checked by can_allocate before any allocation
+        self.set_fresh(at, true);
         self.handle(at)
     }
 
@@ -1038,6 +1074,11 @@ impl Document {
         let root = self.create_fragment()?;
         Arc::make_mut(&mut self.shadows).insert(host, root);
         Arc::make_mut(&mut self.shadow_hosts).insert(root, host);
+        if self.is_connected(host).unwrap_or(false)
+            && let Ok(r) = self.resolve(root)
+        {
+            self.set_fresh(r, false);
+        }
         // The host renders its shadow tree from now on.
         self.bump_with(Change::Node(host))?;
         Ok(root)
@@ -1652,7 +1693,43 @@ impl Document {
                 self.nodes[index(parent)].last = Some(child);
             }
         }
+        if self.is_connected(parent_id).unwrap_or(false) {
+            for &child in inserted.as_ref() {
+                self.unfresh(child);
+            }
+        }
         Ok(true)
+    }
+    /// A subtree in the document now (its shadow trees too): its nodes are
+    /// no longer fresh.
+    fn set_fresh(&mut self, at: NonZeroU32, fresh: bool) {
+        let (word, bit) = (index(at) / 64, index(at) % 64);
+        if self.fresh.len() <= word {
+            if !fresh {
+                return;
+            }
+            self.fresh.resize(word + 1, 0);
+        }
+        if fresh { self.fresh[word] |= 1 << bit } else { self.fresh[word] &= !(1 << bit) }
+    }
+    fn is_fresh(&self, at: NonZeroU32) -> bool {
+        self.fresh.get(index(at) / 64).is_some_and(|w| w & (1 << (index(at) % 64)) != 0)
+    }
+    fn unfresh(&mut self, top: NonZeroU32) {
+        let mut stack = vec![top];
+        while let Some(n) = stack.pop() {
+            self.set_fresh(n, false);
+            let mut child = self.nodes[index(n)].first;
+            while let Some(c) = child {
+                stack.push(c);
+                child = self.nodes[index(c)].next;
+            }
+            if let Some(root) = self.shadows.get(&self.handle(n)).copied()
+                && let Ok(r) = self.resolve(root)
+            {
+                stack.push(r);
+            }
+        }
     }
     pub fn append_child(&mut self, parent: NodeId, node: NodeId) -> Result<bool> {
         self.insert_before(parent, node, None)
