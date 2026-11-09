@@ -215,9 +215,7 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   never shows; Amazon's front page is its AWS WAF challenge, which fetches
   its inputs and then waits on something that never comes (no verify
   request; blob workers, Web Crypto and FormData bodies work).
-- [ ] Wikipedia's video player (TimedMediaHandler's `span.mw-tmh-player`):
-  its poster and play icon don't show (its duration label does; a plain
-  video's poster does), and the icon's `data:` SVG background is dropped.
+- [x] Wikipedia's video player: poster and play button as Chrome's (2026-11-08).
 - [ ] Line height: Chrome spaces DuckDuckGo's result snippets (an inline
   `<a>` with `line-height: 1.45` in a block with 1.6) by the inline's
   line height, its block's strut not counting, though every reduced case

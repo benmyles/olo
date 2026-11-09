@@ -7030,3 +7030,9 @@ the Guardian and old Reddit, looking for pages that fail outright:
   and pictures of elements gone from the document are let go: they took
   2.8 GB). Scrolled on, the page grows from 17,790 to 64,270 px as its
   pages load, in 1.0-1.5 GB.
+- **Wikipedia's videos show their posters and play buttons.** Its player
+  replaces each video with one that has nothing to play until clicked,
+  and posters were asked for only on behalf of videos with a source; and
+  its play button (`width: auto`, a definite height, `aspect-ratio: 1`,
+  absolutely positioned) took its content's width, 0, instead of its
+  ratio's. Both as Chrome now.
