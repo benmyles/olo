@@ -71,7 +71,76 @@ pub fn google() -> Result<Google, String> {
             Err(e) => return Err(format!("the keyring can't be read: {e}")),
         },
     };
-    serde_json::from_slice(&text).map_err(|_| "DiskBackup's Google sign-in in the keyring is damaged: set it up again".into())
+    let g: Google = serde_json::from_slice(&text).map_err(|_| "DiskBackup's Google sign-in in the keyring is damaged: set it up again".to_string())?;
+    // (Disconnected: the client kept, to connect again with.)
+    if g.refresh_token.is_empty() {
+        return Err("DiskBackup is disconnected from Google Drive on this computer: connect it again (Connect Google Drive…)".into());
+    }
+    Ok(g)
+}
+
+/// The client DiskBackup signed in with here before (kept when it
+/// disconnects), to connect again with. Blocks (the keyring).
+pub fn known_client() -> Option<olo_diskbackup::oauth::Client> {
+    let text = match std::env::var("OLO_DISKBACKUP_GOOGLE") {
+        Ok(t) => t.into_bytes(),
+        Err(_) => secrets::lookup(secrets::DISKBACKUP_GOOGLE.attributes).ok().flatten()?,
+    };
+    serde_json::from_slice::<Google>(&text).ok().map(|g| g.client)
+}
+
+/// Disconnected: DiskBackup's sign-in to Google Drive forgotten on this
+/// computer (the refresh token gone from the keyring; the client kept, to
+/// connect again). Google isn't asked to revoke it: that would sign out
+/// every computer using the same client.
+pub fn forget_google() -> Result<(), String> {
+    if std::env::var_os("OLO_DISKBACKUP_GOOGLE").is_some() {
+        return Ok(());
+    }
+    match google() {
+        Ok(mut g) => {
+            g.refresh_token.clear();
+            keep_google(&g)
+        }
+        Err(_) => Ok(()),
+    }
+}
+
+/// Where backups go, as it is now (`look_at`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Where {
+    /// A folder: its disk's free space and size, bytes.
+    Disk { free: u64, total: u64 },
+    /// Google Drive, connected: whose (as Google says), and its space.
+    Drive(olo_diskbackup::drive::About),
+}
+
+/// `t` looked at: a folder's disk, or Google asked whose Drive it is (the
+/// sign-in checked). Blocks: a share gone away, Google slow to answer.
+pub fn look_at(t: &Target) -> Result<Where, String> {
+    match t {
+        Target::None => Err("not set up yet".into()),
+        Target::Folder { path } => {
+            use std::os::unix::ffi::OsStrExt;
+            let p = expand(path);
+            if !p.is_dir() {
+                return Err(format!("{} isn't there (a disk not plugged in?)", p.display()));
+            }
+            let c = std::ffi::CString::new(p.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+            // SAFETY: a valid path, and a struct statvfs fills.
+            let mut v: libc::statvfs = unsafe { std::mem::zeroed() };
+            if unsafe { libc::statvfs(c.as_ptr(), &mut v) } != 0 {
+                return Err(std::io::Error::last_os_error().to_string());
+            }
+            let unit = v.f_frsize;
+            Ok(Where::Disk { free: v.f_bavail * unit, total: v.f_blocks * unit })
+        }
+        Target::GoogleDrive { account, folder } => {
+            let g = google()?;
+            let d = olo_diskbackup::drive::Drive::new(g.client, g.refresh_token, account.clone(), folder.clone(), Arc::default(), Arc::default(), endpoints());
+            d.about().map(Where::Drive).map_err(|e| e.to_string())
+        }
+    }
 }
 
 /// Keep the sign-in in the login keyring.

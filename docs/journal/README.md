@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Connecting Google Drive again: the sign-in from before filled in
+
+*21:34* — After Disconnect, Connect Google Drive… fills in the client made before and folds the steps away (Show the Steps); with them shown the window now fits 1280 x 800 (708 points).
+
+![Connecting Google Drive again: the sign-in from before filled in](2026-11-08/213421-connecting-google-drive-again-the-sign-in-from-b.png)
+
+### DiskBackup validating: what's read back, of how much
+
+*21:34* — Validate Fully at a 2 MB/s download limit: every pack the backups need read back and checked, as a restore would; Stop works throughout.
+
+![DiskBackup validating: what's read back, of how much](2026-11-08/213421-diskbackup-validating-what-s-read-back-of-how-mu.png)
+
+### DiskBackup's Destination: what it's connected to, and Disconnect
+
+*21:34* — Whose Google Drive, its folder, Connected, what the backups take and the Drive's space (as Google says); Disconnect…, Use a Folder Instead…, Open in Google Drive. A folder says its disk's space.
+
+![DiskBackup's Destination: what it's connected to, and Disconnect](2026-11-08/213420-diskbackup-s-destination-what-it-s-connected-to-.png)
+
+### DiskBackup: unfinished backups, and each one validated
+
+*21:34* — A backup that's stopped keeps what it got through and the next goes on from it (listed first, Unfinished, deletable to free what it sent). Each backup is validated fast once it's made (checksums compared with the store's, a sample read back); Validate does that for any, Validate Fully reads every byte back.
+
+![DiskBackup: unfinished backups, and each one validated](2026-11-08/213419-diskbackup-unfinished-backups-and-each-one-valid.png)
+
 ### DiskBackup's Backups tab: every snapshot, delete some or erase all
 
 *15:18* — Choose one or several backups and delete them (asked first; the space only they took is freed at once), or Erase All Backups to start fresh.

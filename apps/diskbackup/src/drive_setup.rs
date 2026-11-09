@@ -27,11 +27,11 @@ use crate::{app::Msg, target};
 
 /// The steps: what, how, and the page that does it.
 pub const STEPS: &[(&str, &str, &str)] = &[
-    ("Make a project", "In Google Cloud, signed in with the account whose Drive gets the backups: name it (“Olo DiskBackup”), then Create.", "https://console.cloud.google.com/projectcreate"),
+    ("Make a project", "Signed in as the account whose Drive gets the backups: name it “Olo DiskBackup”, then Create.", "https://console.cloud.google.com/projectcreate"),
     ("Turn on the Drive API", "With that project chosen at the top of the page: Enable.", "https://console.cloud.google.com/flows/enableapi?apiid=drive.googleapis.com"),
     (
         "Set up its sign-in",
-        "Get Started: the app's name (“Olo DiskBackup”) and your email; Audience: Internal for a Google Workspace account (you@yourcompany.com: no publishing, and its sign-in never expires), External for a Gmail one; your email again; agree, then Create.",
+        "Get Started: its name (“Olo DiskBackup”) and your email; Audience: Internal for a Google Workspace account (no publishing, never signed out), External for Gmail; your email; agree, then Create.",
         "https://console.cloud.google.com/auth/overview",
     ),
     (
@@ -41,11 +41,15 @@ pub const STEPS: &[(&str, &str, &str)] = &[
     ),
     (
         "Publish it (External only)",
-        "Google asks first for a homepage and a privacy-policy address (Branding); then Publish App, and Confirm. Until it's published Google signs DiskBackup out every 7 days; seeing only its own files, it needs no review. Internal: nothing to do.",
+        "Branding first needs a homepage and a privacy-policy address; then Publish App, and Confirm. Unpublished, Google signs DiskBackup out every 7 days; it needs no review (it sees only its own files). Internal: nothing to do.",
         "https://console.cloud.google.com/auth/audience",
     ),
     ("Make its desktop client", "Create Client: Application type Desktop app, any name, then Create; Download JSON.", "https://console.cloud.google.com/auth/clients/create"),
 ];
+
+/// The window's width, points (its steps' words wrap less: it fits 1280 ×
+/// 800).
+const WIDTH: f32 = 720.0;
 
 /// What a worker tells the window.
 pub enum Done {
@@ -61,6 +65,8 @@ pub enum Done {
     Logins(Result<Vec<Shareable>, String>),
     /// Agent Setup started: its screen (or why not).
     AgentStarted(Result<String, String>),
+    /// The client signed in with here before (disconnected since), if any.
+    Known(Option<Client>),
 }
 
 /// Agent Setup, as it goes.
@@ -90,6 +96,9 @@ pub struct DriveSetup {
     done: Option<String>,
     /// The consent page's address, while signing in.
     url: Option<String>,
+    /// The steps to make a sign-in shown (not, connecting again with the
+    /// one made before, unless asked).
+    steps: bool,
     agent: Agent,
     _subs: Vec<gpui::Subscription>,
 }
@@ -109,7 +118,10 @@ impl DriveSetup {
                 })
             })
             .collect();
-        DriveSetup { proxy, id, secret, status: (String::new(), false), signing: None, looking: false, done: None, url: None, agent: Agent::Off, _subs: subs }
+        // Connecting again: the client signed in with before, filled in.
+        let known = proxy.clone();
+        std::thread::spawn(move || known.send(Msg::Drive(Done::Known(target::known_client()))));
+        DriveSetup { proxy, id, secret, status: (String::new(), false), signing: None, looking: false, done: None, url: None, steps: true, agent: Agent::Off, _subs: subs }
     }
 
     pub fn message(&mut self, d: Done, cx: &mut Context<Self>) {
@@ -131,6 +143,15 @@ impl DriveSetup {
                 }
             }
             Done::Started(url) => self.url = Some(url),
+            Done::Known(Some(c)) => {
+                // (Unless something's been typed or chosen already.)
+                if self.client(cx).id.is_empty() && self.client(cx).secret.is_empty() && self.done.is_none() {
+                    self.fill(&c, cx);
+                    self.steps = false;
+                    self.status = ("The sign-in you made before is filled in: Sign In with Google to connect again.".into(), false);
+                }
+            }
+            Done::Known(None) => return,
             Done::Logins(r) => {
                 if let Agent::Choosing { logins, .. } = &mut self.agent {
                     *logins = Some(r);
@@ -254,16 +275,34 @@ fn open_page(url: &'static str) {
 
 impl Render for DriveSetup {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
         let me = cx.entity();
         let dim = |text: &str| StringView::new(SharedString::from(text.to_owned())).wrap(true).dim(true);
         let busy = self.signing.is_some() || self.looking;
 
         // (As wide as its frame: a tab beside DiskBackup's window, it shares
-        // that one's; 640 points at least.)
-        let mut body = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).w_full().min_w(px(640.0));
+        // that one's; as wide as that at least, so it fits 1280 × 800.)
+        let mut body = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).w_full().min_w(px(WIDTH));
+        // Connecting again, with the sign-in made before: the steps are done.
+        if !self.steps {
+            let show = me.clone();
+            body = body.child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(m::SPACING))
+                    .child(div().flex_1().min_w_0().child(dim("You made DiskBackup’s sign-in before, so the steps to make one are done: sign in with it below.")))
+                    .child(Button::new("Show the Steps").on_click(move |_, cx| {
+                        show.update(cx, |w, cx| {
+                            w.steps = true;
+                            cx.notify();
+                        })
+                    })),
+            );
+            return body.child(self.last_part(&me, cx));
+        }
         body = body.child(dim(
-            "Google asks each person to make their own sign-in for an app like DiskBackup. It takes a few minutes, once: follow these steps in your browser (each Open shows its page), then sign in below. Your backups are encrypted before they leave this computer.",
+            "Google asks each person to make their own sign-in for an app like DiskBackup: a few minutes, once. Follow these steps in your browser (Open shows each one’s page), then sign in below.",
         ));
         // Made on another computer: kept in Passwords.
         let kept = me.clone();
@@ -293,6 +332,17 @@ impl Render for DriveSetup {
                     .child(Button::new("Open").id(format!("open-{i}")).on_click(move |_, _| open_page(url))),
             );
         }
+        body.child(self.last_part(&me, cx))
+    }
+}
+
+impl DriveSetup {
+    /// The last step (the client given), what's happening, and Sign In.
+    fn last_part(&self, me: &Entity<Self>, cx: &mut Context<Self>) -> gpui::Div {
+        let p = theme::palette(cx);
+        let dim = |text: &str| StringView::new(SharedString::from(text.to_owned())).wrap(true).dim(true);
+        let busy = self.signing.is_some() || self.looking;
+        let number = |n: usize| div().w(px(22.0)).flex_none().child(StringView::new(SharedString::from(format!("{n}."))).bold(true));
         // The client, then signing in.
         let (file, sign, stop) = (me.clone(), me.clone(), self.signing.clone());
         let last = div()
@@ -300,7 +350,8 @@ impl Render for DriveSetup {
             .flex_row()
             .items_start()
             .gap(px(m::SPACING))
-            .child(number(STEPS.len() + 1))
+            // (Its number only after the steps before it.)
+            .children(self.steps.then(|| number(STEPS.len() + 1)))
             .child(
                 div()
                     .flex_1()
@@ -314,7 +365,7 @@ impl Render for DriveSetup {
                     .child(TextControl::new(self.secret.clone()).label("Client secret:").divider(100.0)),
             )
             .child(Button::new("Choose File…").enabled(!busy).on_click(move |_, cx| file.update(cx, |w, cx| w.choose_file(cx))));
-        body = body.child(last);
+        let mut body = div().flex().flex_col().gap(px(m::SPACING)).child(last);
         let (text, error) = self.status.clone();
         body = body.child(StringView::new(if text.is_empty() { " ".into() } else { text }).wrap(true).color(if error { style::c(p.failure) } else { style::disabled_text(&p) }));
         let mut buttons = div().flex().flex_row().items_center().justify_end().gap(px(m::SPACING));
@@ -393,7 +444,8 @@ impl DriveSetup {
 /// The window's options.
 pub fn options() -> olo_ui::WindowOptions {
     // (A form, as DiskBackup's window: it floats.)
-    olo_ui::WindowOptions::new("Back Up to Google Drive", 640.0, 600.0).fits_content().floating()
+    // (Fixed: it follows what it shows, steps folded or not.)
+    olo_ui::WindowOptions { fixed: true, ..olo_ui::WindowOptions::new("Back Up to Google Drive", WIDTH, 200.0).fits_content().floating() }
 }
 
 #[allow(unused_imports)]

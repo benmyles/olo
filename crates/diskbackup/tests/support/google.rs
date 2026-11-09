@@ -194,6 +194,11 @@ pub fn serve(google: Arc<Mutex<Google>>) -> String {
                 continue;
             }
             match (req.method.as_str(), req.path.as_str()) {
+                // Whose Drive, and its space (15 GB, as a free account's).
+                ("GET", "/drive/v3/about") => {
+                    let used: usize = g.files.values().map(|(_, _, c)| c.len()).sum();
+                    json(&mut conn, 200, serde_json::json!({ "user": { "emailAddress": "me@example.com" }, "storageQuota": { "limit": "16106127360", "usage": used.to_string() } }));
+                }
                 ("GET", "/drive/v3/files") => {
                     let q = req.query.get("q").cloned().unwrap_or_default();
                     let folder = q.contains("mimeType");
@@ -202,7 +207,17 @@ pub fn serve(google: Arc<Mutex<Google>>) -> String {
                     hits.sort_by(|a, b| a.1.cmp(&b.1));
                     // Two a page.
                     let from: usize = req.query.get("pageToken").and_then(|p| p.parse().ok()).unwrap_or(0);
-                    let page: Vec<serde_json::Value> = hits.iter().skip(from).take(2).map(|(id, n, size)| serde_json::json!({ "id": id, "name": n, "size": size.to_string() })).collect();
+                    // (With each file's MD5, as Drive's md5Checksum.)
+                    let page: Vec<serde_json::Value> = hits
+                        .iter()
+                        .skip(from)
+                        .take(2)
+                        .map(|(id, n, size)| {
+                            use md5::Digest as _;
+                            let sum: String = md5::Md5::digest(&g.files[id].2).iter().map(|b| format!("{b:02x}")).collect();
+                            serde_json::json!({ "id": id, "name": n, "size": size.to_string(), "md5Checksum": sum })
+                        })
+                        .collect();
                     let mut v = serde_json::json!({ "files": page });
                     if from + 2 < hits.len() {
                         v["nextPageToken"] = (from + 2).to_string().into();

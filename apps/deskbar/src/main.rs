@@ -1514,6 +1514,7 @@ fn backup_menu(clock: &olo_protocol::ClockSettings) -> Menu {
         Doing::Pruning => said.push("Tidying: letting go of old snapshots".into()),
         Doing::Restoring => said.push("Restoring".into()),
         Doing::Erasing => said.push("Erasing every backup, to start fresh".into()),
+        Doing::Validating => said.push("Validating backups: reading them back".into()),
         Doing::Waiting { why } => said.push(format!("Waiting: {why}")),
         Doing::Idle if st.pid == 0 => said.push("The DiskBackup service isn’t running".into()),
         Doing::Idle => {}

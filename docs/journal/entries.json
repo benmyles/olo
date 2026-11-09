@@ -3748,5 +3748,29 @@
   "title": "DiskBackup's Backups tab: every snapshot, delete some or erase all",
   "caption": "Choose one or several backups and delete them (asked first; the space only they took is freed at once), or Erase All Backups to start fresh.",
   "image": "2026-11-08/151843-diskbackup-s-backups-tab-every-snapshot-delete-s.png"
+ },
+ {
+  "time": "2026-11-08T21:34:19",
+  "title": "DiskBackup: unfinished backups, and each one validated",
+  "caption": "A backup that's stopped keeps what it got through and the next goes on from it (listed first, Unfinished, deletable to free what it sent). Each backup is validated fast once it's made (checksums compared with the store's, a sample read back); Validate does that for any, Validate Fully reads every byte back.",
+  "image": "2026-11-08/213419-diskbackup-unfinished-backups-and-each-one-valid.png"
+ },
+ {
+  "time": "2026-11-08T21:34:20",
+  "title": "DiskBackup's Destination: what it's connected to, and Disconnect",
+  "caption": "Whose Google Drive, its folder, Connected, what the backups take and the Drive's space (as Google says); Disconnect\u2026, Use a Folder Instead\u2026, Open in Google Drive. A folder says its disk's space.",
+  "image": "2026-11-08/213420-diskbackup-s-destination-what-it-s-connected-to-.png"
+ },
+ {
+  "time": "2026-11-08T21:34:21",
+  "title": "DiskBackup validating: what's read back, of how much",
+  "caption": "Validate Fully at a 2 MB/s download limit: every pack the backups need read back and checked, as a restore would; Stop works throughout.",
+  "image": "2026-11-08/213421-diskbackup-validating-what-s-read-back-of-how-mu.png"
+ },
+ {
+  "time": "2026-11-08T21:34:21",
+  "title": "Connecting Google Drive again: the sign-in from before filled in",
+  "caption": "After Disconnect, Connect Google Drive\u2026 fills in the client made before and folds the steps away (Show the Steps); with them shown the window now fits 1280 x 800 (708 points).",
+  "image": "2026-11-08/213421-connecting-google-drive-again-the-sign-in-from-b.png"
  }
 ]

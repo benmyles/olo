@@ -13,6 +13,8 @@
 //! A pack no index names (a backup stopped before naming it, an index file
 //! lost) is read back from its own list first, so what the snapshots still
 //! use in it is kept, and it's named again; only one nothing uses goes.
+//! Unfinished snapshots count as snapshots here: what a backup stopped
+//! part way sent stays, for the next to go on from.
 //!
 //! 3. The index files naming a pack that goes are written again (the rest
 //!    stay as they are: no index rewritten to drop nothing); then they go;
@@ -82,7 +84,15 @@ fn say(progress: &Progress, what: impl Into<String>) {
 
 /// Tidy `repo` (which must hold its exclusive lock: [`Repo::lock`]).
 pub fn prune(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Pruned> {
-    let r = run(repo, cancel, progress);
+    repair(repo, &HashSet::new(), cancel, progress)
+}
+
+/// Tidy `repo`, `damaged` packs (a check found them not as written)
+/// copied from whatever its blobs still open whole, then let go of; a
+/// blob kept elsewhere too is kept from there. What's lost, the next
+/// backup sends again, of the files still as they were.
+pub fn repair(repo: &mut Repo, damaged: &HashSet<Id>, cancel: &AtomicBool, progress: &Progress) -> Result<Pruned> {
+    let r = run(repo, damaged, cancel, progress);
     // The index read again as it is now, whatever happened.
     repo.checkpoints = true;
     repo.written.clear();
@@ -107,7 +117,7 @@ struct Pack {
     found: bool,
 }
 
-fn run(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Pruned> {
+fn run(repo: &mut Repo, damaged_packs: &HashSet<Id>, cancel: &AtomicBool, progress: &Progress) -> Result<Pruned> {
     let started = Instant::now();
     repo.check_exclusive()?;
     repo.flush()?;
@@ -172,26 +182,16 @@ fn run(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Prun
         }
     }
 
-    // 2. What the snapshots use.
+    // 2. What the snapshots use (unfinished ones too: the next backup goes
+    // on from them).
     say(progress, "Looking at what the snapshots use");
-    let mut used: HashSet<Id> = HashSet::new();
-    let mut todo: Vec<Id> = repo.snapshots()?.iter().map(|(_, s)| s.tree).collect();
-    while let Some(t) = todo.pop() {
-        if !used.insert(t) {
-            continue;
-        }
-        stop()?;
-        let tree = repo.tree(&t)?;
-        progress.files.fetch_add(1, Relaxed);
-        for n in tree.nodes {
-            used.extend(n.content);
-            todo.extend(n.subtree);
-        }
-    }
+    let used = used(repo, cancel, progress)?;
 
     // Each used blob kept once: in the pack most used, first.
     let used_of = |p: &Pack| p.entries.iter().filter(|e| used.contains(&e.id)).map(|e| e.len as u64).sum::<u64>();
-    packs.sort_by_cached_key(|p| std::cmp::Reverse((used_of(p) as u128 * 1_000_000 / p.size.max(1) as u128, p.id.0)));
+    // (A damaged pack's last: a blob it holds is kept from another, if one
+    // has it.)
+    packs.sort_by_cached_key(|p| (damaged_packs.contains(&p.id), std::cmp::Reverse((used_of(p) as u128 * 1_000_000 / p.size.max(1) as u128, p.id.0))));
     let mut claimed: HashSet<Id> = HashSet::new();
     for p in &mut packs {
         p.keep = p.entries.iter().filter(|e| used.contains(&e.id) && claimed.insert(e.id)).copied().collect();
@@ -205,7 +205,7 @@ fn run(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Prun
         let kept: u64 = p.keep.iter().map(|e| e.len as u64).sum();
         if p.keep.is_empty() {
             delete.push(i);
-        } else if (all - kept) * 10 > all * SPARSE_TENTHS {
+        } else if damaged_packs.contains(&p.id) || (all - kept) * 10 > all * SPARSE_TENTHS {
             repack.push(i);
         } else if p.size < SMALL {
             small.push(i);
@@ -317,6 +317,42 @@ fn run(repo: &mut Repo, cancel: &AtomicBool, progress: &Progress) -> Result<Prun
     out.size = stored_size(repo)?;
     out.seconds = started.elapsed().as_secs_f64();
     Ok(out)
+}
+
+/// Every blob a snapshot uses, finished or not: its trees and their files'
+/// chunks (a tree seen once is enough), and an unfinished one's chunks of
+/// the file it was part way through.
+fn used(repo: &Repo, cancel: &AtomicBool, progress: &Progress) -> Result<HashSet<Id>> {
+    let mut used: HashSet<Id> = HashSet::new();
+    let unfinished = repo.unfinished()?;
+    let mut todo: Vec<Id> = repo.snapshots()?.iter().chain(&unfinished).map(|(_, s)| s.tree).collect();
+    for (_, s) in &unfinished {
+        used.extend(s.extra.iter().copied());
+    }
+    while let Some(t) = todo.pop() {
+        if !used.insert(t) {
+            continue;
+        }
+        if cancel.load(Relaxed) {
+            return Err(Error::Cancelled);
+        }
+        let tree = repo.tree(&t)?;
+        progress.files.fetch_add(1, Relaxed);
+        for n in tree.nodes {
+            used.extend(n.content);
+            todo.extend(n.subtree);
+        }
+    }
+    Ok(used)
+}
+
+/// What the index names that no snapshot (finished or not) uses, bytes as
+/// kept: about what tidying frees (a backup that stopped before it kept
+/// anything of its own leaves that much). Read from the cache's trees,
+/// not the store.
+pub fn unused(repo: &Repo, cancel: &AtomicBool) -> Result<u64> {
+    let used = used(repo, cancel, &Progress::default())?;
+    Ok(repo.blob_sizes().filter(|(id, _)| !used.contains(*id)).map(|(_, n)| n).sum())
 }
 
 /// What the store holds (but locks).

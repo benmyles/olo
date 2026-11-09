@@ -182,6 +182,8 @@ pub enum Doing {
     Pruning,
     /// Every backup there deleted (Erase All Backups), to start fresh.
     Erasing,
+    /// Backups read back and checked (Validate).
+    Validating,
 }
 
 /// A backup or restore under way.
@@ -203,6 +205,8 @@ pub struct Progress {
     pub total_bytes: u64,
     pub estimated: bool,
     pub stage: Stage,
+    /// Going on from a backup that didn't finish (`State::unfinished`).
+    pub resuming: bool,
 }
 
 /// Where a backup is.
@@ -216,6 +220,11 @@ pub enum Stage {
     Reading,
     /// The folders' lists and the snapshot written.
     Saving,
+    /// The backup just made checked: everything it needs in the store.
+    Checking,
+    /// Stopped: what's done so far being kept (what's waiting to go up
+    /// sent first), for the next to go on from.
+    Stopping,
 }
 
 /// The last backup that ended.
@@ -235,6 +244,49 @@ pub struct Last {
     pub seconds: f64,
     /// Files that couldn't be read.
     pub unreadable: u64,
+    /// It checked after (None: not, stopped first).
+    pub check: Option<Check>,
+}
+
+/// A backup checked (Ben, 2026-11-08: "backups also need to be
+/// validatable and should be validated at the end of each backup but i
+/// should be able to manually trigger a re-validate of any backup at any
+/// time"; "add a fast validate option which compares checksums and just
+/// spot-checks some samples … fast validate should be the default and the
+/// one that is done automatically after a backup. full validate is only
+/// when explicitly requested"). Fast: everything it needs in the store as
+/// long as it was written, its lists read back whole, the store's
+/// checksums compared with what was sent, a few packs read back as
+/// samples. Full (`full`): every byte of it read back and checked, as a
+/// restore would.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Check {
+    /// When, seconds since 1970.
+    pub time: i64,
+    /// Every byte read back (Validate), not only its lists.
+    pub full: bool,
+    /// What's wrong, said plainly (none: it restores whole).
+    pub problems: Vec<String>,
+    /// Files it can't bring back as they were: the first few, and how many.
+    pub files: Vec<String>,
+    pub files_affected: u64,
+    /// What was read back.
+    pub bytes_read: u64,
+    /// Packs the store's checksums showed as sent, and packs read back as
+    /// samples (fast).
+    pub by_checksum: u64,
+    pub sampled: u64,
+    pub seconds: f64,
+    /// Why it couldn't be checked (no finding either way).
+    pub error: Option<String>,
+}
+
+impl Check {
+    /// Checked, and nothing wrong.
+    pub fn whole(&self) -> bool {
+        self.error.is_none() && self.problems.is_empty()
+    }
 }
 
 /// What [`Last::error`] says when the person stopped it (Stop, `--stop`):
@@ -246,6 +298,27 @@ impl Last {
     pub fn stopped(&self) -> bool {
         self.error.as_deref() == Some(STOPPED)
     }
+}
+
+/// A backup that didn't finish (stopped, failed, or the computer turned
+/// off part way): what it got through is kept, and the next goes on from
+/// there (Ben, 2026-11-08: "it needs to track in-progress / unfinished
+/// backups too and they need to resume if i start again and i need the
+/// ability to clean it up").
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Unfinished {
+    /// When it got that far, seconds since 1970.
+    pub time: i64,
+    /// Files backed up so far, and their bytes (0: it stopped before
+    /// keeping a list of them; what it sent is still there).
+    pub files: u64,
+    pub bytes: u64,
+    /// New content read so far, before compression.
+    pub new_bytes: u64,
+    /// What it sent (compressed and sealed): about what deleting it frees.
+    pub sent: u64,
+    pub seconds: f64,
 }
 
 /// The last tidy: snapshots past keeping let go of, and the space only
@@ -285,6 +358,8 @@ pub struct State {
     /// grown by each backup since).
     pub size: Option<u64>,
     pub tidied: Option<Tidied>,
+    /// This computer's backup that didn't finish, if one is kept.
+    pub unfinished: Option<Unfinished>,
 }
 
 impl State {
@@ -331,12 +406,26 @@ pub enum Request {
     Versions { path: String },
     /// This computer's backups (snapshots), newest first.
     Snapshots,
-    /// Delete these backups (snapshot ids, hex), and free the space only
-    /// they took.
-    Delete { snapshots: Vec<String> },
+    /// Delete these backups (snapshot ids, hex), and the unfinished one
+    /// (`State::unfinished`) if `unfinished`, and free the space only they
+    /// took.
+    Delete {
+        snapshots: Vec<String>,
+        #[serde(default)]
+        unfinished: bool,
+    },
     /// Delete every backup there (this computer's and any other's) and
     /// start again, empty, with the same key.
     EraseAll,
+    /// Validate these backups (snapshot ids, hex): fast (checksums, and
+    /// samples read back), or `full`, every byte read back; what's damaged
+    /// is repaired as far as it can be (the next backup sends again what it
+    /// still can).
+    Validate {
+        snapshots: Vec<String>,
+        #[serde(default)]
+        full: bool,
+    },
 }
 
 /// One backup (`Reply::Snapshots`).
@@ -356,6 +445,8 @@ pub struct SnapshotInfo {
     pub seconds: f64,
     /// Files it couldn't read.
     pub unreadable: u64,
+    /// Its last check (after it was made, or Validate's).
+    pub check: Option<Check>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

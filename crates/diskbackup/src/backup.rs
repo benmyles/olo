@@ -4,6 +4,15 @@
 //! of the folders above them up to `/`, and the snapshot. Read gently: no
 //! access times changed, and what was read let go of from the page cache
 //! (it was the backup's, not anyone's working set).
+//!
+//! One that doesn't finish keeps what it got through (Ben, 2026-11-08: "it
+//! needs to track in-progress / unfinished backups too and they need to
+//! resume if i start again"): every `CHECKPOINT`, and when it's stopped,
+//! the folders done so far (and, down the one under way, as far as it got)
+//! are kept as an unfinished snapshot, with the chunks of the file it was
+//! part way through. The next backup goes on from it: a file it holds as
+//! it is now isn't read again, besides those the last finished one holds.
+//! Once one finishes, the unfinished ones go.
 
 use std::{
     os::unix::fs::MetadataExt,
@@ -12,7 +21,7 @@ use std::{
         Mutex,
         atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering::Relaxed},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -39,14 +48,25 @@ pub struct Progress {
     pub total_bytes: AtomicU64,
     /// The totals are the last backup's, not counted.
     pub estimated: AtomicBool,
-    /// `COUNTING`, `READING` or `SAVING`.
+    /// `COUNTING`, `READING`, `SAVING` or `CHECKING`.
     pub stage: AtomicU8,
+    /// Going on from an unfinished backup (one stopped part way).
+    pub resuming: AtomicBool,
+    /// Files read (the rest taken as they were).
+    pub read: AtomicU64,
 }
+
+/// What's done so far is kept (an unfinished snapshot) this often.
+const CHECKPOINT: Duration = Duration::from_secs(5 * 60);
 
 /// `Progress::stage`s.
 pub const COUNTING: u8 = 0;
 pub const READING: u8 = 1;
 pub const SAVING: u8 = 2;
+/// (The service's, after: the backup checked.)
+pub const CHECKING: u8 = 3;
+/// Stopped: what's done so far being kept.
+pub const STOPPING: u8 = 4;
 
 /// What `opts` would back up, counted (files, and their bytes) into
 /// `progress`'s totals as it goes: a first backup's plan, with nothing
@@ -92,26 +112,103 @@ pub struct Options<'a> {
     pub one_file_system: bool,
 }
 
+/// A folder under way: its own node (none for `/`), and what's been gone
+/// through in it so far (in name order).
+struct Level {
+    node: Option<Node>,
+    nodes: Vec<Node>,
+}
+
+/// A folder as the backups before had it: the last finished one, and the
+/// unfinished one this goes on from; and whether it's on the way down to
+/// where that one stopped (its last folder at each level).
+#[derive(Default)]
+struct Before {
+    done: Option<Tree>,
+    unfinished: Option<Tree>,
+    frontier: bool,
+}
+
+impl Before {
+    /// Folder `name`'s, in this one. A tree that can't be read is as if it
+    /// weren't there (the finished one's an error, if `strict`).
+    fn child(&self, repo: &Repo, name: &[u8], strict: bool) -> Result<Before> {
+        let sub = |t: &Option<Tree>| t.as_ref().and_then(|t| t.get(name)).and_then(|n| n.subtree);
+        let done = match sub(&self.done) {
+            Some(id) if strict => Some(repo.tree(&id)?),
+            Some(id) => repo.tree(&id).ok(),
+            None => None,
+        };
+        let unfinished = sub(&self.unfinished).and_then(|id| repo.tree(&id).ok());
+        let frontier = self.frontier && self.unfinished.as_ref().and_then(|t| t.nodes.last()).is_some_and(|l| l.name == name);
+        Ok(Before { done, unfinished, frontier })
+    }
+}
+
 struct Walk<'a, 'r> {
     repo: &'r mut Repo,
     opts: &'a Options<'a>,
     cancel: &'a AtomicBool,
     progress: &'a Progress,
+    started: Instant,
     /// What the store had been sent before (so `progress.uploaded` is this
     /// backup's).
     stored_from: u64,
     summary: Summary,
     /// What files are read into (one for all).
     buf: Vec<u8>,
+    /// The folders under way, `/` first.
+    levels: Vec<Level>,
+    /// The last finished snapshot's id.
+    parent: Option<Id>,
+    /// The unfinished one this goes on from: its summary (added to this
+    /// one's).
+    resumed: Option<Summary>,
+    /// Got past where it stopped (it isn't needed any more).
+    passed: bool,
+    /// This computer's unfinished snapshots from before (they go once this
+    /// has got past where they stopped), and this one's own, as last kept.
+    others: Vec<Id>,
+    saved: Option<Id>,
+    last_saved: Instant,
+    /// The file being read (its size), and its chunks so far.
+    under_way: Option<u64>,
+    reading: Vec<Id>,
 }
 
 /// Back up `opts.paths` into `repo`, taking unchanged files from `parent`
-/// (the last snapshot); the snapshot kept, and its id.
+/// (the last finished snapshot), and going on from where an unfinished one
+/// of this computer's since got to; the snapshot kept, and its id.
 pub fn backup(repo: &mut Repo, opts: &Options, parent: Option<(Id, &Snapshot)>, cancel: &AtomicBool, progress: &Progress) -> Result<(Id, Snapshot)> {
     let started = Instant::now();
     let stored = repo.stored;
     progress.stage.store(READING, Relaxed);
-    let mut w = Walk { repo, opts, cancel, progress, stored_from: stored, summary: Summary::default(), buf: Vec::new() };
+    // This computer's unfinished ones: the one since the last finished
+    // that got furthest is gone on from; all go once this one finishes.
+    // (One that can't be read: none, and everything is read again.)
+    let unfinished: Vec<(Id, Snapshot)> = repo.unfinished().unwrap_or_default().into_iter().filter(|(_, s)| s.host == opts.host).collect();
+    let after = parent.map_or(i64::MIN, |(_, s)| s.time);
+    let resume = unfinished.iter().filter(|(_, s)| s.time > after).max_by_key(|(_, s)| (s.summary.files, s.time));
+    progress.resuming.store(resume.is_some(), Relaxed);
+    let mut w = Walk {
+        repo,
+        opts,
+        cancel,
+        progress,
+        started,
+        stored_from: stored,
+        summary: Summary::default(),
+        buf: Vec::new(),
+        levels: Vec::new(),
+        parent: parent.map(|(id, _)| id),
+        resumed: resume.map(|(_, s)| s.summary.clone()),
+        passed: resume.is_none(),
+        others: unfinished.iter().map(|(id, _)| *id).collect(),
+        saved: None,
+        last_saved: Instant::now(),
+        under_way: None,
+        reading: Vec::new(),
+    };
     // Packs read back from their own lists as the index was read (an index
     // file damaged): named in an index file of their own now, so the next
     // to read it needn't.
@@ -132,24 +229,47 @@ pub fn backup(repo: &mut Repo, opts: &Options, parent: Option<(Id, &Snapshot)>, 
         },
         None => None,
     };
-    let root = match w.ancestors(Path::new("/"), parent_root.as_ref(), &opts.paths) {
+    let before = Before { done: parent_root, unfinished: resume.and_then(|(_, s)| w.repo.tree(&s.tree).ok()), frontier: resume.is_some() };
+    w.enter(None);
+    let root = match w.ancestors(Path::new("/"), before, &opts.paths).and_then(|()| w.leave()) {
         Ok(root) => root,
         Err(e) => {
-            // Stopped or failed: the index of what went up so far up too,
-            // so the next backup goes on from there.
+            // Stopped: what's done so far kept, so the next goes on from
+            // there. Failed (the store, say), or that didn't go: at least
+            // the index of what went up so far, so it isn't sent again
+            // (and the last checkpoint goes on).
+            if matches!(e, Error::Cancelled) {
+                progress.stage.store(STOPPING, Relaxed);
+                let _ = w.keep_unfinished();
+            }
             let _ = w.repo.write_index();
             return Err(e);
         }
     };
     progress.stage.store(SAVING, Relaxed);
-    let mut summary = w.summary;
-    summary.stored_bytes = repo.stored - stored;
-    summary.seconds = started.elapsed().as_secs_f64();
-    let snapshot = Snapshot { time: now(), host: opts.host.clone(), paths: opts.paths.iter().map(|p| p.display().to_string()).collect(), tree: root, parent: parent.map(|(id, _)| id), summary };
+    let Walk { mut summary, resumed, others, saved, .. } = w;
+    let earlier = resumed.unwrap_or_default();
+    summary.new_bytes += earlier.new_bytes;
+    summary.stored_bytes = repo.stored - stored + earlier.stored_bytes;
+    summary.seconds = started.elapsed().as_secs_f64() + earlier.seconds;
+    let snapshot = Snapshot {
+        time: now(),
+        host: opts.host.clone(),
+        paths: opts.paths.iter().map(|p| p.display().to_string()).collect(),
+        tree: root,
+        parent: parent.map(|(id, _)| id),
+        summary,
+        extra: Vec::new(),
+    };
     let id = repo.save_snapshot(&snapshot)?;
+    // Finished: the unfinished ones (this one's own, and those it went on
+    // from) aren't needed any more.
+    for u in others.iter().chain(saved.iter()) {
+        let _ = repo.forget_unfinished(u);
+    }
     // (What the snapshot's trees and packs stored, the index's too.)
     let mut snapshot = snapshot;
-    snapshot.summary.stored_bytes = repo.stored - stored;
+    snapshot.summary.stored_bytes = repo.stored - stored + earlier.stored_bytes;
     Ok((id, snapshot))
 }
 
@@ -174,9 +294,110 @@ impl Walk<'_, '_> {
         if self.cancel.load(Relaxed) { Err(Error::Cancelled) } else { Ok(()) }
     }
 
-    /// The tree of `at` holding only the way down to each of `paths` (the
-    /// folders backed up below it), each of those whole.
-    fn ancestors(&mut self, at: &Path, prev: Option<&Tree>, paths: &[PathBuf]) -> Result<Id> {
+    /// Into a folder (its node; none for `/`): what's gone through goes in
+    /// its level till `leave`.
+    fn enter(&mut self, node: Option<Node>) {
+        self.levels.push(Level { node, nodes: Vec::new() });
+    }
+
+    /// Out of the folder entered last, done: its tree kept, and its node
+    /// (with it) in the folder above's; the tree's id.
+    fn leave(&mut self) -> Result<Id> {
+        let Level { node, nodes } = self.levels.pop().expect("a folder entered");
+        let tree = Tree { nodes };
+        let id = match self.repo.put(&tree.encode(), true) {
+            Ok((id, _)) => id,
+            Err(e) => {
+                self.levels.push(Level { node, nodes: tree.nodes });
+                return Err(e);
+            }
+        };
+        if let Some(mut n) = node {
+            n.subtree = Some(id);
+            self.add(n);
+        }
+        Ok(id)
+    }
+
+    /// `n`, gone through, in the folder under way.
+    fn add(&mut self, n: Node) {
+        self.levels.last_mut().expect("a folder entered").nodes.push(n);
+    }
+
+    /// Past where the unfinished one this goes on from had got to: a name
+    /// after its last, on the way down to where it stopped (both go in name
+    /// order).
+    fn passing(&mut self, prev: &Before, name: &[u8]) {
+        if !self.passed && prev.frontier && prev.unfinished.as_ref().and_then(|t| t.nodes.last()).is_none_or(|l| name > l.name.as_slice()) {
+            self.passed = true;
+        }
+    }
+
+    /// What's done so far, as trees: each folder under way as far as it
+    /// got, the one under way below it last; the root's id.
+    fn partial(&mut self) -> Result<Id> {
+        let mut below: Option<Node> = None;
+        let mut root = Id::default();
+        for l in self.levels.iter().rev() {
+            let mut nodes = l.nodes.clone();
+            nodes.extend(below.take());
+            root = self.repo.put(&Tree { nodes }.encode(), true)?.0;
+            below = l.node.clone().map(|mut n| {
+                n.subtree = Some(root);
+                n
+            });
+        }
+        Ok(root)
+    }
+
+    /// What's done so far kept as this backup's unfinished snapshot (in
+    /// place of the one it kept before), so one stopped, failed or cut off
+    /// (the computer turned off) goes on from there; the unfinished ones of
+    /// before go too, once this has got past where they stopped.
+    fn keep_unfinished(&mut self) -> Result<()> {
+        let mut summary = self.summary.clone();
+        // (The file it was part way through isn't in it: its chunks so far
+        // are, as `extra`.)
+        if let Some(size) = self.under_way {
+            summary.files -= 1;
+            summary.bytes -= size;
+        }
+        // (Nothing gone through yet: what was kept before stays.)
+        if (summary.files == 0 && self.reading.is_empty()) || self.levels.is_empty() {
+            return Ok(());
+        }
+        let tree = self.partial()?;
+        self.repo.flush()?;
+        let earlier = self.resumed.clone().unwrap_or_default();
+        summary.new_bytes += earlier.new_bytes;
+        summary.stored_bytes = self.repo.stored - self.stored_from + earlier.stored_bytes;
+        summary.seconds = self.started.elapsed().as_secs_f64() + earlier.seconds;
+        let s = Snapshot {
+            time: now(),
+            host: self.opts.host.clone(),
+            paths: self.opts.paths.iter().map(|p| p.display().to_string()).collect(),
+            tree,
+            parent: self.parent,
+            summary,
+            extra: self.reading.clone(),
+        };
+        let id = self.repo.save_unfinished(&s)?;
+        if let Some(old) = self.saved.replace(id).filter(|old| *old != id) {
+            let _ = self.repo.forget_unfinished(&old);
+        }
+        if self.passed {
+            for o in std::mem::take(&mut self.others) {
+                let _ = self.repo.forget_unfinished(&o);
+            }
+        }
+        self.last_saved = Instant::now();
+        Ok(())
+    }
+
+    /// Into the folder under way (whose level is entered): the way down to
+    /// each of `paths` (the folders backed up below `at`), each of those
+    /// whole.
+    fn ancestors(&mut self, at: &Path, prev: Before, paths: &[PathBuf]) -> Result<()> {
         // The next name down to each path, grouped.
         let mut below: std::collections::BTreeMap<Vec<u8>, Vec<PathBuf>> = Default::default();
         let mut whole = false;
@@ -191,27 +412,23 @@ impl Walk<'_, '_> {
             let dev = std::fs::symlink_metadata(at)?.dev();
             return self.dir(at, prev, dev);
         }
-        let mut nodes = Vec::new();
         for (name, paths) in below {
+            self.passing(&prev, &name);
             let path = at.join(<std::ffi::OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(&name));
             let Ok(md) = std::fs::symlink_metadata(&path) else {
                 self.summary.errors.push(format!("{}: not there", path.display()));
                 continue;
             };
-            let mut n = node(&name, &md, Kind::Dir);
-            let sub = prev.and_then(|t| t.get(&name)).and_then(|n| n.subtree);
-            let sub = match sub {
-                Some(id) => Some(self.repo.tree(&id)?),
-                None => None,
-            };
-            n.subtree = Some(self.ancestors(&path, sub.as_ref(), &paths)?);
-            nodes.push(n);
+            let sub = prev.child(self.repo, &name, true)?;
+            self.enter(Some(node(&name, &md, Kind::Dir)));
+            self.ancestors(&path, sub, &paths)?;
+            self.leave()?;
         }
-        Ok(self.repo.put(&Tree { nodes }.encode(), true)?.0)
+        Ok(())
     }
 
-    /// Folder `path`, everything in it, as a tree; its id.
-    fn dir(&mut self, path: &Path, prev: Option<&Tree>, dev: u64) -> Result<Id> {
+    /// Folder `path`, everything in it, into its level (entered).
+    fn dir(&mut self, path: &Path, prev: Before, dev: u64) -> Result<()> {
         self.check()?;
         self.summary.dirs += 1;
         let mut names: Vec<std::ffi::OsString> = match std::fs::read_dir(path) {
@@ -222,9 +439,14 @@ impl Walk<'_, '_> {
             }
         };
         names.sort_by(|a, b| a.as_encoded_bytes().cmp(b.as_encoded_bytes()));
-        let mut nodes = Vec::with_capacity(names.len());
         for name in names {
             self.check()?;
+            // (Between files: the level as it is, whole.)
+            if self.last_saved.elapsed() >= CHECKPOINT {
+                self.keep_unfinished()?;
+            }
+            let bytes = name.as_encoded_bytes();
+            self.passing(&prev, bytes);
             let p = path.join(&name);
             let md = match std::fs::symlink_metadata(&p) {
                 Ok(md) => md,
@@ -246,14 +468,13 @@ impl Walk<'_, '_> {
             if self.opts.excludes.excluded(&p, kind == Kind::Dir) {
                 continue;
             }
-            let bytes = name.as_encoded_bytes();
             let mut n = node(bytes, &md, kind);
-            let before = prev.and_then(|t| t.get(bytes));
             match kind {
                 Kind::File => {
+                    let (done, unfinished) = (prev.done.as_ref().and_then(|t| t.get(bytes)), prev.unfinished.as_ref().and_then(|t| t.get(bytes)));
                     // (Unreadable: said, and left out; stopped, or the
                     // store failing: the backup stops.)
-                    if !self.file(&p, &mut n, before)? {
+                    if !self.file(&p, &mut n, done, unfinished)? {
                         continue;
                     }
                 }
@@ -261,11 +482,11 @@ impl Walk<'_, '_> {
                     if self.opts.one_file_system && md.dev() != dev {
                         continue;
                     }
-                    let sub = match before.and_then(|b| b.subtree) {
-                        Some(id) => self.repo.tree(&id).ok(),
-                        None => None,
-                    };
-                    n.subtree = Some(self.dir(&p, sub.as_ref(), dev)?);
+                    let sub = prev.child(self.repo, bytes, false)?;
+                    self.enter(Some(n));
+                    self.dir(&p, sub, dev)?;
+                    self.leave()?;
+                    continue;
                 }
                 Kind::Symlink => match std::fs::read_link(&p) {
                     Ok(t) => n.target = Some(t.into_os_string().into_encoded_bytes()),
@@ -275,25 +496,31 @@ impl Walk<'_, '_> {
                     }
                 },
             }
-            nodes.push(n);
+            self.add(n);
         }
-        Ok(self.repo.put(&Tree { nodes }.encode(), true)?.0)
+        Ok(())
     }
 
-    /// A file's chunks into `n`: as before if it's unchanged (and they're
-    /// all still there), else read; whether it's kept. An unreadable one is
-    /// said and left out (false); stopped, or the store failing, an error.
-    fn file(&mut self, p: &Path, n: &mut Node, before: Option<&Node>) -> Result<bool> {
+    /// A file's chunks into `n`: as before if it's unchanged since the
+    /// unfinished backup this goes on from or the last finished one (and
+    /// they're all still there), else read; whether it's kept. An
+    /// unreadable one is said and left out (false); stopped, or the store
+    /// failing, an error (`reading` holding its chunks so far).
+    fn file(&mut self, p: &Path, n: &mut Node, done: Option<&Node>, unfinished: Option<&Node>) -> Result<bool> {
         self.summary.files += 1;
         self.summary.bytes += n.size;
         self.progress.files.fetch_add(1, Relaxed);
         self.progress.bytes.fetch_add(n.size, Relaxed);
-        if let Some(b) = before
-            && b.unchanged(n)
-            && b.content.iter().all(|id| self.repo.has(id))
-        {
+        let repo = &*self.repo;
+        if let Some(b) = [unfinished, done].into_iter().flatten().find(|b| b.unchanged(n) && b.content.iter().all(|id| repo.has(id))) {
             n.content = b.content.clone();
-            self.summary.unchanged_files += 1;
+            // (New or changed since the last finished one, even if it was
+            // read before the backup it went on from stopped.)
+            match done {
+                Some(d) if d.unchanged(n) => self.summary.unchanged_files += 1,
+                Some(_) => self.summary.changed_files += 1,
+                None => self.summary.new_files += 1,
+            }
             return Ok(true);
         }
         if let Ok(mut c) = self.progress.current.lock() {
@@ -306,8 +533,10 @@ impl Walk<'_, '_> {
                 return Ok(false);
             }
         };
-        let mut content = Vec::new();
-        let (repo, cancel, progress, stored_from) = (&mut *self.repo, self.cancel, self.progress, self.stored_from);
+        self.reading.clear();
+        self.under_way = Some(n.size);
+        self.progress.read.fetch_add(1, Relaxed);
+        let (repo, cancel, progress, stored_from, reading) = (&mut *self.repo, self.cancel, self.progress, self.stored_from, &mut self.reading);
         let mut new_bytes = 0u64;
         // What stops the backup (not the file's own fault).
         let mut fatal = None;
@@ -325,7 +554,7 @@ impl Walk<'_, '_> {
                 progress.new_bytes.fetch_add(chunk.len() as u64, Relaxed);
                 progress.uploaded.store(repo.stored.saturating_sub(stored_from), Relaxed);
             }
-            content.push(id);
+            reading.push(id);
             Ok(())
         });
         // What was read isn't anyone's working set: let it go.
@@ -334,13 +563,15 @@ impl Walk<'_, '_> {
         if let Some(e) = fatal {
             return Err(e);
         }
+        self.under_way = None;
         if let Err(e) = r {
+            self.reading.clear();
             self.summary.errors.push(format!("{}: {e}", p.display()));
             return Ok(false);
         }
-        n.content = content;
+        n.content = std::mem::take(&mut self.reading);
         self.summary.new_bytes += new_bytes;
-        if before.is_some() {
+        if done.is_some() {
             self.summary.changed_files += 1;
         } else {
             self.summary.new_files += 1;

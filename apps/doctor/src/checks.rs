@@ -661,6 +661,19 @@ fn diskbackup(roots: &Roots, r: &mut Report) {
             r.fine.push(Fine { title: "Your files are backed up".into(), detail: format!("DiskBackup last backed up to {} {ago}.", settings.target.describe()) });
         }
     }
+    // The last backup, checked once it was made, found not whole.
+    if let Some(c) = state.last.as_ref().and_then(|l| l.check.as_ref()).filter(|c| !c.problems.is_empty()) {
+        r.findings.push(Finding {
+            id: "diskbackup:damaged".into(),
+            severity: Severity::Problem,
+            title: "The last backup isn't whole".into(),
+            detail: format!(
+                "Checked once it was made, it was missing what some files need ({}): those can't be restored as they were. The damaged parts are let go of, and the next backup sends again what it can.",
+                c.problems.join("; ")
+            ),
+            fix: start("Back Up Now", &["olo-diskbackup", "--now"]),
+        });
+    }
     if !settings.key_in_passwords {
         r.findings.push(Finding {
             id: "diskbackup:key".into(),

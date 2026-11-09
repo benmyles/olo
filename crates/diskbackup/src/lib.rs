@@ -23,7 +23,9 @@
 //!   blob, so an unchanged folder is the same blob again. A snapshot
 //!   (`snapshots/…`) is a moment's tree of everything backed up: every
 //!   version whole, sharing what didn't change. A file whose size, times
-//!   and inode are as in the last snapshot isn't read again.
+//!   and inode are as in the last snapshot isn't read again. A backup that
+//!   doesn't finish keeps what it got through as an unfinished snapshot
+//!   (`unfinished/…`), and the next goes on from it.
 //! - **`config`**: the repository's version and chunking, sealed: opening it
 //!   is how a key is known to be the right one.
 //! - **Locks** (`locks/…`, `lock`): who's using it, so tidying (`prune`:
@@ -45,15 +47,17 @@ pub mod repo;
 pub mod restore;
 pub mod store;
 pub mod tree;
+pub mod verify;
 
 pub use backup::{Options, Progress, backup};
 pub use crypto::{Id, Key};
 pub use lock::Lock;
-pub use prune::{Pruned, prune};
+pub use prune::{Pruned, prune, repair, unused};
 pub use repo::{Repo, Snapshot, Summary, TreeReader, Trees};
 pub use restore::{Version, restore, versions};
 pub use store::{Limit, LocalStore, Store, Throttled};
 pub use tree::{Kind, Node, Tree};
+pub use verify::{Checked, check};
 
 /// What went wrong, said plainly.
 #[derive(Debug)]

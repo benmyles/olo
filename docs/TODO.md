@@ -78,6 +78,28 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **DiskBackup: unfinished backups, validation, the Drive connection**
+  (Ben, 2026-11-08: "it needs to track in-progress / unfinished backups
+  too and they need to resume if i start again and i need the ability to
+  clean it up"; "when i'm connected it should show the details of that
+  connection and a button to disconnect it"; "backups also need to be
+  validatable … validated at the end of each backup … re-validate of any
+  backup at any time"; "add a fast validate option which compares
+  checksums and just spot-checks some samples"; "fast validate should be
+  the default … full validate is only when explicitly requested"). Done:
+  a stopped backup keeps what it got through (an unfinished snapshot,
+  every five minutes and when stopped) and the next goes on from it,
+  listed first in Backups and deletable; each backup validated fast once
+  made (lists, every piece there, Google Drive's checksums against what
+  was sent, a sample read back), Validate for any, Validate Fully reads
+  every byte back; damage repaired by the next tidy and sent again by the
+  next backup; Destination says whose Drive, its space, with
+  Disconnect… (connecting again fills in the sign-in from before). Its
+  Google Drive setup window fits 1280 × 800 now. Checked in a sandbox
+  with a folder and our own Google. Left (Ben): upgrade; what your
+  stopped backup left in Drive shows as Unfinished, and Back Up Now goes
+  on from it.
+
 - **DiskBackup, redesigned** (Ben, 2026-11-08: "generally improve the
   ux in diskbackup … where are the settings for limiting up/down speed
   and resource usage and knowing exactly what's being backed up now what

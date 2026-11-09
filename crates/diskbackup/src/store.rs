@@ -4,6 +4,7 @@
 //! never shows half of one. Names are paths with `/` ("data/ab/abcd…").
 
 use std::{
+    collections::HashMap,
     io,
     path::{Path, PathBuf},
 };
@@ -21,6 +22,18 @@ pub trait Store: Send + Sync {
     fn delete(&self, name: &str) -> io::Result<()>;
     /// Where it is, to say ("~/Backups/DiskBackup", "Google Drive").
     fn describe(&self) -> String;
+    /// It keeps a checksum of each object (an MD5 of its bytes, as
+    /// Google Drive does), so what's sent is worth summing first.
+    fn keeps_checksums(&self) -> bool {
+        false
+    }
+    /// The store's own checksum of each object in `dir` (as `list`), by
+    /// name, lowercase hex: compared with what was sent, it shows each
+    /// arrived and stayed as sent, without fetching it. None: it keeps
+    /// none.
+    fn checksums(&self, _dir: &str) -> io::Result<Option<HashMap<String, String>>> {
+        Ok(None)
+    }
 }
 
 /// A store in a folder (a disk of its own, a mounted share; and the tests).
@@ -203,6 +216,14 @@ impl<S: Store> Store for Throttled<S> {
 
     fn describe(&self) -> String {
         self.inner.describe()
+    }
+
+    fn keeps_checksums(&self) -> bool {
+        self.inner.keeps_checksums()
+    }
+
+    fn checksums(&self, dir: &str) -> io::Result<Option<HashMap<String, String>>> {
+        self.inner.checksums(dir)
     }
 }
 

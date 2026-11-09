@@ -12810,7 +12810,29 @@ in layers; done so far, **the engine** (crates/diskbackup):
   (`POSIX_FADV_DONTNEED`: the backup's reading isn't anyone's working
   set). Sockets, pipes and devices skipped; unreadable files said in the
   summary and left out; Stop at any point, and a failing store, stop the
-  backup (never taken for a file that couldn't be read). Files are read
+  backup (never taken for a file that couldn't be read). **Unfinished
+  backups** (Ben, 2026-11-08: "it needs to track in-progress / unfinished
+  backups too and they need to resume if i start again and i need the
+  ability to clean it up"): the walk keeps the folders under way as a
+  stack of levels (each folder's node and what's been gone through in it),
+  so what's done can be kept at any moment: every five minutes (between
+  files) and when it's stopped, each level's nodes so far, the one under
+  way below it last, become trees, and an *unfinished snapshot*
+  (`unfinished/<id>`, `Repo::save_unfinished`) holds them, with the
+  chunks of the file it was part way through (`Snapshot::extra`) and a
+  summary so far; it replaces the one it kept before. It's no backup to
+  restore from (`Repo::snapshots` doesn't list it). The next backup goes
+  on from this computer's that got furthest: a file it holds as it is
+  now is taken, not read (new or changed counted against the last
+  finished one), and its new, sent and time add to the finished one's;
+  once the walk is past where it stopped (a name after its last, on the
+  way down to it), the older unfinished ones go, and once one finishes,
+  all of them. A failure that isn't a stop keeps only the index of what
+  went up (the last checkpoint goes on). Tested: stopped once a pack went
+  up, an unfinished snapshot of part of a/, which tidying keeps whole;
+  the next backup reads only the 12 − done files it hadn't got to, sends
+  nothing again, and the unfinished one goes (`stopped_backup_kept_and_resumed`).
+  Files are read
   into one 8 MiB buffer for the whole backup (one zeroed for each cost
   more than reading and keeping a small file did), and one zstd context
   compresses every chunk.
@@ -12895,6 +12917,52 @@ in layers; done so far, **the engine** (crates/diskbackup):
   they go, then the packs: stopped anywhere, nothing is lost. The cache's
   copies of what's gone go too.
 
+  Unfinished snapshots count as snapshots here (and their `extra`
+  chunks): what a stopped backup sent stays for the next. `unused` says
+  what no snapshot uses (what a backup that stopped before keeping
+  anything of its own left), from the cache's trees. `repair` is tidying
+  with damaged packs (a check found them) copied from: what still opens
+  whole in each is kept, a blob kept elsewhere too is kept from there
+  (damaged packs are claimed last), and the pack goes; a pack missing is
+  let go of from the index as any tidy does. The next backup then sends
+  again what's lost, of the files still as they were, and an older backup
+  needing the same chunks is whole again with them (by content).
+- **Validating** (`verify.rs`, `check`; Ben, 2026-11-08: "backups also
+  need to be validatable and should be validated at the end of each
+  backup but i should be able to manually trigger a re-validate of any
+  backup at any time"; "add a fast validate option which compares
+  checksums and just spot-checks some samples … fast validate should be
+  the default and the one that is done automatically after a backup.
+  full validate is only when explicitly requested"): without restoring
+  it, that everything a backup needs is in the store, whole. Fast (after
+  each backup; Validate): its trees walked (from the cache), every blob
+  they need found in the index, every pack holding them listed in the
+  store and as long as it was written, and the tree packs fetched from the
+  store itself (not the cache) and checked against their ids (a keyed hash
+  of the whole pack: exactly as written), each tree in them opened (a pack
+  checked whole before is kept in the cache's `checked` list and not
+  fetched again); where the store keeps a checksum of each object
+  (`Store::keeps_checksums`, `Store::checksums`: Google Drive's
+  `md5Checksum`, listed with the files), each pack's compared with the MD5
+  summed as it was sent (`Repo::finish_pack`, in the cache's `sums`; or as
+  it was last read back whole): it arrived and stayed as sent, nothing
+  fetched; one that differs is fetched and checked; and a few data packs
+  read back whole as samples (one in a hundred, one to four: those never
+  read back first, so over time they go round all of them). Full
+  (Validate Fully): every pack it uses fetched and checked so, whatever
+  was checked before, and each blob of its opened and checked against its
+  own id, as a restore would.
+  `Checked` says what's wrong plainly (missing, cut short, damaged, lists
+  unreadable), the first twelve files (or folders) that can't come back as
+  they were and how many, the packs shown sent by checksum and sampled,
+  and the bad packs, for `repair`. Tested: whole after a backup, fast and
+  fully (every byte read back); in a folder (no checksums), a data pack
+  damaged found fully (fast, only if it's the sample), one gone found
+  either way; after `repair` and another backup, both backups whole and
+  the first restores (`checked_damaged_repaired`); on Google Drive (our
+  own), fast: every pack shown as sent by its checksum and one sample read
+  back, then a pack changed in Drive found by its checksum, fetched, and
+  found damaged (`tests/drive.rs`).
 - **Speed limits** (`store::Limit`; Ben: "make sure that i can also set
   a max upload/download speed"): bytes a second each way, 0 for none,
   changed live; a store paces its transfers a 256 KiB piece at a time
@@ -12926,7 +12994,28 @@ same walk without reading: `Stage::Counting`); then `Stage::Reading`
 (bytes and files against those totals, the file it's at, `uploaded`:
 what it has sent) and `Stage::Saving` (its trees and the snapshot). A
 backup the person stopped says `STOPPED` (`Last::stopped`): said calmly,
-never as trouble (DiskBackup, Deskbar, Doctor). Waits
+never as trouble (DiskBackup, Deskbar, Doctor). What one that didn't
+finish got through is `State::unfinished` (`Unfinished`: when, files and
+bytes done, new, what it sent, time): this computer's unfinished
+snapshot that got furthest, or, found once when the service starts after
+one that stopped (since the last tidy) with nothing kept of its own,
+what no snapshot uses (`unused`: sent, in no snapshot). A resumed
+backup's progress says `resuming`; `Delete { unfinished: true }` forgets
+this computer's unfinished snapshots and tidies, freeing what they sent.
+Each backup is validated fast once it's made (`Stage::Checking`, `check`
+with the shared lock still held): the result is `Last::check` (Validate's
+of the newest too) and the snapshot's `SnapshotInfo::check`;
+`Request::Validate { snapshots, full }` validates chosen ones, fast or
+fully (`Doing::Validating`, its progress bytes read back of the packs'
+total, the pack it's at), one after another, each one's `Check` (`full`,
+`by_checksum`, `sampled`) kept by snapshot id across restarts (the state
+folder, forgotten with the snapshot). Stopped, a backup says
+`Stage::Stopping` while what's done so far is kept (the window says so
+the moment Stop is clicked, and Stop is off). The bad packs a check finds are kept too, and the
+tidy right after repairs them (`repair`; a tidy that can't take the lock
+leaves them for the next). Doctor says when the last backup checked
+isn't whole (`diskbackup:damaged`, Back Up Now). With nowhere to back up
+(disconnected), the backup isn't kept open (nor Tracker's lookups). Waits
 for power on battery unless allowed (`on_battery`), looking again every
 five minutes then. A backup holds a shared lock, reads the index again if
 another computer changed it, and takes unchanged files from the last snapshot
@@ -12953,8 +13042,12 @@ Olo Doctor's fix), `--snapshots`, `--restore SNAPSHOT PATH [TO]` (a shared lock,
 for a tidy under way), `--tidy` (asked of the service if it runs, else
 done there), `--set KEY=VALUE…` (enabled, battery, every, upload,
 download, paths, exclude, groups, hourly, daily, weekly, monthly),
-`--groups`, `--delete SNAPSHOT…` (an id's start is enough), `--erase-all
---yes`, `--set automatic=on|off`, `--set priority=idle|low|normal`. For
+`--groups`, `--delete SNAPSHOT…` (an id's start is enough; `unfinished`
+the one that didn't finish), `--validate [--full] SNAPSHOT…` (`latest`,
+`all`),
+`--erase-all --yes`, `--set automatic=on|off`, `--set
+priority=idle|low|normal`; `--snapshots` says how each was last checked,
+and lists the unfinished ones. For
 tests, `OLO_DISKBACKUP_DIR` keeps its settings, state and
 socket apart and `OLO_DISKBACKUP_KEY` gives the key. Checked so (a
 sandbox HOME, a folder target): set up, the first backup at once (9
@@ -12979,22 +13072,50 @@ it the plan: a bar of bytes against the plan's ("of about" when
 estimated), files of files, time left (`how_far`: once 2% and ten
 seconds are done), what's new, what's sent and how fast, against the
 upload limit; each folder's turn (✓ ▸ ○) when there are several; erasing,
-a bar of what's deleted. A slim reminder when the key is only on this
-computer (Keep Key in Passwords). Then five tabs: **Schedule** (When to
+a bar of what's deleted; checking after a backup, and validating, a bar
+of what's read back and the pack it's at. "Resuming the backup" when it
+goes on from an unfinished one. Idle, a dim line under the last one's
+figures says what an unfinished backup got through and that the next
+goes on from there (`unfinished_words`), and "Checked: all there." ends
+the figures once the backup was checked. A slim reminder when the key is
+only on this computer (Keep Key in Passwords), and one when the last
+backup checked isn't whole (what's wrong; Back Up Now). Then five tabs: **Schedule** (When to
 Back Up: Automatically, every 15 minutes to a day, or Only when I click
 Back Up Now; on battery or not; Backups Kept: one an hour, a day, a week,
 a month, for how long, said plainly as a sentence, `keep_words`),
 **Files** (the folders, added and removed, and what the last backup
 held; Leave Out: each group a check box named for what it leaves out,
 its folders in its tip, and the person's own patterns, how they go in
-the field's tip), **Backups** (every snapshot: When, Files, New, Size,
-Took; Restore… opens the Restore window; those chosen, one or
-several, deleted with Delete N Backups…, asked first; Erase All
-Backups…, asked first, saying whether a fresh one starts at once),
+the field's tip), **Backups** (the unfinished one first, "Unfinished
+(14:05)", then every snapshot: When, Files, Size, New, Took, Validated:
+✓ Fast, ✓ Full, ✗ Damaged, Not checked or —; a line under the list says
+the one chosen in full, `check_words`, cut to a line with all of it in its tip:
+when and how it was validated, what's wrong and which files; Restore…
+opens the Restore window; Validate validates those chosen fast, at
+once; Validate Fully… reads every byte back, asked first; those
+chosen, one or several, the unfinished one too, deleted with Delete N
+Backups…, asked first, saying what deleting the unfinished one frees;
+Erase All Backups…, asked first, saying whether a fresh one starts at
+once),
 **Speed & Resources** (Network: upload and download limits; This
-Computer: the priority, each level explained) and **Destination** (where
-backups go, Choose Another Folder…, Google Drive…; the key; Show
-DiskBackup in Deskbar). The window follows the chosen tab's height
+Computer: the priority, each level explained) and **Destination** (what
+it's connected to, looked at each time the tab is chosen, on a worker,
+`target::look_at`: Google Drive's account and folder, "Connected", what
+the backups take there and the Drive's space, as Google's `about` says,
+or why it isn't connected, with Sign In Again…; a folder's name, path and
+its disk's space, `statvfs`, or that it isn't there; Disconnect… (Ben,
+2026-11-08: "when i'm connected it should show the details of that
+connection and a button to disconnect it if i want and then it shows the
+button to connect again": asked first; what's under way stopped, the
+sign-in forgotten on this computer, its refresh token gone from the
+keyring and the client kept, `target::forget_google`, not revoked at
+Google, which would sign out every computer using that client; the
+target none, so the window asks where backups go again, Connect Google
+Drive…, whose setup window fills in the client from before,
+`target::known_client`, with the steps to make one folded away, Show the
+Steps to see them), Use a Folder Instead… or Choose Another
+Folder… and Use Google Drive Instead…, Open in Google Drive or Show in
+Tracker; the key; Show DiskBackup in Deskbar). The window follows the chosen tab's height
 (`WindowOptions::fixed`): every tab fits 1280 × 800 while a backup runs
 (712 points at most, measured). Every change is written to the settings,
 which the service follows at once, and is a step for Edit ▸ Undo. Live
@@ -13043,8 +13164,10 @@ open), the answer taken, the folder found or made, the backup there
 opened (this computer's key, the keys Passwords keeps) or made, the
 sign-in kept in the login keyring (`olo_system::secrets::DISKBACKUP_GOOGLE`)
 and the client in Passwords ("DiskBackup Google Client"): on another
-computer, Sign In with the One in Passwords skips the steps. As a tab of
-DiskBackup's frame it's as wide as that (640 points at least).
+computer, Sign In with the One in Passwords skips the steps. 720 points
+wide (as DiskBackup's window: its words wrap less, so with every step
+shown it's 708 points tall, inside 1280 × 800), and it follows what it
+shows (`fixed`).
 `--set-up-drive [CLIENT_FILE | ID SECRET]` does the same from the
 command line (none: the client Passwords keeps), the consent page's
 address printed. For tests, `OLO_DISKBACKUP_GOOGLE_API` is a Google of

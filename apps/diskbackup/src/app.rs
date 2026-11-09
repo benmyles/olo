@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use olo_protocol::diskbackup::{Request, Settings, SnapshotInfo, State};
+use olo_protocol::diskbackup::{Request, Settings, SnapshotInfo, State, Target};
 use olo_ui::{
     Frame, Menu, Proxy, WindowOptions,
     file_panel::{self, FilePanel, PanelResult},
@@ -29,6 +29,8 @@ pub enum Msg {
     Drive(crate::drive_setup::Done),
     /// This computer's backups, from the service (or why not).
     Snapshots(Result<Vec<SnapshotInfo>, String>),
+    /// Where backups go, looked at (its disk's space, or Google's answer).
+    Where(Target, Result<target::Where, String>),
 }
 
 /// A settings change, for Edit ▸ Undo: the settings before it and after.
@@ -90,6 +92,8 @@ pub struct Disk {
     pub busy: bool,
     /// This computer's backups (None: being asked).
     pub snapshots: Option<Result<Vec<SnapshotInfo>, String>>,
+    /// Where backups go, as last looked at (None inside: looking).
+    pub where_: Option<(Target, Option<Result<target::Where, String>>)>,
     win: Option<WindowHandle<Frame>>,
     /// The Restore window, while it's open.
     restore: Option<(WindowHandle<Frame>, Entity<crate::restore::RestoreWindow>)>,
@@ -112,6 +116,7 @@ impl Disk {
             note: None,
             busy: false,
             snapshots: None,
+            where_: None,
             win: None,
             restore: None,
             versions: Vec::new(),
@@ -137,12 +142,16 @@ impl Disk {
                         w.update(cx, |w, cx| w.reload(cx));
                     }
                 }
-                // Backups made, deleted or erased: listed again.
+                // Backups made, deleted, erased or validated: listed again.
                 if (self.state.last_ok, self.state.snapshots, self.state.doing.clone()) != was {
                     self.load_snapshots();
                 }
             }
             Msg::Snapshots(r) => self.snapshots = Some(r),
+            Msg::Where(t, r) => match &mut self.where_ {
+                Some((now, looked)) if *now == t => *looked = Some(r),
+                _ => return,
+            },
             Msg::Restore(d) => {
                 if let Some((_, w)) = &self.restore {
                     w.update(cx, |w, cx| w.message(d, cx));
@@ -271,27 +280,117 @@ impl Disk {
         });
     }
 
-    /// Delete backups `ids` (hex), once the person says so.
-    pub fn delete(&mut self, ids: Vec<String>, cx: &mut Context<Self>) {
-        if ids.is_empty() {
+    /// Delete backups `ids` (hex), and the unfinished one if `unfinished`,
+    /// once the person says so.
+    pub fn delete(&mut self, ids: Vec<String>, unfinished: bool, cx: &mut Context<Self>) {
+        let n = ids.len() + usize::from(unfinished);
+        if n == 0 {
             return;
         }
         let me = cx.entity();
-        let message = if ids.len() == 1 {
-            "Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.".to_owned()
-        } else {
-            format!("Delete these {} backups? The space only they took is freed; files other backups hold too stay in those. It can’t be undone.", ids.len())
+        let sent = self.state.unfinished.as_ref().map_or(0, |u| u.sent);
+        let message = match (ids.len(), unfinished) {
+            (0, true) => format!("Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.", size(sent)),
+            (1, false) => "Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.".to_owned(),
+            (_, false) => format!("Delete these {n} backups? The space only they took is freed; files other backups hold too stay in those. It can’t be undone."),
+            (_, true) => format!(
+                "Delete these {n} backups, the unfinished one too? The space only they took is freed (what the unfinished one sent, {}); files other backups hold too stay in those. It can’t be undone.",
+                size(sent)
+            ),
         };
         cx.defer(move |cx| {
             olo_ui::widgets::open_alert(cx, "Delete Backups", "warning", &message, &["Cancel", "Delete"], move |choice, cx| {
                 if choice == Some(1) {
                     let ids = ids.clone();
                     me.update(cx, |d, cx| {
-                        d.ask(Request::Delete { snapshots: ids }, "");
+                        d.ask(Request::Delete { snapshots: ids, unfinished }, "");
                         cx.notify();
                     });
                 }
             });
+        });
+    }
+
+    /// Validate backups `ids` (hex), by the service (the header says how
+    /// it goes; the list, how it went): fast at once; `full`y (every byte
+    /// read back) once the person says so.
+    pub fn validate(&mut self, ids: Vec<String>, full: bool, cx: &mut Context<Self>) {
+        if ids.is_empty() {
+            return;
+        }
+        if !full {
+            self.ask(Request::Validate { snapshots: ids, full }, "");
+            cx.notify();
+            return;
+        }
+        let me = cx.entity();
+        let what = if ids.len() == 1 { "this backup needs".to_owned() } else { format!("these {} backups need", ids.len()) };
+        let most = self.state.size.map(|b| format!(" (up to {})", size(b))).unwrap_or_default();
+        let message = format!(
+            "Validate fully? Every byte {what}{most} is read back from {} and checked, as a restore would: it can take a while, at the download limit. The usual Validate compares checksums and reads only a sample back.",
+            self.settings.target.describe()
+        );
+        cx.defer(move |cx| {
+            olo_ui::widgets::open_alert(cx, "Validate Fully", "info", &message, &["Cancel", "Validate Fully"], move |choice, cx| {
+                if choice == Some(1) {
+                    let ids = ids.clone();
+                    me.update(cx, |d, cx| {
+                        d.ask(Request::Validate { snapshots: ids, full: true }, "");
+                        cx.notify();
+                    });
+                }
+            });
+        });
+    }
+
+    /// Where backups go looked at (on a worker): unless it was for this
+    /// target already, or `again`.
+    pub fn look_at_target(&mut self, again: bool) {
+        let t = self.settings.target.clone();
+        if t == Target::None || (!again && self.where_.as_ref().is_some_and(|(w, _)| *w == t)) {
+            return;
+        }
+        self.where_ = Some((t.clone(), None));
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let r = target::look_at(&t);
+            proxy.send(Msg::Where(t, r));
+        });
+    }
+
+    /// Disconnect Google Drive, once the person says so: backing up there
+    /// stopped, and DiskBackup's sign-in forgotten on this computer (its
+    /// client kept, to connect again); the backups there stay.
+    pub fn disconnect(&mut self, cx: &mut Context<Self>) {
+        let Target::GoogleDrive { account, .. } = &self.settings.target else { return };
+        let message = format!(
+            "Disconnect Google Drive ({account})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them."
+        );
+        let me = cx.entity();
+        cx.defer(move |cx| {
+            olo_ui::widgets::open_alert(cx, "Disconnect Google Drive", "warning", &message, &["Cancel", "Disconnect"], move |choice, cx| {
+                if choice == Some(1) {
+                    me.update(cx, |d, cx| d.disconnect_now(cx));
+                }
+            });
+        });
+    }
+
+    fn disconnect_now(&mut self, cx: &mut Context<Self>) {
+        self.busy = true;
+        self.note = Some(("Disconnecting from Google Drive…".into(), false));
+        cx.notify();
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            // (What's under way stops first: it's using the sign-in.)
+            let _ = crate::ask(Request::Stop);
+            let out = target::forget_google().and_then(|()| {
+                let mut s = Settings::load();
+                s.target = Target::None;
+                s.save().map_err(|e| e.to_string())?;
+                Ok("Disconnected from Google Drive. Your backups there stay as they are.".to_owned())
+            });
+            proxy.send(Msg::Note(out));
         });
     }
 
@@ -358,7 +457,16 @@ impl Disk {
     pub fn command(&mut self, cmd: &str, cx: &mut Context<Self>) {
         match cmd {
             "back-up-now" => self.ask(Request::BackUpNow, ""),
-            "stop" => self.ask(Request::Stop, ""),
+            "stop" => {
+                // (Said at once: keeping what's done can take a few seconds.)
+                if self.state.doing == olo_protocol::diskbackup::Doing::BackingUp
+                    && let Some(p) = self.state.progress.as_mut()
+                {
+                    p.stage = olo_protocol::diskbackup::Stage::Stopping;
+                    cx.notify();
+                }
+                self.ask(Request::Stop, "");
+            }
             "choose-folder" => {
                 let me = cx.entity();
                 cx.defer(move |cx| {
@@ -370,6 +478,21 @@ impl Disk {
                 });
             }
             "google-drive" => self.open_drive(cx),
+            "disconnect" => self.disconnect(cx),
+            // Where backups go, in Google Drive's own page, or in Tracker.
+            "show-target" => {
+                let at = match &self.settings.target {
+                    Target::GoogleDrive { folder, .. } => Some(olo_xdg::open::Target::Url(format!("https://drive.google.com/drive/folders/{folder}"))),
+                    Target::Folder { path } => Some(olo_xdg::open::Target::Path(target::expand(path))),
+                    Target::None => None,
+                };
+                if let Some(at) = at
+                    && let Err(e) = olo_xdg::open::open(&at)
+                {
+                    self.note = Some((format!("It didn’t open: {e}."), true));
+                    cx.notify();
+                }
+            }
             "add-folder" => {
                 let me = cx.entity();
                 cx.defer(move |cx| {
@@ -501,7 +624,8 @@ pub(crate) fn size(b: u64) -> String {
     match b {
         0..1_000_000 => format!("{} KB", b.div_ceil(1000)),
         1_000_000..1_000_000_000 => format!("{:.1} MB", b as f64 / 1e6),
-        _ => format!("{:.2} GB", b as f64 / 1e9),
+        1_000_000_000..1_000_000_000_000 => format!("{:.2} GB", b as f64 / 1e9),
+        _ => format!("{:.2} TB", b as f64 / 1e12),
     }
 }
 

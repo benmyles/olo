@@ -64,7 +64,7 @@ mod tests {
     fn snap(t: i64) -> (Id, Snapshot) {
         let mut id = [0u8; 32];
         id[..8].copy_from_slice(&t.to_le_bytes());
-        (Id(id), Snapshot { time: t, host: "h".into(), paths: vec![], tree: Id::default(), parent: None, summary: Summary::default() })
+        (Id(id), Snapshot { time: t, host: "h".into(), paths: vec![], tree: Id::default(), parent: None, summary: Summary::default(), extra: Vec::new() })
     }
 
     /// Every 20 minutes for 3 days: the last hour's, 24 hourly, 3 daily

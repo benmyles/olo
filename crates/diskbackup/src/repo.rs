@@ -105,6 +105,10 @@ pub struct Snapshot {
     pub tree: Id,
     pub parent: Option<Id>,
     pub summary: Summary,
+    /// An unfinished one's chunks beyond its tree: the file it was part
+    /// way through (kept by tidying, so they aren't sent again).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra: Vec<Id>,
 }
 
 pub struct Repo {
@@ -538,6 +542,10 @@ impl Repo {
         let name = pack_name(&pid);
         self.store.put(&name, &pack)?;
         self.stored += pack.len() as u64;
+        // (Its checksum, to compare with the store's when it's checked.)
+        if self.store.keeps_checksums() {
+            crate::verify::note_sum(self, &pid, &pack);
+        }
         if which == TREES
             && let Some(c) = &self.cache
         {
@@ -606,8 +614,35 @@ impl Repo {
 
     /// Every snapshot, oldest first.
     pub fn snapshots(&self) -> Result<Vec<(Id, Snapshot)>> {
+        self.read_snapshots("snapshots")
+    }
+
+    /// Keep an unfinished snapshot (a backup's as far as it got: everything
+    /// before it flushed first); its id.
+    pub fn save_unfinished(&mut self, s: &Snapshot) -> Result<Id> {
+        self.flush()?;
+        self.check_lock()?;
+        let plain = encode(s);
+        let id = self.key.id(&plain);
+        self.store.put(&format!("unfinished/{}", id.hex()), &self.key.seal(&plain))?;
+        Ok(id)
+    }
+
+    /// Every unfinished snapshot (any computer's), oldest first.
+    pub fn unfinished(&self) -> Result<Vec<(Id, Snapshot)>> {
+        self.read_snapshots("unfinished")
+    }
+
+    /// Forget an unfinished snapshot (what only it used goes at the next
+    /// prune).
+    pub fn forget_unfinished(&self, id: &Id) -> Result<()> {
+        self.check_lock()?;
+        Ok(self.store.delete(&format!("unfinished/{}", id.hex()))?)
+    }
+
+    fn read_snapshots(&self, dir: &str) -> Result<Vec<(Id, Snapshot)>> {
         let mut out = Vec::new();
-        for (name, _) in self.store.list("snapshots")? {
+        for (name, _) in self.store.list(dir)? {
             let Some(id) = name.rsplit('/').next().and_then(Id::from_hex) else { continue };
             let sealed = self.store.get(&name)?;
             let plain = self.key.open(&sealed).ok_or_else(|| Error::Damaged(name.clone()))?;
@@ -623,6 +658,16 @@ impl Repo {
         Ok(self.store.delete(&format!("snapshots/{}", id.hex()))?)
     }
 
+    /// Where blob `id` is: its pack, offset, length (sealed) and flags.
+    pub(crate) fn locate(&self, id: &Id) -> Option<(Id, u32, u32, u8)> {
+        self.index.get(id).map(|l| (self.packs[l.pack as usize], l.offset, l.len, l.flags))
+    }
+
+    /// Each blob the index has, and its size as kept (sealed).
+    pub(crate) fn blob_sizes(&self) -> impl Iterator<Item = (&Id, u64)> {
+        self.index.iter().map(|(id, l)| (id, l.len as u64))
+    }
+
     /// The packs the index has, and whether each holds only trees.
     pub(crate) fn pack_ids(&self) -> impl Iterator<Item = (&Id, bool)> {
         self.packs.iter().zip(self.tree_pack.iter().copied())
@@ -635,7 +680,7 @@ impl Repo {
 }
 
 /// A blob opened: unsealed, decompressed, checked against its id.
-fn unseal(key: &Key, id: &Id, sealed: &[u8], flags: u8) -> Result<Vec<u8>> {
+pub(crate) fn unseal(key: &Key, id: &Id, sealed: &[u8], flags: u8) -> Result<Vec<u8>> {
     let body = key.open(sealed).ok_or_else(|| Error::Damaged(format!("blob {id:?} doesn't open")))?;
     let plain = if flags & COMPRESSED != 0 { zstd::stream::decode_all(&body[..])? } else { body };
     if key.id(&plain) != *id {

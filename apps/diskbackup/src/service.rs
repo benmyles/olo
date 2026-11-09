@@ -11,6 +11,19 @@
 //! tidied (`prune`): the space only they used freed. Each holds a lock in
 //! the store (shared to back up, alone to tidy), so another computer
 //! backing up to the same place, or a restore, is never pulled from under.
+//!
+//! A backup that doesn't finish keeps what it got through (the engine's
+//! unfinished snapshot), which the next goes on from: said in the state
+//! (`unfinished`) and deletable (`Delete { unfinished }`). What an older
+//! one left with nothing kept of its own (sent, but in no snapshot) is
+//! found once, at the start, and said the same way.
+//!
+//! Each backup is checked once it's made (the engine's `check`: what it
+//! needs all in the store, its lists read back); Validate reads chosen
+//! ones back whole. The results are kept (by snapshot), and the packs
+//! found missing or damaged are repaired by the next tidy, done at once:
+//! what's whole in them salvaged, the rest let go of, so the next backup
+//! sends it again.
 
 use std::{
     os::unix::net::UnixListener,
@@ -26,7 +39,7 @@ use std::{
 use std::os::unix::ffi::OsStrExt;
 
 use olo_diskbackup::{Id, Options, Progress, Repo, Snapshot, backup, exclude::Excludes, keep, prune};
-use olo_protocol::diskbackup::{Doing, Keep, Last, Priority, Reply, Request, Settings, SnapshotInfo, Stage, State, Target, Tidied};
+use olo_protocol::diskbackup::{Check, Doing, Keep, Last, Priority, Reply, Request, Settings, SnapshotInfo, Stage, State, Target, Tidied, Unfinished};
 
 use crate::target::{self, Limits};
 
@@ -34,10 +47,13 @@ enum Event {
     Settings,
     Now,
     Tidy,
-    /// Delete these backups (and free what only they took).
-    Delete(Vec<Id>),
+    /// Delete these backups, and the unfinished one if asked (and free
+    /// what only they took).
+    Delete(Vec<Id>, bool),
     /// Delete every backup there, and start again.
     Erase,
+    /// Validate these (fully, if so).
+    Validate(Vec<Id>, bool),
 }
 
 /// What the loop was asked meanwhile (as it waited, or backed up).
@@ -46,7 +62,10 @@ struct Asked {
     now: bool,
     tidy: bool,
     delete: Vec<Id>,
+    delete_unfinished: bool,
     erase: bool,
+    validate: Vec<Id>,
+    validate_full: bool,
 }
 
 impl Asked {
@@ -55,8 +74,15 @@ impl Asked {
         match e {
             Ok(Event::Now) => self.now = true,
             Ok(Event::Tidy) => self.tidy = true,
-            Ok(Event::Delete(ids)) => self.delete.extend(ids),
+            Ok(Event::Delete(ids, unfinished)) => {
+                self.delete.extend(ids);
+                self.delete_unfinished |= unfinished;
+            }
             Ok(Event::Erase) => self.erase = true,
+            Ok(Event::Validate(ids, full)) => {
+                self.validate.extend(ids);
+                self.validate_full |= full;
+            }
             Ok(Event::Settings) | Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return false,
         }
@@ -80,6 +106,56 @@ struct Kept {
     snapshots: u32,
     /// Snapshots forgotten since the last tidy.
     forgotten: u32,
+    /// Each backup's last check, by its id (hex).
+    checks: std::collections::BTreeMap<String, Check>,
+    /// Packs a check found missing or damaged, for the next tidy to repair.
+    repair: Vec<String>,
+    /// Where the rest is of (the last place set up: disconnecting and
+    /// connecting again to the same keeps it; moving elsewhere starts
+    /// afresh).
+    target: Option<Target>,
+}
+
+/// Each of this computer's backups' last check, by id (hex).
+static CHECKS: Mutex<std::collections::BTreeMap<String, Check>> = Mutex::new(std::collections::BTreeMap::new());
+/// Packs to repair at the next tidy.
+static REPAIR: Mutex<Vec<Id>> = Mutex::new(Vec::new());
+
+/// What `checked` found, as said (`full`: Validate's).
+fn check_of(c: &olo_diskbackup::Checked, full: bool) -> Check {
+    Check {
+        time: now(),
+        full,
+        problems: c.problems.clone(),
+        files: c.files.clone(),
+        files_affected: c.files_affected,
+        bytes_read: c.bytes_read,
+        by_checksum: c.by_checksum,
+        sampled: c.sampled,
+        seconds: c.seconds,
+        error: None,
+    }
+}
+
+/// Backup `id`'s check kept (and its bad packs, to repair).
+fn note_check(id: &Id, check: &Check, bad: &[Id]) {
+    if let Ok(mut c) = CHECKS.lock() {
+        c.insert(id.hex(), check.clone());
+    }
+    if !bad.is_empty()
+        && let Ok(mut r) = REPAIR.lock()
+    {
+        for b in bad {
+            if !r.contains(b) {
+                r.push(*b);
+            }
+        }
+    }
+}
+
+/// Packs waiting to be repaired.
+fn to_repair() -> Vec<Id> {
+    REPAIR.lock().map(|r| r.clone()).unwrap_or_default()
 }
 
 fn kept_path() -> std::path::PathBuf {
@@ -96,6 +172,8 @@ struct Lookup {
     reader: olo_diskbackup::TreeReader,
     /// This computer's, oldest first.
     snapshots: Vec<(Id, Snapshot)>,
+    /// This computer's backup that didn't finish.
+    unfinished: Option<Unfinished>,
 }
 
 static LOOKUP: Mutex<Option<Arc<Lookup>>> = Mutex::new(None);
@@ -103,22 +181,38 @@ static LOOKUP: Mutex<Option<Arc<Lookup>>> = Mutex::new(None);
 /// The lookup made again from `o`.
 fn publish(o: &Opened) {
     let host = host();
-    let snapshots = match o.repo.snapshots() {
+    let snapshots: Vec<(Id, Snapshot)> = match o.repo.snapshots() {
         Ok(all) => all.into_iter().filter(|(_, s)| s.host == host).collect(),
         Err(e) => {
             tracing::warn!("diskbackup: snapshots for lookups: {e}");
             return;
         }
     };
-    if let Ok(mut l) = LOOKUP.lock() {
-        *l = Some(Arc::new(Lookup { reader: o.repo.tree_reader(), snapshots }));
+    // The one gone on from next (the furthest), else what an older one
+    // left (found at the start).
+    let unfinished = o.repo.unfinished().unwrap_or_default().into_iter().filter(|(_, s)| s.host == host).max_by_key(|(_, s)| (s.summary.files, s.time));
+    let unfinished = unfinished
+        .map(|(_, s)| Unfinished { time: s.time, files: s.summary.files, bytes: s.summary.bytes, new_bytes: s.summary.new_bytes, sent: s.summary.stored_bytes, seconds: s.summary.seconds })
+        .or_else(|| o.leftover.clone());
+    // (Checks of backups gone, forgotten.)
+    if let Ok(mut c) = CHECKS.lock() {
+        c.retain(|id, _| snapshots.iter().any(|(s, _)| s.hex() == *id));
     }
+    if let Ok(mut l) = LOOKUP.lock() {
+        *l = Some(Arc::new(Lookup { reader: o.repo.tree_reader(), snapshots, unfinished }));
+    }
+}
+
+/// This computer's backup that didn't finish, as last opened.
+fn unfinished() -> Option<Unfinished> {
+    LOOKUP.lock().ok().and_then(|l| l.as_ref().and_then(|l| l.unfinished.clone()))
 }
 
 /// This computer's backups, newest first (as opened: the backup not
 /// opened yet, none).
 fn snapshot_list() -> Reply {
     let lookup = LOOKUP.lock().ok().and_then(|l| l.clone());
+    let checks = CHECKS.lock().map(|c| c.clone()).unwrap_or_default();
     let snapshots = lookup
         .map(|l| {
             l.snapshots
@@ -135,6 +229,7 @@ fn snapshot_list() -> Reply {
                     stored_bytes: s.summary.stored_bytes,
                     seconds: s.summary.seconds,
                     unreadable: s.summary.errors.len() as u64,
+                    check: checks.get(&id.hex()).cloned(),
                 })
                 .collect()
         })
@@ -196,6 +291,10 @@ struct Opened {
     target: Target,
     repo: Repo,
     parent: Option<(Id, Snapshot)>,
+    /// What an older backup that stopped left with nothing kept of its
+    /// own: sent, and in no snapshot (the next goes on from it all the
+    /// same; tidying frees it).
+    leftover: Option<Unfinished>,
 }
 
 pub fn run() -> ExitCode {
@@ -228,11 +327,29 @@ pub fn run() -> ExitCode {
     });
     let k: Kept = std::fs::read_to_string(kept_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     let mut forgotten = k.forgotten;
+    if let Ok(mut c) = CHECKS.lock() {
+        *c = k.checks.clone();
+    }
+    if let Ok(mut r) = REPAIR.lock() {
+        *r = k.repair.iter().filter_map(|h| Id::from_hex(h)).collect();
+    }
     let mut st = State { pid: std::process::id(), last: k.last, last_ok: k.last_ok, tidied: k.tidied, size: k.size, snapshots: k.snapshots, ..State::default() };
+    let mut kept_target = k.target.clone();
     let mut open: Option<Opened> = None;
     let mut asked = Asked::default();
-    let save = |st: &State, forgotten: u32| {
-        let k = Kept { last: st.last.clone(), last_ok: st.last_ok, tidied: st.tidied.clone(), size: st.size, snapshots: st.snapshots, forgotten };
+    let mut looked_for_leftovers = false;
+    let save = |st: &State, forgotten: u32, target: &Option<Target>| {
+        let k = Kept {
+            last: st.last.clone(),
+            last_ok: st.last_ok,
+            tidied: st.tidied.clone(),
+            size: st.size,
+            snapshots: st.snapshots,
+            forgotten,
+            checks: CHECKS.lock().map(|c| c.clone()).unwrap_or_default(),
+            repair: to_repair().iter().map(Id::hex).collect(),
+            target: target.clone(),
+        };
         if let Some(dir) = kept_path().parent() {
             let _ = std::fs::create_dir_all(dir);
         }
@@ -251,17 +368,45 @@ pub fn run() -> ExitCode {
             priority = settings.priority;
         }
         st.target = settings.target.describe();
+        // Moved elsewhere: what's said of the last place (its last backup,
+        // its size, its checks) isn't of this one.
+        if settings.target != Target::None && kept_target.as_ref() != Some(&settings.target) {
+            if kept_target.is_some() {
+                tracing::info!("diskbackup: backing up to {} now: starting afresh there", st.target);
+                (st.last, st.last_ok, st.size, st.snapshots, st.tidied, st.unfinished) = (None, None, None, 0, None, None);
+                forgotten = 0;
+                looked_for_leftovers = true;
+                if let Ok(mut c) = CHECKS.lock() {
+                    c.clear();
+                }
+                if let Ok(mut r) = REPAIR.lock() {
+                    r.clear();
+                }
+            }
+            kept_target = Some(settings.target.clone());
+            save(&st, forgotten, &kept_target);
+        }
+        // Not backing up anywhere (disconnected): nothing of it kept open.
+        if settings.target == Target::None && open.is_some() {
+            open = None;
+            if let Ok(mut l) = LOOKUP.lock() {
+                *l = None;
+            }
+        }
         // Deleting, and starting fresh: asked, whatever the schedule.
-        if settings.target != Target::None && (asked.erase || !asked.delete.is_empty()) {
+        if settings.target != Target::None && (asked.erase || !asked.delete.is_empty() || asked.delete_unfinished) {
             cancel.store(false, Relaxed);
             if std::mem::take(&mut asked.erase) {
                 asked.delete.clear();
+                asked.delete_unfinished = false;
                 erase_all(&settings, &mut st, &mut open, &limits, &cancel);
             } else {
                 let ids = std::mem::take(&mut asked.delete);
-                delete(&settings, &mut st, &mut open, &limits, &cancel, &ids, &mut forgotten);
+                let unfinished = std::mem::take(&mut asked.delete_unfinished);
+                delete(&settings, &mut st, &mut open, &limits, &cancel, &ids, unfinished, &mut forgotten);
             }
-            save(&st, forgotten);
+            st.unfinished = unfinished();
+            save(&st, forgotten, &kept_target);
             continue;
         }
         if let Err(why) = ready(&settings) {
@@ -282,13 +427,44 @@ pub fn run() -> ExitCode {
         {
             tracing::info!("diskbackup: can't open the backup yet: {e}");
         }
+        // Once: what an older backup that didn't finish left with nothing
+        // kept of its own (since the last tidy).
+        if !looked_for_leftovers && let Some(o) = open.as_mut() {
+            looked_for_leftovers = true;
+            let stopped = st.last.as_ref().is_some_and(|l| l.error.is_some() && st.tidied.as_ref().is_none_or(|t| t.time < l.time));
+            if stopped && unfinished().is_none() {
+                match olo_diskbackup::unused(&o.repo, &cancel) {
+                    Ok(sent) if sent > 0 => {
+                        let time = st.last.as_ref().map_or(0, |l| l.time);
+                        tracing::info!("diskbackup: a backup that stopped left {sent} bytes, in no snapshot");
+                        o.leftover = Some(Unfinished { time, new_bytes: sent, sent, ..Default::default() });
+                        publish(o);
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::info!("diskbackup: what a stopped backup left: {e}"),
+                }
+            }
+        }
+        st.unfinished = unfinished();
+        // Validate: chosen backups read back; what's damaged repaired.
+        if !asked.validate.is_empty() {
+            cancel.store(false, Relaxed);
+            let ids = std::mem::take(&mut asked.validate);
+            let full = std::mem::take(&mut asked.validate_full);
+            validate(&settings, &mut st, &mut open, &limits, &cancel, &ids, full);
+            if !to_repair().is_empty() {
+                asked.tidy = true;
+            }
+            save(&st, forgotten, &kept_target);
+            continue;
+        }
         if std::mem::take(&mut asked.tidy) {
             cancel.store(false, Relaxed);
             match opened(&settings, &mut open, &limits) {
                 Ok(_) => tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten),
                 Err(e) => tracing::warn!("diskbackup: can't tidy: {e}"),
             }
-            save(&st, forgotten);
+            save(&st, forgotten, &kept_target);
             continue;
         }
         let now = now();
@@ -317,11 +493,13 @@ pub fn run() -> ExitCode {
         }
         asked.now = false;
         cancel.store(false, Relaxed);
-        if once(&settings, &mut st, &mut open, &limits, &cancel, &mut forgotten) && tidy_due(st.tidied.as_ref(), open.as_ref().is_some_and(|o| o.repo.damaged_index_files() > 0)) {
+        if once(&settings, &mut st, &mut open, &limits, &cancel, &mut forgotten)
+            && (tidy_due(st.tidied.as_ref(), open.as_ref().is_some_and(|o| o.repo.damaged_index_files() > 0)) || !to_repair().is_empty())
+        {
             cancel.store(false, Relaxed);
             tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten);
         }
-        save(&st, forgotten);
+        save(&st, forgotten, &kept_target);
     }
     ExitCode::SUCCESS
 }
@@ -380,9 +558,12 @@ fn reporting<T>(st: &mut State, doing: Doing, progress: &Progress, f: impl FnOnc
                     p.total_files = progress.total_files.load(Relaxed);
                     p.total_bytes = progress.total_bytes.load(Relaxed);
                     p.estimated = progress.estimated.load(Relaxed);
+                    p.resuming = progress.resuming.load(Relaxed);
                     p.stage = match progress.stage.load(Relaxed) {
                         olo_diskbackup::backup::COUNTING => Stage::Counting,
                         olo_diskbackup::backup::SAVING => Stage::Saving,
+                        olo_diskbackup::backup::CHECKING => Stage::Checking,
+                        olo_diskbackup::backup::STOPPING => Stage::Stopping,
                         _ => Stage::Reading,
                     };
                 }
@@ -402,13 +583,18 @@ fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: 
     let progress = Progress::default();
     let result = reporting(st, Doing::BackingUp, &progress, || back_up(settings, open, limits, cancel, &progress));
     if result.is_err() {
-        // (Opened again next time: the index as the store has it.)
+        // What it got through, said (kept as an unfinished snapshot); then
+        // opened again next time: the index as the store has it.
+        if let Some(o) = open.as_ref() {
+            publish(o);
+        }
         *open = None;
     }
+    st.unfinished = unfinished();
     let time = now();
     let ok = result.is_ok();
     st.last = Some(match result {
-        Ok((snapshots, summary, gone)) => {
+        Ok((snapshots, summary, gone, check)) => {
             st.snapshots = snapshots;
             st.last_ok = Some(time);
             st.size = st.size.map(|s| s + summary.stored_bytes);
@@ -424,6 +610,7 @@ fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: 
                 uploaded: summary.stored_bytes,
                 seconds: summary.seconds,
                 unreadable: summary.errors.len() as u64,
+                check,
             }
         }
         Err(e) => {
@@ -466,10 +653,23 @@ fn tidy(settings: &Settings, st: &mut State, open: &mut Option<Opened>, cancel: 
             o.repo.forget(f)?;
         }
         *forgotten += forget.len() as u32;
-        prune(&mut o.repo, cancel, &progress).map(|p| (p, all.len() - forget.len()))
+        // (Packs a check found missing or damaged: repaired.)
+        let damaged: std::collections::HashSet<Id> = to_repair().into_iter().collect();
+        let p = if damaged.is_empty() { prune(&mut o.repo, cancel, &progress) } else { olo_diskbackup::repair(&mut o.repo, &damaged, cancel, &progress) }?;
+        if !damaged.is_empty() {
+            tracing::info!("diskbackup: {} packs repaired (what's whole in them kept; the next backup sends the rest again)", damaged.len());
+            if let Ok(mut r) = REPAIR.lock() {
+                r.retain(|id| !damaged.contains(id));
+            }
+        }
+        Ok::<_, olo_diskbackup::Error>((p, all.len() - forget.len()))
     });
     drop(lock);
+    if result.is_ok() {
+        o.leftover = None;
+    }
     publish(o);
+    st.unfinished = unfinished();
     st.tidied = Some(match result {
         Ok((p, snapshots)) => {
             st.snapshots = snapshots as u32;
@@ -508,7 +708,7 @@ fn opened<'a>(settings: &Settings, open: &'a mut Option<Opened>, limits: &Limits
         }
         let host = host();
         let parent = repo.snapshots().map_err(|e| e.to_string())?.into_iter().rfind(|(_, s)| s.host == host);
-        *open = Some(Opened { target: settings.target.clone(), repo, parent });
+        *open = Some(Opened { target: settings.target.clone(), repo, parent, leftover: None });
         publish(open.as_ref().expect("opened"));
     }
     Ok(open.as_mut().expect("opened"))
@@ -516,7 +716,7 @@ fn opened<'a>(settings: &Settings, open: &'a mut Option<Opened>, limits: &Limits
 
 /// Open and back up; how many snapshots there are then, what this one did,
 /// and how many were forgotten after it.
-fn back_up(settings: &Settings, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, progress: &Progress) -> Result<(u32, olo_diskbackup::Summary, u32), String> {
+fn back_up(settings: &Settings, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, progress: &Progress) -> Result<(u32, olo_diskbackup::Summary, u32, Option<Check>), String> {
     let host = host();
     let o = opened(settings, open, limits)?;
     // Held while it backs up (and forgets): nobody tidies meanwhile.
@@ -548,7 +748,33 @@ fn back_up(settings: &Settings, open: &mut Option<Opened>, limits: &Limits, canc
     let host = opts.host.clone();
     let (id, snapshot) = backup(&mut o.repo, &opts, parent, cancel, progress).map_err(|e| e.to_string())?;
     let summary = snapshot.summary.clone();
+    // Validated fast, now it's made: everything it needs in the store, its
+    // lists read back from there, checksums compared, a sample read back.
+    // (Stopped meanwhile: not checked; it's made.)
+    progress.stage.store(olo_diskbackup::backup::CHECKING, Relaxed);
+    progress.total_files.store(0, Relaxed);
+    progress.total_bytes.store(0, Relaxed);
+    progress.bytes.store(0, Relaxed);
+    progress.files.store(0, Relaxed);
+    let check = match olo_diskbackup::check(&o.repo, &snapshot, false, cancel, progress) {
+        Ok(c) => {
+            if !c.problems.is_empty() {
+                tracing::warn!("diskbackup: the backup just made isn't whole: {:?}", c.problems);
+            }
+            let check = check_of(&c, false);
+            note_check(&id, &check, &c.bad_packs);
+            Some(check)
+        }
+        Err(olo_diskbackup::Error::Cancelled) => None,
+        Err(e) => {
+            let check = Check { time: now(), error: Some(e.to_string()), ..Default::default() };
+            note_check(&id, &check, &[]);
+            Some(check)
+        }
+    };
     o.parent = Some((id, snapshot));
+    // (What an older one left is this one's now, or tidying's.)
+    o.leftover = None;
     // Past keeping: this computer's snapshots the settings don't keep
     // (another computer's are its own to keep), forgotten; the space only
     // they used is freed when it's next tidied.
@@ -560,7 +786,7 @@ fn back_up(settings: &Settings, open: &mut Option<Opened>, limits: &Limits, canc
     }
     drop(lock);
     publish(o);
-    Ok(((all.len() - forget.len()) as u32, summary, forget.len() as u32))
+    Ok(((all.len() - forget.len()) as u32, summary, forget.len() as u32, check))
 }
 
 /// This computer's name (its snapshots are told apart by it).
@@ -608,9 +834,63 @@ fn set_priority(p: Priority) -> bool {
     ok
 }
 
-/// Delete backups `ids` (asked for in the window), and free what only
-/// they took (a tidy, as the daily one).
-fn delete(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, ids: &[Id], forgotten: &mut u32) {
+/// Validate: backups `ids` (this computer's) checked fast, or `full`ly
+/// (read back whole), one after another, said as it goes; each one's
+/// result kept (and its bad packs, for the tidy after to repair).
+fn validate(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, ids: &[Id], full: bool) {
+    let progress = Progress::default();
+    let mut newest = None;
+    let result = reporting(st, Doing::Validating, &progress, || -> Result<usize, String> {
+        let o = opened(settings, open, limits)?;
+        // (Shared, as a backup's: nobody tidies meanwhile.)
+        let _lock = target::lock_to_read(&o.repo, cancel, |_| {}).map_err(|e| e.to_string())?;
+        o.repo.refresh().map_err(|e| e.to_string())?;
+        let host = host();
+        let all = o.repo.snapshots().map_err(|e| e.to_string())?;
+        let mut done = 0;
+        for (id, s) in all.iter().filter(|(id, s)| s.host == host && ids.contains(id)) {
+            match olo_diskbackup::check(&o.repo, s, full, cancel, &progress) {
+                Ok(c) => {
+                    tracing::info!("diskbackup: validated {} ({}): {} read back, {} by checksum, {:?}", id.hex(), if full { "fully" } else { "fast" }, c.bytes_read, c.by_checksum, c.problems);
+                    let check = check_of(&c, full);
+                    note_check(id, &check, &c.bad_packs);
+                    // (The newest: the header says it too.)
+                    if o.parent.as_ref().is_some_and(|(p, _)| p == id) {
+                        newest = Some(check);
+                    }
+                    done += 1;
+                }
+                Err(olo_diskbackup::Error::Cancelled) => return Err(olo_protocol::diskbackup::STOPPED.into()),
+                Err(e) => {
+                    note_check(id, &Check { time: now(), full, error: Some(e.to_string()), ..Default::default() }, &[]);
+                    return Err(e.to_string());
+                }
+            }
+            progress.bytes.store(0, Relaxed);
+            progress.files.store(0, Relaxed);
+        }
+        Ok(done)
+    });
+    if let (Some(c), Some(l)) = (newest, st.last.as_mut().filter(|l| l.error.is_none())) {
+        l.check = Some(c);
+    }
+    match result {
+        Ok(n) => tracing::info!("diskbackup: {n} backups validated"),
+        Err(e) => {
+            tracing::warn!("diskbackup: validating: {e}");
+            *open = None;
+        }
+    }
+    st.doing = Doing::Idle;
+    st.progress = None;
+    let _ = st.save();
+}
+
+/// Delete backups `ids` (asked for in the window), and the unfinished one
+/// if `unfinished`, and free what only they took (a tidy, as the daily
+/// one).
+#[allow(clippy::too_many_arguments)]
+fn delete(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, ids: &[Id], unfinished: bool, forgotten: &mut u32) {
     let o = match opened(settings, open, limits) {
         Ok(o) => o,
         Err(e) => {
@@ -626,6 +906,18 @@ fn delete(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits
                     Ok(()) => gone += 1,
                     Err(e) => tracing::warn!("diskbackup: deleting backup {}: {e}", id.hex()),
                 }
+            }
+            // The unfinished one: this computer's (all of them), and what an
+            // older one left (tidying frees it).
+            if unfinished {
+                let host = host();
+                for (id, _) in o.repo.unfinished().unwrap_or_default().into_iter().filter(|(_, s)| s.host == host) {
+                    match o.repo.forget_unfinished(&id) {
+                        Ok(()) => gone += 1,
+                        Err(e) => tracing::warn!("diskbackup: deleting the unfinished backup {}: {e}", id.hex()),
+                    }
+                }
+                o.leftover = None;
             }
             tracing::info!("diskbackup: {gone} backups deleted, as asked");
             // (The next backup goes by the newest left, not one gone.)
@@ -686,6 +978,7 @@ fn erase_all(settings: &Settings, st: &mut State, open: &mut Option<Opened>, lim
             st.last = None;
             st.last_ok = None;
             st.tidied = None;
+            st.unfinished = None;
         }
         Err(e) => {
             tracing::warn!("diskbackup: erasing: {e}");
@@ -727,9 +1020,14 @@ fn listen(tx: mpsc::Sender<Event>, cancel: Arc<AtomicBool>) {
                 Ok(Request::Marks { dir }) => marks(&dir),
                 Ok(Request::Versions { path }) => versions(&path),
                 Ok(Request::Snapshots) => snapshot_list(),
-                Ok(Request::Delete { snapshots }) => {
+                Ok(Request::Delete { snapshots, unfinished }) => {
                     let ids: Vec<Id> = snapshots.iter().filter_map(|h| Id::from_hex(h)).collect();
-                    let _ = tx.send(Event::Delete(ids));
+                    let _ = tx.send(Event::Delete(ids, unfinished));
+                    Reply::Ok
+                }
+                Ok(Request::Validate { snapshots, full }) => {
+                    let ids: Vec<Id> = snapshots.iter().filter_map(|h| Id::from_hex(h)).collect();
+                    let _ = tx.send(Event::Validate(ids, full));
                     Reply::Ok
                 }
                 Ok(Request::EraseAll) => {

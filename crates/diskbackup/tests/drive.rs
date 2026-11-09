@@ -73,6 +73,9 @@ fn sign_in_then_back_up_restore_and_tidy() {
     let limits = (Arc::new(olo_diskbackup::Limit::default()), Arc::new(olo_diskbackup::Limit::default()));
     let drive = Drive::new(client.clone(), signed.refresh_token.clone(), signed.email.clone(), folder.clone(), limits.0.clone(), limits.1.clone(), endpoints.clone());
     assert_eq!(drive.describe(), "Google Drive (me@example.com)");
+    // Whose Drive, and its space (Destination's details).
+    let about = drive.about().unwrap();
+    assert_eq!((about.email.as_str(), about.limit), ("me@example.com", Some(16_106_127_360)));
     let store: Arc<dyn Store> = Arc::new(drive);
 
     // The store's own: put, replace, get, a range, list by folder, delete.
@@ -105,6 +108,22 @@ fn sign_in_then_back_up_restore_and_tidy() {
     let lock = repo.lock(false).unwrap();
     let (_, s1) = backup(&mut repo, &opts, None, &cancel, &progress).unwrap();
     drop(lock);
+    // Checked fast: Google's checksums show every pack arrived as sent;
+    // one changed in Drive since is found by its checksum, fetched, and
+    // found damaged.
+    let c = olo_diskbackup::check(&repo, &s1, false, &cancel, &progress).unwrap();
+    assert!(c.problems.is_empty() && c.by_checksum >= 2 && c.sampled == 1, "{c:?}");
+    let (hurt, was) = {
+        let mut g = google.lock().unwrap();
+        let (id, f) = g.files.iter_mut().filter(|(_, f)| f.0.starts_with("data/")).max_by_key(|(_, f)| f.2.len()).unwrap();
+        let was = f.2.clone();
+        f.2[100] ^= 0x55;
+        (id.clone(), was)
+    };
+    let c = olo_diskbackup::check(&repo, &s1, false, &cancel, &progress).unwrap();
+    assert_eq!(c.bad_packs.len(), 1, "{c:?}");
+    assert!(c.problems.iter().any(|p| p.contains("damaged")), "{c:?}");
+    google.lock().unwrap().files.get_mut(&hurt).unwrap().2 = was;
     // Opened again (another computer, say): restored whole.
     let repo2 = Repo::open(store.clone(), key.clone(), Some(base.join("cache2"))).unwrap();
     let out = base.join("out");

@@ -82,7 +82,69 @@ fn message(body: &str) -> String {
     v.pointer("/error/message").and_then(|m| m.as_str()).map(str::to_owned).unwrap_or_else(|| body.chars().take(200).collect())
 }
 
+/// What Google says of a Drive: whose it is, and its space (bytes used,
+/// and its limit: none for unlimited).
+#[derive(Debug, Clone, PartialEq)]
+pub struct About {
+    pub email: String,
+    pub used: u64,
+    pub limit: Option<u64>,
+}
+
 impl Drive {
+    /// Whose Drive it is and its space, as Google says (so the sign-in is
+    /// known to work).
+    pub fn about(&self) -> io::Result<About> {
+        let url = format!("{}/drive/v3/about?fields=user(emailAddress),storageQuota(limit,usage)", self.endpoints.api);
+        let v = self.json(self.call(|http, token| http.get(&url).header("Authorization", format!("Bearer {token}")).call())?)?;
+        // (Google gives its numbers as strings.)
+        let number = |at: &str| v.pointer(at).and_then(|n| n.as_str()).and_then(|n| n.parse().ok());
+        Ok(About {
+            email: v.pointer("/user/emailAddress").and_then(|e| e.as_str()).unwrap_or_default().to_owned(),
+            used: number("/storageQuota/usage").unwrap_or(0),
+            limit: number("/storageQuota/limit"),
+        })
+    }
+
+    /// The files of folder `dir` (as `Store::list`), each with its size and,
+    /// if `md5`, the checksum Google keeps of it.
+    fn listing(&self, dir: &str, md5: bool) -> io::Result<Vec<(String, u64, Option<String>)>> {
+        let prefix = if dir.is_empty() { String::new() } else { format!("{}/", dir.trim_end_matches('/')) };
+        // (Drive's `contains` on a name matches its start.)
+        let mut q = format!("'{}' in parents and trashed = false", self.folder);
+        if !prefix.is_empty() {
+            q.push_str(&format!(" and name contains '{prefix}'"));
+        }
+        let mut out = Vec::new();
+        let mut page: Option<String> = None;
+        loop {
+            let mut url =
+                format!("{}/drive/v3/files?q={}&fields=nextPageToken,files(id,name,size{})&pageSize=1000&spaces=drive", self.endpoints.api, oauth::escape(&q), if md5 { ",md5Checksum" } else { "" });
+            if let Some(p) = &page {
+                url.push_str(&format!("&pageToken={}", oauth::escape(p)));
+            }
+            let v = self.json(self.call(|http, token| http.get(&url).header("Authorization", format!("Bearer {token}")).call())?)?;
+            if let (Some(files), Ok(mut ids)) = (v.get("files").and_then(|f| f.as_array()), self.ids.lock()) {
+                for f in files {
+                    let (Some(name), Some(id)) = (f.get("name").and_then(|n| n.as_str()), f.get("id").and_then(|i| i.as_str())) else { continue };
+                    ids.insert(name.to_owned(), id.to_owned());
+                    if name.starts_with(&prefix) {
+                        let size = f.get("size").and_then(|s| s.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0);
+                        let sum = f.get("md5Checksum").and_then(|s| s.as_str()).map(str::to_owned);
+                        out.push((name.to_owned(), size, sum));
+                    }
+                }
+            }
+            match v.get("nextPageToken").and_then(|p| p.as_str()) {
+                Some(p) => page = Some(p.to_owned()),
+                None => break,
+            }
+        }
+        out.sort();
+        out.dedup_by(|a, b| a.0 == b.0);
+        Ok(out)
+    }
+
     /// The store in folder `folder` (its id) of `account`'s Drive.
     pub fn new(client: Client, refresh: String, account: String, folder: String, up: Arc<Limit>, down: Arc<Limit>, endpoints: Endpoints) -> Drive {
         Drive { http: oauth::agent(), endpoints, client, refresh, account, folder, token: Mutex::new(None), ids: Mutex::new(HashMap::new()), up, down }
@@ -332,38 +394,15 @@ impl Store for Drive {
     }
 
     fn list(&self, dir: &str) -> io::Result<Vec<(String, u64)>> {
-        let prefix = if dir.is_empty() { String::new() } else { format!("{}/", dir.trim_end_matches('/')) };
-        // (Drive's `contains` on a name matches its start.)
-        let mut q = format!("'{}' in parents and trashed = false", self.folder);
-        if !prefix.is_empty() {
-            q.push_str(&format!(" and name contains '{prefix}'"));
-        }
-        let mut out = Vec::new();
-        let mut page: Option<String> = None;
-        loop {
-            let mut url = format!("{}/drive/v3/files?q={}&fields=nextPageToken,files(id,name,size)&pageSize=1000&spaces=drive", self.endpoints.api, oauth::escape(&q));
-            if let Some(p) = &page {
-                url.push_str(&format!("&pageToken={}", oauth::escape(p)));
-            }
-            let v = self.json(self.call(|http, token| http.get(&url).header("Authorization", format!("Bearer {token}")).call())?)?;
-            if let (Some(files), Ok(mut ids)) = (v.get("files").and_then(|f| f.as_array()), self.ids.lock()) {
-                for f in files {
-                    let (Some(name), Some(id)) = (f.get("name").and_then(|n| n.as_str()), f.get("id").and_then(|i| i.as_str())) else { continue };
-                    ids.insert(name.to_owned(), id.to_owned());
-                    if name.starts_with(&prefix) {
-                        let size = f.get("size").and_then(|s| s.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0);
-                        out.push((name.to_owned(), size));
-                    }
-                }
-            }
-            match v.get("nextPageToken").and_then(|p| p.as_str()) {
-                Some(p) => page = Some(p.to_owned()),
-                None => break,
-            }
-        }
-        out.sort();
-        out.dedup_by(|a, b| a.0 == b.0);
-        Ok(out)
+        Ok(self.listing(dir, false)?.into_iter().map(|(n, size, _)| (n, size)).collect())
+    }
+
+    fn keeps_checksums(&self) -> bool {
+        true
+    }
+
+    fn checksums(&self, dir: &str) -> io::Result<Option<HashMap<String, String>>> {
+        Ok(Some(self.listing(dir, true)?.into_iter().filter_map(|(n, _, sum)| sum.map(|s| (n, s.to_ascii_lowercase()))).collect()))
     }
 
     fn delete(&self, name: &str) -> io::Result<()> {

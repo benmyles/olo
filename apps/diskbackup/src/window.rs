@@ -12,9 +12,18 @@
 //! Under that, the settings by what they're about, in tabs: Schedule,
 //! Files, Backups (each one kept: delete some, or erase them all),
 //! Speed & Resources, Destination.
+//!
+//! A backup that didn't finish is said (what it got through, that the next
+//! goes on from it) and listed first in Backups, to delete if it isn't
+//! wanted; each backup's check is listed too (after it was made, or
+//! Validate's, which reads one back whole), and damage to the latest is
+//! said at the top. Destination says what DiskBackup is connected to (whose
+//! Google Drive, its space; a folder's disk), with Disconnect (Ben,
+//! 2026-11-08: "when i'm connected it should show the details of that
+//! connection and a button to disconnect it").
 
 use olo_diskbackup::exclude::GROUPS;
-use olo_protocol::diskbackup::{Doing, Priority, Progress, Settings, SnapshotInfo, Stage, State, Target};
+use olo_protocol::diskbackup::{Check, Doing, Priority, Progress, Settings, SnapshotInfo, Stage, State, Target};
 use olo_ui::{
     Menu, MenuBar,
     gpui::{
@@ -26,11 +35,18 @@ use olo_ui::{
 
 use crate::{
     app::{Disk, clock, count, plural, size, speed_label},
-    target,
+    target::{self, Where},
 };
 
 /// The tabs, in order.
 const TABS: [&str; 5] = ["Schedule", "Files", "Backups", "Speed & Resources", "Destination"];
+const DESTINATION: usize = 4;
+
+/// Busy with something that can be stopped (a backup, a tidy, erasing,
+/// validating).
+fn busy_with(st: &State) -> bool {
+    matches!(st.doing, Doing::BackingUp | Doing::Pruning | Doing::Erasing | Doing::Validating)
+}
 
 /// What a backup takes "every": minutes, and what it's called.
 const EVERY: &[(u32, &str)] = &[(15, "15 minutes"), (30, "30 minutes"), (60, "hour"), (120, "2 hours"), (360, "6 hours"), (720, "12 hours"), (1440, "day")];
@@ -74,6 +90,10 @@ impl MainWindow {
             to.update(cx, |d, cx| d.change(|s| s.excludes = text.split([',', '\n']).map(|p| p.trim().to_owned()).filter(|p| !p.is_empty()).collect(), cx));
         });
         let observe = cx.observe(&app, |w: &mut MainWindow, app, cx| {
+            // (On Destination: where backups go, looked at once it changes.)
+            if w.tab == DESTINATION {
+                app.update(cx, |d, _| d.look_at_target(false));
+            }
             // (Put back by Undo: the field says so. What's being typed
             // stays as typed while it means the same.)
             let now = app.read(cx).settings.excludes.clone();
@@ -196,8 +216,70 @@ pub fn keep_words(k: &olo_protocol::diskbackup::Keep) -> String {
 }
 
 /// Folder `p` (as the settings keep it) as the window says it.
+/// `button`, with a tip saying more of what it does.
+fn tipped(id: &'static str, tip: &'static str, button: Button) -> gpui::AnyElement {
+    div().id(id).tooltip(widgets::tooltip(tip)).child(button).into_any_element()
+}
+
+/// `t` with its first letter a capital.
+fn capital(t: &str) -> String {
+    let mut c = t.chars();
+    c.next().map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
+}
+
 fn folder_name(p: &str) -> String {
     if p == "~" { "Your home folder".into() } else { p.to_owned() }
+}
+
+/// What a backup that didn't finish got through, in a line.
+pub fn unfinished_words(u: &olo_protocol::diskbackup::Unfinished) -> String {
+    if u.files == 0 {
+        format!("Unfinished: {} sent before it stopped; the next backup goes on from there.", size(u.sent))
+    } else {
+        format!("Unfinished: {} ({}) done and {} sent; the next backup goes on from there.", plural(u.files, "file"), size(u.bytes), size(u.sent))
+    }
+}
+
+/// A backup's check, in a list's cell.
+pub fn check_cell(c: Option<&Check>) -> &'static str {
+    match c {
+        None => "—",
+        Some(c) if c.error.is_some() => "Not checked",
+        Some(c) if !c.problems.is_empty() => "✗ Damaged",
+        Some(c) if c.full => "✓ Full",
+        Some(_) => "✓ Fast",
+    }
+}
+
+/// A backup's check, said in a line.
+pub fn check_words(c: Option<&Check>) -> String {
+    let Some(c) = c else { return "Not checked yet: Validate reads it back and checks it’s whole.".into() };
+    if let Some(e) = &c.error {
+        return format!("Couldn’t be checked {}: {e}.", ago(c.time));
+    }
+    if !c.problems.is_empty() {
+        let mut t = format!("Damaged (found {}): {}.", ago(c.time), c.problems.join("; "));
+        if !c.files.is_empty() {
+            let more = c.files_affected.saturating_sub(c.files.len() as u64);
+            let home = target::home().display().to_string();
+            let named: Vec<String> = c.files.iter().map(|f| f.strip_prefix(&home).map_or(f.clone(), |r| format!("~{r}"))).collect();
+            t.push_str(&format!(" Can’t come back as it was: {}{}.", named.join(", "), if more > 0 { format!(" and {more} more") } else { String::new() }));
+        }
+        t.push_str(" The next backup sends again what it can.");
+        return t;
+    }
+    if c.full {
+        return format!("Validated fully {}: all it needs ({}) read back, and whole.", ago(c.time), size(c.bytes_read));
+    }
+    let mut how = Vec::new();
+    if c.by_checksum > 0 {
+        how.push(format!("{} as sent, by {} checksums", plural(c.by_checksum, "pack"), if c.by_checksum == 1 { "its" } else { "their" }));
+    }
+    if c.sampled > 0 {
+        how.push(format!("{} read back whole", plural(c.sampled, "sample")));
+    }
+    let how = if how.is_empty() { String::new() } else { format!(" ({})", how.join("; ")) };
+    format!("Validated {}: everything it needs is there{how}. Validate Fully reads it all back.", ago(c.time))
 }
 
 // ---- the header: whether your files are safe -----------------------------
@@ -213,8 +295,11 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
         Doing::BackingUp => {
             let title = match progress.stage {
                 Stage::Counting => "Getting ready: counting what to back up",
+                Stage::Reading if progress.resuming => "Resuming the backup",
                 Stage::Reading => "Backing up",
                 Stage::Saving => "Finishing the backup",
+                Stage::Checking => return ("Checking the backup".into(), format!("Everything it needs looked for, in {}.", s.target.describe()), false),
+                Stage::Stopping => return ("Stopping the backup".into(), "Keeping what it’s done so far, so the next goes on from there.".into(), false),
             };
             // (Reading: the file it's at, under the title; where it goes
             // is in Destination.)
@@ -231,6 +316,7 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
         Doing::Pruning => return ("Tidying old backups".into(), format!("Letting go of backups past keeping, and freeing the space only they took. {to}."), false),
         Doing::Restoring => return ("Restoring".into(), to, false),
         Doing::Erasing => return ("Erasing every backup".into(), format!("{to}. The next backup starts afresh."), false),
+        Doing::Validating => return ("Validating backups".into(), format!("Every byte read back and checked, from {}.", s.target.describe()), false),
         Doing::Waiting { why } => {
             let mut w = why.clone();
             if let Some(c) = w.get(..1) {
@@ -263,7 +349,7 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
 /// Something to see to, in a line: a small mark, what's wrong, and the
 /// button that sees to it, on the banners' tint (a `Banner` is for news;
 /// this is a reminder).
-fn notice(text: &'static str, button: Button) -> impl IntoElement {
+fn notice(text: impl Into<SharedString>, button: Button) -> impl IntoElement {
     const MARK: f32 = 16.0;
     let back = canvas(|_, _, _| {}, |b, _, window, cx| widgets::banner_back(window, b, Some(Tone::Failure), &theme::palette(cx))).absolute().inset_0();
     let mark = canvas(|_, _, _| {}, |b, _, window, cx| widgets::verdict_mark(window, b, Tone::Failure, MARK, &theme::palette(cx))).w(px(MARK)).h(px(MARK)).flex_shrink_0();
@@ -277,7 +363,7 @@ fn notice(text: &'static str, button: Button) -> impl IntoElement {
         .py(px(m::TIGHT + 2.0))
         .child(back)
         .child(mark)
-        .child(div().flex_1().min_w_0().child(StringView::new(text).wrap(true)))
+        .child(div().flex_1().min_w_0().child(StringView::new(text.into()).wrap(true)))
         .child(button)
 }
 
@@ -300,7 +386,7 @@ impl Render for MainWindow {
         let d = self.app.read(cx);
         let (s, st) = (d.settings.clone(), d.state.clone());
         let set_up = s.target != Target::None;
-        let running = matches!(st.doing, Doing::BackingUp | Doing::Pruning | Doing::Erasing);
+        let running = busy_with(&st);
         let (note, busy, edit) = (d.note.clone(), d.busy, d.edit_menu());
         let app = self.app.clone();
         let bar_app = self.app.clone();
@@ -343,12 +429,21 @@ impl Render for MainWindow {
                     Button::new("Keep Key in Passwords").enabled(!busy).on_click(move |_, cx| keep.update(cx, |d, cx| d.command("keep-key", cx))),
                 ));
             }
+            // The latest backup found damaged when checked (not while one
+            // runs: that's what sends again what's lost).
+            if !running && let Some(c) = st.last.as_ref().and_then(|l| l.check.as_ref()).filter(|c| !c.problems.is_empty()) {
+                let again = app.clone();
+                body = body.child(notice(
+                    format!("The last backup isn’t whole: {}. The next backup sends again what it can.", c.problems.join("; ")),
+                    Button::new("Back Up Now").id("damage-back-up").enabled(!running).on_click(move |_, cx| again.update(cx, |d, cx| d.command("back-up-now", cx))),
+                ));
+            }
             let items: Vec<gpui::AnyElement> = match self.tab {
                 0 => self.schedule(&s, cx),
                 1 => self.files(&s, &st, cx),
                 2 => self.backups(&s, &st, cx),
                 3 => self.speed(&s, cx),
-                _ => self.destination(&s, cx),
+                _ => self.destination(&s, &st, cx),
             };
             let me = cx.entity();
             let tabs: Vec<SharedString> = TABS.into_iter().map(SharedString::from).collect();
@@ -361,6 +456,10 @@ impl Render for MainWindow {
                         .on_select(move |i, _, cx| {
                             me.update(cx, |w, cx| {
                                 w.tab = i;
+                                // (Looked at again each time it's chosen.)
+                                if i == DESTINATION {
+                                    w.app.update(cx, |d, _| d.look_at_target(true));
+                                }
                                 cx.notify();
                             })
                         })
@@ -427,7 +526,7 @@ impl MainWindow {
                         "diskbackup",
                         "Google Drive",
                         "Your Google Drive keeps them anywhere: sign in once, or let an agent set it up.",
-                        Button::new("Set Up Google Drive…").enabled(!busy).on_click(self.command("google-drive")),
+                        Button::new("Connect Google Drive…").enabled(!busy).on_click(self.command("google-drive")),
                     ))),
             )
             .child(dim("Your home folder is backed up, every hour, leaving out what can be downloaded or built again. Change any of it once it’s set up."))
@@ -437,11 +536,12 @@ impl MainWindow {
     fn header(&self, s: &Settings, st: &State, cx: &mut Context<Self>) -> gpui::Div {
         let p = theme::palette(cx);
         let (title, detail, bad) = headline(st, s);
-        let running = matches!(st.doing, Doing::BackingUp | Doing::Pruning | Doing::Erasing);
+        let running = busy_with(st);
         let mut buttons = div().flex().flex_row().gap(px(m::SPACING)).flex_shrink_0();
         buttons = buttons.child(Button::new("Restore…").on_click(self.command("restore")));
+        let stopping = st.progress.as_ref().is_some_and(|p| p.stage == Stage::Stopping);
         buttons = buttons.child(if running {
-            Button::new("Stop").on_click(self.command("stop"))
+            Button::new("Stop").enabled(!stopping).on_click(self.command("stop"))
         } else {
             Button::new("Back Up Now").default(true).enabled(st.pid != 0).on_click(self.command("back-up-now"))
         });
@@ -463,7 +563,18 @@ impl MainWindow {
             if l.unreadable > 0 {
                 said.push_str(&format!(" {} couldn’t be read.", plural(l.unreadable, "file")));
             }
+            match &l.check {
+                Some(c) if c.whole() => said.push_str(" Validated: all there."),
+                Some(Check { error: Some(e), .. }) => said.push_str(&format!(" Not checked ({e}).")),
+                _ => {}
+            }
             words = words.child(StringView::new(said).wrap(true).dim(true));
+        }
+        // What a backup that didn't finish got through.
+        if st.doing == Doing::Idle
+            && let Some(u) = &st.unfinished
+        {
+            words = words.child(StringView::new(unfinished_words(u)).wrap(true).dim(true));
         }
         let row = div().flex().flex_row().items_start().gap(px(m::SPACING * 2.0)).child(picture("diskbackup", ICON)).child(words).child(buttons);
         div().flex().flex_col().gap(px(m::TIGHT)).child(row).children(progress)
@@ -479,6 +590,14 @@ impl MainWindow {
             (Doing::BackingUp, Stage::Counting) => {
                 col = col.child(line(format!("Counting what there is to back up: {}, {} so far.", plural(pr.total_files, "file"), size(pr.total_bytes))));
                 col = col.child(dim("The first backup reads everything; later ones read only what changed, in a fraction of the time.".into()));
+            }
+            (Doing::BackingUp | Doing::Validating, Stage::Checking) | (Doing::Validating, _) => {
+                // (The bar throughout, so nothing moves: empty till it knows
+                // how much there is to read back.)
+                let done = if pr.total_bytes == 0 { 0.0 } else { (pr.bytes as f32 / pr.total_bytes as f32).min(1.0) };
+                let label = if pr.total_bytes == 0 { "Looking at what’s there".to_owned() } else { format!("{} of {} read back", size(pr.bytes), size(pr.total_bytes)) };
+                col = col.child(StatusBar::new(done).label(label).trailing(format!("{:.0}%", done * 100.0)));
+                col = col.child(line(if pr.current.is_empty() { "Looking at what’s there…".into() } else { format!("{}…", pr.current) }));
             }
             (Doing::BackingUp, stage) => {
                 let (done, left) = how_far(pr, now());
@@ -669,57 +788,123 @@ impl MainWindow {
     }
 
     fn backups(&self, s: &Settings, st: &State, cx: &mut Context<Self>) -> Vec<gpui::AnyElement> {
+        let p = theme::palette(cx);
         let d = self.app.read(cx);
         let snaps: Vec<SnapshotInfo> = match &d.snapshots {
             Some(Ok(l)) => l.clone(),
             _ => Vec::new(),
         };
+        // The unfinished one first (the next goes on from it), then each
+        // kept, newest first.
+        let unfinished = st.unfinished.clone();
+        let first = usize::from(unfinished.is_some());
         let said = match &d.snapshots {
             None => "Asking DiskBackup’s service…".to_owned(),
             Some(Err(e)) => format!("The backups can’t be listed: {e}."),
-            Some(Ok(l)) if l.is_empty() => "No backups kept yet.".into(),
             Some(Ok(l)) => {
-                let taken = st.size.map(|b| format!(", {} in all", size(b))).unwrap_or_default();
-                format!("{} kept in {}{taken}. Choose some to delete them, or restore from any.", plural(l.len() as u64, "backup"), s.target.describe())
+                let mut t = if l.is_empty() {
+                    "No backup has finished yet.".to_owned()
+                } else {
+                    let taken = st.size.map(|b| format!(", {} in all", size(b))).unwrap_or_default();
+                    format!("{} kept in {}{taken}.", plural(l.len() as u64, "backup"), s.target.describe())
+                };
+                if unfinished.is_some() {
+                    t.push_str(" The unfinished one is where the next goes on from: delete it to start over.");
+                }
+                t.push_str(" Choose any to validate or delete them.");
+                t
             }
         };
-        let running = matches!(st.doing, Doing::BackingUp | Doing::Pruning | Doing::Erasing);
-        let rows = snaps.clone();
+        let running = busy_with(st);
+        let (rows, u) = (snaps.clone(), unfinished.clone());
         let list = ColumnListView::new(
             "backups",
             &self.list,
-            vec![Column::new("When", 190.0), Column::new("Files", 90.0), Column::new("New", 90.0), Column::new("Size", 90.0), Column::new("Took", 100.0)],
-            snaps.len(),
+            vec![Column::new("When", 160.0), Column::new("Files", 70.0), Column::new("Size", 75.0), Column::new("New", 75.0), Column::new("Took", 90.0), Column::new("Validated", 100.0)],
+            snaps.len() + first,
             move |cell, window, cx| {
-                let Some(b) = rows.get(cell.row) else { return };
-                let text = match cell.column {
-                    0 => format!("{} ({})", clock(b.time), ago(b.time)),
-                    1 => count(b.files),
-                    2 => size(b.new_bytes),
-                    3 => size(b.bytes),
-                    _ => took(b.seconds),
+                let text = match (&u, cell.row.checked_sub(first)) {
+                    (Some(u), None) => match cell.column {
+                        0 => format!("Unfinished ({})", clock(u.time)),
+                        1 if u.files == 0 => "—".into(),
+                        1 => count(u.files),
+                        2 if u.bytes == 0 => "—".into(),
+                        2 => size(u.bytes),
+                        3 => size(u.new_bytes),
+                        4 if u.seconds == 0.0 => "—".into(),
+                        4 => took(u.seconds),
+                        _ => "—".into(),
+                    },
+                    (_, Some(i)) => {
+                        let Some(b) = rows.get(i) else { return };
+                        match cell.column {
+                            // (How long ago, while that's the shorter.)
+                            0 if now() - b.time < 12 * 3600 => format!("{} ({})", clock(b.time), ago(b.time)),
+                            0 => clock(b.time),
+                            1 => count(b.files),
+                            2 => size(b.bytes),
+                            3 => size(b.new_bytes),
+                            4 => took(b.seconds),
+                            _ => check_cell(b.check.as_ref()).into(),
+                        }
+                    }
+                    _ => return,
                 };
                 cell.text(window, cx, text);
             },
         )
         .on_select(|_, cx| cx.refresh_windows());
-        let chosen: Vec<String> = self.list.read(cx).state.selected.iter().filter_map(|&i| snaps.get(i).map(|b| b.id.clone())).collect();
-        let n = chosen.len();
-        let del = self.app.clone();
+        let selected: Vec<usize> = self.list.read(cx).state.selected.iter().copied().collect();
+        let unfinished_chosen = first == 1 && selected.contains(&0);
+        let chosen: Vec<String> = selected.iter().filter_map(|&i| i.checked_sub(first).and_then(|i| snaps.get(i)).map(|b| b.id.clone())).collect();
+        let n = chosen.len() + usize::from(unfinished_chosen);
+        // What the one chosen is, in a line (all of it in its tip).
+        let (detail, bad) = match (selected.as_slice(), &unfinished) {
+            ([0], Some(u)) => (unfinished_words(u), false),
+            ([i], _) => match i.checked_sub(first).and_then(|i| snaps.get(i)) {
+                Some(b) => (check_words(b.check.as_ref()), b.check.as_ref().is_some_and(|c| !c.problems.is_empty())),
+                None => (String::new(), false),
+            },
+            ([], _) => ("Choose a backup to see how it was last checked.".into(), false),
+            _ => (format!("{} chosen.", plural(n as u64, "backup")), false),
+        };
+        let mut detail = StringView::new(detail).cut(true).height(style::line_row(style::PLAIN_SIZE));
+        detail = if bad { detail.color(style::c(p.failure)) } else { detail.dim(true) };
+        let (del, check, check_fully) = (self.app.clone(), self.app.clone(), self.app.clone());
+        let (to_check, to_check_fully) = (chosen.clone(), chosen.clone());
         let delete = Button::new(if n > 1 { format!("Delete {n} Backups…") } else { "Delete…".into() }).enabled(n > 0 && !running).on_click(move |_, cx| {
             let ids = chosen.clone();
-            del.update(cx, |d, cx| d.delete(ids, cx));
+            del.update(cx, |d, cx| d.delete(ids, unfinished_chosen, cx));
         });
+        let can_check = !to_check.is_empty() && !running;
+        let validate = tipped(
+            "backups-validate",
+            "Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.",
+            Button::new(if to_check.len() > 1 { format!("Validate {}", to_check.len()) } else { "Validate".into() }).enabled(can_check).on_click(move |_, cx| {
+                let ids = to_check.clone();
+                check.update(cx, |d, cx| d.validate(ids, false, cx));
+            }),
+        );
+        let validate_fully = tipped(
+            "backups-validate-fully",
+            "Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would",
+            Button::new("Validate Fully…").enabled(can_check).on_click(move |_, cx| {
+                let ids = to_check_fully.clone();
+                check_fully.update(cx, |d, cx| d.validate(ids, true, cx));
+            }),
+        );
         let row = div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(m::SPACING))
             .child(Button::new("Restore…").id("backups-restore").on_click(self.command("restore")))
+            .child(validate)
+            .child(validate_fully)
             .child(delete)
             .child(div().flex_1())
-            .child(Button::new("Erase All Backups…").enabled(!running && !snaps.is_empty()).on_click(self.command("erase-all")));
-        let kept = BBox::new("Backups Kept").child(StringView::new(said).wrap(true).dim(true)).child(div().h(px(180.0)).child(list)).child(row);
+            .child(Button::new("Erase All Backups…").enabled(!running && !(snaps.is_empty() && unfinished.is_none())).on_click(self.command("erase-all")));
+        let kept = BBox::new("Backups Kept").child(StringView::new(said).wrap(true).dim(true)).child(div().h(px(180.0)).child(list)).child(detail).child(row);
         vec![kept.into_any_element()]
     }
 
@@ -760,13 +945,65 @@ impl MainWindow {
         vec![network.into_any_element(), computer.into_any_element()]
     }
 
-    fn destination(&self, s: &Settings, cx: &mut Context<Self>) -> Vec<gpui::AnyElement> {
+    fn destination(&self, s: &Settings, st: &State, cx: &mut Context<Self>) -> Vec<gpui::AnyElement> {
+        let p = theme::palette(cx);
         let d = self.app.read(cx);
         let busy = d.busy;
-        let (icon, kind) = match &s.target {
-            Target::GoogleDrive { .. } => ("diskbackup", "Google Drive"),
-            _ => ("disk", "A disk or folder"),
+        // As last looked at (None: looking).
+        let looked = d.where_.as_ref().filter(|(t, _)| *t == s.target).and_then(|(_, r)| r.clone());
+        let taken = st.size.map(|b| format!("The backups take {} there", size(b)));
+        let space = |free: u64, total: Option<u64>| match total {
+            Some(t) if t > 0 => format!("{} of {} free", size(free), size(t)),
+            _ => "no limit to its space".to_owned(),
         };
+        let and = |first: Option<String>, then: String| match first {
+            Some(f) => format!("{f}; {then}."),
+            None => format!("{}.", capital(&then)),
+        };
+        let (icon, title, detail, status, buttons): (&'static str, String, String, (String, bool), Vec<gpui::AnyElement>) = match &s.target {
+            Target::GoogleDrive { account, .. } => {
+                let status = match &looked {
+                    None => ("Checking the connection…".to_owned(), false),
+                    Some(Ok(Where::Drive(a))) => (format!("Connected. {}", and(taken.clone(), format!("your Drive has {}", space(a.limit.map_or(0, |l| l.saturating_sub(a.used)), a.limit)))), false),
+                    Some(Ok(_)) => (String::new(), false),
+                    Some(Err(e)) => (format!("Not connected: {e}."), true),
+                };
+                let mut buttons = Vec::new();
+                // (Signed out by Google: sign in again, with the client from before.)
+                if matches!(looked, Some(Err(_))) {
+                    buttons.push(Button::new("Sign In Again…").enabled(!busy).on_click(self.command("google-drive")).into_any_element());
+                }
+                buttons.push(Button::new("Disconnect…").enabled(!busy).on_click(self.command("disconnect")).into_any_element());
+                buttons.push(tipped(
+                    "use-folder",
+                    "Back up to a disk or folder from now on; the backups in Google Drive stay as they are",
+                    Button::new("Use a Folder Instead…").enabled(!busy).on_click(self.command("choose-folder")),
+                ));
+                ("diskbackup", "Google Drive".to_owned(), format!("{account}, in the folder “{}”", olo_diskbackup::drive::FOLDER), status, buttons)
+            }
+            Target::Folder { path } => {
+                let status = match &looked {
+                    None => ("Looking at its disk…".to_owned(), false),
+                    Some(Ok(Where::Disk { free, total })) => (and(taken.clone(), format!("its disk has {}", space(*free, Some(*total)))), false),
+                    Some(Ok(_)) => (String::new(), false),
+                    Some(Err(e)) => (format!("{}.", capital(e)), true),
+                };
+                let name = std::path::Path::new(path).file_name().map_or(path.clone(), |n| n.to_string_lossy().into_owned());
+                let buttons = vec![
+                    Button::new("Choose Another Folder…").enabled(!busy).on_click(self.command("choose-folder")).into_any_element(),
+                    tipped(
+                        "use-drive",
+                        "Back up to your Google Drive from now on; the backups in this folder stay as they are",
+                        Button::new("Use Google Drive Instead…").enabled(!busy).on_click(self.command("google-drive")),
+                    ),
+                ];
+                ("disk", name, crate::app::tilde(std::path::Path::new(path)), status, buttons)
+            }
+            Target::None => ("disk", "Not set up".into(), String::new(), (String::new(), false), Vec::new()),
+        };
+        let open_label = if matches!(s.target, Target::GoogleDrive { .. }) { "Open in Google Drive" } else { "Show in Tracker" };
+        let mut status_view = StringView::new(status.0).cut(true).height(style::line_row(style::PLAIN_SIZE));
+        status_view = if status.1 { status_view.color(style::c(p.failure)) } else { status_view.dim(true) };
         let where_ = BBox::new("Where Backups Go")
             .child(
                 div()
@@ -775,7 +1012,18 @@ impl MainWindow {
                     .items_center()
                     .gap(px(m::SPACING))
                     .child(picture(icon, 32.0))
-                    .child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(s.target.describe()).bold(true)).child(StringView::new(kind).dim(true))),
+                    // (Three lines as tall as each other: the picture centred
+                    // on the middle one.)
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(StringView::new(title).bold(true).height(style::line_row(style::PLAIN_SIZE)))
+                            .child(StringView::new(detail).cut(true).height(style::line_row(style::PLAIN_SIZE)))
+                            .child(status_view),
+                    ),
             )
             .child(
                 div()
@@ -783,10 +1031,10 @@ impl MainWindow {
                     .flex_row()
                     .gap(px(m::SPACING))
                     .pt(px(m::TIGHT))
-                    .child(Button::new("Choose Another Folder…").enabled(!busy).on_click(self.command("choose-folder")))
-                    .child(Button::new("Google Drive…").enabled(!busy).on_click(self.command("google-drive"))),
-            )
-            .child(StringView::new("Moving elsewhere starts there afresh; the backups here stay until you erase them.").wrap(true).dim(true));
+                    .children(buttons)
+                    .child(div().flex_1())
+                    .child(Button::new(open_label).id("show-target").on_click(self.command("show-target"))),
+            );
         let mut key = BBox::new("Key");
         if s.key_in_passwords {
             key = key.child(
@@ -877,7 +1125,35 @@ mod tests {
         st.doing = Doing::BackingUp;
         st.progress = Some(Progress { stage: Stage::Reading, current: format!("{}/Music/a.flac", target::home().display()), ..Default::default() });
         assert_eq!(headline(&st, &s), ("Backing up".into(), "Now: ~/Music/a.flac".into(), false));
+        st.progress = Some(Progress { stage: Stage::Reading, resuming: true, ..Default::default() });
+        assert_eq!(headline(&st, &s).0, "Resuming the backup");
+        st.doing = Doing::Validating;
+        assert_eq!(headline(&st, &s).0, "Validating backups");
         st.pid = 0;
         assert!(headline(&st, &s).2);
+    }
+
+    /// An unfinished backup, and each backup's check, said plainly.
+    #[test]
+    fn unfinished_and_checks_said() {
+        use olo_protocol::diskbackup::Unfinished;
+        let u = Unfinished { time: now(), files: 1234, bytes: 2_100_000_000, sent: 1_200_000_000, ..Default::default() };
+        assert_eq!(unfinished_words(&u), "Unfinished: 1,234 files (2.10 GB) done and 1.20 GB sent; the next backup goes on from there.");
+        let left = Unfinished { files: 0, sent: 5_000_000, ..u };
+        assert!(unfinished_words(&left).starts_with("Unfinished: 5.0 MB sent before it stopped"));
+        assert_eq!(check_cell(None), "—");
+        let whole = Check { time: now(), full: true, bytes_read: 3_000_000, ..Default::default() };
+        assert_eq!(check_cell(Some(&whole)), "✓ Full");
+        assert!(check_words(Some(&whole)).starts_with("Validated fully just now: all it needs (3.0 MB) read back"));
+        let fast = Check { full: false, by_checksum: 12, sampled: 1, ..whole.clone() };
+        assert_eq!(check_cell(Some(&fast)), "✓ Fast");
+        assert_eq!(check_words(Some(&fast)), "Validated just now: everything it needs is there (12 packs as sent, by their checksums; 1 sample read back whole). Validate Fully reads it all back.");
+        let home = target::home().display().to_string();
+        let bad = Check { problems: vec!["2 of its packs are missing".into()], files: vec![format!("{home}/a.bin")], files_affected: 3, ..whole.clone() };
+        assert_eq!(check_cell(Some(&bad)), "✗ Damaged");
+        let said = check_words(Some(&bad));
+        assert!(said.contains("2 of its packs are missing") && said.contains("~/a.bin and 2 more") && said.ends_with("sends again what it can."), "{said}");
+        let failed = Check { error: Some("Google Drive didn't answer".into()), ..whole };
+        assert_eq!(check_cell(Some(&failed)), "Not checked");
     }
 }
