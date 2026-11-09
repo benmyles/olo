@@ -6996,3 +6996,23 @@ the Guardian and old Reddit, looking for pages that fail outright:
   Wikipedia 1.09 vs 2.22, BBC 5.05 vs 9.88, apple.com 1.24 vs 1.40,
   GitHub 9.01 vs 9.10, Reddit 2.69 vs 7.20; scrolling costs less or the
   same on all six, and memory is a third to a half of Chrome's.
+- **Reddit's components load and are styled.** Its header showed the
+  server-rendered fallback (an unstyled search field, plain buttons)
+  because almost none of its components were defined: its bundle failed
+  on a missing `MediaError`. With that fixed, four more faults showed one
+  after another: its components copy their sheets into every instance's
+  shadow root (223 sheets), past the selectors limit as copies, so the
+  rules failed to compile and the live page ended; the copies also passed
+  the 8 MB CSS budget (17 MB), leaving later instances without rules; and
+  `:dir()` asked a shadow root for an attribute, failing every restyle.
+  Shadow trees with the same sheets now compile once (the others alias
+  the first), a sheet's text is parsed and counted once, and `:dir()`
+  walks from a shadow root to its host. The header now matches Chrome's.
+- **Spinners turn; animations off screen draw nothing.** A keyframes rule
+  with only a `to` frame held it throughout, so every spinner stood still;
+  the missing frame now comes from the element's own value, and `none`
+  interpolates against a transform list as its identity. An animation
+  moving only things off screen drew 120 frames a second of nothing
+  (Reddit idle: 9% of a core); it is now looked at four times a second
+  until it comes into view (1.0%, Chrome 12% on the same page). A page
+  without scripts runs its CSS animations (it never went live before).
