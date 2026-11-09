@@ -46,9 +46,9 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   prelude was 475 ms of it). Left to make faster still: the prelude's
   16-23 ms each page (a V8 startup snapshot would make it nothing),
   matching 21-27 ms per restyle from nothing, layout 8-10 ms per pass.
-- [ ] Reddit: its sidebar's last community overlaps the footer links
-  below it (Chrome shows another sidebar variant, "Popular communities");
-  its load costs more CPU than Chrome's now that its components run.
+- [ ] Reddit: its load costs more CPU than Chrome's when its feed's
+  components all run (4.2 vs 2.7 CPU s on a busy machine; 2.95 vs 6.33 on
+  another run: measure again quiet).
 - [ ] A script-less page with CSS animations takes a realm for its clock
   (the prelude's 16-23 ms once): a clock of its own would be lighter. A V8
   startup snapshot of the prelude would make every page's 16-23 ms nothing.
