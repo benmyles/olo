@@ -54,6 +54,12 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   startup snapshot of the prelude would make every page's 16-23 ms nothing.
 - [ ] `getComputedStyle` answers no `animation-name` (a page probing which
   elements animate finds none).
+- [ ] Decoded pictures: kept whole while bound (a page's budget 256 MB,
+  the latest kept past it). Decode at the size shown, let pictures far
+  out of view go and decode them again when they come back (Chrome's
+  discardable decodes): Reddit's long feed sits at 1.0-1.5 GB.
+- [ ] Reddit: its loading indicator (between pages) shows as large orange
+  shapes; compare with Chrome's.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.

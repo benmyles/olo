@@ -7016,3 +7016,17 @@ the Guardian and old Reddit, looking for pages that fail outright:
   (Reddit idle: 9% of a core); it is now looked at four times a second
   until it comes into view (1.0%, Chrome 12% on the same page). A page
   without scripts runs its CSS animations (it never went live before).
+- **Reddit's feed scrolls on.** Its next pages never loaded. Seven faults
+  stood in the way, each found after the one before was fixed: no
+  `slotchange` (the feed waits for the partial its `load-after` slot is
+  handed); an empty element had no position, so it never neared the
+  viewport; scripts saw no response headers but `content-type` (Reddit
+  holds its partial requests until an answer carries `x-verified-res`);
+  no `TextDecoderStream` and a `pipeThrough` that piped nothing; every
+  component's stylesheet text copied into each instance passed the
+  document's 64 MB of owned text (long strings are now held once); no
+  `PerformanceNavigation`; and past 256 MB of decoded pictures the live
+  page ended, frozen blank (the set keeps the latest within its budget,
+  and pictures of elements gone from the document are let go: they took
+  2.8 GB). Scrolled on, the page grows from 17,790 to 64,270 px as its
+  pages load, in 1.0-1.5 GB.
