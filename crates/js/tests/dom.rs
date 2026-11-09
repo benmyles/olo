@@ -772,9 +772,11 @@ fn posted_tasks_keep_their_delay_signal_and_result() {
 /// seconds). Its deadline counts down from an idle period's 50 ms.
 #[test]
 fn idle_callbacks_run_at_the_next_idle_moment() {
+    // (Within the idle period's 50 ms, maybe none of it left: on a loaded
+    // machine the callback can start after its deadline, at 0.)
     let (report, _) = run("<body><script>\
         const order = [];\
-        requestIdleCallback((d) => order.push('idle ' + (d.timeRemaining() > 0 && d.timeRemaining() <= 50) + ' ' + d.didTimeout), { timeout: 3000 });\
+        requestIdleCallback((d) => order.push('idle ' + (d.timeRemaining() >= 0 && d.timeRemaining() <= 50) + ' ' + d.didTimeout), { timeout: 3000 });\
         setTimeout(() => console.log(order.concat('timer 30').join(',')), 30);\
         </script>");
     assert_eq!(report.errors, Vec::<String>::new());

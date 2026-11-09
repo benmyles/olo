@@ -14,7 +14,7 @@ use super::{
         animation::{Easing, Item},
     },
 };
-use foldhash::{HashMap, HashMapExt};
+use foldhash::HashMap;
 use std::{sync::Arc, sync::atomic::AtomicBool};
 
 /// One keyframe: its offset (0 to 1), its easing, and its declarations

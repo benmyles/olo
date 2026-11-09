@@ -20,6 +20,17 @@ const fn texels() -> [f64; 256] {
     table
 }
 const TEXELS: [f64; 256] = texels();
+/// The same, single precision, as the sampler filters them: exact to well
+/// within the rounding of its result.
+const TEXELS32: [f32; 256] = {
+    let mut table = [0f32; 256];
+    let mut i = 0;
+    while i < 256 {
+        table[i] = TEXELS[i] as f32;
+        i += 1;
+    }
+    table
+};
 struct Tap {
     a: usize,
     b: usize,
@@ -61,7 +72,23 @@ pub(super) fn raster(
     // Negative ties round toward +infinity, as positive layout snapping does.
     let snap = |v: f64| (((v * scale * 64.).round() / 64.) + 0.5).floor();
     let (left, top, right, bottom) = (snap(bounds.x), snap(bounds.y), snap(bounds.x + bounds.width), snap(bounds.y + bounds.height));
-    let (width, height) = (right - left, bottom - top);
+    placed(engine, out, image, [left, top, right - left, bottom - top], false, region, mask, cancel)
+}
+/// Draw an image upright at `[left, top, width, height]` in device pixels:
+/// on whole pixels as `raster` snaps it, or (`fractional`, an image only
+/// scaled and moved by a transform) where it falls, its edge pixels
+/// covered by as much of them as it covers.
+#[allow(clippy::too_many_arguments)]
+fn placed(
+    engine: &mut Engine,
+    out: &mut Pixmap,
+    image: &Arc<crate::image::Image>,
+    [left, top, width, height]: [f64; 4],
+    fractional: bool,
+    region: DeviceRect,
+    mask: Option<&Mask>,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
     if ![left, top, width, height, left + width, top + height].into_iter().all(f64::is_finite) {
         return Err(Error::Invalid);
     }
@@ -78,7 +105,8 @@ pub(super) fn raster(
     // Drawn at its own size on whole device pixels (a canvas, an icon at
     // 1:1): rows copied and composited, no sampling.
     let started = std::env::var_os("OLO_TILE_PROFILE").map(|_| std::time::Instant::now());
-    if width == f64::from(image.width()) && height == f64::from(image.height()) {
+    let whole = !fractional || (left.fract() == 0. && top.fract() == 0.);
+    if whole && width == f64::from(image.width()) && height == f64::from(image.height()) {
         let result = direct(out, image.rgba(), image.width() as usize, image.opaque(), Frame { left, top, width, height, x0, y0, x1, y1 }, region, mask, cancel);
         profiled(
             if mask.is_some() {
@@ -122,7 +150,13 @@ pub(super) fn raster(
     let upper = upper_level.as_ref().map_or_else(|| Plane::from(image.as_ref()), |p| p.plane());
     let lower = lower_level.as_ref().map(|p| p.plane());
     let frame = Frame { left, top, width, height, x0, y0, x1, y1 };
-    let result = if let Some(lower) = lower { draw::<true>(out, upper, lower, weight, frame, region, mask, cancel) } else { draw::<false>(out, upper, upper, 0., frame, region, mask, cancel) };
+    let edges = !whole || width.fract() != 0. || height.fract() != 0.;
+    let result = match (lower, edges) {
+        (Some(lower), false) => draw::<true, false>(out, upper, lower, weight, frame, region, mask, cancel),
+        (Some(lower), true) => draw::<true, true>(out, upper, lower, weight, frame, region, mask, cancel),
+        (None, false) => draw::<false, false>(out, upper, upper, 0., frame, region, mask, cancel),
+        (None, true) => draw::<false, true>(out, upper, upper, 0., frame, region, mask, cancel),
+    };
     profiled(3, started);
     result
 }
@@ -136,46 +170,122 @@ struct Frame {
     x1: f64,
     y1: f64,
 }
+/// One source row filtered across at the drawn columns (`Tap`s), each a
+/// premultiplied pixel in texel units: what bilinear sampling needs of it,
+/// kept for every drawn row that reads it.
+fn across(p: Plane<'_>, row: usize, xs: &[Tap], out: &mut Vec<[f32; 4]>) {
+    let stride = p.width as usize * 4;
+    let src = &p.rgba[row * stride..(row + 1) * stride];
+    out.clear();
+    out.extend(xs.iter().map(|x| {
+        let (a, b) = (&src[x.a * 4..x.a * 4 + 4], &src[x.b * 4..x.b * 4 + 4]);
+        let f = x.f as f32;
+        let mut v = [0f32; 4];
+        for c in 0..4 {
+            let (a, b) = (TEXELS32[a[c] as usize], TEXELS32[b[c] as usize]);
+            v[c] = a + (b - a) * f;
+        }
+        v
+    }));
+}
+/// A plane's two source rows a drawn row reads, filtered across, kept as
+/// the rows go down: an image scaled up reads each source row for several
+/// drawn ones, and shrunk (a mip level or two over) about twice.
+struct Rows {
+    at: [usize; 2],
+    rows: [Vec<[f32; 4]>; 2],
+}
+impl Rows {
+    fn new() -> Self {
+        Rows { at: [usize::MAX; 2], rows: [Vec::new(), Vec::new()] }
+    }
+    fn get(&mut self, p: Plane<'_>, y: &Tap, xs: &[Tap]) -> (&[[f32; 4]], &[[f32; 4]]) {
+        if self.at[0] != y.a {
+            if self.at[1] == y.a {
+                self.rows.swap(0, 1);
+                self.at.swap(0, 1);
+            } else {
+                across(p, y.a, xs, &mut self.rows[0]);
+                self.at[0] = y.a;
+            }
+        }
+        if self.at[1] != y.b {
+            across(p, y.b, xs, &mut self.rows[1]);
+            self.at[1] = y.b;
+        }
+        (&self.rows[0], &self.rows[1])
+    }
+}
 #[allow(clippy::too_many_arguments)]
-fn draw<const BLEND: bool>(out: &mut Pixmap, upper: Plane<'_>, lower: Plane<'_>, weight: f64, frame: Frame, region: DeviceRect, mask: Option<&Mask>, cancel: Option<&AtomicBool>) -> Result<()> {
+fn draw<const BLEND: bool, const EDGES: bool>(
+    out: &mut Pixmap,
+    upper: Plane<'_>,
+    lower: Plane<'_>,
+    weight: f64,
+    frame: Frame,
+    region: DeviceRect,
+    mask: Option<&Mask>,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
     let Frame { left, top, width, height, x0, y0, x1, y1 } = frame;
+    // How much of device pixel `at` the image's span from `start` covers.
+    let covered = |at: f64, start: f64, extent: f64| ((at + 1.).min(start + extent) - at.max(start)).clamp(0., 1.);
     // Only columns intersecting this bounded output tile, never a full resized
     // image. Work is cached in the caller's retained raster tiles.
-    let mut xs = Vec::with_capacity((x1 - x0) as usize);
-    for x in 0..(x1 - x0) as usize {
-        check(cancel)?;
-        xs.push(tap(x0 + x as f64, left, width, upper.width));
-    }
-    let lower_xs = if BLEND { (0..xs.len()).map(|x| tap(x0 + x as f64, left, width, lower.width)).collect::<Vec<_>>() } else { Vec::new() };
+    check(cancel)?;
+    let columns = (x1 - x0) as usize;
+    let xs: Vec<Tap> = (0..columns).map(|x| tap(x0 + x as f64, left, width, upper.width)).collect();
+    let lower_xs: Vec<Tap> = if BLEND { (0..columns).map(|x| tap(x0 + x as f64, left, width, lower.width)).collect() } else { Vec::new() };
+    let column_covered: Vec<f32> = if EDGES { (0..columns).map(|x| covered(x0 + x as f64, left, width) as f32).collect() } else { Vec::new() };
+    let (mut upper_rows, mut lower_rows) = (Rows::new(), Rows::new());
+    let weight = weight as f32;
     let out_stride = region.width as usize * 4;
+    let col0 = (x0 - f64::from(region.x)) as usize;
     let data = out.data_mut();
     for gy in y0 as i64..y1 as i64 {
         check(cancel)?;
         let y = tap(gy as f64, top, height, upper.height);
-        let lower_y = if BLEND { tap(gy as f64, top, height, lower.height) } else { Tap { a: 0, b: 0, f: 0. } };
         let row = (gy - i64::from(region.y)) as usize;
-        for (i, x) in xs.iter().enumerate() {
-            if i % 128 == 0 {
-                check(cancel)?;
-            }
-            let col = (x0 - f64::from(region.x)) as usize + i;
-            let m = mask.map_or(255, |m| m.data()[row * region.width as usize + col]);
+        let row_covered = if EDGES { covered(gy as f64, top, height) as f32 } else { 1. };
+        let fy = y.f as f32;
+        let (a, b) = upper_rows.get(upper, &y, &xs);
+        let (c, d, lower_fy) = if BLEND {
+            let lower_y = tap(gy as f64, top, height, lower.height);
+            let (c, d) = lower_rows.get(lower, &lower_y, &lower_xs);
+            (c, d, lower_y.f as f32)
+        } else {
+            (a, b, 0.)
+        };
+        let mask_row = mask.map(|m| &m.data()[row * region.width as usize + col0..row * region.width as usize + col0 + columns]);
+        let out_row = &mut data[row * out_stride + col0 * 4..row * out_stride + (col0 + columns) * 4];
+        for (i, px) in out_row.chunks_exact_mut(4).enumerate() {
+            let m = mask_row.map_or(255, |m| m[i]);
             if m == 0 {
                 continue;
             }
             // Snapped image edges and integer tile coordinates cover complete
-            // device pixels. Only the clip mask contributes edge coverage.
-            let coverage = f64::from(m) / 255.;
-            let mut sample = [0u32; 4];
-            for (c, value) in sample.iter_mut().enumerate() {
-                let a = channel(upper, x, &y, c);
-                let filtered = if BLEND { a + (channel(lower, &lower_xs[i], &lower_y, c) - a) * weight } else { a };
-                *value = (filtered * coverage).round().clamp(0., 255.) as u32;
+            // device pixels: only the clip mask contributes edge coverage,
+            // and the image's own edges where they fall between pixels.
+            let mut coverage = f32::from(m) / 255.;
+            if EDGES {
+                coverage *= row_covered * column_covered[i];
             }
-            let at = row * out_stride + col * 4;
+            let mut sample = [0u32; 4];
+            for (ch, value) in sample.iter_mut().enumerate() {
+                let near = a[i][ch] + (b[i][ch] - a[i][ch]) * fy;
+                let filtered = if BLEND {
+                    let far = c[i][ch] + (d[i][ch] - c[i][ch]) * lower_fy;
+                    near + (far - near) * weight
+                } else {
+                    near
+                };
+                // (Rounded as +0.5 and cut: the same for what is never
+                // negative, without a call to roundf a channel.)
+                *value = ((filtered * coverage + 0.5) as u32).min(255);
+            }
             let inverse = 255 - sample[3];
-            for c in 0..4 {
-                data[at + c] = (sample[c] + (u32::from(data[at + c]) * inverse + 127) / 255).min(255) as u8;
+            for ch in 0..4 {
+                px[ch] = (sample[ch] + (u32::from(px[ch]) * inverse + 127) / 255).min(255) as u8;
             }
         }
     }
@@ -242,17 +352,6 @@ fn direct(out: &mut Pixmap, rgba: &[u8], stride_px: usize, opaque: bool, frame: 
     }
     Ok(())
 }
-#[inline]
-fn channel(p: Plane<'_>, x: &Tap, y: &Tap, c: usize) -> f64 {
-    let stride = p.width as usize * 4;
-    let a = TEXELS[p.rgba[y.a * stride + x.a * 4 + c] as usize];
-    let b = TEXELS[p.rgba[y.a * stride + x.b * 4 + c] as usize];
-    let d = TEXELS[p.rgba[y.b * stride + x.a * 4 + c] as usize];
-    let e = TEXELS[p.rgba[y.b * stride + x.b * 4 + c] as usize];
-    let upper = a + (b - a) * x.f;
-    let lower = d + (e - d) * x.f;
-    upper + (lower - upper) * y.f
-}
 
 /// Draw an image through a CSS transform: the source (at the mip level
 /// nearest its drawn size) sampled bilinearly as a pattern over its box,
@@ -270,6 +369,20 @@ pub(super) fn transformed(
     mask: Option<&Mask>,
     cancel: Option<&AtomicBool>,
 ) -> Result<()> {
+    // Only scaled and moved (Reddit's backdrops at scale(1.2), anything
+    // centred by translate(-50%, -50%)): still upright, so drawn as an
+    // untransformed image where it lands (between pixels as it may: no
+    // snapping, as Chrome resamples it), through the axis-aligned sampler
+    // and its mip blending, not tiny-skia's float pattern pipeline.
+    if transform.kx == 0. && transform.ky == 0. && transform.sx > 0. && transform.sy > 0. {
+        let (sx, sy) = (f64::from(transform.sx), f64::from(transform.sy));
+        let (tx, ty) = (f64::from(transform.tx), f64::from(transform.ty));
+        let (rx, ry) = (f64::from(region.x), f64::from(region.y));
+        let moved = [(bounds.x * scale - rx) * sx + tx + rx, (bounds.y * scale - ry) * sy + ty + ry, bounds.width * scale * sx, bounds.height * scale * sy];
+        if moved.into_iter().all(f64::is_finite) {
+            return placed(engine, out, image, moved, true, region, mask, cancel);
+        }
+    }
     let started = std::env::var_os("OLO_TILE_PROFILE").map(|_| std::time::Instant::now());
     let result = transformed_inner(engine, out, image, bounds, scale, region, transform, mask, cancel);
     profiled(4, started);

@@ -101,6 +101,10 @@ impl Engine {
             }
             tiny_skia::Rect::from_ltrb((x - f64::from(region.x)) as f32, (y - f64::from(region.y)) as f32, (right - f64::from(region.x)) as f32, (bottom - f64::from(region.y)) as f32)
         };
+        let unclipped = only.map_or(u32::MAX, |g| {
+            let g = &scene.groups[g as usize];
+            if g.blur > 0. || g.shadow.is_some() { g.clip } else { u32::MAX }
+        });
         let mut hits = Vec::new();
         scene.query_stratum(stratum, rect, &mut hits, cancel)?;
         if let Some(only) = only {
@@ -150,12 +154,12 @@ impl Engine {
                     let layer = self.filtered(scene, stratum, group, layer, region, scale, cancel)?;
                     let opacity = scene.groups[group as usize].opacity;
                     let blend_mode = blend_mode(scene.groups[group as usize].blend);
-                    let group_mask = self.group_mask(scene, group, scale, region, cancel)?;
+                    let group_mask = self.composite_mask(scene, group, scale, region, cancel)?;
                     let target: &mut Pixmap = match layers.last_mut() {
                         Some(l) => &mut l.1,
                         None => &mut base,
                     };
-                    target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, blend_mode, ..Default::default() }, Transform::identity(), group_mask.as_ref());
+                    composite(target, &layer, opacity, blend_mode, group_mask.as_ref());
                 }
                 for &group in &wanted {
                     if !layers.iter().any(|l| l.0 == group) {
@@ -170,28 +174,18 @@ impl Engine {
                 Some(l) => &mut l.1,
                 None => &mut base,
             };
-            if c.clip != last_clip {
-                mask = if c.clip == u32::MAX {
+            // A filtered group's content drawn again for its filter: what
+            // is under only the group's own clip, unclipped (`Group::clip`).
+            let clip = if c.clip == unclipped { u32::MAX } else { c.clip };
+            if clip != last_clip {
+                mask = if clip == u32::MAX {
                     None
                 } else {
-                    let clip = &scene.clips[c.clip as usize];
                     let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
-                    let ct = device(clip.transform);
-                    if let Some(radii) = &clip.radii {
-                        if let Some(path) = super::decoration::path(clip.rect, radii, scale, region) {
-                            m.fill_path(&path, FillRule::Winding, true, ct);
-                        }
-                    } else if clip.transform != u32::MAX {
-                        if let Some(r) = raw(clip.rect) {
-                            m.fill_path(&PathBuilder::from_rect(r), FillRule::Winding, true, ct);
-                        }
-                    } else if let Some(r) = local(clip.rect) {
-                        let path = PathBuilder::from_rect(r);
-                        m.fill_path(&path, FillRule::Winding, false, transform);
-                    }
+                    clip_into(&mut m, scene, clip, scale, region, false);
                     Some(m)
                 };
-                last_clip = c.clip;
+                last_clip = clip;
             }
             let ct = device(c.transform);
             let kind = match &c.primitive {
@@ -446,12 +440,12 @@ impl Engine {
             let layer = self.filtered(scene, stratum, group, layer, region, scale, cancel)?;
             let opacity = scene.groups[group as usize].opacity;
             let blend_mode = blend_mode(scene.groups[group as usize].blend);
-            let group_mask = self.group_mask(scene, group, scale, region, cancel)?;
+            let group_mask = self.composite_mask(scene, group, scale, region, cancel)?;
             let target: &mut Pixmap = match layers.last_mut() {
                 Some(l) => &mut l.1,
                 None => &mut base,
             };
-            target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, blend_mode, ..Default::default() }, Transform::identity(), group_mask.as_ref());
+            composite(target, &layer, opacity, blend_mode, group_mask.as_ref());
         }
         Ok(Tile { region, pixmap: base })
     }
@@ -555,6 +549,23 @@ impl Engine {
         out.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), None);
         Ok(out)
     }
+    /// What a group composites through: its mask, and, for a blurred or
+    /// shadowed one (drawn unclipped for its filter), its clip.
+    fn composite_mask(&mut self, scene: &Scene, group: u32, scale: f64, region: DeviceRect, cancel: Option<&AtomicBool>) -> Result<Option<Mask>> {
+        let mut mask = self.group_mask(scene, group, scale, region, cancel)?;
+        let g = &scene.groups[group as usize];
+        if (g.blur > 0. || g.shadow.is_some()) && g.clip != u32::MAX {
+            match mask.as_mut() {
+                Some(m) => clip_into(m, scene, g.clip, scale, region, true),
+                None => {
+                    let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
+                    clip_into(&mut m, scene, g.clip, scale, region, false);
+                    mask = Some(m);
+                }
+            }
+        }
+        Ok(mask)
+    }
     /// A group's mask over this tile: its owner's mask images drawn on a
     /// transparent surface, taken as alpha.
     fn group_mask(&mut self, scene: &Scene, group: u32, scale: f64, region: DeviceRect, cancel: Option<&AtomicBool>) -> Result<Option<Mask>> {
@@ -590,6 +601,82 @@ fn filter_colors(layer: &mut Pixmap, m: &[f32; 20]) {
             px[i] = (row(i) * alpha * 255. + 0.5) as u8;
         }
         px[3] = (alpha * 255. + 0.5) as u8;
+    }
+}
+/// A group's layer onto what is under it, the same size and place: through
+/// its opacity and mask, source-over in integers (tiny-skia's pipeline
+/// for a masked pixmap gathered every pixel as through a transform: a
+/// tenth of a page of blurred, clipped pictures); other blend modes by
+/// tiny-skia.
+fn composite(target: &mut Pixmap, layer: &Pixmap, opacity: f32, blend_mode: tiny_skia::BlendMode, mask: Option<&Mask>) {
+    if blend_mode != tiny_skia::BlendMode::SourceOver
+        || target.width() != layer.width()
+        || target.height() != layer.height()
+        || mask.is_some_and(|m| m.width() != layer.width() || m.height() != layer.height())
+    {
+        target.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint { opacity, blend_mode, ..Default::default() }, Transform::identity(), mask);
+        return;
+    }
+    let o = (opacity.clamp(0., 1.) * 255. + 0.5) as u32;
+    if o == 0 {
+        return;
+    }
+    let mask = mask.map(|m| m.data());
+    for (i, (d, s)) in target.data_mut().chunks_exact_mut(4).zip(layer.data().chunks_exact(4)).enumerate() {
+        if s[3] == 0 && s[0] == 0 && s[1] == 0 && s[2] == 0 {
+            continue;
+        }
+        // Coverage out of 255 × 255: the opacity times the mask's.
+        let k = o * mask.map_or(255, |m| u32::from(m[i]));
+        if k == 0 {
+            continue;
+        }
+        let mut px = [0u32; 4];
+        for c in 0..4 {
+            px[c] = if k == 65025 { u32::from(s[c]) } else { (u32::from(s[c]) * k + 32512) / 65025 };
+        }
+        if px[3] == 255 {
+            d.copy_from_slice(&[px[0] as u8, px[1] as u8, px[2] as u8, 255]);
+            continue;
+        }
+        let inverse = 255 - px[3];
+        for c in 0..4 {
+            d[c] = (px[c] + (u32::from(d[c]) * inverse + 127) / 255).min(255) as u8;
+        }
+    }
+}
+/// Clip `clip`'s shape over a tile at `region` (device pixels at `scale`)
+/// drawn into `mask`, or (`intersect`) cutting what it holds.
+fn clip_into(mask: &mut Mask, scene: &Scene, clip: u32, scale: f64, region: DeviceRect, intersect: bool) {
+    let clip = &scene.clips[clip as usize];
+    let (rx, ry) = (f64::from(region.x), f64::from(region.y));
+    // Its transform in device space less the tile origin (as the commands').
+    let ct = if clip.transform == u32::MAX {
+        Transform::identity()
+    } else {
+        let m = scene.transforms[clip.transform as usize];
+        Transform::from_row(m[0] as f32, m[1] as f32, m[2] as f32, m[3] as f32, (m[0] * rx + m[2] * ry + scale * m[4] - rx) as f32, (m[1] * rx + m[3] * ry + scale * m[5] - ry) as f32)
+    };
+    let (path, anti_alias) = if let Some(radii) = &clip.radii {
+        (super::decoration::path(clip.rect, radii, scale, region), true)
+    } else if clip.transform != u32::MAX {
+        let r = clip.rect;
+        (tiny_skia::Rect::from_xywh((r.x * scale - rx) as f32, (r.y * scale - ry) as f32, (r.width * scale) as f32, (r.height * scale) as f32).map(PathBuilder::from_rect), true)
+    } else {
+        // Untransformed: on whole device pixels, within the tile.
+        let r = clip.rect;
+        let x = (r.x * scale).round().max(rx);
+        let y = (r.y * scale).round().max(ry);
+        let right = ((r.x + r.width) * scale).round().min(rx + f64::from(region.width));
+        let bottom = ((r.y + r.height) * scale).round().min(ry + f64::from(region.height));
+        let rect = if right <= x || bottom <= y { None } else { tiny_skia::Rect::from_ltrb((x - rx) as f32, (y - ry) as f32, (right - rx) as f32, (bottom - ry) as f32) };
+        (Some(rect.map(PathBuilder::from_rect).unwrap_or_else(|| PathBuilder::from_rect(tiny_skia::Rect::from_xywh(-2., -2., 1., 1.).expect("a unit rect")))), false)
+    };
+    match (path, intersect) {
+        (Some(path), false) => mask.fill_path(&path, FillRule::Winding, anti_alias, ct),
+        (Some(path), true) => mask.intersect_path(&path, FillRule::Winding, anti_alias, ct),
+        // Nothing of it: nothing shows through.
+        (None, _) => mask.clear(),
     }
 }
 /// How coarse a blur of `sigma` device pixels is drawn: one pixel in `k`

@@ -1742,6 +1742,82 @@ fn a_filter_blurs_and_recolours_its_box_past_its_edges() {
     assert!(grey[0] == grey[1] && grey[1] == grey[2] && grey[0] > 118 && grey[0] < 126, "greyed to its luma (0.7152 x 170): {grey:?}");
 }
 #[test]
+fn a_blur_spreads_before_its_ancestors_clip_and_scales_with_its_transform() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // Reddit's media backdrop: a picture scaled past a box that clips it,
+    // and blurred. Its red reaches 10px past the box each way. (A box
+    // painted after it: the blurred group is left mid-way, not at the end.)
+    let page = olo_web::page::load(
+        Arc::from(
+            "<!doctype html><style>body{margin:0}</style>\
+             <div style='position:absolute;left:30px;top:30px;width:40px;height:40px;overflow:hidden'>\
+             <div style='width:40px;height:40px;background:#f00;transform:scale(1.5);filter:blur(4px)'></div></div>\
+             <div style='position:absolute;left:90px;top:90px;width:5px;height:5px;background:#00f'></div>",
+        ),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let tile = render(&mut painter, &page.scene);
+    assert_eq!(pixel(&tile, 50, 50), [255, 0, 0, 255], "the middle");
+    // Blurred before the clip, as Chrome draws it: at the clip's edge the
+    // red's edge is still 10.5px off, not half faded (G 128) as if the
+    // clip had cut it first. And blurred in the box's space, then scaled:
+    // 6px on screen (Φ(10.5 / 6), G about 10), not 4 (G about 1).
+    let edge = pixel(&tile, 30, 50);
+    assert!(edge[0] == 255 && edge[1] > 4 && edge[1] < 25, "at the clip, nearly all red, the blur scaled with the box: {edge:?}");
+    assert_eq!(pixel(&tile, 25, 50), [255, 255, 255, 255], "outside the clip: the page");
+    assert_eq!(pixel(&tile, 50, 75), [255, 255, 255, 255], "below the clip: the page");
+    assert_eq!(pixel(&tile, 92, 92), [0, 0, 255, 255], "the box after it");
+}
+#[test]
+fn an_atomic_inline_takes_its_opacity_filter_and_transform() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let viewport = layout::Viewport { width: 100., height: 100., scale: 1. };
+    // Inline SVGs in a line, as images are: half transparent, greyed, and
+    // moved down 30px.
+    let svg = |style: &str| format!("<svg width=20 height=20 style='vertical-align:top;{style}'><rect width=20 height=20 fill='#f00'/></svg>");
+    let page = olo_web::page::load(
+        Arc::from(format!(
+            "<!doctype html><style>body{{margin:0;font-size:0}}</style><p style='margin:0'>{}{}{}</p>",
+            svg("opacity:.5"),
+            svg("filter:grayscale(1)"),
+            svg("transform:translateY(30px)")
+        )),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        viewport,
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    let tile = render(&mut painter, &page.scene);
+    let half = pixel(&tile, 10, 10);
+    assert!(half[0] == 255 && half[1] > 120 && half[1] < 135, "half transparent over white: {half:?}");
+    let grey = pixel(&tile, 30, 10);
+    assert!(grey[0] == grey[1] && grey[1] == grey[2] && grey[0] > 50 && grey[0] < 60, "greyed to its luma (0.2126 × 255): {grey:?}");
+    assert_eq!(pixel(&tile, 50, 10), [255, 255, 255, 255], "moved away from its place");
+    assert_eq!(pixel(&tile, 50, 40), [255, 0, 0, 255], "moved down");
+}
+#[test]
 fn a_class_that_selectors_reach_from_restyles_what_they_reach() {
     let mut b = Builder::new(Default::default());
     b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();

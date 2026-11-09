@@ -222,6 +222,12 @@ pub struct Group {
     /// The colour functions after its `drop-shadow()`, applied to the group
     /// and its shadow (`filter` holds those before).
     pub after: Option<[f32; 20]>,
+    /// The clip it paints under (its ancestors' overflow and clip-path),
+    /// or NONE. A blur or shadow spreads what the group paints before
+    /// that clip cuts it (CSS Filter Effects 1 §3: the filter, then the
+    /// ancestors' clipping), so the raster redraws a filtered group's
+    /// content without it and clips the result.
+    pub clip: u32,
 }
 /// The hasher of tile signatures: foldhash's quality one, fixed (a
 /// signature is compared within the process), a fraction of SipHash's cost.
@@ -1719,6 +1725,130 @@ impl<'a> BuildJob<'a> {
         }
         Ok(())
     }
+    /// The group a box and its content paint in, if they need one: its
+    /// opacity, mask, filter (colours, blur, drop shadow) and blend mode,
+    /// under `clip`, through `transformed` (the box's matrix, its
+    /// ancestors' with it). Block boxes and atomic inlines alike.
+    #[allow(clippy::too_many_arguments)]
+    fn group_of(&mut self, id: BoxId, s: &Style, outer: Rect, inside_border: bool, opacity: f64, transformed: u32, parent_group: u32, clip: u32) -> Result<Option<u32>> {
+        let layout = self.layout.clone();
+        let tree = layout.cache().tree();
+        let extent = decoration::shadow_extent(s);
+        let unshadowed = extent.left <= 0. && extent.right <= 0. && extent.top <= 0. && extent.bottom <= 0.;
+        let mask = match s.value(P::MaskImage) {
+            Value::Images(_) if inside_border && unshadowed && decoration::mask_is_opaque(s) => None,
+            Value::Images(list) => {
+                let urls = list.0.iter().flatten().filter_map(|i| if let crate::css::properties::Image::Url(u) = i { Some(u) } else { None });
+                let mut loaded = false;
+                let mut missing = false;
+                for url in urls {
+                    if tree.background(url).is_some() {
+                        loaded = true;
+                    } else {
+                        missing = true;
+                    }
+                }
+                let gradient = list.0.iter().flatten().any(|i| !matches!(i, crate::css::properties::Image::Url(_)));
+                if missing {
+                    self.note("mask-image not loaded", id);
+                }
+                (loaded || gradient).then_some(MaskRef { owner: id, outer, transform: self.current_transform })
+            }
+            _ => None,
+        };
+        // filter: the box and its content through its colour
+        // functions and its blur, as one group, its drop shadow
+        // under it (one; url() not yet).
+        let mut shadow = None;
+        let mut after = None;
+        let (filter, blur) = match s.value(P::Filter) {
+            Value::Filters(f) => {
+                if f.0.iter().any(|f| matches!(f, crate::css::properties::Filter::Other)) {
+                    self.note("filter url() not drawn", id);
+                }
+                let current = s.used_color(P::Color)?;
+                let mut split = f.0.len();
+                for (i, f) in f.0.iter().enumerate() {
+                    if let crate::css::properties::Filter::DropShadowComputed(d) = f {
+                        if shadow.is_some() {
+                            self.note("filter with more than one drop-shadow(): the first drawn", id);
+                            break;
+                        }
+                        let constant = |n: &crate::css::properties::Numeric| n.expression().constant().map_or(0., |q| q.value) as f32;
+                        let color = d.color.as_ref().map_or(current, |c| c.used(current)).srgb8_clipped();
+                        shadow = Some(DropShadow { dx: constant(&d.x), dy: constant(&d.y), sigma: constant(&d.blur).clamp(0., 1000.), color });
+                        split = i;
+                    }
+                }
+                // The colour functions after the shadow colour it too.
+                after = crate::css::properties::color_matrix(&f.0[split.min(f.0.len())..]);
+                let sigma2: f64 = f.0.iter().map(|f| if let crate::css::properties::Filter::Blur(n) = f { n.expression().constant().map_or(0., |q| q.value.max(0.)).powi(2) } else { 0. }).sum();
+                (crate::css::properties::color_matrix(&f.0[..split]), sigma2.sqrt().min(1000.) as f32)
+            }
+            _ => (None, 0.),
+        };
+        // The filter acts in the box's own space, its transform
+        // after (Filter Effects 1 §3): a blur widened by the
+        // matrix's scale (Reddit's backdrops are scale(1.2)
+        // blur(24px), 28.8 px on screen), a shadow's offset
+        // turned with it.
+        let (blur, shadow) = if transformed == NONE {
+            (blur, shadow)
+        } else {
+            let m = self.transforms[transformed as usize];
+            let k = (m[0] * m[3] - m[1] * m[2]).abs().sqrt();
+            let k = if k.is_finite() { k as f32 } else { 1. };
+            let shadow = shadow.map(|d| DropShadow {
+                dx: (m[0] * f64::from(d.dx) + m[2] * f64::from(d.dy)) as f32,
+                dy: (m[1] * f64::from(d.dx) + m[3] * f64::from(d.dy)) as f32,
+                sigma: (d.sigma * k).min(1000.),
+                ..d
+            });
+            ((blur * k).min(1000.), shadow)
+        };
+        // mix-blend-mode: the box and its content composite onto
+        // what is under it through the mode, as one group.
+        let blend = match s.value(P::MixBlendMode) {
+            Value::Keyword(k) => [
+                K::Normal,
+                K::Multiply,
+                K::Screen,
+                K::Overlay,
+                K::Darken,
+                K::Lighten,
+                K::ColorDodge,
+                K::ColorBurn,
+                K::HardLight,
+                K::SoftLight,
+                K::Difference,
+                K::Exclusion,
+                K::Hue,
+                K::Saturation,
+                K::ColorBlend,
+                K::Luminosity,
+                K::PlusLighter,
+            ]
+            .iter()
+            .position(|m| m == k)
+            .unwrap_or(0) as u8,
+            _ => 0,
+        };
+        if opacity < 1. || mask.is_some() || filter.is_some() || blur > 0. || blend != 0 || shadow.is_some() || after.is_some() {
+            if self.groups.len() >= self.limits.commands {
+                return Err(Error::Limit);
+            }
+            let index = self.groups.len() as u32;
+            let parent_reach = if parent_group == NONE { 0. } else { self.groups[parent_group as usize].reach };
+            // (A shadow reaches as far as it is moved and blurred.)
+            let shadow_reach = shadow.map_or(0., |d| d.dx.abs().max(d.dy.abs()) + 3. * d.sigma);
+            self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask, filter, blur, reach: parent_reach + (3. * blur).max(shadow_reach), blend, shadow, after, clip });
+            if mask.is_none() && filter.is_none() && blur == 0. && blend == 0 && shadow.is_none() && after.is_none() {
+                self.group_owners.push((id, index));
+            }
+            return Ok(Some(index));
+        }
+        Ok(None)
+    }
     fn inline_replaced(&mut self, id: BoxId, at: Point, group: (u32, u8), clip: u32) -> Result<()> {
         let layout = self.layout.clone();
         let s = layout.cache().tree().style(id).ok_or(Error::Invalid)?;
@@ -1733,22 +1863,38 @@ impl<'a> BuildJob<'a> {
             BoxKind::InlineReplaced { .. } => None,
             _ => return Err(Error::Invalid),
         };
-        if s.value(P::Opacity).scalar() != Some(1.)
-            || !matches!(s.value(P::Isolation), Value::Keyword(K::Auto))
-            || !matches!(s.value(P::ZIndex), Value::Keyword(K::Auto)) && s.value(P::ZIndex).scalar() != Some(0.)
-        {
-            self.note("opacity/z-index on an atomic inline ignored", id);
+        if !matches!(s.value(P::Isolation), Value::Keyword(K::Auto)) || !matches!(s.value(P::ZIndex), Value::Keyword(K::Auto)) && s.value(P::ZIndex).scalar() != Some(0.) {
+            self.note("z-index on an atomic inline ignored", id);
         }
         let g = *layout.geometry(id).ok_or(Error::Invalid)?;
         let outer = Rect { x: at.x + g.border_box.x, y: at.y + g.border_box.y, ..g.border_box };
-        if visible(s) {
-            self.decorate(id, s, g, outer, group, clip, true)?;
+        // Its transform, opacity, filter, mask and blend, as a block's:
+        // painted where it is in the line (not raised to the stacking
+        // context's later layers, as Chrome paints a translucent or
+        // transformed inline: the same unless something overlaps it).
+        let opacity = s.value(P::Opacity).scalar().unwrap_or(1.).clamp(0., 1.);
+        if opacity == 0. {
+            return Ok(());
         }
-        match primitive {
-            Some(Primitive::Vector { vector, .. }) => self.vector(id, vector, outer, group, clip),
-            Some(primitive) => self.emit(group, true, outer, primitive, clip),
-            None => Ok(()),
-        }
+        let (parent_transform, parent_group) = (self.current_transform, self.current_group);
+        let transformed = self.transform_of(id, s, outer, parent_transform)?;
+        self.current_transform = transformed;
+        let painted = (|| {
+            if let Some(index) = self.group_of(id, s, outer, matches!(primitive, Some(Primitive::Image { .. })), opacity, transformed, parent_group, clip)? {
+                self.current_group = index;
+            }
+            if visible(s) {
+                self.decorate(id, s, g, outer, group, clip, true)?;
+            }
+            match primitive {
+                Some(Primitive::Vector { vector, .. }) => self.vector(id, vector, outer, group, clip),
+                Some(primitive) => self.emit(group, true, outer, primitive, clip),
+                None => Ok(()),
+            }
+        })();
+        self.current_transform = parent_transform;
+        self.current_group = parent_group;
+        painted
     }
     /// Keep the raster transform anchored to the CSS viewport while the spatial
     /// index includes visible ink outside it. No path traversal during repaint.
@@ -2475,102 +2621,11 @@ impl<'a> BuildJob<'a> {
                     // no outer shadow. No group, nothing offscreen.
                     let inside_border =
                         matches!(b.kind, BoxKind::BlockImage { .. }) || !matches!(s.value(P::OverflowX), Value::Keyword(K::Visible)) && !matches!(s.value(P::OverflowY), Value::Keyword(K::Visible));
-                    let extent = decoration::shadow_extent(s);
-                    let unshadowed = extent.left <= 0. && extent.right <= 0. && extent.top <= 0. && extent.bottom <= 0.;
-                    let mask = match s.value(P::MaskImage) {
-                        Value::Images(_) if inside_border && unshadowed && decoration::mask_is_opaque(s) => None,
-                        Value::Images(list) => {
-                            let urls = list.0.iter().flatten().filter_map(|i| if let crate::css::properties::Image::Url(u) = i { Some(u) } else { None });
-                            let mut loaded = false;
-                            let mut missing = false;
-                            for url in urls {
-                                if tree.background(url).is_some() {
-                                    loaded = true;
-                                } else {
-                                    missing = true;
-                                }
-                            }
-                            let gradient = list.0.iter().flatten().any(|i| !matches!(i, crate::css::properties::Image::Url(_)));
-                            if missing {
-                                self.note("mask-image not loaded", id);
-                            }
-                            (loaded || gradient).then_some(MaskRef { owner: id, outer, transform: self.current_transform })
-                        }
-                        _ => None,
-                    };
-                    // filter: the box and its content through its colour
-                    // functions and its blur, as one group, its drop shadow
-                    // under it (one; url() not yet).
-                    let mut shadow = None;
-                    let mut after = None;
-                    let (filter, blur) = match s.value(P::Filter) {
-                        Value::Filters(f) => {
-                            if f.0.iter().any(|f| matches!(f, crate::css::properties::Filter::Other)) {
-                                self.note("filter url() not drawn", id);
-                            }
-                            let current = s.used_color(P::Color)?;
-                            let mut split = f.0.len();
-                            for (i, f) in f.0.iter().enumerate() {
-                                if let crate::css::properties::Filter::DropShadowComputed(d) = f {
-                                    if shadow.is_some() {
-                                        self.note("filter with more than one drop-shadow(): the first drawn", id);
-                                        break;
-                                    }
-                                    let constant = |n: &crate::css::properties::Numeric| n.expression().constant().map_or(0., |q| q.value) as f32;
-                                    let color = d.color.as_ref().map_or(current, |c| c.used(current)).srgb8_clipped();
-                                    shadow = Some(DropShadow { dx: constant(&d.x), dy: constant(&d.y), sigma: constant(&d.blur).clamp(0., 1000.), color });
-                                    split = i;
-                                }
-                            }
-                            // The colour functions after the shadow colour it too.
-                            after = crate::css::properties::color_matrix(&f.0[split.min(f.0.len())..]);
-                            let sigma2: f64 =
-                                f.0.iter().map(|f| if let crate::css::properties::Filter::Blur(n) = f { n.expression().constant().map_or(0., |q| q.value.max(0.)).powi(2) } else { 0. }).sum();
-                            (crate::css::properties::color_matrix(&f.0[..split]), sigma2.sqrt().min(1000.) as f32)
-                        }
-                        _ => (None, 0.),
-                    };
-                    // mix-blend-mode: the box and its content composite onto
-                    // what is under it through the mode, as one group.
-                    let blend = match s.value(P::MixBlendMode) {
-                        Value::Keyword(k) => [
-                            K::Normal,
-                            K::Multiply,
-                            K::Screen,
-                            K::Overlay,
-                            K::Darken,
-                            K::Lighten,
-                            K::ColorDodge,
-                            K::ColorBurn,
-                            K::HardLight,
-                            K::SoftLight,
-                            K::Difference,
-                            K::Exclusion,
-                            K::Hue,
-                            K::Saturation,
-                            K::ColorBlend,
-                            K::Luminosity,
-                            K::PlusLighter,
-                        ]
-                        .iter()
-                        .position(|m| m == k)
-                        .unwrap_or(0) as u8,
-                        _ => 0,
-                    };
-                    if opacity < 1. || mask.is_some() || filter.is_some() || blur > 0. || blend != 0 || shadow.is_some() || after.is_some() {
-                        if self.groups.len() >= self.limits.commands {
-                            return Err(Error::Limit);
-                        }
-                        let index = self.groups.len() as u32;
-                        let parent_reach = if parent_group == NONE { 0. } else { self.groups[parent_group as usize].reach };
-                        // (A shadow reaches as far as it is moved and blurred.)
-                        let shadow_reach = shadow.map_or(0., |d| d.dx.abs().max(d.dy.abs()) + 3. * d.sigma);
-                        self.groups.push(Group { parent: parent_group, opacity: opacity as f32, mask, filter, blur, reach: parent_reach + (3. * blur).max(shadow_reach), blend, shadow, after });
-                        if mask.is_none() && filter.is_none() && blur == 0. && blend == 0 && shadow.is_none() && after.is_none() {
-                            self.group_owners.push((id, index));
-                        }
+                    let mut masked = false;
+                    if let Some(index) = self.group_of(id, s, outer, inside_border, opacity, transformed, parent_group, clip)? {
                         self.current_group = index;
                         children_group = index;
+                        masked = self.groups[index as usize].mask.is_some();
                     }
                     let positioned = !matches!(s.value(P::Position), Value::Keyword(K::Static));
                     let z = match s.value(P::ZIndex) {
@@ -2589,7 +2644,7 @@ impl<'a> BuildJob<'a> {
                     let filtered = !matches!(s.value(P::Filter), Value::Keyword(K::None))
                         || !matches!(s.value(P::BackdropFilter), Value::Keyword(K::None))
                         || !matches!(s.value(P::MixBlendMode), Value::Keyword(K::Normal));
-                    let stacking = z.is_some() || opacity < 1. || isolated || transformed != parent_transform || layered || mask.is_some() || filtered;
+                    let stacking = z.is_some() || opacity < 1. || isolated || transformed != parent_transform || layered || masked || filtered;
                     if positioned || stacking {
                         if self.contexts.len() >= self.limits.commands {
                             return Err(Error::Limit);
