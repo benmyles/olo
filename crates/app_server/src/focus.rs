@@ -199,11 +199,21 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for PointerFoc
 }
 
 impl<BackendData: Backend> KeyboardTarget<AnvilState<BackendData>> for KeyboardFocusTarget {
+    // Nothing said to a surface that's gone: a client that ended (crashed)
+    // with the keyboard on one of its layer surfaces has it taken while
+    // that surface is being destroyed, and wl_keyboard.leave naming it
+    // panicked in Wayland's destructor, where nothing can unwind, so
+    // app_server aborted with it (Deskbar's crash took the session's
+    // screen black, Ben, 2026-11-09).
     fn enter(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, keys: Vec<KeysymHandle<'_>>, serial: Serial) {
-        self.inner_keyboard_target().enter(seat, data, keys, serial)
+        if self.alive() {
+            self.inner_keyboard_target().enter(seat, data, keys, serial)
+        }
     }
     fn leave(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, serial: Serial) {
-        self.inner_keyboard_target().leave(seat, data, serial)
+        if self.alive() {
+            self.inner_keyboard_target().leave(seat, data, serial)
+        }
     }
     fn key(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, key: KeysymHandle<'_>, state: KeyState, serial: Serial, time: InputTime) {
         self.inner_keyboard_target().key(seat, data, key, state, serial, time)

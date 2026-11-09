@@ -3322,8 +3322,16 @@ fn main() {
         model.update(cx, |d, _| d.bars = bars);
         // A bar closed under it (the compositor took its display's
         // surface) is replaced as soon as its display is listed again.
+        // (After what closed it is done: a window closed in the middle of
+        // an update of Deskbar's own, as the approve sheet closes once
+        // app_server says yes, made this a second update of it, and GPUI
+        // panics at that: Deskbar crashed, Ben, 2026-11-09.)
         let reopen = model.clone();
-        cx.on_window_closed(move |cx| reopen.update(cx, |d, cx| d.sync_bars(cx))).detach();
+        cx.on_window_closed(move |cx| {
+            let reopen = reopen.clone();
+            cx.defer(move |cx| reopen.update(cx, |d, cx| d.sync_bars(cx)));
+        })
+        .detach();
         // A display app_server listed before this app's connection knew it
         // (after a restart they come one by one, the external ones last):
         // its bar is opened once it is known here, not on the main display
