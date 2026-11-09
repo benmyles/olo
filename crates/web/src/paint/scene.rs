@@ -2019,12 +2019,28 @@ impl<'a> BuildJob<'a> {
             .collect();
         let opacity_at = |at: u32| -> f64 { faded.iter().filter(|(r, _)| r.contains(&at)).map(|(_, o)| *o).product() };
         let fade = |c: [u8; 4], o: f64| if o < 1. { [c[0], c[1], c[2], (f64::from(c[3]) * o).round() as u8] } else { c };
-        let mut backgrounds: Vec<(Range<u32>, [u8; 4], [f64; 4], bool, bool, crate::dom::NodeId)> = Vec::new();
+        // (An inline's border: each side's width and colour, drawn on each
+        // line's piece, its left and right only where it starts and ends.)
+        type InlineBorder = ([f64; 4], [[u8; 4]; 4]);
+        let mut backgrounds: Vec<(Range<u32>, [u8; 4], [f64; 4], bool, bool, crate::dom::NodeId, Option<InlineBorder>)> = Vec::new();
         for b in inline_boxes {
             check(self.cancel)?;
             let s = layout.cache().tree().styles().snapshot(b.node).ok_or(Error::Stale)?;
             let c = fade(color(s, P::BackgroundColor)?, opacity_at(to_output(b.range.start)));
-            if !visible(s) || c[3] == 0 {
+            let widths = [P::BorderTopWidth, P::BorderRightWidth, P::BorderBottomWidth, P::BorderLeftWidth].map(|p| s.used_border_width(p).unwrap_or(0.));
+            let border = if widths.iter().any(|w| *w > 0.) {
+                let mut colors = [[0u8; 4]; 4];
+                for (i, p) in [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor].into_iter().enumerate() {
+                    colors[i] = fade(color(s, p)?, opacity_at(to_output(b.range.start)));
+                }
+                if [P::BorderTopStyle, P::BorderRightStyle, P::BorderBottomStyle, P::BorderLeftStyle].iter().any(|p| !matches!(s.value(*p), Value::Keyword(K::Solid | K::None | K::Hidden))) {
+                    self.fallbacks.note("inline border style painted solid", Some(b.node));
+                }
+                Some((widths, colors))
+            } else {
+                None
+            };
+            if !visible(s) || (c[3] == 0 && border.is_none()) {
                 continue;
             }
             if matches!(s.value(P::BackgroundImage), Value::Images(_)) {
@@ -2052,13 +2068,13 @@ impl<'a> BuildJob<'a> {
                 let Some(ds) = layout.cache().tree().styles().snapshot(d.node) else { continue };
                 let edge = |p| ds.value(p).scalar().unwrap_or(0.);
                 if d.range.start == b.range.start && d.first {
-                    lead += edge(P::MarginLeft) + edge(P::PaddingLeft).max(0.);
+                    lead += edge(P::MarginLeft) + edge(P::PaddingLeft).max(0.) + ds.used_border_width(P::BorderLeftWidth).unwrap_or(0.);
                 }
                 if d.range.end == b.range.end && d.last {
-                    trail += edge(P::MarginRight) + edge(P::PaddingRight).max(0.);
+                    trail += edge(P::MarginRight) + edge(P::PaddingRight).max(0.) + ds.used_border_width(P::BorderRightWidth).unwrap_or(0.);
                 }
             }
-            backgrounds.push((range, c, [pad(P::PaddingTop), trail, pad(P::PaddingBottom), lead], b.first, b.last, b.node));
+            backgrounds.push((range, c, [pad(P::PaddingTop), trail, pad(P::PaddingBottom), lead], b.first, b.last, b.node, border));
         }
         // Styles are immutable for this build. Consecutive glyphs usually
         // belong to the same span: resolve/convert its paint color once.
@@ -2126,7 +2142,7 @@ impl<'a> BuildJob<'a> {
             // bounds agree with the actual glyph placement.
             let scale = layout.device_scale();
             let baseline = ((at.y + text.baseline(li).ok_or(Error::Invalid)?) * scale).round() / scale;
-            for (range, c, pad, first, last, node) in &backgrounds {
+            for (range, c, pad, first, last, node, border) in &backgrounds {
                 let (mut x0, mut x1, mut ascent, mut descent) = (f64::INFINITY, f64::NEG_INFINITY, 0f64, 0f64);
                 let (mut starts, mut ends) = (false, false);
                 for fi in line.fragments.clone() {
@@ -2146,9 +2162,11 @@ impl<'a> BuildJob<'a> {
                             x1 = x1.max(at.x + f.x + pen as f64 * factor);
                         }
                     }
-                    let (_, _, _, a, d) = self.line_metrics(&run.font);
-                    ascent = ascent.max(a * factor);
-                    descent = descent.max(d * factor);
+                    // (Its font's content area on the device grid, as Chrome
+                    // paints an inline's background and border.)
+                    let (a, d) = text.content_area(f);
+                    ascent = ascent.max(a + text.shift(f));
+                    descent = descent.max(d - text.shift(f));
                     starts |= f.source.start <= range.start;
                     ends |= f.source.end >= range.end;
                 }
@@ -2176,7 +2194,24 @@ impl<'a> BuildJob<'a> {
                             (radii[1], radii[2]) = (circular(1), circular(2));
                         }
                     }
-                    self.emit(group, true, piece, Primitive::Fill { color: *c, owner: id, radii }, clip)?;
+                    if c[3] != 0 {
+                        self.emit(group, true, piece, Primitive::Fill { color: *c, owner: id, radii }, clip)?;
+                    }
+                    if let Some((w, colors)) = border {
+                        let (left, right) = (if starts && *first { w[3] } else { 0. }, if ends && *last { w[1] } else { 0. });
+                        let outer = Rect { x: piece.x - left, y: piece.y - w[0], width: piece.width + left + right, height: piece.height + w[0] + w[2] };
+                        let sides = [
+                            Rect { x: outer.x, y: outer.y, width: outer.width, height: w[0] },
+                            Rect { x: outer.x + outer.width - right, y: outer.y, width: right, height: outer.height },
+                            Rect { x: outer.x, y: outer.y + outer.height - w[2], width: outer.width, height: w[2] },
+                            Rect { x: outer.x, y: outer.y, width: left, height: outer.height },
+                        ];
+                        for (side, color) in sides.into_iter().zip(colors) {
+                            if side.width > 0. && side.height > 0. && color[3] != 0 {
+                                self.emit(group, true, side, Primitive::Fill { color: *color, owner: id, radii: [0.; 4] }, clip)?;
+                            }
+                        }
+                    }
                 }
             }
             for fi in line.fragments.clone() {

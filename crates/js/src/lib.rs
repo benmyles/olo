@@ -2433,6 +2433,7 @@ const NATIVES: &[&str] = &[
     "rect",
     "paddingRect",
     "textRects",
+    "clientRects",
     "scrollSize",
     "computed",
     "docSize",
@@ -3495,6 +3496,37 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     }
                     None => rv.set_null(),
                 }
+            }
+        }
+        // An element's rectangles ([x, y, width, height, ...]): an inline
+        // one's border box on each of its lines, else its border box
+        // (getClientRects).
+        "clientRects" => {
+            if let Some(n) = node(scope, 0) {
+                let mut s = state.borrow_mut();
+                s.measured();
+                let s = &mut *s;
+                let mut rects = s
+                    .measured
+                    .as_ref()
+                    .map(|m| {
+                        let lines = m.inline_rects(n);
+                        if lines.len() > 1 { lines } else { m.placed_box(&s.document, n).into_iter().collect() }
+                    })
+                    .unwrap_or_default();
+                if s.document.any_scrolled() {
+                    let mut at = s.document.parent(n).ok().flatten();
+                    while let Some(a) = at {
+                        let o = s.document.scroll_offset(a);
+                        for r in &mut rects {
+                            r.x -= o[0];
+                            r.y -= o[1];
+                        }
+                        at = s.document.parent(a).ok().flatten();
+                    }
+                }
+                let flat: Vec<v8::Local<v8::Value>> = rects.iter().flat_map(|r| [r.x, r.y, r.width, r.height]).map(|x| v8::Number::new(scope, x).into()).collect();
+                rv.set(v8::Array::new_with_elements(scope, &flat).into());
             }
         }
         // A text node's characters start..end as laid out, a rectangle a

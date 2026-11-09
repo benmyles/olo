@@ -33,16 +33,19 @@ pub(super) fn length(s: &Style, p: P, basis: Option<f64>, fallback: Option<f64>,
 pub(super) fn has_inline_edge(s: &Style, start: bool) -> bool {
     let props = if start { [P::MarginLeft, P::PaddingLeft] } else { [P::MarginRight, P::PaddingRight] };
     props.into_iter().any(|p| !matches!(s.value(p), Value::Keyword(K::Auto)) && s.value(p).scalar() != Some(0.))
+        || s.used_border_width(if start { P::BorderLeftWidth } else { P::BorderRightWidth }).is_ok_and(|w| w > 0.)
 }
 pub(super) fn inline_edges(s: &Style, width: f64, queries: QueryBasis, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<((f64, bool), (f64, bool))> {
     let mut value = |p| length(s, p, Some(width), Some(0.), queries, scratch, cancel, scale).map(|v| v.unwrap_or(0.));
     let (ml, pl) = (value(P::MarginLeft)?, value(P::PaddingLeft)?.max(0.));
     let (mr, pr) = (value(P::MarginRight)?, value(P::PaddingRight)?.max(0.));
-    let (left, right) = (ml + pl, mr + pr);
+    // (An inline's borders take their room on its line too.)
+    let (bl, br) = (s.used_border_width(P::BorderLeftWidth)?, s.used_border_width(P::BorderRightWidth)?);
+    let (left, right) = (ml + pl + bl, mr + pr + br);
     if !left.is_finite() || !right.is_finite() {
         return Err(Error::Invalid);
     }
-    Ok(((left, ml != 0. || pl != 0.), (right, mr != 0. || pr != 0.)))
+    Ok(((left, ml != 0. || pl != 0. || bl != 0.), (right, mr != 0. || pr != 0. || br != 0.)))
 }
 fn nonnegative(v: f64) -> f64 {
     v.max(0.)

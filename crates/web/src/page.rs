@@ -912,7 +912,7 @@ pub struct Measured {
     document_size: std::sync::OnceLock<(f64, f64)>,
     /// Inline elements' pieces in the paragraphs (text source, source range),
     /// by element: made the first time one is measured.
-    inlines: std::sync::OnceLock<(crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>>, Vec<Option<layout::BoxId>>)>,
+    inlines: std::sync::OnceLock<(crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>, bool, bool)>>, Vec<Option<layout::BoxId>>)>,
     /// Each text node's spans in the text sources (source, byte range),
     /// found once (Range.getClientRects).
     text_spans: std::sync::OnceLock<crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>>>,
@@ -1016,14 +1016,14 @@ impl Measured {
     /// The inline elements' pieces of each text source, and each source's
     /// text box (what its lines are laid out in), found once.
     #[allow(clippy::type_complexity)]
-    fn inline_index(&self) -> &(crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>>, Vec<Option<layout::BoxId>>) {
+    fn inline_index(&self) -> &(crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>, bool, bool)>>, Vec<Option<layout::BoxId>>) {
         let tree = self.layout.cache().tree();
         self.inlines.get_or_init(|| {
-            let mut map: crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>)>> = Default::default();
+            let mut map: crate::dom::NodeMap<Vec<(u32, std::ops::Range<u32>, bool, bool)>> = Default::default();
             let mut source = 0u32;
             while tree.text_source(source).is_some() {
                 for b in tree.inline_boxes(source).unwrap_or(&[]) {
-                    map.entry(b.node).or_default().push((source, b.range.clone()));
+                    map.entry(b.node).or_default().push((source, b.range.clone(), b.first, b.last));
                 }
                 source += 1;
             }
@@ -1040,9 +1040,38 @@ impl Measured {
         })
     }
     fn inline_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
-        let (inlines, text_boxes) = self.inline_index();
         let mut union: Option<layout::Rect> = None;
-        for (source, range) in inlines.get(&node)? {
+        for r in self.inline_rects(node) {
+            union = Some(match union {
+                None => r,
+                Some(u) => {
+                    let (x, y) = (u.x.min(r.x), u.y.min(r.y));
+                    layout::Rect { x, y, width: (u.x + u.width).max(r.x + r.width) - x, height: (u.y + u.height).max(r.y + r.height) - y }
+                }
+            });
+        }
+        union
+    }
+    /// An inline element's border box on each line it is laid out on, in
+    /// page coordinates (getClientRects): its text's content area there,
+    /// grown by its padding and borders (at its sides only where it starts
+    /// and ends), as Chrome gives them.
+    pub fn inline_rects(&self, node: crate::dom::NodeId) -> Vec<layout::Rect> {
+        let mut out = Vec::new();
+        let (inlines, text_boxes) = self.inline_index();
+        let Some(pieces) = inlines.get(&node) else { return out };
+        let tree = self.layout.cache().tree();
+        let edges = tree.styles().snapshot(node).map_or([0.; 4], |s| {
+            let pad = |p| s.value(p).scalar().unwrap_or(0.).max(0.);
+            let border = |p| s.used_border_width(p).unwrap_or(0.);
+            [
+                pad(css::properties::Property::PaddingTop) + border(css::properties::Property::BorderTopWidth),
+                pad(css::properties::Property::PaddingRight) + border(css::properties::Property::BorderRightWidth),
+                pad(css::properties::Property::PaddingBottom) + border(css::properties::Property::BorderBottomWidth),
+                pad(css::properties::Property::PaddingLeft) + border(css::properties::Property::BorderLeftWidth),
+            ]
+        });
+        for (source, range, first, last) in pieces {
             let Some(container) = text_boxes.get(*source as usize).copied().flatten() else { continue };
             let (Some(text), Some(origin)) = (self.layout.text_layout(container), self.layout.bounds(container)) else { continue };
             let content = self.layout.geometry(container).map_or((0., 0.), |g| {
@@ -1051,24 +1080,36 @@ impl Measured {
             });
             for (i, line) in text.lines().iter().enumerate() {
                 let Some(baseline) = text.baseline(i) else { continue };
+                let (mut x0, mut x1, mut top, mut bottom) = (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+                let (mut starts, mut ends) = (false, false);
                 for f in &text.fragments()[line.fragments.start as usize..line.fragments.end as usize] {
                     if f.source.end <= range.start || f.source.start >= range.end {
                         continue;
                     }
+                    let (l, r) = fragment_part(text, f, range.start, range.end);
+                    x0 = x0.min(f.x + l);
+                    x1 = x1.max(f.x + r);
                     // (Its font's content area, as Chrome measures an inline.)
                     let (above, below) = text.content_area(f);
-                    let r = layout::Rect { x: origin.x + content.0 + f.x, y: origin.y + content.1 + baseline - text.shift(f) - above, width: f.advance, height: above + below };
-                    union = Some(match union {
-                        None => r,
-                        Some(u) => {
-                            let (x, y) = (u.x.min(r.x), u.y.min(r.y));
-                            layout::Rect { x, y, width: (u.x + u.width).max(r.x + r.width) - x, height: (u.y + u.height).max(r.y + r.height) - y }
-                        }
-                    });
+                    let y = baseline - text.shift(f) - above;
+                    top = top.min(y);
+                    bottom = bottom.max(y + above + below);
+                    starts |= f.source.start <= range.start;
+                    ends |= f.source.end >= range.end;
                 }
+                if x0 > x1 {
+                    continue;
+                }
+                if starts && *first {
+                    x0 -= edges[3];
+                }
+                if ends && *last {
+                    x1 += edges[1];
+                }
+                out.push(layout::Rect { x: origin.x + content.0 + x0, y: origin.y + content.1 + top - edges[0], width: x1 - x0, height: bottom - top + edges[0] + edges[2] });
             }
         }
-        union
+        out
     }
     /// Where a text node's characters `start..end` (UTF-16 offsets, as a
     /// Range has them) are laid out: a rectangle a line, in page
@@ -1120,32 +1161,7 @@ impl Measured {
                         if (!collapsed && (f.source.end <= a || f.source.start >= z)) || (collapsed && (a < f.source.start || a > f.source.end)) {
                             continue;
                         }
-                        // The fragment's part from `a` to `z`, by its glyphs'
-                        // advances (left to right in the fragment).
-                        let (mut left, mut right) = (0., f.advance);
-                        if let Some(run) = text.run(f) {
-                            let unit = run.size / f64::from(run.font.units_per_em());
-                            let glyphs = run.glyphs.get(f.glyphs.start as usize..f.glyphs.end as usize).unwrap_or(&[]);
-                            let total: f64 = glyphs.iter().map(|g| f64::from(g.x_advance) * unit).sum();
-                            let stretch = if total > 0. { f.advance / total } else { 1. };
-                            let mut x = 0.;
-                            let (mut l, mut r) = (None, None);
-                            for g in glyphs {
-                                let cluster = g.cluster;
-                                if l.is_none() && cluster >= a {
-                                    l = Some(x);
-                                }
-                                if r.is_none() && cluster >= z {
-                                    r = Some(x);
-                                }
-                                x += f64::from(g.x_advance) * unit * stretch;
-                            }
-                            left = l.unwrap_or(x);
-                            right = r.unwrap_or(x).max(left);
-                            if f.level % 2 == 1 {
-                                (left, right) = (f.advance - right, f.advance - left);
-                            }
-                        }
+                        let (left, right) = fragment_part(text, f, a, z);
                         // (Its font's content area, as Chrome measures text.)
                         let (above, below) = text.content_area(f);
                         let y = origin.y + content.1 + baseline - text.shift(f) - above;
@@ -4320,4 +4336,29 @@ mod sheet_tests {
         assert_eq!(under_media("screen and (min-width: 600px)", "a{}"), "@media screen and (min-width: 600px) {\na{}\n}");
         assert_eq!(under_media("x{}", "a{}"), "@media x {\na{}\n}");
     }
+}
+
+/// The part of a fragment from source byte `a` to `z` (x from its left, to
+/// its right), by its glyphs' clusters and advances, the fragment's
+/// advance shared out over them; mirrored in a right-to-left one.
+fn fragment_part(text: &crate::text::layout::Layout, f: &crate::text::layout::Fragment, a: u32, z: u32) -> (f64, f64) {
+    let Some(run) = text.run(f) else { return (0., f.advance) };
+    let unit = run.size / f64::from(run.font.units_per_em());
+    let glyphs = run.glyphs.get(f.glyphs.start as usize..f.glyphs.end as usize).unwrap_or(&[]);
+    let total: f64 = glyphs.iter().map(|g| f64::from(g.x_advance) * unit).sum();
+    let stretch = if total > 0. { f.advance / total } else { 1. };
+    let mut x = 0.;
+    let (mut l, mut r) = (None, None);
+    for g in glyphs {
+        if l.is_none() && g.cluster >= a {
+            l = Some(x);
+        }
+        if r.is_none() && g.cluster >= z {
+            r = Some(x);
+        }
+        x += f64::from(g.x_advance) * unit * stretch;
+    }
+    let (left, right) = (l.unwrap_or(x), r.unwrap_or(x));
+    let right = right.max(left);
+    if f.level % 2 == 1 { (f.advance - right, f.advance - left) } else { (left, right) }
 }
