@@ -4126,5 +4126,11 @@
   "title": "Browser: Stack Overflow's questions as Chrome lays them out",
   "caption": "Titles that break anywhere shrink their column; excerpts clamped to two lines with an ellipsis.",
   "image": "2026-11-09/094134-browser-stack-overflow-s-questions-as-chrome-lay.png"
+ },
+ {
+  "time": "2026-11-09T09:56:51",
+  "title": "Browser: Pixelscan as Chrome draws it",
+  "caption": "Its Angular stylesheet applied, fit-content buttons and ratio SVG icons sized as Chrome sizes them.",
+  "image": "2026-11-09/095651-browser-pixelscan-as-chrome-draws-it.png"
  }
 ]

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser: Pixelscan as Chrome draws it
+
+*09:56* — Its Angular stylesheet applied, fit-content buttons and ratio SVG icons sized as Chrome sizes them.
+
+![Browser: Pixelscan as Chrome draws it](2026-11-09/095651-browser-pixelscan-as-chrome-draws-it.png)
+
 ### Browser: Stack Overflow's questions as Chrome lays them out
 
 *09:41* — Titles that break anywhere shrink their column; excerpts clamped to two lines with an ellipsis.
