@@ -83,10 +83,12 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   by CSS, Material's spinner) aren't read: presentation attributes only.
 - [ ] `getComputedStyle` answers no `animation-name` (a page probing which
   elements animate finds none).
-- [ ] Decoded pictures: kept whole while bound (a page's budget 256 MB,
-  the latest kept past it). Decode at the size shown, let pictures far
-  out of view go and decode them again when they come back (Chrome's
-  discardable decodes): Reddit's long feed sits at 1.0-1.5 GB.
+- [ ] Decoded pictures: the scripts' let go far from the view over 160 MB
+  and decoded again as they come near (2026-11-08: Reddit 1.0-1.8 GB ->
+  0.66-1.2 GB; Chrome 0.5). Left: the page's own pictures (its budget 256
+  MB, the latest kept), decoding at the size shown, and the rest of a
+  long feed's memory (tiles, the layout and scene, painters' caches)
+  measured and bounded.
 - [x] Reddit: its loading indicator (between pages): its ring, an absolute
   child of a centring flex box, sat at the start (2026-11-08: placed as
   the sole flex item would be); its Snoo draws as Chrome's.

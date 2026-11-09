@@ -7095,4 +7095,13 @@ the Guardian and old Reddit, looking for pages that fail outright:
   the vendored AV1 parser's global motion (a sub-exponential code missing
   its offset; AltRef's defaults never set). A minute of it now decodes
   bit-identical to the software decoder.
+- **YouTube's load.** It asks `querySelectorAll('*')` some 2,150 times, and
+  a `:has([style])` among its rules restyled the page whole at each style
+  attribute a script set (50 times). `*` takes the fast path now, and a
+  `:has()` testing an attribute matches again only the elements it can
+  flip. Olo's own prelude wrapped every element for compareDocumentPosition
+  and for connecting custom elements: natives do both.
+- **Reddit's memory.** The pictures in its feed's `img` elements stayed
+  decoded however far scrolled past: 570 MB of them. Past a budget those
+  far from the view go and come back as they near it, as Chrome's do.
 
