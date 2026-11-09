@@ -673,7 +673,11 @@
     if (!kind.startsWith('C:') || stubs.has(name)) continue;
     const d = getOwn(global, name);
     const C = d && d.value;
-    if (typeof C === 'function' && C.prototype && typeof C.prototype === 'object' && !shaped.has(C.prototype)) harden(C.prototype);
+    if (typeof C === 'function' && C.prototype && typeof C.prototype === 'object') {
+      // (Every interface's objects say what they are: [object FontFaceSet].)
+      if (!has(C.prototype, Symbol.toStringTag) && C.name === name) define(C.prototype, Symbol.toStringTag, { value: name, configurable: true });
+      if (!shaped.has(C.prototype)) harden(C.prototype);
+    }
   }
 
   // ---------- What every function the page can reach is called (above).

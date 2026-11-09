@@ -67,6 +67,16 @@ pub fn set_display(screen: [f64; 2], window: [f64; 2]) {
         *d = Some([screen[0], screen[1], window[0], window[1]]);
     }
 }
+/// The installed fonts' families, lowercased: what a FontFace's `local()`
+/// source finds (as Chrome finds this machine's fonts).
+static LOCAL_FONTS: std::sync::Mutex<Option<std::sync::Arc<std::collections::HashSet<String>>>> = std::sync::Mutex::new(None);
+/// The browser tells which fonts are installed (once its catalog is made).
+pub fn set_local_fonts(families: impl IntoIterator<Item = String>) {
+    let set: std::collections::HashSet<String> = families.into_iter().map(|f| f.to_lowercase()).collect();
+    if let Ok(mut f) = LOCAL_FONTS.lock() {
+        *f = Some(std::sync::Arc::new(set));
+    }
+}
 /// Olo presents as the Chrome whose web it renders: the version it
 /// follows, and what Chrome 157 on Linux says of itself (its user agent,
 /// its client hints' brands, as Chrome sends them; captured from Chrome
@@ -2409,6 +2419,7 @@ const NATIVES: &[&str] = &[
     "heapStats",
     "brands",
     "chromeVersion",
+    "localFont",
     "fromPrelude",
     "isProxy",
     "builtin",
@@ -3599,6 +3610,12 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             rv.set(v8::Array::new_with_elements(scope, &items).into());
         }
         "chromeVersion" => rv.set(string(scope, CHROME_FULL).into()),
+        // Whether a font is installed (a FontFace's local() source).
+        "localFont" => {
+            let name = arg_string(scope, &args, 0).to_lowercase();
+            let found = LOCAL_FONTS.lock().ok().and_then(|f| f.clone()).is_some_and(|f| f.contains(name.trim()));
+            rv.set_bool(found);
+        }
         // Whether a function is the prelude's (it reads as native code, as
         // Chrome's own do).
         // For the console, which reads nothing of the page's code: whether a

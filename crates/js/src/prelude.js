@@ -768,7 +768,7 @@
     forms: { get() { return collectionOf(N.query(documentNode, 'form', true)); } }, images: { get() { return collectionOf(N.query(documentNode, 'img', true)); } }, links: { get() { return collectionOf(N.query(documentNode, 'a[href],area[href]', true)); } }, scripts: { get() { return collectionOf(N.query(documentNode, 'script', true)); } }, anchors: { get() { return collectionOf(N.query(documentNode, 'a[name]', true)); } }, embeds: { get() { return collectionOf([]); } }, plugins: { get() { return collectionOf([]); } }, all: { get() { return collectionOf(N.query(documentNode, '*', true)); } },
     styleSheets: { get() { return listOf(N.query(documentNode, 'style:not([data-olo-adopted]),link[rel~=stylesheet]', true).map(sheetOf).filter(Boolean)); } },
     adoptedStyleSheets: { get() { return adopted; }, set(v) { adopted = Array.from(v || []); syncAdopted(); } },
-    fonts: { get() { return { ready: Promise.resolve(), status: 'loaded', load: () => Promise.resolve([]), check: () => true, addEventListener() {}, removeEventListener() {}, forEach() {}, size: 0, add() {}, delete() {}, clear() {} }; } },
+    fonts: { get() { return fontSet; } },
     implementation: { get() { return { hasFeature: () => true, createHTMLDocument: (title) => createHTMLDocument(title), createDocument: () => N.createFragment(), createDocumentType: () => null }; } },
     timeline: { get() { return { currentTime: performanceNow() }; } },
     getAnimations() { return animations.filter((a) => a.playState !== 'idle'); },
@@ -2626,7 +2626,7 @@
   // of the head, which the engine styles from.
   let adopted = [], adoptedElement = null;
   const syncAdopted = () => {
-    const text = adopted.map((sheet) => sheet._current().join('\n')).join('\n');
+    const text = adopted.map((sheet) => sheet._current().join('\n')).join('\n') + (fontRules ? '\n' + fontRules : '');
     if (!adoptedElement || !N.isConnected(adoptedElement)) {
       if (!text) return;
       const head = N.query(documentNode, 'head', false) || N.query(documentNode, 'html', false);
@@ -2637,6 +2637,87 @@
     }
     N.setTextContent(adoptedElement, text);
   };
+  // ---------- Fonts (CSS Font Loading 3): FontFace and document.fonts.
+  // A face added to document.fonts is an @font-face rule (with the adopted
+  // sheets'); its local() sources are the installed fonts (N.localFont),
+  // its url()s fetched to load it, its bytes a blob's URL.
+  let fontRules = '';
+  const fontToken = {};
+  const cssString = (v) => '"' + String(v).replace(/["\\]/g, '\\$&') + '"';
+  const fontSources = (src) => {
+    const out = [];
+    const re = /(local|url)\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi;
+    for (let m; (m = re.exec(src));) out.push(m[1].toLowerCase() === 'local' ? { local: (m[2] ?? m[3] ?? m[4] ?? '').trim() } : { url: resolveURL((m[2] ?? m[3] ?? m[4] ?? '').trim()) });
+    return out;
+  };
+  class FontFace {
+    constructor(family, source, descriptors) {
+      if (arguments.length < 2) throw new TypeError("Failed to construct 'FontFace': 2 arguments required, but only " + arguments.length + ' present.');
+      const d = descriptors && typeof descriptors === 'object' ? descriptors : {};
+      const pick = (k, fallback) => (d[k] === undefined ? fallback : String(d[k]));
+      Object.defineProperty(this, '_d', { value: { family: String(family), style: pick('style', 'normal'), weight: pick('weight', 'normal'), stretch: pick('stretch', 'normal'), unicodeRange: pick('unicodeRange', 'U+0-10FFFF'), variant: pick('variant', 'normal'), featureSettings: pick('featureSettings', 'normal'), variationSettings: pick('variationSettings', 'normal'), display: pick('display', 'auto'), ascentOverride: pick('ascentOverride', 'normal'), descentOverride: pick('descentOverride', 'normal'), lineGapOverride: pick('lineGapOverride', 'normal') } });
+      let resolve, reject;
+      const loaded = new Promise((a, b) => { resolve = a; reject = b; });
+      loaded.catch(() => {});
+      Object.defineProperty(this, '_l', { value: { status: 'unloaded', loaded, resolve, reject, src: '' } });
+      if (typeof source === 'string') this._l.src = source;
+      else if (source instanceof ArrayBuffer || ArrayBuffer.isView(source)) {
+        const bytes = source instanceof ArrayBuffer ? new Uint8Array(source) : new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
+        this._l.src = 'url(' + cssString(URL.createObjectURL(new Blob([bytes.slice()]))) + ')';
+        this._l.status = 'loaded'; resolve(this);
+      } else this._l.src = String(source);
+    }
+    get status() { return this._l.status; }
+    get loaded() { return this._l.loaded; }
+    load() {
+      const l = this._l;
+      if (l.status !== 'unloaded') return l.loaded;
+      l.status = 'loading';
+      (async () => {
+        for (const s of fontSources(l.src)) {
+          if (s.local !== undefined) { if (N.localFont(s.local)) return true; continue; }
+          try { const r = await fetch(s.url); if (r.ok) { await r.arrayBuffer(); return true; } } catch (e) { /* the next source */ }
+        }
+        return false;
+      })().then((ok) => {
+        if (ok) { l.status = 'loaded'; l.resolve(this); } else { l.status = 'error'; l.reject(new DOMException('A network error occurred.', 'NetworkError')); }
+        if (fontSet) fontSet._settled();
+      });
+      return l.loaded;
+    }
+    _rule() { const d = this._d; return '@font-face{font-family:' + cssString(d.family) + ';src:' + this._l.src + ';font-style:' + d.style + ';font-weight:' + d.weight + ';font-stretch:' + d.stretch + ';unicode-range:' + d.unicodeRange + ';font-display:' + d.display + '}'; }
+  }
+  for (const k of ['family', 'style', 'weight', 'stretch', 'unicodeRange', 'variant', 'featureSettings', 'variationSettings', 'display', 'ascentOverride', 'descentOverride', 'lineGapOverride']) {
+    Object.defineProperty(FontFace.prototype, k, { get() { return this._d[k]; }, set(v) { this._d[k] = String(v); if (fontSet && fontSet._faces.has(this)) syncFonts(); }, enumerable: true, configurable: true });
+  }
+  // A font shorthand's families ("bold 16px 'My Font', serif").
+  const fontFamilies = (font) => {
+    const m = /(?:^|\s)[+-]?[\d.]+(?:px|pt|pc|em|rem|ex|ch|vw|vh|vmin|vmax|cm|mm|in|q|%)?(?:\s*\/\s*\S+)?\s+(.+)$/i.exec(String(font).trim()) || /^(?:xx-small|x-small|small|medium|large|x-large|xx-large|larger|smaller)\s+(.+)$/i.exec(String(font).trim());
+    if (!m) throw new DOMException("Failed to execute 'check' on 'FontFaceSet': Could not resolve '" + font + "' as a font.", 'SyntaxError');
+    return m[1].split(',').map((f) => f.trim().replace(/^["']|["']$/g, '').toLowerCase());
+  };
+  let fontSet = null;
+  const syncFonts = () => { fontRules = fontSet ? [...fontSet._faces].map((f) => f._rule()).join('\n') : ''; syncAdopted(); };
+  class FontFaceSet extends EventTarget {
+    constructor(token) { if (token !== fontToken) throw new TypeError('Illegal constructor'); super(); Object.defineProperty(this, '_faces', { value: new Set() }); this.onloading = null; this.onloadingdone = null; this.onloadingerror = null; }
+    get size() { return this._faces.size; }
+    get status() { return [...this._faces].some((f) => f.status === 'loading') ? 'loading' : 'loaded'; }
+    get ready() { return Promise.all([...this._faces].filter((f) => f.status === 'loading').map((f) => f.loaded.catch(() => {}))).then(() => this); }
+    add(face) { if (!(face instanceof FontFace)) throw new TypeError("Failed to execute 'add' on 'FontFaceSet': parameter 1 is not of type 'FontFace'."); if (!this._faces.has(face)) { this._faces.add(face); syncFonts(); } return this; }
+    delete(face) { const had = this._faces.delete(face); if (had) syncFonts(); return had; }
+    clear() { if (this._faces.size) { this._faces.clear(); syncFonts(); } }
+    has(face) { return this._faces.has(face); }
+    forEach(cb, thisArg) { for (const f of [...this._faces]) cb.call(thisArg, f, f, this); }
+    entries() { return [...this._faces].map((f) => [f, f])[Symbol.iterator](); }
+    keys() { return this._faces.values(); }
+    values() { return this._faces.values(); }
+    [Symbol.iterator]() { return this._faces.values(); }
+    check(font) { const families = fontFamilies(font); return [...this._faces].filter((f) => families.includes(f.family.toLowerCase())).every((f) => f.status === 'loaded'); }
+    load(font) { const families = fontFamilies(font); return Promise.all([...this._faces].filter((f) => families.includes(f.family.toLowerCase())).map((f) => f.load())); }
+    _settled() { if (this.status === 'loaded') { const ev = new Event('loadingdone'); dispatch(this, ev); if (typeof this.onloadingdone === 'function') this.onloadingdone.call(this, ev); } }
+  }
+  fontSet = new FontFaceSet(fontToken);
+  global.FontFace = FontFace; global.FontFaceSet = FontFaceSet;
   global.CSSStyleSheet = class CSSStyleSheet {
     constructor(options, owner) { this.ownerNode = owner || null; this._text = owner ? N.textContent(owner) : ''; this._rules = splitRules(this._text); this.disabled = false; this.media = { mediaText: (options && options.media) || '' }; this.ownerRule = null; this.parentStyleSheet = null; this.title = null; }
     get href() { return this.ownerNode && N.nodeName(this.ownerNode) === 'LINK' ? resolveURL(N.attr(this.ownerNode, 'href') || '') : null; }

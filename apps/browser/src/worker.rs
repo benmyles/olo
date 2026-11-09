@@ -791,7 +791,9 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                 });
                 eprintln!("Browser fonts: {mapped} system font files mapped");
                 let policy = olo_web::font::system::chrome_policy()?;
-                let scope = FontSet::new(builder.finish(None)?, policy, Default::default())?.scope("en")?;
+                let catalog = builder.finish(None)?;
+                olo_js::set_local_fonts(catalog.faces().flat_map(|(_, f)| f.families.iter().map(|n| n.to_string())));
+                let scope = FontSet::new(catalog, policy, Default::default())?.scope("en")?;
                 let loader = Arc::new(crate::network::Loader::new()?);
                 let mut shaper = shaping::Engine::default();
                 let mut painter = paint::Engine::default();
