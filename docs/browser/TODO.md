@@ -92,7 +92,9 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 - [x] Reddit: its loading indicator (between pages): its ring, an absolute
   child of a centring flex box, sat at the start (2026-11-08: placed as
   the sole flex item would be); its Snoo draws as Chrome's.
-- [ ] Bot checks (2026-11-08 sweep): Stack Overflow stops at Cloudflare's
+- [ ] Bot checks (2026-11-08 sweep): Etsy (DataDome) serves Olo its page
+  since its HTTP/2 is Chrome's and frames are live (2026-11-09; its
+  cookie banner doesn't show). Stack Overflow stops at Cloudflare's
   "Performing security verification", The New York Times at DataDome's
   device check (in an iframe, whose scripts run only once, half a second,
   before its picture is taken: a blank page). Live iframes: a page of
