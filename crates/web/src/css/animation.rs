@@ -484,6 +484,9 @@ pub struct Timeline {
     /// Each animation's properties' values on its element before it ran
     /// (for the keyframes its rule leaves out), by animation.
     underlying: HashMap<(crate::dom::NodeId, Arc<str>, usize), Vec<(Arc<str>, Arc<str>)>>,
+    /// Paused animations (`animation-play-state: paused`) and the time
+    /// they hold (ms since their start): their start moves with the clock.
+    held: HashMap<(crate::dom::NodeId, Arc<str>, usize), f64>,
 }
 /// A timing function as CSS spells one (`ease-in-out`, `cubic-bezier(...)`,
 /// `steps(4, end)`), or none when it isn't one.
@@ -695,7 +698,16 @@ impl Timeline {
                     }
                     self.underlying.insert(key.clone(), own);
                 }
-                let start = *self.starts.entry(key.clone()).or_insert(self.now_ms);
+                let mut start = *self.starts.entry(key.clone()).or_insert(self.now_ms);
+                // Paused: it holds where it was (CSS Animations 1 §3.6), at
+                // its start's time if it never ran; it goes on from there.
+                if spec.paused {
+                    let held = *self.held.entry(key.clone()).or_insert(self.now_ms - start);
+                    start = self.now_ms - held;
+                    self.starts.insert(key.clone(), start);
+                } else {
+                    self.held.remove(&key);
+                }
                 seen.insert(key.clone());
                 let elapsed = (self.now_ms - start).max(0.) / 1000.;
                 // One that shows nothing (its element hidden, unless it is
@@ -738,6 +750,7 @@ impl Timeline {
         self.starts.retain(|k, _| seen.contains(k));
         self.underlying.retain(|k, _| seen.contains(k));
         self.phases.retain(|k, _| seen.contains(k));
+        self.held.retain(|k, _| seen.contains(k));
         let mut touched: Vec<crate::dom::NodeId> = out.keys().copied().collect();
         for n in std::mem::take(&mut self.applied) {
             if !out.contains_key(&n) {

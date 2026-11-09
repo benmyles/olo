@@ -133,8 +133,8 @@ pub struct Command {
     /// A live surface's image (see `image::Image::live`): shown through a
     /// layer of its own when nothing bends, fades or cuts it.
     pub(super) surface: bool,
-    /// Under an animated, translated box (that box): painted apart in the
-    /// box's own space, placed by its translation (see `Moved`).
+    /// Under an animated, transformed box (that box): painted apart in the
+    /// box's own space, shown through its matrix (see `Moved`).
     pub(super) moved: Option<BoxId>,
     /// How far past its bounds it may show (CSS px): a `filter: blur()`
     /// of a group it is in spreads it (what finds it by area looks that
@@ -307,25 +307,57 @@ pub enum LayerKind {
     /// A live surface (a canvas scripts keep drawing on), shown with the
     /// page from its image as it is, not through tiles: the box's.
     Surface(BoxId),
-    /// An animated box translated by its `transform` (a marquee, a
-    /// carousel): its subtree painted in its own space and placed by the
-    /// translation, so a frame that only moves it repaints nothing.
+    /// An animated box with a `transform` (a marquee, a carousel, a
+    /// spinner): its subtree painted in its own space and shown through
+    /// the matrix, so a frame that only moves, turns or scales it repaints
+    /// nothing.
     Moved(BoxId),
     /// A box with a `backdrop-filter` scrolled with the page, and its
     /// subtree: a layer of the page's of its own, so what is painted under
     /// it can be blurred (on the GPU) before it (the box's).
     Backdrop(BoxId),
 }
-/// A moved layer (see `LayerKind::Moved`): its box, its translation now
-/// (CSS px), the clip of its ancestors it is shown within (document
-/// coordinates), and its border box (what `transform-origin` resolves
-/// against).
+/// A moved layer (see `LayerKind::Moved`): its box, its matrix now (its
+/// transform about its origin, CSS px: a translation for a marquee, a
+/// rotation for a spinner), the clip of its ancestors it is shown within
+/// (document coordinates), and its border box (what `transform-origin`
+/// resolves against).
 #[derive(Clone, Copy, Debug)]
 pub struct Moved {
     pub root: BoxId,
-    pub translate: [f64; 2],
+    pub matrix: [f64; 6],
     pub clip: Option<Rect>,
     outer: Rect,
+}
+impl Moved {
+    /// Its translation, when that is all its matrix does.
+    pub fn translation(&self) -> Option<[f64; 2]> {
+        is_translation(self.matrix).then_some([self.matrix[4], self.matrix[5]])
+    }
+    /// A point of its own space where the layer shows it.
+    pub fn apply(&self, x: f64, y: f64) -> (f64, f64) {
+        let m = self.matrix;
+        (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
+    }
+    /// The point of its own space shown at (`x`, `y`).
+    pub fn unapply(&self, x: f64, y: f64) -> (f64, f64) {
+        let m = self.matrix;
+        let det = m[0] * m[3] - m[1] * m[2];
+        let (x, y) = (x - m[4], y - m[5]);
+        ((m[3] * x - m[2] * y) / det, (m[0] * y - m[1] * x) / det)
+    }
+    /// The rectangle of its own space that `shown` (where it shows) holds.
+    pub fn unapply_rect(&self, shown: Rect) -> Rect {
+        let corners = [(shown.x, shown.y), (shown.x + shown.width, shown.y), (shown.x, shown.y + shown.height), (shown.x + shown.width, shown.y + shown.height)].map(|(x, y)| self.unapply(x, y));
+        let (x0, x1) = corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), c| (a.min(c.0), b.max(c.0)));
+        let (y0, y1) = corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), c| (a.min(c.1), b.max(c.1)));
+        Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+    }
+}
+/// A matrix a layer can be shown through: finite and invertible, not
+/// flattened to a line.
+fn invertible(m: [f64; 6]) -> bool {
+    m.iter().all(|v| v.is_finite()) && (m[0] * m[3] - m[1] * m[2]).abs() > 1e-6
 }
 /// A scroll container (`overflow` other than `visible` and `clip`): its
 /// box and node, its padding box as painted (document coordinates, or the
@@ -956,11 +988,11 @@ impl Scene {
             }
             // A moved layer's root: its translation, nothing to repaint.
             if let Some(m) = moved.iter_mut().find(|m| m.root == id) {
-                let Some(about) = about_of(s, m.outer).filter(|a| is_translation(*a)) else {
-                    refused("a moved layer's transform is no longer a translation");
+                let Some(about) = about_of(s, m.outer).filter(|a| invertible(*a)) else {
+                    refused("a moved layer's transform is no longer invertible");
                     return Ok(None);
                 };
-                m.translate = [about[4], about[5]];
+                m.matrix = about;
                 continue;
             }
             let Some(i) = entries.iter().position(|e| e.owner == id) else {
@@ -1080,7 +1112,7 @@ impl Scene {
                     if m.clip.is_some_and(|c| x < c.x || x >= c.x + c.width || y < c.y || y >= c.y + c.height) {
                         continue;
                     }
-                    (x - m.translate[0], y - m.translate[1])
+                    m.unapply(x, y)
                 }
             };
             let region = Rect { x: x - 0.5, y: py - 0.5, width: 1., height: 1. };
@@ -2534,10 +2566,12 @@ impl<'a> BuildJob<'a> {
                     }
                     // A transformed box paints its subtree through its matrix
                     // and is a stacking context (CSS Transforms 1 §3).
-                    // An animated box that only moves, on the page itself (no
+                    // An animated box with a transform, on the page itself (no
                     // fixed or sticky box, matrix, group or other layer above
                     // it, its ancestors' clip a plain rectangle): a moved
-                    // layer, painted in its own space.
+                    // layer, painted in its own space once and shown through
+                    // its matrix (moved by whole pixels, or rotated and
+                    // scaled on the GPU, as Chrome composites a spinner).
                     let mut layered = false;
                     if parent_moved.is_none()
                         && !parent_fixed
@@ -2545,10 +2579,10 @@ impl<'a> BuildJob<'a> {
                         && parent_transform == NONE
                         && parent_group == NONE
                         && self.animated.contains(&b.node)
-                        && let Some(about) = about_of(s, outer).filter(|a| is_translation(*a))
+                        && let Some(about) = about_of(s, outer).filter(|a| invertible(*a))
                         && (clip == NONE || self.clips[clip as usize].radii.is_none() && self.clips[clip as usize].transform == NONE)
                     {
-                        self.moved.push(Moved { root: id, translate: [about[4], about[5]], clip: (clip != NONE).then(|| self.clips[clip as usize].rect), outer });
+                        self.moved.push(Moved { root: id, matrix: about, clip: (clip != NONE).then(|| self.clips[clip as usize].rect), outer });
                         self.current_moved = Some(id);
                         children_moved = Some(id);
                         // Its content is clipped only within it; the window

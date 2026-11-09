@@ -218,11 +218,13 @@ pub enum Placement {
     Sticky(layout::Sticky),
     /// A moved layer: its tiles in the layer's own space, shown moved by
     /// (dx, dy) device pixels with the page and within its ancestors' clip
-    /// (document device pixels).
+    /// (document device pixels), or, turned or scaled, through `matrix`
+    /// (document device pixels to document device pixels; dx, dy 0).
     Moved {
         dx: i32,
         dy: i32,
         clip: Option<paint::DeviceRect>,
+        matrix: Option<[f64; 6]>,
     },
 }
 /// One of the page's layers above its base: tiles (device coordinates in
@@ -706,6 +708,9 @@ fn frame_period_ms(live: &Live) -> f64 {
 /// display frame (60 Hz), so animations are as smooth as the page draws
 /// them (at 100 ms they showed at 10 frames a second and stuttered).
 const FRAME: Duration = Duration::from_micros(16_667);
+/// The most pixels a turned or scaled moved layer is painted in one tile
+/// (the painter's limit for a tile).
+const ONE_TILE: i64 = 512 * 512;
 /// A map by (stratum, tile x, tile y), on the fast hasher: looked up for
 /// every tile of every frame.
 type TileMap<V> = HashMap<(usize, i32, i32), V, std::hash::BuildHasherDefault<olo_web::dom::NodeHasher>>;
@@ -2116,8 +2121,8 @@ fn render(
                 sticky_hits.extend(ids.into_iter().map(|id| (id, *st)));
             }
         }
-        // Moved layers' content where it shows now, with the layer's translation.
-        let mut moved_hits: Vec<(u32, [f64; 2])> = Vec::new();
+        // Moved layers' content where it shows now, with the layer.
+        let mut moved_hits: Vec<(u32, paint::Moved)> = Vec::new();
         for i in 0..scene.strata().len() {
             if let Some(m) = scene.moved(i) {
                 let shown = match m.clip {
@@ -2125,21 +2130,21 @@ fn render(
                     None => Some(band),
                 };
                 if let Some(shown) = shown {
-                    let region = layout::Rect { x: shown.x - m.translate[0], y: shown.y - m.translate[1], width: shown.width, height: shown.height };
+                    let region = m.unapply_rect(shown);
                     let mut ids = Vec::new();
                     scene.query_stratum(i, region, &mut ids, Some(&r.cancel))?;
-                    moved_hits.extend(ids.into_iter().map(|id| (id, m.translate)));
+                    moved_hits.extend(ids.into_iter().map(|id| (id, *m)));
                 }
             }
         }
         let mut labels = Vec::new();
         let mut hidden_cache: olo_web::dom::NodeMap<bool> = Default::default();
-        for (id, fixed, sticky, offset) in hits
+        for (id, fixed, sticky, moved) in hits
             .into_iter()
-            .map(|id| (id, false, None, [0., 0.]))
-            .chain(fixed_hits.into_iter().map(|id| (id, true, None, [0., 0.])))
-            .chain(sticky_hits.into_iter().map(|(id, st)| (id, false, Some(st), [0., 0.])))
-            .chain(moved_hits.into_iter().map(|(id, t)| (id, false, None, t)))
+            .map(|id| (id, false, None, None))
+            .chain(fixed_hits.into_iter().map(|id| (id, true, None, None)))
+            .chain(sticky_hits.into_iter().map(|(id, st)| (id, false, Some(st), None)))
+            .chain(moved_hits.into_iter().map(|(id, m)| (id, false, None, Some(m))))
         {
             let vector = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Vector { .. });
             let image = vector || matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
@@ -2162,8 +2167,14 @@ fn render(
             let Some(mut rect) = scene.visible_bounds(id) else {
                 continue;
             };
-            rect.x += offset[0];
-            rect.y += offset[1];
+            // On a moved layer: where its matrix shows it (the box round
+            // its corners, turned).
+            if let Some(m) = moved {
+                let corners = [(rect.x, rect.y), (rect.x + rect.width, rect.y), (rect.x, rect.y + rect.height), (rect.x + rect.width, rect.y + rect.height)].map(|(x, y)| m.apply(x, y));
+                let (x0, x1) = corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), c| (a.min(c.0), b.max(c.0)));
+                let (y0, y1) = corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), c| (a.min(c.1), b.max(c.1)));
+                rect = layout::Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+            }
             let link = match node {
                 Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
                 None => None,
@@ -2318,7 +2329,6 @@ fn render(
             // that only moves it finds them all kept.
             paint::LayerKind::Moved(_) => {
                 let Some(m) = scene.moved(si) else { continue };
-                let (dx, dy) = ((m.translate[0] * scale).round() as i32, (m.translate[1] * scale).round() as i32);
                 let (mut sx0, mut sy0, mut sx1, mut sy1) = (0, scroll, r.key.width as i32, scroll + r.key.height as i32);
                 if let Some(c) = m.clip {
                     sx0 = sx0.max((c.x * scale).floor() as i32);
@@ -2330,7 +2340,26 @@ fn render(
                     layers.push(LayerTiles { opacity: 1., backdrops: Vec::new(), mask: None, yuv: None, shared: None, placement: Placement::Page, tiles: Vec::new(), scaled: false });
                     continue;
                 }
-                ((sx0 - dx).div_euclid(256) * 256, (sy0 - dy).div_euclid(256) * 256, sx1 - dx, sy1 - dy)
+                match m.translation() {
+                    Some(t) => {
+                        let (dx, dy) = ((t[0] * scale).round() as i32, (t[1] * scale).round() as i32);
+                        ((sx0 - dx).div_euclid(256) * 256, (sy0 - dy).div_euclid(256) * 256, sx1 - dx, sy1 - dy)
+                    }
+                    // Turned or scaled: what of its own space shows there
+                    // (a pixel round, for the sampling at its edges), at
+                    // most 2048 px each way.
+                    // (One tile when it fits one, a transparent pixel round
+                    // it: sampled across, a tile's edge would show a seam.)
+                    None => {
+                        let shown = m.unapply_rect(layout::Rect { x: f64::from(sx0) / scale, y: f64::from(sy0) / scale, width: f64::from(sx1 - sx0) / scale, height: f64::from(sy1 - sy0) / scale });
+                        let extent = scene.stratum_extent(si).and_then(|e| intersect(e, shown)).unwrap_or(shown);
+                        let x0 = (extent.x * scale).floor() as i32 - 1;
+                        let y0 = (extent.y * scale).floor() as i32 - 1;
+                        let x1 = (((extent.x + extent.width) * scale).ceil() as i32 + 1).min(x0 + 2048);
+                        let y1 = (((extent.y + extent.height) * scale).ceil() as i32 + 1).min(y0 + 2048);
+                        if i64::from(x1 - x0) * i64::from(y1 - y0) <= ONE_TILE { (x0, y0, x1, y1) } else { (x0.div_euclid(256) * 256, y0.div_euclid(256) * 256, x1, y1) }
+                    }
+                }
             }
             paint::LayerKind::Fixed | paint::LayerKind::Sticky(_) => {
                 let Some(extent) = scene.stratum_extent(si) else {
@@ -2348,8 +2377,10 @@ fn render(
         let placement = match stratum.kind {
             paint::LayerKind::Moved(_) => match scene.moved(si) {
                 Some(m) => Placement::Moved {
-                    dx: (m.translate[0] * scale).round() as i32,
-                    dy: (m.translate[1] * scale).round() as i32,
+                    dx: m.translation().map_or(0, |t| (t[0] * scale).round() as i32),
+                    dy: m.translation().map_or(0, |t| (t[1] * scale).round() as i32),
+                    // Turned or scaled: its matrix over device pixels.
+                    matrix: m.translation().is_none().then(|| [m.matrix[0], m.matrix[1], m.matrix[2], m.matrix[3], m.matrix[4] * scale, m.matrix[5] * scale]),
                     // A clip along one axis only (`overflow-x: hidden`) is
                     // unbounded along the other: kept within a range whose
                     // size fits (±1e30 saturated to i32's ends, and their
@@ -2375,14 +2406,17 @@ fn render(
         // This stratum's tiles in order: cached, or to paint (key, signature).
         let mut pending: Vec<(paint::DeviceRect, std::result::Result<Arc<RenderImage>, ((i32, i32), u64)>)> = Vec::new();
         let mut misses = 0usize;
-        for y in (y0..y1).step_by(256) {
-            for x in (x0..x1).step_by(256) {
+        // A turned or scaled layer that fits one tile is one (see above).
+        let single = matches!(placement, Placement::Moved { matrix: Some(_), .. }) && i64::from(x1 - x0) * i64::from(y1 - y0) <= ONE_TILE && x1 > x0 && y1 > y0;
+        let (step_x, step_y) = if single { ((x1 - x0) as u32, (y1 - y0) as u32) } else { (256, 256) };
+        for y in (y0..y1).step_by(step_y as usize) {
+            for x in (x0..x1).step_by(step_x as usize) {
                 if r.cancel.load(Ordering::Relaxed) {
                     return Err(paint::Error::Cancelled.into());
                 }
                 *clock = clock.wrapping_add(1);
-                let region = paint::DeviceRect { x, y, width: 256, height: 256 };
-                let tile_rect = layout::Rect { x: f64::from(x) / scale, y: f64::from(y) / scale, width: 256. / scale, height: 256. / scale };
+                let region = paint::DeviceRect { x, y, width: step_x, height: step_y };
+                let tile_rect = layout::Rect { x: f64::from(x) / scale, y: f64::from(y) / scale, width: f64::from(step_x) / scale, height: f64::from(step_y) / scale };
                 // A tile painted from the same commands over the same images,
                 // styles and texts is the same tile: kept across re-renders.
                 let signature = if si == 0 && olo_web::env_on!("OLO_TILE_DEBUG") {
@@ -3088,7 +3122,7 @@ fn flush_tiles(
             Ok(image) => image,
             Err((key, signature)) => {
                 let bytes = painted.next().ok_or("Tile lost")??;
-                let image = olo_ui::widgets::image_view::from_premultiplied_bgra(256, 256, bytes).ok_or("Tile upload failed")?;
+                let image = olo_ui::widgets::image_view::from_premultiplied_bgra(region.width, region.height, bytes).ok_or("Tile upload failed")?;
                 if cache.len() >= 512 {
                     let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;
                     cache.remove(&key);

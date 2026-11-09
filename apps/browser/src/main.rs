@@ -884,9 +884,9 @@ impl Render for Browser {
                         };
                         // A moved layer: its tiles shifted by its translation
                         // (whole device pixels), within its ancestors' clip.
-                        let (mx, my, clip) = match placement {
-                            worker::Placement::Moved { dx, dy, clip } => (*dx, *dy, *clip),
-                            _ => (0, 0, None),
+                        let (mx, my, clip, matrix) = match placement {
+                            worker::Placement::Moved { dx, dy, clip, matrix } => (*dx, *dy, *clip, *matrix),
+                            _ => (0, 0, None, None),
                         };
                         let mask = clip.map(|c| gpui::ContentMask {
                             bounds: Bounds::new(
@@ -904,6 +904,31 @@ impl Render for Browser {
                             );
                             let corners = gpui::Corners { top_left: px(radii[0]), top_right: px(radii[1]), bottom_right: px(radii[2]), bottom_left: px(radii[3]) };
                             window.paint_backdrop(b, corners, px(*sigma), *saturation, *saturate_first);
+                        }
+                        // Turned or scaled (a spinner): each tile two
+                        // triangles, its corners through the layer's matrix,
+                        // sampled on the GPU; nothing painted again.
+                        if let Some(m) = matrix {
+                            window.with_content_mask(mask, |window| {
+                                for (r, image) in layer_tiles {
+                                    let at = |x: f64, y: f64| {
+                                        let (dx, dy) = (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]);
+                                        point(bounds.left() + px((dx / scale) as f32), bounds.top() + px(((dy - f64::from(scroll)) / scale) as f32))
+                                    };
+                                    // Half a texel in from its edges: sampled
+                                    // between texels, an edge reads its atlas
+                                    // neighbour's (a one-tile layer has a
+                                    // transparent pixel round it to spare).
+                                    let (w, h) = (r.width as f32, r.height as f32);
+                                    let (u0, v0, u1, v1) = (0.5 / w, 0.5 / h, 1. - 0.5 / w, 1. - 0.5 / h);
+                                    let (x0, y0) = (f64::from(r.x) + 0.5, f64::from(r.y) + 0.5);
+                                    let (x1, y1) = (f64::from(r.x) + f64::from(r.width) - 0.5, f64::from(r.y) + f64::from(r.height) - 0.5);
+                                    let corners = [(at(x0, y0), point(u0, v0)), (at(x1, y0), point(u1, v0)), (at(x1, y1), point(u1, v1)), (at(x0, y1), point(u0, v1))];
+                                    let triangles = [[corners[0], corners[1], corners[2]], [corners[0], corners[2], corners[3]]];
+                                    let _ = window.paint_image_triangles(image.clone(), &triangles, gpui::white());
+                                }
+                            });
+                            continue;
                         }
                         window.with_content_mask(mask, |window| {
                             for (r, image) in layer_tiles {

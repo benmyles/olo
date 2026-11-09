@@ -566,18 +566,53 @@ pub(super) fn raster(
             [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor].iter().map(|p| s.used_color(*p).map(|c| c.srgb8_clipped())).collect::<std::result::Result<_, _>>()?;
         let visible: Vec<usize> = (0..4).filter(|&i| widths[i] > 0. && colors[i][3] != 0).collect();
         let uniform = visible.iter().all(|&i| colors[i] == colors[visible[0]]) && visible.len() == 4 || visible.is_empty();
-        if rounded(&radii) && uniform {
-            if let Some(&i) = visible.first() {
-                let inner = Rect { x: padding_box.x, y: padding_box.y, width: padding_box.width, height: padding_box.height };
-                let mut b = PathBuilder::new();
-                b.push_path(&border_path);
-                if let Some(inner_path) = path(inner, &inset_radii(&radii, g.border_width), scale, region) {
-                    b.push_path(&inner_path);
-                }
-                if let Some(ring) = b.finish() {
-                    let mut p = paint_for(colors[i]);
+        if rounded(&radii) {
+            let inner = Rect { x: padding_box.x, y: padding_box.y, width: padding_box.width, height: padding_box.height };
+            let mut b = PathBuilder::new();
+            b.push_path(&border_path);
+            if let Some(inner_path) = path(inner, &inset_radii(&radii, g.border_width), scale, region) {
+                b.push_path(&inner_path);
+            }
+            if let (Some(ring), Some(&first)) = (b.finish(), visible.first()) {
+                if uniform {
+                    let mut p = paint_for(colors[first]);
                     p.anti_alias = true;
                     out.fill_path(&ring, &p, FillRule::EvenOdd, transform, mask);
+                } else {
+                    // Sides of their own colours (a spinner's ring, its top
+                    // in another): the ring cut to each run of sides of one
+                    // colour (one part: two parts meeting would each cover
+                    // half their shared edge's pixels, a lighter seam).
+                    let start = (0..4).find(|&k| !visible.contains(&((k + 3) % 4)) || colors[(k + 3) % 4] != colors[k]).unwrap_or(0);
+                    let mut runs: Vec<(usize, usize)> = Vec::new();
+                    for k in (start..start + 4).map(|k| k % 4) {
+                        if !visible.contains(&k) {
+                            continue;
+                        }
+                        match runs.last_mut() {
+                            Some((first, last)) if (*last + 1) % 4 == k && colors[*first] == colors[k] => *last = k,
+                            _ => runs.push((k, k)),
+                        }
+                    }
+                    for (first, last) in runs {
+                        let side = first;
+                        let Some(part) = sides_part(outer, inner, first, last, scale, region) else { continue };
+                        let mut cut = match mask {
+                            Some(m) => m.clone(),
+                            None => {
+                                let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
+                                m.fill_path(&part, FillRule::Winding, true, transform);
+                                let mut p = paint_for(colors[side]);
+                                p.anti_alias = true;
+                                out.fill_path(&ring, &p, FillRule::EvenOdd, transform, Some(&m));
+                                continue;
+                            }
+                        };
+                        cut.intersect_path(&part, FillRule::Winding, true, transform);
+                        let mut p = paint_for(colors[side]);
+                        p.anti_alias = true;
+                        out.fill_path(&ring, &p, FillRule::EvenOdd, transform, Some(&cut));
+                    }
                 }
             }
         } else {
@@ -592,6 +627,73 @@ pub(super) fn raster(
     }
     charge(4, started);
     Ok(())
+}
+/// The part of a box's border that is sides `first` to `last`'s (0 top, 1
+/// right, 2 bottom, 3 left, in that order round) in tile-local device
+/// pixels: between the lines from its outer corners through its inner
+/// (padding box) ones, as Chrome divides a border's colours, run on to the
+/// box's middle (a rounded border's ring bends inward of its inner
+/// corners; for a circle the lines are its 45° radii).
+fn sides_part(outer: Rect, inner: Rect, first: usize, last: usize, scale: f64, region: DeviceRect) -> Option<Path> {
+    let (cx, cy) = (outer.x + outer.width / 2., outer.y + outer.height / 2.);
+    let o = [(outer.x, outer.y), (outer.x + outer.width, outer.y), (outer.x + outer.width, outer.y + outer.height), (outer.x, outer.y + outer.height)];
+    let i = [(inner.x, inner.y), (inner.x + inner.width, inner.y), (inner.x + inner.width, inner.y + inner.height), (inner.x, inner.y + inner.height)];
+    // Corner k's join: from its outer corner through its inner one (toward
+    // the middle where they are one).
+    let direction = |k: usize| {
+        let d = (i[k].0 - o[k].0, i[k].1 - o[k].1);
+        if d.0.abs() + d.1.abs() > 1e-9 { d } else { (cx - o[k].0, cy - o[k].1) }
+    };
+    // A side's inner points, from its end corner's join back to its start's.
+    let inward = |side: usize| -> Vec<(f64, f64)> {
+        let (a, b) = (side, (side + 1) % 4);
+        let (da, db) = (direction(a), direction(b));
+        // Where a join meets the middle line along the side (y = cy for
+        // top and bottom, x = cx for the others).
+        let horizontal = side % 2 == 0;
+        let at_middle = |k: usize, d: (f64, f64)| -> Option<(f64, f64)> {
+            let t = if horizontal { (cy - o[k].1) / d.1 } else { (cx - o[k].0) / d.0 };
+            (t.is_finite() && t >= 0.).then(|| (o[k].0 + d.0 * t, o[k].1 + d.1 * t))
+        };
+        match (at_middle(a, da), at_middle(b, db)) {
+            // The joins reach the middle apart (in the side's order): a
+            // trapezoid to it.
+            (Some(pa), Some(pb))
+                if {
+                    let along = |p: (f64, f64)| if horizontal { p.0 } else { p.1 };
+                    let forward = if horizontal { o[b].0 >= o[a].0 } else { o[b].1 >= o[a].1 };
+                    if forward { along(pa) <= along(pb) } else { along(pa) >= along(pb) }
+                } =>
+            {
+                vec![pb, pa]
+            }
+            // They meet before it: a triangle to where they cross.
+            _ => {
+                let det = da.0 * db.1 - da.1 * db.0;
+                if det.abs() < 1e-12 {
+                    vec![(cx, cy)]
+                } else {
+                    let t = ((o[b].0 - o[a].0) * db.1 - (o[b].1 - o[a].1) * db.0) / det;
+                    vec![(o[a].0 + da.0 * t, o[a].1 + da.1 * t)]
+                }
+            }
+        }
+    };
+    let count = (last + 4 - first) % 4 + 1;
+    let mut points: Vec<(f64, f64)> = (0..=count).map(|k| o[(first + k) % 4]).collect();
+    for k in (0..count).rev() {
+        points.extend(inward((first + k) % 4));
+    }
+    let device = |(x, y): (f64, f64)| ((x * scale - f64::from(region.x)) as f32, (y * scale - f64::from(region.y)) as f32);
+    let mut pb = PathBuilder::new();
+    let (x, y) = device(points[0]);
+    pb.move_to(x, y);
+    for &p in &points[1..] {
+        let (x, y) = device(p);
+        pb.line_to(x, y);
+    }
+    pb.close();
+    pb.finish()
 }
 /// Inset box shadows (CSS Backgrounds 3 §7.1), last declared first: each
 /// the padding box less its hole (the padding box moved by the offset and

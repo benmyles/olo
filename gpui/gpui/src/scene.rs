@@ -1289,6 +1289,10 @@ pub(crate) struct ImageTriangle {
     pub corners: [Point<ScaledPixels>; 3],
     pub uvs: [Point<f32>; 3],
     pub tint: Hsla,
+    /// 1 when the image's colours are premultiplied by alpha (sampled as
+    /// they are, made straight after, as a sprite's bit 3).
+    pub premultiplied: u32,
+    pub pad: u32,
 }
 
 impl From<ImageTriangle> for Primitive {

@@ -778,8 +778,31 @@ fn stroke_outline(doc: &Document, node: NodeId, path: &Path, ctm: Option<tiny_sk
     if let Some(limit) = doc.attribute(node, "stroke-miterlimit")?.and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| v.is_finite() && *v >= 1.) {
         stroke.miter_limit = limit;
     }
-    if doc.attribute(node, "stroke-dasharray")?.is_some_and(|v| !v.trim().is_empty() && v.trim() != "none") {
-        fallbacks.note("SVG stroke-dasharray drawn solid", Some(node));
+    // Dashes (SVG 2 §13.5.4): an odd list repeated to an even one, a
+    // negative length making the stroke solid, as does a list of zeros.
+    if let Some(list) = doc.attribute(node, "stroke-dasharray")?.map(str::trim).filter(|v| !v.is_empty() && *v != "none") {
+        let lengths: Option<Vec<f32>> = list
+            .split(|c: char| c == ',' || c.is_ascii_whitespace())
+            .filter(|t| !t.is_empty())
+            .take(1024)
+            .map(|t| {
+                let t = t.trim_end_matches("px");
+                // (A percentage is of the viewport's diagonal; taken as
+                // user units until that is passed here.)
+                t.trim_end_matches('%').parse::<f32>().ok().filter(|v| v.is_finite() && *v >= 0.)
+            })
+            .collect();
+        match lengths {
+            Some(mut lengths) if lengths.iter().any(|v| *v > 0.) => {
+                if lengths.len() % 2 == 1 {
+                    lengths.extend_from_within(..);
+                }
+                let offset = doc.attribute(node, "stroke-dashoffset")?.and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok()).filter(|v| v.is_finite()).unwrap_or(0.);
+                stroke.dash = tiny_skia::StrokeDash::new(lengths, offset);
+            }
+            Some(_) => {}
+            None => fallbacks.note("SVG stroke-dasharray not understood: drawn solid", Some(node)),
+        }
     }
     // The path already carries the CTM; stroke the untransformed outline so a
     // scaled group scales its stroke width too, as SVG does.
@@ -791,6 +814,14 @@ fn stroke_outline(doc: &Document, node: NodeId, path: &Path, ctm: Option<tiny_sk
         None => (Some(geometry.clone()), 1.),
     };
     let Some(source) = source else { return Ok(None) };
+    // (Stroking a path doesn't dash it: it is cut into its dashes first.)
+    let source = match &stroke.dash {
+        Some(dash) => match source.dash(dash, scale) {
+            Some(dashed) => dashed,
+            None => return Ok(None),
+        },
+        None => source,
+    };
     let outline = source.stroke(&stroke, scale);
     Ok(outline.map(|o| Path::from_geometry(Some(o)).transformed(ctm)))
 }

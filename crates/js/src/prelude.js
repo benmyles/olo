@@ -1314,8 +1314,9 @@
   // An idle callback runs at the next idle moment (its `timeout` only
   // bounds how late, it is no delay: YouTube's scheduler asks with 3000 ms
   // and every idle job waited three seconds, its icons for thirteen), with
-  // an idle period's 50 ms counting down.
-  global.requestIdleCallback = (fn, options) => schedule(() => { const end = performance.now() + 50; fn({ didTimeout: false, timeRemaining: () => Math.max(0, end - performance.now()) }); }, 1, [], false);
+  // an idle period's 50 ms counting down (never past 50: (t + 50) - t can
+  // be a hair over it in floating point).
+  global.requestIdleCallback = (fn, options) => schedule(() => { const end = performance.now() + 50; fn({ didTimeout: false, timeRemaining: () => Math.min(50, Math.max(0, end - performance.now())) }); }, 1, [], false);
   global.cancelIdleCallback = global.clearTimeout;
   global.queueMicrotask = (fn) => { Promise.resolve().then(fn).catch(reportError); };
   // The page's time: its clock at the task's start, then real time as the

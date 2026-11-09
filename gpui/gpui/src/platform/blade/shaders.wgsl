@@ -1552,6 +1552,8 @@ struct ImageTriangle {
     uv_b: vec2<f32>,
     uv_c: vec2<f32>,
     tint: Hsla,
+    premultiplied: u32,
+    pad: u32,
 }
 var<storage, read> b_image_triangles: array<ImageTriangle>;
 
@@ -1560,6 +1562,7 @@ struct ImageTriangleVarying {
     @location(0) tile_position: vec2<f32>,
     @location(1) @interpolate(flat) tint: vec4<f32>,
     @location(2) clip_distances: vec4<f32>,
+    @location(3) @interpolate(flat) premultiplied: u32,
 }
 
 @vertex
@@ -1580,6 +1583,7 @@ fn vs_image_triangle(@builtin(vertex_index) vertex_id: u32, @builtin(instance_in
     let tint = hsla_to_rgba(t.tint);
     out.tint = vec4<f32>(tint.rgb, tint.a * t.opacity);
     out.clip_distances = distance_from_clip_rect_impl(corner, t.content_mask);
+    out.premultiplied = t.premultiplied;
     return out;
 }
 
@@ -1590,7 +1594,14 @@ fn fs_image_triangle(input: ImageTriangleVarying) -> @location(0) vec4<f32> {
     if (any(input.clip_distances < vec4<f32>(0.0))) {
         return vec4<f32>(0.0);
     }
-    return blend_color(vec4<f32>(sample.rgb * input.tint.rgb, sample.a), input.tint.a);
+    // Olo: premultiplied texels (a page's tiles) filtered as they are,
+    // then made straight (filtered straight, a transparent neighbour
+    // darkens an edge).
+    var color = sample;
+    if (input.premultiplied != 0u && color.a > 0.0) {
+        color = vec4<f32>(color.rgb / color.a, color.a);
+    }
+    return blend_color(vec4<f32>(color.rgb * input.tint.rgb, color.a), input.tint.a);
 }
 
 // --- surfaces --- //

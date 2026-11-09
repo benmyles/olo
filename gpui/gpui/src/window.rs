@@ -4448,6 +4448,8 @@ impl Window {
                     corners,
                     uvs: [t[0].1, t[1].1, t[2].1],
                     tint,
+                    premultiplied: u32::from(data.premultiplied),
+                    pad: 0,
                 });
         }
         Ok(())
