@@ -918,6 +918,9 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             if let Some(c) = cached.as_mut()
                                 && let Some(live) = c.live.as_mut()
                             {
+                                if olo_web::env_on!("OLO_RENDER_TRACE") {
+                                    eprintln!("  again set: arrived");
+                                }
                                 live.late_check = true;
                                 live.render_again = true;
                                 live.next_due_ms = Some(0.);
@@ -1355,7 +1358,7 @@ fn render(
             // OLO_RENDER_TRACE: why each live render happens.
             if olo_web::env_on!("OLO_RENDER_TRACE") {
                 eprintln!(
-                    "  render because:{}{}{}{}{}{}{}",
+                    "  render because:{}{}{}{}{}{}{} (unseen {:?})",
                     if revision != live.rendered { " document" } else { "" },
                     if live.render_again { " again" } else { "" },
                     if live.render_due { " due" } else { "" },
@@ -1363,6 +1366,7 @@ fn render(
                     if animation_due { " animating" } else { "" },
                     if media_changed { " media" } else { "" },
                     if focus_moved { " focus" } else { "" },
+                    live.unseen_until_ms.map(|u| u - live.started.elapsed().as_secs_f64() * 1000.),
                 );
             }
             if !frame {
@@ -1477,6 +1481,9 @@ fn render(
             // A readback still in flight shows at the next render: soon.
             // A readback in flight shows at the next frame.
             live.render_again = live.realm.canvases_pending();
+            if live.render_again && olo_web::env_on!("OLO_RENDER_TRACE") {
+                eprintln!("  again set: canvases pending");
+            }
             // Only new frames of canvases and videos already shown, the
             // document as it was: swapped into the scene, no render.
             let swapped = revision == live.rendered && doc.revision() == c.page.document.revision() && c.page.swap_pictures(&canvases, Some(&cancel));
@@ -1485,6 +1492,9 @@ fn render(
                 c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&cancel), |_, _| {})?;
                 // Pictures its styles now name that it has none of: fetched.
                 if c.page.note_pictures() {
+                    if olo_web::env_on!("OLO_RENDER_TRACE") {
+                        eprintln!("  again set: pictures noted");
+                    }
                     live.late_check = true;
                     live.render_again = true;
                 }
@@ -2572,15 +2582,21 @@ fn render(
     }
     TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);
     // What changed since the last frame is all off screen: only moved
-    // matrices, each thing they move outside the viewport, no tile painted.
+    // matrices, each thing they move outside the viewport. (Tiles painted
+    // meanwhile are the scroll's, newly in view: not the animation's, which
+    // changed nothing but those matrices. A spinner off screen re-rendered
+    // the page every frame of a scroll.)
     let unseen = pass == Pass::Live
-        && repainted == 0
         && moved_region.as_ref().is_some_and(|region| {
             let (top, bottom) = (f64::from(scroll) / scale, f64::from(scroll + r.key.height as i32) / scale);
             let width = f64::from(r.key.width) / scale;
             region.iter().all(|rect| rect.y + rect.height <= top || rect.y >= bottom || rect.x + rect.width <= 0. || rect.x >= width)
         });
-    if let Some(live) = cached.live.as_mut() {
+    // (Decided by live renders only: a frame of the scroll alone, which
+    // renders nothing, cleared it, and the next frame rendered again.)
+    if pass == Pass::Live
+        && let Some(live) = cached.live.as_mut()
+    {
         live.unseen_until_ms = unseen.then(|| live.started.elapsed().as_secs_f64() * 1000. + 250.);
     }
     if pass == Pass::Live && olo_web::env_on!("OLO_BROWSER_TIMING") {
