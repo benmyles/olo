@@ -1239,3 +1239,52 @@ Promise.all([
         ["[log] open 200 cors GET | closed Failed to fetch | nocors 0 opaque  | cred Failed to fetch | pre 200 cors PUT | pre-bad Failed to fetch | same 200 basic GET"]
     );
 }
+/// The window's own properties as Chrome's: interfaces not enumerable, its
+/// attributes accessors (a bot check called toString on the getter of
+/// navigator's descriptor, a value in Olo), location's members its own and
+/// fixed, the window's objects of their interfaces, Date native to its
+/// keys, console's and CSS's members Chrome's.
+#[test]
+fn the_window_is_shaped_as_chrome_s() {
+    let (report, _) = run("<!DOCTYPE html><body><script>\
+        const d = (o, k) => { const x = Object.getOwnPropertyDescriptor(o, k); return (x.get ? 'g' : '') + (x.set ? 's' : '') + ('value' in x ? 'v' : '') + (x.enumerable ? 'E' : '') + (x.configurable ? 'C' : '') + (x.writable ? 'W' : ''); };\
+        console.log(d(window, 'Node'), d(window, 'navigator'), d(window, 'location'), d(window, 'innerWidth'), d(window, 'document'), d(window, 'setTimeout'), Object.keys(window).includes('Node'), String(Object.getOwnPropertyDescriptor(window, 'navigator').get));\
+        console.log(Object.getOwnPropertyNames(location).slice(0, 4).join(), d(location, 'valueOf'), d(location, 'href'), d(location, 'toString'), Object.prototype.toString.call(location), location.valueOf() === location);\
+        console.log([performance, crypto, crypto.subtle, visualViewport].map((o) => Object.prototype.toString.call(o)).join(), typeof Performance.prototype.now, typeof Object.getOwnPropertyDescriptor(Performance.prototype, 'now').value, performance.now() >= 0, Object.getOwnPropertyNames(performance).length);\
+        console.log(Object.getOwnPropertyNames(Date).join(), Object.getOwnPropertyNames(Date.prototype).length > 40, Object.getPrototypeOf(Date.prototype) === Object.prototype, String(Date), new Date(0) instanceof Date, typeof Date());\
+        console.log(console.log.name, typeof console.createTask, Object.prototype.toString.call(console), String(CSS.px(3)), Object.prototype.toString.call(CSS.px(3)), document.constructor.name, typeof NodeFilter, NodeFilter.SHOW_ELEMENT);\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(
+        report.console,
+        [
+            "[log] vCW gEC gsE gsEC gE vECW false function get navigator() { [native code] }",
+            "[log] valueOf,ancestorOrigins,href,origin v gsE vE [object Location] true",
+            "[log] [object Performance],[object Crypto],[object SubtleCrypto],[object VisualViewport] function function true 0",
+            "[log] length,name,prototype,now,parse,UTC true true function Date() { [native code] } true string",
+            "[log] log function [object console] 3px [object CSSUnitValue] HTMLDocument function 1",
+        ]
+    );
+}
+/// RTCPeerConnection as Chrome's: an offer of its form for a data channel,
+/// and its host candidate an mDNS name on the socket's port.
+#[test]
+fn a_peer_connection_offers_and_gathers_as_chrome_s() {
+    let (report, _) = run("<!DOCTYPE html><body><script>\
+        const pc = new RTCPeerConnection();\
+        const order = [];\
+        pc.onnegotiationneeded = () => order.push('negotiationneeded');\
+        pc.createDataChannel('');\
+        pc.createOffer().then((o) => { order.push('offer'); const lines = o.sdp.split('\\r\\n'); console.log(Object.keys(o).join(), lines[0], lines[4], lines[7], lines.includes('a=setup:actpass'), /^a=fingerprint:sha-256 ([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(lines.find((l) => l.startsWith('a=fingerprint')))); console.log(order.join()); });\
+        console.log(Object.keys(RTCPeerConnection.prototype).slice(0, 3).join(), pc.signalingState, pc.iceGatheringState, String(pc.localDescription), Object.prototype.toString.call(pc));\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(
+        report.console,
+        [
+            "[log] localDescription,currentLocalDescription,pendingLocalDescription stable new null [object RTCPeerConnection]",
+            "[log] sdp,type v=0 a=group:BUNDLE 0 m=application 9 UDP/DTLS/SCTP webrtc-datachannel true true",
+            "[log] negotiationneeded,offer",
+        ]
+    );
+}

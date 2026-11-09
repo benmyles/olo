@@ -164,6 +164,8 @@
     Object.setPrototypeOf(obj, proto);
     return obj;
   };
+  // (What Olo itself writes to an adopted object goes to its store.)
+  H.__olo_store = (o) => stores.get(o) || o;
   const reject = (name, message) => () => Promise.reject(new DOMException(message, name));
   const rect = () => (global.DOMRect ? new DOMRect(0, 0, 0, 0) : { x: 0, y: 0, width: 0, height: 0 });
 
@@ -346,6 +348,21 @@
   define(MemoryInfo.prototype, 'usedJSHeapSize', { get: heap(0), configurable: true, enumerable: true });
   define(MemoryInfo.prototype, 'jsHeapSizeLimit', { get: heap(2), configurable: true, enumerable: true });
   if (global.performance) define(global.performance, 'memory', { get: native(function () { return memoryInfo; }, 'get memory'), configurable: true, enumerable: true });
+  // The window's objects of interfaces as Chrome's: their members on
+  // their prototypes (Object.prototype.toString.call(performance) was
+  // [object Object], and Performance.prototype had no now for a check to
+  // read). Those that are EventTargets keep EventTarget's methods.
+  for (const [name, iname, events] of [['performance', 'Performance', true], ['visualViewport', 'VisualViewport', true], ['speechSynthesis', 'SpeechSynthesis', true], ['external', 'External', false]]) {
+    const o = global[name];
+    if (!o || Object.getPrototypeOf(o) !== Object.prototype) continue;
+    if (events) for (const k of ['addEventListener', 'removeEventListener', 'dispatchEvent']) delete o[k];
+    adopt(o, iname);
+  }
+  if (global.crypto && Object.getPrototypeOf(global.crypto) === Object.prototype) {
+    if (global.crypto.subtle && Object.getPrototypeOf(global.crypto.subtle) === Object.prototype) adopt(global.crypto.subtle, 'SubtleCrypto');
+    adopt(global.crypto, 'Crypto');
+  }
+  if (global.location && Object.getPrototypeOf(global.location) === Object.prototype) Object.setPrototypeOf(global.location, iface('Location').prototype);
 
   // ---------- window.chrome: loadTimes, csi, app.
   const t = (global.performance && global.performance.timing) || {};
@@ -533,7 +550,9 @@
       define(C.prototype, 'constructor', { value: C, writable: true, configurable: true, enumerable: false });
       define(C.prototype, Symbol.toStringTag, { value: name, configurable: true });
       Object.setPrototypeOf(C, parent);
-      native(C, name);
+      // (Named as itself: `native` would name a wrapper, and leave this
+      // one's name 'C', document.constructor.name.)
+      register(C, name);
       define(global, name, { value: C, writable: true, configurable: true, enumerable: false });
       return C;
     };
@@ -758,5 +777,110 @@
     if (!d.configurable) continue;
     delete global[name];
     define(global, name, d);
+  }
+
+  // ---------- console and CSS as Chrome's: their members named, in its
+  // order, with what Chrome has that Olo's hadn't (console.createTask,
+  // CSS.px giving a CSSUnitValue, not a string).
+  {
+    const c = global.console;
+    const CONSOLE = ['debug', 'error', 'info', 'log', 'warn', 'dir', 'dirxml', 'table', 'trace', 'group', 'groupCollapsed', 'groupEnd', 'clear', 'count', 'countReset', 'assert', 'profile', 'profileEnd', 'time', 'timeLog', 'timeEnd', 'timeStamp', 'context', 'createTask'];
+    const CONTEXT = ['dir', 'dirxml', 'table', 'groupEnd', 'clear', 'count', 'countReset', 'profile', 'profileEnd', 'debug', 'error', 'info', 'log', 'warn', 'trace', 'group', 'groupCollapsed', 'time', 'timeLog', 'timeEnd', 'timeStamp', 'assert'];
+    const fns = {};
+    for (const k of CONSOLE) fns[k] = c[k];
+    const logFn = c.log;
+    fns.dirxml = fns.dirxml || ((...a) => logFn(...a));
+    fns.timeStamp = fns.timeStamp || (() => {});
+    fns.createTask = (name) => { if (String(name) === '') throw new TypeError("Failed to execute 'createTask' on 'console': Task name should not be empty."); return { run: register((f) => f(), 'run') }; };
+    fns.context = (name) => { const o = {}; for (const k of CONTEXT) define(o, k, { value: register((...a) => fns[k](...a), k), writable: true, enumerable: true, configurable: true }); return o; };
+    for (const k of Object.getOwnPropertyNames(c)) delete c[k];
+    for (const k of CONSOLE) define(c, k, { value: register(fns[k], k), writable: true, enumerable: true, configurable: true });
+    define(c, 'memory', { get: native(function () { return memoryInfo; }, 'get memory'), set: native(function (v) {}, 'set memory'), enumerable: true, configurable: true });
+    define(c, Symbol.toStringTag, { value: 'console', configurable: true });
+    // (V8's console has an empty object of its own for a prototype.)
+    Object.setPrototypeOf(c, Object.create(Object.prototype));
+  }
+  if (global.CSS && Object.getPrototypeOf(global.CSS) === Object.prototype) {
+    const CSSObj = global.CSS;
+    const CSSStyleValue = iface('CSSStyleValue'), CSSNumericValue = iface('CSSNumericValue');
+    // CSSUnitValue (CSS Typed OM §4.3): a number and its unit.
+    const unitOf = new WeakMap();
+    const CSSUnitValue = function CSSUnitValue(value, unit) {
+      if (!new.target) throw new TypeError("Failed to construct 'CSSUnitValue': Please use the 'new' operator, this DOM object constructor cannot be called as a function.");
+      if (arguments.length < 2) throw new TypeError("Failed to construct 'CSSUnitValue': 2 arguments required, but only " + arguments.length + ' present.');
+      const v = Number(value);
+      if (!Number.isFinite(v)) throw new TypeError("Failed to construct 'CSSUnitValue': The provided double value is non-finite.");
+      const u = String(unit).toLowerCase();
+      if (!UNITS.has(u)) throw new TypeError("Failed to construct 'CSSUnitValue': Invalid unit: " + unit);
+      const o = Reflect.construct(Object, [], new.target);
+      unitOf.set(o, { value: v, unit: u });
+      return o;
+    };
+    Object.setPrototypeOf(CSSUnitValue, CSSNumericValue);
+    CSSUnitValue.prototype = Object.create(CSSNumericValue.prototype);
+    define(CSSUnitValue, 'prototype', { writable: false });
+    const u = (o) => { const x = unitOf.get(o); if (!x) throw new TypeError('Illegal invocation'); return x; };
+    define(CSSUnitValue.prototype, 'value', { get: native(function () { return u(this).value; }, 'get value'), set: native(function (v) { u(this).value = Number(v); }, 'set value'), enumerable: true, configurable: true });
+    define(CSSUnitValue.prototype, 'unit', { get: native(function () { return u(this).unit; }, 'get unit'), enumerable: true, configurable: true });
+    define(CSSUnitValue.prototype, 'constructor', { value: CSSUnitValue, writable: true, configurable: true });
+    define(CSSUnitValue.prototype, Symbol.toStringTag, { value: 'CSSUnitValue', configurable: true });
+    if (!has(CSSStyleValue.prototype, 'toString')) define(CSSStyleValue.prototype, 'toString', { value: native(function toString() { const x = unitOf.get(this); if (!x) return ''; return String(x.value) + (x.unit === 'number' ? '' : x.unit === 'percent' ? '%' : x.unit); }, 'toString'), writable: true, enumerable: true, configurable: true });
+    register(CSSUnitValue, 'CSSUnitValue');
+    define(global, 'CSSUnitValue', { value: CSSUnitValue, writable: true, configurable: true });
+    const NAMES = ['Hz', 'Q', 'cap', 'ch', 'cm', 'cqb', 'cqh', 'cqi', 'cqmax', 'cqmin', 'cqw', 'deg', 'dpcm', 'dpi', 'dppx', 'dvb', 'dvh', 'dvi', 'dvmax', 'dvmin', 'dvw', 'em', 'ex', 'fr', 'grad', 'ic', 'in', 'kHz', 'lh', 'lvb', 'lvh', 'lvi', 'lvmax', 'lvmin', 'lvw', 'mm', 'ms', 'number', 'pc', 'percent', 'pt', 'px', 'rad', 'rcap', 'rch', 'rem', 'rex', 'ric', 'rlh', 's', 'svb', 'svh', 'svi', 'svmax', 'svmin', 'svw', 'turn', 'vb', 'vh', 'vi', 'vmax', 'vmin', 'vw', 'x'];
+    const UNITS = new Set(NAMES.map((n) => n.toLowerCase()));
+    const HighlightRegistry = iface('HighlightRegistry');
+    const registry = adopt({ size: 0 }, 'HighlightRegistry');
+    const worklet = adopt({ addModule: () => Promise.resolve() }, 'Worklet');
+    const own = { escape: CSSObj.escape, registerProperty: CSSObj.registerProperty, supports: CSSObj.supports };
+    for (const k of Object.getOwnPropertyNames(CSSObj)) delete CSSObj[k];
+    const ORDER = ['highlights', 'Hz', 'Q', 'cap', 'ch', 'cm', 'cqb', 'cqh', 'cqi', 'cqmax', 'cqmin', 'cqw', 'deg', 'dpcm', 'dpi', 'dppx', 'dvb', 'dvh', 'dvi', 'dvmax', 'dvmin', 'dvw', 'em', 'escape', 'ex', 'fr', 'grad', 'ic', 'in', 'kHz', 'lh', 'lvb', 'lvh', 'lvi', 'lvmax', 'lvmin', 'lvw', 'mm', 'ms', 'number', 'pc', 'percent', 'pt', 'px', 'rad', 'rcap', 'rch', 'registerProperty', 'rem', 'rex', 'ric', 'rlh', 's', 'supports', 'svb', 'svh', 'svi', 'svmax', 'svmin', 'svw', 'turn', 'vb', 'vh', 'vi', 'vmax', 'vmin', 'vw', 'x', 'paintWorklet'];
+    for (const k of ORDER) {
+      if (k === 'highlights') define(CSSObj, k, { get: native(function () { return registry; }, 'get highlights'), enumerable: true, configurable: true });
+      else if (k === 'paintWorklet') define(CSSObj, k, { get: native(function () { return worklet; }, 'get paintWorklet'), enumerable: true, configurable: true });
+      else if (has(own, k)) define(CSSObj, k, { value: register(own[k], k), writable: true, enumerable: true, configurable: true });
+      else { const unit = k.toLowerCase(); define(CSSObj, k, { value: register((v) => new CSSUnitValue(v, unit), k), writable: true, enumerable: true, configurable: true }); }
+    }
+    define(CSSObj, Symbol.toStringTag, { value: 'CSS', configurable: true });
+  }
+
+  // ---------- Each global property's descriptor as Chrome's: interfaces
+  // not enumerable (Object.keys(window) is Chrome's), its attributes
+  // accessors (Object.getOwnPropertyDescriptor(window, 'navigator').get,
+  // which a bot check calls toString on, was undefined: a value), with
+  // setters where Chrome has them. What an accessor gives is kept here;
+  // Olo's own writes to one without a setter come through
+  // H.__olo_window_set.
+  const windowValues = new Map();
+  H.__olo_window_set = (k, v) => { if (windowValues.has(k)) windowValues.set(k, v); else global[k] = v; };
+  // (What a setter does beyond keeping the value: location navigates;
+  // name and status are strings.)
+  const setters = {
+    location: (v) => { global.location.href = String(v); },
+    name: (v) => { windowValues.set('name', String(v)); },
+    status: (v) => { windowValues.set('status', String(v)); },
+  };
+  for (const [name, kind, flags] of CHROME_WINDOW) {
+    if (!flags || !has(global, name)) continue;
+    const d = getOwn(global, name);
+    if (!d.configurable) continue;
+    const enumerable = flags.includes('E'), configurable = flags.includes('C');
+    if (kind === 'a') {
+      let get = d.get, set = d.set;
+      if (!get) {
+        windowValues.set(name, d.value);
+        get = native(function () { return windowValues.get(name); }, 'get ' + name);
+      }
+      if (!flags.includes('S')) set = undefined;
+      else if (has(setters, name)) set = native(function (v) { setters[name](v); }, 'set ' + name);
+      else if (!set || windowValues.has(name)) {
+        // ([Replaceable] in Chrome: what a page sets is what it reads.)
+        const own = !windowValues.has(name) && get;
+        set = native(function (v) { if (own) define(global, name, { value: v, writable: true, enumerable: true, configurable: true }); else windowValues.set(name, v); }, 'set ' + name);
+      }
+      define(global, name, { get, set, enumerable, configurable });
+    } else if (!d.get && !d.set) {
+      define(global, name, { value: d.value, writable: flags.includes('W'), enumerable, configurable });
+    }
   }
 })(globalThis);

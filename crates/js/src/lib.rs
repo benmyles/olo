@@ -19,6 +19,7 @@ pub const SCRIPT_DESTINATION: &str = "x-olo-destination: script";
 mod crypto;
 pub mod html;
 mod modules;
+mod rtc;
 pub mod webgl;
 pub mod worker;
 use olo_web::{
@@ -37,7 +38,19 @@ use std::{
     sync::{Arc, OnceLock},
     time::Instant,
 };
-const PRELUDE: &str = concat!(include_str!("shared.js"), "\n", include_str!("prelude.js"), "\n", include_str!("webgl.js"), "\n", include_str!("chrome-shape.js"), "\n", include_str!("chrome.js"));
+const PRELUDE: &str = concat!(
+    include_str!("shared.js"),
+    "\n",
+    include_str!("prelude.js"),
+    "\n",
+    include_str!("webgl.js"),
+    "\n",
+    include_str!("rtc.js"),
+    "\n",
+    include_str!("chrome-shape.js"),
+    "\n",
+    include_str!("chrome.js")
+);
 /// What the page is, for `location`, `navigator` and the viewport.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -367,6 +380,9 @@ struct State {
     /// Workers by id, with what they need to be made.
     workers: HashMap<u32, worker::Handle>,
     next_worker: u32,
+    /// RTCPeerConnections' ICE gatherings (rtc.rs), by id.
+    gatherings: HashMap<u32, rtc::Gathering>,
+    next_gathering: u32,
     worker_fetcher: Option<SharedFetcher>,
     worker_starter: Option<FetchStarter>,
     waker: Option<Waker>,
@@ -578,6 +594,8 @@ impl Realm {
             next_request: 1,
             workers: HashMap::new(),
             next_worker: 1,
+            gatherings: HashMap::new(),
+            next_gathering: 1,
             worker_fetcher: None,
             worker_starter: None,
             waker: None,
@@ -768,6 +786,7 @@ impl Realm {
     /// What the workers posted (messages, errors, console lines) reaches
     /// the page's scripts.
     fn pump_workers(&mut self) {
+        self.pump_gatherings();
         let state = self.state.clone();
         let mut pending: Vec<(u32, worker::FromWorker)> = Vec::new();
         {
@@ -813,6 +832,47 @@ impl Realm {
             let args: [v8::Local<v8::Value>; 3] = [v8::Number::new(tc, f64::from(id)).into(), string(tc, kind), value];
             if f.call(tc, global.into(), &args).is_none() {
                 let error = exception_text(tc, "worker event");
+                state.borrow_mut().report.errors.push(error);
+                tc.reset();
+            }
+        }
+    }
+    /// What the ICE gatherings found reaches their RTCPeerConnections
+    /// (__olo_rtcEvent: id, kind, then the event's own).
+    fn pump_gatherings(&mut self) {
+        let state = self.state.clone();
+        let mut pending: Vec<(u32, rtc::Event)> = Vec::new();
+        {
+            let s = state.borrow();
+            if s.gatherings.is_empty() {
+                return;
+            }
+            for (id, g) in &s.gatherings {
+                while let Ok(e) = g.events.try_recv() {
+                    pending.push((*id, e));
+                }
+            }
+        }
+        if pending.is_empty() {
+            return;
+        }
+        let _entered = Entered::new(&self.isolate);
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let global = context.global(tc);
+        let Some(f) = prelude_function(tc, global, "__olo_rtcEvent") else { return };
+        for (id, e) in pending {
+            let id: v8::Local<v8::Value> = v8::Number::new(tc, f64::from(id)).into();
+            let args: Vec<v8::Local<v8::Value>> = match e {
+                rtc::Event::Host(port) => vec![id, string(tc, "host"), v8::Number::new(tc, f64::from(port)).into()],
+                rtc::Event::Srflx { address, port, url } => vec![id, string(tc, "srflx"), string(tc, &address.to_string()), v8::Number::new(tc, f64::from(port)).into(), string(tc, &url)],
+                rtc::Event::Failed { url, text } => vec![id, string(tc, "failed"), string(tc, &url), string(tc, &text)],
+                rtc::Event::Done => vec![id, string(tc, "done")],
+            };
+            if f.call(tc, global.into(), &args).is_none() {
+                let error = exception_text(tc, "rtc event");
                 state.borrow_mut().report.errors.push(error);
                 tc.reset();
             }
@@ -1827,6 +1887,8 @@ impl State {
             next_request: 1,
             workers: HashMap::new(),
             next_worker: 1,
+            gatherings: HashMap::new(),
+            next_gathering: 1,
             worker_fetcher: None,
             worker_starter: None,
             waker: None,
@@ -2877,6 +2939,9 @@ const NATIVES: &[&str] = &[
     "animationRemove",
     "structuredClone",
     "workerStart",
+    "rtcGather",
+    "rtcStop",
+    "rtcCertificate",
     "workerPost",
     "workerTerminate",
     "imageSize",
@@ -3842,6 +3907,35 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 && let Some(value) = clone::deserialize(scope, &bytes)
             {
                 rv.set(value);
+            }
+        }
+        // An RTCPeerConnection's ICE gathering from its STUN servers
+        // (`host:port` lines): its id, its events to __olo_rtcEvent.
+        "rtcGather" => {
+            let servers: Vec<String> = arg_string(scope, &args, 0).lines().filter(|l| !l.is_empty()).map(str::to_owned).collect();
+            let mut s = state.borrow_mut();
+            match rtc::gather(servers, s.waker.clone()) {
+                Ok(g) => {
+                    let id = s.next_gathering;
+                    s.next_gathering += 1;
+                    s.gatherings.insert(id, g);
+                    rv.set(v8::Number::new(scope, f64::from(id)).into());
+                }
+                Err(_) => rv.set_null(),
+            }
+        }
+        "rtcStop" => {
+            let id = args.get(0).number_value(scope).unwrap_or(0.) as u32;
+            state.borrow_mut().gatherings.remove(&id);
+        }
+        // A connection's certificate: [DER as base64, its SHA-256
+        // fingerprint, when it expires].
+        "rtcCertificate" => {
+            use base64::Engine;
+            let made = rtc::certificate();
+            if let Some((der, fingerprint, expires)) = made {
+                let items: Vec<v8::Local<v8::Value>> = vec![string(scope, &base64::engine::general_purpose::STANDARD.encode(der)), string(scope, &fingerprint), v8::Number::new(scope, expires).into()];
+                rv.set(v8::Array::new_with_elements(scope, &items).into());
             }
         }
         // new Worker(url, source?): a thread with its own scope; its id.

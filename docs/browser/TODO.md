@@ -106,15 +106,32 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   global and DOM prototypes, WebGL, API functions as Chrome's; JOURNAL).
   (Amazon shows Chrome under remote debugging "Access restricted"; agents
   may still check its pages render, looking only.)
-- [ ] Presenting as Chrome, what's left (2026-11-09): TLS as Chrome's
-  (rustls can't make its ClientHello: GREASE, ALPS, ECH, certificate
-  compression, its suites; BoringSSL wants cmake). HTTP/2's SETTINGS,
-  window update and pseudo-header order are Chrome's since 2026-11-09. It matters: pixelscan.net's Cloudflare holds a connection whose
+- [ ] Cloudflare's challenge (Stack Overflow, 2026-11-09): with Chrome's
+  TLS, it now serves its challenge script, whose checks run in an
+  about:blank iframe it makes. That frame's contentWindow is a remote
+  window in Olo, with no Function, Object or navigator (Chrome: a full
+  same-origin window, its document scriptable from the parent), so the
+  script throws. Needed: same-origin child windows, a second context in
+  the page's isolate (same security token), its own prelude and document,
+  ticked with the page's.
+- [ ] Olo's own internals call the page-visible Object.defineProperty
+  (each Event's isTrusted, getComputedStyle's declaration): a page that
+  hooks it sees them. Take the builtins once, in the prelude.
+- [ ] Interfaces' constants on their constructors (DOMException's codes,
+  KeyboardEvent, FileReader, CSSRule, SVG's) and statics (DOMRect.fromRect,
+  URL.parse, IDBKeyRange's) Chrome has and Olo lacks (2026-11-09 sweep).
+- [ ] NYT's load costs 1.5 s more CPU than before 2026-11-09's Chrome
+  fingerprint: DataDome's tag and its ads run more with Chrome's APIs
+  present (BBC's is the same; NYT then served a DataDome captcha after
+  25 loads in minutes: measure NYT sparingly).
+- [ ] Presenting as Chrome, what's left (2026-11-09): TLS is Chrome's
+  (vendor/rustls), HTTP/2's SETTINGS, window update and pseudo-header
+  order too. It mattered: pixelscan.net's Cloudflare holds a connection whose
   handshake isn't a browser's (curl: 524 after 125 s; Olo: timed out;
   Chrome: the page); OffscreenCanvas with WebGL, in pages and workers (a worker's GPU
   reads NA); the constructible interfaces Olo lacks (FontFace, Observable
   and EventTarget.when, OfflineAudioContext and Web Audio, WebCodecs,
-  MediaRecorder, RTCPeerConnection, CompressionStream, URLPattern, ...:
+  MediaRecorder, CompressionStream, URLPattern, ...:
   150 of Chrome's 1,230 globals); XPath (document.evaluate); the
   navigation API; live iframes (contentWindow is null); a broken image's
   16×16 box and icon; SVG text and geometry (getComputedTextLength,

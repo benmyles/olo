@@ -1754,6 +1754,14 @@ fn render(
             // (A page with nothing to run goes live all the same while
             // pictures it shows without are on their way: it binds them.)
             if scripts.is_empty() && !olo_js::has_controls(&doc) && measurer.late_images() == 0 && !animating {
+                // (The document, for comparing with Chrome's: as parsed.)
+                if let Ok(path) = std::env::var("OLO_BROWSER_DOM") {
+                    let mut text = String::new();
+                    let mut budget = 64 << 20;
+                    if olo_js::html::serialize(&doc, doc.root(), &mut text, &mut budget).is_ok() {
+                        let _ = std::fs::write(path, text);
+                    }
+                }
                 return Ok(doc);
             }
             proxy.send(Reply::Status(r.id, format!("Running {} scripts…", scripts.len())));

@@ -7,8 +7,10 @@ the result of evaluating tools/dev/chrome-shape.js in Chrome on a plain
 page of a secure origin (http://localhost/ will do), e.g. over its remote
 debugging protocol. Run it again for each new Chrome Olo follows.
 
-Each entry is [name, kind]: 'C:Parent:length' an interface, 'F:length' a
-function, 'O:Tag' an object, 'V:value' a value, 'a' an accessor; and the
+Each entry is [name, kind, flags]: 'C:Parent:length' an interface,
+'F:length' a function, 'O:Tag' an object, 'V:value' a value, 'a' an
+accessor; flags its descriptor's (E enumerable, C configurable, S an
+accessor's setter, W a value's writable); and the
 interfaces a page can construct (CHROME_CONSTRUCTIBLE). Evaluating it
 constructs each interface once, so use a scratch profile."""
 import json, sys
@@ -23,10 +25,12 @@ def entries(items):
         name = e[0]
         if name in SKIP:
             continue
+        # (Its descriptor's flags third: E enumerable, C configurable, and
+        # S an accessor's setter, W a value's writable.)
         if e[1] == 'a':
-            out.append([name, 'a'])
+            out.append([name, 'a', ('E' if e[2] else '') + ('C' if e[3] else '') + ('S' if e[4] else '')])
         elif e[1] == 'd':
-            out.append([name, e[-1]])
+            out.append([name, e[-1], ('E' if e[2] else '') + ('C' if e[3] else '') + ('W' if e[4] else '')])
     return out
 
 window = entries(shape['window'])

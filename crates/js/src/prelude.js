@@ -176,6 +176,8 @@
     event.eventPhase = 0;
     return !event.defaultPrevented;
   };
+  // (For the prelude's other files: their events trusted, as these are.)
+  H.__olo_dispatch = dispatch;
   define(EventTarget.prototype, {
     // Called without a `this` (a bare `addEventListener(…)` through a
     // page's wrapper), the target is the global object, as Web IDL says.
@@ -803,7 +805,7 @@
     title: { get() { const t = N.query(documentNode, 'title', false); return t ? N.textContent(t).trim().replace(/\s+/g, ' ') : ''; }, set(v) { let t = N.query(documentNode, 'title', false); if (!t) { const head = this.head; if (!head) return; t = N.createElement('title', ''); N.append(head, t); } N.setTextContent(t, String(v)); } },
     readyState: { get() { return readyState; } },
     URL: { get() { return N.url(); } }, documentURI: { get() { return N.url(); } }, referrer: { get() { return ''; } }, domain: { get() { return location.hostname; } },
-    location: { get() { return global.location; } }, defaultView: { get() { return global; } },
+    location: { get() { return global.location; }, set(v) { global.location.href = String(v); } }, defaultView: { get() { return global; } },
     characterSet: { get() { return 'UTF-8'; } }, charset: { get() { return 'UTF-8'; } }, inputEncoding: { get() { return 'UTF-8'; } }, contentType: { get() { return 'text/html'; } }, compatMode: { get() { return N.compatMode(); } },
     hidden: { get() { return pageHidden; } }, visibilityState: { get() { return pageHidden ? 'hidden' : 'visible'; } }, hasFocus() { return !pageHidden; },
     activeElement: { get() { return activeElement && N.isConnected(activeElement) ? activeElement : this.body; } }, scrollingElement: { get() { return html(); } }, currentScript: { get() { return currentScript; } },
@@ -1162,7 +1164,10 @@
     detach() {}
   }
   global.TreeWalker = TreeWalker; global.NodeIterator = TreeWalker;
-  global.NodeFilter = { FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3, SHOW_ALL: 0xffffffff, SHOW_ELEMENT: 1, SHOW_TEXT: 4, SHOW_COMMENT: 128, SHOW_DOCUMENT: 256 };
+  // (A callback interface, as Chrome's: a function with no prototype and
+  // the constants, each of them.)
+  global.NodeFilter = { NodeFilter() { throw new TypeError('Illegal constructor'); } }.NodeFilter;
+  for (const [k, v] of Object.entries({ FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3, SHOW_ALL: 0xffffffff, SHOW_ELEMENT: 1, SHOW_ATTRIBUTE: 2, SHOW_TEXT: 4, SHOW_CDATA_SECTION: 8, SHOW_ENTITY_REFERENCE: 16, SHOW_ENTITY: 32, SHOW_PROCESSING_INSTRUCTION: 64, SHOW_COMMENT: 128, SHOW_DOCUMENT: 256, SHOW_DOCUMENT_TYPE: 512, SHOW_DOCUMENT_FRAGMENT: 1024, SHOW_NOTATION: 2048 })) Object.defineProperty(global.NodeFilter, k, { value: v, enumerable: true });
   // Element constructors scripts reference (instanceof, prototype patches).
   // The element classes, with HTMLElement/SVGElement between them and
   // Element; the engine gives each wrapper its tag's class (lib.rs tables).
@@ -1417,8 +1422,20 @@
   const location = {};
   // Navigation: the window goes there (a fragment of this page, a scroll).
   const navigate = (u, replace) => { const url = resolveURL(String(u)); N.navigate(url, !!replace); };
-  for (const k of ['href', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'origin']) Object.defineProperty(location, k, { get() { return pageURL[k]; }, set(v) { if (k === 'href') { navigate(v); return; } if (k === 'origin') return; const u = new URL(pageURL.href); u[k] = v; navigate(u.href); }, enumerable: true });
-  Object.assign(location, { assign(u) { navigate(u); }, replace(u) { navigate(u, true); }, reload() { navigate(pageURL.href, true); }, toString() { return pageURL.href; }, ancestorOrigins: listOf([]) });
+  // (Its members its own and fixed, in Chrome's order: Location's are
+  // [LegacyUnforgeable].)
+  const ancestorOrigins = listOf([]);
+  const fixed = (k, d) => Object.defineProperty(location, k, { enumerable: k !== 'valueOf', configurable: false, ...d });
+  fixed('valueOf', { value: { valueOf() { return this; } }.valueOf, writable: false });
+  fixed('ancestorOrigins', { get: { get ancestorOrigins() { return ancestorOrigins; } }.__lookupGetter__('ancestorOrigins') });
+  for (const k of ['href', 'origin', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash']) {
+    const get = { get [k]() { return pageURL[k]; } }.__lookupGetter__(k);
+    const set = k === 'origin' ? undefined : { set [k](v) { if (k === 'href') { navigate(v); return; } const u = new URL(pageURL.href); u[k] = v; navigate(u.href); } }.__lookupSetter__(k);
+    fixed(k, { get, set });
+  }
+  const methods = { assign(u) { navigate(u); }, reload() { navigate(pageURL.href, true); }, replace(u) { navigate(u, true); }, toString() { return pageURL.href; } };
+  for (const k of ['assign', 'reload', 'replace', 'toString']) fixed(k, { value: methods[k], writable: false });
+  Object.defineProperty(location, Symbol.toPrimitive, { value: undefined, writable: false, enumerable: false, configurable: false });
   global.location = location;
   // The session history (HTML §7.4): this document's entries, each its URL
   // and state. pushState and replaceState change them and tell the browser
@@ -1561,7 +1578,7 @@
   };
   // (An accessor, as Chrome's: the document bound with the page.)
   Object.defineProperty(global, 'document', { get() { return documentNode; }, enumerable: true, configurable: true });
-  Object.defineProperty(global, 'opener', { value: null, writable: true });
+  Object.defineProperty(global, 'opener', { value: null, writable: true, enumerable: true, configurable: true });
   const scrollWindow = (x, y) => { const size = N.docSize(); const [vw2, vh2] = N.viewport(); scrollXY[0] = Math.max(0, Math.min(x, size[0] - vw2)); scrollXY[1] = Math.max(0, Math.min(y, size[1] - vh2)); global.scrollX = global.pageXOffset = scrollXY[0]; global.scrollY = global.pageYOffset = scrollXY[1]; setTimeout(() => { dispatch(documentNode, new Event('scroll', { bubbles: true })); }, 0); };
   global.scroll = global.scrollTo = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(Number(x) || 0, Number(y) || 0); };
   global.scrollBy = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(scrollXY[0] + (Number(x) || 0), scrollXY[1] + (Number(y) || 0)); };
@@ -1927,11 +1944,20 @@
   let timeOrigin = Date.now();
   // The wall clock follows the virtual one, so what scripts time with
   // Date.now() (animations, throttles, token expiries) agrees with timers.
+  // (Chrome's own Date otherwise, to the keys: its prototype the native
+  // one, with every method its own; parse and UTC its own; a function of
+  // seven arguments. A subclass had none of them its own, and a prototype
+  // more in the chain: what bot checks look at.)
   const NativeDate = Date;
-  global.Date = class Date extends NativeDate {
-    constructor(...args) { if (args.length === 0) super(Math.floor(timeOrigin + performanceNow())); else super(...args); }
-    static now() { return Math.floor(timeOrigin + performanceNow()); }
+  const dateNow = () => Math.floor(timeOrigin + performanceNow());
+  const PageDate = function Date(year, month, day, hours, minutes, seconds, ms) {
+    if (new.target === undefined) return new NativeDate(dateNow()).toString();
+    return Reflect.construct(NativeDate, arguments.length ? Array.prototype.slice.call(arguments) : [dateNow()], new.target);
   };
+  Object.defineProperty(PageDate, 'prototype', { value: NativeDate.prototype, writable: false, enumerable: false, configurable: false });
+  for (const k of ['now', 'parse', 'UTC']) Object.defineProperty(PageDate, k, { value: k === 'now' ? { now() { return dateNow(); } }.now : NativeDate[k], writable: true, enumerable: false, configurable: true });
+  Object.defineProperty(NativeDate.prototype, 'constructor', { value: PageDate, writable: true, enumerable: false, configurable: true });
+  global.Date = PageDate;
   global.performance = { now: performanceNow, timeOrigin, timing: { navigationStart: timeOrigin, domLoading: timeOrigin, domInteractive: timeOrigin, domContentLoadedEventStart: timeOrigin, domContentLoadedEventEnd: timeOrigin, domComplete: timeOrigin, loadEventStart: timeOrigin, loadEventEnd: timeOrigin, fetchStart: timeOrigin, responseStart: timeOrigin, responseEnd: timeOrigin, requestStart: timeOrigin, connectStart: timeOrigin, connectEnd: timeOrigin, domainLookupStart: timeOrigin, domainLookupEnd: timeOrigin, redirectStart: 0, redirectEnd: 0, unloadEventStart: 0, unloadEventEnd: 0, secureConnectionStart: 0 }, navigation: { type: 0, redirectCount: 0 }, mark() { return {}; }, measure() { return {}; }, clearMarks() {}, clearMeasures() {}, clearResourceTimings() {}, getEntries: () => [], getEntriesByType: () => [], getEntriesByName: () => [], setResourceTimingBufferSize() {}, addEventListener() {}, removeEventListener() {}, toJSON() { return {}; }, memory: { usedJSHeapSize: 1e7, totalJSHeapSize: 2e7, jsHeapSizeLimit: 2e9 }, eventCounts: new Map() };
   // performance.navigation (Navigation Timing 1, still read: Reddit's
   // feed compares its type against the interface's constants).
@@ -3272,12 +3298,14 @@
     pageURL = new URL(N.url());
     historyEntries[0] = { url: pageURL.href, state: null };
     [vw, vh, dpr] = N.viewport();
-    Object.assign(global, { innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, isSecureContext: pageURL.protocol === 'https:' || pageURL.protocol === 'file:' || /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$|\.localhost$/.test(pageURL.hostname), origin: pageURL.origin });
+    // (Through the window's own store: some of these have no setter, as
+    // in Chrome.)
+    for (const [k, v] of Object.entries({ innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, isSecureContext: pageURL.protocol === 'https:' || pageURL.protocol === 'file:' || /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$|\.localhost$/.test(pageURL.hostname), origin: pageURL.origin })) (H.__olo_window_set || ((k, v) => { global[k] = v; }))(k, v);
     if (Object.getPrototypeOf(global.screen) === Object.prototype) Object.assign(global.screen, { width: vw, height: vh, availWidth: vw, availHeight: vh });
-    Object.assign(global.visualViewport, { width: vw, height: vh });
+    Object.assign((H.__olo_store || ((o) => o))(global.visualViewport), { width: vw, height: vh });
     timeOrigin = NativeDate.now();
     tickWall = 0; lastPerf = 0;
-    const p = global.performance;
+    const p = (H.__olo_store || ((o) => o))(global.performance);
     p.timeOrigin = timeOrigin;
     for (const k of Object.keys(p.timing)) if (p.timing[k]) p.timing[k] = timeOrigin;
     for (const el of N.query(documentNode, 'script', true)) started.add(el);

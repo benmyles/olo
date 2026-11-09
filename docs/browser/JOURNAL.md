@@ -7447,3 +7447,57 @@ is serialised as Chrome does (`"x" attr(id) counter(n)`). Finding that
 showed a parser hole: a `content` with attr() beside counter() was
 deferred as a substitution and then dropped, so the pseudo-element
 never showed; content's own functions keep it its own syntax now.
+
+TLS as Chrome speaks it. Stack Overflow's Cloudflare held Olo at its
+interstitial, and the one thing left that wasn't Chrome's on the wire
+was the handshake: rustls's ClientHello (JA4 t13d1011h2, ten suites,
+eleven extensions) against Chrome's (t13d1517h2). BoringSSL would have
+meant cmake in the build, so rustls is patched instead (vendor/rustls,
+`chrome_hello`):
+- Chrome's suites in its order.
+- GREASE wherever Chrome puts it.
+- Its signature algorithms, ML-DSA included.
+- ALPS, certificate compression (brotli, decompressed for real), SCT,
+  session tickets, renegotiation_info and trust anchor ids.
+- A GREASE ECH shaped as BoringSSL's.
+- Extensions in a random order each connection.
+- The post-quantum hybrid always, through aws-lc-rs.
+
+Google's servers take ALPS, so the client's EncryptedExtensions after
+their Finished had to be real: Google's pages load, ten connections of
+them with ALPS. tls.peet.ws now gives Olo exactly the JA4, JA3 and
+peetprint Chrome gets, fresh and resumed. HTTP/2 was already Chrome's.
+
+Cloudflare then served its challenge, and the challenge script threw a
+TypeError with no message. The script is a virtual machine; its
+guard-before-call says "toString", called on something undefined. The
+search for that something found a lot of Olo that isn't Chrome's
+shape, now fixed:
+- **window:**
+  - Its interfaces were enumerable; Object.keys(window) listed all 800.
+  - Fifty of its attributes were values where Chrome has accessors
+    (navigator, location, performance, innerWidth, ...).
+  - The shape file keeps Chrome's descriptor flags now, and chrome.js
+    applies them.
+- **Date** was a subclass of the native one, its statics and methods
+  inherited, not its own.
+- **location** was a plain object. Chrome's is a Location whose members
+  are its own and fixed.
+- **Plain objects** with their members on themselves: performance,
+  crypto (and subtle), visualViewport, speechSynthesis, external.
+  Performance.prototype had no now.
+- **console** methods had no names. CSS.px gave a string, not a
+  CSSUnitValue.
+- **document.constructor.name** was 'C'.
+- **WebRTC** was missing entirely, and Cloudflare's script makes an
+  RTCPeerConnection with its STUN servers. Olo has one now (rtc.js,
+  rtc.rs):
+  - Chrome's surface, member for member.
+  - Offers written as Chrome writes them.
+  - Candidates gathered for real: an mDNS host candidate and the public
+    address from each STUN server, over UDP natively.
+  - A real ECDSA certificate for its fingerprint.
+
+The cause, found last: Cloudflare runs its checks in an about:blank
+iframe it makes, and Olo's contentWindow for one is a remote window
+without Function or navigator. Same-origin child windows are next (TODO).
