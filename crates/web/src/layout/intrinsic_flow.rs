@@ -17,7 +17,19 @@ impl Job<'_> {
         // Equal paragraphs share one Text; with inline objects their widths
         // still differ per paragraph, so those measure per source (and are
         // not kept for the next layout: the sources may not be the same).
-        let key = (text.serial(), if text.object_count() == 0 { 0 } else { source + 1 });
+        // (Breaking anywhere changes min-content: a paragraph of the same
+        // text that doesn't is measured apart.)
+        let anywhere = self.breaks_anywhere(source);
+        let key = (
+            text.serial(),
+            if text.object_count() != 0 {
+                source + 1
+            } else if anywhere {
+                u32::MAX
+            } else {
+                0
+            },
+        );
         if let Some(cached) = self.intrinsics.get(&key).or_else(|| self.cache.intrinsics.as_ref().and_then(|m| m.get(&key))) {
             return Ok(*cached);
         }
@@ -32,6 +44,7 @@ impl Job<'_> {
             .any(|b| self.cache.tree.styles.snapshot(b.node).is_some_and(|s| used::has_inline_edge(s, true) || used::has_inline_edge(s, false)));
         let widths = match if edged { Err(inline::Error::Unsupported("inline edges")) } else { inline::IntrinsicJob::new(text.clone(), Some(self.scale), self.limits.text, self.cancel) } {
             Ok(mut job) => loop {
+                job.set_anywhere(anywhere);
                 let before = job.progress().work;
                 let p = job.step(256)?;
                 self.charge(p.work.saturating_sub(before))?;
@@ -44,6 +57,25 @@ impl Job<'_> {
         };
         self.intrinsics.insert(key, widths);
         Ok(widths)
+    }
+    /// Whether every span of a text may break between any glyphs, breaks
+    /// that count at min-content: `overflow-wrap: anywhere`, `word-break:
+    /// break-word` or `break-all`, and wrapping (not `overflow-wrap:
+    /// break-word`, which breaks only what overflows: CSS Text 3 §5.5).
+    /// Stack Overflow's titles held their column 365px wide for a long
+    /// path in one, Chrome's 315.
+    fn breaks_anywhere(&self, source: u32) -> bool {
+        use crate::css::properties::{Keyword as K, Property as P};
+        use crate::css::style::Value as V;
+        let tree = &self.cache.tree;
+        let Some(text) = tree.text_source(source) else { return false };
+        let anywhere = |s: &crate::css::style::Style| {
+            !matches!(s.value(P::TextWrapMode), V::Keyword(K::Nowrap))
+                && (matches!(s.value(P::OverflowWrap), V::Keyword(K::Anywhere)) || matches!(s.value(P::WordBreak), V::Keyword(K::BreakWord | K::BreakAll)))
+        };
+        // (The container's too: lines break by its style; a span's alone
+        // breaks nothing yet, and its min-content must not say it does.)
+        tree.style(text.container).is_some_and(anywhere) && text.spans.iter().all(|span| tree.styles.snapshot(span.style_node).is_some_and(anywhere))
     }
     /// Text the measuring job does not cover (bidi, several shaping runs,
     /// inline objects, soft hyphens): lay it out at no width and at unbounded

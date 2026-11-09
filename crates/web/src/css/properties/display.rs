@@ -47,6 +47,10 @@ impl Display {
                 ("inline-table", Self::Box { outer: Outer::Inline, inner: Inner::Table, list_item: false }),
                 ("inline-flex", Self::Box { outer: Outer::Inline, inner: Inner::Flex, list_item: false }),
                 ("inline-grid", Self::Box { outer: Outer::Inline, inner: Inner::Grid, list_item: false }),
+                // The old flexbox's boxes, which pages use now only to clamp
+                // lines (-webkit-line-clamp): blocks of their own.
+                ("-webkit-box", Self::Box { outer: Outer::Block, inner: Inner::FlowRoot, list_item: false }),
+                ("-webkit-inline-box", Self::Box { outer: Outer::Inline, inner: Inner::FlowRoot, list_item: false }),
             ] {
                 if s.eq_ignore_ascii_case(name) {
                     return Ok(value);

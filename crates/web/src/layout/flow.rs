@@ -1803,12 +1803,24 @@ impl<'a> Job<'a> {
             let end = if matches!(trim, K::TrimEnd | K::TrimBoth) { under.max(0.) } else { 0. };
             l.trim(start, end);
         }
+        // A line clamp on the box holding this text (`display: -webkit-box;
+        // -webkit-box-orient: vertical; -webkit-line-clamp: N`): the box
+        // ends below its Nth line, which ends with "…" (Stack Overflow's
+        // excerpts: two lines; Olo showed three).
+        let mut height = l.height();
+        if matches!(style.value(P::WebkitBoxOrient), Value::Keyword(K::Vertical))
+            && let Some(n) = style.value(P::LineClamp).scalar()
+            && n >= 1.
+            && let Some(h) = l.clamp(n as usize)
+        {
+            height = h;
+        }
         self.progress.lines += l.lines().len();
         self.progress.texts += 1;
         // Lines holding only absolutely positioned boxes' places are no
         // line boxes: margins collapse through a paragraph of them.
         let through = l.lines().iter().all(|line| line.phantom);
-        self.geometry[id.index()] = Geometry { border_box: Rect { x: 0., y: 0., width: available, height: l.height() }, ..Default::default() };
+        self.geometry[id.index()] = Geometry { border_box: Rect { x: 0., y: 0., width: available, height }, ..Default::default() };
         for placed in l.object_fragments() {
             let index = image_geometry.binary_search_by_key(&placed.at, |(_, _, at)| *at).map_err(|_| Error::Invalid)?;
             let (child, mut g, _) = image_geometry[index];

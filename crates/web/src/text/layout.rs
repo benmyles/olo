@@ -636,8 +636,25 @@ pub struct Layout {
     /// `Options::content`).
     content: [f64; 2],
     scale: f64,
+    /// The line a line clamp ends the text at (`clamp`): its box ends
+    /// below it, and it ends with "…".
+    clamped: Option<usize>,
 }
 impl Layout {
+    /// A line clamp of `lines` (`-webkit-line-clamp`): when there are more,
+    /// the height of the first `lines`, where the box ends (the rest
+    /// overflow it, clipped by its `overflow`, as in Chrome).
+    pub fn clamp(&mut self, lines: usize) -> Option<f64> {
+        if lines == 0 || self.lines.len() <= lines {
+            return None;
+        }
+        self.clamped = Some(lines - 1);
+        Some(self.lines[..lines].iter().map(|l| l.gap + l.ascent + l.descent).sum())
+    }
+    /// The line a clamp ended the text at.
+    pub fn clamped_line(&self) -> Option<usize> {
+        self.clamped
+    }
     /// `text-box-trim` (CSS Inline 3 §5.1): the first line box starts
     /// `start` lower down its ascent (it moves up by that much) and the
     /// last ends `end` above its descent's bottom; the layout is that much
@@ -1393,6 +1410,7 @@ impl<'a> Job<'a> {
             objects: self.objects.map(|o| o.finish()),
             content: self.options.content,
             scale: self.options.pixel_scale.unwrap_or(1.),
+            clamped: None,
         })
     }
 }

@@ -2121,12 +2121,13 @@ impl<'a> BuildJob<'a> {
         // clips: a line running past its end loses the glyphs that would
         // cross "…", which goes there in the block's colour (CSS Overflow 3
         // §3.1; GitHub's file list's commit messages).
+        // (A line clamp's last line ends with "…" too.)
+        let clamped = text.clamped_line();
         let ellipsis = {
             let parent = layout.cache().tree().get(id).and_then(|b| b.parent).and_then(|p| layout.cache().tree().style(p));
             match parent {
                 Some(ps)
-                    if matches!(ps.value(P::TextOverflow), Value::Keyword(K::Ellipsis))
-                        && !matches!(ps.value(P::OverflowX), Value::Keyword(K::Visible))
+                    if (clamped.is_some() || matches!(ps.value(P::TextOverflow), Value::Keyword(K::Ellipsis)) && !matches!(ps.value(P::OverflowX), Value::Keyword(K::Visible)))
                         && ps.axes().direction != crate::css::style::Direction::Rtl =>
                 {
                     Some((at.x + layout.geometry(id).ok_or(Error::Invalid)?.border_box.width, color(ps, P::Color)?))
@@ -2149,7 +2150,8 @@ impl<'a> BuildJob<'a> {
                         at.x + f.x + f.advance
                     })
                     .fold(f64::NEG_INFINITY, f64::max);
-                if end > right + 0.5
+                let last = clamped == Some(li);
+                if (end > right + 0.5 || last)
                     && let Some(fi) = line.fragments.clone().find(|&fi| !text.fragments()[fi as usize].glyphs.is_empty())
                     && let Some(run) = text.run(&text.fragments()[fi as usize])
                     && let Ok(face) = run.font.selection().parsed()
@@ -2157,7 +2159,10 @@ impl<'a> BuildJob<'a> {
                     && let Some((gid, count)) = face.glyph_index('\u{2026}').map(|g| (g, 1)).or_else(|| face.glyph_index('.').map(|g| (g, 3)))
                 {
                     let advance = f64::from(face.glyph_hor_advance(gid).unwrap_or(0)) * run.size / f64::from(run.font.units_per_em());
-                    cut = Some((fi, gid.0, count, advance, right - advance * count as f64, ec));
+                    // (A clamp's line that fits takes "…" after its words.)
+                    let content_end = at.x + line.offset + line.content_advance;
+                    let limit = if last { (right - advance * count as f64).min(content_end) } else { right - advance * count as f64 };
+                    cut = Some((fi, gid.0, count, advance, limit, ec));
                 }
             }
             let mut cut_x: Option<f64> = None;
@@ -2357,6 +2362,12 @@ impl<'a> BuildJob<'a> {
                     let end_x = at.x + f.x + pen as f64 * factor;
                     self.segment(group, clip, id, fi, start..f.glyphs.end, origin, c, b, deco, end_x, baseline, &run.font, run.size)?;
                 }
+            }
+            if clamped == Some(li)
+                && cut_x.is_none()
+                && let Some((_, _, _, _, limit, _)) = cut
+            {
+                cut_x = Some(limit);
             }
             if let (Some((fi, glyph, count, advance, _, ec)), Some(x)) = (cut, cut_x)
                 && ec[3] != 0

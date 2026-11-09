@@ -348,3 +348,24 @@ fn a_picture_a_script_loaded_measures_its_image_after_the_document_changes() {
     let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, Some(m), None).unwrap();
     assert!((height(&m, &doc) - 224.8).abs() < 0.1, "{}", height(&m, &doc));
 }
+/// A flex item's text that may break anywhere (`word-break: break-word`,
+/// `overflow-wrap: anywhere`) shrinks it to the room left, as in Chrome
+/// (CSS Text 3 §5.5: those breaks count at min-content; `overflow-wrap:
+/// break-word`'s don't). Stack Overflow's titles held their column wide.
+/// And a line clamp ends its box below its Nth line.
+#[test]
+fn breaking_anywhere_shrinks_min_content_and_a_line_clamp_ends_the_box() {
+    let (mut measurer, host, doc, viewport) = measurer_for(
+        "<!doctype html><style>body{margin:0;font:16px sans-serif} .f{display:flex;width:400px} .s{width:100px;flex-shrink:0}</style>\
+         <div class=f><div class=s>x</div><div id=a style='flex:1 auto;word-break:break-word'>sys.dm_exec_query_stats/sys.dm_exec_sql_text</div></div>\
+         <div class=f><div class=s>x</div><div id=b style='flex:1 auto;overflow-wrap:anywhere'>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</div></div>\
+         <div class=f><div class=s>x</div><div id=c style='flex:1 auto;overflow-wrap:break-word'>bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb</div></div>\
+         <p id=d style='width:300px;margin:0;line-height:20px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden'>I have been using these DMVs for years to look at performance metrics, but since moving our servers numbers do not match.</p>",
+    );
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    let rect = |id: &str| m.border_box(find(&doc, id)).unwrap();
+    assert_eq!(rect("a").width, 300.);
+    assert_eq!(rect("b").width, 300.);
+    assert!(rect("c").width > 300., "break-word's breaks don't count at min-content");
+    assert_eq!(rect("d").height, 40., "two lines of twenty");
+}

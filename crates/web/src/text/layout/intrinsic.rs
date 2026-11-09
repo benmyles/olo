@@ -35,6 +35,11 @@ pub struct IntrinsicJob<'a> {
     maximum: bool,
     measured: bool,
     failed: bool,
+    /// Lines may break between any two glyphs and those breaks count at
+    /// min-content (`overflow-wrap: anywhere`, `word-break: break-word |
+    /// break-all`; CSS Text 3 §5.2, §5.5): min-content is the widest glyph.
+    anywhere: bool,
+    widest: f64,
 }
 impl<'a> IntrinsicJob<'a> {
     pub fn new(text: Arc<Text>, scale: Option<f64>, limits: Limits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
@@ -84,7 +89,13 @@ impl<'a> IntrinsicJob<'a> {
             maximum: false,
             measured: false,
             failed: false,
+            anywhere: false,
+            widest: 0.,
         })
+    }
+    /// See the field: breaks between any glyphs count at min-content.
+    pub fn set_anywhere(&mut self, anywhere: bool) {
+        self.anywhere = anywhere;
     }
     pub fn progress(&self) -> IntrinsicProgress {
         self.progress
@@ -164,6 +175,7 @@ impl<'a> IntrinsicJob<'a> {
                 }
                 if let Some(glyph) = run.glyphs.get(self.glyph) {
                     let raw = self.metric.advance(glyph.x_advance);
+                    self.widest = self.widest.max(raw);
                     let next = self.prefixes.last().copied().unwrap() + raw;
                     if !next.is_finite() {
                         return Err(Error::Invalid);
@@ -222,6 +234,8 @@ impl<'a> IntrinsicJob<'a> {
             Err(Error::Failed)
         } else if !self.progress.finished {
             Err(Error::Incomplete)
+        } else if self.anywhere {
+            Ok(IntrinsicWidths { min_content: self.widths.min_content.min(self.snapped(self.widest)), ..self.widths })
         } else {
             Ok(self.widths)
         }

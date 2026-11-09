@@ -114,8 +114,17 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   into it in its own context, its own input and layout (its innerWidth
   is 300), document.write into it; iframes of a same-origin URL are
   still remote windows.
-- [ ] Stack Overflow's questions page: a white block covers the right
-  column near "Featured on Meta" (2026-11-09).
+- [x] Stack Overflow's questions: their column was 365px wide (Chrome
+  315), titles held it wide (word-break: break-word's breaks didn't count
+  at min-content), and excerpts weren't clamped to two lines
+  (-webkit-line-clamp). Both as Chrome now. (The white block seen once
+  was its sticky ad, whose iframe draws nothing.)
+- [ ] overflow-wrap set on a span alone breaks nothing (lines break by
+  the paragraph's style): its min-content and lines stay whole.
+- [ ] Stack Overflow's "Featured on Meta" items have no icons; Chrome
+  hyphenates its excerpts (hyphens: auto).
+- [ ] An about:blank iframe's document draws nothing: ads written into
+  one (Google's friendly iframes) show blank.
 - [ ] Olo's own internals call the page-visible Object.defineProperty
   (each Event's isTrusted, getComputedStyle's declaration): a page that
   hooks it sees them. Take the builtins once, in the prelude.

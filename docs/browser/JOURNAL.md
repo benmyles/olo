@@ -7519,3 +7519,15 @@ Without a snapshot, the prelude is run in it. Stack Overflow's
 questions page now loads past Cloudflare's "Performing security
 verification", the challenge passed with no person involved, as in
 Chrome.
+
+Stack Overflow, laid out: its questions' column was 365px wide where
+Chrome's is 315, and the excerpts showed three lines where Chrome's show
+two, cut with "…". Two things Olo lacked:
+- **Breaks anywhere at min-content.** A long path in a title, under
+  `word-break: break-word`, held the flex item at its width. Chrome
+  counts those breaks at min-content (as for `overflow-wrap: anywhere`;
+  `break-word`'s don't count): min-content is the widest glyph then.
+- **Line clamping.** `display: -webkit-box` (a block of its own now) with
+  `-webkit-box-orient: vertical` and `-webkit-line-clamp: N`: the box
+  ends below its Nth line, which ends with "…". Cards and excerpts on
+  half the web are clamped like this.
