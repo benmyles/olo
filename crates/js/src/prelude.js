@@ -1311,7 +1311,11 @@
   };
   global.requestAnimationFrame = (fn) => { const id = nextTimer++; rafs.push({ id, fn }); return id; };
   global.cancelAnimationFrame = (id) => { const i = rafs.findIndex((r) => r.id === id); if (i >= 0) rafs.splice(i, 1); };
-  global.requestIdleCallback = (fn, options) => schedule(() => fn({ didTimeout: false, timeRemaining: () => 50 }), (options && options.timeout) || 1, [], false);
+  // An idle callback runs at the next idle moment (its `timeout` only
+  // bounds how late, it is no delay: YouTube's scheduler asks with 3000 ms
+  // and every idle job waited three seconds, its icons for thirteen), with
+  // an idle period's 50 ms counting down.
+  global.requestIdleCallback = (fn, options) => schedule(() => { const end = performance.now() + 50; fn({ didTimeout: false, timeRemaining: () => Math.max(0, end - performance.now()) }); }, 1, [], false);
   global.cancelIdleCallback = global.clearTimeout;
   global.queueMicrotask = (fn) => { Promise.resolve().then(fn).catch(reportError); };
   // The page's time: its clock at the task's start, then real time as the
@@ -1690,7 +1694,35 @@
     return r;
   };
   global.indexedDB = { open: () => failedRequest(), deleteDatabase: () => failedRequest(), databases: () => Promise.resolve([]), cmp: (a, b) => (a < b ? -1 : a > b ? 1 : 0) };
-  global.caches = { open: () => Promise.resolve({ match: () => Promise.resolve(undefined), put: () => Promise.resolve(), add: () => Promise.resolve(), addAll: () => Promise.resolve(), delete: () => Promise.resolve(false), keys: () => Promise.resolve([]) }), match: () => Promise.resolve(undefined), has: () => Promise.resolve(false), delete: () => Promise.resolve(false), keys: () => Promise.resolve([]) };
+  // Cache Storage (Service Workers §5.4), in memory for the page's life:
+  // responses kept by request URL (and method GET), each handed out as a
+  // copy. (A stub that kept nothing left YouTube's icons undrawn.)
+  {
+    const urlOf = (req) => new URL(req instanceof Request ? req.url : String(req), document.baseURI).href;
+    class Cache {
+      constructor() { this._m = new Map(); }
+      match(req, options) { const r = this._m.get(urlOf(req)); return Promise.resolve(r ? r.clone() : undefined); }
+      matchAll(req) { if (req === undefined) return Promise.resolve([...this._m.values()].map((r) => r.clone())); return this.match(req).then((r) => (r ? [r] : [])); }
+      put(req, response) {
+        if (req instanceof Request && req.method !== 'GET') return Promise.reject(new TypeError('Request method is not GET'));
+        if (!(response instanceof Response)) return Promise.reject(new TypeError('not a Response'));
+        return response.arrayBuffer().then((b) => { this._m.set(urlOf(req), new Response(b, { status: response.status, statusText: response.statusText, headers: response.headers, url: response.url })); });
+      }
+      add(req) { return fetch(req).then((r) => { if (!r.ok) throw new TypeError('Request failed'); return this.put(req, r); }); }
+      addAll(reqs) { return Promise.all([...reqs].map((r) => this.add(r))).then(() => undefined); }
+      delete(req) { return Promise.resolve(this._m.delete(urlOf(req))); }
+      keys() { return Promise.resolve([...this._m.keys()].map((u) => new Request(u))); }
+    }
+    const caches = new Map();
+    global.Cache = Cache;
+    global.caches = {
+      open: (name) => { name = String(name); if (!caches.has(name)) caches.set(name, new Cache()); return Promise.resolve(caches.get(name)); },
+      has: (name) => Promise.resolve(caches.has(String(name))),
+      delete: (name) => Promise.resolve(caches.delete(String(name))),
+      keys: () => Promise.resolve([...caches.keys()]),
+      match: (req, options) => { const named = options && options.cacheName; for (const [n, c] of caches) { if (named && n !== named) continue; const r = c._m.get(urlOf(req)); if (r) return Promise.resolve(r.clone()); } return Promise.resolve(undefined); },
+    };
+  }
   // Encoding, base64, structured clone, crypto
   global.structuredClone = (v) => (v === undefined ? undefined : N.structuredClone(v));
   // Observers: intersection reports everything visible once.

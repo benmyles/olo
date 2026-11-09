@@ -767,3 +767,16 @@ fn posted_tasks_keep_their_delay_signal_and_result() {
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] AbortError,microtask,result 7,delayed"]);
 }
+/// An idle callback's `timeout` bounds how late it runs; it is no delay
+/// (YouTube's scheduler asks with 3000 ms: every idle job waited three
+/// seconds). Its deadline counts down from an idle period's 50 ms.
+#[test]
+fn idle_callbacks_run_at_the_next_idle_moment() {
+    let (report, _) = run("<body><script>\
+        const order = [];\
+        requestIdleCallback((d) => order.push('idle ' + (d.timeRemaining() > 0 && d.timeRemaining() <= 50) + ' ' + d.didTimeout), { timeout: 3000 });\
+        setTimeout(() => console.log(order.concat('timer 30').join(',')), 30);\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] idle true false,timer 30"]);
+}
