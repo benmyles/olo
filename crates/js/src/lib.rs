@@ -58,7 +58,20 @@ pub struct Config {
 /// Chrome of the same engine generation, so sites serve the pages they
 /// serve Chrome (an unknown agent gets fallback or bot pages), with Olo
 /// named after it.
-pub const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Olo/0.1";
+/// Olo presents as the Chrome whose web it renders: the version it
+/// follows, and what Chrome 157 on Linux says of itself (its user agent,
+/// its client hints' brands, as Chrome sends them; captured from Chrome
+/// 157.0.8103.38). Sites shape their pages, and decide whether to serve
+/// them at all, by these.
+pub const CHROME_MAJOR: &str = "157";
+pub const CHROME_FULL: &str = "157.0.8103.38";
+pub const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36";
+/// `Sec-CH-UA`, and its full versions (`Sec-CH-UA-Full-Version-List`).
+pub const SEC_CH_UA: &str = r#""Not-A.Brand";v="99", "Google Chrome";v="157", "Chromium";v="157""#;
+pub const SEC_CH_UA_FULL: &str = r#""Not-A.Brand";v="99.0.0.0", "Google Chrome";v="157.0.8103.38", "Chromium";v="157.0.8103.38""#;
+/// The brands in order, with their major and full versions
+/// (`navigator.userAgentData`).
+pub const BRANDS: [(&str, &str, &str); 3] = [("Not-A.Brand", "99", "99.0.0.0"), ("Google Chrome", "157", "157.0.8103.38"), ("Chromium", "157", "157.0.8103.38")];
 impl Default for Config {
     fn default() -> Self {
         Self { url: "about:blank".into(), viewport: (1000., 700.), scale: 1., user_agent: USER_AGENT.into(), language: "en-US".into(), quirks: false, dark: false, budget_ms: 3000., wall_seconds: 8. }

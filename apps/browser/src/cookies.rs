@@ -279,7 +279,7 @@ pub fn script_access() -> olo_js::Cookies {
 }
 /// The registrable domain (eTLD+1) of a host, or the host itself (an IP
 /// address, a suffix, a name with no suffix).
-fn site_of(host: &str) -> String {
+pub(crate) fn site_of(host: &str) -> String {
     let host = host.trim_end_matches('.').to_ascii_lowercase();
     if host.parse::<std::net::IpAddr>().is_ok() || host.starts_with('[') {
         return host;

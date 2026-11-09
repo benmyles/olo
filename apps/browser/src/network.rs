@@ -195,7 +195,6 @@ impl Loader {
                 .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_secs(20))
                 .timeout(Duration::from_secs(60))
-                .user_agent(olo_js::USER_AGENT)
                 .build()?,
             runtime: tokio::runtime::Builder::new_multi_thread().worker_threads(2).thread_name("browser-net").enable_all().build()?,
             cache: Default::default(),
@@ -889,9 +888,6 @@ async fn get(
                         return Ok(Resource { url, bytes, mime, status: None, document_encoding: None, headers: String::new() });
                     }
                     let mut request = client.request(method.clone(), url.clone());
-                    if let Some(referrer) = initiator.and_then(|from| referrer(from, &url)) {
-                        request = request.header(header::REFERER, referrer);
-                    }
                     // Cookies, as the request's credentials mode allows:
                     // a script's request and a font (CORS) only to their own
                     // origin unless they include them; the rest always.
@@ -909,38 +905,14 @@ async fn get(
                         navigation: matches!(kind, Kind::Document) && initiator.is_none(),
                         safe: matches!(method, reqwest::Method::GET | reqwest::Method::HEAD),
                     };
-                    if with_cookies && let Some(cookie) = crate::cookies::jar().header(&url, context) {
-                        request = request.header(header::COOKIE, cookie);
+                    let cookie = if with_cookies { crate::cookies::jar().header(&url, context) } else { None };
+                    for (name, value) in chrome_headers(&url, initiator, kind, &method, outgoing, cookie) {
+                        request = request.header(name, value);
                     }
-                    let mut accept = true;
-                    if let Some(o) = outgoing {
-                        for (n, v) in &o.headers {
-                            // After a redirect to GET, the body's type goes with it.
-                            if method == reqwest::Method::GET && o.method != reqwest::Method::GET && n == header::CONTENT_TYPE {
-                                continue;
-                            }
-                            accept &= n != header::ACCEPT;
-                            request = request.header(n, v);
-                        }
-                        if !matches!(method, reqwest::Method::GET | reqwest::Method::HEAD) {
-                            if let Some(origin) = initiator.filter(|i| matches!(i.scheme(), "http" | "https")) {
-                                request = request.header(header::ORIGIN, origin.origin().ascii_serialization());
-                            }
-                            request = request.body(o.body.clone());
-                        }
-                    }
-                    if accept {
-                        request = request.header(
-                            header::ACCEPT,
-                            match kind {
-                                Kind::Document => "text/html,text/plain;q=0.9,*/*;q=0.1",
-                                Kind::Stylesheet => "text/css,*/*;q=0.1",
-                                Kind::Image => "image/png,image/jpeg,image/webp,image/gif,image/svg+xml,*/*;q=0.1",
-                                Kind::Font => "font/woff2,font/woff,font/ttf,font/otf,*/*;q=0.1",
-                                Kind::Script => "*/*",
-                                Kind::Fetch => "*/*",
-                            },
-                        );
+                    if let Some(o) = outgoing
+                        && !matches!(method, reqwest::Method::GET | reqwest::Method::HEAD)
+                    {
+                        request = request.body(o.body.clone());
                     }
                     // (With what it came from: "error sending request" alone
                     // says nothing of DNS, TLS or the connection.)
@@ -955,6 +927,13 @@ async fn get(
                         page::Error::from(text.as_str())
                     })?;
                     let status = response.status();
+                    // The client hints a document's server asks for, sent to
+                    // its origin from now on (as Chrome keeps them).
+                    if matches!(kind, Kind::Document)
+                        && let Some(asked) = response.headers().get("accept-ch").and_then(|v| v.to_str().ok())
+                    {
+                        remember_hints(&url, asked);
+                    }
                     if with_cookies {
                         for line in response.headers().get_all(header::SET_COOKIE) {
                             if let Ok(line) = std::str::from_utf8(line.as_bytes()) {
@@ -1015,6 +994,161 @@ fn header_lines(headers: &reqwest::header::HeaderMap) -> String {
 /// the same origin; the origin alone across origins; nothing from https to
 /// http, or from a page with no web origin (a file). Some servers answer
 /// without one with 404 (apple.com's fonts stylesheet).
+/// The client hints each origin's server asked for (`Accept-CH`), by
+/// origin.
+static ASKED_HINTS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Vec<&'static str>>>> = std::sync::LazyLock::new(Default::default);
+/// The high-entropy client hints Olo answers (Chrome on Linux's values),
+/// in the order Chrome sends them.
+const HIGH_ENTROPY: [(&str, &str); 7] = [
+    ("sec-ch-ua-arch", "\"x86\""),
+    ("sec-ch-ua-platform-version", "\"\""),
+    ("sec-ch-ua-model", "\"\""),
+    ("sec-ch-ua-bitness", "\"64\""),
+    ("sec-ch-ua-full-version-list", olo_js::SEC_CH_UA_FULL),
+    ("sec-ch-ua-full-version", concat!("\"", "157.0.8103.38", "\"")),
+    ("sec-ch-ua-wow64", "?0"),
+];
+fn remember_hints(url: &Url, asked: &str) {
+    let wanted: Vec<&'static str> = asked.split(',').map(|h| h.trim().to_ascii_lowercase()).filter_map(|h| HIGH_ENTROPY.iter().find(|(n, _)| *n == h).map(|(n, _)| *n)).collect();
+    let mut hints = ASKED_HINTS.lock().unwrap();
+    if hints.len() > 4096 {
+        hints.clear();
+    }
+    hints.insert(url.origin().ascii_serialization(), wanted);
+}
+/// How a request's target stands to what asked for it (`Sec-Fetch-Site`):
+/// none (the person asked: typed, a bookmark), the same origin, the same
+/// site (scheme and registrable domain), or another site.
+fn fetch_site(initiator: Option<&Url>, url: &Url) -> &'static str {
+    let Some(from) = initiator else { return "none" };
+    if from.origin() == url.origin() {
+        return "same-origin";
+    }
+    let site = |u: &Url| (u.scheme().to_owned(), u.host_str().map(crate::cookies::site_of));
+    if site(from) == site(url) { "same-site" } else { "cross-site" }
+}
+/// A request's headers as Chrome 157 sends them, in its order (captured
+/// from it: what servers and their bot checks compare a browser against):
+/// the page's own headers (a CORS request's origin before them), the
+/// client hints (the high-entropy ones its origin asked for), the user
+/// agent, what it accepts for its destination, its `Sec-Fetch-*`, the
+/// referrer, encodings, languages and cookies.
+fn chrome_headers(url: &Url, initiator: Option<&Url>, kind: Kind, method: &reqwest::Method, outgoing: Option<&Outgoing>, cookie: Option<String>) -> Vec<(header::HeaderName, header::HeaderValue)> {
+    let mut out: Vec<(header::HeaderName, header::HeaderValue)> = Vec::with_capacity(24);
+    let mut add = |name: &str, value: &str| {
+        if let (Ok(n), Ok(v)) = (header::HeaderName::from_bytes(name.as_bytes()), header::HeaderValue::from_str(value)) {
+            out.push((n, v));
+        }
+    };
+    let navigation = matches!(kind, Kind::Document);
+    let safe = matches!(*method, reqwest::Method::GET | reqwest::Method::HEAD);
+    let same_origin = initiator.is_some_and(|i| i.origin() == url.origin());
+    let origin = initiator.filter(|i| matches!(i.scheme(), "http" | "https")).map(|i| i.origin().ascii_serialization());
+    let mode = match kind {
+        Kind::Document => "navigate",
+        Kind::Font | Kind::Fetch => "cors",
+        Kind::Stylesheet | Kind::Image | Kind::Script => "no-cors",
+    };
+    // A font (always CORS) names its origin first; a script's request to
+    // another origin, or one with a body, after what it accepts.
+    if matches!(kind, Kind::Font)
+        && let Some(o) = &origin
+    {
+        add("origin", o);
+    }
+    let page_headers: Vec<&(header::HeaderName, header::HeaderValue)> =
+        outgoing.map(|o| o.headers.iter().filter(|(n, _)| !(*method == reqwest::Method::GET && o.method != reqwest::Method::GET && n == header::CONTENT_TYPE)).collect()).unwrap_or_default();
+    let page_accept = page_headers.iter().find(|(n, _)| n == header::ACCEPT).map(|(_, v)| v.clone());
+    let content_type = page_headers.iter().find(|(n, _)| n == header::CONTENT_TYPE).map(|(_, v)| v.clone());
+    for (n, v) in &page_headers {
+        if n != header::ACCEPT && n != header::CONTENT_TYPE {
+            out.push(((*n).clone(), (*v).clone()));
+        }
+    }
+    let secure = url.scheme() == "https" || url.host_str().is_some_and(|h| h == "localhost" || h == "127.0.0.1" || h == "[::1]" || h.ends_with(".localhost"));
+    let asked: Vec<&'static str> = if secure { ASKED_HINTS.lock().unwrap().get(&url.origin().ascii_serialization()).cloned().unwrap_or_default() } else { Vec::new() };
+    let mut add = |name: &str, value: &str| {
+        if let (Ok(n), Ok(v)) = (header::HeaderName::from_bytes(name.as_bytes()), header::HeaderValue::from_str(value)) {
+            out.push((n, v));
+        }
+    };
+    if secure {
+        let high = |add: &mut dyn FnMut(&str, &str)| {
+            for (name, value) in HIGH_ENTROPY {
+                if asked.contains(&name) {
+                    add(name, value);
+                }
+            }
+        };
+        if navigation {
+            add("sec-ch-ua", olo_js::SEC_CH_UA);
+            add("sec-ch-ua-mobile", "?0");
+            add("sec-ch-ua-platform", "\"Linux\"");
+            high(&mut add);
+        } else {
+            add("sec-ch-ua-platform", "\"Linux\"");
+            add("sec-ch-ua", olo_js::SEC_CH_UA);
+            add("sec-ch-ua-mobile", "?0");
+            high(&mut add);
+        }
+    }
+    if navigation {
+        add("upgrade-insecure-requests", "1");
+    }
+    add("user-agent", olo_js::USER_AGENT);
+    if let Some(ct) = &content_type {
+        out_push_raw(&mut add, "content-type", ct);
+    }
+    let accept = match kind {
+        Kind::Document => "text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        Kind::Stylesheet => "text/css,*/*;q=0.1",
+        Kind::Image => "image/jxl,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        Kind::Font | Kind::Script | Kind::Fetch => "*/*",
+    };
+    match &page_accept {
+        Some(v) => out_push_raw(&mut add, "accept", v),
+        None => add("accept", accept),
+    }
+    if !matches!(kind, Kind::Font)
+        && (!safe || matches!(kind, Kind::Fetch) && !same_origin)
+        && let Some(o) = &origin
+    {
+        add("origin", o);
+    }
+    if secure {
+        add("sec-fetch-site", fetch_site(initiator, url));
+        add("sec-fetch-mode", mode);
+        if navigation {
+            add("sec-fetch-user", "?1");
+        }
+        add(
+            "sec-fetch-dest",
+            match kind {
+                Kind::Document => "document",
+                Kind::Stylesheet => "style",
+                Kind::Image => "image",
+                Kind::Font => "font",
+                Kind::Script => "script",
+                Kind::Fetch => "empty",
+            },
+        );
+    }
+    if let Some(r) = initiator.and_then(|from| referrer(from, url)) {
+        add("referer", &r);
+    }
+    add("accept-encoding", "gzip, deflate, br, zstd");
+    add("accept-language", "en-US,en;q=0.9");
+    if let Some(c) = &cookie {
+        add("cookie", c);
+    }
+    out
+}
+/// A header value given as it is (a page's own, already checked).
+fn out_push_raw(add: &mut impl FnMut(&str, &str), name: &str, value: &header::HeaderValue) {
+    if let Ok(v) = value.to_str() {
+        add(name, v);
+    }
+}
 fn referrer(from: &Url, to: &Url) -> Option<String> {
     if !matches!(from.scheme(), "http" | "https") || from.scheme() == "https" && to.scheme() == "http" {
         return None;
@@ -1345,7 +1479,10 @@ mod tests {
             let (mut stream, _) = socket.accept().unwrap();
             let mut request = [0; 4096];
             let n = stream.read(&mut request).unwrap();
-            assert!(std::str::from_utf8(&request[..n]).unwrap().contains("image/png"));
+            // What Chrome accepts for an image, and its destination.
+            let request = std::str::from_utf8(&request[..n]).unwrap();
+            assert!(request.contains("accept: image/jxl,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"), "{request}");
+            assert!(request.contains("user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36\r\n"), "{request}");
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", png.len()).unwrap();
             stream.write_all(&png).unwrap();
         });

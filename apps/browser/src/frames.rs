@@ -1,8 +1,10 @@
 //! The page's `<iframe>`s: each one's document loaded and rendered on a
 //! thread of its own, at the size the iframe shows at, and bound to its
 //! element as a picture (as a video's picture is). Its stylesheets and
-//! images load as the page's do; its scripts don't run yet, and it is
-//! not live (it doesn't take the person's input).
+//! images load as the page's do; its scripts run once, for half a second
+//! of its own time, before its picture is taken. It is not live: its
+//! scripts don't go on, it doesn't take the person's input, and it and
+//! its parent can't message each other.
 use crate::{
     network,
     worker::{Key, PageHost},

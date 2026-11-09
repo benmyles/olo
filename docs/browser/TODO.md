@@ -94,13 +94,16 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   the sole flex item would be); its Snoo draws as Chrome's.
 - [ ] Bot checks (2026-11-08 sweep): Stack Overflow stops at Cloudflare's
   "Performing security verification", The New York Times at DataDome's
-  device check (in an iframe, whose scripts don't run yet: a blank page).
+  device check (in an iframe, whose scripts run only once, half a second,
+  before its picture is taken: a blank page). Live iframes: a page of
+  their own going on (its realm, timers, network), its picture redrawn as
+  it changes, input passed in, postMessage both ways.
   Amazon's AWS WAF passes since Web Crypto has AES (2026-11-08). What is
-  missing is standard behaviour (iframes' scripts); nothing is to be done
-  to look less like an automated client. Amazon tells AI agents their
-  access violates its Conditions of Use (Chrome under remote debugging
-  is shown "Access restricted"): agents don't test on Amazon; a person
-  checks it.
+  missing is standard behaviour (iframes' scripts), and Olo presenting as
+  the Chrome it is compatible with (its user agent, client hints, request
+  headers, navigator, TLS and HTTP/2), as other browsers built for
+  Chrome's web do. (Amazon shows Chrome under remote debugging "Access
+  restricted"; agents may still check its pages render, looking only.)
 - [x] YouTube: its home as Chrome's, icons within a second (2026-11-08:
   idle callbacks took their timeout as a delay; Cache Storage kept nothing).
 - [ ] Selectors are compiled again with every compile of a page's sheets
