@@ -3699,10 +3699,22 @@ fn patchable(doc: &Document, rules: &css::cascade::RuleSet, revision: u64) -> st
                 // No selector tests the style attribute (the usual case):
                 // its change matches nothing anew, whatever keyless
                 // compounds (`* + *`, `:first-child`) reach from any change.
+                // One that does (`[style*=width] .bar`): what it reaches
+                // matched again, where few enough (Reddit restyled whole at
+                // each style a script set, 110 ms).
                 if invalidation.tests_attribute("style") {
                     let (down, beside) = invalidation.reach_of(std::iter::once("[style".to_owned()));
                     if !down.is_empty() || !beside.is_empty() {
-                        return Err("a selector reaches from [style]".to_owned());
+                        let mut reached = Vec::new();
+                        reached_from(doc, *n, &down, &beside, &mut reached);
+                        if reached.len() > 512 {
+                            return Err(format!("<{}> style: selectors reach {} elements from it", name(*n), reached.len()));
+                        }
+                        for r in reached {
+                            add(r, true);
+                        }
+                        add(*n, true);
+                        continue;
                     }
                 }
                 add(*n, false);
