@@ -7324,3 +7324,30 @@ The cost is the frames' own work, as in Chrome. NYT (16 iframes, ads),
 each browser alone: load 12.67 CPU s (Chrome 11.46; Olo 9.89 before,
 when the ads stopped after half a second), idle 2.5% (Chrome 5.8%),
 839 MB (Chrome 1,373).
+
+Looking into why Cloudflare's check never finishes for Olo turned up
+three older faults, each something a bot check reads:
+
+- `isTrusted` was false on every event: the dispatcher set it so after
+  the input code set it true. The person's clicks and keys read as a
+  script's. It is an unforgeable getter on each event now, as Chrome's,
+  true for the browser's own events and false only for a page's
+  dispatchEvent and click().
+- An uncaught exception reached `window.onerror` but never `error`
+  listeners (Cloudflare's own handler among them), and `onerror` got a
+  message and nothing else. It is an ErrorEvent at the window now, with
+  Chrome's five arguments to onerror, the file, line and column of where
+  it was thrown, and onerror returning true keeps it off the console.
+- Inline scripts were named "inline script 1" in stacks and errors;
+  Chrome names them by the document's URL, and so does Olo.
+
+And the prelude's V8 code cache had to go: the cache made before the
+prelude runs crashed V8 too, made by one test process and taken by the
+next. V8's read-only heap depends on the snapshot a process's first
+isolate came from (Olo's own or V8's), and V8 doesn't check a code cache
+against it. A realm made without the snapshot compiles the prelude
+(31 ms); from the snapshot, as nearly all are, 4 ms.
+
+Cloudflare still doesn't let Olo through: it serves its interstitial to
+Olo (not to Chrome) for its TLS handshake, and its script throws an
+empty TypeError of its own making on some check it doesn't say.

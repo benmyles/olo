@@ -36,6 +36,11 @@
     if (!m && create) { m = new Map(); listenerMaps.set(target, m); }
     return m;
   };
+  // Whether an event is the browser's (the person's input, its own
+  // events): an unforgeable getter on each event, as Chrome's
+  // [LegacyUnforgeable] isTrusted; a page's dispatchEvent never is.
+  const trustedEvents = new WeakSet();
+  const isTrustedGetter = Object.getOwnPropertyDescriptor({ get isTrusted() { return trustedEvents.has(this); } }, 'isTrusted').get;
   class Event {
     constructor(type, init) {
       init = init || {};
@@ -47,7 +52,7 @@
       this.currentTarget = null;
       this.eventPhase = 0;
       this.defaultPrevented = false;
-      this.isTrusted = false;
+      Object.defineProperty(this, 'isTrusted', { get: isTrustedGetter, enumerable: true, configurable: false });
       this.timeStamp = performanceNow();
       this._stop = false;
       this._stopImmediate = false;
@@ -92,10 +97,28 @@
       reportError(e);
     }
   };
+  // An uncaught exception: an `error` event at the window (its listeners,
+  // and onerror with Chrome's five arguments), where it was thrown from
+  // its first frame; logged unless a handler cancelled it.
+  let reporting = 0;
   const reportError = (e) => {
-    log('error', ['Uncaught', e && e.stack ? e.stack : String(e)]);
-    const handler = global.onerror;
-    if (typeof handler === 'function') { try { handler.call(global, String(e && e.message || e), '', 0, 0, e); } catch (_) {} }
+    let handled = false;
+    if (reporting < 3) {
+      reporting++;
+      try {
+        const isErr = e && typeof e === 'object';
+        const name = isErr && typeof e.name === 'string' ? e.name : '';
+        const text = isErr && 'message' in e ? (name ? name + ': ' : '') + String(e.message) : String(e);
+        const stack = isErr ? (N.errorFrames(e) || String(e.stack || '')) : '';
+        const at = /\(?([^\s()]+):(\d+):(\d+)\)?\s*$/.exec(stack.split('\n').find((l) => /^\s+at .*:\d+:\d+\)?\s*$/.test(l)) || '');
+        const event = new ErrorEvent('error', { message: 'Uncaught ' + text, error: e, filename: at ? at[1] : '', lineno: at ? +at[2] : 0, colno: at ? +at[3] : 0, cancelable: true });
+        handled = !dispatch(global, event, true);
+      } catch (_) {
+      } finally {
+        reporting--;
+      }
+    }
+    if (!handled) log('error', ['Uncaught', e && e.stack ? e.stack : String(e)]);
   };
   const inlineHandler = (target, type) => {
     if (!(target instanceof Node) || target.nodeType !== 1) return null;
@@ -110,8 +133,14 @@
     event.eventPhase = phase;
     const own = target['on' + event.type];
     if (phase !== 1) {
-      const handler = typeof own === 'function' ? own : inlineHandler(target, event.type);
-      if (handler) { try { if (handler.call(target, event) === false) event.preventDefault(); } catch (e) { reportError(e); } }
+      // window.onerror takes (message, source, line, column, error), and
+      // cancels the report by returning true.
+      if (target === global && event.type === 'error' && event instanceof ErrorEvent && typeof own === 'function') {
+        try { if (own.call(target, event.message, event.filename, event.lineno, event.colno, event.error) === true) event.preventDefault(); } catch (e) { reportError(e); }
+      } else {
+        const handler = typeof own === 'function' ? own : inlineHandler(target, event.type);
+        if (handler) { try { if (handler.call(target, event) === false) event.preventDefault(); } catch (e) { reportError(e); } }
+      }
     }
     if (!list) return;
     for (const entry of list.slice()) {
@@ -122,10 +151,13 @@
       invoke(entry.listener, target, event);
     }
   };
-  const dispatch = (target, event) => {
+  // (The browser's own events are trusted; a page's dispatchEvent and
+  // click() pass false.)
+  const dispatch = (target, event, trusted = true) => {
     if (!(event instanceof Event)) throw new TypeError('dispatchEvent: not an Event');
     event.target = target;
-    event.isTrusted = false;
+    if (trusted) trustedEvents.add(event);
+    else trustedEvents.delete(event);
     const path = [target];
     if (target instanceof Node) {
       // Up the composed tree: out of a shadow root to its host.
@@ -171,7 +203,7 @@
       const i = list.findIndex((e) => e.listener === listener && e.capture === capture);
       if (i >= 0) list.splice(i, 1);
     },
-    dispatchEvent(event) { return dispatch(this ?? global, event); },
+    dispatchEvent(event) { return dispatch(this ?? global, event, false); },
   });
   // A plain object can be an event target too (EventTarget constructor).
   const EventTargetCtor = function EventTarget() {};
@@ -640,7 +672,7 @@
     close(value) { if (N.nodeName(this) !== 'DIALOG' || N.attr(this, 'open') == null) return; if (value !== undefined) this._returnValue = String(value); this.removeAttribute('open'); if (dialogModal.delete(this)) N.setModal(this, false); fireOn(this, 'close'); },
     requestClose(value) { if (N.nodeName(this) !== 'DIALOG' || N.attr(this, 'open') == null) return; const ev = new Event('cancel', { cancelable: true }); if (dispatch(this, ev) !== false && !ev.defaultPrevented) this.close(value); },
     returnValue: { get() { return this._returnValue === undefined ? '' : this._returnValue; }, set(v) { this._returnValue = String(v); } },
-    click() { const el = this; if (N.attr(el, 'disabled') != null && ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(N.nodeName(el))) return; activate(el, () => { const ev = Object.assign(new MouseEvent('click', { bubbles: true, cancelable: true }), { isTrusted: false }); dispatch(el, ev); return ev; }); },
+    click() { const el = this; if (N.attr(el, 'disabled') != null && ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(N.nodeName(el))) return; activate(el, () => { const ev = new MouseEvent('click', { bubbles: true, cancelable: true }); dispatch(el, ev, false); return ev; }); },
     submit() { if (N.nodeName(this) === 'FORM') submitForm(this, null, false); }, reset() { if (N.nodeName(this) === 'FORM') for (const c of N.query(this, 'input,textarea', true)) N.setControlValue(c, N.nodeName(c) === 'TEXTAREA' ? N.textContent(c) : (N.attr(c, 'value') || '')); }, requestSubmit(submitter) { if (N.nodeName(this) === 'FORM') submitForm(this, submitter || null, true); }, checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() {},
     animate(keyframes, options) { const a = new Animation(new KeyframeEffect(this, keyframes, options), global.document.timeline); if (options && typeof options === 'object' && options.id != null) a.id = String(options.id); a.play(); return a; },
     getAnimations() { return animations.filter((a) => a.effect && a.effect.target === this && a.playState !== 'idle'); },
@@ -1314,7 +1346,7 @@
           }
         }
       }
-      for (const slot of changed) slot.dispatchEvent(new Event('slotchange', { bubbles: true }));
+      for (const slot of changed) dispatch(slot, new Event('slotchange', { bubbles: true }));
     };
     const queue = () => { if (!queued && watched.size) { queued = true; Promise.resolve().then(check); } };
     slotchangeListened = (target) => { watched.add(target); queue(); };
@@ -1542,8 +1574,8 @@
   // (N.media); play(), pause() and currentTime go to it (N.mediaCommand),
   // and its events come back through __olo_mediaEvents.
   const isMedia = (el) => { const n = N.nodeName(el); return n === 'VIDEO' || n === 'AUDIO'; };
-  const queueMedia = (el, names) => setTimeout(() => { for (const name of names) el.dispatchEvent(new Event(name)); }, 0);
-  H.__olo_mediaEvents = (el, names) => { for (const name of names) el.dispatchEvent(new Event(name)); };
+  const queueMedia = (el, names) => setTimeout(() => { for (const name of names) dispatch(el, new Event(name)); }, 0);
+  H.__olo_mediaEvents = (el, names) => { for (const name of names) dispatch(el, new Event(name)); };
   const mediaProps = {
     paused: { get() { return N.media(this)[0]; } },
     ended: { get() { return N.media(this)[1]; } },
@@ -1606,7 +1638,7 @@
       }
       return out;
     };
-    const fire = (target, type) => target.dispatchEvent(new Event(type));
+    const fire = (target, type) => dispatch(target, new Event(type));
     const state = (message) => new DOMException(message, 'InvalidStateError');
     class SourceBufferList extends EventTarget {
       constructor() { super(); this._list = []; this.onaddsourcebuffer = null; this.onremovesourcebuffer = null; }
@@ -1819,7 +1851,7 @@
   // however many scrolls came before it.
   const scrollPending = new Set();
   const scrollElement = (el, x, y) => { if (N.setScrollOffset(el, x, y)) queueScroll(el); };
-  const queueScroll = (el) => { if (scrollPending.has(el)) return; scrollPending.add(el); setTimeout(() => { scrollPending.delete(el); el.dispatchEvent(new Event('scroll')); }, 0); };
+  const queueScroll = (el) => { if (scrollPending.has(el)) return; scrollPending.add(el); setTimeout(() => { scrollPending.delete(el); dispatch(el, new Event('scroll')); }, 0); };
   H.__olo_scrolled = (el) => queueScroll(el);
   // matchMedia answers by the engine's media evaluation, the same as the
   // page's sheets. The viewport is fixed for a realm (a resize renders a
@@ -2116,8 +2148,7 @@
     const Ctor = (transition ? global.TransitionEvent : global.AnimationEvent) || Event;
     const ev = new Ctor(type, { bubbles: true, cancelable: false, composed: true });
     try { Object.defineProperty(ev, transition ? 'propertyName' : 'animationName', { value: name }); Object.defineProperty(ev, 'elapsedTime', { value: elapsed }); Object.defineProperty(ev, 'pseudoElement', { value: '' }); } catch (e) {}
-    ev.isTrusted = true;
-    dispatch(el, ev);
+    dispatch(el, ev, true);
   };
   // The person chose option `index` of a select from its menu: it is the
   // select's now, with `input` and `change` when that changed it.
@@ -2129,8 +2160,8 @@
     for (const o of options) { if (o === chosen) N.setAttr(o, 'selected', ''); else N.removeAttr(o, 'selected'); }
     if (sel.value !== before || N.attr(chosen, 'selected') != null) {
       if (sel.value !== before) {
-        const input = new Event('input', { bubbles: true, composed: true }); input.isTrusted = true; dispatch(sel, input);
-        const change = new Event('change', { bubbles: true }); change.isTrusted = true; dispatch(sel, change);
+        const input = new Event('input', { bubbles: true, composed: true }); dispatch(sel, input, true);
+        const change = new Event('change', { bubbles: true }); dispatch(sel, change, true);
       }
     }
   };
@@ -2145,7 +2176,7 @@
     if (!target || !N.isConnected(target) || N.nodeType(target) !== 1) target = document.body || documentNode;
     const base = { bubbles: true, cancelable: true, composed: true, view: global, clientX: i.x, clientY: i.y - i.scrollY, pageX: i.x, pageY: i.y, screenX: i.x, screenY: i.y - i.scrollY, buttons: i.buttons, shiftKey: !!(i.modifiers & 1), ctrlKey: !!(i.modifiers & 2), altKey: !!(i.modifiers & 4), metaKey: !!(i.modifiers & 8) };
     let prevented = false;
-    const fire = (Ctor, type, at, extra) => { const ev = new Ctor(type, Object.assign({}, base, extra || {})); ev.isTrusted = true; if (!dispatch(at, ev)) prevented = true; return ev; };
+    const fire = (Ctor, type, at, extra) => { const ev = new Ctor(type, Object.assign({}, base, extra || {})); if (!dispatch(at, ev, true)) prevented = true; return ev; };
     switch (i.kind) {
       case 'move': {
         if (target !== hoverTarget) {

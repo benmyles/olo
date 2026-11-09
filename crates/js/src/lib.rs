@@ -814,56 +814,35 @@ impl Realm {
         }
     }
     /// Run one script; an exception is recorded and returned, not fatal.
-    /// The prelude, compiled from its code cache when there is one (see
-    /// `PRELUDE_CODE`), its cache made after the first run.
+    /// The prelude, compiled and run (a realm not made from the snapshot).
     fn run_prelude(&mut self) -> Result<(), String> {
         let guard = self.guard.clone();
         let _busy = Busy::new(&guard);
         let state = self.state.clone();
-        let cached = prelude_code();
         let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
         v8::tc_scope!(let tc, scope);
-        let mut fresh = cached.is_none();
         let started = Instant::now();
         let mut compiled = started;
+        // Compiled each time, with no code cache: a V8 code cache made by
+        // one process (or isolate) and taken by another aborted V8 reading
+        // its read-only heap ("vector[] index out of bounds"), or corrupted
+        // the heap to abort later in its write barrier, whether made before
+        // or after the prelude ran. Realms come from the snapshot (4 ms);
+        // this is the path until it is made: 31 ms where the cache gave 24.
         let result = (|| {
             let code = v8::String::new(tc, PRELUDE)?;
             let resource = string(tc, "prelude.js");
             let origin = v8::ScriptOrigin::new(tc, resource, 0, 0, false, 0, None, false, false, false, None);
-            let script = match &cached {
-                Some(bytes) => {
-                    let mut source = v8::script_compiler::Source::new_with_cached_data(code, Some(&origin), v8::script_compiler::CachedData::new(bytes));
-                    let script = v8::script_compiler::compile(tc, &mut source, v8::script_compiler::CompileOptions::ConsumeCodeCache, v8::script_compiler::NoCacheReason::NoReason)?;
-                    fresh = source.get_cached_data().is_none_or(|c| c.rejected());
-                    script
-                }
-                None => v8::Script::compile(tc, code, Some(&origin))?,
-            };
+            let script = v8::Script::compile(tc, code, Some(&origin))?;
             state.borrow_mut().prelude_script = script.script_id();
             compiled = Instant::now();
-            // The cache made from the compiled script, before it runs: one
-            // made after holds what the run made of the natives (functions
-            // over Olo's callbacks), and another isolate consuming it
-            // aborted V8 ("vector[] index out of bounds" reading its
-            // read-only heap), or corrupted its heap to abort later.
-            if fresh && let Some(data) = script.get_unbound_script(tc).create_code_cache() {
-                keep_prelude_code(&data);
-            }
-            let done = script.run(tc)?;
-            Some(done)
+            script.run(tc)
         })();
         if std::env::var_os("OLO_JS_TIMING").is_some() {
-            let cache = if cached.is_none() {
-                "none"
-            } else if fresh {
-                "rejected"
-            } else {
-                "used"
-            };
-            eprintln!("  prelude compiled in {:.1} ms (code cache {cache}), ran in {:.1} ms", (compiled - started).as_secs_f64() * 1000., compiled.elapsed().as_secs_f64() * 1000.);
+            eprintln!("  prelude compiled in {:.1} ms, ran in {:.1} ms", (compiled - started).as_secs_f64() * 1000., compiled.elapsed().as_secs_f64() * 1000.);
         }
         if result.is_none() {
             let error = exception_text(tc, "prelude.js");
@@ -2673,50 +2652,6 @@ fn make_snapshot() -> Result<Vec<u8>, String> {
     drop(state);
     let blob = isolate.create_blob(v8::FunctionCodeHandling::Keep).ok_or("blob")?;
     Ok(blob.to_vec())
-}
-/// The prelude's compiled code, kept: in memory for the realms after the
-/// first, on disk for the next launch (its name the prelude's hash, so each
-/// build has its own). V8 checks that a cache is for this source and these
-/// flags, and compiles afresh if not. Compiling the prelude (429 KB) is most
-/// of what a realm costs to make.
-static PRELUDE_CODE: std::sync::Mutex<Option<std::sync::Arc<[u8]>>> = std::sync::Mutex::new(None);
-fn prelude_cache_path() -> Option<std::path::PathBuf> {
-    use std::hash::{BuildHasher, Hash, Hasher};
-    let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).filter(|p| p.is_absolute()).or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
-    let mut h = foldhash::fast::FixedState::with_seed(0).build_hasher();
-    // (2: made before the prelude runs.)
-    (PRELUDE, 2u8).hash(&mut h);
-    v8::V8::get_version().hash(&mut h);
-    Some(base.join("olo").join("browser").join(format!("prelude-{:016x}.v8", h.finish())))
-}
-fn prelude_code() -> Option<std::sync::Arc<[u8]>> {
-    let mut kept = PRELUDE_CODE.lock().ok()?;
-    if kept.is_none() {
-        *kept = std::fs::read(prelude_cache_path()?).ok().map(std::sync::Arc::from);
-    }
-    kept.clone()
-}
-fn keep_prelude_code(data: &[u8]) {
-    let bytes: std::sync::Arc<[u8]> = std::sync::Arc::from(data);
-    if let Ok(mut kept) = PRELUDE_CODE.lock() {
-        *kept = Some(bytes.clone());
-    }
-    // Written on a thread of its own (an older build's cache goes).
-    let Some(path) = prelude_cache_path() else { return };
-    let _ = std::thread::Builder::new().name("prelude-cache".into()).spawn(move || {
-        let dir = path.parent()?;
-        std::fs::create_dir_all(dir).ok()?;
-        for entry in std::fs::read_dir(dir).ok()?.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with("prelude-") && name.ends_with(".v8") && entry.path() != path {
-                let _ = std::fs::remove_file(entry.path());
-            }
-        }
-        let partial = path.with_extension(format!("{}.part", std::process::id()));
-        std::fs::write(&partial, &bytes).ok()?;
-        std::fs::rename(&partial, &path).ok()
-    });
 }
 fn prelude_function<'s>(scope: &mut v8::PinScope<'s, '_>, global: v8::Local<'s, v8::Object>, name: &str) -> Option<v8::Local<'s, v8::Function>> {
     let key = v8::String::new(scope, name)?;
@@ -4998,7 +4933,9 @@ pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String, bool, No
                 let name = if module {
                     format!("{page}#inline-module-{}", classic.len() + later.len() + asynchronous.len() + 1)
                 } else {
-                    format!("inline script {}", classic.len() + later.len() + asynchronous.len() + 1)
+                    // The document's URL, as Chrome names an inline script
+                    // (its errors' filename, its stack's frames).
+                    page.to_string()
                 };
                 (Source::Inline(Arc::from(text)), name)
             }

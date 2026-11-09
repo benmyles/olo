@@ -33,13 +33,13 @@ fn scripts_in_order_then_async() {
     let names: Vec<String> = olo_js::page_scripts(&parsed.document, "https://x.test/p/").into_iter().map(|(_, n, _, _)| n).collect();
     // The classic scripts, then the deferred (modules, `defer`) in order,
     // then async ones; `nomodule` ones not at all.
-    assert_eq!(names, ["inline script 2", "https://x.test/p/#inline-module-3", "https://x.test/p/b.js", "https://x.test/p/a.js"]);
+    assert_eq!(names, ["https://x.test/p/", "https://x.test/p/#inline-module-3", "https://x.test/p/b.js", "https://x.test/p/a.js"]);
 }
 #[test]
 fn errors_are_reported_not_fatal() {
     let (report, doc) = run("<body><script>throw new Error('boom')</script><script>document.body.id='after'</script>");
     assert_eq!(report.errors.len(), 1);
-    assert!(report.errors[0].starts_with("Error: boom (inline script 1:1)"), "{}", report.errors[0]);
+    assert!(report.errors[0].starts_with("Error: boom (https://example.test/dir/page.html:1)"), "{}", report.errors[0]);
     let body = doc.children(doc.root()).unwrap().last().unwrap();
     let html = body;
     let body = doc.children(html).unwrap().last().unwrap();
@@ -1133,4 +1133,53 @@ console.log(window.parent === window, window.top === window.parent, String(windo
     realm.receive_message(*target, &back[0].1, "https://frame.test");
     assert_eq!(realm.report().console, ["[log] [object Window] true true function true true", r#"[log] got "back" https://frame.test true true"#]);
     assert_eq!(frame.report().console, ["[log] false true [object Window]", r#"[log] framed got {"hello":1} https://example.test true"#]);
+}
+#[test]
+fn the_persons_input_is_trusted_and_uncaught_errors_reach_error_listeners() {
+    // isTrusted was reset to false by every dispatch: the person's clicks
+    // read as a script's (bot checks look). An uncaught exception reached
+    // onerror only, never `error` listeners.
+    use olo_js::{Input, InputKind};
+    let page = r#"<button id=b>b</button><script>
+const b = document.getElementById('b');
+const out = [];
+b.addEventListener('click', (e) => out.push('click ' + e.isTrusted));
+const e = new Event('x');
+e.isTrusted = true;
+b.addEventListener('x', (ev) => out.push('x ' + ev.isTrusted));
+b.dispatchEvent(e);
+b.click();
+const d = Object.getOwnPropertyDescriptor(e, 'isTrusted');
+out.push('own ' + (typeof d.get) + ' ' + d.configurable + ' ' + d.enumerable);
+window.addEventListener('error', (ev) => out.push('error ' + ev.isTrusted + ' ' + ev.message + ' ' + (ev.error instanceof TypeError) + ' ' + (ev.lineno > 0)));
+window.onerror = (message, source, line, column, error) => { out.push('onerror ' + message + ' ' + (error instanceof TypeError)); return true; };
+setTimeout(() => { null.x; }, 0);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let b = find(&parsed.document, "b");
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    let at = |kind| Input { kind, x: 0., y: 0., scroll_y: 0., buttons: 0, modifiers: 0 };
+    realm.input(&at(InputKind::Down), Some(b));
+    realm.input(&at(InputKind::Up), Some(b));
+    let mut seen: Vec<String> = realm.eval("out.join(' | ')").unwrap().split(" | ").map(str::to_owned).collect();
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            "click false",
+            "click true",
+            "error true Uncaught TypeError: Cannot read properties of null (reading 'x') true true",
+            "onerror Uncaught TypeError: Cannot read properties of null (reading 'x') true",
+            "own function false true",
+            "x false",
+        ]
+    );
 }
