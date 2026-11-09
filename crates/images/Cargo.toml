@@ -25,5 +25,7 @@ olo-color.workspace = true
 half = "2"
 
 [dev-dependencies]
+# AVIF encoding (rav1e), for tests of decoding it.
+image = { version = "0.25", default-features = false, features = ["avif"] }
 serde_json.workspace = true
 sha2 = "0.10"

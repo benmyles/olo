@@ -7200,3 +7200,11 @@ taken from the memo, 453 made).
 
 Also fixed on the way: two custom-property values from one token arena
 compared as the same whatever their ranges.
+
+Then NYT's pictures: grey boxes, each "raster decode Unsupported". Its
+CDN answers Chrome's Accept header (which Olo sends) with AVIF, and the
+bounded decoder web images go through knew PNG, JPEG, WebP, GIF, ICO and
+BMP only, though Olo's file decoder had AVIF (avif-parse, rav1d). The
+web path takes it now, by its `ftyp` brands (major or compatible, as
+Chrome), its size checked against the limits before decoding, its colour
+profile applied.

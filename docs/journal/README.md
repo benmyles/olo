@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser: AVIF pictures
+
+*04:31* — NYT serves its pictures as AVIF to Chrome's Accept header; Olo asked for AVIF but its web image path couldn't decode it, so they were grey boxes. They decode through rav1d now.
+
+![Browser: AVIF pictures](2026-11-09/043106-browser-avif-pictures.png)
+
 ### Browser: inline borders
 
 *01:16* — An inline element's border (a padded, bordered span) took no room on its line and wasn't painted; now it is, on each line's piece, and getClientRects gives each line's border box as Chrome does (Chrome, Olo before, Olo now).

@@ -4090,5 +4090,11 @@
   "title": "Browser: inline borders",
   "caption": "An inline element's border (a padded, bordered span) took no room on its line and wasn't painted; now it is, on each line's piece, and getClientRects gives each line's border box as Chrome does (Chrome, Olo before, Olo now).",
   "image": "2026-11-09/011600-browser-inline-borders.png"
+ },
+ {
+  "time": "2026-11-09T04:31:06",
+  "title": "Browser: AVIF pictures",
+  "caption": "NYT serves its pictures as AVIF to Chrome's Accept header; Olo asked for AVIF but its web image path couldn't decode it, so they were grey boxes. They decode through rav1d now.",
+  "image": "2026-11-09/043106-browser-avif-pictures.png"
  }
 ]

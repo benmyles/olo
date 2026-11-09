@@ -107,3 +107,24 @@ fn oversized_png_headers_fail_before_the_incompatible_pixel_body() {
         assert!(matches!(raster::decode(&data, Default::default(), None), Err(Error::Limit)));
     }
 }
+#[test]
+fn avif_decodes_on_the_bounded_path_with_its_alpha() {
+    // The web's AVIF (CDNs serve it to Chrome's Accept): NYT's pictures
+    // were grey boxes. A flat colour, half see-through, comes back as it
+    // went in (AV1 is lossy: within a few levels).
+    let colour = image::Rgba([200, 60, 30, 128]);
+    let source = RgbaImage::from_pixel(32, 24, colour);
+    let mut out = Cursor::new(Vec::new());
+    DynamicImage::ImageRgba8(source).write_to(&mut out, ImageFormat::Avif).unwrap();
+    let data = out.into_inner();
+    let raster = raster::decode(&data, Default::default(), None).unwrap();
+    assert_eq!(raster.format, ImageFormat::Avif);
+    assert_eq!(raster.pixels.dimensions(), (32, 24));
+    for (got, want) in raster.pixels.get_pixel(16, 12).0.iter().zip(colour.0) {
+        assert!(got.abs_diff(want) <= 6, "{:?}", raster.pixels.get_pixel(16, 12));
+    }
+    // Its size is checked against the limits before it is decoded.
+    for limits in [Limits { dimension: 31, ..Default::default() }, Limits { pixels: 32 * 24 - 1, ..Default::default() }] {
+        assert!(matches!(raster::decode(&data, limits, None), Err(Error::Limit)), "{limits:?}");
+    }
+}

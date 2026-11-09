@@ -1,4 +1,4 @@
-//! Byte-backed PNG/JPEG/WebP/GIF still decoding on a worker.
+//! Byte-backed PNG/JPEG/WebP/GIF/AVIF still decoding on a worker.
 //! Input length, dimensions, pixel count and individual surfaces have hard
 //! bounds. The codec's allocation limit is additionally set, but upstream
 //! documents it as best effort: this is not a process memory sandbox.
@@ -56,7 +56,7 @@ fn decoded<T>(result: image::ImageResult<T>, cancel: Option<&AtomicBool>) -> Res
 /// Decode borrowed bytes without a temporary file. This API makes no encoded
 /// input clone of its own; individual codecs may buffer/copy encoded bytes.
 /// Run on a worker. EXIF orientation and ICC conversion follow `open`'s policy.
-/// BMP/ICO/TIFF, JPEG XL, AVIF, HEIC and vector images are not yet supported by this bounded
+/// TIFF, JPEG XL, HEIC and vector images are not yet supported by this bounded
 /// path; they must not silently fall through to the file API's larger limits.
 pub fn decode(data: &[u8], limits: Limits, cancel: Option<&AtomicBool>) -> Result<Raster, Error> {
     let result = decode_with_codec(data, limits, cancel);
@@ -80,8 +80,11 @@ fn decode_with_codec(data: &[u8], limits: Limits, cancel: Option<&AtomicBool>) -
     if data.len() > limits.encoded_bytes {
         return Err(Error::Limit);
     }
+    if is_avif(data) {
+        return avif(data, limits, cancel);
+    }
     let format = image::guess_format(data).map_err(|_| Error::Unsupported)?;
-    // The web's raster formats (Chrome's, AVIF aside): favicons are ICO.
+    // The web's raster formats (Chrome's; AVIF above): favicons are ICO.
     if !matches!(format, ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::WebP | ImageFormat::Gif | ImageFormat::Ico | ImageFormat::Bmp) {
         return Err(Error::Unsupported);
     }
@@ -118,6 +121,39 @@ fn decode_with_codec(data: &[u8], limits: Limits, cancel: Option<&AtomicBool>) -
     let pixels = image.into_rgba8();
     check(cancel)?;
     Ok(Raster { pixels, format })
+}
+/// AVIF by its `ftyp` box: its major brand, or a compatible one (a CDN's
+/// AVIF may be `mif1` first, `avif` among the rest, as Chrome accepts).
+fn is_avif(data: &[u8]) -> bool {
+    if data.len() < 16 || &data[4..8] != b"ftyp" {
+        return false;
+    }
+    let size = (u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize).clamp(16, data.len().min(256));
+    matches!(&data[8..12], b"avif" | b"avis") || data[16..size].chunks_exact(4).any(|b| b == b"avif" || b == b"avis")
+}
+fn avif_error(message: impl std::fmt::Display) -> Error {
+    Error::Decode(image::ImageError::Decoding(image::error::DecodingError::new(image::error::ImageFormatHint::Exact(ImageFormat::Avif), message.to_string())))
+}
+/// An AVIF still (its primary item, with its alpha), through rav1d: its
+/// size checked against the limits before any decoding.
+fn avif(data: &[u8], limits: Limits, cancel: Option<&AtomicBool>) -> Result<Raster, Error> {
+    let parsed = avif_parse::read_avif(&mut &data[..]).map_err(|e| avif_error(format!("{e:?}")))?;
+    let meta = parsed.primary_item_metadata().map_err(|e| avif_error(format!("{e:?}")))?;
+    let (w, h) = (meta.max_frame_width.get(), meta.max_frame_height.get());
+    let area = u64::from(w) * u64::from(h);
+    if w > limits.dimension || h > limits.dimension || area > limits.pixels || area * 4 > limits.surface_bytes || area * 8 > limits.codec_bytes {
+        return Err(Error::Limit);
+    }
+    check(cancel)?;
+    let image = crate::avif_parsed(&parsed).map_err(avif_error)?;
+    check(cancel)?;
+    let profile = heifer::read_metadata(data).ok().and_then(|m| m.icc_profile);
+    if profile.as_ref().is_some_and(|p| p.len() > limits.profile_bytes) {
+        return Err(Error::Limit);
+    }
+    let image = crate::to_srgb(image, profile.as_deref());
+    check(cancel)?;
+    Ok(Raster { pixels: image.into_rgba8(), format: ImageFormat::Avif })
 }
 struct Input<'a> {
     cursor: Cursor<&'a [u8]>,

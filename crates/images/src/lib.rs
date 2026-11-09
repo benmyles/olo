@@ -35,7 +35,9 @@ pub enum Heif {
 const MAX_PIXELS: u64 = (1 << 30) / 4;
 
 fn avif(data: &[u8]) -> Result<DynamicImage, String> {
-    let parsed = avif_parse::read_avif(&mut &data[..]).map_err(|e| format!("{e:?}"))?;
+    avif_parsed(&avif_parse::read_avif(&mut &data[..]).map_err(|e| format!("{e:?}"))?)
+}
+fn avif_parsed(parsed: &avif_parse::AvifData) -> Result<DynamicImage, String> {
     let color = av1::decode(&parsed.primary_item)?;
     let (w, h) = (color.width, color.height);
     let mut rgba = color.to_rgba();
