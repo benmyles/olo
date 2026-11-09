@@ -13744,8 +13744,15 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   usable quota resets soonest serves, since quota that resets unused is
   lost; ties go to the older account, then the id. The account serving
   keeps serving unless another resets more than five minutes sooner.
-  Windows can be model-scoped (Weekly Opus): a Sonnet request isn't
-  held up by Opus's meter.
+  Windows can be model-scoped (Weekly Opus, Weekly Fable): a request
+  for another model isn't held up by that model's meter, and one for
+  that model goes to another account before it's even tried (Ben,
+  2026-11-08: "make sure too that token pooler switches accounts when
+  the model in use is the one that the limit hits"; `tests/gateway.rs`
+  `switches_by_the_model_whose_meter_ran_out`: an account whose report
+  says its Fable week is used up is never asked for Fable but still
+  serves Opus; one refused for Fable, claim `seven_day_fable`, waits for
+  Fable only; with none left Fable waits while Opus is served).
 - **Usage** is read from the answers as they stream through: only
   `usage` objects (SSE lines containing "usage", or a JSON body's), the
   content discarded as it passes. Quota comes from every answer's
@@ -13753,6 +13760,24 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   account every five minutes (`SYNC_EVERY`; reset credits every 30) and,
   when a report answers 429, at twice the last wait up to 30 minutes:
   reading them twice a minute per account was itself rate limited.
+  Every meter there is (Ben, 2026-11-08: "make all the quotas for an
+  account show up e.g. i think anthropic has a special fable quota and
+  codex might have a 5 hour quota … right now i only see weekly for
+  everything"; `upstream::parse_usage`): Claude's report's `limits`, the
+  server's list of every meter (kind, group, percent, reset, a model's or
+  a surface's scope), as Claude Code's own `/usage` reads it (2.1.319):
+  the session as 5-hour, the week as Weekly, a model's as "Weekly Fable"
+  for that model alone, a surface's (Cowork) shown and limiting nothing
+  here, one not known yet by its own words; the older fields for what the
+  rows don't say, one not started yet (`utilization: null`, how the
+  session showed before its first request: it had been left out, so
+  only Weekly showed) at 0%, "not started"; every
+  `anthropic-ratelimit-unified-*-utilization` header, not a list; Codex's
+  `rate_limit` windows, each `additional_rate_limits` entry's (a model's
+  own, "GPT-5.3-Codex-Spark 5-hour", for its requests) and code
+  review's. A window's length comes from what it's called (Codex's
+  primary can be a week), else its name. `examples/seed_vault.rs
+  --meters` makes accounts showing each kind, for the window.
 - **Store** (`store.rs`): `pool.vault` in the config directory, sealed
   as Passwords seals its own (XChaCha20-Poly1305, header as AAD); the key
   is 32 random bytes in the login keyring (`OLO_POOL_KEYFILE`: a file

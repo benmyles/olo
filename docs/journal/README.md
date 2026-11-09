@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Token Pool shows every quota an account has
+
+*23:52* — The session (5-hour, “not started” before its first request), the week, and each model's own week (Weekly Fable, Weekly Sonnet), as Claude's usage report lists them; Codex's own limits too. Made-up accounts.
+
+![Token Pool shows every quota an account has](2026-11-08/235228-token-pool-shows-every-quota-an-account-has.png)
+
 ### Terminal: what Keep It Going says, yours to choose
 
 *23:16* — Preferences ▸ Terminal ▸ Coding Agents: Keep It Going says “Please continue” unless you change it; Use Default puts it back. Terminal follows it at once.

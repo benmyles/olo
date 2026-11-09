@@ -3790,5 +3790,11 @@
   "title": "Terminal: what Keep It Going says, yours to choose",
   "caption": "Preferences \u25b8 Terminal \u25b8 Coding Agents: Keep It Going says \u201cPlease continue\u201d unless you change it; Use Default puts it back. Terminal follows it at once.",
   "image": "2026-11-08/231638-terminal-what-keep-it-going-says-yours-to-choose.png"
+ },
+ {
+  "time": "2026-11-08T23:52:28",
+  "title": "Token Pool shows every quota an account has",
+  "caption": "The session (5-hour, \u201cnot started\u201d before its first request), the week, and each model's own week (Weekly Fable, Weekly Sonnet), as Claude's usage report lists them; Codex's own limits too. Made-up accounts.",
+  "image": "2026-11-08/235228-token-pool-shows-every-quota-an-account-has.png"
  }
 ]

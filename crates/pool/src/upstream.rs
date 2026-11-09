@@ -216,30 +216,105 @@ fn codex_label(kind: &str, seconds: Option<i64>) -> String {
     }
 }
 
-/// The quota windows in a usage report.
+/// "Fable" as part of a window's name: "fable"; "Claude Code":
+/// "claude_code".
+fn slug(s: &str) -> String {
+    s.trim().to_lowercase().split(|c: char| !c.is_alphanumeric() && c != '.' && c != '-').filter(|w| !w.is_empty()).collect::<Vec<_>>().join("_")
+}
+
+/// One of Claude's usage rows (the usage report's `limits`, the server's
+/// list of every meter the account has: its kind, its scope, how much is
+/// used, when it resets), as a window: named as the older fields name
+/// the same meters ("five_hour", "seven_day", "seven_day_fable"), so the
+/// two never show twice, and a meter for one model limits only that
+/// model's requests (one for a surface, Cowork say, none here).
+fn claude_row(row: &Value) -> Option<Window> {
+    let used = row["percent"].as_f64()?;
+    let kind = row["kind"].as_str()?;
+    let resets_at = timestamp(&row["resets_at"]);
+    let model = row["scope"]["model"]["display_name"].as_str().filter(|m| !m.trim().is_empty());
+    let surface = row["scope"]["surface"]["display_name"].as_str().filter(|m| !m.trim().is_empty());
+    let (name, label, models) = match (kind, model, surface) {
+        ("session", None, None) => ("five_hour".to_owned(), "5-hour".to_owned(), vec![]),
+        ("weekly_all", None, None) => ("seven_day".to_owned(), "Weekly".to_owned(), vec![]),
+        (_, Some(m), _) => {
+            let base = if row["group"] == "session" { ("five_hour", "5-hour") } else { ("seven_day", "Weekly") };
+            (format!("{}_{}", base.0, slug(m)), format!("{} {}", base.1, m.trim()), vec![slug(m)])
+        }
+        (_, None, Some(s)) => {
+            let base = if row["group"] == "session" { ("five_hour", "5-hour") } else { ("seven_day", "Weekly") };
+            (format!("{}_surface_{}", base.0, slug(s)), format!("{} {}", base.1, s.trim()), vec![format!("surface:{}", slug(s))])
+        }
+        // (A meter this doesn't know yet: shown by its own words.)
+        (k, None, None) => {
+            let mut c = k.replace('_', " ");
+            if let Some(f) = c.get(..1) {
+                c.replace_range(..1, &f.to_uppercase());
+            }
+            (k.to_owned(), c, vec![])
+        }
+    };
+    Some(Window { name, label, used, resets_at, models })
+}
+
+/// Codex's windows of one limit (`rate_limit`, an additional limit's, the
+/// code review's): its primary and secondary, named under `under`
+/// ("" for the account's own) and said after `title`.
+fn codex_windows(out: &mut Vec<Window>, limit: &Value, under: &str, title: &str, models: &[String]) {
+    for kind in ["primary", "secondary"] {
+        let w = &limit[format!("{kind}_window")];
+        let Some(used) = w["used_percent"].as_f64() else { continue };
+        let resets_at = timestamp(&w["reset_at"]).or_else(|| w["reset_after_seconds"].as_i64().map(|s| now() + s));
+        let length = codex_label(kind, w["limit_window_seconds"].as_i64());
+        let (name, label) = if under.is_empty() { (format!("{kind}_window"), length) } else { (format!("{under}/{kind}_window"), format!("{title} {length}")) };
+        out.push(Window { name, label, used, resets_at, models: models.to_vec() });
+    }
+}
+
+/// The quota windows in a usage report: every meter it has (Ben,
+/// 2026-11-08: "make all the quotas for an account show up e.g. … a
+/// special fable quota and codex might have a 5 hour quota"), one not
+/// started yet (nothing used in it) at 0%.
 pub fn parse_usage(p: Provider, d: &Value) -> (Vec<Window>, Option<String>) {
-    let mut out = Vec::new();
+    let mut out: Vec<Window> = Vec::new();
     match p {
         Provider::Claude => {
+            // The server's rows first: every meter, as it lists them.
+            for row in d["limits"].as_array().into_iter().flatten() {
+                if let Some(w) = claude_row(row)
+                    && !out.iter().any(|o| o.name == w.name)
+                {
+                    out.push(w);
+                }
+            }
+            // Then the older fields, for what the rows didn't say (and a
+            // server without rows). A meter with nothing used yet in it
+            // ("utilization": null) is at 0%; one that doesn't apply
+            // (null) isn't there.
             if let Some(map) = d.as_object() {
                 for (name, w) in map {
-                    if !(name.starts_with("five_hour") || name.starts_with("seven_day")) {
+                    if !(name.starts_with("five_hour") || name.starts_with("seven_day")) || !w.is_object() || out.iter().any(|o| o.name == *name) {
                         continue;
                     }
-                    let Some(used) = w["utilization"].as_f64() else { continue };
+                    let used = w["utilization"].as_f64().unwrap_or(0.0);
                     out.push(Window { name: name.clone(), label: claude_label(name), used, resets_at: timestamp(&w["resets_at"]), models: claude_models(name) });
                 }
             }
-            out.sort_by(|a, b| a.name.cmp(&b.name));
+            // (The account's own two first, then by name.)
+            out.sort_by_key(|w| (!matches!(w.name.as_str(), "five_hour" | "seven_day"), w.name.clone()));
             (out, None)
         }
         Provider::Codex => {
-            for kind in ["primary", "secondary"] {
-                let w = &d["rate_limit"][format!("{kind}_window")];
-                let Some(used) = w["used_percent"].as_f64() else { continue };
-                let resets_at = timestamp(&w["reset_at"]).or_else(|| w["reset_after_seconds"].as_i64().map(|s| now() + s));
-                out.push(Window { name: format!("{kind}_window"), label: codex_label(kind, w["limit_window_seconds"].as_i64()), used, resets_at, models: vec![] });
+            codex_windows(&mut out, &d["rate_limit"], "", "", &[]);
+            // Limits of their own: a model's ("GPT-5.3-Codex-Spark"), for
+            // its requests only.
+            for (i, extra) in d["additional_rate_limits"].as_array().into_iter().flatten().enumerate() {
+                let title = extra["limit_name"].as_str().filter(|n| !n.trim().is_empty()).map(str::trim).unwrap_or("Other");
+                let under = extra["metered_feature"].as_str().filter(|f| !f.is_empty()).map(str::to_owned).unwrap_or_else(|| format!("additional_{i}"));
+                codex_windows(&mut out, &extra["rate_limit"], &under, title, &[crate::model::model_family(&title.to_lowercase())]);
             }
+            // Code review's, which no request here uses.
+            codex_windows(&mut out, &d["code_review_rate_limit"], "code_review", "Code review", &["code-review".to_owned()]);
             (out, d["plan_type"].as_str().map(str::to_owned))
         }
     }
@@ -366,12 +441,22 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
     let mut out = Vec::new();
     match p {
         Provider::Claude => {
-            for (name, kind) in [("five_hour", "5h"), ("seven_day", "7d"), ("seven_day_opus", "7d-opus"), ("seven_day_sonnet", "7d-sonnet"), ("seven_day_fable", "7d-fable")] {
-                if let Some(fraction) = header_num(h, &format!("anthropic-ratelimit-unified-{kind}-utilization")) {
-                    let resets_at = header_num(h, &format!("anthropic-ratelimit-unified-{kind}-reset")).map(|v| v as i64);
-                    out.push(Window { name: name.into(), label: claude_label(name), used: fraction * 100.0, resets_at, models: claude_models(name) });
-                }
+            // Every meter the headers carry ("5h", "7d", "7d-fable", and
+            // any new one), named as the usage report names it.
+            for (key, _) in h.iter() {
+                let Some(kind) = key.as_str().strip_prefix("anthropic-ratelimit-unified-").and_then(|k| k.strip_suffix("-utilization")) else { continue };
+                let Some(fraction) = header_num(h, key.as_str()) else { continue };
+                let name = match kind.split_once('-') {
+                    None if kind == "5h" => "five_hour".to_owned(),
+                    None if kind == "7d" => "seven_day".to_owned(),
+                    Some(("5h", rest)) => format!("five_hour_{}", rest.replace('-', "_")),
+                    Some(("7d", rest)) => format!("seven_day_{}", rest.replace('-', "_")),
+                    _ => kind.replace('-', "_"),
+                };
+                let resets_at = header_num(h, &format!("anthropic-ratelimit-unified-{kind}-reset")).map(|v| v as i64);
+                out.push(Window { label: claude_label(&name), models: claude_models(&name), name, used: fraction * 100.0, resets_at });
             }
+            out.sort_by(|a, b| a.name.cmp(&b.name));
         }
         Provider::Codex => {
             for kind in ["primary", "secondary"] {
@@ -435,6 +520,61 @@ mod tests {
         assert_eq!(w[1].label, "Weekly");
     }
 
+    /// Every meter there is: Claude's rows (Fable's own weekly, a
+    /// surface's, one not known yet), the older fields for what they
+    /// don't say, one not started at 0%; Codex's extra limits and code
+    /// review's.
+    #[test]
+    fn every_meter_reported() {
+        let d = json!({
+            "five_hour": {"utilization": null, "resets_at": null},
+            "seven_day": {"utilization": 26.0, "resets_at": "2026-11-12T00:00:00Z"},
+            "seven_day_sonnet": {"utilization": 4.0, "resets_at": "2026-11-12T00:00:00Z"},
+            "seven_day_oauth_apps": null,
+            "limits": [
+                {"kind": "weekly_all", "group": "weekly", "percent": 26.0, "resets_at": "2026-11-12T00:00:00Z", "scope": null, "severity": "normal", "is_active": true},
+                {"kind": "weekly_scoped", "group": "weekly", "percent": 61.5, "resets_at": "2026-11-12T00:00:00Z", "scope": {"model": {"display_name": "Fable"}}, "severity": "warning", "is_active": false},
+                {"kind": "weekly_scoped", "group": "weekly", "percent": 3.0, "resets_at": null, "scope": {"surface": {"display_name": "Cowork"}}, "severity": "normal", "is_active": false},
+                {"kind": "monthly_all", "group": "monthly", "percent": 9.0, "resets_at": null, "severity": "normal", "is_active": false}
+            ]
+        });
+        let (w, _) = parse_usage(Provider::Claude, &d);
+        let rows: Vec<_> = w.iter().map(|w| (w.name.as_str(), w.label.as_str(), w.used, w.models.clone())).collect();
+        assert_eq!(
+            rows,
+            [
+                ("five_hour", "5-hour", 0.0, vec![]),
+                ("seven_day", "Weekly", 26.0, vec![]),
+                ("monthly_all", "Monthly all", 9.0, vec![]),
+                ("seven_day_fable", "Weekly Fable", 61.5, vec!["fable".to_owned()]),
+                ("seven_day_sonnet", "Weekly Sonnet", 4.0, vec!["sonnet".to_owned()]),
+                ("seven_day_surface_cowork", "Weekly Cowork", 3.0, vec!["surface:cowork".to_owned()]),
+            ]
+        );
+        // Fable's limits only Fable; Cowork's, nothing here.
+        assert!(w[3].applies_to("fable") && !w[3].applies_to("opus"));
+        assert!(!w[5].applies_to("opus") && !w[5].applies_to("fable"));
+        let d = json!({"plan_type": "pro",
+            "rate_limit": {"primary_window": {"used_percent": 12, "limit_window_seconds": 604800, "reset_after_seconds": 100}, "secondary_window": null},
+            "additional_rate_limits": [{"limit_name": "GPT-5.3-Codex-Spark", "metered_feature": "codex_bengalfox",
+                "rate_limit": {"primary_window": {"used_percent": 40, "limit_window_seconds": 18000, "reset_after_seconds": 50},
+                               "secondary_window": {"used_percent": 5, "limit_window_seconds": 604800, "reset_after_seconds": 500}}}],
+            "code_review_rate_limit": {"primary_window": {"used_percent": 0, "limit_window_seconds": 604800, "reset_after_seconds": 900}}});
+        let (w, _) = parse_usage(Provider::Codex, &d);
+        let rows: Vec<_> = w.iter().map(|w| (w.name.as_str(), w.label.as_str(), w.used)).collect();
+        assert_eq!(
+            rows,
+            [
+                ("primary_window", "Weekly", 12.0),
+                ("codex_bengalfox/primary_window", "GPT-5.3-Codex-Spark 5-hour", 40.0),
+                ("codex_bengalfox/secondary_window", "GPT-5.3-Codex-Spark Weekly", 5.0),
+                ("code_review/primary_window", "Code review Weekly", 0.0),
+            ]
+        );
+        assert!(w[1].applies_to("gpt-5.3-codex-spark") && !w[1].applies_to("gpt-6-astra"));
+        assert!(!w[3].applies_to("gpt-6-astra"));
+    }
+
     #[test]
     fn headers_and_rejections() {
         let mut h = axum::http::HeaderMap::new();
@@ -442,6 +582,14 @@ mod tests {
         h.insert("anthropic-ratelimit-unified-5h-reset", "5000".parse().unwrap());
         let (w, r) = header_windows(&h, Provider::Claude, "opus", 200, 1000);
         assert_eq!((w[0].used, w[0].resets_at, r), (50.0, Some(5000), None));
+        // Any meter the headers carry, Fable's own and a new one.
+        h.insert("anthropic-ratelimit-unified-7d-fable-utilization", "0.25".parse().unwrap());
+        h.insert("anthropic-ratelimit-unified-7d-omelette-utilization", "0.1".parse().unwrap());
+        let (w, _) = header_windows(&h, Provider::Claude, "opus", 200, 1000);
+        let names: Vec<_> = w.iter().map(|w| (w.name.as_str(), w.label.as_str())).collect();
+        assert_eq!(names, [("five_hour", "5-hour"), ("seven_day_fable", "Weekly Fable"), ("seven_day_omelette", "Weekly Omelette")]);
+        h.remove("anthropic-ratelimit-unified-7d-fable-utilization");
+        h.remove("anthropic-ratelimit-unified-7d-omelette-utilization");
         h.insert("anthropic-ratelimit-unified-status", "rejected".parse().unwrap());
         h.insert("anthropic-ratelimit-unified-representative-claim", "seven_day_overage_included".parse().unwrap());
         h.insert("retry-after", "600".parse().unwrap());
