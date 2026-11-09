@@ -820,6 +820,7 @@ impl Realm {
             state.borrow_mut().report.errors.push(error.clone());
             return Err(error);
         }
+        warm_prototypes(tc, &state);
         Ok(())
     }
     /// The prelude bound to this realm's page (its document, URL, viewport
@@ -2256,6 +2257,41 @@ fn class<'s>(
     global.set(scope, key.into(), f.into());
     Ok(t)
 }
+/// Every element class's prototype transition made once, as the prelude
+/// finishes (so a snapshot has them): a wrapper of each kind given each
+/// class's prototype, kept on the hidden holder so its map lives. A page
+/// then never has V8 copy a wrapper's map to give it its class (V8 14's
+/// range write barrier, copying an API object's extended map while
+/// marking, aborted the page: "front() called on an empty vector").
+fn warm_prototypes(scope: &mut v8::PinScope<'_, '_>, state: &Shared) -> Option<()> {
+    let global = scope.get_current_context().global(scope);
+    let (html, svg, document, node) = {
+        let s = state.borrow();
+        let t = s.templates.as_ref()?;
+        (v8::Local::new(scope, &t.html_element), v8::Local::new(scope, &t.svg_element), v8::Local::new(scope, &t.document), v8::Local::new(scope, &t.node))
+    };
+    let mut kinds: Vec<(&str, v8::Local<v8::FunctionTemplate>)> = HTML_CLASSES.iter().map(|(_, c)| (*c, html)).collect();
+    kinds.extend(["HTMLElement", "HTMLUnknownElement"].map(|c| (c, html)));
+    kinds.extend(SVG_CLASSES.iter().map(|(_, c)| (*c, svg)));
+    kinds.extend([("HTMLDocument", document), ("DocumentType", node)]);
+    kinds.sort_by_key(|(c, _)| *c);
+    kinds.dedup_by_key(|(c, _)| *c);
+    let kept = v8::Array::new(scope, kinds.len() as i32);
+    let proto_key = v8::String::new(scope, "prototype")?;
+    for (i, (class, template)) in kinds.into_iter().enumerate() {
+        let class_key = v8::String::new(scope, class)?;
+        let Some(proto) = global.get(scope, class_key.into()).and_then(|c| v8::Local::<v8::Object>::try_from(c).ok()).and_then(|c| c.get(scope, proto_key.into())).filter(|p| p.is_object()) else {
+            continue;
+        };
+        let object = template.instance_template(scope).new_instance(scope)?;
+        object.set_prototype(scope, proto);
+        kept.set_index(scope, i as u32, object.into());
+    }
+    let holder = hidden_key(scope).and_then(|p| global.get_private(scope, p)).and_then(|h| v8::Local::<v8::Object>::try_from(h).ok())?;
+    let key = v8::String::new(scope, "__olo_classMaps")?;
+    holder.set(scope, key.into(), kept.into());
+    Some(())
+}
 /// The private key Olo's own functions are kept under on the global.
 fn hidden_key<'s>(scope: &mut v8::PinScope<'s, '_>) -> Option<v8::Local<'s, v8::Private>> {
     let name = v8::String::new(scope, "olo.hidden")?;
@@ -2428,7 +2464,7 @@ enum Snapshot {
 static SNAPSHOT: std::sync::Mutex<Snapshot> = std::sync::Mutex::new(Snapshot::Unknown);
 /// What a snapshot's layout is, besides what its key hashes: bumped when
 /// what `make_snapshot` puts in it changes.
-const SNAPSHOT_FORMAT: u32 = 1;
+const SNAPSHOT_FORMAT: u32 = 2;
 fn snapshot_path() -> Option<std::path::PathBuf> {
     use std::hash::{BuildHasher, Hash, Hasher};
     let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).filter(|p| p.is_absolute()).or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
@@ -2528,6 +2564,7 @@ fn make_snapshot() -> Result<Vec<u8>, String> {
                 return Err(exception_text(tc, "prelude.js"));
             }
             tc.perform_microtask_checkpoint();
+            warm_prototypes(tc, &state);
         }
         scope.set_default_context(context);
     }
@@ -2726,6 +2763,7 @@ const NATIVES: &[&str] = &[
     "canvasSize",
     "canvasEncode",
     "canvasFont",
+    "svgGeometry",
     "canvasOp",
     "canvasPixels",
     "loadImage",
@@ -4331,6 +4369,82 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                             }
                         }
                     }
+                }
+            }
+        }
+        // SVG geometry for scripts (element, what, argument): "length",
+        // "point" (at a distance), "bbox", "ctm", "screen" (its matrix to
+        // the page, before the page's scroll), "textLength".
+        "svgGeometry" => {
+            if let Some(n) = node(scope, 0) {
+                let what = arg_string(scope, &args, 1);
+                let arg = args.get(2).number_value(scope).unwrap_or(0.);
+                use olo_web::svg::script as svg;
+                let numbers: Option<Vec<f64>> = match what.as_str() {
+                    "length" => svg::total_length(&state.borrow().document, n).map(|v| vec![v]),
+                    "point" => svg::point_at_length(&state.borrow().document, n, arg).map(|(x, y)| vec![x, y]),
+                    "bbox" | "textLength" | "ctm" | "screen" => {
+                        let mut s = state.borrow_mut();
+                        s.measured();
+                        let State { document, measured, text_shaper, .. } = &mut *s;
+                        let doc = &*document;
+                        // A text's run: shaped in its computed font, from its
+                        // x and y, moved by its text-anchor; its box the font's.
+                        let mut text = |t: NodeId| -> Option<(f64, kurbo::Rect)> {
+                            let m = measured.as_ref()?;
+                            let get = |p: &str| m.computed(t, p).unwrap_or_default();
+                            let font = format!("{} {} {} {}", get("font-style"), get("font-weight"), get("font-size"), get("font-family"));
+                            let mut content = String::new();
+                            let _ = html::text_content(doc, t, &mut content, 1 << 20);
+                            let content = content.split_whitespace().collect::<Vec<_>>().join(" ");
+                            let shaped = text_shaper.as_mut().and_then(|f| f(font.trim(), &content))?;
+                            let first = |name: &str| {
+                                doc.attribute(t, name).ok().flatten().and_then(|v| v.split([' ', ',']).find(|p| !p.is_empty()).and_then(|p| p.trim_end_matches("px").parse::<f64>().ok())).unwrap_or(0.)
+                            };
+                            let anchor = doc.attribute(t, "text-anchor").ok().flatten().map(str::to_owned).or_else(|| m.computed(t, "text-anchor")).unwrap_or_default();
+                            let shift = match anchor.as_str() {
+                                "middle" => shaped.advance / 2.,
+                                "end" => shaped.advance,
+                                _ => 0.,
+                            };
+                            let (x, y) = (first("x") - shift, first("y"));
+                            let (ascent, descent) = (shaped.ascent.round(), shaped.descent.round());
+                            Some((shaped.advance, kurbo::Rect::new(x, y - ascent, x + shaped.advance, y + descent)))
+                        };
+                        match what.as_str() {
+                            "textLength" => text(n).map(|(advance, _)| vec![advance]),
+                            "bbox" => svg::bbox(doc, n, &mut |t| text(t).map(|(_, r)| r)).map(|r| vec![r.x0, r.y0, r.width(), r.height()]),
+                            _ => {
+                                // The outermost <svg>'s content box in the page, its
+                                // scrolled ancestors' offsets taken off.
+                                let mut placed = |svg_node: NodeId| -> Option<[f64; 4]> {
+                                    let m = measured.as_ref()?;
+                                    let r = m.placed_box(doc, svg_node)?;
+                                    let px = |p: &str| m.computed(svg_node, p).and_then(|v| v.trim_end_matches("px").parse::<f64>().ok()).unwrap_or(0.);
+                                    let (l, t) = (px("border-left-width") + px("padding-left"), px("border-top-width") + px("padding-top"));
+                                    let (rr, b) = (px("border-right-width") + px("padding-right"), px("border-bottom-width") + px("padding-bottom"));
+                                    let mut v = [r.x + l, r.y + t, (r.width - l - rr).max(0.), (r.height - t - b).max(0.)];
+                                    let mut at = doc.parent(svg_node).ok().flatten();
+                                    while let Some(a) = at {
+                                        let o = doc.scroll_offset(a);
+                                        v[0] -= o[0];
+                                        v[1] -= o[1];
+                                        at = doc.parent(a).ok().flatten();
+                                    }
+                                    Some(v)
+                                };
+                                svg::ctm(doc, n, what == "screen", &mut placed).map(|a| a.as_coeffs().to_vec())
+                            }
+                        }
+                    }
+                    _ => None,
+                };
+                match numbers {
+                    Some(v) => {
+                        let items: Vec<v8::Local<v8::Value>> = v.iter().map(|x| v8::Number::new(scope, f64::from(*x as f32)).into()).collect();
+                        rv.set(v8::Array::new_with_elements(scope, &items).into());
+                    }
+                    None => rv.set_null(),
                 }
             }
         }

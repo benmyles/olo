@@ -677,7 +677,6 @@
     }, captureStream() { return null; }, transferControlToOffscreen() { return new OffscreenCanvas(this.width, this.height); },
     setPointerCapture() {}, releasePointerCapture() {}, hasPointerCapture() { return false; },
     computedStyleMap() { return new Map(); },
-    getBBox() { return new DOMRect(0, 0, 0, 0); }, getCTM() { return null; }, getScreenCTM() { return null; }, getTotalLength() { return 0; },
   });
   define(HTMLElement.prototype, {});
   // Images: a `src` (or `srcset`) set by script loads the image through the
@@ -1156,6 +1155,60 @@
     if (name === 'HTMLElement' || name === 'SVGElement' || name === 'HTMLMediaElement') continue;
     const parent = name.startsWith('SVG') ? SVGGraphicsElement : (name === 'HTMLAudioElement' || name === 'HTMLVideoElement') ? HTMLMediaElement : HTMLElementCtor;
     subclass(name, parent);
+  }
+  // SVG geometry (SVG 2 §8.2-8.3), from the engine: SVGMatrix, SVGPoint
+  // and SVGRect as Chrome has them (fields as prototype getters, made only
+  // by the engine), getBBox, getCTM, getScreenCTM, getTotalLength,
+  // getPointAtLength, getComputedTextLength, and an <svg>'s createSVG*.
+  {
+    const svgData = new WeakMap();
+    const made = Symbol('made');
+    const field = (o, k) => { const v = svgData.get(o); if (!v) throw new TypeError('Illegal invocation'); return v[k]; };
+    const setField = (o, k, x) => { const v = svgData.get(o); if (!v) throw new TypeError('Illegal invocation'); v[k] = Number(x); };
+    const fields = (cls, names) => { for (const k of names) Object.defineProperty(cls.prototype, k, { get() { return field(this, k); }, set(x) { setField(this, k, x); }, enumerable: true, configurable: true }); };
+    class SVGMatrix { constructor(token, m) { if (token !== made) throw new TypeError('Illegal constructor'); m = m || [1, 0, 0, 1, 0, 0]; svgData.set(this, { a: m[0], b: m[1], c: m[2], d: m[3], e: m[4], f: m[5] }); } }
+    fields(SVGMatrix, ['a', 'b', 'c', 'd', 'e', 'f']);
+    const toDOM = (m) => new global.DOMMatrix([m.a, m.b, m.c, m.d, m.e, m.f]);
+    const fromDOM = (d) => new SVGMatrix(made, [d.a, d.b, d.c, d.d, d.e, d.f]);
+    Object.assign(SVGMatrix.prototype, {
+      multiply(o) { return fromDOM(toDOM(this).multiply(toDOM(o))); },
+      inverse() { const d = toDOM(this); if (d.a * d.d - d.b * d.c === 0) throw new DOMException('The matrix is not invertible.', 'InvalidStateError'); return fromDOM(d.inverse()); },
+      translate(x, y) { return fromDOM(toDOM(this).translate(+x, +y)); },
+      scale(k) { return fromDOM(toDOM(this).scale(+k, +k)); },
+      scaleNonUniform(x, y) { return fromDOM(toDOM(this).scale(+x, +y)); },
+      rotate(a) { return fromDOM(toDOM(this).rotate(+a)); },
+      rotateFromVector(x, y) { if (+x === 0 || +y === 0) throw new DOMException('Arguments cannot be zero.', 'InvalidAccessError'); return fromDOM(toDOM(this).rotate(Math.atan2(+y, +x) * 180 / Math.PI)); },
+      flipX() { return fromDOM(toDOM(this).multiply(new global.DOMMatrix([-1, 0, 0, 1, 0, 0]))); },
+      flipY() { return fromDOM(toDOM(this).multiply(new global.DOMMatrix([1, 0, 0, -1, 0, 0]))); },
+      skewX(a) { return fromDOM(toDOM(this).skewX(+a)); },
+      skewY(a) { return fromDOM(toDOM(this).skewY(+a)); },
+    });
+    class SVGPoint { constructor(token, x = 0, y = 0) { if (token !== made) throw new TypeError('Illegal constructor'); svgData.set(this, { x, y }); } matrixTransform(m) { const x = this.x, y = this.y; return new SVGPoint(made, m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f); } }
+    fields(SVGPoint, ['x', 'y']);
+    class SVGRect { constructor(token, x = 0, y = 0, w = 0, h = 0) { if (token !== made) throw new TypeError('Illegal constructor'); svgData.set(this, { x, y, width: w, height: h }); } }
+    fields(SVGRect, ['x', 'y', 'width', 'height']);
+    class SVGNumber { constructor(token) { if (token !== made) throw new TypeError('Illegal constructor'); svgData.set(this, { value: 0 }); } }
+    fields(SVGNumber, ['value']);
+    Object.assign(global, { SVGMatrix, SVGPoint, SVGRect, SVGNumber });
+    const geometry = (el, what, arg) => N.svgGeometry(el, what, arg);
+    define(SVGGraphicsElement.prototype, {
+      getBBox() { const r = geometry(this, 'bbox', 0) || [0, 0, 0, 0]; return new SVGRect(made, r[0], r[1], r[2], r[3]); },
+      getCTM() { const m = geometry(this, 'ctm', 0); return m ? new SVGMatrix(made, m) : null; },
+      getScreenCTM() { const m = geometry(this, 'screen', 0); if (!m) return null; m[4] -= scrollXY[0]; m[5] -= scrollXY[1]; return new SVGMatrix(made, m); },
+      getTotalLength() { const v = geometry(this, 'length', 0); return v ? v[0] : 0; },
+      getPointAtLength(distance) { const p = geometry(this, 'point', +distance) || [0, 0]; return new SVGPoint(made, p[0], p[1]); },
+      isPointInFill() { return false; }, isPointInStroke() { return false; },
+      getComputedTextLength() { const v = geometry(this, 'textLength', 0); return v ? v[0] : 0; },
+      getNumberOfChars() { return [...(this.textContent || '')].length; },
+    });
+    define(global.SVGSVGElement.prototype, {
+      createSVGPoint() { return new SVGPoint(made, 0, 0); },
+      createSVGMatrix() { return new SVGMatrix(made); },
+      createSVGRect() { return new SVGRect(made); },
+      createSVGNumber() { return new SVGNumber(made); },
+      createSVGTransform() { const t = { type: 1, angle: 0, matrix: new SVGMatrix(made), setMatrix(m) { this.matrix = new SVGMatrix(made, [m.a, m.b, m.c, m.d, m.e, m.f]); }, setTranslate(x, y) { this.matrix = new SVGMatrix(made, [1, 0, 0, 1, +x, +y]); }, setScale(x, y) { this.matrix = new SVGMatrix(made, [+x, 0, 0, +y, 0, 0]); }, setRotate(a) { this.angle = +a; this.matrix = new SVGMatrix(made).rotate(+a); } }; return t; },
+      createSVGTransformFromMatrix(m) { const t = this.createSVGTransform(); t.setMatrix(m); return t; },
+    });
   }
   // Each element interface's own properties on its prototype, not on
   // every element's (as a browser has them): a component's property of the

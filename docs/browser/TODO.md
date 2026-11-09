@@ -152,6 +152,15 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   page made since (an element inserted, then asked about) isn't seen
   until the next render; Chrome lays out first. caretRangeFromPoint and
   caretPositionFromPoint are still stubs.
+- [ ] Custom elements' upgrades still set a wrapper's prototype at run
+  time (a class the snapshot can't know): V8's extended-map copy can
+  abort while it marks (see 2026-11-09 in the journal). Make each defined
+  element class's transition when it is defined, or wrap custom elements
+  from a template per class.
+- [ ] SVG text's getBBox width differs from Chrome's by ~0.06 px (Chrome's
+  box is wider than its own getComputedTextLength); getPointAtLength on
+  path data 2e-5 off. isPointInFill/isPointInStroke and canvas
+  isPointInPath are still false.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.

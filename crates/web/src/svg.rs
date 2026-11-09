@@ -3,6 +3,7 @@
 pub(crate) mod clip;
 pub(crate) mod gradient;
 pub(crate) mod rect;
+pub mod script;
 pub(crate) mod text;
 pub(crate) mod used;
 mod viewport;

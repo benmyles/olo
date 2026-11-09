@@ -7262,3 +7262,26 @@ for `auto` and percentages; so does Olo now.
 | Idle | 0.1% | 0% |
 | Scroll | 4.0% | 3.5% |
 | Memory | 553 MB | 220 MB |
+
+SVG geometry for scripts was stubs too: getBBox all zeros, getCTM and
+getScreenCTM null, getTotalLength 0; no SVGMatrix, SVGPoint or SVGRect,
+no createSVGPoint (D3 finds the pointer with it). They answer from the
+element's attributes now (`olo_web::svg::script`), each shape's outline
+as SVG defines it, and as Chrome answers, which fingerprints read: a
+circle's and a rect's lengths are Skia's (its contour measure: curves
+halved until within half a pixel of their chords, single precision, the
+conics evaluated as Skia evaluates them), so a circle of radius 10 is
+62.426971435546875 long in Olo as in Chrome, not 2πr; a `<path>`'s
+length is the true arc length, as Chrome's is. Bounding boxes through
+groups and transforms, matrices through viewBoxes to the page, text's
+from the canvas text shaper. On a test SVG every value matched Chrome's
+to the bit but a path's point (2e-5 off) and a text's width (0.06 px).
+
+On the way, a crash: a page could abort inside V8 (a libc++ assertion in
+its range write barrier) the first time an element of a class was
+wrapped while V8 was marking. Giving an API object (every wrapper) a
+prototype copies its map, an "extended" one, and that copy's barrier is
+what aborts. It had happened before (04:37 today) and got likelier as
+the prelude grew. Each class's transition is now made as the prelude
+finishes, so it is in the startup snapshot and pages never make it. No
+crash since in a dozen loads each way; a realm still takes 4.2 ms.

@@ -24,6 +24,8 @@ png = "0.17"
 # Canvas toDataURL / toBlob: PNG, JPEG and WebP encoders, base64.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 base64 = "0.22"
+# SVG geometry for scripts (getBBox's rectangles), as olo-web's.
+kurbo = "0.11.3"
 # Web Crypto: digests, HMAC, random bytes (all already in the tree).
 sha1 = "0.11"
 sha2 = "0.11"

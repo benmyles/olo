@@ -1032,3 +1032,23 @@ console.log(png.slice(0, 22), raw.slice(1, 4), raw.charCodeAt(19), raw.charCodeA
     realm.run_page(&scripts);
     assert_eq!(realm.report().console, ["[log] data:image/png;base64, PNG 4 2 data:image/jpeg;base64, data:image/webp;base64, data:image/png;base64, true data:, 0 1"]);
 }
+#[test]
+fn svg_elements_take_their_geometry_methods() {
+    let page = r#"<script>setTimeout(() => {
+document.body.insertAdjacentHTML('afterbegin', '<svg width=200 height=100><circle id=c cx=20 cy=20 r=10 /></svg>');
+const c = document.getElementById('c');
+console.log(c.tagName, typeof c.getBBox, typeof c.getTotalLength, c.getTotalLength(), typeof document.querySelector('svg').createSVGPoint);
+}, 5);</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    realm.advance_frame(10., std::time::Duration::from_secs(1), Some(true));
+    assert_eq!(realm.report().console, ["[log] circle function function 62.426971435546875 function"]);
+}
