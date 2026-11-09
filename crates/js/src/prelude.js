@@ -2433,7 +2433,21 @@
   global.AudioContext = class AudioContext { constructor() { this.state = 'suspended'; this.destination = {}; } resume() { return Promise.resolve(); } close() { return Promise.resolve(); } createGain() { return { connect() {}, gain: { value: 1 } }; } createOscillator() { return { connect() {}, start() {}, stop() {}, frequency: { value: 440 } }; } };
   global.webkitAudioContext = global.AudioContext;
   global.speechSynthesis = { speak() {}, cancel() {}, getVoices: () => [], addEventListener() {} };
-  global.scheduler = { postTask: (fn) => Promise.resolve().then(fn), yield: () => Promise.resolve() };
+  // scheduler (Prioritized Task Scheduling): a task after its `delay`
+  // (ms), unless its `signal` aborts first; its promise settles with what
+  // it returns. Background tasks wait for a macrotask; the rest a microtask.
+  global.scheduler = {
+    postTask: (fn, options) => new Promise((resolve, reject) => {
+      const signal = options && options.signal;
+      const delay = Math.max(0, Number(options && options.delay) || 0);
+      const aborted = () => reject(signal.reason !== undefined ? signal.reason : new DOMException('The task was aborted.', 'AbortError'));
+      if (signal && signal.aborted) return aborted();
+      const run = () => { if (signal && signal.aborted) return aborted(); try { resolve(fn()); } catch (e) { reject(e); } };
+      if (delay > 0 || (options && options.priority === 'background')) setTimeout(run, delay);
+      else Promise.resolve().then(run);
+    }),
+    yield: () => Promise.resolve(),
+  };
   // Trusted Types: a policy's values wrapped (they are strings to
   // whatever takes them; nothing is enforced).
   {

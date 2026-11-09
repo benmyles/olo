@@ -750,3 +750,20 @@ fn token_lists_take_a_string_as_their_value() {
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] allow-scripts allow-same-origin true noopener x y p"]);
 }
+/// `scheduler.postTask`: its promise settles with what the task returns,
+/// an aborted signal rejects it, and a delayed or background task waits
+/// for a macrotask (it ran at once, its delay ignored).
+#[test]
+fn posted_tasks_keep_their_delay_signal_and_result() {
+    let (report, _) = run("<body><script>\
+        const order = [];\
+        scheduler.postTask(() => order.push('delayed'), { delay: 1 });\
+        scheduler.postTask(() => 7).then((v) => order.push('result ' + v));\
+        const c = new AbortController(); c.abort();\
+        scheduler.postTask(() => order.push('never'), { signal: c.signal }).catch((e) => order.push(e.name));\
+        Promise.resolve().then(() => order.push('microtask'));\
+        setTimeout(() => console.log(order.join(',')), 20);\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] AbortError,microtask,result 7,delayed"]);
+}
