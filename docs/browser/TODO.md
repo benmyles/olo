@@ -71,10 +71,8 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   don't run yet: a blank page), Amazon at its AWS WAF. Chrome is let
   through. Needs iframes' scripts, and requests less unlike Chrome's
   (TLS and header order) to be flagged less often.
-- [ ] YouTube: its page shows as Chrome's (2026-11-08), but its icons
-  (logo, guide entries, mic, account) mostly stay empty: each
-  `yt-icon`'s `span.yt-icon-shape` is filled late and not always (the
-  logo was once). Find what it waits for.
+- [x] YouTube: its home as Chrome's, icons within a second (2026-11-08:
+  idle callbacks took their timeout as a delay; Cache Storage kept nothing).
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.

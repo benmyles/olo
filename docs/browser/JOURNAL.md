@@ -7048,3 +7048,8 @@ the Guardian and old Reddit, looking for pages that fail outright:
   yet. Stack Overflow, The New York Times and Amazon stop at bot
   challenges (Cloudflare, DataDome in an iframe, AWS WAF) Chrome isn't
   given: in the TODO.
+- **YouTube's icons.** They came some 13 s late: YouTube's scheduler runs
+  idle jobs through `requestIdleCallback(…, { timeout: 3000 })`, and Olo
+  waited the timeout before each, its 83 icon fetches one after another.
+  An idle callback runs at the next idle moment now, and Cache Storage
+  keeps what is put in it. YouTube's home is as Chrome's within a second.
