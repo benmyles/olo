@@ -398,7 +398,10 @@ impl Frames {
         let shown = if applies { self.free(&[kept])? } else { kept };
         let s = self.va.session.as_ref().unwrap();
         let surface = |i: usize| s.surfaces[i];
-        let refs = self.refs.map(|r| r.map_or(va::VA_INVALID_SURFACE, |r| surface(r.kept)));
+        // (A key frame shown at once references nothing, as FFmpeg tells
+        // the driver too.)
+        let fresh = header.frame_type == av1::FrameType::KeyFrame && header.show_frame;
+        let refs = self.refs.map(|r| r.filter(|_| !fresh).map_or(va::VA_INVALID_SURFACE, |r| surface(r.kept)));
         let display = if applies { surface(shown) } else { va::VA_INVALID_SURFACE };
         let mut p = av1_picture(&header, &seq, surface(kept), display, refs)?;
         let buffer = self.va.buffer(va::VAPictureParameterBufferType, &mut p, 1)?;

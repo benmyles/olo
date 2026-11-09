@@ -2996,9 +2996,12 @@ impl Parser {
         if fh.primary_ref_frame == PRIMARY_REF_NONE {
             // setup_past_independence()
             #[allow(clippy::needless_range_loop)]
-            for ref_frame in ReferenceFrameType::Last as usize..ReferenceFrameType::AltRef as usize
+            // (Olo: every reference, AltRef too, and all six parameters,
+            // as AV1's setup_past_independence() has them: AltRef's started
+            // from zeros, and its rotation-zoom came out wrong.)
+            for ref_frame in ReferenceFrameType::Last as usize..=ReferenceFrameType::AltRef as usize
             {
-                for i in 0..5 {
+                for i in 0..6 {
                     prev_gm_params[ref_frame][i] =
                         if i % 3 == 2 { 1 << WARPEDMODEL_PREC_BITS } else { 0 }
                 }

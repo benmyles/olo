@@ -1252,7 +1252,8 @@
     played: { get() { return { length: 0, start() { return 0; }, end() { return 0; } }; } },
     seekable: { get() { const d = N.media(this)[3]; return { length: isFinite(d) ? 1 : 0, start() { return 0; }, end() { return isFinite(d) ? d : 0; } }; } },
   };
-  for (const ctor of [global.HTMLMediaElement]) Object.defineProperties(ctor.prototype, mediaProps);
+  // (Configurable: a MediaSource's element answers some of them from it.)
+  for (const ctor of [global.HTMLMediaElement]) Object.defineProperties(ctor.prototype, Object.fromEntries(Object.entries(mediaProps).map(([k, d]) => [k, { ...d, configurable: true, enumerable: true }])));
   // The constants on the interface and on every element (`v.HAVE_FUTURE_DATA`).
   const MEDIA_CONSTANTS = { HAVE_NOTHING: 0, HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2, HAVE_FUTURE_DATA: 3, HAVE_ENOUGH_DATA: 4, NETWORK_EMPTY: 0, NETWORK_IDLE: 1, NETWORK_LOADING: 2, NETWORK_NO_SOURCE: 3 };
   Object.assign(global.HTMLMediaElement, MEDIA_CONSTANTS);
@@ -1265,6 +1266,241 @@
   Object.assign(global.MediaError, MEDIA_ERRORS);
   for (const [k, v] of Object.entries(MEDIA_ERRORS)) Object.defineProperty(global.MediaError.prototype, k, { value: v, enumerable: true });
   Object.defineProperty(global.HTMLMediaElement.prototype, 'error', { get() { return this._mediaError ?? null; }, configurable: true, enumerable: true });
+  // Media Source Extensions (W3C MSE): a MediaSource's buffers are parsed
+  // by the engine as they are appended (N.mse*: their tracks, frames and
+  // buffered ranges), and a media element whose src is its object URL (or
+  // whose srcObject it is) plays its stream through the browser's player,
+  // which waits for frames the page has yet to append. YouTube's and
+  // Reddit's videos come this way (Reddit's through hls.js).
+  {
+    const ranges = (list) => new TimeRanges(list);
+    class TimeRanges {
+      constructor(list) { this._r = list || []; }
+      get length() { return this._r.length; }
+      start(i) { if (!(i >= 0 && i < this._r.length)) throw new DOMException('The index is not in the allowed range.', 'IndexSizeError'); return this._r[i][0]; }
+      end(i) { if (!(i >= 0 && i < this._r.length)) throw new DOMException('The index is not in the allowed range.', 'IndexSizeError'); return this._r[i][1]; }
+    }
+    global.TimeRanges = TimeRanges;
+    const pairs = (flat) => { const r = []; if (flat) for (let i = 0; i + 1 < flat.length; i += 2) r.push([flat[i], flat[i + 1]]); return r; };
+    // The time every list covers (an element's buffered is its buffers').
+    const intersect = (lists) => {
+      if (!lists.length) return [];
+      let out = lists[0];
+      for (const l of lists.slice(1)) {
+        const next = [];
+        for (const a of out) for (const b of l) { const s = Math.max(a[0], b[0]), e = Math.min(a[1], b[1]); if (e > s) next.push([s, e]); }
+        out = next;
+      }
+      return out;
+    };
+    const fire = (target, type) => target.dispatchEvent(new Event(type));
+    const state = (message) => new DOMException(message, 'InvalidStateError');
+    class SourceBufferList extends EventTarget {
+      constructor() { super(); this._list = []; this.onaddsourcebuffer = null; this.onremovesourcebuffer = null; }
+      get length() { return this._list.length; }
+      _sync() { for (let i = 0; i < Math.max(this._list.length, this._shown || 0); i++) { if (i < this._list.length) this[i] = this._list[i]; else delete this[i]; } this._shown = this._list.length; }
+      _add(sb) { this._list.push(sb); this._sync(); setTimeout(() => fire(this, 'addsourcebuffer'), 0); }
+      _remove(sb) { const i = this._list.indexOf(sb); if (i < 0) return; this._list.splice(i, 1); this._sync(); setTimeout(() => fire(this, 'removesourcebuffer'), 0); }
+      [Symbol.iterator]() { return this._list[Symbol.iterator](); }
+    }
+    class SourceBuffer extends EventTarget {
+      constructor(ms, index, type) {
+        super();
+        this._ms = ms; this._i = index; this._type = type; this._offset = 0; this._removed = false;
+        this.updating = false; this.appendWindowStart = 0; this.appendWindowEnd = Infinity;
+        this.onupdatestart = this.onupdate = this.onupdateend = this.onerror = this.onabort = null;
+      }
+      get mode() { return this._mode || 'segments'; }
+      set mode(v) { if (this._removed) throw state('This SourceBuffer has been removed.'); this._mode = v === 'sequence' ? 'sequence' : 'segments'; }
+      get buffered() { if (this._removed) throw state('This SourceBuffer has been removed.'); return ranges(pairs(N.mseBuffered(this._ms._id, this._i))); }
+      get timestampOffset() { return this._offset; }
+      set timestampOffset(v) { if (this._removed || this.updating) throw state('The SourceBuffer is updating.'); this._offset = Number(v) || 0; N.mseOffset(this._ms._id, this._i, this._offset); }
+      get audioTracks() { return []; }
+      get videoTracks() { return []; }
+      get textTracks() { return []; }
+      _check() {
+        if (this._removed) throw state('This SourceBuffer has been removed.');
+        if (this.updating) throw state('This SourceBuffer is still processing an appendBuffer or remove operation.');
+        if (this._ms.readyState === 'ended') this._ms._open();
+      }
+      appendBuffer(data) {
+        this._check();
+        let bytes;
+        if (data instanceof ArrayBuffer) bytes = new Uint8Array(data.slice(0));
+        else if (ArrayBuffer.isView(data)) bytes = new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+        else throw new TypeError("Failed to execute 'appendBuffer' on 'SourceBuffer': The provided value is not of type '(ArrayBuffer or ArrayBufferView)'.");
+        this.updating = true;
+        // Its events in a task: updatestart, the bytes parsed, then update
+        // and updateend (or error and updateend, for bytes it can't parse).
+        setTimeout(() => {
+          if (!this.updating) return;
+          fire(this, 'updatestart');
+          const error = N.mseAppend(this._ms._id, this._i, bytes);
+          this.updating = false;
+          if (error) { fire(this, 'error'); fire(this, 'updateend'); if (this._ms.readyState === 'open') this._ms.endOfStream('decode'); return; }
+          this._ms._grow();
+          fire(this, 'update');
+          fire(this, 'updateend');
+        }, 0);
+      }
+      remove(start, end) {
+        this._check();
+        start = Number(start); end = Number(end);
+        if (!(start >= 0) || !(end > start)) throw new TypeError("Failed to execute 'remove' on 'SourceBuffer': The start or end is out of range.");
+        this.updating = true;
+        setTimeout(() => {
+          if (!this.updating) return;
+          fire(this, 'updatestart');
+          N.mseRemove(this._ms._id, this._i, start, end);
+          this.updating = false;
+          fire(this, 'update');
+          fire(this, 'updateend');
+        }, 0);
+      }
+      abort() {
+        if (this._removed) throw state('This SourceBuffer has been removed.');
+        N.mseAbort(this._ms._id, this._i);
+        if (this.updating) { this.updating = false; fire(this, 'abort'); fire(this, 'updateend'); }
+        this.appendWindowStart = 0; this.appendWindowEnd = Infinity;
+      }
+      changeType(type) { if (!MediaSource.isTypeSupported(type)) throw new DOMException('The type provided is unsupported.', 'NotSupportedError'); this._type = String(type); }
+    }
+    // Its stream let go with it (an element's player holds what it plays).
+    const dropped = typeof FinalizationRegistry === 'function' ? new FinalizationRegistry((id) => N.mseDrop(id)) : null;
+    class MediaSource extends EventTarget {
+      constructor() {
+        super();
+        this._id = N.mseCreate(); this._state = 'closed'; this._duration = NaN; this._element = null;
+        this.sourceBuffers = new SourceBufferList();
+        this.activeSourceBuffers = this.sourceBuffers;
+        this.onsourceopen = this.onsourceended = this.onsourceclose = null;
+        if (dropped) dropped.register(this, this._id);
+      }
+      static isTypeSupported(type) { return N.mseSupported(String(type)); }
+      static get canConstructInDedicatedWorker() { return false; }
+      get readyState() { return this._state; }
+      get duration() { return this._state === 'closed' ? NaN : this._duration; }
+      set duration(v) {
+        v = Number(v);
+        if (Number.isNaN(v) || v < 0) throw new TypeError("Failed to set the 'duration' property on 'MediaSource': The value provided is not a valid duration.");
+        if (this._state !== 'open') throw state("The MediaSource's readyState is not 'open'.");
+        if (this.sourceBuffers._list.some((b) => b.updating)) throw state('A SourceBuffer is updating.');
+        const changed = v !== this._duration;
+        this._duration = v;
+        if (changed && this._element) setTimeout(() => fire(this._element, 'durationchange'), 0);
+      }
+      addSourceBuffer(type) {
+        type = String(type);
+        if (!type) throw new TypeError("Failed to execute 'addSourceBuffer' on 'MediaSource': The type provided is empty.");
+        if (!MediaSource.isTypeSupported(type)) throw new DOMException("Failed to execute 'addSourceBuffer' on 'MediaSource': The type provided ('" + type + "') is unsupported.", 'NotSupportedError');
+        if (this._state !== 'open') throw state("The MediaSource's readyState is not 'open'.");
+        const i = N.mseAddBuffer(this._id, type);
+        if (i < 0) throw new DOMException('The type provided is unsupported.', 'NotSupportedError');
+        const sb = new SourceBuffer(this, i, type);
+        this.sourceBuffers._add(sb);
+        return sb;
+      }
+      removeSourceBuffer(sb) {
+        if (!(sb instanceof SourceBuffer) || sb._ms !== this || sb._removed) throw new DOMException('The SourceBuffer provided is not contained in this MediaSource.', 'NotFoundError');
+        if (sb.updating) { sb.updating = false; fire(sb, 'abort'); fire(sb, 'updateend'); }
+        sb._removed = true;
+        N.mseRemoveBuffer(this._id, sb._i);
+        this.sourceBuffers._remove(sb);
+      }
+      endOfStream(error) {
+        if (this._state !== 'open') throw state("The MediaSource's readyState is not 'open'.");
+        if (this.sourceBuffers._list.some((b) => b.updating)) throw state('A SourceBuffer is updating.');
+        this._state = 'ended';
+        // Its duration: the end of what is buffered, as the stream is all
+        // there (an error ends it where it is).
+        if (!error) { const end = Math.max(0, ...this.sourceBuffers._list.map((b) => { const r = b.buffered; return r.length ? r.end(r.length - 1) : 0; })); if (!(end <= this._duration)) this._duration = end; N.mseEnd(this._id); }
+        setTimeout(() => fire(this, 'sourceended'), 0);
+      }
+      setLiveSeekableRange() {}
+      clearLiveSeekableRange() {}
+      // The duration grows to what is buffered (MSE §3.5.1's coded frame
+      // processing: a frame past it extends it).
+      _grow() {
+        let end = 0;
+        for (const b of this.sourceBuffers._list) { const r = pairs(N.mseBuffered(this._id, b._i)); if (r.length) end = Math.max(end, r[r.length - 1][1]); }
+        if (end > 0 && (Number.isNaN(this._duration) || end > this._duration)) { this._duration = end; if (this._element) setTimeout(() => fire(this._element, 'durationchange'), 0); }
+      }
+      _open() { this._state = 'open'; setTimeout(() => fire(this, 'sourceopen'), 0); }
+      _attach(el) { this._element = el; N.mseAttach(el, this._id); this._open(); }
+      _detach() {
+        if (this._state === 'closed') return;
+        this._state = 'closed'; this._element = null; this._duration = NaN;
+        N.mseDetach(this._id);
+        for (const b of this.sourceBuffers._list) b._removed = true;
+        this.sourceBuffers._list = []; this.sourceBuffers._sync();
+        setTimeout(() => fire(this, 'sourceclose'), 0);
+      }
+      _buffered() {
+        const lists = this.sourceBuffers._list.map((b) => pairs(N.mseBuffered(this._id, b._i)));
+        return intersect(lists);
+      }
+    }
+    global.MediaSource = MediaSource;
+    global.SourceBuffer = SourceBuffer;
+    global.SourceBufferList = SourceBufferList;
+    // Its object URL, by URL (kept past revokeObjectURL until an element
+    // takes it: YouTube revokes it as soon as it has set src).
+    const sources = new Map();
+    const objectURL = URL.createObjectURL;
+    URL.createObjectURL = (o) => {
+      if (!(o instanceof MediaSource)) return objectURL(o);
+      const u = 'blob:' + new URL(N.url()).origin + '/' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+      sources.set(u, o);
+      return u;
+    };
+    // An element's source: a MediaSource's URL attaches it (its source
+    // opens), anything else lets one it had go.
+    const attachFor = (el, url) => {
+      const ms = sources.get(String(url)) || null;
+      if (el._mediaSource && el._mediaSource !== ms) { el._mediaSource._detach(); el._mediaSource = null; N.mseAttach(el, -1); }
+      if (ms && el._mediaSource !== ms) {
+        if (ms._element && ms._element !== el) ms._element._mediaSource = null;
+        el._mediaSource = ms;
+        ms._attach(el);
+      }
+    };
+    // (Element's src is defined further on: looked up when first used.)
+    let srcFound = null;
+    const findSrc = () => { for (let p = Object.getPrototypeOf(HTMLMediaElement.prototype); p; p = Object.getPrototypeOf(p)) { const d = Object.getOwnPropertyDescriptor(p, 'src'); if (d) return d; } return { get() { return this.getAttribute('src') || ''; }, set(v) { this.setAttribute('src', v); } }; };
+    const srcDesc = { get get() { return (srcFound ??= findSrc()).get; }, get set() { return (srcFound ??= findSrc()).set; } };
+    Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+      get() { return srcDesc.get.call(this); },
+      set(v) { srcDesc.set.call(this, v); attachFor(this, v); },
+      configurable: true, enumerable: true,
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', {
+      get() { return this._srcObject ?? null; },
+      set(v) {
+        this._srcObject = v ?? null;
+        if (v instanceof MediaSource) { const u = URL.createObjectURL(v); srcDesc.set.call(this, u); attachFor(this, u); }
+        else if (v == null) { if (this._mediaSource) attachFor(this, ''); }
+      },
+      configurable: true, enumerable: true,
+    });
+    const setAttr = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (name, value) {
+      setAttr.call(this, name, value);
+      if (String(name).toLowerCase() === 'src' && isMedia(this)) attachFor(this, value);
+    };
+    const removeAttr = Element.prototype.removeAttribute;
+    Element.prototype.removeAttribute = function (name) {
+      removeAttr.call(this, name);
+      if (String(name).toLowerCase() === 'src' && this._mediaSource) attachFor(this, '');
+    };
+    // An element playing a MediaSource: its duration and buffered time are
+    // the source's.
+    const plain = { duration: Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'duration'), buffered: Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'buffered'), seekable: Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'seekable') };
+    Object.defineProperties(HTMLMediaElement.prototype, {
+      duration: { get() { const ms = this._mediaSource; return ms ? ms.duration : plain.duration.get.call(this); }, configurable: true, enumerable: true },
+      buffered: { get() { const ms = this._mediaSource; return ms ? ranges(ms._buffered()) : plain.buffered.get.call(this); }, configurable: true, enumerable: true },
+      seekable: { get() { const ms = this._mediaSource; if (!ms) return plain.seekable.get.call(this); const d = ms.duration; return ranges(Number.isFinite(d) ? [[0, d]] : ms._buffered()); }, configurable: true, enumerable: true },
+    });
+  }
   // A box's scroll (scrollTop, scrollTo): the engine clamps it and keeps
   // it; its `scroll` event (which doesn't bubble) follows in a task, once
   // however many scrolls came before it.

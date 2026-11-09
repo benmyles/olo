@@ -17,6 +17,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// The decoder videos play on: the GPU that decodes them, as the person's
+/// settings choose (OLO_VIDEO_DEVICE: `processor`, `intel`, `nvidia`, for
+/// comparing them; a picture one decodes wrong shows which).
+fn decoder() -> olo_preview::video::Device {
+    std::env::var("OLO_VIDEO_DEVICE").ok().and_then(|d| olo_preview::video::Device::parse(&d)).unwrap_or(olo_preview::video::Device::Automatic)
+}
 /// The largest video fetched whole (bytes).
 const MEDIA_LIMIT: usize = 256 << 20;
 /// How often `timeupdate` fires while playing (HTML: every 15 to 250 ms).
@@ -45,10 +51,17 @@ struct Player {
     played: bool,
     /// What fetching it takes, while it waits to be played (`preload="none"`).
     deferred: Option<(Arc<crate::network::Loader>, url::Url, crate::network::Cancel)>,
+    /// The page's MediaSource stream it plays (Media Source Extensions),
+    /// instead of a file it fetches.
+    stream: Option<Arc<olo_mse::Stream>>,
 }
 impl Drop for Player {
     fn drop(&mut self) {
-        // The decoding thread goes on its own; it is not waited for.
+        // The decoding thread goes on its own; it is not waited for (one
+        // waiting for a stream's frames is let go with the stream).
+        if let Some(stream) = &self.stream {
+            stream.detach();
+        }
         if let Some((video, _)) = self.video.take() {
             drop(video.close());
         }
@@ -104,6 +117,13 @@ impl Players {
                 }
                 let poster = poster.is_some();
                 let lazy = !autoplay && doc.attribute(node, "preload").ok().flatten().is_some_and(|p| p.trim().eq_ignore_ascii_case("none"));
+                // A MediaSource's: its stream played as the page appends it.
+                if let Some(stream) = realm.media_stream(node) {
+                    let mut player = Player::new(src, autoplay, poster);
+                    player.play_stream(stream);
+                    self.players.insert(node, player);
+                    continue;
+                }
                 let mut player = Player::new(src, autoplay, poster);
                 if lazy {
                     player.deferred = Some((loader.clone(), base.clone(), cancel.clone()));
@@ -167,7 +187,16 @@ impl Player {
             poster,
             played: autoplay,
             deferred: None,
+            stream: None,
         }
+    }
+    /// Play a page's MediaSource stream: its decoder waits for its first
+    /// segments (its duration the source's, which the page's scripts know).
+    fn play_stream(&mut self, stream: Arc<olo_mse::Stream>) {
+        let input = olo_preview::input::Input::media_source(stream.clone(), &self.src);
+        let options = olo_preview::video::Options { playing: self.wanted_playing, picture: true, sound: false, bgra: true, yuv: true, device: decoder() };
+        *self.loading.lock().unwrap() = Loading::Ready(olo_preview::video::Video::start_with(&input, 0., options), f64::NAN);
+        self.stream = Some(stream);
     }
     /// Fetch and probe it on a thread of its own.
     fn fetch(&mut self, loader: Arc<crate::network::Loader>, base: url::Url, cancel: crate::network::Cancel) {
@@ -199,7 +228,7 @@ impl Player {
                 let duration = info.duration.unwrap_or(f64::NAN);
                 // Planes where a GPU decodes (VA-API, NVDEC; else the processor),
                 // made RGB here at the size shown.
-                let options = olo_preview::video::Options { playing: autoplay, picture: true, sound: false, bgra: true, yuv: true, device: olo_preview::video::Device::Automatic };
+                let options = olo_preview::video::Options { playing: autoplay, picture: true, sound: false, bgra: true, yuv: true, device: decoder() };
                 Ok((olo_preview::video::Video::start_with(&input, if duration.is_finite() { duration } else { 0. }, options), duration))
             })();
             *slot.lock().unwrap() = match result {
@@ -511,6 +540,11 @@ fn posters_only(doc: &Document, base: &url::Url) -> Vec<(NodeId, url::Url)> {
             let children: Vec<NodeId> = children.collect();
             stack.extend(children.into_iter().rev());
         }
+        // Into shadow trees too: a player component's video is in its own
+        // (Reddit's shreddit-player).
+        if let Some(root) = doc.shadow_root(n) {
+            stack.push(root);
+        }
     }
     out
 }
@@ -536,6 +570,11 @@ fn videos(doc: &Document, base: &url::Url) -> Vec<(NodeId, String)> {
         if let Ok(children) = doc.children(n) {
             let children: Vec<NodeId> = children.collect();
             stack.extend(children.into_iter().rev());
+        }
+        // Into shadow trees too: a player component's video is in its own
+        // (Reddit's shreddit-player).
+        if let Some(root) = doc.shadow_root(n) {
+            stack.push(root);
         }
     }
     out

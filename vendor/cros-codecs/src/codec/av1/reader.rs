@@ -195,7 +195,11 @@ impl<'a> Reader<'a> {
             if num_syms <= mk + 3 * a {
                 let num_bits = num_syms - mk;
                 let subexp_final_bits = self.read_ns(num_bits as usize)?;
-                return Ok(subexp_final_bits);
+                // (Olo: + mk, as AV1 §5.9.27 has it; without, a global
+                // motion parameter coded this way came out short by mk,
+                // and VA-API decoded YouTube's AV1 from that frame on
+                // against the wrong motion.)
+                return Ok(subexp_final_bits + mk as u32);
             } else {
                 let subexp_more_bits = self.0.read_bit()?;
                 if subexp_more_bits {

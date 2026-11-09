@@ -1,0 +1,8 @@
+[package]
+name = "olo-mse"
+description = "Media Source Extensions' byte streams: fragmented MPEG-4 and WebM segments appended as they come, parsed into samples and buffered ranges"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

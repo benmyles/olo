@@ -2919,19 +2919,29 @@ fn control_labels(page: &page::Page, scene: &paint::Scene, band: layout::Rect, v
         }
         first.map(|m| attr(m, "label").unwrap_or_else(|| text_of(m)))
     };
-    // A `<label for=id>` names its control.
+    // A `<label for=id>` names its control. The document's labels found in
+    // one walk, the first time a control with an id asks (each control
+    // walked the whole document: YouTube's buttons, each with an id, made
+    // this most of its page thread while its video played).
+    let labels_by_for: std::cell::OnceCell<HashMap<String, olo_web::dom::NodeId>> = std::cell::OnceCell::new();
     let label_for = |n: olo_web::dom::NodeId| -> Option<String> {
         let id = attr(n, "id")?;
-        let mut stack = vec![doc.root()];
-        while let Some(m) = stack.pop() {
-            if doc.name(m).ok().flatten() == Some("label") && attr(m, "for").as_deref() == Some(id.as_str()) {
-                return Some(text_of(m)).filter(|t| !t.is_empty());
+        let by_for = labels_by_for.get_or_init(|| {
+            let mut found = HashMap::new();
+            let mut stack = vec![doc.root()];
+            while let Some(m) = stack.pop() {
+                if doc.name(m).ok().flatten() == Some("label")
+                    && let Some(f) = attr(m, "for")
+                {
+                    found.entry(f).or_insert(m);
+                }
+                if let Ok(children) = doc.children(m) {
+                    stack.extend(children);
+                }
             }
-            if let Ok(children) = doc.children(m) {
-                stack.extend(children);
-            }
-        }
-        None
+            found
+        });
+        by_for.get(&id).map(|&m| text_of(m)).filter(|t| !t.is_empty())
     };
     for (id, b) in tree.iter() {
         let Some(name) = doc.name(b.node).ok().flatten() else { continue };

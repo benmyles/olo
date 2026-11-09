@@ -7507,6 +7507,7 @@ dependencies = [
  "olo-crash",
  "olo-images",
  "olo-js",
+ "olo-mse",
  "olo-preview",
  "olo-theme",
  "olo-ui",
@@ -7951,6 +7952,7 @@ dependencies = [
  "glow",
  "hmac 0.13.0",
  "khronos-egl",
+ "olo-mse",
  "olo-web",
  "png 0.17.16",
  "serde_json",
@@ -8044,6 +8046,10 @@ dependencies = [
  "serde_json",
  "zstd",
 ]
+
+[[package]]
+name = "olo-mse"
+version = "0.1.0"
 
 [[package]]
 name = "olo-notifications"
@@ -8301,6 +8307,7 @@ dependencies = [
  "olo-crash",
  "olo-images",
  "olo-kit-base",
+ "olo-mse",
  "olo-richtext",
  "olo-sync",
  "olo-theme",

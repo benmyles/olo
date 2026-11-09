@@ -356,6 +356,10 @@ pub struct Video {
     /// There are pictures to show; without, only the clock and sound run.
     picture: bool,
     bgra: bool,
+    /// A web page's stream: the clock waits for its pictures however long
+    /// they take (the page appends them as it fetches them), as a browser
+    /// waits for a stream's data, rather than going on without them.
+    patient: bool,
     worker: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -398,6 +402,7 @@ impl Video {
             duration,
             picture: opts.picture,
             bgra: opts.bgra,
+            patient: input.media_stream().is_some(),
             worker,
         }
     }
@@ -409,8 +414,11 @@ impl Video {
         self.worker.take()
     }
 
+    /// Where it is (seconds), within its duration where that is known (a
+    /// web page's stream has none: its page knows it).
     pub fn position(&self) -> f64 {
-        self.clock.lock().unwrap().now().clamp(0.0, self.duration)
+        let now = self.clock.lock().unwrap().now();
+        if self.duration > 0.0 { now.clamp(0.0, self.duration) } else { now.max(0.0) }
     }
 
     pub fn duration(&self) -> f64 {
@@ -555,7 +563,7 @@ impl Video {
         // passing pictures over, not played slower.
         let silent = c.since.is_some() && self.sound().is_none();
         let starved = silent && sh.queue.is_empty() && !sh.eof && sh.seek.is_none();
-        if starved && c.starving.get_or_insert_with(Instant::now).elapsed() < HOLD {
+        if starved && (self.patient || c.starving.get_or_insert_with(Instant::now).elapsed() < HOLD) {
             c.at = c.now();
             c.since = Some(Instant::now());
         }
@@ -605,7 +613,7 @@ impl Video {
                 sh.told = true;
                 tracing::info!("video: played to its end: {} pictures shown, {} dropped, {} late; decoded on {}", sh.shown, sh.skipped, sh.late, sh.decoding);
             }
-            c.at = self.duration;
+            c.at = if self.duration > 0.0 { self.duration } else { c.now() };
             c.since = None;
             c.finished = true;
         }
@@ -783,6 +791,9 @@ trait Demux: Send {
 }
 
 fn open(input: &Input) -> Result<Box<dyn Demux>, String> {
+    if let Some(stream) = input.media_stream() {
+        return Streamed::open(stream.clone()).map(|d| Box::new(d) as _);
+    }
     if input.matroska() { Mkv::open(input).map(|d| Box::new(d) as _) } else { Mp4::open(input).map(|d| Box::new(d) as _) }
 }
 
@@ -1514,6 +1525,98 @@ impl Demux for Mp4 {
             Some(s) => s.iter().copied().filter(|&k| k <= n).max().unwrap_or(1),
             None => n,
         };
+    }
+}
+
+/// A web page's Media Source Extensions stream (`olo_mse`): its picture
+/// track's frames in the order the page appended them, waited for when the
+/// page has yet to append them (it appends as the video plays).
+struct Streamed {
+    stream: Arc<olo_mse::Stream>,
+    index: usize,
+    codec: Codec,
+    /// Sent before each key frame: H.264's parameter sets in start-code
+    /// form, AV1's sequence header.
+    sets: Vec<u8>,
+    nal_len: usize,
+    hevc: Option<(hevc::Config, hevc::Colour)>,
+    /// The last frame read, and the initialization segment the sets are
+    /// from (a quality switch appends another: its sets, its size).
+    after: Option<u64>,
+    init: u32,
+}
+
+impl Streamed {
+    /// Wait for the stream's initialization segment (the page appends it
+    /// once the source opens) and its picture track.
+    fn open(stream: Arc<olo_mse::Stream>) -> Result<Streamed, String> {
+        let (index, track) = loop {
+            if let Some(found) = stream.video_track(Duration::from_millis(500)) {
+                break found;
+            }
+            if stream.detached() {
+                return Err("the media source was let go".into());
+            }
+        };
+        let codec = match track.codec {
+            olo_mse::Codec::H264 => Codec::H264,
+            olo_mse::Codec::Hevc => Codec::Hevc,
+            olo_mse::Codec::Av1 => Codec::Av1,
+            olo_mse::Codec::Vp9 => Codec::Vp9,
+            olo_mse::Codec::Other => return Err("This video's format can't be played.".into()),
+        };
+        let hevc = match codec {
+            Codec::Hevc => Some((hevc::config(&track.hevc).ok_or("no hvcC")?, hevc::Colour::default())),
+            _ => None,
+        };
+        Ok(Streamed { stream, index, codec, sets: track.sets, nal_len: track.nal_len, hevc, after: None, init: 0 })
+    }
+}
+
+impl Demux for Streamed {
+    fn codec(&self) -> Codec {
+        self.codec
+    }
+
+    fn hevc(&self) -> Option<(hevc::Config, hevc::Colour)> {
+        self.hevc.clone()
+    }
+
+    fn next(&mut self) -> Option<Packet> {
+        loop {
+            match self.stream.next_sample(self.index, self.after, Duration::from_millis(250)) {
+                olo_mse::Next::Sample(s) => {
+                    self.after = Some(s.seq);
+                    // Another initialization segment's frames: its sets
+                    // (the decoder sees the new size in them).
+                    if s.init != self.init
+                        && let Some(t) = self.stream.track(self.index, s.init)
+                    {
+                        self.init = s.init;
+                        self.sets = t.sets;
+                        self.nal_len = t.nal_len;
+                    }
+                    let mut data = Vec::with_capacity(s.data.len() + self.sets.len() + 64);
+                    if s.key {
+                        data.extend_from_slice(&self.sets);
+                    }
+                    match self.codec {
+                        Codec::H264 => media::avcc_to_annexb(&s.data, self.nal_len, &mut data),
+                        Codec::Av1 | Codec::Vp9 | Codec::Hevc => data.extend_from_slice(&s.data),
+                    }
+                    return Some(Packet { pts: s.pts, data, dur: (s.dur > 0.0).then_some(s.dur) });
+                }
+                olo_mse::Next::Waiting => continue,
+                olo_mse::Next::End => return None,
+            }
+        }
+    }
+
+    fn seek(&mut self, secs: f64) {
+        self.after = self.stream.seek(self.index, secs);
+        if std::env::var_os("OLO_MSE_DEBUG").is_some() {
+            eprintln!("mse: the player seeks to {secs:.3}: after frame {:?}", self.after);
+        }
     }
 }
 

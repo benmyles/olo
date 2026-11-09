@@ -13,6 +13,8 @@ olo-theme.workspace = true
 olo-xdg.workspace = true
 olo-images.workspace = true
 olo-preview = { workspace = true, features = ["gpui"] }
+# Web pages' Media Source Extensions streams.
+olo-mse = { path = "../../crates/mse" }
 # System font files are mapped, not read: the OS pages in what is used.
 memmap2 = "0.9"
 data-url = "0.3.2"

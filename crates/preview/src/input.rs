@@ -20,6 +20,9 @@ pub struct Input {
     pub ext: String,
     /// What to call it in warnings.
     pub name: String,
+    /// A web page's Media Source Extensions stream, appended to as it
+    /// plays, instead of bytes to read.
+    stream: Option<Arc<olo_mse::Stream>>,
 }
 
 impl Input {
@@ -33,12 +36,23 @@ impl Input {
             }),
             ext: path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default(),
             name: path.display().to_string(),
+            stream: None,
         }
     }
 
     /// `open` gives a fresh reader at the start, and the size in bytes.
     pub fn new(ext: &str, name: &str, open: impl Fn() -> io::Result<(Box<dyn ReadSeek>, u64)> + Send + Sync + 'static) -> Input {
-        Input { open: Arc::new(open), ext: ext.to_lowercase(), name: name.into() }
+        Input { open: Arc::new(open), ext: ext.to_lowercase(), name: name.into(), stream: None }
+    }
+
+    /// A page's MediaSource stream (pictures only: its frames come as the
+    /// page appends them, and the player waits for them).
+    pub fn media_source(stream: Arc<olo_mse::Stream>, name: &str) -> Input {
+        Input { open: Arc::new(|| Err(io::Error::other("a media source stream is not read as a file"))), ext: "mse".into(), name: name.into(), stream: Some(stream) }
+    }
+
+    pub fn media_stream(&self) -> Option<&Arc<olo_mse::Stream>> {
+        self.stream.as_ref()
     }
 
     pub fn open(&self) -> Result<(Box<dyn ReadSeek>, u64), String> {

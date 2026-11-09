@@ -299,6 +299,11 @@ struct State {
     focused: Option<NodeId>,
     /// What the browser's players report of each `<video>` and `<audio>`.
     media: olo_web::dom::NodeMap<Media>,
+    /// The page's MediaSources (Media Source Extensions), by id, and the
+    /// media elements playing them (`Realm::media_stream`).
+    media_sources: HashMap<u32, Arc<olo_mse::Stream>, foldhash::fast::RandomState>,
+    media_attached: olo_web::dom::NodeMap<u32>,
+    next_media_source: u32,
     /// What the scripts asked of them since the browser last looked.
     media_commands: Vec<(NodeId, MediaCommand)>,
     next_request: u64,
@@ -469,6 +474,9 @@ impl Realm {
             history: Vec::new(),
             focused: None,
             media: Default::default(),
+            media_sources: Default::default(),
+            media_attached: Default::default(),
+            next_media_source: 1,
             media_commands: Vec::new(),
             next_request: 1,
             workers: HashMap::new(),
@@ -920,6 +928,12 @@ impl Realm {
         self.state.borrow().document.attribute(node, name).ok().flatten().is_some()
     }
     /// What the scripts asked of media elements since last asked.
+    /// The MediaSource stream a media element plays (its src is the
+    /// source's object URL, or its srcObject the source), if it has one.
+    pub fn media_stream(&self, node: NodeId) -> Option<Arc<olo_mse::Stream>> {
+        let s = self.state.borrow();
+        s.media_attached.get(&node).and_then(|id| s.media_sources.get(id)).cloned()
+    }
     pub fn take_media_commands(&self) -> Vec<(NodeId, MediaCommand)> {
         std::mem::take(&mut self.state.borrow_mut().media_commands)
     }
@@ -1426,6 +1440,9 @@ impl State {
             history: Vec::new(),
             focused: None,
             media: Default::default(),
+            media_sources: Default::default(),
+            media_attached: Default::default(),
+            next_media_source: 1,
             media_commands: Vec::new(),
             next_request: 1,
             workers: HashMap::new(),
@@ -2050,6 +2067,19 @@ const NATIVES: &[&str] = &[
     "setScrollOffset",
     "media",
     "mediaCommand",
+    "mseCreate",
+    "mseSupported",
+    "mseAddBuffer",
+    "mseRemoveBuffer",
+    "mseAppend",
+    "mseBuffered",
+    "mseRemove",
+    "mseOffset",
+    "mseAbort",
+    "mseEnd",
+    "mseAttach",
+    "mseDetach",
+    "mseDrop",
     "setFocused",
     "imagePixels",
     "glCreate",
@@ -3115,6 +3145,91 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     v8::Number::new(scope, f64::from(m.ready)).into(),
                 ];
                 rv.set(v8::Array::new_with_elements(scope, &items).into());
+            }
+        }
+        // Media Source Extensions: the page's MediaSources, their buffers
+        // parsed here as they are appended (`olo_mse`).
+        "mseCreate" => {
+            let mut s = state.borrow_mut();
+            let id = s.next_media_source;
+            s.next_media_source = s.next_media_source.wrapping_add(1).max(1);
+            s.media_sources.insert(id, olo_mse::Stream::new());
+            rv.set(v8::Integer::new_from_unsigned(scope, id).into());
+        }
+        "mseSupported" => {
+            let mime = arg_string(scope, &args, 0);
+            rv.set(v8::Boolean::new(scope, olo_mse::supported(&mime)).into());
+        }
+        "mseAddBuffer" | "mseRemoveBuffer" | "mseAppend" | "mseBuffered" | "mseRemove" | "mseOffset" | "mseAbort" | "mseEnd" | "mseDetach" | "mseDrop" => {
+            let id = args.get(0).uint32_value(scope).unwrap_or(0);
+            let index = args.get(1).int32_value(scope).unwrap_or(-1);
+            let Some(stream) = state.borrow().media_sources.get(&id).cloned() else {
+                if name == "mseAddBuffer" {
+                    rv.set(v8::Integer::new(scope, -1).into());
+                }
+                return;
+            };
+            let number = |scope: &mut v8::PinScope, i: i32| args.get(i).number_value(scope).unwrap_or(f64::NAN);
+            match name {
+                "mseAddBuffer" => {
+                    let mime = arg_string(scope, &args, 1);
+                    if std::env::var_os("OLO_MSE_DEBUG").is_some() {
+                        eprintln!("mse: source {id} adds a buffer for {mime}");
+                    }
+                    let i = stream.add_buffer(&mime).map_or(-1, |i| i as i32);
+                    rv.set(v8::Integer::new(scope, i).into());
+                }
+                "mseRemoveBuffer" if index >= 0 => stream.remove_buffer(index as usize),
+                "mseAppend" if index >= 0 => {
+                    let bytes = arg_body(scope, &args, 2);
+                    if let Err(e) = stream.append(index as usize, &bytes) {
+                        let text = v8::String::new(scope, &e).unwrap();
+                        rv.set(text.into());
+                    }
+                }
+                "mseBuffered" if index >= 0 => {
+                    let items: Vec<v8::Local<v8::Value>> = stream.buffered(index as usize).iter().flat_map(|r| [r[0], r[1]]).map(|v| v8::Number::new(scope, v).into()).collect();
+                    rv.set(v8::Array::new_with_elements(scope, &items).into());
+                }
+                "mseRemove" if index >= 0 => {
+                    let (start, end) = (number(scope, 2), number(scope, 3));
+                    stream.remove(index as usize, start, end);
+                }
+                "mseOffset" if index >= 0 => {
+                    let offset = number(scope, 2);
+                    stream.set_offset(index as usize, offset);
+                }
+                "mseAbort" if index >= 0 => stream.abort(index as usize),
+                "mseEnd" => stream.end(),
+                // Its element let it go: its player stops, and it starts
+                // again empty should it be attached again (MSE §2.4.2: its
+                // buffers go as it closes).
+                "mseDetach" => {
+                    stream.detach();
+                    let mut s = state.borrow_mut();
+                    s.media_attached.retain(|_, v| *v != id);
+                    s.media_sources.insert(id, olo_mse::Stream::new());
+                }
+                // The MediaSource went (collected): its stream with it.
+                "mseDrop" => {
+                    stream.detach();
+                    let mut s = state.borrow_mut();
+                    s.media_sources.remove(&id);
+                    s.media_attached.retain(|_, v| *v != id);
+                }
+                _ => {}
+            }
+        }
+        // An element plays a MediaSource (-1: none).
+        "mseAttach" => {
+            if let Some(n) = node(scope, 0) {
+                let id = args.get(1).int32_value(scope).unwrap_or(-1);
+                let mut s = state.borrow_mut();
+                if id > 0 && s.media_sources.contains_key(&(id as u32)) {
+                    s.media_attached.insert(n, id as u32);
+                } else {
+                    s.media_attached.remove(&n);
+                }
             }
         }
         // play(), pause(), currentTime = t, load(): for the browser's player.

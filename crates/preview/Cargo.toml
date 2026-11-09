@@ -21,6 +21,8 @@ smallvec = { version = "1.6", optional = true }
 olo-xdg = { workspace = true, optional = true }
 olo-kit-base.workspace = true
 olo-images.workspace = true
+# Web pages' Media Source Extensions streams, played as they are appended.
+olo-mse = { path = "../mse" }
 olo-color.workspace = true
 olo-theme.workspace = true
 olo-richtext.workspace = true

@@ -8,6 +8,8 @@ license.workspace = true
 [dependencies]
 foldhash = "0.2"
 olo-web = { path = "../web" }
+# Media Source Extensions' byte streams (fragmented MPEG-4, WebM).
+olo-mse = { path = "../mse" }
 # JavaScript: V8 (C++), the one non-Rust part of the browser, as the mandate allows.
 v8 = "152"
 url = "2"
