@@ -99,6 +99,9 @@ pub struct Fetched {
     pub content_type: String,
     pub body: Vec<u8>,
     pub url: String,
+    /// The response's headers as `name: value` lines (none known: empty;
+    /// its content type is then all there is).
+    pub headers: String,
 }
 /// Fetches a URL (method, body) for scripts; the browser supplies one.
 /// (url, method, body, headers as `name: value` lines).
@@ -262,6 +265,12 @@ struct State {
     cookies: Option<Cookies>,
     /// Images the scripts loaded, by `img` element.
     images: HashMap<NodeId, Arc<olo_web::image::Image>>,
+    /// The URL each element's picture was asked for (to ask again when one
+    /// let go comes back into the document).
+    image_urls: HashMap<NodeId, String>,
+    /// Elements out of the document whose pictures were let go, with the
+    /// URL to ask for when they come back.
+    images_let_go: HashMap<NodeId, String>,
     /// Each `img` element's latest image request (0: one answered at
     /// once): an earlier one finishing later is stale and dropped, as
     /// HTML's "update the image data" aborts it.
@@ -447,6 +456,8 @@ impl Realm {
             image_lookup: None,
             cookies: None,
             images: HashMap::new(),
+            image_urls: HashMap::new(),
+            images_let_go: HashMap::new(),
             image_latest: HashMap::new(),
             images_dirty: false,
             requests: Vec::new(),
@@ -609,6 +620,7 @@ impl Realm {
                     string(tc, &fetched.content_type),
                     bytes_array(tc, fetched.body, ByteKind::U8),
                     string(tc, &fetched.url),
+                    string(tc, &fetched.headers),
                 ],
             ),
             (None, Ok(Loaded::Image(_))) => return,
@@ -1063,8 +1075,43 @@ impl Realm {
             }
             i.map(|i| (*n, i))
         }));
-        // Images the scripts loaded into `img` elements render too.
+        // Images the scripts loaded into `img` elements render too: those
+        // still in the document. One taken out lets its picture go (Reddit's
+        // feed drops the posts scrolled past: their pictures, kept, took
+        // 2.8 GB), asked for again if it comes back.
         s.images_dirty = false;
+        let s = &mut *s;
+        let gone: Vec<NodeId> = s.images.keys().filter(|n| !s.document.is_connected(**n).unwrap_or(false)).copied().collect();
+        for n in gone {
+            s.images.remove(&n);
+            if let Some(url) = s.image_urls.remove(&n) {
+                s.images_let_go.insert(n, url);
+            }
+        }
+        if !s.images_let_go.is_empty() {
+            let back: Vec<NodeId> = s.images_let_go.keys().filter(|n| s.document.is_connected(**n).unwrap_or(false)).copied().collect();
+            for n in back {
+                let Some(url) = s.images_let_go.remove(&n) else { continue };
+                if let Some(image) = s.image_lookup.as_mut().and_then(|f| f(&url)) {
+                    s.images.insert(n, image);
+                    s.image_urls.insert(n, url);
+                    continue;
+                }
+                if s.image_lookup.is_some() {
+                    let id = s.next_request;
+                    s.next_request += 1;
+                    s.in_flight.insert(id, Some(n));
+                    s.image_latest.insert(n, id);
+                    s.image_urls.insert(n, url.clone());
+                    s.requests.push(Request { id, url, kind: RequestKind::Image });
+                }
+            }
+            // (Those gone for good: forgotten once there are many.)
+            if s.images_let_go.len() > 4096 {
+                let doc = &s.document;
+                s.images_let_go.retain(|n, _| doc.node_type(*n).is_ok());
+            }
+        }
         out.extend(s.images.iter().map(|(n, i)| (*n, i.clone())));
         out
     }
@@ -1085,6 +1132,7 @@ impl Realm {
         s.next_request += 1;
         s.in_flight.insert(id, Some(node));
         s.image_latest.insert(node, id);
+        s.image_urls.insert(node, url.to_owned());
         s.requests.push(Request { id, url: url.to_owned(), kind: RequestKind::Image });
     }
     /// Its picture let go (a video playing shows its frames instead).
@@ -1365,6 +1413,8 @@ impl State {
             image_lookup: None,
             cookies: None,
             images: HashMap::new(),
+            image_urls: HashMap::new(),
+            images_let_go: HashMap::new(),
             image_latest: HashMap::new(),
             images_dirty: false,
             requests: Vec::new(),
@@ -2823,11 +2873,12 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             match result {
                 Ok(fetched) => {
                     let object = v8::Object::new(scope);
-                    let pairs: [(&str, v8::Local<v8::Value>); 4] = [
+                    let pairs: [(&str, v8::Local<v8::Value>); 5] = [
                         ("status", v8::Integer::new(scope, i32::from(fetched.status)).into()),
                         ("contentType", string(scope, &fetched.content_type)),
                         ("body", bytes_array(scope, fetched.body, ByteKind::U8)),
                         ("url", string(scope, &fetched.url)),
+                        ("headers", string(scope, &fetched.headers)),
                     ];
                     for (k, v) in pairs {
                         let key = v8::String::new(scope, k).unwrap();
@@ -3015,8 +3066,10 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             if let Some(n) = node(scope, 0) {
                 let mut s = state.borrow_mut();
                 let kind = name;
-                let mut values = s.measured().and_then(|m| match kind {
-                    "rect" => m.border_box(n).map(|r| [r.x, r.y, r.width, r.height]),
+                s.measured();
+                let s = &mut *s;
+                let mut values = s.measured.as_ref().and_then(|m| match kind {
+                    "rect" => m.placed_box(&s.document, n).map(|r| [r.x, r.y, r.width, r.height]),
                     "paddingRect" => m.padding_box(n).map(|r| [r.x, r.y, r.width, r.height]),
                     _ => m.scroll_size(n).map(|(w, h)| [0., 0., w, h]),
                 });
@@ -3217,6 +3270,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     Some(f) => f(&url),
                     None => None,
                 };
+                s.image_urls.insert(n, url.clone());
                 match known {
                     Some(image) => {
                         let (w, h) = image.natural();

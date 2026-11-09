@@ -950,6 +950,63 @@ impl Measured {
     pub fn border_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
         self.geometry(node).map(|(_, r, _)| r).or_else(|| self.inline_box(node))
     }
+    /// `border_box`, or for a rendered element with nothing to measure (an
+    /// empty inline, a `display: contents` one) the empty rectangle where
+    /// it sits, as Chrome gives one: after the nearest earlier sibling with
+    /// a box (at its bottom left), else at its parent's content box.
+    /// Reddit's feed waits for its next page's (empty) partial to come
+    /// near the viewport, which one at (0, 0) and empty never did.
+    pub fn placed_box(&self, doc: &Document, node: crate::dom::NodeId) -> Option<layout::Rect> {
+        if let Some(r) = self.border_box(node) {
+            return Some(r);
+        }
+        let tree = self.layout.cache().tree();
+        if doc.node_type(node).ok()? != NodeType::Element || !doc.is_connected(node).unwrap_or(false) || !displayed(doc, tree.styles(), node) {
+            return None;
+        }
+        self.place_empty(doc, node, 0)
+    }
+    /// The composed children of `node`, in order.
+    fn composed_children(doc: &Document, node: crate::dom::NodeId) -> Vec<crate::dom::NodeId> {
+        let mut out = Vec::new();
+        let mut at = doc.composed_first_child(node).ok().flatten();
+        while let Some(c) = at.filter(|_| out.len() < 100_000) {
+            out.push(c);
+            at = doc.composed_next_sibling(c).ok().flatten();
+        }
+        out
+    }
+    /// The bottom of what `node` shows: its box's, or its last composed
+    /// child's with one (through `display: contents`).
+    fn shown_bottom(&self, doc: &Document, node: crate::dom::NodeId, depth: usize) -> Option<layout::Rect> {
+        if let Some(r) = self.border_box(node) {
+            return Some(layout::Rect { x: r.x, y: r.y + r.height, width: 0., height: 0. });
+        }
+        if depth > 32 || doc.node_type(node).ok()? != NodeType::Element {
+            return None;
+        }
+        Self::composed_children(doc, node).into_iter().rev().find_map(|c| self.shown_bottom(doc, c, depth + 1))
+    }
+    fn place_empty(&self, doc: &Document, node: crate::dom::NodeId, depth: usize) -> Option<layout::Rect> {
+        let parent = doc.composed_parent(node).ok().flatten().or_else(|| doc.shadow_host(node))?;
+        let siblings = Self::composed_children(doc, parent);
+        let at = siblings.iter().position(|&s| s == node).unwrap_or(siblings.len());
+        if let Some(r) = siblings[..at].iter().rev().find_map(|&s| self.shown_bottom(doc, s, depth)) {
+            return Some(r);
+        }
+        if let Some((_, _, g)) = self.geometry(parent) {
+            let mut c = g.content_box();
+            if let Some(r) = self.border_box(parent) {
+                c.x += r.x - g.border_box.x;
+                c.y += r.y - g.border_box.y;
+            }
+            return Some(layout::Rect { x: c.x, y: c.y, width: 0., height: 0. });
+        }
+        if depth > 32 {
+            return None;
+        }
+        self.place_empty(doc, parent, depth + 1)
+    }
     /// An inline element (one with no box of its own): the union of its
     /// text's fragments on their lines, each a line's ascent and descent
     /// tall, as Chrome measures one's content area.

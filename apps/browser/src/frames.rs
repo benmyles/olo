@@ -200,15 +200,15 @@ fn start(src: String, parent: url::Url, size: [u32; 2], made: Arc<Mutex<Made>>, 
                     Box::new(move |url: &str, method: &str, body: &[u8], headers: &str| {
                         let url = url::Url::parse(url).map_err(|e| e.to_string())?;
                         if method == "GET" && headers == olo_js::SCRIPT_DESTINATION {
-                            let (status, content_type, body, final_url) = loader.script_response(&from, url, &cancel).map_err(|e| e.to_string())?;
-                            return Ok(olo_js::Fetched { status, content_type, body, url: final_url });
+                            let (status, content_type, body, final_url, headers) = loader.script_response(&from, url, &cancel).map_err(|e| e.to_string())?;
+                            return Ok(olo_js::Fetched { status, content_type, body, url: final_url, headers });
                         }
                         if method == "GET" && headers.is_empty() {
-                            let (status, content_type, body, final_url) = loader.text(&from, url, &cancel).map_err(|e| e.to_string())?;
-                            return Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url });
+                            let (status, content_type, body, final_url, headers) = loader.text(&from, url, &cancel).map_err(|e| e.to_string())?;
+                            return Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url, headers });
                         }
-                        let (status, content_type, body, final_url) = loader.request(&from, url, method, headers, body, &cancel).map_err(|e| e.to_string())?;
-                        Ok(olo_js::Fetched { status, content_type, body, url: final_url })
+                        let (status, content_type, body, final_url, headers) = loader.request(&from, url, method, headers, body, &cancel).map_err(|e| e.to_string())?;
+                        Ok(olo_js::Fetched { status, content_type, body, url: final_url, headers })
                     })
                 };
                 let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), None).map_err(|e| page::Error::from(e.as_str()))?.with_cookies(Some(crate::cookies::script_access()));

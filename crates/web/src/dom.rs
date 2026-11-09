@@ -337,6 +337,15 @@ pub struct ControlState {
     pub value: Option<Arc<str>>,
     pub checked: Option<bool>,
 }
+/// Strings this long and longer are held once however many values are
+/// them (`Document::interned`).
+const INTERNED_BYTES: usize = 512;
+fn text_hash(text: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    text.hash(&mut h);
+    h.finish()
+}
 /// How many changes the log keeps before giving up on describing them.
 const CHANGES: usize = 1 << 16;
 #[derive(Clone)]
@@ -363,6 +372,14 @@ pub struct Document {
     /// after a snapshot.
     growing: Pool<Arc<String>>,
     owned_bytes: usize,
+    /// Long strings held once however many values are them (a component's
+    /// stylesheet text in every instance's shadow root, a cloned template's
+    /// text): by a hash of their content, the string and how many of this
+    /// document's values hold it, counted against `owned_bytes` once.
+    /// Reddit's components' copies filled the 64 MB it may own, and its
+    /// next page could not be parsed. (Behind an Arc: a snapshot copies a
+    /// pointer.)
+    interned: Arc<std::collections::HashMap<u64, (Arc<Box<str>>, u32)>>,
     /// Names and their atoms, shared with snapshots, copied on a new name.
     names: Arc<Vec<Arc<str>>>,
     atoms: Arc<HashMap<Arc<str>, Atom>>,
@@ -465,6 +482,7 @@ impl Document {
             owned: Pool::default(),
             growing: Pool::default(),
             owned_bytes: 0,
+            interned: Arc::default(),
             names: Arc::new(Vec::new()),
             atoms: Arc::new(HashMap::new()),
             controls: Arc::new(Default::default()),
@@ -717,7 +735,16 @@ impl Document {
     }
     fn owned_len(&self, value: TextValue) -> usize {
         if value.len == u32::MAX {
-            self.text(value).len()
+            // A string other values hold too frees nothing when this one goes.
+            let text = self.text(value);
+            if text.len() >= INTERNED_BYTES
+                && let Some((held, count)) = self.interned.get(&text_hash(text))
+                && *count > 1
+                && std::ptr::eq(held.as_ref().as_ref(), text)
+            {
+                return 0;
+            }
+            text.len()
         } else if value.len == u32::MAX - 1 {
             self.growing.get(NonZeroU32::new(value.start).unwrap()).capacity()
         } else {
@@ -733,6 +760,19 @@ impl Document {
         if let Some(offset) = text_start.checked_sub(source_start).filter(|offset| *offset <= self.source.len() && text.len() <= self.source.len() - *offset) {
             return Ok(TextValue { start: offset as u32, len: text.len() as u32 });
         }
+        // A long string the document holds already: held again, not copied.
+        let key = (text.len() >= INTERNED_BYTES).then(|| text_hash(&text));
+        if let Some(k) = key
+            && let Some((held, _)) = self.interned.get(&k)
+            && held.as_ref().as_ref() == text.as_ref()
+        {
+            let held = held.clone();
+            if let Some(entry) = Arc::make_mut(&mut self.interned).get_mut(&k) {
+                entry.1 += 1;
+            }
+            let id = self.owned.insert(held);
+            return Ok(TextValue { start: id.get(), len: u32::MAX });
+        }
         let retained = self.owned_bytes.saturating_sub(credit);
         if text.len() > self.limits.owned_text_bytes.saturating_sub(retained) {
             return Err(Error::TextLimit);
@@ -744,13 +784,34 @@ impl Document {
         let retained: Box<str> = text.as_ref().into();
         #[cfg(not(feature = "baseline-storage"))]
         let retained = text.into_owned().into_boxed_str();
-        let id = self.owned.insert(Arc::new(retained));
+        let retained = Arc::new(retained);
+        // Held once from now on (unless another string of its hash is: that
+        // one keeps its place, and this is held as any other).
+        if let Some(k) = key {
+            Arc::make_mut(&mut self.interned).entry(k).or_insert_with(|| (retained.clone(), 1));
+        }
+        let id = self.owned.insert(retained);
         self.owned_bytes += len;
         Ok(TextValue { start: id.get(), len: u32::MAX })
     }
     fn free_text(&mut self, value: TextValue) {
         if value.len == u32::MAX {
-            self.owned_bytes -= self.owned.remove(NonZeroU32::new(value.start).unwrap()).len();
+            let removed = self.owned.remove(NonZeroU32::new(value.start).unwrap());
+            if removed.len() >= INTERNED_BYTES {
+                let k = text_hash(&removed);
+                if self.interned.get(&k).is_some_and(|(held, _)| Arc::ptr_eq(held, &removed)) {
+                    let map = Arc::make_mut(&mut self.interned);
+                    if let Some((_, count)) = map.get_mut(&k)
+                        && *count > 1
+                    {
+                        // Other values hold it still.
+                        *count -= 1;
+                        return;
+                    }
+                    map.remove(&k);
+                }
+            }
+            self.owned_bytes -= removed.len();
         } else if value.len == u32::MAX - 1 {
             self.owned_bytes -= self.growing.remove(NonZeroU32::new(value.start).unwrap()).capacity();
         }

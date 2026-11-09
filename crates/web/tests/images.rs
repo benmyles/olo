@@ -121,7 +121,11 @@ fn asset_premultiplication_and_shared_binding_budgets() {
     assert!(Arc::ptr_eq(set.get(images[0]).unwrap(), set.get(images[1]).unwrap()));
     assert!(Set::new(&doc, vec![(images[0], pixel.clone()), (images[0], pixel.clone())], Default::default(), None).is_err());
     let distinct = Image::from_rgba(1, 1, vec![255; 4], Default::default(), None).unwrap();
-    assert!(Set::new(&doc, vec![(images[0], pixel), (images[1], distinct)], budget, None).is_err());
+    // Past the budget: the latest bound kept, the earliest let go (the
+    // page goes on without it).
+    let over = Set::new(&doc, vec![(images[0], pixel), (images[1], distinct.clone())], budget, None).unwrap();
+    assert!(over.get(images[0]).is_none());
+    assert!(Arc::ptr_eq(over.get(images[1]).unwrap(), &distinct));
     let other = html::parse(Arc::from("<img>"), Default::default(), None).unwrap().document;
     assert!(set.validate(&other).is_err());
 }

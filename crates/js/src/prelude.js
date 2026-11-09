@@ -21,6 +21,9 @@
 
   // ---------- Events
   const listenerMaps = new WeakMap();
+  // Told of each `slotchange` listener (slots watch their assigned nodes
+  // from then on; see the slots below).
+  let slotchangeListened = null;
   const listenersOf = (target, create) => {
     let m = listenerMaps.get(target);
     if (!m && create) { m = new Map(); listenerMaps.set(target, m); }
@@ -150,6 +153,7 @@
       if (list.some((e) => e.listener === listener && e.capture === capture)) return;
       list.push({ listener, capture, once });
       N.count('listener');
+      if (type === 'slotchange' && slotchangeListened) slotchangeListened(target);
       if (signal && typeof signal.addEventListener === 'function') signal.addEventListener('abort', () => target.removeEventListener(type, listener, capture), { once: true });
     },
     removeEventListener(type, listener, options) {
@@ -1006,6 +1010,44 @@
     assignedElements(options) { return this.assignedNodes(options).filter((n) => N.nodeType(n) === 1); },
     assign() {},
   });
+  // `slotchange` (DOM §4.2.2.5: signal a slot change): a slot whose
+  // assigned nodes changed (it was inserted where a host has children for
+  // it, a child came, went or asked for another slot) gets one, bubbling
+  // in its tree, after the change, once however many changes came. Only
+  // slots someone listens for are looked at: the slot itself, or a shadow
+  // tree it is in (Reddit's feed loads its next posts from the partial its
+  // `load-after` slot is handed, and never did).
+  {
+    const watched = new Set();
+    const last = new WeakMap();
+    let queued = false;
+    const slotsOf = (t) => {
+      if (!isNode(t)) return [];
+      if (N.nodeType(t) === 1 && N.nodeName(t) === 'SLOT') return [t];
+      return N.nodeType(t) === 1 || N.nodeType(t) === 11 ? N.query(t, 'slot', true) : [];
+    };
+    const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+    const check = () => {
+      queued = false;
+      const changed = [];
+      for (const t of watched) {
+        for (const slot of slotsOf(t)) {
+          const now = assignedTo(slot);
+          if (!same(now, last.get(slot) || [])) {
+            last.set(slot, now);
+            changed.push(slot);
+          }
+        }
+      }
+      for (const slot of changed) slot.dispatchEvent(new Event('slotchange', { bubbles: true }));
+    };
+    const queue = () => { if (!queued && watched.size) { queued = true; Promise.resolve().then(check); } };
+    slotchangeListened = (target) => { watched.add(target); queue(); };
+    for (const k of ['append', 'insertBefore', 'remove', 'setAttr', 'removeAttr', 'setInnerHTML', 'setTextContent']) {
+      const f = N[k];
+      N[k] = (...args) => { const r = f(...args); if (watched.size) queue(); return r; };
+    }
+  }
   // The parser's scripts and links (already run and loaded), wrapped only
   // now that each tag has its class: a wrapper keeps the prototype it was
   // made with.
@@ -1285,6 +1327,14 @@
     static now() { return Math.floor(timeOrigin + performanceNow()); }
   };
   global.performance = { now: performanceNow, timeOrigin, timing: { navigationStart: timeOrigin, domLoading: timeOrigin, domInteractive: timeOrigin, domContentLoadedEventStart: timeOrigin, domContentLoadedEventEnd: timeOrigin, domComplete: timeOrigin, loadEventStart: timeOrigin, loadEventEnd: timeOrigin, fetchStart: timeOrigin, responseStart: timeOrigin, responseEnd: timeOrigin, requestStart: timeOrigin, connectStart: timeOrigin, connectEnd: timeOrigin, domainLookupStart: timeOrigin, domainLookupEnd: timeOrigin, redirectStart: 0, redirectEnd: 0, unloadEventStart: 0, unloadEventEnd: 0, secureConnectionStart: 0 }, navigation: { type: 0, redirectCount: 0 }, mark() { return {}; }, measure() { return {}; }, clearMarks() {}, clearMeasures() {}, clearResourceTimings() {}, getEntries: () => [], getEntriesByType: () => [], getEntriesByName: () => [], setResourceTimingBufferSize() {}, addEventListener() {}, removeEventListener() {}, toJSON() { return {}; }, memory: { usedJSHeapSize: 1e7, totalJSHeapSize: 2e7, jsHeapSizeLimit: 2e9 }, eventCounts: new Map() };
+  // performance.navigation (Navigation Timing 1, still read: Reddit's
+  // feed compares its type against the interface's constants).
+  global.PerformanceNavigation = class PerformanceNavigation { constructor() { throw new TypeError('Illegal constructor'); } };
+  for (const [k, v] of Object.entries({ TYPE_NAVIGATE: 0, TYPE_RELOAD: 1, TYPE_BACK_FORWARD: 2, TYPE_RESERVED: 255 })) {
+    Object.defineProperty(global.PerformanceNavigation, k, { value: v, enumerable: true });
+    Object.defineProperty(global.PerformanceNavigation.prototype, k, { value: v, enumerable: true });
+  }
+  Object.setPrototypeOf(global.performance.navigation, global.PerformanceNavigation.prototype);
   global.PerformanceObserver = class PerformanceObserver { constructor(cb) { this.cb = cb; } observe() {} disconnect() {} takeRecords() { return []; } static get supportedEntryTypes() { return ['navigation', 'resource', 'paint', 'mark', 'measure', 'longtask', 'largest-contentful-paint', 'layout-shift', 'first-input']; } };
   // The host's frame clock: frame 1 at a display frame (callbacks run),
   // 0 between frames (they wait), -1 for none (frames every 16 ms of the
@@ -1808,8 +1858,8 @@
     constructor() { super(); this.readyState = 0; this.status = 0; this.statusText = ''; this.responseText = ''; this.response = ''; this.responseType = ''; this.responseURL = ''; this.responseXML = null; this.timeout = 0; this.withCredentials = false; this.upload = new EventTargetCtor(); this._headers = {}; this.onreadystatechange = null; this.onload = null; this.onerror = null; this.onabort = null; this.ontimeout = null; this.onprogress = null; this.onloadend = null; this.onloadstart = null; }
     open(method, url, async) { this._method = String(method || 'GET').toUpperCase(); this._url = resolveURL(String(url)); this._sync = async === false; this.readyState = 1; this._change(); }
     setRequestHeader(k, v) { this._headers[String(k).toLowerCase()] = String(v); }
-    getResponseHeader(k) { return this._response && String(k).toLowerCase() === 'content-type' ? this._response.contentType : null; }
-    getAllResponseHeaders() { return this._response ? 'content-type: ' + this._response.contentType + '\r\n' : ''; }
+    getResponseHeader(k) { return this._response ? global.__olo_responseHeaders(this._response).get(String(k)) : null; }
+    getAllResponseHeaders() { if (!this._response) return ''; const lines = []; global.__olo_responseHeaders(this._response).forEach((v, k) => lines.push(k + ': ' + v)); return lines.map((l) => l + '\r\n').join(''); }
     overrideMimeType() {} abort() { this.readyState = 0; if (this.onabort) this.onabort(new ProgressEvent('abort')); }
     _change() { if (this.onreadystatechange) { try { this.onreadystatechange(new Event('readystatechange')); } catch (e) { reportError(e); } } dispatch(this, new Event('readystatechange')); }
     _finish(r) {
@@ -1876,7 +1926,7 @@
   // fetch: the browser fetches, off this thread, and answers by id.
   const fetches = new Map();
   global.__olo_fetchStart = (url, method, body, headers) => new Promise((resolve, reject) => { const id = N.fetchAsync(url, method, body, headers || ''); if (id == null) reject(new TypeError('no network')); else fetches.set(id, { resolve, reject }); });
-  global.__olo_fetched = (id, ok, status, contentType, bytes, urlOrError) => { const p = fetches.get(id); if (!p) return; fetches.delete(id); if (ok) p.resolve({ status, contentType, body: bytes, url: urlOrError }); else p.reject(new TypeError(String(urlOrError))); };
+  global.__olo_fetched = (id, ok, status, contentType, bytes, urlOrError, headers) => { const p = fetches.get(id); if (!p) return; fetches.delete(id); if (ok) p.resolve({ status, contentType, body: bytes, url: urlOrError, headers }); else p.reject(new TypeError(String(urlOrError))); };
   global.Notification = class Notification extends EventTargetCtor { constructor() { super(); } static get permission() { return 'default'; } static requestPermission() { return Promise.resolve('denied'); } close() {} };
   // Web Animations 1 on the page's clock (performance.now()): each
   // animation's keyframes and timing go to the engine (N.animationSet),

@@ -271,3 +271,16 @@ fn a_column_flex_item_keeps_its_content_height_in_a_clamped_grid_item() {
     assert_eq!(contents.height, 400., "not shrunk below its content");
     assert_eq!(legal.y, contents.y + 400.);
 }
+/// An element with nothing to measure (an empty inline, a custom element
+/// with no content) sits where it is, as Chrome places one: after the
+/// box before it, empty (Reddit's feed waits for its empty next-page
+/// partial to near the viewport).
+#[test]
+fn an_empty_element_is_placed_where_it_sits() {
+    let (mut measurer, host, doc, viewport) =
+        measurer_for("<!doctype html><style>body{margin:8px}</style><div style='height:300px'>top</div><x-p id=empty></x-p><div id=after style='height:10px'></div>");
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    let empty = m.placed_box(&doc, find(&doc, "empty")).unwrap();
+    assert_eq!((empty.x, empty.y, empty.width, empty.height), (8., 308., 0., 0.));
+    assert!(m.border_box(find(&doc, "empty")).is_none(), "nothing of its own to measure");
+}

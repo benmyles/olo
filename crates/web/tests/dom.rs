@@ -429,3 +429,35 @@ fn template_allocation_and_owned_depth_are_preflighted_and_failed_clones_release
     doc.destroy_subtree(host).unwrap();
     assert_eq!(doc.memory().live_nodes, 1);
 }
+/// A long string many values are (a component's stylesheet in each
+/// instance's shadow root) is held, and counted against the document's
+/// owned text, once; it is freed when the last value holding it goes,
+/// and a snapshot taken meanwhile keeps its own count.
+#[test]
+fn long_strings_are_held_once_however_many_values_are_them() {
+    let mut doc = Document::new(Arc::from(""), Limits { owned_text_bytes: 64 * 1024, ..Limits::default() }).unwrap();
+    let body = element(&mut doc, "body");
+    let root = doc.root();
+    doc.append_child(root, body).unwrap();
+    let sheet: String = ".a{color:red}".repeat(400);
+    let mut texts = Vec::new();
+    // Far more copies than the 64 KB the document may own as copies.
+    for _ in 0..100 {
+        let t = doc.create_text(sheet.as_str()).unwrap();
+        doc.append_child(body, t).unwrap();
+        texts.push(t);
+    }
+    let owned = doc.memory().owned_text_bytes;
+    assert!(owned < 2 * sheet.len(), "held once: {owned}");
+    let snapshot = doc.clone();
+    for &t in &texts[..99] {
+        doc.detach(t).unwrap();
+        doc.destroy_subtree(t).unwrap();
+    }
+    assert_eq!(doc.memory().owned_text_bytes, owned, "one value holds it still");
+    doc.detach(texts[99]).unwrap();
+    doc.destroy_subtree(texts[99]).unwrap();
+    assert!(doc.memory().owned_text_bytes < sheet.len(), "freed with the last");
+    assert_eq!(snapshot.memory().owned_text_bytes, owned, "the snapshot's count is its own");
+    assert_eq!(snapshot.value(texts[0]).unwrap(), Some(sheet.as_str()));
+}

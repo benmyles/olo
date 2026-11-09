@@ -62,7 +62,7 @@ fn modules_import_bare_names_through_the_import_map() {
             "https://cdn.test/lib/math.js" => "export const twice = n => n * 2;",
             _ => return Err(format!("unexpected fetch {url}")),
         };
-        Ok(olo_js::Fetched { status: 200, content_type: "text/javascript".into(), body: body.as_bytes().to_vec(), url: url.into() })
+        Ok(olo_js::Fetched { status: 200, content_type: "text/javascript".into(), body: body.as_bytes().to_vec(), url: url.into(), headers: String::new() })
     });
     let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, Some(fetcher), None).unwrap();
     let report = realm.run_page(&scripts);
@@ -686,4 +686,54 @@ fn ids_and_names_follow_the_document() {
         </script>");
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] 1 object FORM undefined", "[log] true true", "[log] 2 1", "[log]  undefined", "[log] true ", "[log] true pic"]);
+}
+/// A body decoded as it streams: TextDecoder holds a sequence a chunk
+/// cuts (`{ stream: true }`), and `pipeThrough` a TextDecoderStream pipes
+/// the bytes through it (it piped nothing: Reddit's feed got no next page).
+#[test]
+fn streamed_text_decodes_across_chunks_and_through_pipes() {
+    let (report, _) = run("<body><script>\
+        const text = 'h\\u00e9llo \\ud83d\\ude00 w\\u00f6rld';\
+        const bytes = new TextEncoder().encode(text);\
+        const d = new TextDecoder(); let s = '';\
+        for (let i = 0; i < bytes.length; i++) s += d.decode(bytes.subarray(i, i + 1), { stream: true });\
+        s += d.decode();\
+        console.log(s === text, new TextDecoder().decode(new Uint8Array([0xff, 0x41])));\
+        const parts = new ReadableStream({ start(c) { for (let i = 0; i < bytes.length; i += 3) c.enqueue(bytes.subarray(i, i + 3)); c.close(); } });\
+        (async () => { let out = ''; for await (const chunk of parts.pipeThrough(new TextDecoderStream())) out += chunk; console.log(out === text); })();\
+        new Response(bytes).body.pipeThrough(new TextDecoderStream()).getReader().read().then((r) => console.log(r.value === text));\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] true \u{fffd}A", "[log] true", "[log] true"]);
+}
+/// `slotchange` (DOM §4.2.2.5): a slot whose assigned nodes change gets
+/// one after the change, once however many changes came; only listened
+/// slots are looked at (Reddit's feed loads its next page from what its
+/// `load-after` slot is handed).
+#[test]
+fn slots_tell_when_what_they_are_handed_changes() {
+    let (report, _) = run("<body><x-h><b slot=a>1</b></x-h><script>\
+        const host = document.querySelector('x-h'); const root = host.attachShadow({ mode: 'open' });\
+        const slot = document.createElement('slot'); slot.name = 'a';\
+        slot.addEventListener('slotchange', (e) => console.log('change', e.target.assignedElements().map((x) => x.textContent).join(',')));\
+        root.append(slot);\
+        Promise.resolve().then(() => { const c = document.createElement('i'); c.slot = 'a'; c.textContent = '2'; host.append(c); const d = document.createElement('i'); d.slot = 'a'; d.textContent = '3'; host.append(d); });\
+        setTimeout(() => { host.firstElementChild.slot = 'b'; }, 0);\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] change 1", "[log] change 1,2,3", "[log] change 2,3"]);
+}
+/// A response's headers reach its reader: all of a same-origin one's
+/// (bar Set-Cookie), a cross-origin one's safelisted ones and those it
+/// exposes, with its type saying which.
+#[test]
+fn response_headers_are_shown_as_fetch_filters_them() {
+    let (report, _) = run("<body><script>\
+        const lines = 'content-type: text/html\\nx-verified-res: 1\\nx-other: 2\\naccess-control-expose-headers: x-other';\
+        const own = __olo_responseHeaders({ url: 'https://example.test/svc', headers: lines, contentType: 'text/html' });\
+        const theirs = __olo_responseHeaders({ url: 'https://elsewhere.test/svc', headers: lines, contentType: 'text/html' });\
+        console.log(own.get('x-verified-res'), own.get('x-other'), theirs.get('x-verified-res'), theirs.get('x-other'), theirs.get('content-type'));\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] 1 2 null 2 text/html"]);
 }

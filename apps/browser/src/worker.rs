@@ -636,7 +636,10 @@ impl Loads {
                     },
                     olo_js::RequestKind::Text { method, body, headers } => {
                         let fetched = this.loader.script_load(&this.document.url, url, method, headers, body, &this.cancel).await;
-                        report(&this, fetched.map(|(status, content_type, body, url)| olo_js::Loaded::Text(olo_js::Fetched { status, content_type, body, url })).map_err(|e| e.to_string()));
+                        report(
+                            &this,
+                            fetched.map(|(status, content_type, body, url, headers)| olo_js::Loaded::Text(olo_js::Fetched { status, content_type, body, url, headers })).map_err(|e| e.to_string()),
+                        );
                     }
                 }
             });
@@ -654,7 +657,7 @@ impl Loads {
             } else {
                 this.loader.request(&this.document.url, url, method, headers, body, &this.cancel)
             };
-            fetched.map(|(status, content_type, body, url)| olo_js::Fetched { status, content_type, body, url }).map_err(|e| e.to_string())
+            fetched.map(|(status, content_type, body, url, headers)| olo_js::Fetched { status, content_type, body, url, headers }).map_err(|e| e.to_string())
         })
     }
     /// What workers start their fetch() with: on the network runtime, no
@@ -668,7 +671,7 @@ impl Loads {
                     Ok(url) => task.script_load(&document, url, &method, &headers, &body, &cancel).await.map_err(|e| e.to_string()),
                     Err(e) => Err(e.to_string()),
                 };
-                done(result.map(|(status, content_type, body, url)| olo_js::Fetched { status, content_type, body, url }));
+                done(result.map(|(status, content_type, body, url, headers)| olo_js::Fetched { status, content_type, body, url, headers }));
             });
         })
     }
@@ -1627,15 +1630,15 @@ fn render(
                 Box::new(move |url: &str, method: &str, body: &[u8], headers: &str| {
                     let url = url::Url::parse(url).map_err(|e| e.to_string())?;
                     if method == "GET" && headers == olo_js::SCRIPT_DESTINATION {
-                        let (status, content_type, body, final_url) = loader.script_response(&fetch_document, url, &cancel).map_err(|e| e.to_string())?;
-                        return Ok(olo_js::Fetched { status, content_type, body, url: final_url });
+                        let (status, content_type, body, final_url, headers) = loader.script_response(&fetch_document, url, &cancel).map_err(|e| e.to_string())?;
+                        return Ok(olo_js::Fetched { status, content_type, body, url: final_url, headers });
                     }
                     if method == "GET" && headers.is_empty() {
-                        let (status, content_type, body, final_url) = loader.text(&fetch_document, url, &cancel).map_err(|e| e.to_string())?;
-                        return Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url });
+                        let (status, content_type, body, final_url, headers) = loader.text(&fetch_document, url, &cancel).map_err(|e| e.to_string())?;
+                        return Ok(olo_js::Fetched { status, content_type, body: body.into_bytes(), url: final_url, headers });
                     }
-                    let (status, content_type, body, final_url) = loader.request(&fetch_document, url, method, headers, body, &cancel).map_err(|e| e.to_string())?;
-                    Ok(olo_js::Fetched { status, content_type, body, url: final_url })
+                    let (status, content_type, body, final_url, headers) = loader.request(&fetch_document, url, method, headers, body, &cancel).map_err(|e| e.to_string())?;
+                    Ok(olo_js::Fetched { status, content_type, body, url: final_url, headers })
                 })
             };
             // Measurements lay the document out with the styles and fonts
@@ -2071,6 +2074,9 @@ fn render(
         (e.y + e.height).max(0.)
     };
     let scroll = sought.map_or(r.scroll, |y| (y * r.key.scale).round().max(0.) as i32).clamp(0, max_scroll(&r.key, extent));
+    if pass == Pass::Live && olo_web::env_on!("OLO_SCROLL_DEBUG") {
+        eprintln!("  extent {extent:.0}, scroll {scroll} (asked {}), sought {sought:?}", r.scroll);
+    }
     let visible = layout::Rect { x: 0., y: f64::from(scroll) / r.key.scale, width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale };
     // The labels (what agents read of the page, what the pointer is over)
     // are made for a band of the page a viewport above and below what

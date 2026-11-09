@@ -178,6 +178,11 @@ pub struct Resource {
     pub bytes: Vec<u8>,
     pub mime: Option<mime::Mime>,
     pub status: Option<u16>,
+    /// The response's headers as `name: value` lines (names lower case,
+    /// `Set-Cookie` left out, as Fetch never shows it to scripts), when it
+    /// came from the network for a script (else none: its media type says
+    /// what there is).
+    pub headers: String,
     document_encoding: Option<&'static encoding_rs::Encoding>,
 }
 impl Loader {
@@ -278,26 +283,26 @@ impl Loader {
         Ok(text.into_owned())
     }
     /// A script's own GET: status, media type and the body as text.
-    pub fn text(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, String, String)> {
+    pub fn text(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, String, String, String)> {
         let resource = self.fetch(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Fetch)?;
         let charset = resource.mime.as_ref().and_then(|m| m.get_param("charset")).and_then(|p| encoding_rs::Encoding::for_label(p.as_str().as_bytes()));
         let encoding = encoding_rs::Encoding::for_bom(&resource.bytes).map(|b| b.0).or(charset).unwrap_or(encoding_rs::UTF_8);
         let (text, _, _) = encoding.decode(&resource.bytes);
-        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), text.into_owned(), resource.url.to_string()))
+        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), text.into_owned(), resource.url.to_string(), resource.headers))
     }
     /// A module script's GET (`olo_js::SCRIPT_DESTINATION`): as a script, so
     /// cached and joined with the fetch started for it with the page.
-    pub fn script_response(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
+    pub fn script_response(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String, String)> {
         let resource = self.fetch(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Script)?;
-        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string()))
+        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string(), resource.headers))
     }
     /// A script's request with its method, headers (`name: value` lines)
     /// and body (fetch(), XMLHttpRequest): status, content type, bytes,
     /// final URL. Not cached.
-    pub fn request(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
+    pub fn request(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String, String)> {
         self.runtime.block_on(self.request_async(initiator, url, method, headers, body, cancel))
     }
-    async fn request_async(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
+    async fn request_async(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String, String)> {
         let outgoing = Outgoing::new(method, headers, body)?;
         if olo_web::env_on!("OLO_FETCH_DEBUG") {
             eprintln!(
@@ -315,13 +320,13 @@ impl Loader {
         if olo_web::env_on!("OLO_FETCH_DEBUG") && resource.status.is_some_and(|s| s >= 400) {
             eprintln!("  answered {:?}: {}", resource.status, String::from_utf8_lossy(&resource.bytes[..resource.bytes.len().min(600)]));
         }
-        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string()))
+        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string(), resource.headers))
     }
     /// A live page's script's load (fetch(), XMLHttpRequest, a module):
     /// status, content type, bytes, final URL, without a thread waiting on
     /// it (run it with `spawn`).
-    pub async fn script_load(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
-        let respond = |r: Resource| (r.status.unwrap_or(200), r.mime.as_ref().map(ToString::to_string).unwrap_or_default(), r.bytes, r.url.to_string());
+    pub async fn script_load(&self, initiator: &Url, url: Url, method: &str, headers: &str, body: &[u8], cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String, String)> {
+        let respond = |r: Resource| (r.status.unwrap_or(200), r.mime.as_ref().map(ToString::to_string).unwrap_or_default(), r.bytes, r.url.to_string(), r.headers);
         if method == "GET" && headers == olo_js::SCRIPT_DESTINATION {
             self.fetch_async(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Script).await.map(respond)
         } else if method == "GET" && headers.is_empty() {
@@ -346,9 +351,9 @@ impl Loader {
         self.runtime.spawn(work);
     }
     /// A fetch() for scripts: status, content type, bytes, final URL.
-    pub fn bytes(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String)> {
+    pub fn bytes(&self, initiator: &Url, url: Url, cancel: &Cancel) -> page::Result<(u16, String, Vec<u8>, String, String)> {
         let resource = self.fetch(url, Some(initiator), SCRIPT_LIMIT, cancel, |_| {}, Kind::Fetch)?;
-        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string()))
+        Ok((resource.status.unwrap_or(200), resource.mime.as_ref().map(ToString::to_string).unwrap_or_default(), resource.bytes, resource.url.to_string(), resource.headers))
     }
     /// A media file (a `<video>`'s), whole, up to `limit` bytes: its bytes
     /// and its type. Not kept in the cache (it is held by its player).
@@ -503,13 +508,13 @@ impl Loader {
             .map_err(|_| "data: URL rejected or cancelled")?;
             progress(bytes.len());
             let mime = data.mime_type().to_string().parse::<mime::Mime>().ok();
-            return Ok(Resource { url, bytes, mime, status: Some(200), document_encoding: None });
+            return Ok(Resource { url, bytes, mime, status: Some(200), document_encoding: None, headers: String::new() });
         }
         let allow_file = url.scheme() == "file";
         let cacheable = !matches!(kind, Kind::Document | Kind::Fetch) && url.scheme() != "file";
         if cacheable && let Some(c) = self.cache.lock().unwrap().entries.get(url.as_str()).cloned() {
             check_url(&url, initiator)?;
-            return Ok(Resource { url: c.url.clone(), bytes: c.bytes.clone(), mime: c.mime.clone(), status: Some(c.status), document_encoding: None });
+            return Ok(Resource { url: c.url.clone(), bytes: c.bytes.clone(), mime: c.mime.clone(), status: Some(c.status), document_encoding: None, headers: String::new() });
         }
         // Started ahead: joined (waited for, or done here first if it is
         // still queued).
@@ -528,7 +533,7 @@ impl Loader {
                 Some(Some(c)) => {
                     remember(&self.cache, url.as_str(), &c);
                     progress(c.bytes.len());
-                    return Ok(Resource { url: c.url.clone(), bytes: c.bytes.clone(), mime: c.mime.clone(), status: Some(c.status), document_encoding: None });
+                    return Ok(Resource { url: c.url.clone(), bytes: c.bytes.clone(), mime: c.mime.clone(), status: Some(c.status), document_encoding: None, headers: String::new() });
                 }
                 // It failed: fetched again below, its error said there.
                 Some(None) => {}
@@ -881,7 +886,7 @@ async fn get(
                             }
                             .parse()?,
                         );
-                        return Ok(Resource { url, bytes, mime, status: None, document_encoding: None });
+                        return Ok(Resource { url, bytes, mime, status: None, document_encoding: None, headers: String::new() });
                     }
                     let mut request = client.request(method.clone(), url.clone());
                     if let Some(referrer) = initiator.and_then(|from| referrer(from, &url)) {
@@ -974,17 +979,35 @@ async fn get(
                         continue;
                     }
                     let mime = response.headers().get(header::CONTENT_TYPE).map(|h| h.to_str()?.parse::<mime::Mime>().map_err(page::Error::from)).transpose()?;
+                    // (Only a script's own request shows its headers.)
+                    let headers = if matches!(kind, Kind::Fetch) { header_lines(response.headers()) } else { String::new() };
                     let mut bytes = Vec::new();
                     while let Some(chunk) = response.chunk().await? {
                         append(&mut bytes, &chunk, limit)?;
                         progress(bytes.len());
                     }
-                    return Ok(Resource { url, bytes, mime, status: Some(status.as_u16()), document_encoding: None });
+                    return Ok(Resource { url, bytes, mime, status: Some(status.as_u16()), document_encoding: None, headers });
                 }
                 Err("Too many HTTP redirects".into())
             }
         }
     }
+}
+/// A response's headers as scripts may read them: `name: value` lines, a
+/// name repeated as the response repeats it, without `Set-Cookie`.
+fn header_lines(headers: &reqwest::header::HeaderMap) -> String {
+    let mut out = String::new();
+    for (name, value) in headers {
+        if matches!(name.as_str(), "set-cookie" | "set-cookie2") {
+            continue;
+        }
+        let Ok(value) = value.to_str() else { continue };
+        out.push_str(name.as_str());
+        out.push_str(": ");
+        out.push_str(value);
+        out.push('\n');
+    }
+    out
 }
 /// The Referer a request from `from` (the page, or a stylesheet) to `to`
 /// carries, by the default policy, strict-origin-when-cross-origin (as
@@ -1039,7 +1062,7 @@ impl Resource {
     /// This resource's identity (URL, media type, status, encoding) without
     /// its bytes, for loading relative to it later.
     pub fn light(&self) -> Resource {
-        Resource { url: self.url.clone(), bytes: Vec::new(), mime: self.mime.clone(), status: self.status, document_encoding: Some(self.encoding()) }
+        Resource { url: self.url.clone(), bytes: Vec::new(), mime: self.mime.clone(), status: self.status, document_encoding: Some(self.encoding()), headers: String::new() }
     }
     fn encoding(&self) -> &'static encoding_rs::Encoding {
         self.document_encoding.unwrap_or_else(|| {
@@ -1298,7 +1321,7 @@ mod tests {
     fn wrong_css_mime_is_rejected() {
         let (base, server) = server(&[("/theme", "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\nbody{color:red}")], 1);
         let loader = Loader::new().unwrap();
-        let doc = Resource { url: Url::parse(&base).unwrap(), bytes: vec![], mime: None, status: None, document_encoding: None };
+        let doc = Resource { url: Url::parse(&base).unwrap(), bytes: vec![], mime: None, status: None, document_encoding: None, headers: String::new() };
         assert!(loader.stylesheet(&doc, None, "/theme", &Cancel::default(), |_| {}).is_err());
         server.join().unwrap();
     }
@@ -1306,7 +1329,7 @@ mod tests {
     fn image_data_and_http_use_bounded_worker_decode() {
         let data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
         let loader = Loader::new().unwrap();
-        let document = Resource { url: Url::parse("https://example.test/page").unwrap(), bytes: Vec::new(), mime: None, status: None, document_encoding: None };
+        let document = Resource { url: Url::parse("https://example.test/page").unwrap(), bytes: Vec::new(), mime: None, status: None, document_encoding: None, headers: String::new() };
         let no_svg = |_: &[u8]| -> page::Result<Arc<olo_web::image::Image>> { Err("no SVG here".into()) };
         let image = loader.image(&document, Url::parse(data).unwrap(), 4, &Cancel::default(), |_| {}, &no_svg).unwrap();
         assert_eq!(image.rgba(), [255, 0, 0, 255]);
@@ -1317,7 +1340,7 @@ mod tests {
         let png = data_url::DataUrl::process(data).unwrap().decode_to_vec().unwrap().0;
         let socket = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = Url::parse(&format!("http://{}/red.png", socket.local_addr().unwrap())).unwrap();
-        let document = Resource { url: url.clone(), bytes: Vec::new(), mime: None, status: None, document_encoding: None };
+        let document = Resource { url: url.clone(), bytes: Vec::new(), mime: None, status: None, document_encoding: None, headers: String::new() };
         let server = thread::spawn(move || {
             let (mut stream, _) = socket.accept().unwrap();
             let mut request = [0; 4096];

@@ -67,7 +67,58 @@
   global.atob = (s) => { const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'; s = String(s).replace(/[^A-Za-z0-9+\/]/g, ''); let out = '', bits = 0, acc = 0; for (const c of s) { acc = (acc << 6) | chars.indexOf(c); bits += 6; if (bits >= 8) { bits -= 8; out += String.fromCharCode((acc >> bits) & 255); } } return out; };
   global.btoa = (s) => { const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'; s = String(s); let out = ''; for (let i = 0; i < s.length; i += 3) { const a = s.charCodeAt(i), b = s.charCodeAt(i + 1), c = s.charCodeAt(i + 2); if (a > 255 || b > 255 || c > 255) throw new DOMException('Invalid character', 'InvalidCharacterError'); const n = (a << 16) | ((b || 0) << 8) | (c || 0); out += chars[n >> 18] + chars[(n >> 12) & 63] + (isNaN(b) ? '=' : chars[(n >> 6) & 63]) + (isNaN(c) ? '=' : chars[n & 63]); } return out; };
   global.TextEncoder = class TextEncoder { get encoding() { return 'utf-8'; } encode(s) { const str = unescape(encodeURIComponent(String(s == null ? '' : s))); const out = new Uint8Array(str.length); for (let i = 0; i < str.length; i++) out[i] = str.charCodeAt(i); return out; } encodeInto(s, dest) { const b = this.encode(s); const n = Math.min(b.length, dest.length); dest.set(b.subarray(0, n)); return { read: n, written: n }; } };
-  global.TextDecoder = class TextDecoder { constructor(label) { this.encoding = (label || 'utf-8').toLowerCase(); } decode(buf) { if (!buf) return ''; const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf.buffer || buf, buf.byteOffset || 0, buf.byteLength); let s = ''; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); try { return decodeURIComponent(escape(s)); } catch (e) { return s; } } };
+  // TextDecoder (Encoding §8.1): UTF-8 (and windows-1252 / latin1 as
+  // bytes), a sequence cut by a chunk's end held for the next with
+  // `{ stream: true }` (a streamed body decoded chunk by chunk), bad bytes
+  // as U+FFFD (or an error, `fatal`), the BOM dropped unless `ignoreBOM`.
+  global.TextDecoder = class TextDecoder {
+    constructor(label, options) {
+      const l = String(label === undefined ? 'utf-8' : label).trim().toLowerCase();
+      this.encoding = ['utf-8', 'utf8', 'unicode-1-1-utf-8'].includes(l) ? 'utf-8' : ['latin1', 'iso-8859-1', 'windows-1252', 'ascii', 'us-ascii'].includes(l) ? 'windows-1252' : l;
+      this.fatal = !!(options && options.fatal); this.ignoreBOM = !!(options && options.ignoreBOM);
+      this._held = null; this._started = false;
+    }
+    decode(buf, options) {
+      const stream = !!(options && options.stream);
+      let bytes = buf == null ? new Uint8Array(0) : buf instanceof ArrayBuffer ? new Uint8Array(buf) : ArrayBuffer.isView(buf) ? new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) : new Uint8Array(0);
+      if (this._held) { const b = new Uint8Array(this._held.length + bytes.length); b.set(this._held); b.set(bytes, this._held.length); bytes = b; this._held = null; }
+      let end = bytes.length;
+      if (stream && this.encoding === 'utf-8') {
+        // A lead byte near the end whose sequence goes past it: held.
+        let i = end - 1, back = 0;
+        while (i >= 0 && back < 3 && (bytes[i] & 0xc0) === 0x80) { i--; back++; }
+        if (i >= 0) { const b = bytes[i]; const need = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1; if (need > end - i) { this._held = bytes.slice(i); end = i; } }
+      }
+      const units = [];
+      let out = '';
+      const flush = () => { out += String.fromCharCode.apply(null, units); units.length = 0; };
+      const bad = () => { if (this.fatal) throw new TypeError('The encoded data was not valid.'); units.push(0xfffd); };
+      if (this.encoding !== 'utf-8') {
+        for (let i = 0; i < end; i++) { units.push(bytes[i]); if (units.length >= 8192) flush(); }
+      } else {
+        let i = 0;
+        while (i < end) {
+          const b = bytes[i];
+          if (b < 0x80) { units.push(b); i++; }
+          else {
+            const need = b >= 0xf0 && b <= 0xf4 ? 3 : b >= 0xe0 ? 2 : b >= 0xc2 && b <= 0xdf ? 1 : -1;
+            if (need < 0) { bad(); i++; }
+            else {
+              let cp = b & (need === 3 ? 0x07 : need === 2 ? 0x0f : 0x1f), j = 1;
+              for (; j <= need && i + j < end && (bytes[i + j] & 0xc0) === 0x80; j++) cp = (cp << 6) | (bytes[i + j] & 0x3f);
+              if (j <= need || (need === 2 && (cp < 0x800 || (cp >= 0xd800 && cp <= 0xdfff))) || (need === 3 && (cp < 0x10000 || cp > 0x10ffff))) { bad(); i += Math.max(1, j - (j <= need ? 0 : 0)); }
+              else { if (cp >= 0x10000) { cp -= 0x10000; units.push(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff)); } else units.push(cp); i += need + 1; }
+            }
+          }
+          if (units.length >= 8192) flush();
+        }
+      }
+      flush();
+      if (!this._started && !this.ignoreBOM && out.charCodeAt(0) === 0xfeff) out = out.slice(1);
+      this._started = stream;
+      return out;
+    }
+  };
   const encodeText = (s) => new TextEncoder().encode(s);
   const decodeText = (b) => new TextDecoder().decode(b);
   const resolveURL = (s) => { try { return new URL(s, N.url()).href; } catch (e) { return String(s); } };
@@ -136,11 +187,78 @@
     }
     cancel() { this._closed = true; this._queue = []; this._wake(); return Promise.resolve(); }
     [Symbol.asyncIterator]() { const r = this.getReader(); return { next: () => r.read(), return: () => { r.releaseLock(); return Promise.resolve({ done: true, value: undefined }); } }; }
-    pipeThrough(transform) { return transform && transform.readable ? transform.readable : this; }
+    // Every chunk written to `dest` in order, then closed (or aborted with
+    // the error), as Streams §4.9.4 pipes.
+    async pipeTo(dest, options) {
+      const reader = this.getReader(); const writer = dest.getWriter();
+      try {
+        for (;;) { const { done, value } = await reader.read(); if (done) break; await writer.write(value); }
+        if (!(options && options.preventClose)) await writer.close();
+      } catch (e) { if (!(options && options.preventAbort)) await writer.abort(e); throw e; }
+      finally { reader.releaseLock(); writer.releaseLock(); }
+    }
+    // (It piped nothing: Reddit's feed decodes its next page through a
+    // TextDecoderStream, and got nothing.)
+    pipeThrough(transform, options) { this.pipeTo(transform.writable, options).catch(() => {}); return transform.readable; }
     tee() { return [this, this]; }
     static from(iterable) { return new ReadableStream({ async start(c) { for await (const v of iterable) c.enqueue(v); c.close(); } }); }
   }
   global.ReadableStream = ReadableStream;
+  // The writing half: a sink's write, close and abort, one after another.
+  class WritableStream {
+    constructor(sink) {
+      this._sink = sink || {}; this.locked = false; this._error = null;
+      this._controller = { error: (e) => { this._error = e; }, signal: undefined };
+      this._chain = Promise.resolve();
+      if (this._sink.start) { try { const r = this._sink.start(this._controller); if (r && typeof r.then === 'function') this._chain = Promise.resolve(r); } catch (e) { this._error = e; } }
+    }
+    _then(f) { this._chain = this._chain.then(() => { if (this._error) throw this._error; return f(); }); return this._chain; }
+    getWriter() {
+      const self = this; this.locked = true;
+      return {
+        write: (chunk) => self._then(() => self._sink.write ? self._sink.write(chunk, self._controller) : undefined),
+        close: () => self._then(() => self._sink.close ? self._sink.close() : undefined),
+        abort: (reason) => { self._error = reason || new Error('aborted'); return Promise.resolve(self._sink.abort ? self._sink.abort(reason) : undefined); },
+        releaseLock() { self.locked = false; },
+        get ready() { return self._chain.then(() => undefined, () => undefined); },
+        get closed() { return self._chain.then(() => undefined); },
+        get desiredSize() { return 1; },
+      };
+    }
+    close() { return this.getWriter().close(); }
+    abort(reason) { return this.getWriter().abort(reason); }
+  }
+  // A transform between the two: what is written goes through its
+  // `transform` (and `flush` at the close) to what is read.
+  class TransformStream {
+    constructor(transformer) {
+      transformer = transformer || {};
+      let out;
+      this.readable = new ReadableStream({ start(c) { out = c; } });
+      const controller = { enqueue: (v) => out.enqueue(v), error: (e) => out.error(e), terminate: () => out.close(), get desiredSize() { return 1; } };
+      if (transformer.start) transformer.start(controller);
+      this.writable = new WritableStream({
+        write: (chunk) => (transformer.transform ? transformer.transform(chunk, controller) : controller.enqueue(chunk)),
+        close: async () => { if (transformer.flush) await transformer.flush(controller); out.close(); },
+        abort: (reason) => out.error(reason),
+      });
+    }
+  }
+  class TextDecoderStream {
+    constructor(label, options) {
+      const decoder = new TextDecoder(label, options);
+      const t = new TransformStream({ transform(chunk, c) { const s = decoder.decode(chunk, { stream: true }); if (s) c.enqueue(s); }, flush(c) { const s = decoder.decode(); if (s) c.enqueue(s); } });
+      this.readable = t.readable; this.writable = t.writable; this.encoding = decoder.encoding; this.fatal = decoder.fatal; this.ignoreBOM = decoder.ignoreBOM;
+    }
+  }
+  class TextEncoderStream {
+    constructor() {
+      const encoder = new TextEncoder();
+      const t = new TransformStream({ transform(chunk, c) { const b = encoder.encode(String(chunk)); if (b.length) c.enqueue(b); } });
+      this.readable = t.readable; this.writable = t.writable; this.encoding = 'utf-8';
+    }
+  }
+  Object.assign(global, { WritableStream, TransformStream, TextDecoderStream, TextEncoderStream });
   // All of a stream's chunks, as bytes.
   const readAll = async (stream) => { const r = stream.getReader(); const chunks = []; for (;;) { const { done, value } = await r.read(); if (done) break; chunks.push(toBytes(value)); } return concat(chunks); };
   class Body {
@@ -262,7 +380,24 @@
     if (blob) return { status: 200, contentType: blob.type || 'application/octet-stream', body: blob._bytes, url };
     throw new TypeError('unknown URL scheme');
   };
-  const response = (r) => new Response(r.body, { status: r.status, statusText: r.status === 200 ? 'OK' : '', headers: { 'content-type': r.contentType }, url: r.url });
+  // A response's headers as its reader may see them (Fetch §3.2.3): all of
+  // a same-origin one's, a cross-origin one's safelisted ones and those it
+  // exposes; its type says which (`basic`, `cors`). (Reddit lets its
+  // components load once its events' answer carries `x-verified-res`.)
+  const SAFELISTED = ['cache-control', 'content-language', 'content-length', 'content-type', 'expires', 'last-modified', 'pragma'];
+  const sameOrigin = (url) => { try { return !global.location || new URL(url).origin === global.location.origin; } catch (e) { return true; } };
+  const responseHeaders = (r) => {
+    const h = new Headers();
+    for (const line of String(r.headers || '').split('\n')) { const i = line.indexOf(':'); if (i > 0) h.append(line.slice(0, i).trim(), line.slice(i + 1).trim()); }
+    if (!h.has('content-type') && r.contentType) h.set('content-type', r.contentType);
+    if (sameOrigin(r.url)) return h;
+    const exposed = (h.get('access-control-expose-headers') || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const out = new Headers();
+    h.forEach((v, k) => { if (SAFELISTED.includes(k) || exposed.includes('*') || exposed.includes(k)) out.append(k, v); });
+    return out;
+  };
+  global.__olo_responseHeaders = responseHeaders;
+  const response = (r) => { const res = new Response(r.body, { status: r.status, statusText: r.status === 200 ? 'OK' : '', headers: responseHeaders(r), url: r.url }); if (!sameOrigin(r.url) && !/^(data|blob):/.test(String(r.url))) res.type = 'cors'; return res; };
   global.fetch = (input, init) => new Promise((resolve, reject) => {
     // (A Request with an init is a new Request from both, as the spec has it.)
     const req = input instanceof Request && init == null ? input : new Request(input, init);

@@ -272,19 +272,29 @@ struct Backgrounds {
     identity: u64,
 }
 impl Backgrounds {
-    fn new(by_url: HashMap<Arc<str>, Arc<Image>>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
+    fn new(mut by_url: HashMap<Arc<str>, Arc<Image>>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
         use std::hash::{Hash, Hasher};
         let mut unique = HashSet::new();
         let (mut bytes, mut pixels) = (0usize, 0usize);
-        for image in by_url.values() {
+        // Past the budget, a background is left out (shown as not loaded),
+        // the rest kept: the page goes on.
+        let mut left_out = Vec::new();
+        for (url, image) in by_url.iter() {
             check(cancel)?;
-            if unique.insert(Arc::as_ptr(image) as usize) {
-                bytes = bytes.checked_add(image.payload_bytes()).ok_or(Error::Limit)?;
-                pixels = pixels.checked_add(image.payload_bytes() / 4).ok_or(Error::Limit)?;
-                if bytes > limits.bytes || pixels > limits.pixels {
-                    return Err(Error::Limit);
-                }
+            let at = Arc::as_ptr(image) as usize;
+            if unique.contains(&at) {
+                continue;
             }
+            let (b, p) = (bytes.saturating_add(image.payload_bytes()), pixels.saturating_add(image.payload_bytes() / 4));
+            if b > limits.bytes || p > limits.pixels {
+                left_out.push(url.clone());
+                continue;
+            }
+            unique.insert(at);
+            (bytes, pixels) = (b, p);
+        }
+        for url in left_out {
+            by_url.remove(&url);
         }
         let mut keys: Vec<(&Arc<str>, usize)> = by_url.iter().map(|(k, v)| (k, Arc::as_ptr(v) as usize)).collect();
         keys.sort_by(|a, b| a.0.cmp(b.0));
@@ -311,31 +321,44 @@ impl Set {
         let backgrounds = Backgrounds::new(backgrounds, limits, cancel)?;
         Self::build(document, bindings, backgrounds, limits, cancel)
     }
-    fn build(document: &Document, mut bindings: Vec<(NodeId, Arc<Image>)>, backgrounds: Arc<Backgrounds>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
+    /// The set of `bindings`, within `limits`: past them, the latest bound
+    /// are kept and the earliest let go (they show as not loaded), not
+    /// the whole set refused (Reddit's feed, its posts' pictures 6 MB each
+    /// decoded, passed 256 MB after forty posts, and its live page ended).
+    fn build(document: &Document, bindings: Vec<(NodeId, Arc<Image>)>, backgrounds: Arc<Backgrounds>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
         check(cancel)?;
-        if bindings.len() > limits.bindings || bindings.len() > u32::MAX as usize {
-            return Err(Error::Limit);
-        }
         if backgrounds.bytes > limits.bytes || backgrounds.pixels > limits.pixels {
             return Err(Error::Limit);
         }
         let mut unique = HashSet::new();
         let mut bytes = backgrounds.bytes;
         let mut pixels = backgrounds.pixels;
-        for (node, image) in &bindings {
+        let mut kept = Vec::with_capacity(bindings.len().min(limits.bindings));
+        let total = bindings.len();
+        for (node, image) in bindings.into_iter().rev() {
             check(cancel)?;
-            if document.namespace(*node).map_err(Error::Dom)? != Some(Namespace::Html) || !matches!(document.name(*node).map_err(Error::Dom)?, Some("img" | "canvas" | "video" | "iframe")) {
+            if document.namespace(node).map_err(Error::Dom)? != Some(Namespace::Html) || !matches!(document.name(node).map_err(Error::Dom)?, Some("img" | "canvas" | "video" | "iframe")) {
                 return Err(Error::Invalid);
             }
-            let at = Arc::as_ptr(image) as usize;
-            if !backgrounds.unique.contains(&at) && unique.insert(at) {
-                bytes = bytes.checked_add(image.payload_bytes()).ok_or(Error::Limit)?;
-                pixels = pixels.checked_add(image.payload_bytes() / 4).ok_or(Error::Limit)?;
-                if bytes > limits.bytes || pixels > limits.pixels {
-                    return Err(Error::Limit);
-                }
+            // Full, or no longer in the document: let go.
+            if kept.len() >= limits.bindings.min(u32::MAX as usize) || !document.is_connected(node).unwrap_or(false) {
+                continue;
             }
+            let at = Arc::as_ptr(&image) as usize;
+            if !backgrounds.unique.contains(&at) && !unique.contains(&at) {
+                let (b, p) = (bytes.saturating_add(image.payload_bytes()), pixels.saturating_add(image.payload_bytes() / 4));
+                if b > limits.bytes || p > limits.pixels {
+                    continue;
+                }
+                unique.insert(at);
+                (bytes, pixels) = (b, p);
+            }
+            kept.push((node, image));
         }
+        if kept.len() < total && crate::env_on!("OLO_IMAGE_DEBUG") {
+            eprintln!("images: {} of {} bound pictures kept within {} MB", kept.len(), total, limits.bytes >> 20);
+        }
+        let mut bindings = kept;
         bindings.sort_unstable_by_key(|(node, _)| node.slot());
         if bindings.windows(2).any(|w| w[0].0.slot() == w[1].0.slot()) {
             return Err(Error::Invalid);
@@ -352,10 +375,16 @@ impl Set {
         if document.revision() == self.revision {
             return None;
         }
+        // (One no longer in the document lets its picture go: a feed that
+        // drops the posts scrolled past, Reddit's, held 600 of them.)
         let bindings: Vec<(NodeId, Arc<Image>)> = self
             .bindings
             .iter()
-            .filter(|(node, _)| document.namespace(*node).ok().flatten() == Some(Namespace::Html) && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas" | "video" | "iframe")))
+            .filter(|(node, _)| {
+                document.namespace(*node).ok().flatten() == Some(Namespace::Html)
+                    && matches!(document.name(*node).ok().flatten(), Some("img" | "canvas" | "video" | "iframe"))
+                    && document.is_connected(*node).unwrap_or(false)
+            })
             .cloned()
             .collect();
         Some(Arc::new(Self { document: self.document, revision: document.revision(), bindings: bindings.into_boxed_slice(), backgrounds: self.backgrounds.clone(), bytes: self.bytes }))

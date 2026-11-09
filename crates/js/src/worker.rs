@@ -277,14 +277,15 @@ fn install(scope: &mut v8::PinScope<'_, '_>) -> Result<(), String> {
     global.set(scope, key.into(), natives.into());
     Ok(())
 }
-/// A fetch's answer as the prelude takes it: { status, contentType, body, url }.
+/// A fetch's answer as the prelude takes it: { status, contentType, body, url, headers }.
 fn fetched_object<'s>(scope: &mut v8::PinScope<'s, '_>, fetched: Fetched) -> v8::Local<'s, v8::Value> {
     let object = v8::Object::new(scope);
-    let pairs: [(&str, v8::Local<v8::Value>); 4] = [
+    let pairs: [(&str, v8::Local<v8::Value>); 5] = [
         ("status", v8::Integer::new(scope, i32::from(fetched.status)).into()),
         ("contentType", string(scope, &fetched.content_type)),
         ("body", crate::bytes_array(scope, fetched.body, crate::ByteKind::U8)),
         ("url", string(scope, &fetched.url)),
+        ("headers", string(scope, &fetched.headers)),
     ];
     for (k, v) in pairs {
         let key = v8::String::new(scope, k).unwrap();
@@ -373,11 +374,12 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
             match fetcher(&url, if method.is_empty() { "GET" } else { &method }, &body, &headers) {
                 Ok(fetched) => {
                     let object = v8::Object::new(scope);
-                    let pairs: [(&str, v8::Local<v8::Value>); 4] = [
+                    let pairs: [(&str, v8::Local<v8::Value>); 5] = [
                         ("status", v8::Integer::new(scope, i32::from(fetched.status)).into()),
                         ("contentType", string(scope, &fetched.content_type)),
                         ("body", crate::bytes_array(scope, fetched.body, crate::ByteKind::U8)),
                         ("url", string(scope, &fetched.url)),
+                        ("headers", string(scope, &fetched.headers)),
                     ];
                     for (k, v) in pairs {
                         let key = v8::String::new(scope, k).unwrap();
