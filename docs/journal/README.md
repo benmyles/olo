@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser: IMDb's hero carousel shows
+
+*07:48* — Its strip, moved by a transform transition in a layer of its own, was judged off screen each frame and its last place never shown.
+
+![Browser: IMDb's hero carousel shows](2026-11-09/074801-browser-imdb-s-hero-carousel-shows.png)
+
 ### Browser: live iframes
 
 *05:59* — An iframe's page runs on (its timers, loads, animation frames), redraws as it changes, takes the input over it, and posts messages to and from its parent. Etsy's DataDome check was a blank page (its captcha in an iframe whose scripts ran once): it shows and can be solved by a person now.
