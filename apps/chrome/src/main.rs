@@ -86,6 +86,7 @@ impl Installer {
     fn choose(&mut self, i: usize, cx: &mut Context<Self>) {
         if i == 0 {
             self.cancel.store(true, Ordering::Relaxed);
+            olo_net::nudge();
             cx.quit();
         } else {
             self.start(cx);
@@ -148,7 +149,10 @@ impl Render for Installer {
                 if let Some(v) = version {
                     col = col.child(StringView::new(format!("Version {v}, from Google's repository")).dim(true));
                 }
-                frame.child(col).child(div().flex_1()).child(button_row().child(Button::new("Cancel").enabled(!unpacking).on_click(move |_, _| cancel.store(true, Ordering::Relaxed))))
+                frame.child(col).child(div().flex_1()).child(button_row().child(Button::new("Cancel").enabled(!unpacking).on_click(move |_, _| {
+                    cancel.store(true, Ordering::Relaxed);
+                    olo_net::nudge();
+                })))
             }
         };
         // Return takes the default, Escape cancels, as an alert's.
@@ -169,6 +173,7 @@ impl Render for Installer {
                     cancel.update(cx, |a, cx| a.choose(0, cx));
                 } else {
                     working_cancel.store(true, Ordering::Relaxed);
+                    olo_net::nudge();
                 }
             })
             .child(content)
@@ -309,6 +314,7 @@ fn main() {
         let closing = app.clone();
         cx.on_app_quit(move |cx| {
             closing.read(cx).cancel.store(true, Ordering::Relaxed);
+            olo_net::nudge();
             async {}
         })
         .detach();

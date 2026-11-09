@@ -77,8 +77,12 @@ pub struct SignedIn {
 
 /// An HTTP agent for Google: its TLS the system's roots, statuses as
 /// values (an error's body says why), no redirect followed (a resumable
-/// upload's "go on" is a 308 with no Location: followed, it's lost).
+/// upload's "go on" is a 308 with no Location: followed, it's lost). A
+/// read or write that makes no progress for two minutes fails (a network
+/// that went without saying so: one that says so has its connections cut
+/// at once, `olo_net`).
 pub fn agent() -> ureq::Agent {
+    olo_net::watch();
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
     ureq::Agent::config_builder()
@@ -88,6 +92,7 @@ pub fn agent() -> ureq::Agent {
         .max_redirects(0)
         .timeout_connect(Some(Duration::from_secs(30)))
         .timeout_per_read(Some(Duration::from_secs(120)))
+        .timeout_per_write(Some(Duration::from_secs(120)))
         .build()
         .into()
 }

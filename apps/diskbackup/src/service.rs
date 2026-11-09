@@ -65,6 +65,8 @@ enum Event {
     /// Upgraded: the loop becomes the new version (once what's under way
     /// has stopped).
     Upgrade,
+    /// The network changed (one came back: a backup waiting for it goes).
+    Network,
 }
 
 /// What the loop was asked meanwhile (as it waited, or backed up).
@@ -94,7 +96,7 @@ impl Asked {
                 self.validate.extend(ids);
                 self.validate_full |= full;
             }
-            Ok(Event::Settings | Event::Upgrade) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Ok(Event::Settings | Event::Upgrade | Event::Network) | Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return false,
         }
         true
@@ -371,9 +373,20 @@ pub fn run() -> ExitCode {
     let (tx, rx) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let _ = CANCEL.set(cancel.clone());
-    let limits = Arc::new(Limits::new());
+    // (Stop ends a wait for the network too.)
+    let limits = Arc::new(Limits { stop: Some(cancel.clone()), ..Limits::new() });
     let _ = UP.set(limits.up.clone());
     listen(tx.clone(), cancel.clone());
+    // The network changed: a backup waiting for one looks again (Ben,
+    // 2026-11-09: "make sure that if the active network changes mid backup
+    // that diskbackup will seamlessly start using the new network and not
+    // hang or error"; what's under way goes on by itself: the Drive's).
+    {
+        let tx = Mutex::new(tx.clone());
+        olo_net::on_change(move || {
+            let _ = tx.lock().map(|t| t.send(Event::Network));
+        });
+    }
     // Upgraded: what's under way stops (keeping its place; erasing is let
     // finish), and the loop becomes the new version.
     {
@@ -386,6 +399,7 @@ pub fn run() -> ExitCode {
             olo_kit_base::restore::mark_waiting(true);
             if !ERASING.load(Relaxed) {
                 cancel.store(true, Relaxed);
+                olo_net::nudge();
             }
             let _ = tx.lock().map(|t| t.send(Event::Upgrade));
         });
@@ -626,6 +640,9 @@ fn ready(s: &Settings) -> Result<(), String> {
     if !s.on_battery && on_battery() {
         return Err("on battery: it waits for power".into());
     }
+    if matches!(s.target, Target::GoogleDrive { .. }) && !olo_net::online() {
+        return Err("no network: it goes on once there’s one".into());
+    }
     Ok(())
 }
 
@@ -659,7 +676,7 @@ fn reporting<T>(st: &mut State, doing: Doing, progress: &Progress, f: impl FnOnc
             // Every 2 s; a new stage or step (Stopping, tidying's next) at
             // once, looked for four times a second (two atomics: what goes
             // on between, the file it's at, waits the 2 s).
-            let mut said = (u8::MAX, u8::MAX);
+            let mut said = (u8::MAX, u8::MAX, false);
             let mut last = std::time::Instant::now();
             // Sent, live: the upload limit's count since this began; the
             // pack being sent, from when it was first seen.
@@ -673,7 +690,7 @@ fn reporting<T>(st: &mut State, doing: Doing, progress: &Progress, f: impl FnOnc
                 }
                 let stopping = CANCEL.get().is_some_and(|c| c.load(Relaxed));
                 let stage = if stopping && matches!(base.doing, Doing::BackingUp) { olo_diskbackup::backup::STOPPING } else { progress.stage.load(Relaxed) };
-                let now_at = (stage, progress.step.load(Relaxed));
+                let now_at = (stage, progress.step.load(Relaxed), olo_net::waiting() > 0);
                 if now_at == said && last.elapsed() < Duration::from_secs(2) {
                     continue;
                 }
@@ -701,6 +718,7 @@ fn reporting<T>(st: &mut State, doing: Doing, progress: &Progress, f: impl FnOnc
                     p.upload_limit = UP.get().map_or(0, |l| l.get());
                     p.step = progress.step.load(Relaxed) as u32;
                     p.steps = if p.step > 0 { olo_diskbackup::prune::STEPS as u32 } else { 0 };
+                    p.offline = now_at.2;
                     p.stage = match stage {
                         olo_diskbackup::backup::COUNTING => Stage::Counting,
                         olo_diskbackup::backup::SAVING => Stage::Saving,
@@ -1283,6 +1301,7 @@ fn listen(tx: mpsc::Sender<Event>, cancel: Arc<AtomicBool>) {
                 }
                 Ok(Request::Stop) => {
                     cancel.store(true, Relaxed);
+                    olo_net::nudge();
                     Reply::Ok
                 }
                 Ok(Request::Tidy) => {
@@ -1305,6 +1324,7 @@ fn listen(tx: mpsc::Sender<Event>, cancel: Arc<AtomicBool>) {
                 Ok(Request::EraseAll) => {
                     // (A backup under way stops first.)
                     cancel.store(true, Relaxed);
+                    olo_net::nudge();
                     let _ = tx.send(Event::Erase);
                     Reply::Ok
                 }

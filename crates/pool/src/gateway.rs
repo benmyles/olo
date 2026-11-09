@@ -5,9 +5,16 @@
 //! it by address too. Each request goes to the account the scheduler picks, with
 //! that account's sign-in in place of the client's; a refused sign-in is
 //! refreshed once, a rejection for quota moves to the next account, both
-//! before any of the answer has been passed on. Anything else (a network
-//! failure, a server error, a broken stream) is passed back as it is, as
-//! the work upstream may have happened: the client's own retries decide.
+//! before any of the answer has been passed on. A request the network
+//! failed (it changed under it, a cable pulled or Wi-Fi left, and its
+//! connection was cut with the network that went; or there was none, or
+//! no connection was made) is tried again on the network there is now,
+//! once there's one, before any of the answer has been passed on: what the
+//! client would do itself, without its wait. Anything else (a server
+//! error, a broken stream) is passed back as it is, as the work upstream
+//! may have happened: the client's own retries decide. Requests go out on
+//! a client made for the network there is (`olo_net::PerNetwork`), so
+//! after a change they use the new one, not idle connections on the old.
 //! Answers stream through; only their usage counts are kept, never what
 //! was asked or answered.
 
@@ -131,7 +138,8 @@ fn provider_index(p: Provider) -> usize {
 pub struct Shared {
     pub pool: Mutex<Pool>,
     store: Mutex<Option<Store>>,
-    client: reqwest::Client,
+    /// The HTTP client for the network there is now.
+    http: olo_net::PerNetwork<reqwest::Client>,
     up: Upstreams,
     /// One refresh at a time per account.
     locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
@@ -251,16 +259,19 @@ impl Shared {
 
     fn make(saved: Saved, store: Option<Store>, up: Upstreams, lazy: bool, changed: impl Fn() + Send + Sync + 'static) -> Arc<Shared> {
         let (tx, rx) = std::sync::mpsc::channel::<()>();
-        let client = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(20))
-            // Thinking can take a while before the first byte.
-            .read_timeout(Duration::from_secs(15 * 60))
-            .build()
-            .expect("HTTP client");
+        let http = olo_net::PerNetwork::new(|| {
+            reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(20))
+                // Thinking can take a while before the first byte (a
+                // connection on a network that went is cut at once).
+                .read_timeout(Duration::from_secs(15 * 60))
+                .build()
+                .expect("HTTP client")
+        });
         let shared = Arc::new(Shared {
             pool: Mutex::new(Pool { saved, loaded: true, ..Default::default() }),
             store: Mutex::new(store),
-            client,
+            http,
             up,
             locks: Mutex::new(HashMap::new()),
             save: tx,
@@ -338,9 +349,9 @@ impl Shared {
         (self.changed)();
     }
 
-    /// The HTTP client requests go out with.
-    pub fn client(&self) -> &reqwest::Client {
-        &self.client
+    /// The HTTP client requests go out with (the network's there is now).
+    pub fn client(&self) -> reqwest::Client {
+        self.http.get()
     }
 
     /// Where a request to `host` the proxy passes through goes.
@@ -487,7 +498,7 @@ impl Shared {
         if (!force || renewed_there) && !due {
             return Ok(current);
         }
-        match upstream::refresh(&self.client, &self.up, provider, &current).await {
+        match upstream::refresh(&self.client(), &self.up, provider, &current).await {
             Ok(c) => {
                 self.pool.lock().unwrap().saved.credentials.insert(id.to_owned(), c.clone());
                 if self.drain.retired() {
@@ -612,7 +623,7 @@ impl Shared {
         };
         self.save_now().await;
         let cred = self.fresh(id, provider, false, 60).await.map_err(|e| e.to_string())?;
-        let result = upstream::redeem(&self.client, &self.up, provider, &cred, org.as_deref(), &credit, &request).await;
+        let result = upstream::redeem(&self.client(), &self.up, provider, &cred, org.as_deref(), &credit, &request).await;
         {
             let mut p = self.pool.lock().unwrap();
             if let Some(a) = p.account_mut(id) {
@@ -710,9 +721,9 @@ impl Shared {
         };
         for (id, provider) in accounts {
             let Ok(cred) = self.fresh(&id, provider, false, 600).await else { continue };
-            let report = match upstream::usage(&self.client, &self.up, provider, &cred).await {
+            let report = match upstream::usage(&self.client(), &self.up, provider, &cred).await {
                 Err(Failure::Refused(_)) => match self.fresh(&id, provider, true, 0).await {
-                    Ok(c) => upstream::usage(&self.client, &self.up, provider, &c).await,
+                    Ok(c) => upstream::usage(&self.client(), &self.up, provider, &c).await,
                     Err(e) => Err(e),
                 },
                 r => r,
@@ -740,7 +751,7 @@ impl Shared {
                 _ => None,
             };
             let credits = match credits {
-                Some(c) => upstream::credits(&self.client, &self.up, provider, &c).await.ok(),
+                Some(c) => upstream::credits(&self.client(), &self.up, provider, &c).await.ok(),
                 None => None,
             };
             let mut p = self.pool.lock().unwrap();
@@ -1015,6 +1026,8 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
     };
     let client = client_of(&headers);
     let mut tried: Vec<String> = Vec::new();
+    // Tries the network failed (not counted against an account).
+    let mut network_tries = 0;
     loop {
         // Choose, and count it as busy at once.
         let chosen = {
@@ -1080,8 +1093,18 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             scan: Scan::new(),
             shared: Some(s.clone()),
         };
+        let seen = olo_net::generation();
         let mut cred = match s.fresh(&id, provider, false, 60).await {
             Ok(c) => c,
+            // (The network, not the account: the same one again, once
+            // there's a network.)
+            Err(Failure::Other(e)) if network_tries < NETWORK_TRIES && network_failed(seen) => {
+                network_tries += 1;
+                drop(finish);
+                tracing::info!("pool: the network failed renewing a sign-in ({e}): again");
+                network_back().await;
+                continue;
+            }
             Err(_) => {
                 drop(finish);
                 tried.push(id.clone());
@@ -1090,7 +1113,8 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         };
         let mut refreshed = false;
         let response = loop {
-            let mut req = upstream::authorize(s.client.request(method.clone(), &url), provider, &cred);
+            let seen = olo_net::generation();
+            let mut req = upstream::authorize(s.client().request(method.clone(), &url), provider, &cred);
             for (k, v) in headers.iter().filter(|(k, _)| forwarded(k.as_str())) {
                 if provider == Provider::Claude && k == "anthropic-beta" {
                     continue;
@@ -1109,6 +1133,14 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     }
                 }
                 Ok(r) => break Some(r),
+                // Not connected, or the network changed under it (its
+                // connection cut with the network that went), or there's
+                // none: again, on the network there is (once there's one).
+                Err(e) if network_tries < NETWORK_TRIES && (e.is_connect() || network_failed(seen)) => {
+                    network_tries += 1;
+                    tracing::info!("pool: the network failed a request to {} ({e}): again", provider.client());
+                    network_back().await;
+                }
                 Err(e) => {
                     // Not replayed: it may have reached the provider.
                     drop(finish);
@@ -1155,6 +1187,26 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         finish.outcome = None;
         return respond(r, finish);
     }
+}
+
+/// Tries a request has that the network fails (its changes, none there).
+const NETWORK_TRIES: u32 = 4;
+/// How long a request waits for a network to come back.
+const NETWORK_PATIENCE: Duration = Duration::from_secs(60);
+
+/// Whether a failure since `seen` was the network's: it changed (a
+/// connection on the old one cut), or there's none.
+fn network_failed(seen: u64) -> bool {
+    olo_net::generation() != seen || !olo_net::online()
+}
+
+/// Once there's a network (at once if there is; else waiting for one, up
+/// to [`NETWORK_PATIENCE`], off the runtime's threads).
+async fn network_back() -> bool {
+    if olo_net::online() {
+        return true;
+    }
+    tokio::task::spawn_blocking(|| olo_net::wait_online(Some(std::time::Instant::now() + NETWORK_PATIENCE), &|| false)).await.unwrap_or(false)
 }
 
 /// One try at a request on one account: when dropped (the answer done,

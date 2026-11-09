@@ -223,6 +223,8 @@ pub struct Progress {
     /// Bytes a second it may send (0: no limit), to say how long that
     /// takes.
     pub upload_limit: u64,
+    /// No network now: waiting for one, to go on by itself once it's back.
+    pub offline: bool,
 }
 
 /// Where a backup is.
@@ -581,6 +583,9 @@ pub mod words {
         }
     }
 
+    /// What's said while there's no network.
+    pub const OFFLINE: &str = "Waiting for the network: it goes on by itself once it’s back";
+
     impl Progress {
         /// How much is gone through, of how much: "2.30 GB of 412.00 GB
         /// gone through", "of about" by the last backup's, and past that,
@@ -633,6 +638,14 @@ pub mod words {
         /// at `at`: what it's doing; how far through how much, and how long
         /// is left; files of files; what's new to the backup, and sent.
         pub fn lines(&self, s: &Settings, at: i64) -> Vec<String> {
+            let mut lines = self.stage_lines(s, at);
+            if self.offline {
+                lines.insert(0, OFFLINE.into());
+            }
+            lines
+        }
+
+        fn stage_lines(&self, s: &Settings, at: i64) -> Vec<String> {
             match self.stage {
                 Stage::Counting => {
                     vec![format!("Getting ready to back up {}: counting what’s there", what(s)), format!("{} and {} found so far", plural(self.total_files, "file"), size(self.total_bytes))]
@@ -690,6 +703,10 @@ pub mod words {
             let more = Progress { estimated: true, files: 126, total_files: 100, bytes: 660_600_000, total_bytes: 524_300_000, ..p.clone() };
             assert_eq!(more.gone_through(), "660.6 MB gone through, more than the last backup’s 524.3 MB");
             assert_eq!(more.of_files(), "126 files, more than the last backup’s 100");
+            // No network: said first, the rest as it was.
+            let offline = Progress { offline: true, ..p.clone() };
+            assert_eq!(offline.lines(&s, 1600)[0], "Waiting for the network: it goes on by itself once it’s back");
+            assert_eq!(offline.lines(&s, 1600)[1..], p.lines(&s, 1600)[..]);
             let counting = Progress { stage: Stage::Counting, total_files: 120_345, total_bytes: 210_400_000_000, ..Default::default() };
             assert_eq!(counting.lines(&s, 0)[1], "120,345 files and 210.40 GB found so far");
             assert_eq!(left(50), "less than a minute left");

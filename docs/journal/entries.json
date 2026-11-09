@@ -3796,5 +3796,11 @@
   "title": "Token Pool shows every quota an account has",
   "caption": "The session (5-hour, \u201cnot started\u201d before its first request), the week, and each model's own week (Weekly Fable, Weekly Sonnet), as Claude's usage report lists them; Codex's own limits too. Made-up accounts.",
   "image": "2026-11-08/235228-token-pool-shows-every-quota-an-account-has.png"
+ },
+ {
+  "time": "2026-11-09T10:02:17",
+  "title": "DiskBackup: waiting for the network",
+  "caption": "No network mid-backup (a cable pulled, Wi-Fi left): the backup waits for one and says so, and goes on by itself, from where it got to, once it's back; a connection on a network that went is cut at once and the request asked again on the new one (olo-net). A sandboxed service in a network namespace of its own, its way out taken away.",
+  "image": "2026-11-09/100217-diskbackup-waiting-for-the-network.png"
  }
 ]

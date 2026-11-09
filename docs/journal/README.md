@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-09
+
+### DiskBackup: waiting for the network
+
+*10:02* — No network mid-backup (a cable pulled, Wi-Fi left): the backup waits for one and says so, and goes on by itself, from where it got to, once it's back; a connection on a network that went is cut at once and the request asked again on the new one (olo-net). A sandboxed service in a network namespace of its own, its way out taken away.
+
+![DiskBackup: waiting for the network](2026-11-09/100217-diskbackup-waiting-for-the-network.png)
+
 ## 2026-11-08
 
 ### Token Pool shows every quota an account has

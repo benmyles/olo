@@ -7298,6 +7298,7 @@ name = "olo-ai"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "olo-net",
  "olo-protocol",
  "olo-xdg",
  "reqwest",
@@ -7389,6 +7390,7 @@ dependencies = [
  "olo-crash",
  "olo-keychain",
  "olo-kit-base",
+ "olo-net",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -7514,10 +7516,12 @@ dependencies = [
  "hmac 0.13.0",
  "libc",
  "md-5 0.11.0",
+ "olo-net",
  "rustls",
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "tracing",
  "ureq",
  "zstd",
 ]
@@ -7534,6 +7538,7 @@ dependencies = [
  "olo-diskbackup",
  "olo-keychain",
  "olo-kit-base",
+ "olo-net",
  "olo-protocol",
  "olo-system",
  "olo-ui",
@@ -7555,6 +7560,7 @@ dependencies = [
  "olo-crash",
  "olo-fido",
  "olo-kit-base",
+ "olo-net",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -7731,6 +7737,7 @@ dependencies = [
  "libc",
  "olo-crash",
  "olo-doctor",
+ "olo-net",
  "olo-system",
  "olo-theme",
  "olo-ui",
@@ -7828,6 +7835,17 @@ dependencies = [
  "serde",
  "serde_json",
  "zstd",
+]
+
+[[package]]
+name = "olo-net"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-sync",
+ "tracing",
+ "tracing-subscriber",
+ "ureq",
 ]
 
 [[package]]
@@ -8044,6 +8062,7 @@ dependencies = [
  "olo-crash",
  "olo-fido",
  "olo-keychain",
+ "olo-net",
  "olo-palm",
  "olo-protocol",
  "olo-screensavers",
@@ -8298,6 +8317,7 @@ dependencies = [
  "libc",
  "olo-crash",
  "olo-images",
+ "olo-net",
  "olo-print",
  "olo-richtext",
  "olo-theme",
@@ -8451,6 +8471,7 @@ dependencies = [
  "olo-crash",
  "olo-fido",
  "olo-kit-base",
+ "olo-net",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -8478,6 +8499,7 @@ dependencies = [
  "grammers-session",
  "grammers-tl-types",
  "olo-images",
+ "olo-net",
  "olo-sync",
  "olo-system",
  "olo-xdg",
@@ -8513,6 +8535,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "libc",
+ "olo-net",
  "olo-sync",
  "olo-system",
  "olo-xdg",

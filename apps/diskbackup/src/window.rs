@@ -268,6 +268,18 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
         return ("DiskBackup isn’t running".into(), "Its service starts with your session: log out and in again, or ask Olo Doctor to start it.".into(), true);
     }
     let progress = st.progress.clone().unwrap_or_default();
+    // (Under way, with the network gone: it waits, and goes on.)
+    let what = match &st.doing {
+        Doing::BackingUp => Some("The backup"),
+        Doing::Validating => Some("Validating"),
+        Doing::Pruning | Doing::Deleting { .. } => Some("Tidying"),
+        Doing::Erasing => Some("Erasing"),
+        _ => None,
+    };
+    if let Some(what) = what.filter(|_| progress.offline) {
+        // (Where it goes is in Destination: the line has room for this.)
+        return ("Waiting for the network".into(), format!("{what} goes on by itself once it’s back, from where it got to."), false);
+    }
     match &st.doing {
         Doing::BackingUp => {
             let title = match progress.stage {

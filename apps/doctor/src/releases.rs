@@ -31,15 +31,16 @@ fn agent() -> ureq::Agent {
     ureq::Agent::config_builder().tls_config(tls).max_redirects(10).user_agent("Olo").timeout_connect(Some(Duration::from_secs(30))).timeout_per_read(Some(Duration::from_secs(60))).build().into()
 }
 
+/// `url`'s body, at most `limit` bytes: across a network change (a cable
+/// pulled, Wi-Fi left), asked again on the new one, a download going on
+/// where it broke off (`olo_net::http::Download`).
 fn fetch(agent: &ureq::Agent, url: &str, accept: &str, limit: u64, progress: &mut dyn FnMut(u64, u64)) -> Result<Vec<u8>, String> {
     let host = url.split('/').nth(2).unwrap_or(url);
-    let response = agent.get(url).header("Accept", accept).call().map_err(|e| match e {
+    let mut reader = olo_net::http::Download::start(agent, url, Some(accept), None).map_err(|e| match e {
         ureq::Error::StatusCode(code) => format!("{host} answered {code} for {url}"),
         e => format!("{host} couldn't be reached: {e}"),
     })?;
-    let total = response.headers().get("content-length").and_then(|v| v.to_str().ok()?.parse().ok()).unwrap_or(0);
-    let mut body = response.into_body();
-    let mut reader = body.as_reader();
+    let total = reader.total().unwrap_or(0);
     let mut out = Vec::new();
     let mut buf = [0u8; 64 * 1024];
     loop {

@@ -1,21 +1,27 @@
 //! Where backups go and the key that opens them: a store made from the
 //! settings (with their speed limits), the key from the login keyring.
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 use olo_diskbackup::{Key, Limit, LocalStore, Store, Throttled};
 use olo_protocol::diskbackup::{Settings, Target};
 use olo_system::secrets;
 
-/// The speed limits every store paces itself by, changed live.
+/// The speed limits every store paces itself by, changed live; and what
+/// stops a store waiting for the network (the service's Stop: it waits as
+/// long as it takes; None, a short while).
 pub struct Limits {
     pub up: Arc<Limit>,
     pub down: Arc<Limit>,
+    pub stop: Option<Arc<AtomicBool>>,
 }
 
 impl Limits {
     pub fn new() -> Limits {
-        Limits { up: Arc::new(Limit::default()), down: Arc::new(Limit::default()) }
+        Limits { up: Arc::new(Limit::default()), down: Arc::new(Limit::default()), stop: None }
     }
 
     /// As `settings` say now.
@@ -38,7 +44,9 @@ pub fn store(target: &Target, limits: &Limits) -> Result<Arc<dyn Store>, String>
         }
         Target::GoogleDrive { account, folder } => {
             let g = google()?;
-            Ok(Arc::new(olo_diskbackup::drive::Drive::new(g.client, g.refresh_token, account.clone(), folder.clone(), limits.up.clone(), limits.down.clone(), endpoints())))
+            Ok(Arc::new(
+                olo_diskbackup::drive::Drive::new(g.client, g.refresh_token, account.clone(), folder.clone(), limits.up.clone(), limits.down.clone(), endpoints()).stopped_by(limits.stop.clone()),
+            ))
         }
     }
 }

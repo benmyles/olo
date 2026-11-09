@@ -199,7 +199,8 @@ fn send(base: &str, make: impl Fn() -> reqwest::blocking::RequestBuilder) -> Res
     let mut tries = 0;
     loop {
         tries += 1;
-        let reply = make().send().map_err(|e| Error::Unreachable(base.to_owned(), e.to_string()))?;
+        // (Asked again across a network change: `olo_net`.)
+        let reply = olo_net::across_changes(Duration::from_secs(30), || make().send()).map_err(|e| Error::Unreachable(base.to_owned(), e.to_string()))?;
         if !matches!(reply.status().as_u16(), 429 | 503 | 529) || tries >= TRIES {
             return Ok(reply);
         }

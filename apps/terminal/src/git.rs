@@ -461,11 +461,15 @@ fn agent() -> ureq::Agent {
 }
 
 fn get_json(agent: &ureq::Agent, url: &str, token: Option<&str>) -> Result<serde_json::Value, String> {
-    let mut req = agent.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
-    if let Some(t) = token {
-        req = req.header("Authorization", &format!("Bearer {t}"));
-    }
-    let resp = req.call().map_err(|e| e.to_string())?;
+    // (Asked again across a network change: `olo_net`.)
+    let resp = olo_net::across_changes(Duration::from_secs(10), || {
+        let mut req = agent.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
+        if let Some(t) = token {
+            req = req.header("Authorization", &format!("Bearer {t}"));
+        }
+        req.call()
+    })
+    .map_err(|e| e.to_string())?;
     let status = resp.status().as_u16();
     let body = resp.into_body().into_with_config().limit(4 << 20).read_to_string().map_err(|e| e.to_string())?;
     if status != 200 {

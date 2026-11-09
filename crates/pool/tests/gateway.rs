@@ -330,3 +330,79 @@ async fn switches_by_the_model_whose_meter_ran_out() {
     assert_eq!(ask("claude-fable-5-1").await.0, 429);
     assert_eq!(ask("claude-opus-5-5").await, (200, "a".to_owned()));
 }
+
+/// The network changes while a request waits for its answer (Ben,
+/// 2026-11-09: a cable pulled, Wi-Fi left): its connection is cut, as one
+/// on a network that went is (`olo_net`), and the gateway asks again on
+/// the network there is now, so the client gets its answer, not an error;
+/// with no network at all, it waits for one, then asks.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_request_goes_on_across_a_network_change() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
+    let asked = Arc::new(AtomicUsize::new(0));
+    let slow = Arc::new(AtomicBool::new(true));
+    let fake = Router::new().route(
+        "/v1/messages",
+        post({
+            let (asked, slow) = (asked.clone(), slow.clone());
+            move || {
+                let (asked, slow) = (asked.clone(), slow.clone());
+                async move {
+                    asked.fetch_add(1, SeqCst);
+                    // (Thinking: long enough for the network to change.)
+                    if slow.load(SeqCst) {
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    }
+                    Response::builder().header("content-type", "text/event-stream").body(Body::from("data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"hello\"}}\n\n")).unwrap()
+                }
+            }
+        }),
+    );
+    let up_addr = serve(fake).await;
+    let base = format!("http://{up_addr}");
+    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let mut saved = Saved::default();
+    saved.accounts.push(account("a", 1, 100));
+    saved.credentials.insert("a".into(), cred("ok"));
+    let shared = Shared::new(saved, None, up, || {});
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let app = gateway::router(shared.clone(), addr.port());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let ask = move || async move { reqwest::Client::new().post(format!("http://{addr}/claude/v1/messages")).json(&json!({"model": "claude-opus-5-5"})).send().await.unwrap() };
+    let until = |n: usize, asked: Arc<AtomicUsize>| async move {
+        let t = std::time::Instant::now();
+        while asked.load(SeqCst) < n {
+            assert!(t.elapsed().as_secs() < 10, "asked {} times, not {n}", asked.load(SeqCst));
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    };
+
+    // Changed under it: asked again, on the new network.
+    let started = std::time::Instant::now();
+    let pending = tokio::spawn(ask());
+    until(1, asked.clone()).await;
+    slow.store(false, SeqCst);
+    let cut = olo_net::pretend_change(true, Some(up_addr.port()));
+    assert!(cut >= 1, "the gateway's connection upstream was cut");
+    let r = pending.await.unwrap();
+    assert_eq!(r.status(), 200);
+    assert!(r.text().await.unwrap().contains("hello"));
+    assert_eq!(asked.load(SeqCst), 2);
+    println!("answered {:?} after it was sent, the network changing under it", started.elapsed());
+
+    // No network: it waits for one, then asks.
+    slow.store(true, SeqCst);
+    let pending = tokio::spawn(ask());
+    until(3, asked.clone()).await;
+    slow.store(false, SeqCst);
+    olo_net::pretend_change(false, Some(up_addr.port()));
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert!(!pending.is_finished(), "it waits for the network, not fails");
+    assert_eq!(asked.load(SeqCst), 3);
+    olo_net::pretend_change(true, None);
+    let r = pending.await.unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(asked.load(SeqCst), 4);
+    assert_eq!(shared.snapshot().in_flight.values().sum::<u32>(), 0);
+}

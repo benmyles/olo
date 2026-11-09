@@ -1,0 +1,20 @@
+[package]
+name = "olo-net"
+description = "The network's changes as a program that talks over it needs them: connections on a network that's gone cut at once (not left hanging), what's next on the new one, waits for a network to come"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# `http`: ureq's side (a download that goes on where it broke off).
+ureq = ["dep:ureq"]
+
+[dependencies]
+olo-sync.workspace = true
+libc = "0.2"
+tracing.workspace = true
+ureq = { version = "3", default-features = false, optional = true }
+
+[dev-dependencies]
+ureq = { version = "3", default-features = false }
+tracing-subscriber.workspace = true

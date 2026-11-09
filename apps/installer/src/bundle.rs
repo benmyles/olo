@@ -65,7 +65,7 @@ pub fn find(given: Option<&str>) -> Result<Source, String> {
         });
     }
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let body = agent().get(&url).header("Accept", "application/vnd.github+json").call().map_err(|e| match e {
+    let body = olo_net::across_changes(Duration::from_secs(30), || agent().get(&url).header("Accept", "application/vnd.github+json").call()).map_err(|e| match e {
         ureq::Error::StatusCode(404) => "GitHub has no release of Olo yet".to_owned(),
         ureq::Error::StatusCode(code) => format!("GitHub answered {code} when asked for Olo's latest release"),
         e => format!("GitHub couldn't be reached: {e}"),
@@ -113,7 +113,11 @@ pub fn cache_dir() -> PathBuf {
 /// checked copy is there. `progress` gets (bytes so far, of how many).
 pub fn fetch(src: &Source, cancel: &AtomicBool, progress: &mut dyn FnMut(u64, u64)) -> Result<PathBuf, String> {
     let sums = match &src.sums {
-        Origin::Url(u) => agent().get(u).call().map_err(|e| format!("the checksum couldn't be downloaded ({u}): {e}"))?.into_body().read_to_string().map_err(|e| e.to_string())?,
+        Origin::Url(u) => olo_net::across_changes(Duration::from_secs(30), || agent().get(u).call())
+            .map_err(|e| format!("the checksum couldn't be downloaded ({u}): {e}"))?
+            .into_body()
+            .read_to_string()
+            .map_err(|e| e.to_string())?,
         Origin::File(p) => std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?,
     };
     let want = expected(&sums, &src.name).ok_or("the checksum file names no SHA-256")?;
@@ -127,12 +131,13 @@ pub fn fetch(src: &Source, cancel: &AtomicBool, progress: &mut dyn FnMut(u64, u6
                 return Ok(path);
             }
             let part = dir.join(format!("{}.part", src.name));
-            let response = agent().get(url).call().map_err(|e| match e {
+            // (Across a network change, a cable pulled or Wi-Fi left, it
+            // goes on where it broke off, on the new one.)
+            let mut body = olo_net::http::Download::start(&agent(), url, None, Some(cancel)).map_err(|e| match e {
                 ureq::Error::StatusCode(code) => format!("the download answered {code} ({url})"),
                 e => format!("the download couldn't start: {e}"),
             })?;
-            let total = response.headers().get("content-length").and_then(|v| v.to_str().ok()?.parse().ok()).unwrap_or(0);
-            let mut body = response.into_body().into_reader();
+            let total = body.total().unwrap_or(0);
             let mut out = std::fs::File::create(&part).map_err(|e| format!("{}: {e}", part.display()))?;
             let mut buf = vec![0u8; 1 << 20];
             let mut got = 0u64;

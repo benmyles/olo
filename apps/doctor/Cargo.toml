@@ -20,6 +20,7 @@ path = "src/bin/olo-suggestions.rs"
 olo-crash.workspace = true
 olo-protocol.workspace = true
 olo-sync.workspace = true
+olo-net = { workspace = true, features = ["ureq"] }
 olo-ui.workspace = true
 olo-kit-base.workspace = true
 olo-xdg.workspace = true

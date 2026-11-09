@@ -390,6 +390,58 @@ overflow; no core, as `PR_SET_DUMPABLE` 0) and checks each report and
 how the program ended, and the journal stream against a stand-in
 socket.
 
+## The network changing (crates/net, applies to every program that uses it)
+
+A cable pulled, Wi-Fi joined or left, a VPN coming up: anything that
+talks over the network goes on, on the new one, without hanging or
+failing (Ben, 2026-11-09). A connection lives on the network it was made
+on (its address is that network's): when that address goes, nothing tells
+whoever is reading or writing it, who waits for TCP to give up, a quarter
+of an hour. `olo-net` follows the kernel's own news of links, addresses
+and routes (rtnetlink, a thread asleep until there is some: nothing
+polls), and on each change, in this order: `generation()` moves on and
+`online()` says whether there's a way out to the internet (the kernel
+asked which way a packet would go); this process's TCP connections whose
+address went are cut (`shutdown`, never `close`: whoever waits on one is
+told at once, and makes another); those whose way out changed but whose
+address is still there are watched closely (keepalive and
+`TCP_USER_TIMEOUT`: the kernel ends one whose peer stops answering for
+15 s, and leaves it be while it answers); then waiters are woken and the
+`on_change` hooks run. Loopback connections, listeners and other
+processes' sockets are never touched. So in a program that talks over the
+network:
+
+- keep an HTTP client for the network it was made on, `PerNetwork::new(||
+  make it)` and `.get()` for each request: after a change the next
+  request makes connections on the new network, not on idle ones left
+  from the old (what's under way keeps its own);
+- a request that fails because the network changed under it, or there
+  was none, is tried again, at once on the new one or once one comes,
+  without counting against its tries: `across_changes(patience, ||
+  request)`, or by hand with `generation()` taken before it (DiskBackup's
+  Drive, the Token Pool's gateway, both before anything of the answer is
+  passed on);
+- a download goes on where it broke off (`http::Download`: `Range` from
+  where it got to, `If-Range` so it's the same file, the whole file again
+  passed over to there from a server that takes no ranges), Chrome's,
+  Olo Setup's and Doctor's;
+- a wait for a network is `wait_online(until, stop)`, woken by a change
+  or `nudge()` (call it after asking a worker to stop); say so while it
+  waits (`waiting()`: DiskBackup's "Waiting for the network");
+- a long-lived connection that only hears what the other end pushes
+  (Telegram's updates) is asked again on a change (`on_change`):
+  Telegram's stream is handed its own "too many to send" (`updatesTooLong`)
+  and catches up at once, on a new connection.
+
+`pretend_change(online, port)` does what a change does, for tests of what
+uses it (DiskBackup's `tests/network.rs`, the Token Pool's
+`a_request_goes_on_across_a_network_change`); `tests/netns.rs` makes real
+changes in a network of the test's own (a user and network namespace, no
+privileges: addresses and routes on its loopback taken away and given
+back), and a connection on an address that went is cut 150 ms after (the
+burst a change comes in, waited out), a wait for the network ending as
+long after a way out comes back.
+
 ## Layout
 
 | Path | What |
@@ -402,6 +454,7 @@ socket.
 | `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-ui under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `store` (an app's own files, written whole), `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). No GPUI. |
 | `gpui/` | Olo's GPUI, which the kit is built on: GPUI 0.2.2 and blade-graphics 0.7.1, Olo's own from now on (Wayland only, idle windows draw nothing); `gpui/README.md` says what changed. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`; Olo's own programs keep the launcher's stderr, the session's journal, so what Deskbar, Tracker or the palette starts logs like the rest; others' goes nowhere). |
+| `crates/net` | `olo-net`: the network changing under a program that talks over it (see "The network changing"): connections on a network that went cut at once, what's kept for the network (`PerNetwork`: an HTTP client) made again for the new one, requests tried again across a change (`across_changes`), waits for a network (`wait_online`), and with its `ureq` feature a download that goes on where it broke off (`http::Download`). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |

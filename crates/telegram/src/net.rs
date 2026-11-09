@@ -126,12 +126,37 @@ fn params() -> ConnectionParams {
 }
 
 /// A client for `api` on `store`, its sender pool running; and the
-/// updates that come in.
+/// updates that come in. When the network changes (Ben, 2026-11-09: a
+/// cable pulled, Wi-Fi left), the connection on the old one is cut
+/// (`olo_net`) and the updates would stop until grammers next looks
+/// (fifteen minutes on): so a change, with a network to go on with, is
+/// passed in as Telegram's own "too many to send" (`updatesTooLong`), and
+/// the stream catches up at once (getDifference, on a new connection, the
+/// new network's), what came meanwhile included.
 pub fn connect(store: Arc<Store>, api: &account::Api) -> (Client, tokio::sync::mpsc::Receiver<grammers_session::updates::UpdatesLike>) {
+    use grammers_session::updates::UpdatesLike;
     let pool = SenderPool::with_configuration(store, api.id, params());
     let client = Client::new(pool.handle);
     tokio::spawn(pool.runner.run());
-    (client, pool.updates)
+    let (tx, rx) = tokio::sync::mpsc::channel(256);
+    let mut from = pool.updates;
+    let catch_up = tx.downgrade();
+    tokio::spawn(async move {
+        while let Some(u) = from.recv().await {
+            if tx.send(u).await.is_err() {
+                break;
+            }
+        }
+    });
+    olo_net::on_change(move || {
+        if olo_net::online()
+            && let Some(tx) = catch_up.upgrade()
+        {
+            tracing::info!("telegram: the network changed: catching up on the new one");
+            let _ = tx.try_send(UpdatesLike::Updates(tl::enums::Updates::TooLong));
+        }
+    });
+    (client, rx)
 }
 
 /// What an error from Telegram means for the person.
@@ -255,6 +280,17 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
         list_whole: std::sync::atomic::AtomicBool::new(false),
     });
     ctx.emit_sync(None);
+    // A network again (a change, or one back): what's waiting to go, now.
+    olo_net::on_change({
+        let ctx = Arc::downgrade(&ctx);
+        move || {
+            if olo_net::online()
+                && let Some(ctx) = ctx.upgrade()
+            {
+                ctx.outbox_due.notify_one();
+            }
+        }
+    });
     // Chats' states as Telegram has them now, for those updates changed.
     {
         let ctx = ctx.clone();
@@ -395,6 +431,10 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
                     }
                     Err(e) => {
                         (ctx.sink)(Event::Status(Status::Offline(explain(&e))));
+                        // No network: until there's one (not every 2 s).
+                        if !olo_net::online() {
+                            let _ = tokio::task::spawn_blocking(|| olo_net::wait_online(None, &|| false)).await;
+                        }
                         tokio::time::sleep(Duration::from_secs(2)).await;
                         (ctx.sink)(Event::Status(Status::Online));
                         // Back: the changes waiting go now.

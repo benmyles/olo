@@ -110,12 +110,11 @@ fn login_of(token: &str) -> Result<String, String> {
     let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
     let agent: ureq::Agent =
         ureq::Agent::config_builder().tls_config(tls).user_agent("Olo Preferences").timeout_global(Some(std::time::Duration::from_secs(15))).http_status_as_error(false).build().into();
-    let resp = agent
-        .get("https://api.github.com/user")
-        .header("Accept", "application/vnd.github+json")
-        .header("Authorization", &format!("Bearer {}", token.trim()))
-        .call()
-        .map_err(|e| format!("GitHub couldn’t be reached ({e})."))?;
+    // (Asked again across a network change: `olo_net`.)
+    let resp = olo_net::across_changes(std::time::Duration::from_secs(10), || {
+        agent.get("https://api.github.com/user").header("Accept", "application/vnd.github+json").header("Authorization", &format!("Bearer {}", token.trim())).call()
+    })
+    .map_err(|e| format!("GitHub couldn’t be reached ({e})."))?;
     match resp.status().as_u16() {
         200 => {
             let body = resp.into_body().read_to_string().map_err(|e| e.to_string())?;
