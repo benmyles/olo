@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser: Stack Overflow's questions as Chrome lays them out
+
+*09:41* — Titles that break anywhere shrink their column; excerpts clamped to two lines with an ellipsis.
+
+![Browser: Stack Overflow's questions as Chrome lays them out](2026-11-09/094134-browser-stack-overflow-s-questions-as-chrome-lay.png)
+
 ### Browser: Stack Overflow past Cloudflare
 
 *09:25* — Chrome's TLS, Chrome's window shape, WebRTC and same-origin about:blank iframes: Cloudflare's challenge passes on its own.
