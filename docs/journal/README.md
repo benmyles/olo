@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser: Stack Overflow past Cloudflare
+
+*09:25* — Chrome's TLS, Chrome's window shape, WebRTC and same-origin about:blank iframes: Cloudflare's challenge passes on its own.
+
+![Browser: Stack Overflow past Cloudflare](2026-11-09/092540-browser-stack-overflow-past-cloudflare.png)
+
 ### Browser: IMDb's hero carousel shows
 
 *07:48* — Its strip, moved by a transform transition in a layer of its own, was judged off screen each frame and its last place never shown.

@@ -4114,5 +4114,11 @@
   "title": "Browser: IMDb's hero carousel shows",
   "caption": "Its strip, moved by a transform transition in a layer of its own, was judged off screen each frame and its last place never shown.",
   "image": "2026-11-09/074801-browser-imdb-s-hero-carousel-shows.png"
+ },
+ {
+  "time": "2026-11-09T09:25:40",
+  "title": "Browser: Stack Overflow past Cloudflare",
+  "caption": "Chrome's TLS, Chrome's window shape, WebRTC and same-origin about:blank iframes: Cloudflare's challenge passes on its own.",
+  "image": "2026-11-09/092540-browser-stack-overflow-past-cloudflare.png"
  }
 ]
