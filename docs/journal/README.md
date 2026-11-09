@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Telegram: folders behind More, a submenu each
+
+*14:50* — A right-click on the More chip: each folder behind it with Mark All as Read, Mute All, Unmute All. Demo account.
+
+![Telegram: folders behind More, a submenu each](2026-11-09/145016-telegram-folders-behind-more-a-submenu-each.png)
+
+### Telegram: a right-click on the archive acts on all its chats
+
+*14:50* — Mark All as Read, Mute All, Unmute All and Unarchive All… on the archive's row; folders' chips, Unknown Senders and the More chip (a submenu each) have the same; Chat ▸ Mark All as Read for the list shown. Demo account.
+
+![Telegram: a right-click on the archive acts on all its chats](2026-11-09/145014-telegram-a-right-click-on-the-archive-acts-on-al.png)
+
 ### DiskBackup's title fits beside its buttons
 
 *10:43* — Shorter titles ("Counting what to back up", "Backup didn't finish"), and a folder's path cut short with its whole in the tip. The layout review now finds text that runs over a control (text-over-control), and the lint draws DiskBackup's window in all 25 of its states.

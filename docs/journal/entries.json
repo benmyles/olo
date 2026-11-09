@@ -3814,5 +3814,17 @@
   "title": "DiskBackup's title fits beside its buttons",
   "caption": "Shorter titles (\"Counting what to back up\", \"Backup didn't finish\"), and a folder's path cut short with its whole in the tip. The layout review now finds text that runs over a control (text-over-control), and the lint draws DiskBackup's window in all 25 of its states.",
   "image": "2026-11-09/104331-diskbackup-s-title-fits-beside-its-buttons.png"
+ },
+ {
+  "time": "2026-11-09T14:50:14",
+  "title": "Telegram: a right-click on the archive acts on all its chats",
+  "caption": "Mark All as Read, Mute All, Unmute All and Unarchive All\u2026 on the archive's row; folders' chips, Unknown Senders and the More chip (a submenu each) have the same; Chat \u25b8 Mark All as Read for the list shown. Demo account.",
+  "image": "2026-11-09/145014-telegram-a-right-click-on-the-archive-acts-on-al.png"
+ },
+ {
+  "time": "2026-11-09T14:50:16",
+  "title": "Telegram: folders behind More, a submenu each",
+  "caption": "A right-click on the More chip: each folder behind it with Mark All as Read, Mute All, Unmute All. Demo account.",
+  "image": "2026-11-09/145016-telegram-folders-behind-more-a-submenu-each.png"
  }
 ]

@@ -898,8 +898,61 @@ impl Tg {
     /// not, read, muted or not, deleted (asked first).
     fn chats_command(&mut self, cmd: &str, cx: &mut Context<Self>) {
         let chats = self.chosen_chats();
-        if chats.is_empty() {
+        if self.chats_do(chats, cmd, cx) {
+            self.chosen.clear();
+            cx.notify();
+        }
+    }
+
+    /// The chats of `group` (all of them, as its view shows them).
+    pub fn group_chats(&self, group: list::Group) -> Vec<Chat> {
+        list::shown(&self.store, &group.view()).iter().filter_map(|id| self.store.chats.get(id).cloned()).collect()
+    }
+
+    /// `group`'s menu (a right-click on its row or chip): what's done to
+    /// all its chats, titled `title` (a submenu's), its commands after
+    /// `prefix`.
+    pub fn group_menu(&self, group: list::Group, title: &str, prefix: &str) -> Menu {
+        let chats = self.group_chats(group);
+        let mut menu = Menu::new(title).item("Mark All as Read", format!("{prefix}chats:read")).enabled(chats.iter().any(|c| c.unread > 0 || c.marked));
+        if chats.iter().any(|c| !c.muted) {
+            menu = menu.item("Mute All", format!("{prefix}chats:mute"));
+        }
+        if chats.iter().any(|c| c.muted) {
+            menu = menu.item("Unmute All", format!("{prefix}chats:unmute"));
+        }
+        match group {
+            list::Group::Archive => menu.separator().item("Unarchive All…", format!("{prefix}group:unarchive")).enabled(!chats.is_empty()),
+            list::Group::Unknown => menu.separator().item("Archive All", format!("{prefix}chats:archive")).enabled(!chats.is_empty()),
+            list::Group::Folder(_) => menu,
+        }
+    }
+
+    /// `cmd` from `group`'s menu, done to all its chats (Unarchive All
+    /// asks first, saying how many).
+    pub fn group_command(&mut self, group: list::Group, cmd: &str, cx: &mut Context<Self>) {
+        let chats = self.group_chats(group);
+        if cmd == "group:unarchive" {
+            let n = chats.len();
+            let message = match n {
+                1 => "Move the archived chat back to your chat list?".to_owned(),
+                2 => "Move both archived chats back to your chat list?".to_owned(),
+                n => format!("Move all {n} archived chats back to your chat list?"),
+            };
+            let cmds = chats.iter().map(|c| Cmd::Archive { chat: c.id, on: false }).collect();
+            self.ask("Unarchive All Chats", message, "Unarchive", cmds, cx);
             return;
+        }
+        eprintln!("telegram: {cmd} on {group:?}: {} chats", chats.len());
+        self.chats_do(chats, cmd, cx);
+        cx.notify();
+    }
+
+    /// `cmd` (`chats:…`) done to `chats`: false if it wasn't (none, or
+    /// it asks first).
+    fn chats_do(&mut self, chats: Vec<Chat>, cmd: &str, cx: &mut Context<Self>) -> bool {
+        if chats.is_empty() {
+            return false;
         }
         let send = |tg: &mut Tg, f: &dyn Fn(&Chat) -> Option<Cmd>| {
             for c in &chats {
@@ -920,12 +973,11 @@ impl Tg {
                 let message = format!("Delete {n} chats? Their messages go from this account{}. This can’t be undone.", if leaves { ", and you leave the groups and channels among them" } else { "" });
                 let cmds = chats.iter().map(|c| Cmd::DeleteChat { chat: c.id }).collect();
                 self.ask("Delete Chats", message, "Delete", cmds, cx);
-                return;
+                return false;
             }
-            _ => return,
+            _ => return false,
         }
-        self.chosen.clear();
-        cx.notify();
+        true
     }
 
     /// The menu for the chats chosen together (the list's, the Chat
@@ -1232,6 +1284,10 @@ impl Tg {
                 .item(if c.unread > 0 || c.marked { "Mark as Read" } else { "Mark as Unread" }, "chat:read")
                 .item(if c.archived { "Unarchive" } else { "Archive" }, "chat:archive");
         }
+        // Every chat the list shows (its folder, the archive, unknown
+        // senders), as its right-click menu's.
+        let unread = ready && list::any_unread(&self.store, list::Group::of(&self.view));
+        chat_menu = chat_menu.separator().item("Mark All as Read", "mark-all-read").enabled(unread);
         let mut view = Menu::new("View").item("All Chats", "folder:all").key("0").checked(self.view.folder.is_none() && !self.view.archive);
         for (i, f) in self.store.folders.iter().enumerate().take(8) {
             view = view.item(f.title.clone(), format!("folder:{}", i + 1)).key(&(i + 1).to_string()).checked(self.view.folder == Some(f.id));
@@ -1277,6 +1333,7 @@ impl Tg {
                 }
             }
             c if c.starts_with("chats:") => self.chats_command(c, cx),
+            "mark-all-read" => self.group_command(list::Group::of(&self.view), "chats:read", cx),
             "select-all-chats" => {
                 self.chosen = list::shown(&self.store, &self.view);
                 self.chosen_from = self.chosen.first().copied();

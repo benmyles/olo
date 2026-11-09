@@ -14239,7 +14239,17 @@ A Telegram client of Olo's own: MTProto in process through grammers
   list shows; the Chat menu and a chosen row's menu then act on them
   all (Archive, Unarchive, Mark as Read, Mute, Unmute, Delete…, which
   asks, saying how many; `Cmd::DeleteChat` deletes a person's history
-  and leaves a group or channel, as Telegram's apps do). `conv` is the conversation: its header, a forum's
+  and leaves a group or channel, as Telegram's apps do).
+  **Groups** (`list::Group`: the archive, Unknown Senders, a folder or
+  All Chats): a right-click on the archive's row, Unknown Senders', a
+  folder's chip or the back row above them (the More chip: each folder
+  behind it as a submenu) acts on all its chats, as `list::shown` has
+  them for its view: Mark All as Read, Mute All, Unmute All, the
+  archive's Unarchive All… (asks, saying how many), Unknown Senders'
+  Archive All; Chat ▸ Mark All as Read does it to the group the list
+  shows (`mark-all-read`, for agents too), enabled while one of them is
+  unread (`list::any_unread`: one pass over the chats, no list made, as
+  the menu bar is built at every change). `conv` is the conversation: its header, a forum's
   topics as chips, the messages laid out once per message and width
   (`bubble::Laid`, kept by a digest of what the layout depends on) and
   painted in one canvas inside a `ScrollView`, only those within a
