@@ -127,6 +127,11 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   full (shared.js, worker.js): a snapshot of its own would do the same.
 - [x] YouTube: its home as Chrome's, icons within a second (2026-11-08:
   idle callbacks took their timeout as a delay; Cache Storage kept nothing).
+- [ ] Inserted elements restyle and lay out the page whole: Reddit's feed
+  inserting posts as it scrolls ("children of <shreddit-feed>": style
+  107 ms, layout 16 ms, none of 4,240 boxes reused; 150-200 ms renders),
+  YouTube's too. Style the new subtree (and what structural selectors
+  and :has() reach from it), lay out what it changes.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.
