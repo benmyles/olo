@@ -31,7 +31,8 @@ fn scripts_in_order_then_async() {
     let page = "<script async src=a.js></script><script>1</script><script type=module>2</script><script defer src=b.js></script><script type=text/template>no</script><script nomodule>3</script>";
     let parsed = html::parse(Arc::from(page), Default::default(), None).unwrap();
     let names: Vec<String> = olo_js::page_scripts(&parsed.document, "https://x.test/p/").into_iter().map(|(_, n, _, _)| n).collect();
-    // Modules run in order with the classic scripts; `nomodule` ones not at all.
+    // The classic scripts, then the deferred (modules, `defer`) in order,
+    // then async ones; `nomodule` ones not at all.
     assert_eq!(names, ["inline script 2", "https://x.test/p/#inline-module-3", "https://x.test/p/b.js", "https://x.test/p/a.js"]);
 }
 #[test]
@@ -102,7 +103,8 @@ fn current_script_is_the_running_classic_scripts_element() {
         r#"<script id=first>console.log(document.currentScript && document.currentScript.id);</script><script type=module>console.log(String(document.currentScript));</script><script id=third>console.log(document.currentScript.id); setTimeout(() => console.log(String(document.currentScript)), 0);</script>"#,
     );
     assert_eq!(report.errors, Vec::<String>::new());
-    assert_eq!(report.console, ["[log] first", "[log] null", "[log] third", "[log] null"]);
+    // (The module is deferred: it runs after the classic scripts.)
+    assert_eq!(report.console, ["[log] first", "[log] third", "[log] null", "[log] null"]);
 }
 #[test]
 fn page_images_fire_their_load_or_error_before_the_windows_load() {
@@ -951,4 +953,26 @@ fn ranges_hold_cut_and_measure() {
             "[log] false 1 true",
         ]
     );
+}
+/// Scripts run in HTML's order: the parser-blocking classic ones, then the
+/// deferred (a module in the head before an inline script in the body
+/// still runs after it: BrowserScan's bundle reads what that script sets).
+#[test]
+fn modules_and_deferred_scripts_run_after_the_parser_blocking_ones() {
+    let (report, _) = run("<head><script type=module>console.log('module', typeof window.config);</script></head><body>\
+        <script>window.config = {}; console.log('classic');</script></body>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] classic", "[log] module object"]);
+}
+/// V8's own interfaces keep their own Symbol.toStringTag (a typed array's
+/// is %TypedArray%.prototype's getter: es-abstract's which-typed-array,
+/// on NYT, binds it); Olo's say what they are.
+#[test]
+fn builtins_keep_their_own_string_tags() {
+    let (report, _) = run("<body><script>\
+        console.log(Object.getOwnPropertyDescriptor(Uint8Array.prototype, Symbol.toStringTag) === undefined, typeof Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Uint8Array.prototype), Symbol.toStringTag).get, String(document.fonts));\
+        const o = {}; o[Symbol.toStringTag] = 'z'; console.log(String(o), String(customElements), Object.getPrototypeOf(customElements) === CustomElementRegistry.prototype, Object.getOwnPropertySymbols(Object.prototype).length);\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] true function [object FontFaceSet]", "[log] [object z] [object CustomElementRegistry] true 0"]);
 }

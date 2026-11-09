@@ -4265,11 +4265,6 @@ pub enum Source {
     Inline(Arc<str>),
     External(String),
 }
-/// The page's scripts in the order they run: classic and module scripts
-/// (deferred ones included, since everything runs after parsing) in
-/// document order, then async ones; `nomodule` scripts not at all, as in
-/// any browser with modules. Each entry says whether it is a module. An
-/// external URL is resolved against `base` with `url::Url`.
 /// The document has form controls (what a person types into, picks or
 /// presses to send a form): a page without scripts still needs a realm for
 /// them, since forms are run by its prelude.
@@ -4285,10 +4280,17 @@ pub fn has_controls(doc: &Document) -> bool {
     }
     false
 }
+/// The page's scripts in the order they run (HTML §4.12.1.1): the
+/// parser-blocking classic ones in document order, then the deferred ones
+/// (modules, `defer` externals) in document order, then async ones;
+/// `nomodule` scripts not at all, as in any browser with modules. Each
+/// entry says whether it is a module. An external URL is resolved
+/// against `base` with `url::Url`.
 pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String, bool, NodeId)> {
     let page = base.to_owned();
     let base = url::Url::parse(base).ok();
     let mut classic = Vec::new();
+    let mut later = Vec::new();
     let mut asynchronous = Vec::new();
     let mut stack = vec![doc.root()];
     while let Some(n) = stack.pop() {
@@ -4326,14 +4328,29 @@ pub fn page_scripts(doc: &Document, base: &str) -> Vec<(Source, String, bool, No
                 }
                 // An inline module's name is a URL, for its imports to resolve
                 // against.
-                let name = if module { format!("{page}#inline-module-{}", classic.len() + asynchronous.len() + 1) } else { format!("inline script {}", classic.len() + asynchronous.len() + 1) };
+                let name = if module {
+                    format!("{page}#inline-module-{}", classic.len() + later.len() + asynchronous.len() + 1)
+                } else {
+                    format!("inline script {}", classic.len() + later.len() + asynchronous.len() + 1)
+                };
                 (Source::Inline(Arc::from(text)), name)
             }
         };
-        let is_async = doc.attribute(n, "async").ok().flatten().is_some() && matches!(entry.0, Source::External(_));
+        let external = matches!(entry.0, Source::External(_));
+        let is_async = doc.attribute(n, "async").ok().flatten().is_some() && (external || module);
+        // Deferred: a module (inline too), an external classic script with
+        // `defer`. They run after the parser-blocking ones, in order.
+        let deferred = !is_async && (module || (external && doc.attribute(n, "defer").ok().flatten().is_some()));
         let entry = (entry.0, entry.1, module, n);
-        if is_async { asynchronous.push(entry) } else { classic.push(entry) }
+        if is_async {
+            asynchronous.push(entry)
+        } else if deferred {
+            later.push(entry)
+        } else {
+            classic.push(entry)
+        }
     }
+    classic.extend(later);
     classic.extend(asynchronous);
     classic
 }

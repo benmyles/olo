@@ -1284,7 +1284,9 @@
     N.setAttr = (el, name, value) => { const old = el && el._upgraded ? N.attr(el, name) : undefined; const r = setAttr(el, name, value); if (old !== undefined) changedAttribute(el, name, old); return r; };
     N.removeAttr = (el, name) => { const old = el && el._upgraded ? N.attr(el, name) : undefined; const r = removeAttr(el, name); if (old != null) changedAttribute(el, name, old); return r; };
   }
-  global.customElements = {
+  // (Its methods on CustomElementRegistry's prototype, customElements one
+  // of its objects: not a plain object, whose prototype is Object's.)
+  const registryPrototype = {
     define(name, ctor, options) {
       // HTML §4.13.4: a valid, new name and a constructor not defined yet
       // (YouTube defines yt-icon twice; the first stays, the second throws).
@@ -1299,7 +1301,9 @@
     whenDefined(name) { if (definitions.has(name)) return Promise.resolve(definitions.get(name)); let entry = whenDefined.get(name); if (!entry) { let resolve; const promise = new Promise((r) => { resolve = r; }); entry = { promise, resolve }; whenDefined.set(name, entry); } return entry.promise; },
     upgrade(root) { for (const el of N.query(root, '*', true)) upgrade(el, N.nodeName(el).toLowerCase()); },
   };
+  global.customElements = Object.create(registryPrototype);
   global.CustomElementRegistry = function CustomElementRegistry() {};
+  Object.defineProperty(registryPrototype, 'constructor', { value: global.CustomElementRegistry, writable: true, configurable: true });
 
   // ---------- Window: location, navigator, screen, timers, storage
   const resolveURL = (s) => { try { return new URL(s, N.url()).href; } catch (e) { return String(s); } };

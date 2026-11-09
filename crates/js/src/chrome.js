@@ -35,7 +35,10 @@
     if (f.name !== name) try { define(f, 'name', { value: name, configurable: true }); } catch (e) {}
     return f;
   };
-  const illegal = (o) => o == null || ((typeof o === 'object' || typeof o === 'function') && has(o, 'constructor'));
+  // (The interfaces' prototypes, which a getter refuses for `this`; an
+  // object of the page's with its own `constructor` is no prototype.)
+  const prototypes = new WeakSet();
+  const illegal = (o) => o == null || prototypes.has(o);
   const guarded = new WeakSet();
   const guard = (get, name) => {
     const k = name.slice(4);
@@ -66,6 +69,7 @@
     return d;
   };
   const harden = (P) => {
+    prototypes.add(P);
     for (const name of Object.getOwnPropertyNames(P)) {
       if (name === 'constructor') continue;
       const d = getOwn(P, name);
@@ -123,6 +127,7 @@
     define(C.prototype, Symbol.toStringTag, { value: name, configurable: true });
     nativeNames.set(C, name);
     stubs.add(name);
+    prototypes.add(C.prototype);
     // (Interfaces Chrome doesn't put on its global, only behind objects:
     // MemoryInfo, StyleMedia, DeprecatedStorageQuota.)
     if (shape.has(name) && (!constructible || event)) define(global, name, { value: C, writable: true, configurable: true, enumerable: false });
@@ -647,7 +652,7 @@
     }
     for (const node of [global.document, global.document && global.document.doctype]) if (node && replaced.has(Object.getPrototypeOf(node))) Object.setPrototypeOf(node, replaced.get(Object.getPrototypeOf(node)));
 
-    for (const { P } of plans) shaped.add(replaced.get(P) || P);
+    for (const { P } of plans) { shaped.add(replaced.get(P) || P); prototypes.add(replaced.get(P) || P); }
     // A document's location is its own (unforgeable), as in Chrome.
     if (global.document) {
       const loc = getOwn(Document.prototype, 'location');
@@ -674,8 +679,9 @@
     const d = getOwn(global, name);
     const C = d && d.value;
     if (typeof C === 'function' && C.prototype && typeof C.prototype === 'object') {
-      // (Every interface's objects say what they are: [object FontFaceSet].)
-      if (!has(C.prototype, Symbol.toStringTag) && C.name === name) define(C.prototype, Symbol.toStringTag, { value: name, configurable: true });
+      // (Every interface of Olo's says what its objects are: [object
+      // FontFaceSet]. V8's own, a typed array's, inherit theirs.)
+      if (fromPrelude(C) && C.prototype !== Object.prototype && C.prototype !== Function.prototype && !has(C.prototype, Symbol.toStringTag) && C.name === name) define(C.prototype, Symbol.toStringTag, { value: name, configurable: true });
       if (!shaped.has(C.prototype)) harden(C.prototype);
     }
   }
