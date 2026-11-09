@@ -733,6 +733,11 @@
       if (size) { entry.state = 'loaded'; entry.size = size; dispatch(el, new Event('load')); } else { entry.state = 'error'; dispatch(el, new Event('error')); }
     }, 0);
   };
+  // Images laid out with no picture (parsed from a script's markup,
+  // cloned): loaded, as a browser loads every image element's.
+  H.__olo_loadImages = (els) => {
+    for (const el of els) if (el && N.nodeName(el) === 'IMG' && !imageLoads.has(el)) loadImageElement(el);
+  };
   H.__olo_imageLoaded = (el, size) => {
     const entry = imageLoads.get(el);
     if (!entry || entry.state !== 'loading') return;

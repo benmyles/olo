@@ -193,7 +193,16 @@ impl Job<'_> {
         let holds = |style: &Style| {
             if fixed { matches!(style.value(P::Transform), Value::Transforms(_)) } else { !matches!(style.value(P::Position), Value::Keyword(K::Static)) }
         };
-        while !node.marker && cb != tree.root() && !holds(tree.style(cb).ok_or(Error::Stale)?) {
+        // (A box that isn't its element's own, the anonymous one holding an
+        // element's inline content, has its element's style: not the
+        // containing block, its element's box is. An inline image's parent
+        // is such a box, 0 tall; it was taken as the containing block, and
+        // IMDb's hero pictures, centred by auto margins, sat out of sight.)
+        let anonymous = |id: BoxId| -> bool {
+            let Some(b) = tree.get(id) else { return false };
+            matches!(b.kind, BoxKind::InlineContent { .. }) || b.parent.and_then(|p| tree.get(p)).is_some_and(|p| p.node == b.node && p.style_node == b.style_node)
+        };
+        while !node.marker && cb != tree.root() && (anonymous(cb) || !holds(tree.style(cb).ok_or(Error::Stale)?)) {
             check(self.cancel)?;
             depth += 1;
             if depth > self.limits.depth {

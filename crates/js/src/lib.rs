@@ -199,7 +199,9 @@ pub enum Loaded {
 pub use worker::{FetchStarter, SharedFetcher, Waker};
 /// Lays out the document as it is now, for what scripts measure; the
 /// browser supplies one (olo_web::page::Measurer behind a host).
-pub type Measure = Box<dyn FnMut(&Document, Option<olo_web::page::Measured>) -> Option<olo_web::page::Measured>>;
+/// It is given the pictures scripts loaded into `img` elements, which its
+/// layout sizes those images by.
+pub type Measure = Box<dyn FnMut(&Document, &[(NodeId, Arc<olo_web::image::Image>)], Option<olo_web::page::Measured>) -> Option<olo_web::page::Measured>>;
 /// How often scripts may have the page laid out, and for how long, within
 /// one run (the page's scripts, or one advance of its clock): past these,
 /// measurements come from the last layout until the next run.
@@ -371,6 +373,8 @@ struct State {
     measure: Option<Measure>,
     /// The last layout, good while the document's revision is its own.
     measured: Option<olo_web::page::Measured>,
+    /// The pictures it was made with (how many, and who they are).
+    measured_pictures: (usize, usize),
     /// Messages posted to other frames' windows since the browser last
     /// took them: to an iframe's (its element) or the parent's (none),
     /// structured clones, with the target origin asked for.
@@ -579,6 +583,7 @@ impl Realm {
             waker: None,
             measure,
             measured: None,
+            measured_pictures: (0, 0),
             posts: Vec::new(),
             scene: None,
             layout_seconds: 0.,
@@ -1439,6 +1444,28 @@ impl Realm {
         out.extend(s.images.iter().map(|(n, i)| (*n, i.clone())));
         out
     }
+    /// `img` elements laid out with no picture (made by the parser from a
+    /// script's markup, cloned, never asked about): their images loaded,
+    /// as a browser loads every image element's (`load` follows). One
+    /// already tried is left as it is.
+    pub fn load_images(&mut self, nodes: &[NodeId]) {
+        if nodes.is_empty() {
+            return;
+        }
+        let state = self.state.clone();
+        let guard = self.guard.clone();
+        let _busy = Busy::new(&guard);
+        let _entered = Entered::new(&self.isolate);
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        let global = context.global(scope);
+        let Some(f) = prelude_function(scope, global, "__olo_loadImages") else { return };
+        let items: Vec<v8::Local<v8::Value>> = nodes.iter().filter_map(|n| wrap(scope, &state, *n)).map(Into::into).collect();
+        let array = v8::Array::new_with_elements(scope, &items);
+        v8::tc_scope!(let tc, scope);
+        f.call(tc, global.into(), &[array.into()]);
+    }
     /// A picture for `node` (a video's poster): the page's own at once, else
     /// asked of the browser (`take_requests`) and bound when it comes, as an
     /// image scripts load is (`canvases`).
@@ -1783,6 +1810,7 @@ impl State {
             waker: None,
             measure: None,
             measured: None,
+            measured_pictures: (0, 0),
             posts: Vec::new(),
             scene: None,
             layout_seconds: 0.,
@@ -1797,13 +1825,20 @@ impl State {
     /// unchanged, else a new one within the layout budget.
     fn measured(&mut self) -> Option<&olo_web::page::Measured> {
         let revision = self.document.revision();
-        let stale = self.measured.as_ref().is_none_or(|m| m.revision() != revision);
+        // (A picture come in or let go changes what its image measures.)
+        let pictures = self.images.iter().fold((self.images.len(), 0usize), |(n, h), (node, i)| (n, h.wrapping_add((Arc::as_ptr(i) as usize) ^ node.slot() as usize)));
+        let stale = self.measured.as_ref().is_none_or(|m| m.revision() != revision) || pictures != self.measured_pictures;
         if stale && self.measure.is_some() && self.run_layouts < self.run_limits.0 && self.run_layout_seconds < self.run_limits.1 {
             let started = Instant::now();
+            let bound: Vec<(NodeId, Arc<olo_web::image::Image>)> = self.images.iter().map(|(n, i)| (*n, i.clone())).collect();
             let measure = self.measure.as_mut()?;
             // The previous measurement is consumed: patched in place when
             // little changed, else seeding the next.
-            self.measured = measure(&self.document, self.measured.take());
+            self.measured = measure(&self.document, &bound, self.measured.take());
+            if std::env::var_os("OLO_MEASURE_DEBUG").is_some() {
+                eprintln!("measure: revision {revision}, {} pictures {:?} (was {:?}): {}", bound.len(), pictures, self.measured_pictures, self.measured.as_ref().map_or("none", |m| m.path()));
+            }
+            self.measured_pictures = pictures;
             let took = started.elapsed().as_secs_f64();
             self.layout_seconds += took;
             self.run_layout_seconds += took;

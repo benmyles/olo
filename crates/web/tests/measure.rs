@@ -302,3 +302,27 @@ fn a_length_margin_resolves_to_itself_not_the_room_left_over() {
     assert_eq!(get("pct", "margin-left").as_deref(), Some("40px"));
     assert_eq!(get("em", "margin-right").as_deref(), Some("20px"));
 }
+#[test]
+fn a_picture_a_script_loaded_measures_its_image_after_the_document_changes() {
+    // The pictures bound for measuring were the document's at one revision:
+    // after any change an image measured as its placeholder (0 tall with a
+    // width attribute alone), its own pictures and those scripts loaded
+    // alike (IMDb's carousel read its slides 0 tall).
+    let (mut measurer, host, mut doc, viewport) =
+        measurer_for("<!doctype html><style>body{margin:0}</style><div style='width:400px'><img id=i width=500 style='width:100%;display:block'></div><p id=p>x</p>");
+    let img = find(&doc, "i");
+    let picture = olo_web::image::Image::from_rgba(500, 281, vec![255; 500 * 281 * 4], page::PAGE_IMAGE_LIMITS, None).unwrap();
+    let height = |m: &page::Measured, doc: &olo_web::dom::Document| {
+        let l = m.layout();
+        let (b, _) = l.cache().tree().iter().find(|(_, b)| doc.attribute(b.node, "id").ok().flatten() == Some("i")).unwrap();
+        l.bounds(b).unwrap().height
+    };
+    measurer.bind_pictures(&doc, &[(img, picture.clone())], None);
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    assert!((height(&m, &doc) - 224.8).abs() < 0.1, "{}", height(&m, &doc));
+    let p = find(&doc, "p");
+    doc.set_attribute(p, "title", "changed").unwrap();
+    measurer.bind_pictures(&doc, &[(img, picture)], None);
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, Some(m), None).unwrap();
+    assert!((height(&m, &doc) - 224.8).abs() < 0.1, "{}", height(&m, &doc));
+}

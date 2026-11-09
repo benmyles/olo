@@ -302,7 +302,10 @@ fn start(src: String, parent: url::Url, size: [u32; 2], made: Arc<Mutex<Made>>, 
                     let mut measurer = measurer;
                     let cancel = cancel.clone();
                     let viewport = host.viewport;
-                    Box::new(move |doc: &olo_web::dom::Document, previous: Option<page::Measured>| measurer.measure(doc, &host, &mut shaper, viewport, previous, Some(&cancel)).ok())
+                    Box::new(move |doc: &olo_web::dom::Document, pictures: &[(NodeId, Arc<Image>)], previous: Option<page::Measured>| {
+                        measurer.bind_pictures(doc, pictures, Some(&cancel));
+                        measurer.measure(doc, &host, &mut shaper, viewport, previous, Some(&cancel)).ok()
+                    })
                 };
                 // (Pictures its scripts load come as the live page's do.)
                 let lookup: olo_js::ImageLookup = Box::new(|_: &str| None);

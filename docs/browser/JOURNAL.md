@@ -7351,3 +7351,29 @@ against it. A realm made without the snapshot compiles the prelude
 Cloudflare still doesn't let Olo through: it serves its interstitial to
 Olo (not to Chrome) for its TLS handshake, and its script throws an
 empty TypeError of its own making on some check it doesn't say.
+
+IMDb's hero carousel showed no pictures. Following it found three
+faults, each shown against Chrome on a page of its own:
+
+- An absolutely positioned image centred by auto margins sat half its
+  containing block's height too high: the search for its containing
+  block began at its parent box, for an inline image the anonymous box
+  holding its block's inline content, which has its block's style
+  (`position: relative`) and is 0 tall. Boxes that aren't their
+  element's own are passed over now.
+- Every measurement a script asked for after it changed the document
+  laid images out as placeholders: the pictures bound for measuring
+  were the document's at one revision, and dropped at the next. With a
+  `width` attribute and no picture, an image measured 0 tall. They are
+  bound to the document as it is now, with the pictures scripts loaded
+  too, and a layout isn't kept when its pictures changed. A script's
+  image now measures 0 before its load and 224.8 at it and after, as in
+  Chrome.
+- An `img` the parser made from a script's markup, or a clone, loaded
+  only when a script asked about it. Those laid out without a picture
+  near the view are loaded now, as a browser loads every image element's.
+
+IMDb's hero is still dark: its visible slide isn't one these reach. On
+BBC, each browser alone (a busy machine): Olo load 5.55 CPU s (5.23
+before), idle 1.0%, scroll 36%, 582 MB; Chrome 6.16 s, 4.5%, 138%,
+692 MB.

@@ -174,6 +174,8 @@ impl Prepared {
             checked: None,
             late: self.late.len(),
             changes: RuleChanges::default(),
+            own_images: self.images.clone(),
+            bound: (0, 0),
         }
     }
     /// What the stylesheets declared that the engine dropped.
@@ -643,8 +645,35 @@ pub struct Measurer {
     /// The sheets its rules were compiled from (what a change added or
     /// took away, see `document_sheets_reach`).
     sheets: Vec<Sheet>,
+    /// The page's own pictures, before any scripts' were bound over them.
+    own_images: Option<Arc<crate::image::Set>>,
+    /// The scripts' pictures last bound (how many, who they are).
+    bound: (usize, usize),
 }
 impl Measurer {
+    /// The pictures scripts loaded into `img` elements, for its layouts to
+    /// size their images by (bound again only when they changed). Without
+    /// them, an image a script loaded measured as its placeholder: IMDb's
+    /// carousel read its slides' pictures 0 tall.
+    pub fn bind_pictures(&mut self, doc: &Document, pictures: &[(crate::dom::NodeId, Arc<crate::image::Image>)], cancel: Option<&AtomicBool>) {
+        let key = pictures.iter().fold((pictures.len(), 0usize), |(n, h), (node, i)| (n, h.wrapping_add((Arc::as_ptr(i) as usize) ^ node.slot() as usize)));
+        // A set is the document's at one revision: after any change the
+        // page's own pictures, bound at its preparing, went unused too, and
+        // every image measured as its placeholder. Bound again to the
+        // document as it is.
+        let current = self.images.as_ref().is_none_or(|i| i.validate(doc).is_ok());
+        if key == self.bound && current {
+            return;
+        }
+        self.bound = key;
+        let base = self.own_images.clone();
+        self.images = match base {
+            Some(set) if !pictures.is_empty() => set.with_extra(doc, pictures.to_vec(), SCRIPTED_IMAGE_LIMITS, cancel).ok().or(Some(set)),
+            Some(set) => set.with_extra(doc, Vec::new(), SCRIPTED_IMAGE_LIMITS, cancel).ok().or(Some(set)),
+            None if !pictures.is_empty() => crate::image::Set::new(doc, pictures.to_vec(), SCRIPTED_IMAGE_LIMITS, cancel).ok(),
+            None => None,
+        };
+    }
     /// How many pictures the page was prepared without (still on their
     /// way): a page with none to run still goes live for them.
     pub fn late_images(&self) -> usize {
@@ -811,7 +840,14 @@ impl Measurer {
         }
         let issues =
             styles.report().stylesheet_issues + styles.report().inline_unsupported + styles.report().inline_invalid + styles.report().presentation_invalid + styles.report().presentation_unsupported;
-        let kept = previous.as_ref().filter(|p| styles.geometry_kept() && !relayout && p.viewport == viewport);
+        // (Kept only with the same pictures: one a script loaded since
+        // changes its image's size.)
+        let same_pictures = |p: &Measured| match (p.layout.cache().tree().images(), self.images.as_ref().filter(|i| i.validate(doc).is_ok())) {
+            (None, None) => true,
+            (Some(a), Some(b)) => a.same_layout(b),
+            _ => false,
+        };
+        let kept = previous.as_ref().filter(|p| styles.geometry_kept() && !relayout && p.viewport == viewport && same_pictures(p));
         let layout = if let Some(p) = kept {
             redone[1] = layout::Redone::Not;
             redone[2] = layout::Redone::Not;

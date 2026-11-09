@@ -432,3 +432,18 @@ fn clip_rect_hides_an_absolute_box_and_takes_its_hits_away() {
     // Not positioned: clip doesn't apply.
     assert_eq!(id(p.scene.hit_test(20., 120., 0., 300., &[])), Some("flow".into()));
 }
+#[test]
+fn an_absolute_replaced_box_takes_its_elements_box_as_containing_block() {
+    // An inline replaced element's parent box is the anonymous one holding
+    // its block's inline content (its block's style, 0 tall): taken as the
+    // containing block, a picture centred by auto margins sat half its
+    // height above it (IMDb's hero pictures, out of sight).
+    let p = load(
+        "body{margin:0}#first{height:100px}#cb{position:relative;width:400px;height:300px}#c{position:absolute;top:0;bottom:0;left:0;right:0;margin:auto;width:100%;height:50px}</style><div id=first></div><div id=cb><canvas id=c width=500 height=281></canvas></div>",
+        1.,
+    );
+    let l = p.scene.layout();
+    let id = l.cache().tree().iter().find(|(_, b)| p.document.attribute(b.node, "id").ok().flatten() == Some("c")).unwrap().0;
+    let r = l.bounds(id).unwrap();
+    assert_eq!((r.y, r.height), (100. + 125., 50.));
+}

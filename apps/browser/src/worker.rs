@@ -1271,6 +1271,29 @@ fn render(
                     eprintln!("  pictures: {gone} far from the view let go, {back} near again asked for");
                 }
             }
+            {
+                let layout = c.page.scene.layout();
+                let height = f64::from(r.key.height) / r.key.scale;
+                let top = f64::from(r.scroll) / r.key.scale - 2. * height;
+                let bottom = top + 5. * height;
+                // Images laid out with no picture near the view (parsed
+                // from a script's markup, cloned: a carousel's slides):
+                // loaded, as a browser loads them.
+                let doc = &c.page.document;
+                let bare: Vec<olo_web::dom::NodeId> = layout
+                    .cache()
+                    .tree()
+                    .iter()
+                    .filter(|(_, b)| matches!(b.kind, layout::BoxKind::InlineReplaced { .. } | layout::BoxKind::BlockReplaced { .. }))
+                    .filter(|(_, b)| doc.name(b.node).ok().flatten() == Some("img"))
+                    .filter(|(id, _)| layout.bounds(*id).is_some_and(|r| r.y + r.height >= top && r.y <= bottom))
+                    .map(|(_, b)| b.node)
+                    .collect();
+                if !bare.is_empty() {
+                    live.realm.load_images(&bare);
+                    live.loads.dispatch(&mut live.realm);
+                }
+            }
         }
         if olo_web::env_on!("OLO_BROWSER_TIMING") {
             for line in live.realm.take_console() {
@@ -1787,7 +1810,8 @@ fn render(
                 let tx = tx.clone();
                 let mut measurer = measurer;
                 let timing = olo_web::env_on!("OLO_BROWSER_TIMING");
-                Box::new(move |doc: &olo_web::dom::Document, previous: Option<page::Measured>| {
+                Box::new(move |doc: &olo_web::dom::Document, pictures: &[(olo_web::dom::NodeId, Arc<olo_web::image::Image>)], previous: Option<page::Measured>| {
+                    measurer.bind_pictures(doc, pictures, Some(&cancel));
                     let call = Instant::now();
                     // Stylesheets the scripts added since: the rules follow.
                     let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| live_resource(&loader, &light, kind, base, href, &cancel, &tx);
