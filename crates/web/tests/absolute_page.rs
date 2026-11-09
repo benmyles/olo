@@ -391,3 +391,25 @@ fn an_absolute_box_with_a_ratio_takes_its_width_from_its_height() {
         assert_eq!(rect(&p, "c").width, 40., "border-box ratio at {scale}");
     }
 }
+/// An absolutely positioned child of a flex container, its insets auto,
+/// sits as the container's sole item would (CSS Flexbox 1 §4.1): centred
+/// by `justify-content` and `align-items`, at the end by `flex-end`, in a
+/// row or a column (Reddit's loading ring sat at the start).
+#[test]
+fn an_absolute_flex_child_sits_as_the_sole_item_would() {
+    for scale in [1., 1.5, 2.] {
+        let p = load(
+            "#r{display:flex;justify-content:center;align-items:center;position:relative;width:200px;height:100px}#a{position:absolute;width:40px;height:20px}\
+             #c{display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end;position:relative;width:100px;height:60px}#b{position:absolute;width:30px;height:10px}\
+             #s{display:flex;justify-content:center;position:relative;width:100px;height:50px}#t{position:absolute;left:5px;width:10px;height:10px}</style>\
+             <div id=r><div id=a></div></div><div id=c><div id=b></div></div><div id=s><div id=t></div></div>",
+            scale,
+        );
+        let (r, a) = (rect(&p, "r"), rect(&p, "a"));
+        assert_eq!((a.x - r.x, a.y - r.y), (80., 40.), "centred at {scale}");
+        let (c, b) = (rect(&p, "c"), rect(&p, "b"));
+        assert_eq!((b.x - c.x, b.y - c.y), (70., 50.), "at the ends at {scale}");
+        let (s, t) = (rect(&p, "s"), rect(&p, "t"));
+        assert_eq!(t.x - s.x, 5., "an inset set: as it says, at {scale}");
+    }
+}

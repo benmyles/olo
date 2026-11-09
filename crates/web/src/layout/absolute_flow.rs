@@ -9,6 +9,66 @@ pub(super) struct Deferred {
     /// Where normal flow would have put the box, in its parent's content box:
     /// the static position an auto inset falls back to.
     pub static_position: Point,
+    /// In a flex container, where its static position lies on each axis
+    /// (x, y): as if it were the container's sole item, aligned by its
+    /// `justify-content` and the box's `align-self` (CSS Flexbox 1 §4.1).
+    pub flex: Option<[Place; 2]>,
+}
+/// Where a box sits on one axis of its parent's content box.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum Place {
+    Start,
+    Center,
+    End,
+}
+/// The static placement of an absolutely positioned child of a flex
+/// container with style `parent` (CSS Flexbox 1 §4.1: as its sole item).
+fn flex_static(parent: &Style, child: &Style) -> Option<[Place; 2]> {
+    use crate::css::properties::{Display, Inner};
+    if !matches!(parent.value(P::Display), Value::Display(Display::Box { inner: Inner::Flex, .. })) {
+        return None;
+    }
+    let keyword = |s: &Style, p: P| if let Value::Keyword(k) = s.value(p) { Some(*k) } else { None };
+    let direction = keyword(parent, P::FlexDirection).unwrap_or(K::Row);
+    let row = matches!(direction, K::Row | K::RowReverse);
+    let reverse = matches!(direction, K::RowReverse | K::ColumnReverse);
+    let main = match keyword(parent, P::JustifyContent).unwrap_or(K::Normal) {
+        K::Center | K::SpaceAround | K::SpaceEvenly => Place::Center,
+        K::FlexEnd => {
+            if reverse {
+                Place::Start
+            } else {
+                Place::End
+            }
+        }
+        K::End | K::Right => Place::End,
+        K::FlexStart | K::Normal | K::SpaceBetween | K::Stretch => {
+            if reverse {
+                Place::End
+            } else {
+                Place::Start
+            }
+        }
+        _ => Place::Start,
+    };
+    let align = match keyword(child, P::AlignSelf).unwrap_or(K::Auto) {
+        K::Auto | K::Normal => keyword(parent, P::AlignItems).unwrap_or(K::Normal),
+        other => other,
+    };
+    let cross = match align {
+        K::Center => Place::Center,
+        K::FlexEnd | K::End => Place::End,
+        _ => Place::Start,
+    };
+    Some(if row { [main, cross] } else { [cross, main] })
+}
+/// Where a box `outer` long sits in `space` placed so.
+fn placed(place: Place, space: f64, outer: f64) -> f64 {
+    match place {
+        Place::Start => 0.,
+        Place::Center => (space - outer) / 2.,
+        Place::End => space - outer,
+    }
 }
 pub(super) struct Active {
     pub id: BoxId,
@@ -71,7 +131,16 @@ impl Job<'_> {
         // flex row it would start where the row's cursor is. Both are the
         // static position's block-axis estimate for a hypothetical block box.
         let static_position = Point { x: 0., y: parent.cursor + parent.pending.value() };
-        self.defer_absolute_at(id, static_position)
+        // In a flex container: placed as its sole item would be.
+        let flex = match (self.cache.tree.style(parent.id), self.cache.tree.style(id)) {
+            (Some(p), Some(c)) => flex_static(p, c),
+            _ => None,
+        };
+        self.defer_absolute_at(id, static_position)?;
+        if let Some(&at) = self.absolute_indices.get(&id) {
+            self.absolute[at].flex = flex;
+        }
+        Ok(())
     }
     /// Defer an absolute box with its static position, in its parent's
     /// content box (an inline-level one's: its place in its line).
@@ -85,7 +154,7 @@ impl Job<'_> {
             self.absolute[at].static_position = static_position;
         } else {
             self.absolute_indices.insert(id, self.absolute.len());
-            self.absolute.push(Deferred { id, queries: parent.queries, static_position });
+            self.absolute.push(Deferred { id, queries: parent.queries, static_position, flex: None });
         }
         Ok(())
     }
@@ -182,10 +251,30 @@ impl Job<'_> {
         } else {
             [0., 0.]
         };
-        let x = input(s, Axis::Horizontal { rtl, static_rtl: rtl }, width, height, u, ratio_width, intrinsic, static_x, d.queries, &mut self.scratch, self.cancel, self.scale)?;
-        let y = input(s, Axis::Vertical, width, height, u, None, [0., 0.], static_y, d.queries, &mut self.scratch, self.cancel, self.scale)?;
-        let horizontal = positioned::solve(x, self.scale)?;
-        let vertical = positioned::solve(y, self.scale)?;
+        let mut x = input(s, Axis::Horizontal { rtl, static_rtl: rtl }, width, height, u, ratio_width, intrinsic, static_x, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+        let mut y = input(s, Axis::Vertical, width, height, u, None, [0., 0.], static_y, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+        let mut horizontal = positioned::solve(x, self.scale)?;
+        let mut vertical = positioned::solve(y, self.scale)?;
+        // A flex container's child with both insets of an axis auto sits as
+        // its sole item would (CSS Flexbox 1 §4.1), once its size there is
+        // known: Reddit's loading ring, `::before` of a centring flex box,
+        // sat at its start.
+        if let Some([px, py]) = d.flex {
+            if px != Place::Start && left.is_none() && right.is_none() {
+                let outer = horizontal.size + x.decoration + horizontal.margin[0] + horizontal.margin[1];
+                let at = parent_content.x + placed(px, parent_content.width, outer) - (content.x - cg.padding.left);
+                x = input(s, Axis::Horizontal { rtl, static_rtl: rtl }, width, height, u, ratio_width, intrinsic, at, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+                horizontal = positioned::solve(x, self.scale)?;
+            }
+            let top = used::length(s, P::Top, Some(height), None, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+            let bottom = used::length(s, P::Bottom, Some(height), None, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+            if py != Place::Start && top.is_none() && bottom.is_none() && y.size.is_some() {
+                let outer = vertical.size + y.decoration + vertical.margin[0] + vertical.margin[1];
+                let at = parent_content.y + placed(py, parent_content.height, outer) - (content.y - cg.padding.top);
+                y = input(s, Axis::Vertical, width, height, u, None, [0., 0.], at, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+                vertical = positioned::solve(y, self.scale)?;
+            }
+        }
         u.width = horizontal.size;
         u.apply_aspect(s);
         u.margin.left = horizontal.margin[0];
