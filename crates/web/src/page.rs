@@ -1172,6 +1172,163 @@ impl Measured {
         }
         out
     }
+    /// An element's rendered text (HTML's innerText): its text as shown,
+    /// whitespace collapsed as its style says, text-transform applied, a
+    /// line break around each block (two around a paragraph), a tab
+    /// between table cells, a newline between rows and for each `<br>`,
+    /// nothing of what isn't displayed or is hidden. None when the element
+    /// itself isn't rendered (then it is its textContent).
+    pub fn inner_text(&self, doc: &Document, node: crate::dom::NodeId) -> Option<String> {
+        use css::properties::{Display, Internal, Keyword as K, Outer, Property as P};
+        use css::style::Value;
+        let styles = self.layout.cache().tree().styles();
+        let own = styles.snapshot(node)?;
+        if matches!(own.value(P::Display), Value::Display(Display::None)) || !displayed(doc, styles, node) {
+            return None;
+        }
+        enum Item {
+            Text(String),
+            Break(u8),
+        }
+        struct Walk<'a> {
+            doc: &'a Document,
+            styles: &'a style::StyleTree,
+            items: Vec<Item>,
+            budget: usize,
+        }
+        impl Walk<'_> {
+            fn visit(&mut self, node: crate::dom::NodeId, depth: usize) {
+                if depth > 512 || self.budget == 0 {
+                    return;
+                }
+                self.budget -= 1;
+                match self.doc.node_type(node) {
+                    Ok(crate::dom::NodeType::Text) => {
+                        let Some(parent) = self.doc.parent(node).ok().flatten() else { return };
+                        let Some(s) = self.styles.snapshot(parent) else { return };
+                        if !matches!(s.value(P::Visibility), Value::Keyword(K::Visible)) {
+                            return;
+                        }
+                        let raw = self.doc.value(node).ok().flatten().unwrap_or_default();
+                        let mut text = match s.value(P::WhiteSpaceCollapse) {
+                            Value::Keyword(K::Preserve | K::BreakSpaces) => format!("\u{1}{raw}"),
+                            Value::Keyword(K::PreserveBreaks) => format!("\u{2}{raw}"),
+                            _ => format!("\u{3}{raw}"),
+                        };
+                        match s.value(P::TextTransform) {
+                            Value::Keyword(K::Uppercase) => text = text.to_uppercase(),
+                            Value::Keyword(K::Lowercase) => text = text.to_lowercase(),
+                            _ => {}
+                        }
+                        self.items.push(Item::Text(text));
+                    }
+                    Ok(crate::dom::NodeType::Element) => {
+                        let Some(s) = self.styles.snapshot(node) else { return };
+                        let display = match s.value(P::Display) {
+                            Value::Display(d) => *d,
+                            _ => return,
+                        };
+                        if matches!(display, Display::None) {
+                            return;
+                        }
+                        let name = self.doc.name(node).ok().flatten().unwrap_or_default().to_ascii_lowercase();
+                        if name == "br" {
+                            self.items.push(Item::Text("\u{1}\n".into()));
+                            return;
+                        }
+                        let (before, after) = match display {
+                            _ if name == "p" => (2, 2),
+                            Display::Box { outer: Outer::Block, .. } | Display::Internal(Internal::TableCaption) => (1, 1),
+                            Display::Box { list_item: true, .. } => (1, 1),
+                            _ => (0, 0),
+                        };
+                        if before > 0 {
+                            self.items.push(Item::Break(before));
+                        }
+                        let mut child = self.doc.composed_first_child(node).ok().flatten();
+                        while let Some(c) = child {
+                            self.visit(c, depth + 1);
+                            child = self.doc.composed_next_sibling(c).ok().flatten();
+                        }
+                        // A cell before another in its row, a row before
+                        // another (in its table).
+                        let next_element = |mut n: crate::dom::NodeId| loop {
+                            match self.doc.next_sibling(n).ok().flatten() {
+                                Some(x) if self.doc.node_type(x).ok() == Some(crate::dom::NodeType::Element) => break Some(x),
+                                Some(x) => n = x,
+                                None => break None,
+                            }
+                        };
+                        match display {
+                            Display::Internal(Internal::TableCell) if next_element(node).is_some() => self.items.push(Item::Text("\u{1}\t".into())),
+                            Display::Internal(Internal::TableRow) if next_element(node).is_some() => self.items.push(Item::Break(1)),
+                            _ => {}
+                        }
+                        if after > 0 {
+                            self.items.push(Item::Break(after));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let mut walk = Walk { doc, styles, items: Vec::new(), budget: 200_000 };
+        let mut child = doc.composed_first_child(node).ok().flatten();
+        while let Some(c) = child {
+            walk.visit(c, 1);
+            child = doc.composed_next_sibling(c).ok().flatten();
+        }
+        // Whitespace collapsed across the text (a space kept once, none at a
+        // line's start or end), and runs of breaks as their largest.
+        let mut out = String::new();
+        let (mut pending, mut breaks, mut line_start) = (false, 0u8, true);
+        let flush_breaks = |out: &mut String, breaks: &mut u8| {
+            if *breaks > 0 && !out.is_empty() {
+                for _ in 0..*breaks {
+                    out.push('\n');
+                }
+            }
+            *breaks = 0;
+        };
+        for item in walk.items {
+            match item {
+                Item::Break(n) => {
+                    pending = false;
+                    breaks = breaks.max(n);
+                    line_start = true;
+                }
+                Item::Text(text) => {
+                    let mut chars = text.chars();
+                    let mode = chars.next().unwrap_or('\u{3}');
+                    for c in chars {
+                        let preserved = mode == '\u{1}' || (mode == '\u{2}' && c == '\n');
+                        if preserved {
+                            flush_breaks(&mut out, &mut breaks);
+                            if pending {
+                                out.push(' ');
+                                pending = false;
+                            }
+                            out.push(c);
+                            line_start = c == '\n';
+                        } else if c.is_ascii_whitespace() {
+                            if !line_start {
+                                pending = true;
+                            }
+                        } else {
+                            flush_breaks(&mut out, &mut breaks);
+                            if pending {
+                                out.push(' ');
+                                pending = false;
+                            }
+                            out.push(c);
+                            line_start = false;
+                        }
+                    }
+                }
+            }
+        }
+        Some(out)
+    }
     /// The padding box (clientWidth/clientHeight, clientTop/clientLeft).
     pub fn padding_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
         let (_, r, g) = self.geometry(node)?;

@@ -2433,6 +2433,7 @@ const NATIVES: &[&str] = &[
     "rect",
     "paddingRect",
     "textRects",
+    "innerText",
     "clientRects",
     "scrollSize",
     "computed",
@@ -3846,6 +3847,20 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 let mut s = state.borrow_mut();
                 let text = s.measured().and_then(|m| m.computed(n, &property));
                 drop(s);
+                match text {
+                    Some(t) => rv.set(string(scope, &t)),
+                    None => rv.set_null(),
+                }
+            }
+        }
+        // An element's rendered text (innerText), or null when it isn't
+        // rendered (its textContent, then).
+        "innerText" => {
+            if let Some(n) = node(scope, 0) {
+                let mut s = state.borrow_mut();
+                s.measured();
+                let s = &*s;
+                let text = s.measured.as_ref().and_then(|m| m.inner_text(&s.document, n));
                 match text {
                     Some(t) => rv.set(string(scope, &t)),
                     None => rv.set_null(),

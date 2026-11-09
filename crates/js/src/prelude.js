@@ -539,7 +539,8 @@
     previousElementSibling: { get() { let n = N.previousSibling(this); while (n && N.nodeType(n) !== 1) n = N.previousSibling(n); return n; } },
     innerHTML: { get() { return N.innerHTML(this); }, set(v) { N.setInnerHTML(this, v == null ? '' : String(v)); } },
     outerHTML: { get() { return N.outerHTML(this); }, set(v) { const p = N.parent(this); if (!p) return; const f = N.createFragment(); const holder = N.createElement('div', ''); N.append(f, holder); N.setInnerHTML(holder, v == null ? '' : String(v)); const next = N.nextSibling(this); N.remove(this); for (const c of N.childNodes(holder)) { if (next) N.insertBefore(p, c, next); else N.append(p, c); } } },
-    innerText: { get() { return N.textContent(this); }, set(v) { N.setTextContent(this, v == null ? '' : String(v)); } },
+    // (As rendered; set, its line breaks become <br>s.)
+    innerText: { get() { const t = N.innerText(this); return t == null ? N.textContent(this) : t; }, set(v) { const text = v == null ? '' : String(v); if (!/[\r\n]/.test(text)) { N.setTextContent(this, text); return; } N.setTextContent(this, ''); const parts = text.split(/\r\n|\r|\n/); parts.forEach((part, i) => { if (i) N.append(this, N.createElement('br', '')); if (part) N.append(this, N.createText(part)); }); } },
     outerText: { get() { return N.textContent(this); } },
     style: { get() { return styleOf(this); }, set(v) { if (v) N.setAttr(this, 'style', String(v)); else N.removeAttr(this, 'style'); } },
     dataset: { get() { return new Proxy({ _el: this }, datasetHandler); } },
