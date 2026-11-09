@@ -7104,4 +7104,9 @@ the Guardian and old Reddit, looking for pages that fail outright:
 - **Reddit's memory.** The pictures in its feed's `img` elements stayed
   decoded however far scrolled past: 570 MB of them. Past a budget those
   far from the view go and come back as they near it, as Chrome's do.
+- **Web Crypto's AES.** Amazon's bot check imports an AES-GCM key, which
+  Olo refused (it had digests and HMAC): a blank page. AES (GCM, CBC,
+  CTR), PBKDF2 and HKDF now, natively; Amazon's home loads. Amazon tells
+  AI agents their access violates its terms (Chrome under remote
+  debugging is turned away so): the agent stopped testing it there.
 

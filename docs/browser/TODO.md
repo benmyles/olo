@@ -92,12 +92,15 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 - [x] Reddit: its loading indicator (between pages): its ring, an absolute
   child of a centring flex box, sat at the start (2026-11-08: placed as
   the sole flex item would be); its Snoo draws as Chrome's.
-- [ ] Bot challenges keep whole sites out (2026-11-08 sweep): Stack
-  Overflow stops at Cloudflare's "Performing security verification", The
-  New York Times at DataDome's device check (in an iframe, whose scripts
-  don't run yet: a blank page), Amazon at its AWS WAF. Chrome is let
-  through. Needs iframes' scripts, and requests less unlike Chrome's
-  (TLS and header order) to be flagged less often.
+- [ ] Bot checks (2026-11-08 sweep): Stack Overflow stops at Cloudflare's
+  "Performing security verification", The New York Times at DataDome's
+  device check (in an iframe, whose scripts don't run yet: a blank page).
+  Amazon's AWS WAF passes since Web Crypto has AES (2026-11-08). What is
+  missing is standard behaviour (iframes' scripts); nothing is to be done
+  to look less like an automated client. Amazon tells AI agents their
+  access violates its Conditions of Use (Chrome under remote debugging
+  is shown "Access restricted"): agents don't test on Amazon; a person
+  checks it.
 - [x] YouTube: its home as Chrome's, icons within a second (2026-11-08:
   idle callbacks took their timeout as a delay; Cache Storage kept nothing).
 - [ ] Selectors are compiled again with every compile of a page's sheets
