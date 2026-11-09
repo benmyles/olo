@@ -4054,7 +4054,13 @@ recorded otherwise.
     the window, or cut off: give it room or `style::fit` it; it says how
     much shows across, and the line's and its clip's tops and bottoms,
     for a line cut above or below),
-    `text-over-text`, `overflow` (anything that starts in a box or a tab
+    `text-over-text`, `text-over-control` (a line laid out past the room
+    it was given, running over a control it doesn't start in: a title
+    over the buttons beside it; a layout box stays where it was put, so
+    only the text's own extent shows it. Ben, 2026-11-09, of DiskBackup's
+    "Getting ready: counting what to back up" over Restore…; it found
+    Preferences ▸ Sound's AirPods row squeezing its noise control's menu
+    to nothing, its label over Use Music Quality, at once), `overflow` (anything that starts in a box or a tab
     view's pane and runs past its inset, bottom or right: a tab's
     content under the panel's Defaults, a long check box into its box's
     frame; boxes and panes mark themselves, `review::container`,
@@ -4253,7 +4259,13 @@ it under `cfg(test)`), and Train for Your Palm full screen at 1280 × 800
 and a MacBook's 1512 × 982, every step in every state
 (`palm_trainer::lint_states`: fresh, a touch judged, the longest miss,
 done, Esc pressed once; training; each of the summary's outcomes; the
-try). `tools/install-session.sh` runs it and stops if it fails. A
+try), and DiskBackup's window in each of its 25 states (`apps/diskbackup/src/lint.rs`:
+never backed up, backed up, failed, stopped, waiting, each stage of a
+backup with a folder named by a long path and a file deep in it,
+waiting for the network, tidying, deleting, erasing, validating, an
+unfinished backup left; `Disk::for_lint`). A window drawn only in the
+state it opens in can't show what goes wrong in another: lint each
+state a window shows. `tools/install-session.sh` runs it and stops if it fails. A
 window of a fixed size or a dialog gets a `ui_lint` test beside it:
 build its view with the longest things it can show. A full-screen one
 (`WindowOptions::fullscreen`) is centred in what the screen gives it,

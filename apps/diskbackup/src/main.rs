@@ -54,6 +54,8 @@
 mod agent_setup;
 mod app;
 mod drive_setup;
+#[cfg(test)]
+mod lint;
 mod restore;
 mod service;
 mod target;

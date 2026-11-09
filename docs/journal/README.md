@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### DiskBackup's title fits beside its buttons
+
+*10:43* — Shorter titles ("Counting what to back up", "Backup didn't finish"), and a folder's path cut short with its whole in the tip. The layout review now finds text that runs over a control (text-over-control), and the lint draws DiskBackup's window in all 25 of its states.
+
+![DiskBackup's title fits beside its buttons](2026-11-09/104331-diskbackup-s-title-fits-beside-its-buttons.png)
+
+### DiskBackup's title over its buttons (before)
+
+*10:43* — While a backup started, its title ("Getting ready: counting what to back up", or a folder named by its path) ran on over Restore… and Stop: the layout lint didn't look at DiskBackup, and had no check for text over a control.
+
+![DiskBackup's title over its buttons (before)](2026-11-09/104330-diskbackup-s-title-over-its-buttons-before.png)
+
 ### DiskBackup: waiting for the network
 
 *10:02* — No network mid-backup (a cable pulled, Wi-Fi left): the backup waits for one and says so, and goes on by itself, from where it got to, once it's back; a connection on a network that went is cut at once and the request asked again on the new one (olo-net). A sandboxed service in a network namespace of its own, its way out taken away.

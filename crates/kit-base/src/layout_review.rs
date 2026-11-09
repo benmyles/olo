@@ -300,6 +300,7 @@ pub fn review(parts: &Parts, width: f32, height: f32, ppp: f32) -> Vec<Finding> 
     uneven_rows(parts, ppp, &mut out);
     controls(parts, screen, &mut out);
     texts_over(parts, screen, &mut out);
+    texts_over_controls(parts, &mut out);
     overflow(parts, ppp, &mut out);
     crowded(parts, screen, ppp, &mut out);
     window_edges(parts, screen, &mut out);
@@ -498,6 +499,39 @@ fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
             // doesn't.)
             if over.width() > 2.0 && over.height() > a.size.min(b.size) * 0.4 {
                 push(out, finding(Level::Error, "text-over-text", format!("{} and {} overlap by {:.1}×{:.1}", quote(a), quote(b), over.width(), over.height()), over));
+            }
+        }
+    }
+}
+
+/// Text that runs over a control it isn't in: a line laid out past the
+/// room it was given (a title as long as its window, with buttons beside
+/// it: DiskBackup's "Getting ready: counting what to back up" over its
+/// Restore… button, Ben, 2026-11-09). Its box stays where the layout put
+/// it, so only the text's own extent shows it. A control's own text
+/// starts in it (a button's label, a field's text, a row's cells) and
+/// isn't over it.
+fn texts_over_controls(p: &Parts, out: &mut Vec<Finding>) {
+    for t in &p.texts {
+        let start = Pos2::new(t.left + 0.5, t.middle);
+        for c in showing(p) {
+            let shown = c.shown();
+            if shown.expand(SAME).contains(start) || shown.expand(SAME).contains_rect(t.rect) {
+                continue;
+            }
+            let over = t.rect.intersect(shown);
+            // (A line's box reaches into what's under it by its leading;
+            // its ink doesn't.)
+            if over.width() > 2.0 && over.height() > t.size * 0.4 {
+                push(
+                    out,
+                    finding(
+                        Level::Error,
+                        "text-over-control",
+                        format!("{} runs over {} by {:.1}×{:.1}: give it room (wrap it, or cut it short: `StringView::cut`)", quote(t), c.said(), over.width(), over.height()),
+                        over,
+                    ),
+                );
             }
         }
     }
@@ -1160,6 +1194,27 @@ mod tests {
     fn button(name: &str, x: f32, element: &str) -> Control {
         let rect = Rect::from_min_max(pos2(x, 20.0), pos2(x + 80.0, 44.0));
         Control { rect, clip: Rect::from_min_max(pos2(0.0, 0.0), pos2(400.0, 300.0)), role: "Button".into(), name: name.into(), clickable: true, element: Some(element.into()) }
+    }
+
+    fn text(label: &str, x: f32, width: f32) -> Text {
+        Text { rect: Rect::from_min_max(pos2(x, 20.0), pos2(x + width, 52.0)), baseline: 44.0, middle: 36.0, left: x, label: label.into(), size: 26.0 }
+    }
+
+    /// A title laid out past its room, over the buttons beside it, is
+    /// found; one that fits, and a button's own label, aren't.
+    #[test]
+    fn text_over_a_control_is_found() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "text-over-control").map(|f| f.text).collect::<Vec<_>>();
+        let mut p = Parts { controls: vec![button("Restore…", 250.0, "[restore]")], texts: vec![text("Getting ready: counting what to back up", 20.0, 300.0)], ..Parts::default() };
+        let said = found(&p);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("Button \"Restore…\""), "{said:?}");
+        p.texts[0].rect.max.x = 240.0;
+        assert!(found(&p).is_empty());
+        // (Its own label: starts in it, and runs past it, as a long one
+        // cut by nothing would: that's `text-cut`'s, not this.)
+        p.texts = vec![text("Restore…", 258.0, 64.0)];
+        assert!(found(&p).is_empty());
     }
 
     /// Two buttons with one element id (a Remove in each of two boxes,

@@ -81,6 +81,14 @@ fn put_back(now: &mut Settings, before: &Settings, after: &Settings) {
     each!(enabled, target, paths, exclude_groups, excludes, automatic, every_minutes, keep, upload_kbs, download_kbs, on_battery, priority, one_file_system, key_in_passwords, in_deskbar);
 }
 
+/// The main window's: a form, at the size of what it shows (it floats,
+/// never zoomed in Focus or put in a tile. Ben, 2026-11-08: "diskbackup
+/// looks silly in focus mode"); fixed, as Preferences' panels: as tall as
+/// the tab chosen shows.
+pub fn main_options() -> WindowOptions {
+    WindowOptions { fixed: true, ..WindowOptions::new("DiskBackup", 720.0, 300.0).fits_content().floating() }
+}
+
 pub struct Disk {
     pub settings: Settings,
     /// Edit ▸ Undo and Redo of the settings changed here.
@@ -123,6 +131,27 @@ impl Disk {
             drive: None,
             proxy,
             _watch: watch,
+        }
+    }
+
+    /// For the layout lint: `settings` and `state` as given, no backups
+    /// listed, nothing watched or asked.
+    #[cfg(test)]
+    pub fn for_lint(settings: Settings, state: State) -> Disk {
+        Disk {
+            settings,
+            history: History::default(),
+            state,
+            note: None,
+            busy: false,
+            snapshots: Some(Ok(Vec::new())),
+            where_: None,
+            win: None,
+            restore: None,
+            versions: Vec::new(),
+            drive: None,
+            proxy: Proxy::new(|_| {}),
+            _watch: None,
         }
     }
 
@@ -263,8 +292,7 @@ impl Disk {
         // in Focus or put in a tile. Ben, 2026-11-08: "diskbackup looks
         // silly in focus mode".)
         // (Fixed, as Preferences' panels: as tall as the tab chosen shows.)
-        let options = WindowOptions { fixed: true, ..WindowOptions::new("DiskBackup", 720.0, 300.0).fits_content().floating() };
-        olo_ui::open_or_raise(self.win, cx, options, move |window, cx| cx.new(|cx| crate::window::MainWindow::new(app, window, cx)), |a, w| a.win = w);
+        olo_ui::open_or_raise(self.win, cx, main_options(), move |window, cx| cx.new(|cx| crate::window::MainWindow::new(app, window, cx)), |a, w| a.win = w);
     }
 
     /// This computer's backups, asked of the service (on a worker).

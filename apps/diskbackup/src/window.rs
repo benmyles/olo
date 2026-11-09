@@ -283,7 +283,8 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
     match &st.doing {
         Doing::BackingUp => {
             let title = match progress.stage {
-                Stage::Counting => "Getting ready: counting what to back up",
+                // (Titles fit beside the buttons: the lint draws each.)
+                Stage::Counting => "Counting what to back up",
                 Stage::Reading if progress.resuming => "Resuming the backup",
                 // ("Backing up your home folder": what, said.)
                 Stage::Reading => return reading_headline(&progress, s),
@@ -341,7 +342,9 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
         }
         (Some(l), ok) => {
             let whole = ok.map_or("No backup has finished yet".to_owned(), |t| format!("The last whole one was {}", ago(t)));
-            (format!("The backup {} didn’t finish", ago(l.time)), format!("{}. {whole}. {next}", l.error.clone().unwrap_or_default()), true)
+            let when = ago(l.time);
+            let when = when.get(..1).map_or(when.clone(), |c| format!("{}{}", c.to_uppercase(), &when[1..]));
+            ("Backup didn’t finish".into(), format!("{when}: {}. {whole}. {next}", l.error.clone().unwrap_or_default()), true)
         }
         (None, _) => ("Not backed up yet".into(), format!("{to}. {}", if s.automatic { "The first backup starts in a moment." } else { "Click Back Up Now to make the first." }), false),
     }
@@ -561,7 +564,9 @@ impl MainWindow {
             Button::new("Back Up Now").default(true).enabled(st.pid != 0).on_click(self.command("back-up-now"))
         });
         let mut words = div().flex_1().min_w_0().flex().flex_col().gap(px(m::TIGHT));
-        let mut t = StringView::new(title).bold(true).size(style::TITLE_SIZE).height(style::line_row(style::TITLE_SIZE));
+        // (One line, never past the buttons: a folder named by its path
+        // can be any length, cut short then, whole in its tip.)
+        let mut t = StringView::new(title).bold(true).size(style::TITLE_SIZE).height(style::line_row(style::TITLE_SIZE)).cut(true);
         if bad {
             t = t.color(style::c(p.failure));
         }
