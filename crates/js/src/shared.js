@@ -6,6 +6,9 @@
 (function (global) {
   'use strict';
   const N = global.__olo;
+  // Olo's own functions (what the engine calls, and these files share):
+  // on a holder page scripts can't reach (a worker's are its global's).
+  const H = N.hidden || global;
   class DOMException extends Error { constructor(message, name) { super(message); this.name = name || 'Error'; this.code = { IndexSizeError: 1, HierarchyRequestError: 3, WrongDocumentError: 4, InvalidCharacterError: 5, NotFoundError: 8, NotSupportedError: 9, InvalidStateError: 11, SyntaxError: 12, InvalidModificationError: 13, NamespaceError: 14, InvalidAccessError: 15, TypeMismatchError: 17, SecurityError: 18, NetworkError: 19, AbortError: 20, QuotaExceededError: 22, TimeoutError: 23, InvalidNodeTypeError: 24, DataCloneError: 25 }[this.name] || 0; } }
   global.DOMException = DOMException;
   const parseURL = (input, base) => {
@@ -122,7 +125,7 @@
   const encodeText = (s) => new TextEncoder().encode(s);
   const decodeText = (b) => new TextDecoder().decode(b);
   const resolveURL = (s) => { try { return new URL(s, N.url()).href; } catch (e) { return String(s); } };
-  global.__olo_resolveURL = resolveURL;
+  H.__olo_resolveURL = resolveURL;
   // Bytes from anything a body or blob part can be.
   const toBytes = (v) => {
     if (v == null) return new Uint8Array(0);
@@ -151,7 +154,7 @@
   const blobs = new Map();
   URL.createObjectURL = (blob) => { const u = 'blob:' + (new URL(N.url()).origin) + '/' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); blobs.set(u, blob); return u; };
   URL.revokeObjectURL = (u) => { blobs.delete(String(u)); };
-  global.__olo_blob = (u) => blobs.get(String(u)) || null;
+  H.__olo_blob = (u) => blobs.get(String(u)) || null;
   // Network: Headers, Request, Response over bytes; fetch.
   class Headers { constructor(init) { this._m = new Map(); if (init instanceof Headers) init.forEach((v, k) => this.append(k, v)); else if (Array.isArray(init)) for (const [k, v] of init) this.append(k, v); else if (init) for (const k of Object.keys(init)) this.append(k, init[k]); } append(k, v) { k = String(k).toLowerCase(); this._m.set(k, this._m.has(k) ? this._m.get(k) + ', ' + v : String(v)); } set(k, v) { this._m.set(String(k).toLowerCase(), String(v)); } get(k) { const v = this._m.get(String(k).toLowerCase()); return v === undefined ? null : v; } has(k) { return this._m.has(String(k).toLowerCase()); } delete(k) { this._m.delete(String(k).toLowerCase()); } forEach(fn, t) { for (const [k, v] of this._m) fn.call(t, v, k, this); } keys() { return this._m.keys(); } values() { return this._m.values(); } entries() { return this._m.entries(); } [Symbol.iterator]() { return this._m.entries(); } getSetCookie() { return []; } }
   // Streams (WHATWG Streams, the reading half): a source's chunks queued
@@ -294,7 +297,7 @@
     constructor(input, init) {
       init = init || {};
       const from = input instanceof Request ? requestSlot(input) : null;
-      const form = init.body != null && global.FormData && init.body instanceof global.FormData ? global.__olo_bodyOf(init.body) : null;
+      const form = init.body != null && global.FormData && init.body instanceof global.FormData ? H.__olo_bodyOf(init.body) : null;
       super(init.body == null ? (from ? input._bytes : '') : form ? form.bytes : init.body);
       const headers = new Headers(init.headers || (from && from.headers));
       if (init.body != null && !headers.has('content-type')) { const b = init.body; const t = form ? form.type : typeof b === 'string' ? 'text/plain;charset=UTF-8' : b instanceof URLSearchParams ? 'application/x-www-form-urlencoded;charset=UTF-8' : b instanceof Blob && b.type ? b.type : null; if (t) headers.set('content-type', t); }
@@ -420,7 +423,7 @@
   global.Crypto = function Crypto() {}; global.SubtleCrypto = function SubtleCrypto() {};
   // A body as bytes and its media type: a FormData's as multipart/form-data
   // (its own boundary), the rest as toBytes has them.
-  global.__olo_bodyOf = (body) => {
+  H.__olo_bodyOf = (body) => {
     if (global.FormData && body instanceof global.FormData) {
       const boundary = '----OloFormBoundary' + Array.from(N.randomBytes(12), (x) => (x % 36).toString(36)).join('');
       const quote = (s) => String(s).replace(/"/g, '%22').replace(/\r\n|\r|\n/g, '%0D%0A');
@@ -436,7 +439,7 @@
     return { bytes: toBytes(body), type: null };
   };
   // A data: or blob: URL answered here, without the network.
-  global.__olo_fetchInline = (url) => {
+  H.__olo_fetchInline = (url) => {
     const m = /^data:([^,;]*)((?:;[^,]*)*),([\s\S]*)$/.exec(url);
     if (m) {
       const base64 = /;base64/i.test(m[2]);
@@ -465,20 +468,20 @@
     h.forEach((v, k) => { if (SAFELISTED.includes(k) || exposed.includes('*') || exposed.includes(k)) out.append(k, v); });
     return out;
   };
-  global.__olo_responseHeaders = responseHeaders;
+  H.__olo_responseHeaders = responseHeaders;
   const response = (r) => { const res = new Response(r.body, { status: r.status, statusText: r.status === 200 ? 'OK' : '', headers: responseHeaders(r), url: r.url }); if (!sameOrigin(r.url) && !/^(data|blob):/.test(String(r.url))) res.type = 'cors'; return res; };
   global.fetch = (input, init) => new Promise((resolve, reject) => {
     // (A Request with an init is a new Request from both, as the spec has it.)
     const req = input instanceof Request && init == null ? input : new Request(input, init);
     const slot = requestSlot(req);
     if (slot.signal && slot.signal.aborted) return reject(new DOMException('The operation was aborted.', 'AbortError'));
-    if (/^(data|blob):/.test(slot.url)) { try { resolve(response(global.__olo_fetchInline(slot.url))); } catch (e) { reject(new TypeError('Failed to fetch: ' + (e && e.message || e))); } return; }
+    if (/^(data|blob):/.test(slot.url)) { try { resolve(response(H.__olo_fetchInline(slot.url))); } catch (e) { reject(new TypeError('Failed to fetch: ' + (e && e.message || e))); } return; }
     (req._source ? req._all() : Promise.resolve()).then(() => {
       const lines = []; slot.headers.forEach((v, k) => lines.push(k + ': ' + v));
       // Its credentials mode, when not same-origin, for the browser (the
       // line is never sent).
       if (slot.credentials === 'include' || slot.credentials === 'omit') lines.push('x-olo-credentials: ' + slot.credentials);
-      return global.__olo_fetchStart(slot.url, slot.method, req._bytes, lines.join('\n'));
+      return H.__olo_fetchStart(slot.url, slot.method, req._bytes, lines.join('\n'));
     }).then((r) => resolve(response(r)), (e) => reject(new TypeError('Failed to fetch: ' + (e && e.message || e))));
   });
 })(globalThis);

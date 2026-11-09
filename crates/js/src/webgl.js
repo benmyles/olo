@@ -4,6 +4,9 @@
 (function (global) {
   'use strict';
   const N = global.__olo;
+  // Olo's own functions (what the engine calls, and these files share):
+  // on a holder page scripts can't reach (a worker's are its global's).
+  const H = N.hidden || global;
   const C = {
     DEPTH_BUFFER_BIT: 256, STENCIL_BUFFER_BIT: 1024, COLOR_BUFFER_BIT: 16384, POINTS: 0, LINES: 1, LINE_LOOP: 2, LINE_STRIP: 3,
     TRIANGLES: 4, TRIANGLE_STRIP: 5, TRIANGLE_FAN: 6, ZERO: 0, ONE: 1, SRC_COLOR: 768, ONE_MINUS_SRC_COLOR: 769, SRC_ALPHA: 770,
@@ -78,6 +81,23 @@
   };
   const kinds = ['WebGLBuffer', 'WebGLTexture', 'WebGLProgram', 'WebGLShader', 'WebGLFramebuffer', 'WebGLRenderbuffer', 'WebGLVertexArrayObject', 'WebGLUniformLocation', 'WebGLActiveInfo', 'WebGLShaderPrecisionFormat', 'WebGLQuery', 'WebGLSampler', 'WebGLSync', 'WebGLTransformFeedback'];
   const classes = {};
+  const EXTENSIONS1 = ['ANGLE_instanced_arrays', 'EXT_blend_minmax', 'EXT_color_buffer_half_float', 'EXT_float_blend', 'EXT_frag_depth', 'EXT_texture_filter_anisotropic', 'KHR_parallel_shader_compile', 'OES_element_index_uint', 'OES_fbo_render_mipmap', 'OES_standard_derivatives', 'OES_texture_float', 'OES_texture_float_linear', 'OES_texture_half_float', 'OES_texture_half_float_linear', 'OES_vertex_array_object', 'WEBGL_color_buffer_float', 'WEBGL_debug_renderer_info', 'WEBGL_debug_shaders', 'WEBGL_depth_texture', 'WEBGL_lose_context'];
+  const EXTENSIONS2 = ['EXT_color_buffer_float', 'EXT_color_buffer_half_float', 'EXT_float_blend', 'EXT_texture_filter_anisotropic', 'KHR_parallel_shader_compile', 'OES_texture_float_linear', 'WEBGL_debug_renderer_info', 'WEBGL_debug_shaders', 'WEBGL_lose_context'];
+  // The GPU as Chrome names it, through ANGLE: "Google Inc. (Intel)" and
+  // "ANGLE (Intel, Mesa Intel(R) Graphics (PTL), OpenGL ES 3.2)", from the
+  // driver's own strings; asked once.
+  let gpu = null;
+  const angle = (ctx) => {
+    if (gpu) return gpu;
+    const ask = (p) => { try { const v = ctx._op('getParameter', [p]); return typeof v === 'string' ? v : ''; } catch (e) { return ''; } };
+    const vendor = ask(0x1F00), renderer = ask(0x1F01), version = ask(0x1F02);
+    if (!renderer) return ['Google Inc. (Google)', 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)'];
+    const who = /intel/i.test(vendor + ' ' + renderer) ? 'Intel' : /nvidia/i.test(vendor) ? 'NVIDIA' : /amd|ati\b|radeon/i.test(vendor + ' ' + renderer) ? 'AMD' : /mesa|x\.org|vmware/i.test(vendor) ? 'Mesa' : vendor.split(/\s/)[0] || 'Google';
+    const es = /^OpenGL ES (\d+\.\d+)/.exec(version), desktop = /^(\d+\.\d+)/.exec(version);
+    const api = es ? 'OpenGL ES ' + es[1] : desktop ? 'OpenGL ' + desktop[1] : version;
+    gpu = ['Google Inc. (' + who + ')', 'ANGLE (' + who + ', ' + renderer + ', ' + api + ')'];
+    return gpu;
+  };
   for (const k of kinds) { const cls = class { constructor(id) { this._id = id; } }; Object.defineProperty(cls, 'name', { value: k }); classes[k] = cls; global[k] = cls; }
   global.WebGLVertexArrayObjectOES = classes.WebGLVertexArrayObject;
   const id = (o) => (o && typeof o === 'object' && '_id' in o ? o._id : null);
@@ -99,7 +119,9 @@
     get drawingBufferColorSpace() { return 'srgb'; }
     getContextAttributes() { return Object.assign({}, this._attributes); }
     isContextLost() { return this._lost; }
-    getSupportedExtensions() { return ['WEBGL_debug_shaders', 'KHR_parallel_shader_compile', 'EXT_float_blend', 'OES_fbo_render_mipmap', 'ANGLE_instanced_arrays', 'EXT_blend_minmax', 'EXT_color_buffer_float', 'EXT_color_buffer_half_float', 'EXT_frag_depth', 'EXT_shader_texture_lod', 'EXT_texture_filter_anisotropic', 'OES_element_index_uint', 'OES_standard_derivatives', 'OES_texture_float', 'OES_texture_float_linear', 'OES_texture_half_float', 'OES_texture_half_float_linear', 'OES_vertex_array_object', 'WEBGL_color_buffer_float', 'WEBGL_depth_texture', 'WEBGL_lose_context', 'WEBGL_debug_renderer_info']; }
+    // Chrome's, in its order, of those Olo has (compressed textures not
+    // yet: a page told of them would upload pictures Olo can't draw).
+    getSupportedExtensions() { return (this._version === 2 ? EXTENSIONS2 : EXTENSIONS1).slice(); }
     getExtension(name) {
       name = String(name);
       if (this._extensions[name] !== undefined) return this._extensions[name];
@@ -130,10 +152,10 @@
       switch (p) {
         case 0x1F00: return 'WebKit';
         case 0x1F01: return 'WebKit WebGL';
-        case 0x1F02: return this._version === 2 ? 'WebGL 2.0 (OpenGL ES 3.0 Olo)' : 'WebGL 1.0 (OpenGL ES 2.0 Olo)';
-        case 0x8B8C: return this._version === 2 ? 'WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.00 Olo)' : 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Olo)';
-        case 0x9245: return 'Olo';
-        case 0x9246: return 'Olo GPU (OpenGL ES)';
+        case 0x1F02: return this._version === 2 ? 'WebGL 2.0 (OpenGL ES 3.0 Chromium)' : 'WebGL 1.0 (OpenGL ES 2.0 Chromium)';
+        case 0x8B8C: return this._version === 2 ? 'WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)' : 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)';
+        case 0x9245: return angle(this)[0];
+        case 0x9246: return angle(this)[1];
         case 0x8B8D: return this._program || null;
         case 0x8894: return this._arrayBuffer || null;
         case 0x8895: return this._elementBuffer || null;
@@ -258,7 +280,7 @@
     if (source instanceof ImageData) return [source.width, source.height, source.data];
     if (source instanceof ImageBitmap) source = source._source;
     if (source instanceof Node && source.nodeName === 'CANVAS') { const bytes = N.canvasPixels(source); const w = source.width, h = source.height; return [w, h, bytes ? new Uint8Array(bytes) : null]; }
-    if (source instanceof Node && source.nodeName === 'IMG') { const z = global.__olo_imagePixelSize(source); const bytes = z && N.imagePixels(source); if (bytes) return [z[0], z[1], new Uint8Array(bytes)]; }
+    if (source instanceof Node && source.nodeName === 'IMG') { const z = H.__olo_imagePixelSize(source); const bytes = z && N.imagePixels(source); if (bytes) return [z[0], z[1], new Uint8Array(bytes)]; }
     return [1, 1, new Uint8Array(4)];
   };
   const storageFormat = (f) => f;

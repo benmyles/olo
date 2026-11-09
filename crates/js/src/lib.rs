@@ -37,7 +37,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Instant,
 };
-const PRELUDE: &str = concat!(include_str!("shared.js"), "\n", include_str!("prelude.js"), "\n", include_str!("webgl.js"));
+const PRELUDE: &str = concat!(include_str!("shared.js"), "\n", include_str!("prelude.js"), "\n", include_str!("webgl.js"), "\n", include_str!("chrome-shape.js"), "\n", include_str!("chrome.js"));
 /// What the page is, for `location`, `navigator` and the viewport.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -58,6 +58,15 @@ pub struct Config {
 /// Chrome of the same engine generation, so sites serve the pages they
 /// serve Chrome (an unknown agent gets fallback or bot pages), with Olo
 /// named after it.
+/// The screen Olo's window is on and the window's size (CSS px), as the
+/// window last saw them: what pages read as `screen` and `outerWidth`.
+static DISPLAY: std::sync::Mutex<Option<[f64; 4]>> = std::sync::Mutex::new(None);
+/// The window tells where it is: its screen's size and its own.
+pub fn set_display(screen: [f64; 2], window: [f64; 2]) {
+    if let Ok(mut d) = DISPLAY.lock() {
+        *d = Some([screen[0], screen[1], window[0], window[1]]);
+    }
+}
 /// Olo presents as the Chrome whose web it renders: the version it
 /// follows, and what Chrome 157 on Linux says of itself (its user agent,
 /// its client hints' brands, as Chrome sends them; captured from Chrome
@@ -260,6 +269,8 @@ struct State {
     /// The boxed ids wrappers point at; freed with the realm.
     ids: Vec<*mut NodeId>,
     templates: Option<Templates>,
+    /// The prelude's script: its functions read as native code.
+    prelude_script: i32,
     fetcher: Option<Fetcher>,
     /// Elements by id and by name, for `getElementById` and the window's
     /// named properties.
@@ -467,6 +478,7 @@ impl Realm {
             wrappers: Default::default(),
             ids: Vec::new(),
             templates: None,
+            prelude_script: -1,
             names: Names::default(),
             fetcher,
             canvases: Default::default(),
@@ -535,7 +547,7 @@ impl Realm {
         };
         let mut realm = Self { isolate, context, state, guard };
         let started = std::time::Instant::now();
-        realm.run(PRELUDE, "prelude.js").map_err(|e| format!("prelude: {e}"))?;
+        realm.run_prelude().map_err(|e| format!("prelude: {e}"))?;
         if std::env::var_os("OLO_JS_TIMING").is_some() {
             eprintln!("  prelude ({} KB): {:.1} ms", PRELUDE.len() / 1024, started.elapsed().as_secs_f64() * 1000.);
         }
@@ -654,7 +666,12 @@ impl Realm {
             }
         };
         let Some(name) = v8::String::new(tc, function) else { return };
-        let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
+        let Some(f) = ({
+            let n = name.to_rust_string_lossy(tc);
+            prelude_function(tc, global, &n)
+        }) else {
+            return;
+        };
         if f.call(tc, global.into(), &args).is_none() {
             let error = exception_text(tc, function);
             state.borrow_mut().report.errors.push(error);
@@ -683,7 +700,12 @@ impl Realm {
         v8::tc_scope!(let tc, scope);
         let global = context.global(tc);
         let Some(name) = v8::String::new(tc, "__olo_workerEvent") else { return };
-        let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
+        let Some(f) = ({
+            let n = name.to_rust_string_lossy(tc);
+            prelude_function(tc, global, &n)
+        }) else {
+            return;
+        };
         for (id, message) in pending {
             let (kind, value): (&str, v8::Local<v8::Value>) = match message {
                 worker::FromWorker::Message(bytes) => match clone::deserialize(tc, &bytes) {
@@ -708,6 +730,59 @@ impl Realm {
         }
     }
     /// Run one script; an exception is recorded and returned, not fatal.
+    /// The prelude, compiled from its code cache when there is one (see
+    /// `PRELUDE_CODE`), its cache made after the first run.
+    fn run_prelude(&mut self) -> Result<(), String> {
+        let guard = self.guard.clone();
+        let _busy = Busy::new(&guard);
+        let state = self.state.clone();
+        let cached = prelude_code();
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let mut fresh = cached.is_none();
+        let started = Instant::now();
+        let mut compiled = started;
+        let result = (|| {
+            let code = v8::String::new(tc, PRELUDE)?;
+            let resource = string(tc, "prelude.js");
+            let origin = v8::ScriptOrigin::new(tc, resource, 0, 0, false, 0, None, false, false, false, None);
+            let script = match &cached {
+                Some(bytes) => {
+                    let mut source = v8::script_compiler::Source::new_with_cached_data(code, Some(&origin), v8::script_compiler::CachedData::new(bytes));
+                    let script = v8::script_compiler::compile(tc, &mut source, v8::script_compiler::CompileOptions::ConsumeCodeCache, v8::script_compiler::NoCacheReason::NoReason)?;
+                    fresh = source.get_cached_data().is_none_or(|c| c.rejected());
+                    script
+                }
+                None => v8::Script::compile(tc, code, Some(&origin))?,
+            };
+            state.borrow_mut().prelude_script = script.script_id();
+            compiled = Instant::now();
+            let done = script.run(tc)?;
+            // (After the run: the functions it compiled are in the cache too.)
+            if fresh && let Some(data) = script.get_unbound_script(tc).create_code_cache() {
+                keep_prelude_code(&data);
+            }
+            Some(done)
+        })();
+        if std::env::var_os("OLO_JS_TIMING").is_some() {
+            let cache = if cached.is_none() {
+                "none"
+            } else if fresh {
+                "rejected"
+            } else {
+                "used"
+            };
+            eprintln!("  prelude compiled in {:.1} ms (code cache {cache}), ran in {:.1} ms", (compiled - started).as_secs_f64() * 1000., compiled.elapsed().as_secs_f64() * 1000.);
+        }
+        if result.is_none() {
+            let error = exception_text(tc, "prelude.js");
+            state.borrow_mut().report.errors.push(error.clone());
+            return Err(error);
+        }
+        Ok(())
+    }
     pub fn run(&mut self, source: &str, name: &str) -> Result<(), String> {
         let guard = self.guard.clone();
         if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
@@ -848,7 +923,10 @@ impl Realm {
         let index = v8::Number::new(tc, index as f64);
         if let Some(element) = wrap(tc, &state, select)
             && let Some(name) = v8::String::new(tc, "__olo_choose")
-            && let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
+            && let Some(f) = {
+                let n = name.to_rust_string_lossy(tc);
+                prelude_function(tc, global, &n)
+            }
             && f.call(tc, global.into(), &[element.into(), index.into()]).is_none()
         {
             let error = exception_text(tc, "choose");
@@ -911,7 +989,12 @@ impl Realm {
         v8::tc_scope!(let tc, scope);
         let global = context.global(tc);
         let Some(name) = v8::String::new(tc, "__olo_input") else { return false };
-        let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return false };
+        let Some(f) = ({
+            let n = name.to_rust_string_lossy(tc);
+            prelude_function(tc, global, &n)
+        }) else {
+            return false;
+        };
         let json = string(tc, &json);
         let target: v8::Local<v8::Value> = match target.and_then(|n| wrap(tc, &state, n)) {
             Some(o) => o.into(),
@@ -1049,7 +1132,10 @@ impl Realm {
         let names = v8::Array::new_with_elements(tc, &names);
         if let Some(element) = wrap(tc, &state, node)
             && let Some(name) = v8::String::new(tc, "__olo_mediaEvents")
-            && let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
+            && let Some(f) = {
+                let n = name.to_rust_string_lossy(tc);
+                prelude_function(tc, global, &n)
+            }
             && f.call(tc, global.into(), &[element.into(), names.into()]).is_none()
         {
             let error = exception_text(tc, "media");
@@ -1074,7 +1160,10 @@ impl Realm {
             let global = context.global(tc);
             if let Some(element) = wrap(tc, &state, node)
                 && let Some(name) = v8::String::new(tc, "__olo_scrolled")
-                && let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
+                && let Some(f) = {
+                    let n = name.to_rust_string_lossy(tc);
+                    prelude_function(tc, global, &n)
+                }
                 && f.call(tc, global.into(), &[element.into()]).is_none()
             {
                 let error = exception_text(tc, "scroll");
@@ -1340,7 +1429,7 @@ impl Realm {
         let scope = &mut v8::ContextScope::new(scope, context);
         v8::tc_scope!(let tc, scope);
         let global = context.global(tc);
-        let handler = v8::String::new(tc, "__olo_unhandledRejection").and_then(|n| global.get(tc, n.into())).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok());
+        let handler = prelude_function(tc, global, "__olo_unhandledRejection");
         for (promise, reason) in pending.into_iter().take(64) {
             let (promise, reason) = (v8::Local::new(tc, promise), v8::Local::new(tc, reason));
             // Cancelled by the page's handler: not logged.
@@ -1393,7 +1482,12 @@ impl Realm {
         let scope = &mut v8::ContextScope::new(scope, context);
         let global = context.global(scope);
         let Some(name) = v8::String::new(scope, "__olo_animationEvent") else { return };
-        let Some(f) = global.get(scope, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
+        let Some(f) = ({
+            let n = name.to_rust_string_lossy(scope);
+            prelude_function(scope, global, &n)
+        }) else {
+            return;
+        };
         for (node, kind, animation, elapsed) in events {
             let Some(target) = wrap(scope, &state, *node) else { continue };
             let args: [v8::Local<v8::Value>; 4] = [target.into(), string(scope, kind).into(), string(scope, animation).into(), v8::Number::new(scope, *elapsed).into()];
@@ -1408,7 +1502,12 @@ impl Realm {
         let scope = &mut v8::ContextScope::new(scope, context);
         let global = context.global(scope);
         let Some(name) = v8::String::new(scope, "__olo_setCurrentScript") else { return };
-        let Some(f) = global.get(scope, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
+        let Some(f) = ({
+            let n = name.to_rust_string_lossy(scope);
+            prelude_function(scope, global, &n)
+        }) else {
+            return;
+        };
         let value: v8::Local<v8::Value> = match node.and_then(|n| wrap(scope, &state, n)) {
             Some(o) => o.into(),
             None => v8::null(scope).into(),
@@ -1430,7 +1529,8 @@ impl Realm {
         v8::tc_scope!(let tc, scope);
         let global = context.global(tc);
         let name = v8::String::new(tc, function).ok_or("string")?;
-        let f = global.get(tc, name.into()).ok_or("missing")?;
+        let _ = name;
+        let f: v8::Local<v8::Value> = prelude_function(tc, global, function).ok_or("missing")?.into();
         let f = v8::Local::<v8::Function>::try_from(f).map_err(|_| "not a function")?;
         let args: Vec<v8::Local<v8::Value>> = args.iter().map(|a| v8::String::new(tc, a).unwrap().into()).collect();
         if f.call(tc, global.into(), &args).is_none() {
@@ -1456,7 +1556,8 @@ impl Realm {
         v8::tc_scope!(let tc, scope);
         let global = context.global(tc);
         let name = v8::String::new(tc, function).ok_or("string")?;
-        let f = global.get(tc, name.into()).ok_or("missing")?;
+        let _ = name;
+        let f: v8::Local<v8::Value> = prelude_function(tc, global, function).ok_or("missing")?.into();
         let f = v8::Local::<v8::Function>::try_from(f).map_err(|_| "not a function")?;
         let args: Vec<v8::Local<v8::Value>> = args.iter().map(|a| v8::Number::new(tc, *a).into()).collect();
         match f.call(tc, global.into(), &args) {
@@ -1506,6 +1607,7 @@ impl State {
             wrappers: Default::default(),
             ids: Vec::new(),
             templates: None,
+            prelude_script: -1,
             names: Names::default(),
             fetcher: None,
             canvases: Default::default(),
@@ -2027,10 +2129,71 @@ fn class<'s>(
     if let Some(p) = parent {
         t.inherit(p);
     }
+    // An interface's prototype is fixed, as in Chrome (Element's and
+    // Document's once chrome.js has made them as Chrome's are).
+    if name != "Element" && name != "Document" {
+        t.read_only_prototype();
+    }
     let f = t.get_function(scope).ok_or("function")?;
     let key = v8::String::new(scope, name).ok_or("string")?;
     global.set(scope, key.into(), f.into());
     Ok(t)
+}
+/// The private key Olo's own functions are kept under on the global.
+fn hidden_key<'s>(scope: &mut v8::PinScope<'s, '_>) -> Option<v8::Local<'s, v8::Private>> {
+    let name = v8::String::new(scope, "olo.hidden")?;
+    Some(v8::Private::for_api(scope, Some(name)))
+}
+/// One of Olo's own functions (`__olo_*`) by name: from where the prelude
+/// keeps them (`hidden_key`), else from the global object (a worker's).
+/// The prelude's compiled code, kept: in memory for the realms after the
+/// first, on disk for the next launch (its name the prelude's hash, so each
+/// build has its own). V8 checks that a cache is for this source and these
+/// flags, and compiles afresh if not. Compiling the prelude (429 KB) is most
+/// of what a realm costs to make.
+static PRELUDE_CODE: std::sync::Mutex<Option<std::sync::Arc<[u8]>>> = std::sync::Mutex::new(None);
+fn prelude_cache_path() -> Option<std::path::PathBuf> {
+    use std::hash::{BuildHasher, Hash, Hasher};
+    let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).filter(|p| p.is_absolute()).or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
+    let mut h = foldhash::fast::FixedState::with_seed(0).build_hasher();
+    PRELUDE.hash(&mut h);
+    v8::V8::get_version().hash(&mut h);
+    Some(base.join("olo").join("browser").join(format!("prelude-{:016x}.v8", h.finish())))
+}
+fn prelude_code() -> Option<std::sync::Arc<[u8]>> {
+    let mut kept = PRELUDE_CODE.lock().ok()?;
+    if kept.is_none() {
+        *kept = std::fs::read(prelude_cache_path()?).ok().map(std::sync::Arc::from);
+    }
+    kept.clone()
+}
+fn keep_prelude_code(data: &[u8]) {
+    let bytes: std::sync::Arc<[u8]> = std::sync::Arc::from(data);
+    if let Ok(mut kept) = PRELUDE_CODE.lock() {
+        *kept = Some(bytes.clone());
+    }
+    // Written on a thread of its own (an older build's cache goes).
+    let Some(path) = prelude_cache_path() else { return };
+    let _ = std::thread::Builder::new().name("prelude-cache".into()).spawn(move || {
+        let dir = path.parent()?;
+        std::fs::create_dir_all(dir).ok()?;
+        for entry in std::fs::read_dir(dir).ok()?.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("prelude-") && name.ends_with(".v8") && entry.path() != path {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+        let partial = path.with_extension(format!("{}.part", std::process::id()));
+        std::fs::write(&partial, &bytes).ok()?;
+        std::fs::rename(&partial, &path).ok()
+    });
+}
+fn prelude_function<'s>(scope: &mut v8::PinScope<'s, '_>, global: v8::Local<'s, v8::Object>, name: &str) -> Option<v8::Local<'s, v8::Function>> {
+    let key = v8::String::new(scope, name)?;
+    let holder = hidden_key(scope).and_then(|p| global.get_private(scope, p)).and_then(|h| v8::Local::<v8::Object>::try_from(h).ok());
+    let f = holder.and_then(|h| h.get(scope, key.into())).filter(|v| v.is_function()).or_else(|| global.get(scope, key.into()))?;
+    v8::Local::<v8::Function>::try_from(f).ok()
 }
 /// The native functions and the DOM classes, on the global object.
 fn install(scope: &mut v8::PinScope<'_, '_>, state: &Shared) -> Result<(), String> {
@@ -2044,6 +2207,15 @@ fn install(scope: &mut v8::PinScope<'_, '_>, state: &Shared) -> Result<(), Strin
         let key = v8::String::new(scope, name).ok_or("string")?;
         natives.set(scope, key.into(), f.into());
     }
+    // Olo's own functions (`__olo_*`, what this file calls into the page's
+    // scope with) on a holder only it and the prelude reach: a private
+    // property of the global object, invisible to the page's scripts (no
+    // browser has them; checks for automated browsers look for such).
+    let holder = v8::Object::new(scope);
+    let key = v8::String::new(scope, "hidden").ok_or("string")?;
+    natives.set(scope, key.into(), holder.into());
+    let private = hidden_key(scope).ok_or("private")?;
+    global.set_private(scope, private, holder.into());
     let key = v8::String::new(scope, "__olo").ok_or("string")?;
     global.set(scope, key.into(), natives.into());
     // The DOM classes: constructors whose prototypes the prelude fills.
@@ -2162,6 +2334,12 @@ const NATIVES: &[&str] = &[
     "mediaCommand",
     "treeOrder",
     "customIn",
+    "display",
+    "machine",
+    "heapStats",
+    "brands",
+    "chromeVersion",
+    "fromPrelude",
     "mseCreate",
     "mseSupported",
     "mseAddBuffer",
@@ -2242,16 +2420,20 @@ fn wrap<'s>(scope: &mut v8::PinScope<'s, '_>, state: &Shared, node: NodeId) -> O
     };
     let object = template.instance_template(scope).new_instance(scope)?;
     // HTML elements get their tag's class (HTMLDivElement, …) when the
-    // prelude defined one: its prototype replaces HTMLElement's.
-    if kind == NodeType::Element
-        && let Some(name) = name.as_deref()
-        && let Some(class) = tag_class(name, namespace)
-    {
+    // prelude defined one: its prototype replaces HTMLElement's. Documents
+    // are HTMLDocuments, doctypes DocumentTypes, as in Chrome.
+    let class = match kind {
+        NodeType::Element => name.as_deref().and_then(|name| tag_class(name, namespace)),
+        NodeType::Document => Some("HTMLDocument"),
+        NodeType::Doctype => Some("DocumentType"),
+        _ => None,
+    };
+    if let Some(class) = class {
         let global = scope.get_current_context().global(scope);
         let class_key = v8::String::new(scope, class)?;
         if let Some(ctor) = global.get(scope, class_key.into()).and_then(|c| v8::Local::<v8::Object>::try_from(c).ok()) {
             let proto_key = v8::String::new(scope, "prototype")?;
-            if let Some(proto) = ctor.get(scope, proto_key.into()) {
+            if let Some(proto) = ctor.get(scope, proto_key.into()).filter(|p| p.is_object()) {
                 object.set_prototype(scope, proto);
             }
         }
@@ -3261,6 +3443,65 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 ];
                 rv.set(v8::Array::new_with_elements(scope, &items).into());
             }
+        }
+        // [screen width, height, window width, height] (CSS px), or null
+        // before the window said.
+        "display" => {
+            if let Some(d) = DISPLAY.lock().ok().and_then(|d| *d) {
+                let items: Vec<v8::Local<v8::Value>> = d.iter().map(|v| v8::Number::new(scope, *v).into()).collect();
+                rv.set(v8::Array::new_with_elements(scope, &items).into());
+            } else {
+                rv.set_null();
+            }
+        }
+        // Chrome's brands, [brand, major version, full version] each, and
+        // its full version (navigator.userAgentData).
+        "brands" => {
+            let items: Vec<v8::Local<v8::Value>> = BRANDS
+                .iter()
+                .map(|(b, major, full)| {
+                    let parts: Vec<v8::Local<v8::Value>> = [*b, *major, *full].iter().map(|t| string(scope, t).into()).collect();
+                    v8::Array::new_with_elements(scope, &parts).into()
+                })
+                .collect();
+            rv.set(v8::Array::new_with_elements(scope, &items).into());
+        }
+        "chromeVersion" => rv.set(string(scope, CHROME_FULL).into()),
+        // Whether a function is the prelude's (it reads as native code, as
+        // Chrome's own do).
+        "fromPrelude" => {
+            let script = state.borrow().prelude_script;
+            rv.set_bool(v8::Local::<v8::Function>::try_from(args.get(0)).is_ok_and(|f| f.script_id() == script));
+        }
+        // [processors, memory (GB)] as Chrome says them: its threads, and
+        // its memory rounded to a power of two between 0.25 and 32.
+        "machine" => {
+            // (The machine's processors online, as Chrome counts them, not
+            // the share of them Olo's cgroup lets it use.)
+            let online = std::fs::read_to_string("/sys/devices/system/cpu/online").ok().map(|s| {
+                s.trim()
+                    .split(',')
+                    .map(|r| match r.split_once('-') {
+                        Some((a, b)) => b.parse::<usize>().unwrap_or(0).saturating_sub(a.parse::<usize>().unwrap_or(0)) + 1,
+                        None => usize::from(!r.is_empty()),
+                    })
+                    .sum::<usize>()
+            });
+            let threads = online.filter(|&n| n > 0).unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get()));
+            let kb = std::fs::read_to_string("/proc/meminfo")
+                .ok()
+                .and_then(|m| m.lines().find(|l| l.starts_with("MemTotal:")).and_then(|l| l.split_whitespace().nth(1)?.parse::<f64>().ok()))
+                .unwrap_or(8. * 1048576.);
+            let gb = kb / 1048576.;
+            let memory = 2f64.powf(gb.log2().round()).clamp(0.25, 32.);
+            let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(scope, threads as f64).into(), v8::Number::new(scope, memory).into()];
+            rv.set(v8::Array::new_with_elements(scope, &items).into());
+        }
+        // [used, total, limit] of V8's heap (performance.memory).
+        "heapStats" => {
+            let heap = scope.get_heap_statistics();
+            let items: Vec<v8::Local<v8::Value>> = [heap.used_heap_size(), heap.total_heap_size(), heap.heap_size_limit()].iter().map(|v| v8::Number::new(scope, *v as f64).into()).collect();
+            rv.set(v8::Array::new_with_elements(scope, &items).into());
         }
         // Which of two nodes comes first in tree order (-1: the first, 1:
         // the second, 0: not in one tree): compareDocumentPosition, without

@@ -5,6 +5,9 @@
 (function (global) {
   'use strict';
   const N = global.__olo;
+  // Olo's own functions (what the engine calls, and these files share):
+  // on a holder page scripts can't reach (a worker's are its global's).
+  const H = N.hidden || global;
   const define = (target, props) => {
     for (const name of Object.keys(props)) {
       const d = props[name];
@@ -310,7 +313,7 @@
       const entry = { el, name, source: undefined, failed: false };
       if (ordered) orderedScripts.push(entry);
       // (A data: or blob: URL is here already: read, not fetched.)
-      const load = /^(data|blob):/.test(name) ? Promise.resolve().then(() => global.__olo_fetchInline(name)) : global.__olo_fetchStart(name, 'GET', '', '');
+      const load = /^(data|blob):/.test(name) ? Promise.resolve().then(() => H.__olo_fetchInline(name)) : H.__olo_fetchStart(name, 'GET', '', '');
       load.then((r) => {
         if (r.status && (r.status < 200 || r.status >= 300)) { log('warn', ['script failed: ' + name + ': HTTP ' + r.status]); entry.failed = true; }
         else entry.source = typeof r.body === 'string' ? r.body : new TextDecoder().decode(r.body);
@@ -328,7 +331,7 @@
   // fetched asynchronously (side by side), compiled as it arrives (V8
   // reads its imports), the next ones fetched; running it then needs no
   // network. import() comes here too.
-  const moduleText = (url) => (/^(data|blob):/.test(url) ? Promise.resolve().then(() => global.__olo_fetchInline(url)) : global.__olo_fetchStart(url, 'GET', '', 'x-olo-destination: script')).then((r) => {
+  const moduleText = (url) => (/^(data|blob):/.test(url) ? Promise.resolve().then(() => H.__olo_fetchInline(url)) : H.__olo_fetchStart(url, 'GET', '', 'x-olo-destination: script')).then((r) => {
     if (r.status && (r.status < 200 || r.status >= 300)) throw new TypeError('Failed to fetch module ' + url + ': HTTP ' + r.status);
     return typeof r.body === 'string' ? r.body : new TextDecoder().decode(r.body);
   });
@@ -339,7 +342,7 @@
     pending.set(url, null);
     return (source != null ? Promise.resolve(source) : moduleText(url)).then((t) => step(url, t));
   };
-  global.__olo_import = (url) => loadModuleGraph(url, null).then(() => N.moduleNamespace(url));
+  H.__olo_import = (url) => loadModuleGraph(url, null).then(() => N.moduleNamespace(url));
   // Scripts document.write wrote, in the order they run (see above).
   const written = new WeakSet();
   const orderedScripts = [];
@@ -646,7 +649,19 @@
     play() { if (!isMedia(this)) return Promise.resolve(); N.mediaCommand(this, 'play', 0); queueMedia(this, ['play']); return Promise.resolve(); },
     pause() { if (!isMedia(this) || N.media(this)[0]) return; N.mediaCommand(this, 'pause', 0); queueMedia(this, ['pause']); },
     load() { if (isMedia(this)) N.mediaCommand(this, 'load', 0); },
-    canPlayType(type) { return /^(video|audio)\/(mp4|webm)|^video\/x-matroska/i.test(String(type)) ? 'maybe' : ''; },
+    // As Chrome answers: "probably" for codecs it plays, "maybe" for a
+    // container it knows without them (MP3 and FLAC alone, "probably").
+    canPlayType(type) {
+      const [essence, ...params] = String(type).toLowerCase().split(';').map((p) => p.trim());
+      const codecsParam = params.find((p) => p.startsWith('codecs='));
+      const containers = { 'video/mp4': 1, 'audio/mp4': 1, 'video/webm': 1, 'audio/webm': 1, 'audio/ogg': 1, 'video/ogg': 1, 'audio/wav': 1, 'audio/wave': 1, 'audio/x-wav': 1, 'audio/aac': 1, 'audio/mpeg': 2, 'audio/mp3': 2, 'audio/flac': 2, 'video/x-matroska': 1, 'application/ogg': 1 };
+      const known = containers[essence];
+      if (!known) return '';
+      if (!codecsParam) return known === 2 ? 'probably' : 'maybe';
+      const codecs = codecsParam.slice(7).replace(/"/g, '').split(',').map((c) => c.trim()).filter(Boolean);
+      const plays = (c) => /^(avc1|avc3|hev1|hvc1|av01|vp09|vp9|vp8|mp4a|opus|vorbis|flac|mp3|theora)(\.|$)/.test(c) || c === '1';
+      return codecs.length && codecs.every(plays) ? 'probably' : '';
+    },
     getContext(kind) { if (N.nodeName(this) !== 'CANVAS') return null; kind = String(kind); if (kind === '2d') { if (!this._ctx2d) Object.defineProperty(this, '_ctx2d', { value: new CanvasRenderingContext2D(this) }); return this._ctx2d; } return null; }, toDataURL() { return 'data:,'; }, toBlob(cb) { if (cb) cb(null); }, captureStream() { return null; }, transferControlToOffscreen() { return new OffscreenCanvas(this.width, this.height); },
     setPointerCapture() {}, releasePointerCapture() {}, hasPointerCapture() { return false; },
     computedStyleMap() { return new Map(); },
@@ -675,7 +690,7 @@
       if (size) { entry.state = 'loaded'; entry.size = size; dispatch(el, new Event('load')); } else { entry.state = 'error'; dispatch(el, new Event('error')); }
     }, 0);
   };
-  global.__olo_imageLoaded = (el, size) => {
+  H.__olo_imageLoaded = (el, size) => {
     const entry = imageLoads.get(el);
     if (!entry || entry.state !== 'loading') return;
     if (size) { entry.state = 'loaded'; entry.size = size; dispatch(el, new Event('load')); } else { entry.state = 'error'; dispatch(el, new Event('error')); }
@@ -702,7 +717,7 @@
     const setAttribute = Element.prototype.setAttribute;
     Element.prototype.setAttribute = function (name, value) { setAttribute.call(this, name, value); const n = String(name).toLowerCase(); if ((n === 'src' || n === 'srcset' || n === 'sizes') && N.nodeName(this) === 'IMG') loadImageElement(this); else if ((n === 'srcset' || n === 'media' || n === 'sizes' || n === 'type') && N.nodeName(this) === 'SOURCE' && isPicture(N.parent(this))) pictureChanged(N.parent(this)); };
   }
-  global.__olo_imageSizeOf = imageSizeOf; global.__olo_imagePixelSize = imagePixelSize;
+  H.__olo_imageSizeOf = imageSizeOf; H.__olo_imagePixelSize = imagePixelSize;
   // Text and Comment
   define(Text.prototype, {
     data: { get() { return N.data(this); }, set(v) { N.setData(this, String(v)); } },
@@ -921,11 +936,14 @@
   const HTMLElementCtor = function HTMLElement() { if (!constructing) throw new TypeError('Illegal constructor'); const el = constructing; constructing = null; if (new.target && new.target.prototype !== HTMLElementCtor.prototype) Object.setPrototypeOf(el, new.target.prototype); return el; };
   HTMLElementCtor.prototype = NativeHTMLElement.prototype;
   Object.defineProperty(HTMLElementCtor.prototype, 'constructor', { value: HTMLElementCtor, writable: true, configurable: true });
+  Object.defineProperty(HTMLElementCtor, 'prototype', { writable: false });
   global.HTMLElement = HTMLElementCtor;
   const subclass = (name, parent) => {
     const ctor = function () { throw new TypeError('Illegal constructor'); };
     ctor.prototype = Object.create(parent.prototype, { constructor: { value: ctor, writable: true, configurable: true } });
     Object.defineProperty(ctor, 'name', { value: name });
+    // (An interface's prototype is fixed.)
+    Object.defineProperty(ctor, 'prototype', { writable: false });
     global[name] = ctor;
     return ctor;
   };
@@ -1159,7 +1177,7 @@
   // The browser went back or forward to `url` within this document: its
   // entry the nearest of that URL (else a new one, a fragment the browser
   // followed), popstate with its state.
-  global.__olo_traverse = (url) => {
+  H.__olo_traverse = (url) => {
     const oldURL = pageURL.href;
     let best = -1;
     for (let i = 0; i < historyEntries.length; i++) if (historyEntries[i].url === url && (best < 0 || Math.abs(i - historyIndex) < Math.abs(best - historyIndex))) best = i;
@@ -1172,7 +1190,7 @@
   global.navigator = { userAgent: N.userAgent(), appName: 'Netscape', appVersion: N.userAgent().replace(/^Mozilla\//, ''), appCodeName: 'Mozilla', product: 'Gecko', productSub: '20030107', vendor: 'Google Inc.', vendorSub: '', platform: 'Linux x86_64', language: N.language(), languages: [N.language(), N.language().split('-')[0]], onLine: true, cookieEnabled: true, doNotTrack: null, hardwareConcurrency: 8, deviceMemory: 8, maxTouchPoints: 0, pdfViewerEnabled: true, webdriver: false, userAgentData: { brands: [{ brand: 'Chromium', version: '157' }, { brand: 'Google Chrome', version: '157' }], mobile: false, platform: 'Linux', getHighEntropyValues: () => Promise.resolve({ platform: 'Linux', platformVersion: '', architecture: 'x86', model: '', uaFullVersion: '157.0.0.0' }) }, connection: { effectiveType: '4g', rtt: 50, downlink: 10, saveData: false, addEventListener() {}, removeEventListener() {} }, plugins: listOf([]), mimeTypes: listOf([]), javaEnabled: () => false, sendBeacon: () => true, vibrate: () => false, getBattery: () => Promise.resolve({ charging: true, level: 1, addEventListener() {} }), permissions: { query: () => Promise.resolve({ state: 'prompt', onchange: null, addEventListener() {} }) }, clipboard: { writeText: () => Promise.resolve(), readText: () => Promise.resolve('') }, serviceWorker: { register: () => new Promise(() => {}), ready: new Promise(() => {}), getRegistrations: () => Promise.resolve([]), getRegistration: () => Promise.resolve(undefined), addEventListener() {}, controller: null }, storage: { estimate: () => Promise.resolve({ quota: 1e9, usage: 0 }), persist: () => Promise.resolve(false) }, mediaDevices: { enumerateDevices: () => Promise.resolve([]), getUserMedia: () => Promise.reject(new DOMException('Not allowed', 'NotAllowedError')) }, locks: { request: () => Promise.resolve() }, credentials: { get: () => Promise.resolve(null), store: () => Promise.resolve(), create: () => Promise.resolve(null), preventSilentAccess: () => Promise.resolve() }, geolocation: { getCurrentPosition(ok, err) { if (err) err({ code: 1, message: 'denied' }); }, watchPosition() { return 0; }, clearWatch() {} }, share: () => Promise.reject(new DOMException('Not allowed', 'NotAllowedError')), canShare: () => false, requestMediaKeySystemAccess: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')), scheduling: { isInputPending: () => false } };
   global.clientInformation = global.navigator;
   global.screen = { width: vw, height: vh, availWidth: vw, availHeight: vh, colorDepth: 24, pixelDepth: 24, orientation: { type: vw >= vh ? 'landscape-primary' : 'portrait-primary', angle: 0, addEventListener() {}, removeEventListener() {} } };
-  Object.assign(global, { innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0, name: '', status: '', closed: false, length: 0, isSecureContext: pageURL.protocol === 'https:', origin: pageURL.origin, crossOriginIsolated: false });
+  Object.assign(global, { innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0, name: '', status: '', closed: false, length: 0, isSecureContext: pageURL.protocol === 'https:' || pageURL.protocol === 'file:' || /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$|\.localhost$/.test(pageURL.hostname), origin: pageURL.origin, crossOriginIsolated: false });
   for (const k of ['window', 'self', 'top', 'parent', 'frames']) Object.defineProperty(global, k, { get() { return global; }, set() {}, configurable: true });
   // DOMImplementation.createHTMLDocument: a document of its own is a
   // detached tree here (html, head with the title, body), with the
@@ -1229,7 +1247,7 @@
   // and its events come back through __olo_mediaEvents.
   const isMedia = (el) => { const n = N.nodeName(el); return n === 'VIDEO' || n === 'AUDIO'; };
   const queueMedia = (el, names) => setTimeout(() => { for (const name of names) el.dispatchEvent(new Event(name)); }, 0);
-  global.__olo_mediaEvents = (el, names) => { for (const name of names) el.dispatchEvent(new Event(name)); };
+  H.__olo_mediaEvents = (el, names) => { for (const name of names) el.dispatchEvent(new Event(name)); };
   const mediaProps = {
     paused: { get() { return N.media(this)[0]; } },
     ended: { get() { return N.media(this)[1]; } },
@@ -1506,7 +1524,7 @@
   const scrollPending = new Set();
   const scrollElement = (el, x, y) => { if (N.setScrollOffset(el, x, y)) queueScroll(el); };
   const queueScroll = (el) => { if (scrollPending.has(el)) return; scrollPending.add(el); setTimeout(() => { scrollPending.delete(el); el.dispatchEvent(new Event('scroll')); }, 0); };
-  global.__olo_scrolled = (el) => queueScroll(el);
+  H.__olo_scrolled = (el) => queueScroll(el);
   // matchMedia answers by the engine's media evaluation, the same as the
   // page's sheets. The viewport is fixed for a realm (a resize renders a
   // new one), so a list never changes; its listeners are kept all the same.
@@ -1586,14 +1604,14 @@
   // animation frames paused (the host stops them), and visibilitychange
   // when it changes, as browsers do for a hidden tab.
   let pageHidden = false;
-  global.__olo_set_hidden = (hidden) => {
+  H.__olo_set_hidden = (hidden) => {
     const was = pageHidden;
     pageHidden = !!hidden;
     if (was !== pageHidden) { try { dispatch(documentNode, new Event('visibilitychange', { bubbles: true })); } catch (e) { reportError(e); } try { dispatch(global, new Event(pageHidden ? 'pagehide' : 'pageshow')); } catch (e) {} }
     return 0;
   };
-  global.__olo_wants_frame = () => (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) ? 1 : 0);
-  global.__olo_tick = (clock, frame) => {
+  H.__olo_wants_frame = () => (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) ? 1 : 0);
+  H.__olo_tick = (clock, frame) => {
     frameDriven = frame === 0 || frame === 1;
     frameNow = frame === 1;
     now = Math.max(now, Number(clock) || 0);
@@ -1721,7 +1739,7 @@
     caretOf.set(el, at);
     dispatch(el, new InputEvent('input', { bubbles: true, composed: true, inputType: kind, data: data || null }));
   };
-  global.__olo_submitForm = submitForm;
+  H.__olo_submitForm = submitForm;
   const focusElement = (el) => {
     const old = activeElement && N.isConnected(activeElement) ? activeElement : null;
     if (el === old) return;
@@ -1797,7 +1815,7 @@
   }
   // CSS animation and transition events (transitionrun, -start, -end,
   // -cancel carry the property's name).
-  global.__olo_animationEvent = (el, type, name, elapsed) => {
+  H.__olo_animationEvent = (el, type, name, elapsed) => {
     const transition = type.startsWith('transition');
     const Ctor = (transition ? global.TransitionEvent : global.AnimationEvent) || Event;
     const ev = new Ctor(type, { bubbles: true, cancelable: false, composed: true });
@@ -1807,7 +1825,7 @@
   };
   // The person chose option `index` of a select from its menu: it is the
   // select's now, with `input` and `change` when that changed it.
-  global.__olo_choose = (sel, index) => {
+  H.__olo_choose = (sel, index) => {
     const options = N.query(sel, 'option', true);
     const chosen = options[index];
     if (!chosen) return;
@@ -1820,7 +1838,7 @@
       }
     }
   };
-  global.__olo_input = (json, target) => {
+  H.__olo_input = (json, target) => {
     const i = JSON.parse(json);
     scrollXY[0] = 0;
     scrollXY[1] = i.scrollY;
@@ -1892,7 +1910,7 @@
     }
     return prevented;
   };
-  global.__olo_lifecycle = (name) => {
+  H.__olo_lifecycle = (name) => {
     if (name === 'DOMContentLoaded') { readyState = 'interactive'; dispatch(documentNode, new Event('readystatechange')); dispatch(documentNode, new Event('DOMContentLoaded', { bubbles: true })); }
     // The page's images, loaded by the engine before the scripts ran, fire
     // their load (or error) now, before the window's, as a browser's images
@@ -2122,14 +2140,14 @@
   }
   global.IntersectionObserverEntry = IntersectionObserverEntry;
   // A synchronous fetch (XMLHttpRequest in synchronous mode): bytes.
-  const fetchSync = (url, method, body, headers) => (/^(data|blob):/.test(url) ? global.__olo_fetchInline(url) : N.fetchSync(url, method, body, headers || ''));
+  const fetchSync = (url, method, body, headers) => (/^(data|blob):/.test(url) ? H.__olo_fetchInline(url) : N.fetchSync(url, method, body, headers || ''));
   const headerLines = (h) => Object.entries(h || {}).map(([k, v]) => k + ': ' + v).join('\n');
   class XMLHttpRequest extends EventTargetCtor {
     constructor() { super(); this.readyState = 0; this.status = 0; this.statusText = ''; this.responseText = ''; this.response = ''; this.responseType = ''; this.responseURL = ''; this.responseXML = null; this.timeout = 0; this.withCredentials = false; this.upload = new EventTargetCtor(); this._headers = {}; this.onreadystatechange = null; this.onload = null; this.onerror = null; this.onabort = null; this.ontimeout = null; this.onprogress = null; this.onloadend = null; this.onloadstart = null; }
     open(method, url, async) { this._method = String(method || 'GET').toUpperCase(); this._url = resolveURL(String(url)); this._sync = async === false; this.readyState = 1; this._change(); }
     setRequestHeader(k, v) { this._headers[String(k).toLowerCase()] = String(v); }
-    getResponseHeader(k) { return this._response ? global.__olo_responseHeaders(this._response).get(String(k)) : null; }
-    getAllResponseHeaders() { if (!this._response) return ''; const lines = []; global.__olo_responseHeaders(this._response).forEach((v, k) => lines.push(k + ': ' + v)); return lines.map((l) => l + '\r\n').join(''); }
+    getResponseHeader(k) { return this._response ? H.__olo_responseHeaders(this._response).get(String(k)) : null; }
+    getAllResponseHeaders() { if (!this._response) return ''; const lines = []; H.__olo_responseHeaders(this._response).forEach((v, k) => lines.push(k + ': ' + v)); return lines.map((l) => l + '\r\n').join(''); }
     overrideMimeType() {} abort() { this.readyState = 0; if (this.onabort) this.onabort(new ProgressEvent('abort')); }
     _change() { if (this.onreadystatechange) { try { this.onreadystatechange(new Event('readystatechange')); } catch (e) { reportError(e); } } dispatch(this, new Event('readystatechange')); }
     _finish(r) {
@@ -2147,12 +2165,12 @@
       // (Bytes as they are: a binary body must not pass through text.)
       // A FormData: multipart/form-data with its boundary, the type set
       // unless the page set one.
-      if (body instanceof FormData) { const form = global.__olo_bodyOf(body); body = form.bytes; if (!Object.keys(this._headers || {}).some((k) => k.toLowerCase() === 'content-type')) this.setRequestHeader('Content-Type', form.type); }
+      if (body instanceof FormData) { const form = H.__olo_bodyOf(body); body = form.bytes; if (!Object.keys(this._headers || {}).some((k) => k.toLowerCase() === 'content-type')) this.setRequestHeader('Content-Type', form.type); }
       const payload = body == null ? '' : typeof body === 'string' ? body : body instanceof URLSearchParams ? body.toString() : body instanceof Blob ? body._bytes : body instanceof ArrayBuffer ? new Uint8Array(body) : ArrayBuffer.isView(body) ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength) : String(body);
       if (this._sync) { try { this._finish(fetchSync(this._url, this._method, payload, headerLines(this._headers) + (this.withCredentials ? '\nx-olo-credentials: include' : ''))); } catch (e) { this._fail(); } return; }
       dispatch(this, new ProgressEvent('loadstart'));
-      if (/^(data|blob):/.test(this._url)) { setTimeout(() => { try { this._finish(global.__olo_fetchInline(this._url)); } catch (e) { this._fail(); } }, 0); return; }
-      global.__olo_fetchStart(this._url, this._method, payload, headerLines(this._headers) + (this.withCredentials ? '\nx-olo-credentials: include' : '')).then((r) => this._finish(r), () => this._fail());
+      if (/^(data|blob):/.test(this._url)) { setTimeout(() => { try { this._finish(H.__olo_fetchInline(this._url)); } catch (e) { this._fail(); } }, 0); return; }
+      H.__olo_fetchStart(this._url, this._method, payload, headerLines(this._headers) + (this.withCredentials ? '\nx-olo-credentials: include' : '')).then((r) => this._finish(r), () => this._fail());
     }
   }
   XMLHttpRequest.UNSENT = 0; XMLHttpRequest.OPENED = 1; XMLHttpRequest.HEADERS_RECEIVED = 2; XMLHttpRequest.LOADING = 3; XMLHttpRequest.DONE = 4;
@@ -2177,7 +2195,7 @@
       super();
       this.onmessage = null; this.onerror = null; this.onmessageerror = null;
       const u = resolveURL(String(url));
-      const blob = global.__olo_blob(u);
+      const blob = H.__olo_blob(u);
       const id = N.workerStart(u, blob ? new TextDecoder().decode(blob._bytes) : null);
       if (id == null) throw new DOMException('Workers are not available', 'NotSupportedError');
       this._id = id;
@@ -2186,7 +2204,7 @@
     postMessage(data) { if (this._id != null) N.workerPost(this._id, data); }
     terminate() { if (this._id != null) { N.workerTerminate(this._id); workers.delete(this._id); this._id = null; } }
   };
-  global.__olo_workerEvent = (id, kind, data) => {
+  H.__olo_workerEvent = (id, kind, data) => {
     const w = workers.get(id);
     if (!w) return;
     if (kind === 'message') dispatch(w, new MessageEvent('message', { data }));
@@ -2195,8 +2213,8 @@
   global.SharedWorker = class SharedWorker extends EventTargetCtor { constructor() { super(); throw new DOMException('Shared workers are not available', 'NotSupportedError'); } };
   // fetch: the browser fetches, off this thread, and answers by id.
   const fetches = new Map();
-  global.__olo_fetchStart = (url, method, body, headers) => new Promise((resolve, reject) => { const id = N.fetchAsync(url, method, body, headers || ''); if (id == null) reject(new TypeError('no network')); else fetches.set(id, { resolve, reject }); });
-  global.__olo_fetched = (id, ok, status, contentType, bytes, urlOrError, headers) => { const p = fetches.get(id); if (!p) return; fetches.delete(id); if (ok) p.resolve({ status, contentType, body: bytes, url: urlOrError, headers }); else p.reject(new TypeError(String(urlOrError))); };
+  H.__olo_fetchStart = (url, method, body, headers) => new Promise((resolve, reject) => { const id = N.fetchAsync(url, method, body, headers || ''); if (id == null) reject(new TypeError('no network')); else fetches.set(id, { resolve, reject }); });
+  H.__olo_fetched = (id, ok, status, contentType, bytes, urlOrError, headers) => { const p = fetches.get(id); if (!p) return; fetches.delete(id); if (ok) p.resolve({ status, contentType, body: bytes, url: urlOrError, headers }); else p.reject(new TypeError(String(urlOrError))); };
   global.Notification = class Notification extends EventTargetCtor { constructor() { super(); } static get permission() { return 'default'; } static requestPermission() { return Promise.resolve('denied'); } close() {} };
   // Web Animations 1 on the page's clock (performance.now()): each
   // animation's keyframes and timing go to the engine (N.animationSet),
@@ -2697,7 +2715,7 @@
     const done = () => { const src = imageSource(source); if (!src) { reject(new DOMException('The source image cannot be decoded.', 'InvalidStateError')); return; } const z = N.nodeName(src) === 'IMG' ? imagePixelSize(src) : [src.width, src.height]; resolve(new ImageBitmap(src, z[0], z[1])); };
     if (source && isNode(source) && N.nodeName(source) === 'IMG' && !source.complete) { source.addEventListener('load', done, { once: true }); source.addEventListener('error', () => reject(new DOMException('The source image cannot be decoded.', 'InvalidStateError')), { once: true }); } else done();
   });
-  global.ImageBitmap = ImageBitmap; global.__olo_imageSource = imageSource;
+  global.ImageBitmap = ImageBitmap; H.__olo_imageSource = imageSource;
   global.AudioContext = class AudioContext { constructor() { this.state = 'suspended'; this.destination = {}; } resume() { return Promise.resolve(); } close() { return Promise.resolve(); } createGain() { return { connect() {}, gain: { value: 1 } }; } createOscillator() { return { connect() {}, start() {}, stop() {}, frequency: { value: 440 } }; } };
   global.webkitAudioContext = global.AudioContext;
   global.speechSynthesis = { speak() {}, cancel() {}, getVoices: () => [], addEventListener() {} };
@@ -2745,13 +2763,13 @@
   // (cancelable: a page that handles it keeps it out of the log); whether
   // to log it.
   global.PromiseRejectionEvent = class PromiseRejectionEvent extends Event { constructor(type, init) { super(type, init); this.promise = init && init.promise; this.reason = init && init.reason; } };
-  global.__olo_unhandledRejection = (promise, reason) => { const ev = new global.PromiseRejectionEvent('unhandledrejection', { cancelable: true, promise, reason }); dispatch(global, ev); return !ev.defaultPrevented; };
+  H.__olo_unhandledRejection = (promise, reason) => { const ev = new global.PromiseRejectionEvent('unhandledrejection', { cancelable: true, promise, reason }); dispatch(global, ev); return !ev.defaultPrevented; };
   global.CustomElementRegistry.prototype = Object.getPrototypeOf(global.customElements);
   global.Node = Node; global.Element = Element; global.SVGElement = SVGElement; global.Text = Text; global.Comment = Comment; global.Document = Document; global.DocumentFragment = DocumentFragment;
   // Interfaces of nodes the engine makes as text or comments (YouTube's
   // ShadyDOM patches every one's prototype): their constructors, not
   // callable, their prototypes on Text's and the node chain.
-  const nodeInterface = (name, parent) => { const f = function () { throw new TypeError('Illegal constructor'); }; Object.defineProperty(f, 'name', { value: name }); f.prototype = Object.create(parent.prototype, { constructor: { value: f, writable: true, configurable: true } }); Object.setPrototypeOf(f, parent); return f; };
+  const nodeInterface = (name, parent) => { const f = function () { throw new TypeError('Illegal constructor'); }; Object.defineProperty(f, 'name', { value: name }); f.prototype = Object.create(parent.prototype, { constructor: { value: f, writable: true, configurable: true } }); Object.defineProperty(f, 'prototype', { writable: false }); Object.setPrototypeOf(f, parent); return f; };
   if (!global.CharacterData) global.CharacterData = Object.getPrototypeOf(Text.prototype) && Object.getPrototypeOf(Text.prototype).constructor !== Node ? Object.getPrototypeOf(Text.prototype).constructor : Node;
   global.CDATASection = nodeInterface('CDATASection', Text);
   // `Window`: the global's interface (polyfills patch its prototype).
@@ -2763,6 +2781,5 @@
     try { Object.setPrototypeOf(global, proto); } catch (e) { /* the global's prototype stays */ }
   }
   global.ProcessingInstruction = nodeInterface('ProcessingInstruction', global.CharacterData);
-  Object.defineProperty(global, 'currentScript', { get() { return currentScript; } });
-  global.__olo_setCurrentScript = (el) => { currentScript = el; };
+  H.__olo_setCurrentScript = (el) => { currentScript = el; };
 })(globalThis);

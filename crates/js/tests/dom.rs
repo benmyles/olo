@@ -728,14 +728,30 @@ fn slots_tell_when_what_they_are_handed_changes() {
 /// exposes, with its type saying which.
 #[test]
 fn response_headers_are_shown_as_fetch_filters_them() {
-    let (report, _) = run("<body><script>\
-        const lines = 'content-type: text/html\\nx-verified-res: 1\\nx-other: 2\\naccess-control-expose-headers: x-other';\
-        const own = __olo_responseHeaders({ url: 'https://example.test/svc', headers: lines, contentType: 'text/html' });\
-        const theirs = __olo_responseHeaders({ url: 'https://elsewhere.test/svc', headers: lines, contentType: 'text/html' });\
-        console.log(own.get('x-verified-res'), own.get('x-other'), theirs.get('x-verified-res'), theirs.get('x-other'), theirs.get('content-type'));\
-        </script>");
+    // Through a request's own headers (the helper that filters them is
+    // the engine's, out of the page's reach): its own origin's all, another
+    // origin's those CORS lets it see.
+    let page = "<body><script>\
+        const read = (url) => { const x = new XMLHttpRequest(); x.open('GET', url, false); x.send(); return x; };\
+        const own = read('https://example.test/svc'), theirs = read('https://elsewhere.test/svc');\
+        console.log(own.getResponseHeader('x-verified-res'), own.getResponseHeader('x-other'), theirs.getResponseHeader('x-verified-res'), theirs.getResponseHeader('x-other'), theirs.getResponseHeader('content-type'), typeof __olo_responseHeaders);\
+        </script>";
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/page.html")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let fetcher: olo_js::Fetcher = Box::new(|url: &str, _: &str, _: &[u8], _: &str| {
+        let headers = "content-type: text/html\nx-verified-res: 1\nx-other: 2\naccess-control-expose-headers: x-other".to_owned();
+        Ok(olo_js::Fetched { status: 200, content_type: "text/html".into(), body: b"ok".to_vec(), url: url.into(), headers })
+    });
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/page.html".into(), ..Default::default() }, Some(fetcher), None).unwrap();
+    let report = realm.run_page(&scripts);
     assert_eq!(report.errors, Vec::<String>::new());
-    assert_eq!(report.console, ["[log] 1 2 null 2 text/html"]);
+    assert_eq!(report.console, ["[log] 1 2 null 2 text/html undefined"]);
 }
 /// Token lists are `[PutForwards=value]`: a string set on `classList`,
 /// `sandbox`, `relList` or `part` is the attribute's value (YouTube sets
@@ -822,4 +838,38 @@ fn web_crypto_encrypts_and_derives_keys() {
     assert_eq!(report.errors, Vec::<String>::new());
     // 5 bytes and the tag; RFC 6070's test 2 begins ea6c014d.
     assert_eq!(report.console, ["[log] 21,hello,hello,OperationError,ea6c014d,256,128"]);
+}
+/// Olo presents as the Chrome it renders like: the DOM's interfaces chained
+/// as Chrome's (HTMLDocument, CharacterData, DocumentType), members where
+/// Chrome has them, its functions native, and nothing of Olo's to be seen.
+#[test]
+fn the_dom_is_shaped_as_chrome_s() {
+    let (report, _) = run("<!DOCTYPE html><body><script>\
+        const proto = Object.getPrototypeOf;\
+        console.log(proto(document) === HTMLDocument.prototype, proto(HTMLDocument.prototype) === Document.prototype, proto(Text.prototype) === CharacterData.prototype, proto(Comment.prototype) === CharacterData.prototype, proto(document.doctype) === DocumentType.prototype, document.doctype.name);\
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');\
+        console.log(Object.getOwnPropertyNames(document).join(), 'title' in rect, 'style' in rect, Object.prototype.hasOwnProperty.call(HTMLElement.prototype, 'title'), Object.prototype.hasOwnProperty.call(Element.prototype, 'title'));\
+        console.log(String(document.querySelector), String(Object.getOwnPropertyDescriptor(Node.prototype, 'nodeType').get), navigator.webdriver);\
+        console.log(Object.getOwnPropertyNames(window).filter((k) => k.startsWith('__olo')).length, typeof __olo, Object.keys(document.createElement('div')).length, 'onfocusin' in document.body);\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(
+        report.console,
+        [
+            "[log] true true true true true html",
+            "[log] location false true true false",
+            "[log] function querySelector() { [native code] } function get nodeType() { [native code] } false",
+            "[log] 0 undefined 0 false",
+        ]
+    );
+}
+/// `navigator.getBattery()` answers (it called itself once navigator's
+/// members moved to Navigator.prototype as Chrome has them).
+#[test]
+fn the_battery_is_read() {
+    let (report, _) = run("<body><script>\
+        navigator.getBattery().then((b) => console.log(Object.prototype.toString.call(b), typeof b.level, b.dischargingTime));\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] [object BatteryManager] number Infinity"]);
 }

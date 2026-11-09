@@ -474,7 +474,10 @@ fn dynamic_import<'s>(
                 let context = scope.get_current_context();
                 let global = context.global(scope);
                 if let Some(name) = v8::String::new(scope, "__olo_import")
-                    && let Some(f) = global.get(scope, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
+                    && let Some(f) = {
+                        let n = name.to_rust_string_lossy(scope);
+                        crate::prelude_function(scope, global, &n)
+                    }
                     && let Some(arg) = v8::String::new(scope, url)
                     && let Some(p) = f.call(scope, global.into(), &[arg.into()]).and_then(|p| v8::Local::<v8::Promise>::try_from(p).ok())
                 {

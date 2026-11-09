@@ -683,6 +683,12 @@ impl Drop for Browser {
 }
 impl Render for Browser {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The screen it is on and its own size, for pages' `screen` and
+        // `outerWidth` (as Chrome tells them).
+        if let Some(display) = window.display(cx) {
+            let (screen, own) = (display.bounds().size, window.bounds().size);
+            olo_js::set_display([f64::from(screen.width), f64::from(screen.height)], [f64::from(own.width), f64::from(own.height)]);
+        }
         // history.go past the page's own entries: the window goes there.
         if let Some(delta) = self.pending_traverse.take() {
             self.traverse(delta, window, cx);
