@@ -1183,3 +1183,59 @@ setTimeout(() => { null.x; }, 0);
         ]
     );
 }
+#[test]
+fn cross_origin_requests_follow_cors() {
+    // A page's scripts read another site's answer only when it allows them
+    // (they read every one: Chrome refuses); a non-simple request is asked
+    // about first; no-cors answers are opaque.
+    let page = r#"<script>
+const B = 'https://other.test';
+const t = (name, p) => p.then(async (r) => name + ' ' + r.status + ' ' + r.type + ' ' + (await r.text()), (e) => name + ' ' + e.message);
+Promise.all([
+  t('open', fetch(B + '/open')),
+  t('closed', fetch(B + '/closed')),
+  t('nocors', fetch(B + '/closed', { mode: 'no-cors' })),
+  t('cred', fetch(B + '/open', { credentials: 'include' })),
+  t('pre', fetch(B + '/pre', { method: 'PUT', headers: { 'x-custom': '1' } })),
+  t('pre-bad', fetch(B + '/pre', { method: 'PUT', headers: { 'x-other': '1' } })),
+  t('same', fetch('/same')),
+]).then((a) => console.log(a.join(' | ')));
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let answer = |url: &str, method: &str| {
+        let headers = match (url, method) {
+            ("https://other.test/open", _) => "access-control-allow-origin: *",
+            ("https://other.test/pre", "OPTIONS") => "access-control-allow-origin: *\naccess-control-allow-methods: PUT\naccess-control-allow-headers: x-custom",
+            ("https://other.test/pre", _) => "access-control-allow-origin: *",
+            _ => "",
+        };
+        olo_js::Fetched { status: 200, content_type: "text/plain".into(), body: method.to_string().into_bytes(), url: url.into(), headers: headers.into() }
+    };
+    // (Its fetches go out as requests, answered below.)
+    let unused: olo_js::Fetcher = Box::new(|url: &str, _: &str, _: &[u8], _: &str| Err(format!("sync fetch {url}")));
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), budget_ms: 0., ..Default::default() }, Some(unused), None).unwrap();
+    realm.run_page(&scripts);
+    // The browser's part: each request answered as it is made.
+    for round in 0..10 {
+        let requests = realm.take_requests();
+        if requests.is_empty() && round > 0 {
+            break;
+        }
+        for r in requests {
+            let olo_js::RequestKind::Text { method, .. } = &r.kind else { continue };
+            realm.deliver(r.id, Ok(olo_js::Loaded::Text(answer(&r.url, method))));
+        }
+        realm.advance(10. * f64::from(round + 1), std::time::Duration::from_secs(1));
+    }
+    assert_eq!(
+        realm.report().console,
+        ["[log] open 200 cors GET | closed Failed to fetch | nocors 0 opaque  | cred Failed to fetch | pre 200 cors PUT | pre-bad Failed to fetch | same 200 basic GET"]
+    );
+}

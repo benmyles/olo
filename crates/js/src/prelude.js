@@ -2473,7 +2473,7 @@
   global.IntersectionObserverEntry = IntersectionObserverEntry;
   // A synchronous fetch (XMLHttpRequest in synchronous mode): bytes.
   const fetchSync = (url, method, body, headers) => (/^(data|blob):/.test(url) ? H.__olo_fetchInline(url) : N.fetchSync(url, method, body, headers || ''));
-  const headerLines = (h) => Object.entries(h || {}).map(([k, v]) => k + ': ' + v).join('\n');
+  const headerLines = (h) => Object.entries(h || {}).filter(([k]) => !String(k).toLowerCase().startsWith('x-olo-')).map(([k, v]) => k + ': ' + v).join('\n');
   class XMLHttpRequest extends EventTargetCtor {
     constructor() { super(); this.readyState = 0; this.status = 0; this.statusText = ''; this.responseText = ''; this.response = ''; this.responseType = ''; this.responseURL = ''; this.responseXML = null; this.timeout = 0; this.withCredentials = false; this.upload = new EventTargetCtor(); this._headers = {}; this.onreadystatechange = null; this.onload = null; this.onerror = null; this.onabort = null; this.ontimeout = null; this.onprogress = null; this.onloadend = null; this.onloadstart = null; }
     open(method, url, async) { this._method = String(method || 'GET').toUpperCase(); this._url = resolveURL(String(url)); this._sync = async === false; this.readyState = 1; this._change(); }
@@ -2502,7 +2502,13 @@
       if (this._sync) { try { this._finish(fetchSync(this._url, this._method, payload, headerLines(this._headers) + (this.withCredentials ? '\nx-olo-credentials: include' : ''))); } catch (e) { this._fail(); } return; }
       dispatch(this, new ProgressEvent('loadstart'));
       if (/^(data|blob):/.test(this._url)) { setTimeout(() => { try { this._finish(H.__olo_fetchInline(this._url)); } catch (e) { this._fail(); } }, 0); return; }
-      H.__olo_fetchStart(this._url, this._method, payload, headerLines(this._headers) + (this.withCredentials ? '\nx-olo-credentials: include' : '')).then((r) => this._finish(r), () => this._fail());
+      // (Cross-origin: CORS, as fetch's.)
+      const lines = headerLines(this._headers) + (this.withCredentials ? '\nx-olo-credentials: include' : '');
+      const url = this._url, method = this._method, cred = !!this.withCredentials;
+      (H.__olo_cors.cross(url) ? H.__olo_cors.preflight(url, method, lines.split('\n'), cred) : Promise.resolve())
+        .then(() => H.__olo_fetchStart(url, method, payload, lines))
+        .then((r) => H.__olo_cors.corsChecked(r, url, 'cors', cred))
+        .then((r) => this._finish(r), () => this._fail());
     }
   }
   XMLHttpRequest.UNSENT = 0; XMLHttpRequest.OPENED = 1; XMLHttpRequest.HEADERS_RECEIVED = 2; XMLHttpRequest.LOADING = 3; XMLHttpRequest.DONE = 4;

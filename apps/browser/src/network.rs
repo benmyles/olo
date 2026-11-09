@@ -192,6 +192,12 @@ impl Loader {
             // 16 KB default refused YouTube's: an HTTP/2 stream error).
             client: Client::builder()
                 .http2_max_header_list_size(256 * 1024)
+                // HTTP/2 as Chrome opens it (its SETTINGS and first
+                // WINDOW_UPDATE are part of what bot checks fingerprint):
+                // 6 MiB a stream, 15 MiB the connection, no max frame size.
+                .http2_initial_stream_window_size(6 * 1024 * 1024)
+                .http2_initial_connection_window_size(15 * 1024 * 1024)
+                .http2_max_frame_size(None)
                 .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_secs(20))
                 .timeout(Duration::from_secs(60))
@@ -823,7 +829,18 @@ impl Outgoing {
                 };
                 continue;
             }
-            if FORBIDDEN.contains(&name.as_str()) || name.starts_with("proxy-") || name.starts_with("sec-") {
+            // A CORS preflight's questions, from the page's CORS code (an
+            // OPTIONS request only): the headers a page may not set itself.
+            if let Some(asked) = name.strip_prefix("x-olo-preflight-")
+                && method == reqwest::Method::OPTIONS
+                && matches!(asked, "method" | "headers")
+                && let Ok(v) = header::HeaderValue::from_str(value.trim())
+            {
+                let n = if asked == "method" { "access-control-request-method" } else { "access-control-request-headers" };
+                out.push((header::HeaderName::from_static(n), v));
+                continue;
+            }
+            if FORBIDDEN.contains(&name.as_str()) || name.starts_with("proxy-") || name.starts_with("sec-") || name.starts_with("x-olo-") {
                 continue;
             }
             if let (Ok(n), Ok(v)) = (header::HeaderName::from_bytes(name.as_bytes()), header::HeaderValue::from_str(value.trim())) {

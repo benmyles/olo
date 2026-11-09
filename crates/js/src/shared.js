@@ -517,6 +517,61 @@
   };
   H.__olo_responseHeaders = responseHeaders;
   const response = (r) => { const res = new Response(r.body, { status: r.status, statusText: r.status === 200 ? 'OK' : '', headers: responseHeaders(r), url: r.url }); if (!sameOrigin(r.url) && !/^(data|blob):/.test(String(r.url))) res.type = 'cors'; return res; };
+  // CORS (Fetch §4.8-4.9), for a script's cross-origin request: a
+  // non-simple one asked of the server first (a preflight, kept for its
+  // max-age), the answer readable only when the server allows this origin
+  // (and credentials, when they went); a no-cors one opaque. Without it a
+  // page's scripts read any site's answers.
+  const ownOrigin = () => { try { return global.location.origin; } catch (e) { return 'null'; } };
+  const headerOf = (r, name) => { for (const line of String(r.headers || '').split('\n')) { const i = line.indexOf(':'); if (i > 0 && line.slice(0, i).trim().toLowerCase() === name) return line.slice(i + 1).trim(); } return null; };
+  const allowedBy = (r, credentials) => {
+    const origin = ownOrigin(), allow = headerOf(r, 'access-control-allow-origin');
+    if (credentials) return allow === origin && headerOf(r, 'access-control-allow-credentials') === 'true';
+    return allow === '*' || allow === origin;
+  };
+  const SIMPLE_METHODS = ['GET', 'HEAD', 'POST'];
+  const SAFE_HEADERS = ['accept', 'accept-language', 'content-language', 'content-type', 'range'];
+  const SIMPLE_TYPES = ['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'];
+  // The request's headers a preflight must ask about (lower case, sorted).
+  const unsafeHeaders = (lines) => {
+    const out = [];
+    for (const line of lines) {
+      const i = line.indexOf(':'); if (i <= 0) continue;
+      const name = line.slice(0, i).trim().toLowerCase(), value = line.slice(i + 1).trim();
+      if (name.startsWith('x-olo-')) continue;
+      const safe = SAFE_HEADERS.includes(name) && value.length <= 128 && (name !== 'content-type' || SIMPLE_TYPES.includes(value.split(';')[0].trim().toLowerCase()));
+      if (!safe && !out.includes(name)) out.push(name);
+    }
+    return out.sort();
+  };
+  const preflights = new Map();
+  const listed = (value, item) => (value || '').split(',').map((s) => s.trim().toLowerCase()).some((v) => v === item.toLowerCase() || v === '*');
+  // Resolves when the server allows the request, else rejects.
+  const preflight = (url, method, lines, credentials) => {
+    const unsafe = unsafeHeaders(lines);
+    if (SIMPLE_METHODS.includes(method) && !unsafe.length) return Promise.resolve();
+    const key = [ownOrigin(), url, method, unsafe.join(','), credentials].join(' ');
+    const kept = preflights.get(key);
+    if (kept && kept > Date.now()) return Promise.resolve();
+    const ask = 'x-olo-preflight-method: ' + method + (unsafe.length ? '\nx-olo-preflight-headers: ' + unsafe.join(',') : '') + '\nx-olo-credentials: omit';
+    return H.__olo_fetchStart(url, 'OPTIONS', '', ask).then((r) => {
+      const ok = r.status >= 200 && r.status < 300 && allowedBy(r, credentials)
+        && (SIMPLE_METHODS.includes(method) || listed(headerOf(r, 'access-control-allow-methods'), method) && !(credentials && headerOf(r, 'access-control-allow-methods') === '*'))
+        && unsafe.every((h) => listed(headerOf(r, 'access-control-allow-headers'), h) && !(credentials && headerOf(r, 'access-control-allow-headers') === '*'));
+      if (!ok) throw new TypeError('CORS preflight refused');
+      const age = Math.min(Number(headerOf(r, 'access-control-max-age')) || 5, 7200);
+      preflights.set(key, Date.now() + age * 1000);
+    });
+  };
+  // The cross-origin answer checked: what a script may have of it.
+  const corsChecked = (r, url, mode, credentials) => {
+    if (sameOrigin(url) || /^(data|blob):/.test(String(url))) return r;
+    if (mode === 'same-origin') throw new TypeError('Failed to fetch');
+    if (mode === 'no-cors') return { status: 0, contentType: '', body: new Uint8Array(0), url: '', headers: '', opaque: true };
+    if (!allowedBy(r, credentials)) throw new TypeError('Failed to fetch');
+    return r;
+  };
+  H.__olo_cors = { preflight, corsChecked, cross: (url) => !sameOrigin(url) && !/^(data|blob):/.test(String(url)) };
   global.fetch = (input, init) => new Promise((resolve, reject) => {
     // (A Request with an init is a new Request from both, as the spec has it.)
     const req = input instanceof Request && init == null ? input : new Request(input, init);
@@ -524,11 +579,19 @@
     if (slot.signal && slot.signal.aborted) return reject(new DOMException('The operation was aborted.', 'AbortError'));
     if (/^(data|blob):/.test(slot.url)) { try { resolve(response(H.__olo_fetchInline(slot.url))); } catch (e) { reject(new TypeError('Failed to fetch: ' + (e && e.message || e))); } return; }
     (req._source ? req._all() : Promise.resolve()).then(() => {
-      const lines = []; slot.headers.forEach((v, k) => lines.push(k + ': ' + v));
+      const lines = []; slot.headers.forEach((v, k) => { if (!k.startsWith('x-olo-')) lines.push(k + ': ' + v); });
       // Its credentials mode, when not same-origin, for the browser (the
       // line is never sent).
       if (slot.credentials === 'include' || slot.credentials === 'omit') lines.push('x-olo-credentials: ' + slot.credentials);
-      return H.__olo_fetchStart(slot.url, slot.method, req._bytes, lines.join('\n'));
-    }).then((r) => resolve(response(r)), (e) => reject(new TypeError('Failed to fetch: ' + (e && e.message || e))));
+      const cross = !sameOrigin(slot.url);
+      const credentials = slot.credentials === 'include';
+      // (A no-cors request may only be simple; its answer is opaque.)
+      if (cross && slot.mode === 'no-cors' && (!SIMPLE_METHODS.includes(slot.method))) throw new TypeError("Failed to execute 'fetch' on 'Window': '" + slot.method + "' is unsupported in no-cors mode.");
+      const ready = cross && slot.mode === 'cors' ? preflight(slot.url, slot.method, lines, credentials) : Promise.resolve();
+      return ready.then(() => H.__olo_fetchStart(slot.url, slot.method, req._bytes, lines.join('\n'))).then((r) => corsChecked(r, slot.url, slot.mode, credentials));
+    }).then((r) => {
+      if (r.opaque) { const res = new Response(null, { status: 200 }); Object.defineProperty(res, 'status', { value: 0 }); Object.defineProperty(res, 'ok', { value: false }); res.type = 'opaque'; return resolve(res); }
+      resolve(response(r));
+    }, (e) => reject(e instanceof TypeError && e.message === 'Failed to fetch' ? e : new TypeError('Failed to fetch')));
   });
 })(globalThis);

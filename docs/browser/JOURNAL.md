@@ -7394,3 +7394,27 @@ has that much less to mark and move.
 | Idle | 13.2% | 2.5% | 2.7% |
 | Scroll | 119% | 122% | 125% |
 | Memory | 1,162 MB | 839 MB | 652 MB |
+
+Then what sites see of Olo on the wire. tls.peet.ws, from each browser:
+Chrome's HTTP/2 opens with SETTINGS 1:65536;2:0;4:6291456;6:262144, a
+WINDOW_UPDATE of 15,663,105 and its pseudo-headers in the order m,a,s,p;
+Olo's with 2:0;4:2097152;5:16384;6:262144, 5,177,345 and m,s,a,p. They
+are the same now (reqwest's window sizes, and a patched h2 in vendor/:
+Chrome's pseudo-header order, its header table, no max frame size when
+it is the default). The TLS handshake is still rustls's, not Chrome's
+(GREASE, ALPS, ECH, certificate compression, its suites): that needs
+BoringSSL.
+
+Fetching tls.peet.ws from a page's script for this showed something
+worse: Olo let a page's scripts read any site's answers. Chrome refused
+("Failed to fetch": the site sends no CORS headers). Olo had no CORS.
+It has now, in fetch and XMLHttpRequest: a cross-origin answer readable
+only when the server allows the page's origin (and credentials, when
+they went), a non-simple request preflighted (OPTIONS, kept for its
+max-age), no-cors answers opaque, same-origin mode refusing others. Ten
+cases on a local server of a second origin answer as Chrome's do. On
+NYT, its GraphQL API's preflight failed at first: the preflight's
+Access-Control-Request-Headers was dropped as a header a page may not
+set; the browser's CORS code passes it now (and a page's own x-olo-
+headers are dropped). NYT, YouTube and Reddit fail no fetch Chrome
+doesn't.

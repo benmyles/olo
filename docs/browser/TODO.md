@@ -104,10 +104,10 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   global and DOM prototypes, WebGL, API functions as Chrome's; JOURNAL).
   (Amazon shows Chrome under remote debugging "Access restricted"; agents
   may still check its pages render, looking only.)
-- [ ] Presenting as Chrome, what's left (2026-11-09): TLS and HTTP/2 as
-  Chrome's (rustls can't make its ClientHello: GREASE, ALPS, its suites
-  and extension order; h2's pseudo-header order differs; BoringSSL wants
-  cmake). It matters: pixelscan.net's Cloudflare holds a connection whose
+- [ ] Presenting as Chrome, what's left (2026-11-09): TLS as Chrome's
+  (rustls can't make its ClientHello: GREASE, ALPS, ECH, certificate
+  compression, its suites; BoringSSL wants cmake). HTTP/2's SETTINGS,
+  window update and pseudo-header order are Chrome's since 2026-11-09. It matters: pixelscan.net's Cloudflare holds a connection whose
   handshake isn't a browser's (curl: 524 after 125 s; Olo: timed out;
   Chrome: the page); OffscreenCanvas with WebGL, in pages and workers (a worker's GPU
   reads NA); the constructible interfaces Olo lacks (FontFace, Observable

@@ -83,3 +83,10 @@ Owned here outright (path dependencies), not tracking a release.
   VUI is read; `src/lib.rs`: `stream_colour`, for an SPS NAL unit) keeps
   it, for Olo's HDR video (`olo_images::hevc`). Its tests, benches and
   examples are left out. Drop it if upstream reads the VUI.
+- **h2 0.4.20** (MIT): the browser's HTTP/2 as Chrome's, which sites'
+  bot checks compare with the browser it says it is: its pseudo-headers
+  in Chrome's order (`:method :authority :scheme :path`, the iterator in
+  `src/frame/headers.rs`) and a 64 KiB header table announced in its
+  first SETTINGS frame (`client::Builder::new`), and no max frame size
+  announced when it is the protocol's default (`max_frame_size`). Not upstream's to fix:
+  keep while the browser presents as Chrome.
