@@ -7082,4 +7082,17 @@ the Guardian and old Reddit, looking for pages that fail outright:
   them found three more things wrong: a rounded border whose sides differ
   in colour (every CSS spinner's ring) was drawn square, SVG dashes were
   drawn solid, and a paused animation ran on. All three as Chrome now.
+- **Videos from Media Source Extensions.** YouTube and Reddit stream
+  their videos through MediaSource (Reddit's through hls.js), which Olo
+  didn't have: a spinner where the video would be. It has it now: a small
+  crate parses what pages append (fragmented MPEG-4, WebM) into buffered
+  ranges and frames, and the player plays a source's stream, waiting for
+  what has yet to come. Both sites' videos play.
+- **YouTube's AV1 on Intel's GPU.** It played, then broke into blocks a
+  few seconds in. Decoded on the processor or NVIDIA's GPU it was right;
+  through VA-API, wrong from one frame on. FFmpeg's VA-API decoded it
+  right, so its calls (LIBVA_TRACE) were compared with Olo's: two bugs in
+  the vendored AV1 parser's global motion (a sub-exponential code missing
+  its offset; AltRef's defaults never set). A minute of it now decodes
+  bit-identical to the software decoder.
 

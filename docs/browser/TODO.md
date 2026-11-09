@@ -66,11 +66,15 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   tiny-skia's 0.16 (it blends two mip levels, as Chrome's results show it
   should); SIMD over the row, or one level when they are near, would
   close it.
-- [ ] Media Source Extensions: no `MediaSource` at all, so YouTube's and
-  Reddit's videos (HLS through hls.js) never play; Reddit shows a spinner
-  where they would be. Needs the script API (MediaSource, SourceBuffer,
-  buffered ranges, object URLs) and the player reading a growing fMP4 or
-  WebM stream (its demuxers read a whole file).
+- [x] Media Source Extensions (2026-11-08): YouTube's and Reddit's videos
+  play. Left: sound (videos play silent; a separate audio buffer keeps
+  only its ranges), `waiting`/readyState while starved, appends that
+  replace frames already buffered (a quality switch over the same time),
+  `sequence` mode, MediaSource in workers.
+- [ ] YouTube playing: 21% of a core against Chrome's 6% (2026-11-08,
+  loaded machine). V8's garbage collection of the page's objects, a
+  document snapshot and the labels' copy each frame; an off-screen canvas's
+  CSS animation renders 83 times a second.
 - [ ] Turned or scaled moved layers only on the page itself: a spinner in
   an opacity group, under a transform or a fixed box still repaints its
   tile each frame. Scale animations show the layer's texture magnified
