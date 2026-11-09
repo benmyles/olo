@@ -980,9 +980,14 @@ impl Job<'_> {
                     };
                     g.border_box.x = used::grid(column_starts[a] + item.used.margin.left + dx.max(0.), scale) + item.used.relative.x;
                     g.border_box.y = used::grid(row_starts[r] + item.used.margin.top + dy.max(0.), scale) + item.used.relative.y;
-                    if stretch_height && area_h - item.used.margin.vertical() > g.border_box.height {
-                        g.border_box.height = used::grid(area_h - item.used.margin.vertical(), scale);
-                        stretched.push((item.id, g.border_box.height - item.used.padding.vertical() - item.used.border.vertical()));
+                    // Stretched within its min and max heights (CSS Grid 1
+                    // §11.3: Reddit's sticky sidebar, max-height 643px,
+                    // stretched to its 2,472px row and never scrolled).
+                    let edges = item.used.padding.vertical() + item.used.border.vertical();
+                    let stretched_to = (area_h - item.used.margin.vertical() - edges).min(item.used.max_height).max(item.used.min_height) + edges;
+                    if stretch_height && stretched_to > g.border_box.height {
+                        g.border_box.height = used::grid(stretched_to, scale);
+                        stretched.push((item.id, g.border_box.height - edges));
                     }
                     g.margin = item.used.margin;
                 }

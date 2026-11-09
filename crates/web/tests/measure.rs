@@ -249,3 +249,25 @@ fn a_components_sheet_counts_once_in_the_css_budget() {
     }
     assert_eq!(paragraphs, 9);
 }
+fn rect_of(m: &page::Measured, doc: &olo_web::dom::Document, id: &str) -> layout::Rect {
+    let l = m.layout();
+    let (b, _) = l.cache().tree().iter().find(|(_, b)| doc.attribute(b.node, "id").ok().flatten() == Some(id) && matches!(b.kind, layout::BoxKind::Block { .. })).unwrap();
+    l.bounds(b).unwrap()
+}
+/// Reddit's right sidebar: a grid item clamped by its max-height (a
+/// scroller, sticky), a column flex container whose first item grows
+/// (`flex: 1 1 auto`) but never shrinks below its content (its automatic
+/// minimum height), the legal links after it.
+#[test]
+fn a_column_flex_item_keeps_its_content_height_in_a_clamped_grid_item() {
+    let (mut measurer, host, doc, viewport) = measurer_for(
+        "<!doctype html><style>body{margin:0}</style><div style='display:grid;grid-template-columns:1fr 100px;height:2000px'><div>main</div>\
+         <div id=side style='display:flex;flex-direction:column;position:sticky;top:0;max-height:300px;min-height:300px;overflow:auto'>\
+         <div id=contents style='flex:1 1 auto'><div style='height:400px'></div></div><div id=legal style='height:100px'></div></div></div>",
+    );
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    let (side, contents, legal) = (rect_of(&m, &doc, "side"), rect_of(&m, &doc, "contents"), rect_of(&m, &doc, "legal"));
+    assert_eq!(side.height, 300., "clamped by its max-height");
+    assert_eq!(contents.height, 400., "not shrunk below its content");
+    assert_eq!(legal.y, contents.y + 400.);
+}
