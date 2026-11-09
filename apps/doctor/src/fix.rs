@@ -172,6 +172,13 @@ pub enum Step {
         services: Vec<String>,
         in_use_by: Vec<String>,
     },
+    /// Start a Bluetooth controller's hardware again: `device` (its sysfs
+    /// device) let go of by its `driver` (the driver's sysfs folder), reset
+    /// if it can be (a PCI function reset), and taken up again.
+    RestartBluetooth {
+        device: PathBuf,
+        driver: PathBuf,
+    },
     /// Start one of Olo's own programs (`olo-…`) with these arguments,
     /// detached, as the person (never as root): its own command line
     /// does the fix (`olo-diskbackup --now`).
@@ -204,6 +211,9 @@ impl Step {
             }
             Step::Signal { pid, .. } => format!("Stopping process {pid}"),
             Step::RestartGpu { address, .. } => format!("Starting the graphics card at {address} and its driver again"),
+            Step::RestartBluetooth { device, .. } => {
+                format!("Starting Bluetooth's hardware ({}) and its driver again", device.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default())
+            }
             Step::AddShell { path } => format!("Listing {} in /etc/shells", path.display()),
             Step::AddKernelArgument { arg } => format!("Starting the kernel with {arg}"),
             Step::TryShell { path } => format!("Trying {}", path.display()),
@@ -295,6 +305,7 @@ impl Step {
                 if unsafe { libc::kill(*pid, *signal) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) { Ok(()) } else { Err(failed(std::io::Error::last_os_error())) }
             }
             Step::RestartGpu { address, modules, services, in_use_by } => restart_gpu(address, modules, services, in_use_by),
+            Step::RestartBluetooth { device, driver } => restart_bluetooth(device, driver),
             Step::StartProgram { argv } => {
                 // (Olo's own, as the person: never another program, never root.)
                 // SAFETY: geteuid has no preconditions.
@@ -394,6 +405,21 @@ fn copy_tree(from: &Path, to: &Path, mode: u32) -> std::io::Result<()> {
 
 /// A few names, and how many more ("kernel, linux-firmware and 4 more").
 /// `Step::RestartGpu`.
+/// As Olo's healer does it (apps/wifi-heal/src/bluetooth.rs, `reset`):
+/// unbound, reset where it can be, bound again; BlueZ takes it up.
+fn restart_bluetooth(device: &Path, driver: &Path) -> Result<(), String> {
+    let id = device.file_name().ok_or("no device name")?.to_string_lossy().into_owned();
+    std::fs::write(driver.join("unbind"), &id).map_err(|e| format!("letting go of {id}: {e}"))?;
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    if device.join("reset").exists()
+        && let Err(e) = std::fs::write(device.join("reset"), "1")
+    {
+        tracing::info!("doctor: {id}'s reset: {e} (taken up again as it is)");
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    std::fs::write(driver.join("bind"), &id).map_err(|e| format!("taking up {id} again: {e}"))
+}
+
 fn restart_gpu(address: &str, modules: &[String], services: &[String], in_use_by: &[String]) -> Result<(), String> {
     let mut said = Vec::new();
     for s in services {

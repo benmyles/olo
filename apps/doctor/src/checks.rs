@@ -232,6 +232,9 @@ pub struct Roots {
     pub units: Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync>,
     /// AirPods are paired here (the AirPods service's state).
     pub airpods: bool,
+    /// Bluetooth controllers that don't answer (BlueZ's adapter powered
+    /// and its power off, or the other way round), by name ("hci0").
+    pub bluetooth_stuck: Vec<String>,
     /// The system's packages (PackageKit's word): which of these names
     /// there are, newest, and whether installed. None: no PackageKit.
     pub packages: Box<dyn Fn(&[&str]) -> Option<Vec<(String, bool)>> + Send + Sync>,
@@ -323,7 +326,20 @@ impl Roots {
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
         // AirPods paired, as BlueZ says (the service needn't be running).
         let airpods = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods))).unwrap_or(false);
-        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods, packages: Box::new(real_packages), updates: Box::new(real_updates), temp: TempFiles::real() }
+        let bluetooth_stuck =
+            olo_system::bluetooth::status().ok().and_then(|s| s.adapter).filter(|a| a.not_answering()).map(|a| a.path.rsplit('/').next().unwrap_or_default().to_owned()).into_iter().collect();
+        Roots {
+            fs: PathBuf::from("/"),
+            bin,
+            uid,
+            scope,
+            units: Box::new(crate::fix::unit_state),
+            airpods,
+            bluetooth_stuck,
+            packages: Box::new(real_packages),
+            updates: Box::new(real_updates),
+            temp: TempFiles::real(),
+        }
     }
 }
 
@@ -552,6 +568,7 @@ pub fn scan(roots: &Roots) -> Report {
     autosuspend(roots, rule_current, &mut r);
     display_rule(roots, &mut r);
     wifi(roots, &mut r);
+    bluetooth(roots, &mut r);
     rtkit(roots, &mut r);
     voice_realtime(roots, &procs, &mut r);
     airpods_listening(roots, &procs, &mut r);
@@ -1090,9 +1107,49 @@ fn same_contents(a: &Path, b: &Path) -> bool {
     ma.len() == mb.len() && std::fs::read(a).ok() == std::fs::read(b).ok()
 }
 
-/// Olo's Wi-Fi healer, on a chip whose firmware can stop joining.
+/// The Bluetooth controllers here, by name ("hci0").
+fn bluetooth_controllers(fs: &Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(fs.join("sys/class/bluetooth"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("hci") && !n.contains(':'))
+        .collect();
+    v.sort();
+    v
+}
+
+/// A Bluetooth controller that doesn't answer: nothing connects (AirPods
+/// sit at Connecting…, Ben, 2026-11-09) until its hardware starts again.
+/// The fix does what Olo's healer does by itself once it's installed.
+fn bluetooth(roots: &Roots, r: &mut Report) {
+    for hci in &roots.bluetooth_stuck {
+        let base = roots.fs.join("sys/class/bluetooth").join(hci).join("device");
+        let (Ok(device), Ok(driver)) = (std::fs::canonicalize(&base), std::fs::canonicalize(base.join("driver"))) else { continue };
+        let name = driver.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        let healer = (roots.units)("olo-wifi-heal.service").is_ok_and(|s| s.active);
+        r.findings.push(Finding {
+            id: format!("bluetooth-stuck-{hci}"),
+            severity: Severity::Problem,
+            title: "Bluetooth's hardware isn't answering".into(),
+            detail: format!(
+                "Its controller ({hci}, {name}) fails everything it's asked, so nothing connects: AirPods and other devices stay at Connecting…. Turning Bluetooth off and on doesn't reach it; starting its hardware again does (its driver lets go of it and takes it up again, the device reset where it can be). {}",
+                if healer { "Olo's healer does this by itself; this one it couldn't, or not yet." } else { "Olo's healer, once installed, does it by itself the moment it happens." }
+            ),
+            fix: Some(Fix { label: "Restart Bluetooth".into(), root: true, steps: vec![Step::RestartBluetooth { device, driver }] }),
+        });
+    }
+}
+
+/// Olo's Wi-Fi and Bluetooth healer, on a machine with Bluetooth or a
+/// Wi-Fi chip whose firmware can stop joining.
 fn wifi(roots: &Roots, r: &mut Report) {
-    let Some((iface, driver)) = wifi_chips(&roots.fs).into_iter().find(|(_, d)| HEALED_DRIVERS.contains(&d.as_str())) else { return };
+    let chip = wifi_chips(&roots.fs).into_iter().find(|(_, d)| HEALED_DRIVERS.contains(&d.as_str()));
+    let bluetooth = !bluetooth_controllers(&roots.fs).is_empty();
+    if chip.is_none() && !bluetooth {
+        return;
+    }
     let source = roots.bin.join("olo-wifi-heal");
     if !source.exists() {
         // Not installed (a build tree): nothing to install it from.
@@ -1106,15 +1163,23 @@ fn wifi(roots: &Roots, r: &mut Report) {
         && read(&roots.fs.join(HEAL_UNIT_PATH)).as_deref() == Some(HEAL_UNIT.trim())
         && read(&roots.fs.join(BRCMFMAC_CONF_PATH)).as_deref() == Some(BRCMFMAC_CONF.trim());
     if current && state.active && state.enabled {
-        r.fine.push(Fine { title: format!("Olo's Wi-Fi healer watches {iface}"), detail: "If the chip's firmware stops joining, it is started again and the network joined again.".into() });
+        let watches = match &chip {
+            Some((iface, _)) if bluetooth => format!("{iface} and Bluetooth"),
+            Some((iface, _)) => iface.clone(),
+            None => "Bluetooth".into(),
+        };
+        r.fine.push(Fine {
+            title: format!("Olo's healer watches {watches}"),
+            detail: "A Wi-Fi chip whose firmware stops joining, or a Bluetooth controller that stops answering, is started again by itself.".into(),
+        });
         return;
     }
     let (title, label) = if !installed.exists() {
-        ("Olo's Wi-Fi healer isn't installed", "Install the Healer")
+        ("Olo's Wi-Fi and Bluetooth healer isn't installed", "Install the Healer")
     } else if !current {
-        ("Olo's Wi-Fi healer is out of date", "Update the Healer")
+        ("Olo's Wi-Fi and Bluetooth healer is out of date", "Update the Healer")
     } else {
-        ("Olo's Wi-Fi healer isn't running", "Start the Healer")
+        ("Olo's Wi-Fi and Bluetooth healer isn't running", "Start the Healer")
     };
     let unit = "olo-wifi-heal.service".to_owned();
     let steps = vec![
@@ -1130,10 +1195,21 @@ fn wifi(roots: &Roots, r: &mut Report) {
         id: "wifi-heal".into(),
         severity: Severity::Problem,
         title: title.into(),
-        detail: format!(
-            "This Mac's Wi-Fi chip ({driver}, {iface}) can get stuck in its firmware after failed joins: every join then fails, as if the password were wrong, until the chip is started again. Olo's healer, a small system service, notices, starts the chip again, joins the network again and tells you. The fix installs it as a program only the administrator can change ({}), and has NetworkManager keep the chip's own address while it scans.",
-            Path::new("/").join(HEAL_BIN_PATH).display()
-        ),
+        detail: {
+            let mut d = String::new();
+            if let Some((iface, driver)) = &chip {
+                d.push_str(&format!("This Mac's Wi-Fi chip ({driver}, {iface}) can get stuck in its firmware after failed joins: every join then fails, as if the password were wrong, until the chip is started again. "));
+            }
+            if bluetooth {
+                d.push_str("A Bluetooth controller can stop answering (its driver failing everything it's asked), and nothing connects until its hardware starts again. ");
+            }
+            d.push_str(&format!(
+                "Olo's healer, a small system service, notices, starts it again (and joins the network again) and tells you. The fix installs it as a program only the administrator can change ({}){}.",
+                Path::new("/").join(HEAL_BIN_PATH).display(),
+                if chip.is_some() { ", and has NetworkManager keep the chip's own address while it scans" } else { "" }
+            ));
+            d
+        },
         fix: Some(Fix { label: label.into(), root: true, steps }),
     });
 }
@@ -2304,6 +2380,32 @@ mod tests {
         }
     }
 
+    /// A Bluetooth controller that doesn't answer: a finding whose fix
+    /// starts its hardware again (its device and driver, as sysfs has
+    /// them); one that answers, none.
+    #[test]
+    fn a_bluetooth_controller_that_doesnt_answer() {
+        let (fs, mut roots) = machine("bluetooth");
+        let device = fs.join("sys/devices/pci0000:00/0000:00:14.7");
+        let driver = fs.join("sys/bus/pci/drivers/btintel_pcie");
+        std::fs::create_dir_all(&device).unwrap();
+        std::fs::create_dir_all(&driver).unwrap();
+        std::os::unix::fs::symlink(&driver, device.join("driver")).unwrap();
+        std::fs::create_dir_all(fs.join("sys/class/bluetooth/hci0")).unwrap();
+        std::os::unix::fs::symlink(&device, fs.join("sys/class/bluetooth/hci0/device")).unwrap();
+        assert!(scan(&roots).findings.iter().all(|f| !f.id.starts_with("bluetooth-stuck")));
+        roots.bluetooth_stuck = vec!["hci0".into()];
+        let r = scan(&roots);
+        let f = r.findings.iter().find(|f| f.id == "bluetooth-stuck-hci0").expect("found");
+        assert_eq!(f.title, "Bluetooth's hardware isn't answering");
+        assert!(f.detail.contains("btintel_pcie"), "{}", f.detail);
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root);
+        assert_eq!(fix.steps, [Step::RestartBluetooth { device: device.canonicalize().unwrap(), driver: driver.canonicalize().unwrap() }]);
+        // (Bluetooth here: the healer is for it too, Wi-Fi chip or not.)
+        assert!(r.findings.iter().any(|f| f.id == "wifi-heal") || r.fine.iter().any(|f| f.title.starts_with("Olo's healer watches")), "{:?}", r.findings.iter().map(|f| &f.title).collect::<Vec<_>>());
+    }
+
     /// A machine in a folder: a keyd running from /usr/local, a mouse
     /// receiver allowed to sleep, a Studio Display, no rules, a stale
     /// Deskbar.
@@ -2371,8 +2473,18 @@ mod tests {
         });
         // SAFETY: getuid has no preconditions.
         let uid = unsafe { libc::getuid() };
-        let roots =
-            Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true, packages: Box::new(|_| None), updates: Box::new(|| None), temp: TempFiles::default() };
+        let roots = Roots {
+            fs: fs.clone(),
+            bin,
+            uid,
+            scope: Some("session-2.scope".into()),
+            units,
+            airpods: true,
+            bluetooth_stuck: Vec::new(),
+            packages: Box::new(|_| None),
+            updates: Box::new(|| None),
+            temp: TempFiles::default(),
+        };
         (fs, roots)
     }
 
@@ -2624,7 +2736,7 @@ mod tests {
         assert!(uclamp.detail.starts_with("kernel.sched_util_clamp_min is 512"));
         assert_eq!(uclamp.fix.as_ref().unwrap().steps[1], Step::WriteSysfs { path: "/proc/sys/kernel/sched_util_clamp_min".into(), value: "1024".into() });
         let heal = r.find("wifi-heal").unwrap();
-        assert_eq!(heal.title, "Olo's Wi-Fi healer isn't installed");
+        assert_eq!(heal.title, "Olo's Wi-Fi and Bluetooth healer isn't installed");
         assert!(heal.detail.contains("brcmfmac, wld0"));
         let steps = &heal.fix.as_ref().unwrap().steps;
         assert_eq!(steps[0], Step::CopyFile { from: roots.bin.join("olo-wifi-heal"), to: "/usr/local/libexec/olo-wifi-heal".into(), mode: 0o755 });
@@ -2711,7 +2823,7 @@ mod tests {
                 "Olo's input rule is installed",
                 "1 USB input device stays awake",
                 "Olo's display rule is installed",
-                "Olo's Wi-Fi healer watches wld0",
+                "Olo's healer watches wld0",
                 "rtkit is running",
                 "Voice processing's sound is realtime",
                 "Bluetooth listens for the AirPods",
@@ -3186,6 +3298,7 @@ mod tests {
                 scope: None,
                 units: Box::new(|_| Err("none".into())),
                 airpods: false,
+                bluetooth_stuck: Vec::new(),
                 packages: Box::new(|_| None),
                 updates: Box::new(|| None),
                 temp: TempFiles {

@@ -64,7 +64,15 @@ fn test_status() -> Status {
         modalias: None,
     };
     Status {
-        adapter: Some(bt::Adapter { path: "/org/bluez/hci0".into(), name: "studio-laptop".into(), address: "02:00:00:00:A1:03".into(), powered: true, discoverable: false, discovering: true }),
+        adapter: Some(bt::Adapter {
+            path: "/org/bluez/hci0".into(),
+            name: "studio-laptop".into(),
+            address: "02:00:00:00:A1:03".into(),
+            powered: true,
+            power_state: "on".into(),
+            discoverable: false,
+            discovering: true,
+        }),
         devices: vec![
             device("Sony WH-1000XM5 Wireless Noise Canceling Headphones", "audio-headset", true, true, Some(80)),
             device("Logitech MX Master 3S for Mac", "input-mouse", true, false, Some(45)),
@@ -256,6 +264,21 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             }))
             .child(StringView::new(text).dim(true)),
     );
+    // A controller that doesn't answer: nothing would connect (AirPods
+    // sat at Connecting…, Ben, 2026-11-09), and turning it off and on
+    // doesn't reach it. Olo Doctor starts its hardware again.
+    if adapter.not_answering() {
+        ui.add(
+            olo_ui::widgets::Banner::new(
+                olo_ui::widgets::Tone::Failure,
+                "Bluetooth's hardware isn't answering",
+                "Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).",
+            )
+            .trailing(olo_ui::widgets::Button::new("Open Olo Doctor").on_click(|_, _| {
+                let _ = olo_xdg::spawn_detached("olo-doctor");
+            })),
+        );
+    }
     if !adapter.powered {
         return;
     }

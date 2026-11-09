@@ -8758,6 +8758,7 @@ dependencies = [
 name = "olo-wifi-heal"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "olo-crash",
  "serde",
  "serde_json",

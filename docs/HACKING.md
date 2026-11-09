@@ -9318,7 +9318,30 @@ GDM logs the tester in and GNOME's first-run tour is skipped), `boot
 `http://10.0.2.2:8642/`, and `shot`, `type`, `key` and `click` look and
 act. Everything is kept in /var/tmp/olo-installer-check.
 
-## The Wi-Fi healer (apps/wifi-heal)
+## The Wi-Fi and Bluetooth healer (apps/wifi-heal)
+
+**Bluetooth** (`bluetooth.rs`): a controller that stops answering is
+reset: its driver unbound, the device reset where it can be (PCI's
+function reset, `reset`), and bound again; BlueZ takes it up as before.
+On 2026-11-09 Intel's PCIe Bluetooth (`btintel_pcie`, a ThinkPad) failed
+every command from the morning on ("Bluetooth: hci0: sending frame
+failed (-19)", ENODEV): AirPods sat at Connecting…, and rfkill's off and
+on didn't reach it (its driver couldn't send even the reset). What says
+so: the kernel's messages (`/dev/kmsg`, read as they come; root only, as
+`dmesg_restrict` is 1), a send failing with ENODEV, a command timing out
+or a hardware error, three within a minute (from before start only the
+last ten minutes'); and at start, BlueZ's adapter powered with its power
+off or the other way round (`Adapter::not_answering`), twice five
+seconds apart. Limited as Wi-Fi's resets are, apart from them; 15 s
+after one it looks whether BlueZ has it on again, and says so in the
+report (`interface` "hci0"), which Olo Doctor tells the person of ("Olo
+fixed Bluetooth"). Doctor installs the healer on any machine with
+Bluetooth (not only a Mac's Broadcom Wi-Fi), finds a controller that
+doesn't answer (`bluetooth-stuck-hci0`, from BlueZ: the person can't
+read the kernel's messages) and fixes it with `Step::RestartBluetooth`
+(as root, asking for the password), and Preferences ▸ Bluetooth says so
+over its list, with Open Olo Doctor.
+
 
 The Broadcom chips in Apple machines (brcmfmac; BCM4388 here) can get
 stuck in their firmware: every join fails without associating

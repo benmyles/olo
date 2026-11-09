@@ -25,8 +25,22 @@ pub struct Adapter {
     pub name: String,
     pub address: String,
     pub powered: bool,
+    /// BlueZ's word for the controller's power ("on", "off",
+    /// "off-enabling", "on-disabling", "off-blocked").
+    pub power_state: String,
     pub discoverable: bool,
     pub discovering: bool,
+}
+
+impl Adapter {
+    /// The controller doesn't answer: BlueZ has it powered and its power
+    /// off, or the other way round, which isn't a change under way (those
+    /// are "off-enabling" and "on-disabling"). So a controller looks whose
+    /// driver fails every command (Intel's `btintel_pcie` with ENODEV,
+    /// 2026-11-09): nothing connects, AirPods sit at Connecting….
+    pub fn not_answering(&self) -> bool {
+        (self.powered && self.power_state == "off") || (!self.powered && self.power_state == "on")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,6 +111,7 @@ pub fn status() -> Result<Status> {
             name: get::<String>(a, "Alias").or_else(|| get(a, "Name")).unwrap_or_default(),
             address: get(a, "Address").unwrap_or_default(),
             powered: get(a, "Powered").unwrap_or(false),
+            power_state: get(a, "PowerState").unwrap_or_default(),
             discoverable: get(a, "Discoverable").unwrap_or(false),
             discovering: get(a, "Discovering").unwrap_or(false),
         })

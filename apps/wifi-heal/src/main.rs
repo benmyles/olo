@@ -39,6 +39,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+mod bluetooth;
+
 use serde::{Deserialize, Serialize};
 use zbus::blocking::Connection;
 use zvariant::{OwnedObjectPath, OwnedValue};
@@ -92,6 +94,10 @@ enum Ev {
     Wpa { path: String, state: Option<String>, scanning: Option<bool> },
     /// A scan's deadline (by the scan's number, to ignore a finished one).
     ScanDeadline { interface: String, scan: u64 },
+    /// A Bluetooth controller stopped answering (`bluetooth`), and why.
+    Bluetooth { hci: String, why: String },
+    /// A while after controller `hci` was reset (its heal's entry): back?
+    BluetoothBack { hci: String, entry: usize },
 }
 
 /// What is followed of each Wi-Fi interface.
@@ -119,6 +125,8 @@ struct Healer {
     /// Supplicant interface path → interface name.
     names: HashMap<String, String>,
     resets: Vec<Instant>,
+    /// Bluetooth controllers' resets, limited as Wi-Fi's are, apart.
+    bt_resets: Vec<Instant>,
     report: Report,
     /// Connections a reset didn't help (their joins fail on their own:
     /// the password), until they join.
@@ -170,6 +178,38 @@ fn write_report(report: &Report) {
 }
 
 impl Healer {
+    /// Controller `hci` stopped answering: reset it (within the limits),
+    /// say so, and look a while after whether it's back.
+    fn heal_bluetooth(&mut self, hci: String, why: String) {
+        let mut heal = Heal { at: now(), interface: hci.clone(), driver: bluetooth::driver_name(&hci), why: why.clone(), rejoined: None, error: None };
+        self.bt_resets.retain(|t| t.elapsed() < Duration::from_secs(3600));
+        if self.bt_resets.last().is_some_and(|t| t.elapsed() < MIN_GAP) {
+            heal.error = Some("not reset: one was moments ago".into());
+        } else if self.bt_resets.len() >= PER_HOUR {
+            heal.error = Some(format!("not reset: {PER_HOUR} resets in the last hour already"));
+        } else {
+            log(format!("Bluetooth: {hci} ({}) doesn't answer ({why}): resetting it", heal.driver));
+            self.bt_resets.push(Instant::now());
+            if let Err(e) = bluetooth::reset(&hci) {
+                heal.error = Some(format!("the reset failed: {e}"));
+            }
+        }
+        if let Some(e) = &heal.error {
+            log(format!("Bluetooth: {hci}: {e}"));
+        }
+        let held = heal.error.is_some();
+        self.report.heals.push(heal);
+        let entry = self.report.heals.len() - 1;
+        write_report(&self.report);
+        if !held {
+            let tx = self.tx.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(15));
+                let _ = tx.send(Ev::BluetoothBack { hci, entry });
+            });
+        }
+    }
+
     /// The interface a NetworkManager device or supplicant object is.
     /// A device's is asked each time (rare: its states): a reset device
     /// comes back as wlan0 and is renamed.
@@ -197,6 +237,8 @@ impl Healer {
                 Ev::Nm { path, new, old, reason } => log(format!("(nm {path}: {old} -> {new}, reason {reason})")),
                 Ev::Wpa { path, state, scanning } => log(format!("(wpa {path}: state {state:?} scanning {scanning:?})")),
                 Ev::ScanDeadline { interface, scan } => log(format!("(scan deadline {interface} #{scan})")),
+                Ev::Bluetooth { hci, why } => log(format!("(bluetooth {hci}: {why})")),
+                Ev::BluetoothBack { hci, entry } => log(format!("(bluetooth {hci} back? #{entry})")),
             }
         }
         match ev {
@@ -279,6 +321,19 @@ impl Healer {
                         });
                     }
                 }
+            }
+            Ev::Bluetooth { hci, why } => self.heal_bluetooth(hci, why),
+            Ev::BluetoothBack { hci, entry } => {
+                let back = bluetooth::answering(&self.conn, &hci);
+                if let Some(h) = self.report.heals.get_mut(entry) {
+                    if back {
+                        h.rejoined = Some("Bluetooth is on again".into());
+                    } else if h.error.is_none() {
+                        h.error = Some("it still doesn't answer after the reset: restarting the computer brings it back".into());
+                    }
+                }
+                log(format!("Bluetooth: {hci} {}", if back { "answers again" } else { "still doesn't answer after its reset" }));
+                write_report(&self.report);
             }
             Ev::ScanDeadline { interface, scan } => {
                 let i = self.iface(&interface);
@@ -430,8 +485,11 @@ fn main() {
             std::process::exit(1);
         })
         .expect("spawn");
-    let mut healer = Healer { conn, tx, ifaces: HashMap::new(), names: HashMap::new(), resets: Vec::new(), report, not_the_chip: Vec::new(), retrying: None };
-    log(format!("watching Wi-Fi (resets {} when a join or scan sticks)", DRIVERS.join(", ")));
+    // Bluetooth: the kernel's messages, and BlueZ's adapters as they are.
+    bluetooth::watch(tx.clone());
+    bluetooth::check_at_start(conn.clone(), tx.clone());
+    let mut healer = Healer { conn, tx, ifaces: HashMap::new(), names: HashMap::new(), resets: Vec::new(), bt_resets: Vec::new(), report, not_the_chip: Vec::new(), retrying: None };
+    log(format!("watching Wi-Fi (resets {} when a join or scan sticks) and Bluetooth (resets a controller that stops answering)", DRIVERS.join(", ")));
     for ev in rx {
         healer.handle(ev);
     }
