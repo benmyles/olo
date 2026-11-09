@@ -396,7 +396,7 @@ pub(super) struct TransformEntry {
 }
 /// A box's `transform` about its `transform-origin`, as a matrix in the
 /// document's space; None without a transform.
-fn about_of(s: &Style, outer: Rect) -> Option<[f64; 6]> {
+pub(crate) fn about_of(s: &Style, outer: Rect) -> Option<[f64; 6]> {
     let Value::Transforms(t) = s.value(P::Transform) else { return None };
     let local = t.matrix(outer.width, outer.height);
     let (ox, oy) = match s.value(P::TransformOrigin) {

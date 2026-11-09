@@ -1329,6 +1329,40 @@ impl Measured {
         }
         Some(out)
     }
+    /// `rect` (of `node`, in the document's space) where the transforms of
+    /// the node and the boxes around it show it: the bounds of its corners
+    /// through each (getBoundingClientRect, getClientRects; CSSOM View
+    /// §6.1). Unchanged where none is transformed.
+    pub fn transformed(&self, doc: &Document, node: crate::dom::NodeId, rect: layout::Rect) -> layout::Rect {
+        let styles = self.layout.cache().tree().styles();
+        let mut matrix: Option<[f64; 6]> = None;
+        let mut at = Some(node);
+        for _ in 0..1024 {
+            let Some(n) = at else { break };
+            if doc.node_type(n).ok() == Some(NodeType::Element)
+                && let Some(s) = styles.snapshot(n)
+                && !matches!(s.value(css::properties::Property::Transform), css::style::Value::Transforms(t) if t.0.is_empty())
+                && let Some(outer) = self.border_box(n)
+                && let Some(about) = paint::about_of(s, outer)
+            {
+                // (Its own first, then each around it: the outermost last.)
+                matrix = Some(match matrix {
+                    None => about,
+                    Some(m) => css::properties::multiply_transforms(about, m),
+                });
+            }
+            at = doc.composed_parent(n).ok().flatten().or_else(|| doc.shadow_host(n));
+        }
+        let Some(m) = matrix else { return rect };
+        let point = |x: f64, y: f64| (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]);
+        let corners = [point(rect.x, rect.y), point(rect.x + rect.width, rect.y), point(rect.x, rect.y + rect.height), point(rect.x + rect.width, rect.y + rect.height)];
+        let (x0, x1) = corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), c| (a.min(c.0), b.max(c.0)));
+        let (y0, y1) = corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), c| (a.min(c.1), b.max(c.1)));
+        if !(x0.is_finite() && x1.is_finite() && y0.is_finite() && y1.is_finite()) {
+            return rect;
+        }
+        layout::Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+    }
     /// The padding box (clientWidth/clientHeight, clientTop/clientLeft).
     pub fn padding_box(&self, node: crate::dom::NodeId) -> Option<layout::Rect> {
         let (_, r, g) = self.geometry(node)?;

@@ -2442,6 +2442,7 @@ const NATIVES: &[&str] = &[
     "glCreate",
     "glOp",
     "rect",
+    "boundingRect",
     "paddingRect",
     "textRects",
     "innerText",
@@ -3476,7 +3477,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             rv.set_bool(ran);
         }
         // Geometry, from a layout of the document as it is now.
-        "rect" | "paddingRect" | "scrollSize" => {
+        "rect" | "boundingRect" | "paddingRect" | "scrollSize" => {
             if let Some(n) = node(scope, 0) {
                 let mut s = state.borrow_mut();
                 let kind = name;
@@ -3484,6 +3485,8 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 let s = &mut *s;
                 let mut values = s.measured.as_ref().and_then(|m| match kind {
                     "rect" => m.placed_box(&s.document, n).map(|r| [r.x, r.y, r.width, r.height]),
+                    // (Where its transforms and its ancestors' show it.)
+                    "boundingRect" => m.placed_box(&s.document, n).map(|r| m.transformed(&s.document, n, r)).map(|r| [r.x, r.y, r.width, r.height]),
                     "paddingRect" => m.padding_box(n).map(|r| [r.x, r.y, r.width, r.height]),
                     _ => m.scroll_size(n).map(|(w, h)| [0., 0., w, h]),
                 });
@@ -3523,7 +3526,8 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     .as_ref()
                     .map(|m| {
                         let lines = m.inline_rects(n);
-                        if lines.len() > 1 { lines } else { m.placed_box(&s.document, n).into_iter().collect() }
+                        let rects: Vec<_> = if lines.len() > 1 { lines } else { m.placed_box(&s.document, n).into_iter().collect() };
+                        rects.into_iter().map(|r| m.transformed(&s.document, n, r)).collect::<Vec<_>>()
                     })
                     .unwrap_or_default();
                 if s.document.any_scrolled() {
@@ -3550,7 +3554,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 let mut s = state.borrow_mut();
                 s.measured();
                 let s = &mut *s;
-                let mut rects = s.measured.as_ref().map(|m| m.text_rects(&s.document, n, start, end)).unwrap_or_default();
+                let mut rects = s.measured.as_ref().map(|m| m.text_rects(&s.document, n, start, end).into_iter().map(|r| m.transformed(&s.document, n, r)).collect::<Vec<_>>()).unwrap_or_default();
                 if s.document.any_scrolled() {
                     let mut at = s.document.parent(n).ok().flatten();
                     while let Some(a) = at {

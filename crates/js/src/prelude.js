@@ -626,7 +626,7 @@
     },
     insertAdjacentElement(where, el) { this.insertAdjacentNodes(where, [asNode(el)]); return el; },
     insertAdjacentText(where, text) { this.insertAdjacentNodes(where, [N.createText(String(text))]); },
-    getBoundingClientRect() { const r = N.rect(this); return r ? new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]) : new DOMRect(0, 0, 0, 0); },
+    getBoundingClientRect() { const r = N.boundingRect(this); return r ? new DOMRect(r[0] - scrollXY[0], r[1] - scrollXY[1], r[2], r[3]) : new DOMRect(0, 0, 0, 0); },
     getClientRects() { const v = N.clientRects(this) || []; const out = []; for (let i = 0; i + 3 < v.length; i += 4) out.push(new DOMRect(v[i] - scrollXY[0], v[i + 1] - scrollXY[1], v[i + 2], v[i + 3])); return listOf(out, global.DOMRectList); },
     focus() { focusElement(this); }, blur() { if (activeElement === this) focusElement(null); }, select() { caretOf.set(this, this.value.length); }, setSelectionRange(a) { caretOf.set(this, Math.max(0, Math.min(Number(a) || 0, this.value.length))); }, scrollIntoView() {}, scrollTo(x, y) { if (typeof x === 'object' && x) { const o = N.scrollOffset(this); y = x.top ?? o[1]; x = x.left ?? o[0]; } scrollElement(this, Number(x) || 0, Number(y) || 0); }, scrollBy(x, y) { const o = N.scrollOffset(this); if (typeof x === 'object' && x) { y = x.top || 0; x = x.left || 0; } scrollElement(this, o[0] + (Number(x) || 0), o[1] + (Number(y) || 0)); }, scroll(x, y) { this.scrollTo(x, y); },
     // <dialog>: shown (open), shown modally (`:modal`, over the page) and
@@ -2300,7 +2300,7 @@
       const root = { x: -ml, y: -mt, w: vw2 + ml + mr, h: vh2 + mt + mb };
       const entries = [];
       for (const [el, state] of this._targets) {
-        const raw = N.isConnected(el) ? N.rect(el) : null;
+        const raw = N.isConnected(el) ? N.boundingRect(el) : null;
         const rect = raw ? { x: raw[0] - scrollXY[0], y: raw[1] - scrollXY[1], w: raw[2], h: raw[3] } : { x: 0, y: 0, w: 0, h: 0 };
         const ix0 = Math.max(rect.x, root.x), iy0 = Math.max(rect.y, root.y), ix1 = Math.min(rect.x + rect.w, root.x + root.w), iy1 = Math.min(rect.y + rect.h, root.y + root.h);
         const intersecting = !!raw && ix1 >= ix0 && iy1 >= iy0;
