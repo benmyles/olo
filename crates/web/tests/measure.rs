@@ -284,3 +284,21 @@ fn an_empty_element_is_placed_where_it_sits() {
     assert_eq!((empty.x, empty.y, empty.width, empty.height), (8., 308., 0., 0.));
     assert!(m.border_box(find(&doc, "empty")).is_none(), "nothing of its own to measure");
 }
+#[test]
+fn a_length_margin_resolves_to_itself_not_the_room_left_over() {
+    // getComputedStyle's margins as Chrome's: a 300px block in a 400px box
+    // has a 0px right margin (Chart.js took the 100px left over for one and
+    // drew its charts at half size); `auto` margins and percentages, the
+    // used value.
+    let (mut measurer, host, doc, viewport) = measurer_for(
+        "<!doctype html><style>body{margin:0}</style><canvas id=c style='display:block;width:300px;height:10px'></canvas>\
+         <div id=auto style='width:200px;margin:0 auto'></div><div id=pct style='width:100px;margin-left:10%'></div><div id=em style='width:100px;margin-right:2em;font-size:10px'></div>",
+    );
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    let get = |id: &str, p: &str| m.computed(find(&doc, id), p);
+    assert_eq!(get("c", "margin-right").as_deref(), Some("0px"));
+    assert_eq!(get("auto", "margin-left").as_deref(), Some("100px"));
+    assert_eq!(get("auto", "margin-right").as_deref(), Some("100px"));
+    assert_eq!(get("pct", "margin-left").as_deref(), Some("40px"));
+    assert_eq!(get("em", "margin-right").as_deref(), Some("20px"));
+}

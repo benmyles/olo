@@ -1701,6 +1701,32 @@ fn render(
                     Ok(olo_js::Fetched { status, content_type, body, url: final_url, headers })
                 })
             };
+            // Canvas text: shaped with the page's fonts (its web fonts
+            // too), each (font, text) once: a chart draws the same labels
+            // every frame.
+            let text_shaper: olo_js::TextShaper = {
+                let scope = measurer.scope().clone();
+                let mut shaper = shaping::Engine::default();
+                let cancel = live_cancel.clone();
+                let mut fonts: HashMap<String, Option<olo_web::css::style::FontRequest>> = HashMap::new();
+                let mut shaped: HashMap<(String, String), Option<Arc<olo_web::canvas_text::Shaped>>> = HashMap::new();
+                Box::new(move |font: &str, text: &str| {
+                    if fonts.len() > 256 {
+                        fonts.clear();
+                    }
+                    let request = fonts.entry(font.to_owned()).or_insert_with(|| olo_web::canvas_text::font_request(font)).clone()?;
+                    let key = (font.to_owned(), text.to_owned());
+                    if let Some(found) = shaped.get(&key) {
+                        return found.clone();
+                    }
+                    if shaped.len() >= 2048 {
+                        shaped.clear();
+                    }
+                    let made = olo_web::canvas_text::shape(&mut shaper, &scope, &request, text, Some(&cancel)).map(Arc::new);
+                    shaped.insert(key, made.clone());
+                    made
+                })
+            };
             // Measurements lay the document out with the styles and fonts
             // gathered so far, through a host for them.
             let measure: olo_js::Measure = {
@@ -1761,6 +1787,7 @@ fn render(
             let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), Some(measure))
                 .map_err(|e| page::Error::from(e.as_str()))?
                 .with_image_lookup(Some(image_lookup))
+                .with_text_shaper(Some(text_shaper))
                 .with_cookies(Some(crate::cookies::script_access()))
                 .with_workers(Some(loads.worker_fetcher()), Some(loads.waker()))
                 .with_worker_fetches(Some(loads.worker_fetch_starter()));

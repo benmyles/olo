@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser: canvas text, charts at full size
+
+*05:07* — Canvas fillText and strokeText drew nothing (empty stubs) and measureText guessed: chart labels, legends and titles were missing. Text is shaped with the page's fonts now. And Chart.js drew its charts at half size: a 300px block's right margin read as the 300px left over, not Chrome's 0px.
+
+![Browser: canvas text, charts at full size](2026-11-09/050703-browser-canvas-text-charts-at-full-size.png)
+
 ### Browser: AVIF pictures
 
 *04:31* — NYT serves its pictures as AVIF to Chrome's Accept header; Olo asked for AVIF but its web image path couldn't decode it, so they were grey boxes. They decode through rav1d now.

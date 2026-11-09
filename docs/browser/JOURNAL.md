@@ -7235,3 +7235,30 @@ Chrome does (quality 0.92 unless asked), WebP; a canvas of no size
 "data:,"; one never drawn on, transparent at its size; WebGL's drawing
 buffer read back. Drawn, exported and drawn again, a page reads back the
 pixels Chrome does (JPEG within its loss).
+
+Canvas text didn't exist: `fillText` and `strokeText` were empty
+functions, `measureText` half an em a letter. Charts had no labels,
+legends or titles; a canvas-drawn page no words. A canvas's `font` is
+now parsed by the engine's own `font` shorthand parser
+(`olo_web::canvas_text`), the string shaped with the page's fonts (web
+fonts too) into glyph outlines, kept per (font, text) since charts draw
+the same labels every frame, and filled or stroked through the canvas's
+transform, clip and style, with its align, baseline, direction and a
+maxWidth squeeze. measureText's widths are Chrome's to the 1/64 px on
+the four fonts tried; its font ascent and descent rounded as Chrome
+rounds them; its object shaped as Chrome's (getters on the prototype,
+no emHeight*). font, textAlign and textBaseline are saved and restored
+with the rest of the state now.
+
+On Chart.js's samples the charts were half size: it subtracts the
+canvas's margins, and Olo's getComputedStyle reported a 300px canvas's
+right margin in a 600px box as 300px, the room an over-constrained block
+leaves. Chrome reports the length given (0px), and the used value only
+for `auto` and percentages; so does Olo now.
+
+| Chart.js bar sample | Chrome | Olo |
+|---|---|---|
+| Load (CPU s) | 1.02 | 0.98 |
+| Idle | 0.1% | 0% |
+| Scroll | 4.0% | 3.5% |
+| Memory | 553 MB | 220 MB |

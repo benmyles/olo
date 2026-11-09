@@ -143,6 +143,9 @@ pub type Fetcher = Box<dyn FnMut(&str, &str, &[u8], &str) -> Result<Fetched, Str
 /// (`Realm::take_image_requests`) and delivered (`Realm::image_loaded`)
 /// when fetched, off this thread.
 pub type ImageLookup = Box<dyn FnMut(&str) -> Option<Arc<olo_web::image::Image>>>;
+/// Shapes a canvas's text (its `font` string, the text) with the page's
+/// fonts: the browser supplies one (olo_web::canvas_text over its shaper).
+pub type TextShaper = Box<dyn FnMut(&str, &str) -> Option<Arc<olo_web::canvas_text::Shaped>>>;
 /// How a page moved its session history (see `Realm::take_history`).
 #[derive(Clone, Debug, PartialEq)]
 pub enum HistoryChange {
@@ -296,6 +299,7 @@ struct State {
     selectors: HashMap<(String, bool), Arc<Selectors>, foldhash::fast::RandomState>,
     gl_seconds: f64,
     image_lookup: Option<ImageLookup>,
+    text_shaper: Option<TextShaper>,
     cookies: Option<Cookies>,
     /// Images the scripts loaded, by `img` element.
     images: olo_web::dom::NodeMap<Arc<olo_web::image::Image>>,
@@ -504,6 +508,7 @@ impl Realm {
             gl_seconds: 0.,
             selectors: Default::default(),
             image_lookup: None,
+            text_shaper: None,
             cookies: None,
             images: Default::default(),
             image_urls: Default::default(),
@@ -594,6 +599,11 @@ impl Realm {
     /// Supply the lookup of images the page already has decoded.
     pub fn with_image_lookup(self, lookup: Option<ImageLookup>) -> Self {
         self.state.borrow_mut().image_lookup = lookup;
+        self
+    }
+    /// Supply the shaper canvases draw their text with.
+    pub fn with_text_shaper(self, shaper: Option<TextShaper>) -> Self {
+        self.state.borrow_mut().text_shaper = shaper;
         self
     }
     /// Supply the browser's cookies for the page.
@@ -1670,6 +1680,7 @@ impl State {
             gl_seconds: 0.,
             selectors: Default::default(),
             image_lookup: None,
+            text_shaper: None,
             cookies: None,
             images: Default::default(),
             image_urls: Default::default(),
@@ -1965,6 +1976,57 @@ fn canvas_op<'s>(scope: &mut v8::PinScope<'s, '_>, state: &Shared, node: NodeId,
             _ => (n(1), n(2), n(3), n(4), n(5), n(6), n(7), n(8)),
         };
         c.draw_image(&pixels, sw, sh, sx, sy, sw2, sh2, dx, dy, dw, dh);
+        return None;
+    }
+    // Text: shaped with the page's fonts, then filled, stroked or measured
+    // ((text, x, y, maxWidth, font, align, baseline, direction), or
+    // (text, font) to measure).
+    if matches!(op, "fillText" | "strokeText" | "measureText") {
+        let measure = op == "measureText";
+        let string = text(scope, 0);
+        let font = text(scope, if measure { 1 } else { 4 });
+        let (align, baseline, direction) = (text(scope, 5), text(scope, 6), text(scope, 7));
+        let max_width = array.and_then(|a| a.get_index(scope, 3)).filter(|v| !v.is_undefined()).map(|v| v.number_value(scope).unwrap_or(f64::NAN));
+        let mut s = state.borrow_mut();
+        let s = &mut *s;
+        let shaped = s.text_shaper.as_mut().and_then(|f| f(&font, &string))?;
+        // The em box: the primary font's ascent and descent scaled to the size.
+        let size = olo_web::canvas_text::font_request(&font).map_or(10., |r| r.size);
+        let em = (shaped.ascent + shaped.descent).max(1e-6);
+        let (em_ascent, em_descent) = (size * shaped.ascent / em, size * shaped.descent / em);
+        if measure {
+            drop(s);
+            // As Chrome gives them: single precision, the font's ascent and
+            // descent and the ink's vertical and left extents whole pixels.
+            let v = [shaped.advance, -(-shaped.ink[0]).round(), shaped.ink[1], shaped.ink[2].round(), shaped.ink[3].round(), shaped.ascent.round(), shaped.descent.round()];
+            let items: Vec<v8::Local<v8::Value>> = v.iter().map(|x| v8::Number::new(scope, f64::from(*x as f32)).into()).collect();
+            return Some(v8::Array::new_with_elements(scope, &items).into());
+        }
+        let squeeze = match max_width {
+            Some(m) if !(m > 0.) => return None,
+            Some(m) if m < shaped.advance => m / shaped.advance,
+            _ => 1.,
+        };
+        let rtl = direction == "rtl";
+        let dx = match align.as_str() {
+            "center" => -shaped.advance / 2.,
+            "right" => -shaped.advance,
+            "end" if !rtl => -shaped.advance,
+            "start" if rtl => -shaped.advance,
+            _ => 0.,
+        };
+        let dy = match baseline.as_str() {
+            "top" => em_ascent,
+            "hanging" => shaped.ascent.round() * 0.8,
+            "middle" => (em_ascent - em_descent) / 2.,
+            "ideographic" => -shaped.descent.round(),
+            "bottom" => -em_descent,
+            _ => 0.,
+        };
+        let c = s.canvases.get_mut(&node)?;
+        if let Some(path) = &shaped.path {
+            c.text(path, n(1), n(2), dx as f32, dy as f32, squeeze as f32, op == "strokeText");
+        }
         return None;
     }
     let mut s = state.borrow_mut();
@@ -2663,6 +2725,7 @@ const NATIVES: &[&str] = &[
     "runScript",
     "canvasSize",
     "canvasEncode",
+    "canvasFont",
     "canvasOp",
     "canvasPixels",
     "loadImage",
@@ -4270,6 +4333,11 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     }
                 }
             }
+        }
+        // Whether a string is a font a canvas takes (a CSS `font`).
+        "canvasFont" => {
+            let font = arg_string(scope, &args, 0);
+            rv.set_bool(olo_web::canvas_text::font_request(&font).is_some());
         }
         // A canvas encoded (canvas, type, quality, as a data URL?): its
         // pixels (2D, WebGL, or none drawn) as PNG, JPEG or WebP, for

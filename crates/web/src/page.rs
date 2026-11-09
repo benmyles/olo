@@ -1483,6 +1483,18 @@ impl Measured {
                     c.height
                 }
             }),
+            // A margin given as a length is that length, as Chrome reports
+            // it: not the room an over-constrained block's right margin
+            // takes up (a 300px canvas in a 600px box has a 0px right
+            // margin, not 300px; Chart.js sized its charts down by it).
+            // `auto` and percentages, the used value.
+            P::MarginTop | P::MarginRight | P::MarginBottom | P::MarginLeft
+                if let Value::Numeric(n) = style.value(p)
+                    && let Some(q) = n.expression().constant()
+                    && q.ty.kind() == Some(css::math::Dimension::Length) =>
+            {
+                Some(q.value)
+            }
             P::MarginTop => g.map(|(_, _, g)| g.margin.top),
             P::MarginRight => g.map(|(_, _, g)| g.margin.right),
             P::MarginBottom => g.map(|(_, _, g)| g.margin.bottom),

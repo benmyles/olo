@@ -13,6 +13,7 @@ macro_rules! env_on {
         *ON.get_or_init(|| std::env::var_os($name).is_some())
     }};
 }
+pub mod canvas_text;
 pub mod css;
 pub mod dom;
 pub mod font;

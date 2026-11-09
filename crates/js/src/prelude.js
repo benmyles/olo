@@ -2930,7 +2930,25 @@
   class ImageData { constructor(a, b, c) { if (typeof a === 'number') { this.width = a; this.height = b; this.data = new Uint8ClampedArray(a * b * 4); } else { this.data = a; this.width = b; this.height = c === undefined ? a.length / 4 / b : c; } this.colorSpace = 'srgb'; } }
   class CanvasGradient { constructor(ctx, id) { this._ctx = ctx; this._id = id; } addColorStop(offset, color) { if (this._ctx) canvasOp(this._ctx, 'addColorStop', [this._id, offset, String(color)]); } }
   class CanvasPattern { setTransform() {} }
-  class TextMetrics { constructor(w) { this.width = w; this.actualBoundingBoxLeft = 0; this.actualBoundingBoxRight = w; this.actualBoundingBoxAscent = 8; this.actualBoundingBoxDescent = 2; this.fontBoundingBoxAscent = 10; this.fontBoundingBoxDescent = 3; } }
+  // measureText's answer, as Chrome's: getters on the prototype over
+  // [advance, ink left, ink right, ink ascent, ink descent, font ascent,
+  // font descent] (CSS px about the pen), none of the object's own.
+  const textMetrics = new WeakMap();
+  const metricsOf = (m) => { const v = textMetrics.get(m); if (!v) throw new TypeError('Illegal invocation'); return v; };
+  const f32 = (v) => Math.fround(v);
+  class TextMetrics {
+    constructor(m) { textMetrics.set(this, m || [0, 0, 0, 0, 0, 0, 0]); }
+    get width() { return metricsOf(this)[0]; }
+    get actualBoundingBoxLeft() { return metricsOf(this)[1]; }
+    get actualBoundingBoxRight() { return metricsOf(this)[2]; }
+    get fontBoundingBoxAscent() { return metricsOf(this)[5]; }
+    get fontBoundingBoxDescent() { return metricsOf(this)[6]; }
+    get actualBoundingBoxAscent() { return metricsOf(this)[3]; }
+    get actualBoundingBoxDescent() { return metricsOf(this)[4]; }
+    get hangingBaseline() { return f32(metricsOf(this)[5] * 0.8); }
+    get alphabeticBaseline() { return 0; }
+    get ideographicBaseline() { return -metricsOf(this)[6]; }
+  }
   // The 2D context: every call goes to the engine's raster for the canvas
   // (N.canvasOp); properties are kept here and sent when set.
   const canvasOp = (ctx, op, args) => N.canvasOp(ctx.canvas, op, args);
@@ -2939,8 +2957,8 @@
     constructor(canvas) {
       this.canvas = canvas;
       ensureCanvas(canvas);
-      this._ = { fillStyle: '#000000', strokeStyle: '#000000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, lineDashOffset: 0, globalAlpha: 1, globalCompositeOperation: 'source-over', imageSmoothingEnabled: true };
-      Object.assign(this, { font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', direction: 'ltr', imageSmoothingQuality: 'low', shadowBlur: 0, shadowColor: 'rgba(0, 0, 0, 0)', shadowOffsetX: 0, shadowOffsetY: 0, filter: 'none', letterSpacing: '0px', wordSpacing: '0px', fontKerning: 'auto', fontStretch: 'normal', fontVariantCaps: 'normal', textRendering: 'auto' });
+      this._ = { fillStyle: '#000000', strokeStyle: '#000000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, lineDashOffset: 0, globalAlpha: 1, globalCompositeOperation: 'source-over', imageSmoothingEnabled: true, font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', direction: 'ltr' };
+      Object.assign(this, { imageSmoothingQuality: 'low', shadowBlur: 0, shadowColor: 'rgba(0, 0, 0, 0)', shadowOffsetX: 0, shadowOffsetY: 0, filter: 'none', letterSpacing: '0px', wordSpacing: '0px', fontKerning: 'auto', fontStretch: 'normal', fontVariantCaps: 'normal', textRendering: 'auto' });
       this._dash = [];
     }
     get fillStyle() { return this._.fillStyle; } set fillStyle(v) { this._.fillStyle = v; canvasOp(this, 'fillStyle', [v instanceof CanvasGradient ? v._id : String(v)]); }
@@ -2973,7 +2991,20 @@
     clip(a, b) { const rule = typeof a === 'string' ? a : typeof b === 'string' ? b : 'nonzero'; if (a instanceof Path2D) a._replay(this); canvasOp(this, 'clip', [rule]); }
     isPointInPath() { return false; } isPointInStroke() { return false; }
     fillRect(x, y, w, h) { canvasOp(this, 'fillRect', [x, y, w, h]); } strokeRect(x, y, w, h) { canvasOp(this, 'strokeRect', [x, y, w, h]); } clearRect(x, y, w, h) { canvasOp(this, 'clearRect', [x, y, w, h]); }
-    fillText() {} strokeText() {} measureText(text) { return new TextMetrics(String(text).length * (parseFloat(this.font) || 10) * 0.5); }
+    // Text state saved and restored with the rest; a font that isn't a
+    // CSS font, an align or baseline not in the list, ignored.
+    get font() { return this._.font; } set font(v) { v = String(v).trim().replace(/\s+/g, ' '); if (N.canvasFont(v)) this._.font = v; }
+    get textAlign() { return this._.textAlign; } set textAlign(v) { if (['start', 'end', 'left', 'right', 'center'].includes(v)) this._.textAlign = v; }
+    get textBaseline() { return this._.textBaseline; } set textBaseline(v) { if (['top', 'hanging', 'middle', 'alphabetic', 'ideographic', 'bottom'].includes(v)) this._.textBaseline = v; }
+    get direction() { return this._.direction; } set direction(v) { if (['ltr', 'rtl', 'inherit'].includes(v)) this._.direction = v; }
+    fillText(text, x, y, maxWidth = undefined) { canvasOp(this, 'fillText', [String(text), +x, +y, maxWidth === undefined ? undefined : +maxWidth, this._.font, this._.textAlign, this._.textBaseline, this._.direction]); }
+    strokeText(text, x, y, maxWidth = undefined) { canvasOp(this, 'strokeText', [String(text), +x, +y, maxWidth === undefined ? undefined : +maxWidth, this._.font, this._.textAlign, this._.textBaseline, this._.direction]); }
+    measureText(text) {
+      text = String(text);
+      // (No fonts to shape with, as in a worker: about half an em a letter.)
+      const size = parseFloat(/(\d*\.?\d+)px/.exec(this._.font)?.[1]) || 10;
+      return new TextMetrics(canvasOp(this, 'measureText', [text, this._.font]) || [text.length * size * 0.5, 0, text.length * size * 0.5, Math.round(size * 0.7), Math.round(size * 0.2), Math.round(size * 0.9), Math.round(size * 0.2)]);
+    }
     drawImage(image, ...rest) { const src = imageSource(image); if (src) canvasOp(this, 'drawImage', [src].concat(rest)); }
     drawFocusIfNeeded() {}
     createLinearGradient(x0, y0, x1, y1) { return new CanvasGradient(this, canvasOp(this, 'createLinearGradient', [x0, y0, x1, y1])); }

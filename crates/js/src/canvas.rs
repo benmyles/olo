@@ -408,6 +408,29 @@ impl Canvas {
         b.close();
         b.finish()
     }
+    /// fillText / strokeText: a shaped string's outlines (pen at the
+    /// origin, on its baseline) placed at (x, y) moved by the alignment's
+    /// (dx, dy), squeezed along the line to a maxWidth, then through the
+    /// transform, filled or stroked with the current style.
+    pub fn text(&mut self, glyphs: &Path, x: f32, y: f32, dx: f32, dy: f32, squeeze: f32, stroke: bool) {
+        if !(x.is_finite() && y.is_finite()) {
+            return;
+        }
+        let local = Transform::from_row(squeeze, 0., 0., 1., x + dx * squeeze, y + dy);
+        let Some(path) = glyphs.clone().transform(local.post_concat(self.state.transform)) else { return };
+        let mask = self.state.clip.clone();
+        if stroke {
+            let paint = self.paint(&self.state.stroke);
+            let style = self.stroke_style();
+            if style.width > 0. {
+                self.pixmap.stroke_path(&path, &paint, &style, Transform::identity(), mask.as_deref());
+            }
+        } else {
+            let paint = self.paint(&self.state.fill);
+            self.pixmap.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), mask.as_deref());
+        }
+        self.touch();
+    }
     pub fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
         let Some(path) = self.device_rect_path(x, y, w, h) else { return };
         let paint = self.paint(&self.state.fill);

@@ -149,6 +149,10 @@ impl Families {
     pub(crate) fn names(names: Vec<Arc<str>>) -> Self {
         Self::from_families(names.into_iter().map(Family::Named).collect())
     }
+    /// One generic family.
+    pub fn generic(family: GenericFamily) -> Self {
+        Self::from_families(vec![Family::Generic(family)])
+    }
     pub(crate) fn system_ui() -> Self {
         Self::from_families(vec![Family::Generic(GenericFamily::SystemUi), Family::Generic(GenericFamily::SansSerif)])
     }
