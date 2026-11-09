@@ -180,10 +180,15 @@ impl Tree for DomTree<'_> {
 }
 /// `:dir(rtl)` (true) from the nearest `dir` attribute: `rtl` or `ltr`
 /// (`auto` and none read as left to right), the page's when none says.
+/// Up through elements, and from a shadow root to its host (HTML
+/// §3.2.6.4): a shadow tree takes its host's direction (asking the shadow
+/// root for an attribute failed Reddit's every restyle).
 pub fn dir_attribute(document: &Document, node: NodeId) -> Result<bool> {
     let mut at = Some(node);
     while let Some(n) = at {
-        if let Some(dir) = document.attribute(n, "dir")? {
+        if document.node_type(n)? == crate::dom::NodeType::Element
+            && let Some(dir) = document.attribute(n, "dir")?
+        {
             let dir = dir.trim();
             if dir.eq_ignore_ascii_case("rtl") {
                 return Ok(true);
@@ -192,7 +197,7 @@ pub fn dir_attribute(document: &Document, node: NodeId) -> Result<bool> {
                 return Ok(false);
             }
         }
-        at = document.parent(n)?;
+        at = document.parent(n)?.or_else(|| document.shadow_host(n));
     }
     Ok(false)
 }
@@ -288,6 +293,9 @@ struct Machine<'a, 'k, T: Tree> {
     /// `:host` rules: Shoelace's caret icon, inside a button, was sized as
     /// the button).
     rule_scope: Option<Option<u64>>,
+    /// Shadow trees whose rules are another's (the same sheets: compiled
+    /// once), by their scope key: `:host` compares through them.
+    scope_aliases: Option<&'a HashMap<u64, u64>>,
     /// Whether a test met the subject itself that a sibling with the same
     /// parent, name and attributes could answer differently (its place
     /// among its siblings, its state, its descendants, being a host): when
@@ -341,6 +349,13 @@ impl<'a, T: Tree> Matcher<'a, '_, T> {
     /// matched next are from, for `:host`.
     pub fn set_rule_scope(&mut self, scope: Option<u64>) {
         self.machine.rule_scope = Some(scope);
+    }
+    /// Shadow trees whose rules are another tree's (`RuleSet` compiles
+    /// identical sheets once), for `:host`.
+    pub fn set_scope_aliases(&mut self, aliases: &'a HashMap<u64, u64>) {
+        if !aliases.is_empty() {
+            self.machine.scope_aliases = Some(aliases);
+        }
     }
 }
 /// An element's id and class tokens, hashed, read from its attributes once.
@@ -418,6 +433,7 @@ impl Selectors {
             subject: Some((node, name)),
             has: HashMap::new(),
             rule_scope: None,
+            scope_aliases: None,
             dependent: false,
             recorded: SmallVec::new(),
         };
@@ -453,6 +469,7 @@ impl Selectors {
             subject: None,
             has: HashMap::new(),
             rule_scope: None,
+            scope_aliases: None,
             dependent: false,
             recorded: SmallVec::new(),
         };
@@ -658,7 +675,10 @@ impl<'a, T: Tree> Machine<'a, '_, T> {
             }
             Test::Host(list) => {
                 (match self.rule_scope {
-                    Some(scope) => scope.is_some() && self.tree.scopes(node)?[1] == scope,
+                    Some(scope) => {
+                        let own = self.tree.scopes(node)?[1];
+                        scope.is_some() && own.map(|k| self.scope_aliases.and_then(|a| a.get(&k).copied()).unwrap_or(k)) == scope
+                    }
                     None => self.tree.is_shadow_host(node)?,
                 }) && (list == NONE || {
                     let child = self.child_context(ctx)?;

@@ -193,3 +193,59 @@ fn a_parent_turned_flex_blockifies_its_kept_children() {
     let fourth = measurer.measure(&doc, &host, &mut shaper, viewport, Some(third), None).unwrap();
     assert_as_fresh(&fourth, &mut measurer, &host, &doc, viewport);
 }
+/// A component's instances have the same sheets in their shadow roots:
+/// compiled once, every instance takes their rules (its shadow tree, its
+/// host through `:host`, its children through `::slotted`), as a single
+/// instance does.
+#[test]
+fn instances_of_a_component_share_their_compiled_sheets() {
+    let instance = "<x-c><template shadowrootmode=open><style>:host{display:block;color:red} p{color:green} ::slotted(b){color:blue}</style><p>in</p><slot></slot></template><b>light</b></x-c>";
+    let (mut measurer, host, doc, viewport) = measurer_for(&format!("<!doctype html>{instance}{instance}{instance}"));
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    let mut seen = 0;
+    for (node, style) in m.layout().cache().tree().styles().iter() {
+        let name = doc.name(node).unwrap().unwrap_or("");
+        let colour = format!("{:?}", style.value(olo_web::css::properties::Property::Color));
+        let display = format!("{:?}", style.value(olo_web::css::properties::Property::Display));
+        match name {
+            "x-c" => {
+                assert!(colour.contains("[1.0, 0.0, 0.0") && display.contains("Block"), "host: {colour} {display}");
+                seen += 1;
+            }
+            "p" => assert!(colour.contains("[0.0, 0.50"), "shadow content: {colour}"),
+            "b" => assert!(colour.contains("[0.0, 0.0, 1.0"), "slotted: {colour}"),
+            _ => {}
+        }
+    }
+    assert_eq!(seen, 3);
+}
+/// `:dir()` in a shadow tree takes its host's direction (the walk up
+/// passes from the shadow root to its host, never asking the root for an
+/// attribute: that failed Reddit's every restyle).
+#[test]
+fn dir_in_a_shadow_tree_follows_the_host() {
+    let (mut measurer, host, doc, viewport) =
+        measurer_for("<!doctype html><html dir=rtl><div id=h><template shadowrootmode=open><style>i:dir(rtl){color:red} i:dir(ltr){color:blue}</style><i id=in>x</i></template></div></html>");
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    let colour = format!("{:?}", style_of(&m, find(&doc, "in")).unwrap().value(olo_web::css::properties::Property::Color));
+    assert!(colour.contains("[1.0, 0.0, 0.0"), "{colour}");
+}
+/// A component's sheet in each of its instances' shadow roots counts once
+/// toward the page's CSS budget (8 MB): Reddit's copies passed it, and the
+/// later instances were left without their rules.
+#[test]
+fn a_components_sheet_counts_once_in_the_css_budget() {
+    let big: String = (0..60_000).map(|i| format!(".r{i}{{color:green}}")).collect();
+    assert!(big.len() > 1024 * 1024);
+    let instance = format!("<x-c><template shadowrootmode=open><style>{big} p{{color:red}}</style><p>in</p></template></x-c>");
+    let (mut measurer, host, doc, viewport) = measurer_for(&format!("<!doctype html>{}", instance.repeat(9)));
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    let mut paragraphs = 0;
+    for (node, style) in m.layout().cache().tree().styles().iter() {
+        if doc.name(node).unwrap() == Some("p") {
+            paragraphs += 1;
+            assert!(format!("{:?}", style.value(olo_web::css::properties::Property::Color)).contains("[1.0, 0.0, 0.0"), "instance {paragraphs} without its rules");
+        }
+    }
+    assert_eq!(paragraphs, 9);
+}

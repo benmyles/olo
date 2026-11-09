@@ -328,8 +328,46 @@ fn compile_in_background(sheets: &[Sheet], media: css::media::Media, wake: &Wake
 }
 fn compile_now(sheets: &[Sheet], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<Compiled> {
     let mut builder = SheetBuilder::new(Default::default()).with_media(media);
+    // Shadow trees with the same sheets in the same order (a component's
+    // every instance): compiled once, the others' rules that tree's.
+    let mut trees: Vec<(u64, Vec<usize>)> = Vec::new();
+    for (i, (_, _, _, scope)) in sheets.iter().enumerate() {
+        let Some(scope) = scope else { continue };
+        match trees.iter_mut().find(|(k, _)| k == scope) {
+            Some((_, list)) => list.push(i),
+            None => trees.push((*scope, vec![i])),
+        }
+    }
+    let mut first: std::collections::HashMap<Vec<(&str, u8, Option<&str>)>, u64> = std::collections::HashMap::new();
+    let mut aliased = std::collections::HashSet::new();
+    for (scope, list) in &trees {
+        let identity: Vec<(&str, u8, Option<&str>)> = list.iter().map(|&i| (sheets[i].0.source(), sheets[i].1 as u8, sheets[i].2.as_deref())).collect();
+        if crate::env_on!("OLO_ALIAS_DEBUG") {
+            eprintln!(
+                "  tree {scope:x}: {} sheets, first {:?}{}",
+                list.len(),
+                sheets[list[0]].0.source().chars().take(60).collect::<String>(),
+                first.get(&identity).map(|s| format!(" -> {s:x}")).unwrap_or_default()
+            );
+        }
+        match first.get(&identity) {
+            Some(&same) => {
+                builder.alias_scope(*scope, same);
+                aliased.insert(*scope);
+            }
+            None => {
+                first.insert(identity, *scope);
+            }
+        }
+    }
     for (syntax, origin, base, scope) in sheets {
+        if scope.is_some_and(|k| aliased.contains(&k)) {
+            continue;
+        }
         builder.add_scoped_sheet_from(syntax, *origin, base.clone(), *scope, cancel)?;
+    }
+    if crate::env_on!("OLO_SHEET_DEBUG") && !aliased.is_empty() {
+        eprintln!("  compile: {} shadow trees' sheets compiled as {} trees'", trees.len(), trees.len() - aliased.len());
     }
     let dependent = builder.media_dependent();
     let faces = builder.font_faces().to_vec();
@@ -1640,6 +1678,11 @@ fn load_sheets(
             }
         }
     }
+    // A component's every instance has the same sheets in its shadow root:
+    // each text parsed once, and held to the budget once (Reddit's copies
+    // passed 8 MB, and the later trees' sheets were left out). They
+    // compile once too (`compile_now`).
+    let mut shadow_texts: std::collections::HashMap<Arc<str>, Arc<css::Syntax>> = std::collections::HashMap::new();
     for node in shadow_nodes {
         let scope = doc.shadow_scope(node).map(crate::css::selectors::scope_key);
         match doc.name(node)? {
@@ -1650,18 +1693,33 @@ fn load_sheets(
                         text.push_str(value)
                     }
                 }
+                if let Some(syntax) = shadow_texts.get(text.as_str()) {
+                    sheets.push((syntax.clone(), Origin::Author, None, scope));
+                    continue;
+                }
                 if css_bytes.saturating_add(text.len()) > CSS_BYTES {
                     resource_issues += 1;
                     continue;
                 }
                 css_bytes += text.len();
-                sheets.push((parsed(Arc::from(text), cancel)?, Origin::Author, None, scope));
+                let text: Arc<str> = Arc::from(text);
+                let syntax = parsed(text.clone(), cancel)?;
+                shadow_texts.insert(text, syntax.clone());
+                sheets.push((syntax, Origin::Author, None, scope));
             }
             Some("link") if doc.attribute(node, "rel")?.is_some_and(|r| r.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("stylesheet"))) => {
                 let Some(href) = doc.attribute(node, "href")? else { continue };
                 match resource(ResourceKind::Stylesheet, base, href)? {
-                    Some(Resource::Stylesheet(syntax, url)) if css_bytes.saturating_add(syntax.source().len()) <= CSS_BYTES => {
-                        css_bytes += syntax.source().len();
+                    Some(Resource::Stylesheet(syntax, url)) => {
+                        let seen = shadow_texts.contains_key(syntax.source());
+                        if !seen && css_bytes.saturating_add(syntax.source().len()) > CSS_BYTES {
+                            resource_issues += 1;
+                            continue;
+                        }
+                        if !seen {
+                            css_bytes += syntax.source().len();
+                            shadow_texts.insert(Arc::from(syntax.source()), syntax.clone());
+                        }
                         sheets.push((syntax, Origin::Author, url, scope));
                     }
                     _ => resource_issues += 1,

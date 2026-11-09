@@ -1213,6 +1213,14 @@
   const MEDIA_CONSTANTS = { HAVE_NOTHING: 0, HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2, HAVE_FUTURE_DATA: 3, HAVE_ENOUGH_DATA: 4, NETWORK_EMPTY: 0, NETWORK_IDLE: 1, NETWORK_LOADING: 2, NETWORK_NO_SOURCE: 3 };
   Object.assign(global.HTMLMediaElement, MEDIA_CONSTANTS);
   for (const [k, v] of Object.entries(MEDIA_CONSTANTS)) Object.defineProperty(global.HTMLMediaElement.prototype, k, { value: v, enumerable: true });
+  // A media element's error (HTML §4.8.11.1): none while it plays or
+  // waits. The interface exists for pages that test against its codes
+  // (Reddit's component bundle failed to load without it).
+  const MEDIA_ERRORS = { MEDIA_ERR_ABORTED: 1, MEDIA_ERR_NETWORK: 2, MEDIA_ERR_DECODE: 3, MEDIA_ERR_SRC_NOT_SUPPORTED: 4 };
+  global.MediaError = class MediaError { constructor() { throw new TypeError('Illegal constructor'); } };
+  Object.assign(global.MediaError, MEDIA_ERRORS);
+  for (const [k, v] of Object.entries(MEDIA_ERRORS)) Object.defineProperty(global.MediaError.prototype, k, { value: v, enumerable: true });
+  Object.defineProperty(global.HTMLMediaElement.prototype, 'error', { get() { return this._mediaError ?? null; }, configurable: true, enumerable: true });
   // A box's scroll (scrollTop, scrollTo): the engine clamps it and keeps
   // it; its `scroll` event (which doesn't bubble) follows in a task, once
   // however many scrolls came before it.

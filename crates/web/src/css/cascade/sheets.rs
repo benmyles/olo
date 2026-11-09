@@ -156,6 +156,12 @@ pub struct RuleSet {
     /// (their recorded rule ids point into it) are not reused with this.
     generation: u64,
     containers: Vec<ContainerCondition>,
+    /// Shadow trees whose sheets are another's, the same ones in the same
+    /// order (a component's every instance): their rules compiled once,
+    /// under the first tree's scope key, which these keys stand for.
+    /// Reddit's page has 223 sheets in shadow trees, past 100,000
+    /// selectors as copies, and its rules failed to compile.
+    scope_aliases: HashMap<u64, u64>,
 }
 static GENERATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 #[derive(Clone, Copy)]
@@ -200,6 +206,8 @@ pub struct SheetBuilder {
     /// The shadow tree the sheet being added belongs to (see `Rule::scope`).
     scope: Option<u64>,
     scoped: bool,
+    /// Shadow trees whose sheets are another's (`alias_scope`).
+    scope_aliases: HashMap<u64, u64>,
 }
 impl SheetBuilder {
     pub fn new(limits: CompileLimits) -> Self {
@@ -223,6 +231,7 @@ impl SheetBuilder {
             container: NO_CONTAINER,
             scope: None,
             scoped: false,
+            scope_aliases: HashMap::new(),
         }
     }
     fn issue(&mut self, issue: Issue) -> Result<()> {
@@ -278,6 +287,14 @@ impl SheetBuilder {
     /// A sheet of a shadow tree (`scope`, its `selectors::scope_key`):
     /// its rules apply in that tree, to its host through `:host` and to
     /// what is slotted into it through `::slotted()` (CSS Scoping 1 §3).
+    /// The shadow tree `alias` has the same sheets as `scope`, in the same
+    /// order: its rules are those compiled for `scope` (its sheets are not
+    /// added).
+    pub fn alias_scope(&mut self, alias: u64, scope: u64) {
+        if alias != scope {
+            self.scope_aliases.insert(alias, scope);
+        }
+    }
     pub fn add_scoped_sheet_from(&mut self, syntax: &Syntax, origin: Origin, base: Option<Arc<str>>, scope: Option<u64>, cancelled: Option<&AtomicBool>) -> Result<()> {
         self.scope = scope;
         self.scoped |= scope.is_some();
@@ -679,7 +696,19 @@ impl SheetBuilder {
         let invalidation = selectors.invalidation();
         let uses_empty = selectors.uses_empty();
         let generation = GENERATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues, has_keys, invalidation, uses_empty, keyframes: self.keyframes, generation, containers: self.containers })
+        Ok(RuleSet {
+            selectors,
+            rules: self.rules,
+            index,
+            issues: self.issues,
+            has_keys,
+            invalidation,
+            uses_empty,
+            keyframes: self.keyframes,
+            generation,
+            containers: self.containers,
+            scope_aliases: self.scope_aliases,
+        })
     }
 }
 fn fold_arc(s: Arc<str>) -> Arc<str> {
@@ -855,6 +884,7 @@ impl RuleSet {
         }
         let mut keys = selectors::KeyCache::default();
         let mut matcher = self.selectors.matcher(tree, node, options, match_limits, cancelled, &mut keys).map_err(Error::Selectors)?;
+        matcher.set_scope_aliases(&self.scope_aliases);
         matcher.answers(tests).map_err(Error::Selectors)
     }
     /// The cascade of an element whose matched rules are known from before
@@ -875,7 +905,7 @@ impl RuleSet {
         let has_parent =
             if let Some(parent) = tree.parent(node).map_err(Error::Selectors)? { matches!(tree.content(parent).map_err(Error::Selectors)?, selectors::Content::Element(_)) } else { false };
         let mut builder = Builder::new(limits, cancelled);
-        let scopes = tree.scopes(node).map_err(Error::Selectors)?;
+        let scopes = self.scopes_of(tree, node)?;
         for &(id, specificity) in matched {
             let rule = self.rules.get(id as usize).ok_or(Error::Invalid)?;
             let encapsulation = rule.context(&scopes).unwrap_or(1);
@@ -951,7 +981,7 @@ impl RuleSet {
                 None => &self.index.element,
             };
             // The trees whose rules can reach it (see `RuleSet::context`).
-            let scopes = tree.scopes(node).map_err(Error::Selectors)?;
+            let scopes = self.scopes_of(tree, node)?;
             let mut keys: smallvec::SmallVec<[Option<u64>; 5]> = smallvec::smallvec![UA_SCOPE, scopes[0]];
             for key in [scopes[1], scopes[2]].into_iter().flatten().map(Some).chain(scopes[0].is_some().then_some(scopes[3])) {
                 if !keys.contains(&key) {
@@ -994,6 +1024,15 @@ impl RuleSet {
             }
         }
         Ok(())
+    }
+    /// An element's scopes (`selectors::Tree::scopes`) with each shadow
+    /// tree whose rules are another's taken as that one.
+    fn scopes_of<T: selectors::Tree>(&self, tree: &T, node: T::Node) -> Result<[Option<u64>; 4]> {
+        let scopes = tree.scopes(node).map_err(Error::Selectors)?;
+        if self.scope_aliases.is_empty() {
+            return Ok(scopes);
+        }
+        Ok(scopes.map(|k| k.map(|k| self.scope_aliases.get(&k).copied().unwrap_or(k))))
     }
     /// Rule `id`'s selector, written out (diagnostics), with its tree scope.
     pub fn describe_rule(&self, id: u32) -> String {
@@ -1079,13 +1118,19 @@ impl RuleSet {
         let mut work = 0usize;
         let mut keys = selectors::KeyCache::with_ancestors(ancestors);
         let mut matcher = self.selectors.matcher(tree, node, options, match_limits, cancelled, &mut keys).map_err(Error::Selectors)?;
-        let scopes = tree.scopes(node).map_err(Error::Selectors)?;
+        matcher.set_scope_aliases(&self.scope_aliases);
+        let scopes = self.scopes_of(tree, node)?;
         for &id in &scratch.candidates {
             check(cancelled)?;
             let rule = &self.rules[id as usize];
             let Some(encapsulation) = rule.context(&scopes) else { continue };
             matcher.set_rule_scope(rule.scope);
-            let (matched, progress) = matcher.matches(rule.selector, match_limits.work.min(limits.work.saturating_sub(work))).map_err(Error::Selectors)?;
+            let (matched, progress) = matcher.matches(rule.selector, match_limits.work.min(limits.work.saturating_sub(work))).map_err(|e| {
+                if !matches!(e, selectors::Error::Cancelled | selectors::Error::MatchLimit) {
+                    eprintln!("cascade: <{}> failed to match {} ({e:?})", name.local_name, self.describe_rule(id));
+                }
+                Error::Selectors(e)
+            })?;
             if progress.steps > 40 && crate::env_on!("OLO_STYLE_TIMING") {
                 eprintln!("    costly match: <{}> {} steps for {}", name.local_name, progress.steps, self.selectors.describe(rule.selector));
             }

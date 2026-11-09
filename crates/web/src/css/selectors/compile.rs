@@ -85,7 +85,12 @@ impl Compiler<'_> {
     fn tick(&mut self, n: usize) -> Result<()> {
         check(self.cancelled)?;
         self.work = self.work.checked_add(n).ok_or(Error::CompileLimit)?;
-        if self.work > self.limits.work { Err(Error::CompileLimit) } else { Ok(()) }
+        if self.work > self.limits.work {
+            limit_reached("work", self.work);
+            Err(Error::CompileLimit)
+        } else {
+            Ok(())
+        }
     }
     fn symbol(&mut self, s: &str) -> Result<u32> {
         self.tick(s.len().max(1))?;
@@ -151,6 +156,7 @@ impl Compiler<'_> {
         self.tick(1)?;
         self.test_count = self.test_count.checked_add(1).ok_or(Error::CompileLimit)?;
         if self.test_count > self.limits.tests || self.test_count >= NONE as usize {
+            limit_reached("tests", self.test_count);
             return Err(Error::CompileLimit);
         }
         values.push(test);
@@ -213,6 +219,7 @@ impl Compiler<'_> {
     fn complex(&mut self, mut input: Components<'_>, ctx: Context) -> Result<u32> {
         self.selector_count = self.selector_count.checked_add(1).ok_or(Error::CompileLimit)?;
         if self.selector_count > self.limits.selectors || self.selector_count >= NONE as usize {
+            limit_reached("selectors", self.selector_count);
             return Err(Error::CompileLimit);
         }
         self.skip(&mut input)?;
@@ -380,6 +387,7 @@ impl Compiler<'_> {
     fn store_step(&mut self, tests: SmallVec<[Test; 8]>, relation: Relation, namespace: u32, implicit_ns: bool) -> Result<Step> {
         self.step_count = self.step_count.checked_add(1).ok_or(Error::CompileLimit)?;
         if self.step_count > self.limits.steps || self.step_count >= NONE as usize {
+            limit_reached("steps", self.step_count);
             return Err(Error::CompileLimit);
         }
         let mut other = false;
@@ -943,5 +951,13 @@ impl RuleCompiler {
     }
     pub(crate) fn finish(self) -> Selectors {
         self.out.unwrap()
+    }
+}
+
+/// A compile limit reached: which, and how far (OLO_SHEET_DEBUG).
+#[cold]
+fn limit_reached(what: &str, count: usize) {
+    if crate::env_on!("OLO_SHEET_DEBUG") {
+        eprintln!("selectors: the {what} limit reached at {count}");
     }
 }
