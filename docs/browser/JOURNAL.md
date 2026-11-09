@@ -7225,3 +7225,13 @@ the scene's own hit test, the one clicks use (paint order,
 `pointer-events`, clips, the fixed layer): the root where nothing else
 is, null outside the viewport, as Chrome. Its length is Chrome's (2)
 now, too.
+
+`canvas.toDataURL()` was a stub too: always "data:,", and toBlob gave
+null. A page exporting a drawing got nothing, and a fingerprinting
+script read the same empty answer on every canvas, which no Chrome
+gives. Both encode now, natively (the image crate's encoders): PNG by
+default or for a type it doesn't know, JPEG flattened over black as
+Chrome does (quality 0.92 unless asked), WebP; a canvas of no size
+"data:,"; one never drawn on, transparent at its size; WebGL's drawing
+buffer read back. Drawn, exported and drawn again, a page reads back the
+pixels Chrome does (JPEG within its loss).

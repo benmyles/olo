@@ -1006,3 +1006,29 @@ fn page_functions_read_as_their_source() {
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] function mine(a) { return a + 1; } (x) => x true"]);
 }
+#[test]
+fn canvas_to_data_url_encodes_what_was_drawn() {
+    // toDataURL was a stub ("data:,"): pages export what they draw, and
+    // fingerprinting scripts read it. PNG by default (and for a type it
+    // doesn't know), JPEG and WebP asked for; an empty canvas "data:,".
+    let page = r#"<script>
+const c = document.createElement('canvas'); c.width = 4; c.height = 2;
+const x = c.getContext('2d'); x.fillStyle = '#c83214'; x.fillRect(0, 0, 4, 2);
+const png = c.toDataURL();
+const raw = atob(png.split(',')[1]);
+const blank = document.createElement('canvas');
+const empty = document.createElement('canvas'); empty.width = 0;
+console.log(png.slice(0, 22), raw.slice(1, 4), raw.charCodeAt(19), raw.charCodeAt(23), c.toDataURL('image/jpeg').slice(0, 23), c.toDataURL('image/webp').slice(0, 23), c.toDataURL('image/bmp').slice(0, 22), blank.toDataURL().length > 100, empty.toDataURL(), HTMLCanvasElement.prototype.toDataURL.length, HTMLCanvasElement.prototype.toBlob.length);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    assert_eq!(realm.report().console, ["[log] data:image/png;base64, PNG 4 2 data:image/jpeg;base64, data:image/webp;base64, data:image/png;base64, true data:, 0 1"]);
+}

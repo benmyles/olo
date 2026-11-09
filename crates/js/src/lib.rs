@@ -2662,6 +2662,7 @@ const NATIVES: &[&str] = &[
     "fetchSync",
     "runScript",
     "canvasSize",
+    "canvasEncode",
     "canvasOp",
     "canvasPixels",
     "loadImage",
@@ -4267,6 +4268,44 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                             }
                         }
                     }
+                }
+            }
+        }
+        // A canvas encoded (canvas, type, quality, as a data URL?): its
+        // pixels (2D, WebGL, or none drawn) as PNG, JPEG or WebP, for
+        // toDataURL (a string) and toBlob ([bytes, type]).
+        "canvasEncode" => {
+            if let Some(n) = node(scope, 0) {
+                let kind = arg_string(scope, &args, 1);
+                let quality = args.get(2).is_number().then(|| args.get(2).number_value(scope).unwrap_or(f64::NAN));
+                let as_url = args.get(3).is_true();
+                let width = args.get(4).number_value(scope).unwrap_or(0.).max(0.) as u32;
+                let height = args.get(5).number_value(scope).unwrap_or(0.).max(0.) as u32;
+                let pixels = {
+                    let mut s = state.borrow_mut();
+                    if let Some(c) = s.canvases.get(&n) {
+                        Some((c.image_data(0, 0, c.width(), c.height()), c.width(), c.height()))
+                    } else if let Some(c) = s.gl.get_mut(&n) {
+                        let (w, h) = (c.width(), c.height());
+                        c.pixels().map(|p| (p, w, h))
+                    } else {
+                        None
+                    }
+                };
+                // One no script drew on: transparent, the size its attributes give.
+                let (pixels, w, h) = pixels.unwrap_or_else(|| (vec![0; width as usize * height as usize * 4], width, height));
+                match canvas::encode(&pixels, w, h, &kind, quality) {
+                    Some((bytes, mime)) if as_url => {
+                        use base64::Engine as _;
+                        let url = format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes));
+                        rv.set(string(scope, &url));
+                    }
+                    Some((bytes, mime)) => {
+                        let items: Vec<v8::Local<v8::Value>> = vec![bytes_array(scope, bytes, ByteKind::U8), string(scope, mime).into()];
+                        rv.set(v8::Array::new_with_elements(scope, &items).into());
+                    }
+                    None if as_url => rv.set(string(scope, "data:,")),
+                    None => rv.set_null(),
                 }
             }
         }

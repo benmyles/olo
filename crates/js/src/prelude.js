@@ -668,7 +668,13 @@
       const plays = (c) => /^(avc1|avc3|hev1|hvc1|av01|vp09|vp9|vp8|mp4a|opus|vorbis|flac|mp3|theora)(\.|$)/.test(c) || c === '1';
       return codecs.length && codecs.every(plays) ? 'probably' : '';
     },
-    getContext(kind) { if (N.nodeName(this) !== 'CANVAS') return null; kind = String(kind); if (kind === '2d') { if (!this._ctx2d) Object.defineProperty(this, '_ctx2d', { value: new CanvasRenderingContext2D(this) }); return this._ctx2d; } return null; }, toDataURL() { return 'data:,'; }, toBlob(cb) { if (cb) cb(null); }, captureStream() { return null; }, transferControlToOffscreen() { return new OffscreenCanvas(this.width, this.height); },
+    getContext(kind) { if (N.nodeName(this) !== 'CANVAS') return null; kind = String(kind); if (kind === '2d') { if (!this._ctx2d) Object.defineProperty(this, '_ctx2d', { value: new CanvasRenderingContext2D(this) }); return this._ctx2d; } return null; }, toDataURL(type = 'image/png', quality = undefined) { if (N.nodeName(this) !== 'CANVAS' || !(this.width > 0 && this.height > 0)) return 'data:,'; return N.canvasEncode(this, String(type), quality, true, this.width, this.height); },
+    toBlob(callback, type = 'image/png', quality = undefined) {
+      if (typeof callback !== 'function') throw new TypeError("Failed to execute 'toBlob' on 'HTMLCanvasElement': parameter 1 is not of type 'BlobCallback'.");
+      const r = N.nodeName(this) === 'CANVAS' && this.width > 0 && this.height > 0 ? N.canvasEncode(this, String(type), quality, false, this.width, this.height) : null;
+      const blob = r ? new Blob([r[0]], { type: r[1] }) : null;
+      setTimeout(() => callback(blob), 0);
+    }, captureStream() { return null; }, transferControlToOffscreen() { return new OffscreenCanvas(this.width, this.height); },
     setPointerCapture() {}, releasePointerCapture() {}, hasPointerCapture() { return false; },
     computedStyleMap() { return new Map(); },
     getBBox() { return new DOMRect(0, 0, 0, 0); }, getCTM() { return null; }, getScreenCTM() { return null; }, getTotalLength() { return 0; },

@@ -628,3 +628,38 @@ pub fn parse_color(text: &str) -> Option<[u8; 4]> {
         _ => None,
     }
 }
+
+/// Straight RGBA as toDataURL and toBlob give it (HTML §4.12.5.1.7):
+/// `image/jpeg` (over black, as Chrome flattens it; quality 0..1, 0.92 if
+/// none), `image/webp` (lossless), else PNG. None for an empty canvas.
+pub fn encode(rgba: &[u8], width: u32, height: u32, kind: &str, quality: Option<f64>) -> Option<(Vec<u8>, &'static str)> {
+    use image::ImageEncoder as _;
+    if width == 0 || height == 0 || rgba.len() != width as usize * height as usize * 4 {
+        return None;
+    }
+    let mut out = Vec::new();
+    match kind.to_ascii_lowercase().as_str() {
+        "image/jpeg" => {
+            let quality = quality.filter(|q| (0.0..=1.0).contains(q)).unwrap_or(0.92);
+            let rgb: Vec<u8> = rgba
+                .chunks_exact(4)
+                .flat_map(|p| {
+                    let a = u32::from(p[3]);
+                    [0, 1, 2].map(|c| ((u32::from(p[c]) * a + 127) / 255) as u8)
+                })
+                .collect();
+            let q = (quality * 100.).round().clamp(1., 100.) as u8;
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, q).write_image(&rgb, width, height, image::ExtendedColorType::Rgb8).ok()?;
+            Some((out, "image/jpeg"))
+        }
+        "image/webp" => {
+            image::codecs::webp::WebPEncoder::new_lossless(&mut out).write_image(rgba, width, height, image::ExtendedColorType::Rgba8).ok()?;
+            Some((out, "image/webp"))
+        }
+        _ => {
+            let encoder = image::codecs::png::PngEncoder::new_with_quality(&mut out, image::codecs::png::CompressionType::Fast, image::codecs::png::FilterType::Adaptive);
+            encoder.write_image(rgba, width, height, image::ExtendedColorType::Rgba8).ok()?;
+            Some((out, "image/png"))
+        }
+    }
+}
