@@ -65,6 +65,16 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 - [x] Reddit: its loading indicator (between pages): its ring, an absolute
   child of a centring flex box, sat at the start (2026-11-08: placed as
   the sole flex item would be); its Snoo draws as Chrome's.
+- [ ] Bot challenges keep whole sites out (2026-11-08 sweep): Stack
+  Overflow stops at Cloudflare's "Performing security verification", The
+  New York Times at DataDome's device check (in an iframe, whose scripts
+  don't run yet: a blank page), Amazon at its AWS WAF. Chrome is let
+  through. Needs iframes' scripts, and requests less unlike Chrome's
+  (TLS and header order) to be flagged less often.
+- [ ] YouTube: its page shows as Chrome's (2026-11-08), but its icons
+  (logo, guide entries, mic, account) mostly stay empty: each
+  `yt-icon`'s `span.yt-icon-shape` is filled late and not always (the
+  logo was once). Find what it waits for.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.

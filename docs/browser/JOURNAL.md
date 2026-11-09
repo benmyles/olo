@@ -7041,3 +7041,10 @@ the Guardian and old Reddit, looking for pages that fail outright:
   container's start; CSS Flexbox places it as the container's only item
   would be (its justify-content, the child's align-self). Reddit's loading
   ring sat at the left edge, apart from its logo.
+- **A sweep of more sites.** YouTube stayed a light skeleton: it sets an
+  iframe's `sandbox` to a string, and the token list made earlier today
+  had only a getter (token lists are `[PutForwards=value]`; all four take
+  a string now). Its page now shows as Chrome's; its icons mostly don't
+  yet. Stack Overflow, The New York Times and Amazon stop at bot
+  challenges (Cloudflare, DataDome in an iframe, AWS WAF) Chrome isn't
+  given: in the TODO.
