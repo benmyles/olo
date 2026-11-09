@@ -131,7 +131,15 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   inserting posts as it scrolls ("children of <shreddit-feed>": style
   107 ms, layout 16 ms, none of 4,240 boxes reused; 150-200 ms renders),
   YouTube's too. Style the new subtree (and what structural selectors
-  and :has() reach from it), lay out what it changes.
+  and :has() reach from it), lay out what it changes. Found (2026-11-09,
+  OLO_STYLE_TIMING): the incremental job is off for two reasons there.
+  The change log: 100,000 changes between renders (posts built while
+  detached), more than it holds even compacted; changes to a node not in
+  the document could be dropped if inserting a subtree always restyles
+  it whole. And the rules: a document sheet changed (not a shadow tree's),
+  so every element is matched again; invalidate only what the new rules'
+  selectors can reach (their keys), as Chrome's style sheet invalidation
+  does.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.
