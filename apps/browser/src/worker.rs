@@ -466,6 +466,11 @@ struct Live {
     /// Since when the window was told the page wants frames and sent none
     /// (cleared by a frame): past a quarter of a second, it is hidden.
     waiting_since: Option<Instant>,
+    /// The last frame changed only what animations move off screen (a
+    /// spinner below the fold): the next not before this (ms on the page's
+    /// clock), a quarter second on, as Chrome throttles animations out of
+    /// view (Reddit's drew 120 frames a second of nothing, 9% of a core).
+    unseen_until_ms: Option<f64>,
 }
 /// What a live page's frames cost (its scripts and renders on the CPU, its
 /// WebGL on the GPU), reviewed each second: over budget, it draws every
@@ -814,6 +819,11 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     let wait = cached.as_ref().and_then(|c| c.live.as_ref().map(|l| (c, l))).and_then(|(c, l)| {
                         let paced = l.paced_at.is_some_and(|t| t.elapsed() < Duration::from_millis(250));
                         let frame = (!paced && (l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty() || c.page.animating())).then_some(l.next_frame_ms).filter(|_| !hidden(l));
+                        // Only animations off screen to show: looked at again later.
+                        let frame = match (frame, l.unseen_until_ms) {
+                            (Some(f), Some(u)) if !(l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty()) => Some(f.max(u)),
+                            (f, _) => f,
+                        };
                         let due = match (l.next_due_ms, frame) {
                             (Some(a), Some(b)) => Some(a.min(b)),
                             (a, b) => a.or(b),
@@ -1290,7 +1300,10 @@ fn render(
         live.had_focus = live.realm.focused().is_some();
         // The document changed, a readback is in flight, or a canvas was
         // drawn on (its drawing shows only through a render).
-        if revision != live.rendered || live.render_again || live.render_due || live.realm.canvases_dirty() || c.page.animating() || media_changed || focus_moved {
+        // Animations to show: not while they last moved only off screen,
+        // until it is time to look at them again.
+        let animation_due = c.page.animating() && live.unseen_until_ms.is_none_or(|u| live.started.elapsed().as_secs_f64() * 1000. >= u);
+        if revision != live.rendered || live.render_again || live.render_due || live.realm.canvases_dirty() || animation_due || media_changed || focus_moved {
             // OLO_RENDER_TRACE: why each live render happens.
             if olo_web::env_on!("OLO_RENDER_TRACE") {
                 eprintln!(
@@ -1299,7 +1312,7 @@ fn render(
                     if live.render_again { " again" } else { "" },
                     if live.render_due { " due" } else { "" },
                     if live.realm.canvases_dirty() { " canvas" } else { "" },
-                    if c.page.animating() { " animating" } else { "" },
+                    if animation_due { " animating" } else { "" },
                     if media_changed { " media" } else { "" },
                     if focus_moved { " focus" } else { "" },
                 );
@@ -1430,8 +1443,9 @@ fn render(
             } else if olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!("  live: new pictures swapped in");
             }
-            // CSS animations still running: the next frame renders again.
-            live.render_again |= c.page.animating();
+            // CSS animations still running: the next frame renders again
+            // (unless they move only off screen: the page's clock then).
+            live.render_again |= c.page.animating() && live.unseen_until_ms.is_none();
             // Their events reach the page's scripts.
             let events = c.page.take_animation_events();
             if !events.is_empty() {
@@ -1738,6 +1752,7 @@ fn render(
                 display_period_ms: FRAME.as_secs_f64() * 1000.,
                 hidden: false,
                 waiting_since: None,
+                unseen_until_ms: None,
             });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms ({:.0} ms of this thread's CPU)",
@@ -2470,6 +2485,31 @@ fn render(
         }
     }
     TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);
+    // What changed since the last frame is all off screen: only moved
+    // matrices, each thing they move outside the viewport, no tile painted.
+    let unseen = pass == Pass::Live
+        && repainted == 0
+        && moved_region.as_ref().is_some_and(|region| {
+            let (top, bottom) = (f64::from(scroll) / scale, f64::from(scroll + r.key.height as i32) / scale);
+            let width = f64::from(r.key.width) / scale;
+            region.iter().all(|rect| rect.y + rect.height <= top || rect.y >= bottom || rect.x + rect.width <= 0. || rect.x >= width)
+        });
+    if let Some(live) = cached.live.as_mut() {
+        live.unseen_until_ms = unseen.then(|| live.started.elapsed().as_secs_f64() * 1000. + 250.);
+    }
+    if pass == Pass::Live && olo_web::env_on!("OLO_BROWSER_TIMING") {
+        match &moved_region {
+            Some(region) => eprintln!(
+                "  moved: {} rects, {}; first {:?}; viewport {:.0}..{:.0}",
+                region.len(),
+                if unseen { "all off screen" } else { "some on screen" },
+                region.first(),
+                f64::from(scroll) / scale,
+                f64::from(scroll + r.key.height as i32) / scale
+            ),
+            None => eprintln!("  moved: not only matrices (same paint {same_paint})"),
+        }
+    }
     cached.paint_identity = Some(identity);
     cached.paint_state = Some(scene.paint_state());
     cached.paint_size = Some((r.key.width, r.key.height, scene.device_scale().to_bits()));
@@ -2514,7 +2554,10 @@ fn render(
         fallbacks: page.fallbacks.to_string(),
         tiles,
         animating: {
-            let animating = cached.page.animating() || cached.live.as_ref().is_some_and(|l| l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty());
+            // (Animations only off screen: the window need not draw; the
+            // page looks at them again on its own clock.)
+            let animating = (cached.page.animating() && !cached.live.as_ref().is_some_and(|l| l.unseen_until_ms.is_some()))
+                || cached.live.as_ref().is_some_and(|l| l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty());
             // Waiting for the window's frames while it animates; not once it
             // stops (the window stops sending them: that is not hiding it).
             if let Some(live) = cached.live.as_mut() {

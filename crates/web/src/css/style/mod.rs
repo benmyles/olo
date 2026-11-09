@@ -697,6 +697,12 @@ impl Style {
             inline_origin: self.inline_origin,
         }
     }
+    /// Whether `property` has its initial value here (as the defaults
+    /// compute it).
+    pub fn is_initial(&self, property: Property) -> bool {
+        let physical = self.axes.physical(property);
+        self.value(property).same(self.defaults.value(physical))
+    }
     pub fn value(&self, property: Property) -> &Value {
         let physical = self.axes.physical(property);
         self.values.binary_search_by_key(&(physical as u16), |e| e.property as u16).ok().map_or_else(|| self.defaults.value(physical), |i| &self.values[i].value)

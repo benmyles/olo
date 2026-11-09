@@ -134,6 +134,14 @@ pub fn running(spec: &Spec, elapsed: f64) -> bool {
 /// iteration progress `p`: each property between the frames around `p`
 /// (an end with no frame for it holds the nearest one's value).
 pub fn sample(keyframes: &Keyframes, p: f64, easing: Easing) -> Vec<(Arc<str>, String)> {
+    sample_over(keyframes, p, easing, &|_| None)
+}
+/// `sample`, a property without a `from` or `to` frame taking the
+/// element's own value there (CSS Animations 1 §3: the missing keyframe is
+/// made from the underlying value) when `underlying` knows it: `to {
+/// transform: rotate(360deg) }` turns from `none` (it held its one frame,
+/// and every spinner stood still).
+pub fn sample_over(keyframes: &Keyframes, p: f64, easing: Easing, underlying: &dyn Fn(&str) -> Option<Arc<str>>) -> Vec<(Arc<str>, String)> {
     let mut properties: Vec<&Arc<str>> = Vec::new();
     for f in &keyframes.frames {
         for (name, _) in &f.values {
@@ -144,8 +152,20 @@ pub fn sample(keyframes: &Keyframes, p: f64, easing: Easing) -> Vec<(Arc<str>, S
     }
     let mut out = Vec::new();
     for name in properties {
-        let frames: Vec<(&Frame, &Arc<str>)> = keyframes.frames.iter().filter_map(|f| f.values.iter().find(|(n, _)| n == name).map(|(_, v)| (f, v))).collect();
+        let mut frames: Vec<(&Frame, &Arc<str>)> = keyframes.frames.iter().filter_map(|f| f.values.iter().find(|(n, _)| n == name).map(|(_, v)| (f, v))).collect();
         let Some(&(first, first_value)) = frames.first() else { continue };
+        // The missing ends, from the element's own value.
+        let own = underlying(name);
+        let start = Frame { offset: 0., easing: None, values: Vec::new() };
+        let end = Frame { offset: 1., easing: None, values: Vec::new() };
+        if let Some(own) = &own {
+            if first.offset > 0. {
+                frames.insert(0, (&start, own));
+            }
+            if frames.last().is_some_and(|(f, _)| f.offset < 1.) {
+                frames.push((&end, own));
+            }
+        }
         let before = frames.iter().rev().find(|(f, _)| f.offset <= p).copied();
         let after = frames.iter().find(|(f, _)| f.offset > p).copied();
         let value = match (before, after) {
@@ -256,6 +276,30 @@ fn one(sa: &Syntax, x: Component<'_>, sb: &Syntax, y: Component<'_>, p: f64) -> 
         _ => None,
     }
 }
+/// The identity of a transform list's functions, one for one (`none`
+/// against a list interpolates as these: CSS Transforms 1 §11), or none
+/// when one has no identity here (or it isn't a list of functions).
+fn identity_transforms(list: &str) -> Option<String> {
+    let syntax = Syntax::parse(Arc::from(list), Default::default(), None).ok()?;
+    let mut out = Vec::new();
+    for c in syntax.components().filter(|c| c.kind() != Kind::Whitespace) {
+        if c.kind() != Kind::Function {
+            return None;
+        }
+        let name = c.text()?.to_ascii_lowercase();
+        let args = c.children().filter(|a| a.kind() == Kind::Comma).count() + 1;
+        let repeat = |v: &str, n: usize| vec![v; n].join(", ");
+        out.push(match name.as_str() {
+            "translate" | "translatex" | "translatey" | "translatez" | "translate3d" => format!("{name}({})", repeat("0px", args)),
+            "scale" | "scalex" | "scaley" | "scalez" | "scale3d" => format!("{name}({})", repeat("1", args)),
+            "rotate" | "rotatex" | "rotatey" | "rotatez" | "skewx" | "skewy" => format!("{name}(0deg)"),
+            "skew" => format!("skew({})", repeat("0deg", args)),
+            "matrix" => "matrix(1, 0, 0, 1, 0, 0)".to_owned(),
+            _ => return None,
+        });
+    }
+    (!out.is_empty()).then(|| out.join(" "))
+}
 /// `a` and `b` (value texts) at `p` between them.
 pub fn interpolate(a: &str, b: &str, p: f64) -> String {
     if p <= 0. {
@@ -263,6 +307,17 @@ pub fn interpolate(a: &str, b: &str, p: f64) -> String {
     }
     if p >= 1. {
         return b.to_owned();
+    }
+    // `none` and a transform list: the list's identity against it.
+    if a.trim().eq_ignore_ascii_case("none")
+        && let Some(identity) = identity_transforms(b)
+    {
+        return interpolate(&identity, b, p);
+    }
+    if b.trim().eq_ignore_ascii_case("none")
+        && let Some(identity) = identity_transforms(a)
+    {
+        return interpolate(a, &identity, p);
     }
     let (Ok(sa), Ok(sb)) = (Syntax::parse(Arc::from(a), Default::default(), None), Syntax::parse(Arc::from(b), Default::default(), None)) else {
         return if p < 0.5 { a } else { b }.to_owned();
@@ -380,6 +435,14 @@ mod tests {
         assert_eq!(interpolate("rgb(0, 113, 227)", "#f5f5f7", 1. / 3.), "rgba(81.6667, 157, 233.6667, 1)");
         assert_eq!(interpolate("block", "none", 0.4), "block");
         assert_eq!(interpolate("var(--a)", "var(--b)", 0.6), "var(--b)");
+        // `none` against a transform list: the list's identity.
+        assert_eq!(interpolate("none", "rotate(360deg)", 0.25), "rotate(90deg)");
+        assert_eq!(interpolate("translate(10px, 20px) scale(2)", "none", 0.5).split_whitespace().collect::<Vec<_>>().join(" "), "translate(5px, 10px) scale(1.5)");
+        // A spinner's one frame (`to`) turns from the element's own value.
+        let spin = Keyframes { frames: vec![Frame { offset: 1., easing: None, values: vec![(Arc::from("transform"), Arc::from("rotate(360deg)"))] }] };
+        let own = |_: &str| Some(Arc::from("none"));
+        assert_eq!(sample_over(&spin, 0.5, Easing::Linear, &own), vec![(Arc::from("transform"), "rotate(180deg)".to_owned())]);
+        assert_eq!(sample(&spin, 0.5, Easing::Linear), vec![(Arc::from("transform"), "rotate(360deg)".to_owned())], "without its own value: held");
     }
     #[test]
     fn progress_follows_delay_count_direction_and_fill() {
@@ -417,6 +480,9 @@ pub struct Timeline {
     scripted: HashMap<u64, (Arc<[crate::dom::ScriptFrame]>, Arc<Keyframes>, Spec)>,
     /// The elements scripts' animations gave values at the last sample.
     script_applied: Vec<crate::dom::NodeId>,
+    /// Each animation's properties' values on its element before it ran
+    /// (for the keyframes its rule leaves out), by animation.
+    underlying: HashMap<(crate::dom::NodeId, Arc<str>, usize), Vec<(Arc<str>, Arc<str>)>>,
 }
 /// A timing function as CSS spells one (`ease-in-out`, `cubic-bezier(...)`,
 /// `steps(4, end)`), or none when it isn't one.
@@ -609,6 +675,25 @@ impl Timeline {
             for (i, spec) in specs(style).into_iter().enumerate() {
                 let Some(frames) = library.get(&spec.name) else { continue };
                 let key = (node, spec.name.clone(), i);
+                // Its element's values before it ran, for the frames its
+                // rule leaves out: the initial value's where the element has
+                // it (its style is not yet animated at its first frame).
+                if !self.starts.contains_key(&key) {
+                    let mut own = Vec::new();
+                    for f in &frames.frames {
+                        for (name, _) in &f.values {
+                            if own.iter().any(|(n, _): &(Arc<str>, Arc<str>)| n == name) {
+                                continue;
+                            }
+                            if let Some(super::properties::Name::Longhand(p)) = super::properties::Name::parse(name)
+                                && style.is_initial(p)
+                            {
+                                own.push((name.clone(), Arc::from(p.initial_spelling())));
+                            }
+                        }
+                    }
+                    self.underlying.insert(key.clone(), own);
+                }
                 let start = *self.starts.entry(key.clone()).or_insert(self.now_ms);
                 seen.insert(key.clone());
                 let elapsed = (self.now_ms - start).max(0.) / 1000.;
@@ -637,7 +722,9 @@ impl Timeline {
                     self.events.push((node, "animationend", spec.name.clone(), active));
                 }
                 let Some((_, p)) = progress(&spec, elapsed) else { continue };
-                for (name, value) in sample(frames, p, spec.easing) {
+                let own = self.underlying.get(&key);
+                let underlying = |name: &str| own.and_then(|o| o.iter().find(|(n, _)| &**n == name)).map(|(_, v)| v.clone());
+                for (name, value) in sample_over(frames, p, spec.easing, &underlying) {
                     let text: Arc<str> = Arc::from(format!("{name}:{value}"));
                     let Ok(syntax) = Syntax::parse(text, Default::default(), cancelled) else { continue };
                     let Ok(d) = syntax.one_declaration(cancelled) else { continue };
@@ -648,6 +735,7 @@ impl Timeline {
             }
         }
         self.starts.retain(|k, _| seen.contains(k));
+        self.underlying.retain(|k, _| seen.contains(k));
         self.phases.retain(|k, _| seen.contains(k));
         let mut touched: Vec<crate::dom::NodeId> = out.keys().copied().collect();
         for n in std::mem::take(&mut self.applied) {

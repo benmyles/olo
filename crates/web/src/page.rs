@@ -3704,7 +3704,18 @@ fn render_once(
         let patching = std::time::Instant::now();
         let patch = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)?;
         if timing.is_some() {
-            eprintln!("  animation style: copy {copied_ms:.2} ms, patch {:.2} ms, {} nodes", patching.elapsed().as_secs_f64() * 1000., nodes.len());
+            let names: Vec<String> = nodes
+                .iter()
+                .take(4)
+                .map(|(n, _)| {
+                    format!(
+                        "<{}{}>",
+                        doc.name(*n).ok().flatten().unwrap_or("?"),
+                        doc.attribute(*n, "class").ok().flatten().map(|c| format!(" .{}", c.split_whitespace().take(3).collect::<Vec<_>>().join("."))).unwrap_or_default()
+                    )
+                })
+                .collect();
+            eprintln!("  animation style: copy {copied_ms:.2} ms, patch {:.2} ms, {} nodes: {}", patching.elapsed().as_secs_f64() * 1000., nodes.len(), names.join(" "));
         }
         if let Some(result) = patch {
             styles = Arc::new(tree);
