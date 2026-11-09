@@ -107,7 +107,9 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 - [ ] Presenting as Chrome, what's left (2026-11-09): TLS and HTTP/2 as
   Chrome's (rustls can't make its ClientHello: GREASE, ALPS, its suites
   and extension order; h2's pseudo-header order differs; BoringSSL wants
-  cmake); OffscreenCanvas with WebGL, in pages and workers (a worker's GPU
+  cmake). It matters: pixelscan.net's Cloudflare holds a connection whose
+  handshake isn't a browser's (curl: 524 after 125 s; Olo: timed out;
+  Chrome: the page); OffscreenCanvas with WebGL, in pages and workers (a worker's GPU
   reads NA); the constructible interfaces Olo lacks (FontFace, Observable
   and EventTarget.when, OfflineAudioContext and Web Audio, WebCodecs,
   MediaRecorder, RTCPeerConnection, CompressionStream, URLPattern, ...:
@@ -115,8 +117,12 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   navigation API; live iframes (contentWindow is null); a broken image's
   16×16 box and icon; SVG text and geometry (getComputedTextLength,
   getBBox, x/width/...); getBoundingClientRect through CSS transforms;
-  innerText includes <style>'s text; the prelude's frames in error
-  stacks; a Range moved by the document's mutations.
+  the prelude's frames in error stacks; a Range moved by the document's
+  mutations; adopted sheets and FontFaces applied through a hidden
+  <style> in the head (a page can find it): a sheet of the document's own,
+  outside its DOM; SVG text metrics need the scene's shaped text where
+  scripts measure (the layout has no shaper); BrowserScan's logo (huge,
+  clipped text) and its cards' icons.
 - [ ] A realm's prelude costs 34 ms (24 before presenting as Chrome), most
   of it running the prelude: a V8 startup snapshot of it would make a
   realm in a few ms (its top level made page-independent first).
