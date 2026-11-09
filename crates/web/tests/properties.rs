@@ -33,7 +33,7 @@ fn number(v: &Value) -> f64 {
 }
 #[test]
 fn registry_names_initial_values_and_inheritance_are_typed() {
-    assert_eq!(P::ALL.len(), 184);
+    assert_eq!(P::ALL.len(), 185);
     assert_eq!(p::Shorthand::ALL.len(), 51);
     for &property in P::ALL {
         assert!(Name::parse(property.as_str()).is_some());
@@ -351,4 +351,15 @@ fn inset_shapes_expand_quads_and_reject_invalid_round_syntax() {
         assert!(matches!(Declaration::parse("clip-path", input.components(), false, limits, None), Err(Error::Limit)));
     }
     assert!(matches!(Declaration::parse("clip-path", input.components(), false, Default::default(), Some(&AtomicBool::new(true))), Err(Error::Cancelled)));
+}
+#[test]
+fn clip_takes_rect_with_or_without_commas_and_auto_sides() {
+    // CSS 2.1 §11.1.2 as browsers take it: what hides "skip to content"
+    // links (`clip: rect(0 0 0 0)`).
+    for text in ["rect(0 0 0 0)", "rect(0px, 0px, 0px, 0px)", "rect(1px auto 3px 4px)", "auto"] {
+        assert_eq!(values("clip", text)[0].property, P::Clip, "{text}");
+    }
+    for text in ["rect(0 0 0)", "rect(0, 0 0 0)", "rect(0 0 0 0 0)", "rect(10% 0 0 0)", "inset(0)", "circle(1px)"] {
+        assert!(parse("clip", text).is_err(), "{text}");
+    }
 }

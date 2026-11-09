@@ -353,6 +353,9 @@ struct State {
     measure: Option<Measure>,
     /// The last layout, good while the document's revision is its own.
     measured: Option<olo_web::page::Measured>,
+    /// What the browser last painted of the page (`Realm::set_scene`):
+    /// where elementFromPoint looks, as a click does.
+    scene: Option<Arc<olo_web::paint::Scene>>,
     layout_seconds: f64,
     /// Layouts and their time within the current run, against the run's
     /// budget.
@@ -529,6 +532,7 @@ impl Realm {
             waker: None,
             measure,
             measured: None,
+            scene: None,
             layout_seconds: 0.,
             run_layouts: 0,
             run_layout_seconds: 0.,
@@ -1222,6 +1226,11 @@ impl Realm {
     pub fn scroll_serial(&self) -> u64 {
         self.state.borrow().document.scroll_serial()
     }
+    /// What the browser painted of the page last, for elementFromPoint
+    /// (the boxes a click there would reach, in paint order).
+    pub fn set_scene(&mut self, scene: Arc<olo_web::paint::Scene>) {
+        self.state.borrow_mut().scene = Some(scene);
+    }
     /// The page's window shown or not: document.hidden, and visibilitychange
     /// when it changes.
     pub fn set_hidden(&mut self, hidden: bool) {
@@ -1689,6 +1698,7 @@ impl State {
             waker: None,
             measure: None,
             measured: None,
+            scene: None,
             layout_seconds: 0.,
             run_layouts: 0,
             run_layout_seconds: 0.,
@@ -2714,6 +2724,7 @@ const NATIVES: &[&str] = &[
     "glCreate",
     "glOp",
     "rect",
+    "hitTest",
     "boundingRect",
     "paddingRect",
     "textRects",
@@ -3521,6 +3532,34 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
             let found = {
                 let s = &mut *state.borrow_mut();
                 s.names.current(&s.document).ids.get(&id).copied()
+            };
+            match found.and_then(|n| wrap(scope, &state, n)) {
+                Some(o) => rv.set(o.into()),
+                None => rv.set_null(),
+            }
+        }
+        // The element a click at a document point would reach (x, y, the
+        // page's scroll and viewport height), in what was painted last:
+        // the scene's own hit test (paint order, pointer-events, clips).
+        "hitTest" => {
+            let n = |scope: &mut v8::PinScope, i: i32| args.get(i).number_value(scope).unwrap_or(f64::NAN);
+            let (x, y, scroll, height) = (n(scope, 0), n(scope, 1), n(scope, 2), n(scope, 3));
+            let found = {
+                let s = state.borrow();
+                let hit = s.scene.as_ref().filter(|_| x.is_finite() && y.is_finite()).and_then(|scene| {
+                    let stickies = scene.layout().sticky();
+                    scene.hit_test(x, y, scroll, height, &stickies)
+                });
+                // Its element (a text's parent), still in the document.
+                let mut at = hit;
+                for _ in 0..4096 {
+                    match at {
+                        Some(n) if matches!(s.document.node_type(n), Ok(olo_web::dom::NodeType::Element)) => break,
+                        Some(n) => at = s.document.parent(n).ok().flatten(),
+                        None => break,
+                    }
+                }
+                at.filter(|&n| s.document.is_connected(n).unwrap_or(false))
             };
             match found.and_then(|n| wrap(scope, &state, n)) {
                 Some(o) => rv.set(o.into()),

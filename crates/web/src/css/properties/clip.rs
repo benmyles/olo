@@ -58,6 +58,43 @@ pub(super) fn parse(parts: &[Component<'_>], limits: Limits, cancelled: Option<&
     Ok(Value::LocalUrl(LocalUrl(triomphe::ThinArc::from_header_and_iter((), text.bytes()))))
 }
 
+/// `clip` (CSS 2.1 §11.1.2; CSS Masking 1 §10.1): `auto` or rect(top,
+/// right, bottom, left), each a length or `auto`, the commas optional (as
+/// every browser has them). What visually hides a site's "skip to
+/// content" links: `clip: rect(0 0 0 0)`.
+pub(super) fn rect(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
+    let [c] = parts else { return Err(Error::Invalid) };
+    if c.kind() == Kind::Ident && c.text().is_some_and(|s| s.eq_ignore_ascii_case("auto")) {
+        return Ok(Value::Keyword(Keyword::Auto));
+    }
+    if c.kind() != Kind::Function || !c.text().is_some_and(|s| s.eq_ignore_ascii_case("rect")) {
+        return Err(Error::Invalid);
+    }
+    let parts: SmallVec<[Component<'_>; 8]> = c.children().filter(|c| c.kind() != Kind::Whitespace).collect();
+    let commas = parts.iter().filter(|c| c.kind() == Kind::Comma).count();
+    let values: SmallVec<[Component<'_>; 4]> = parts.iter().copied().filter(|c| c.kind() != Kind::Comma).collect();
+    // All four separated by commas or none: alternating, when there are.
+    if values.len() != 4 || !(commas == 0 || commas == 3 && parts.iter().enumerate().all(|(i, c)| (c.kind() == Kind::Comma) == (i % 2 == 1))) {
+        return Err(Error::Invalid);
+    }
+    let mut rect = RECT;
+    let mut numerics = SmallVec::<[Numeric; 4]>::new();
+    for (i, c) in values.into_iter().enumerate() {
+        check(cancelled)?;
+        if c.kind() == Kind::Ident && c.text().is_some_and(|s| s.eq_ignore_ascii_case("auto")) {
+            rect |= 1 << i;
+            numerics.push(Numeric::scalar(0., math::Dimension::Length, Range::All));
+        } else {
+            numerics.push(Numeric::compile(c, NumericKind::Length, Range::All, limits, cancelled)?);
+        }
+    }
+    let mut indices = [u8::MAX; 12];
+    for (i, index) in indices.iter_mut().take(4).enumerate() {
+        *index = i as u8;
+    }
+    Ok(Value::Inset(Inset(triomphe::ThinArc::from_header_and_iter(InsetHeader { reference: GeometryBox::Border, indices, rect }, numerics.into_iter()))))
+}
+
 /// Reference box selection stays separate from the shape. Layout supplies its
 /// actual dimensions; CSS percentages must not be frozen to a viewport here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,8 +136,19 @@ pub struct Inset(triomphe::ThinArc<InsetHeader, Numeric>);
 struct InsetHeader {
     reference: GeometryBox,
     indices: [u8; 12],
+    /// `clip: rect()` (CSS 2.1 §11.1.2) rather than `inset()`: RECT, with
+    /// a bit for each of top, right, bottom, left that is `auto`.
+    rect: u8,
 }
+const RECT: u8 = 0x10;
 impl Inset {
+    /// `clip`'s rect(): the offsets of its top, right, bottom and left
+    /// edges from the border box's top left (not insets), with which are
+    /// `auto` (that edge of the border box).
+    pub fn clip_rect(&self) -> Option<[bool; 4]> {
+        let rect = self.0.header.header.rect;
+        (rect & RECT != 0).then(|| std::array::from_fn(|i| rect & (1 << i) != 0))
+    }
     pub fn reference_box(&self) -> GeometryBox {
         self.0.header.header.reference
     }
@@ -187,7 +235,7 @@ impl Inset {
             });
             indices[i] = index as u8;
         }
-        Ok(Self(triomphe::ThinArc::from_header_and_iter(InsetHeader { reference, indices }, unique.into_iter())))
+        Ok(Self(triomphe::ThinArc::from_header_and_iter(InsetHeader { reference, indices, rect: 0 }, unique.into_iter())))
     }
 }
 fn quad<'a>(parts: &mut std::iter::Peekable<impl Iterator<Item = Component<'a>>>, range: Range, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<[Numeric; 4]> {

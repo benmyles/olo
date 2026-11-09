@@ -1553,6 +1553,12 @@ pub fn computed_value(style: &css::style::Style, p: css::properties::Property) -
                     _ => px(v),
                 }
             }
+            // clip's rect(), as Chrome spells it: commas, auto kept.
+            Value::Inset(inset) if inset.clip_rect().is_some() => {
+                let autos = inset.clip_rect()?;
+                let sides = inset.offsets().into_iter().zip(autos).map(|(n, auto)| if auto { Some("auto".to_owned()) } else { numeric_text(n) }).collect::<Option<Vec<_>>>()?;
+                format!("rect({})", sides.join(", "))
+            }
             Value::Color(_) => {
                 let c = style.used_color(p).ok()?.srgb8_clipped();
                 if c[3] == 255 { format!("rgb({}, {}, {})", c[0], c[1], c[2]) } else { format!("rgba({}, {}, {}, {})", c[0], c[1], c[2], trim(f64::from(c[3]) / 255.)) }

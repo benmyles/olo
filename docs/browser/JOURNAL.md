@@ -7208,3 +7208,20 @@ BMP only, though Olo's file decoder had AVIF (avif-parse, rav1d). The
 web path takes it now, by its `ftyp` brands (major or compatible, as
 Chrome), its size checked against the limits before decoding, its colour
 profile applied.
+
+A white box with "SK" sat over NYT's top ad: its "Skip to content" link,
+hidden as most sites hide such links, `position: absolute; width: 1px;
+overflow: hidden; clip: rect(0 0 0 0)`. Olo had no `clip` property, so
+the link's padding showed. It has now (CSS 2.1's rect(), commas or not,
+`auto` sides), on absolutely positioned boxes, painted and hit-tested as
+a clip; getComputedStyle spells it as Chrome does. Scene builds on NYT:
+2.06 ms with it, 2.08 without (three loads each), no change.
+
+Looking at that, `document.elementFromPoint` turned out to be a stub
+that always returned null (and `elementsFromPoint` nothing): sites ask
+it for click-outside checks, tooltips, drag and drop. The browser now
+gives the page's realm each scene it paints, and elementFromPoint asks
+the scene's own hit test, the one clicks use (paint order,
+`pointer-events`, clips, the fixed layer): the root where nothing else
+is, null outside the viewport, as Chrome. Its length is Chrome's (2)
+now, too.

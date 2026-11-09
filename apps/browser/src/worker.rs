@@ -1535,6 +1535,7 @@ fn render(
                     Err(e) => eprintln!("Browser live eval failed: {e}"),
                 }
             }
+            live.realm.set_scene(c.page.scene.clone());
             live.rendered = revision;
             // The log of changes before this render (and the last
             // measurement) has served: dropped, so snapshots stay cheap.
@@ -1975,6 +1976,7 @@ fn render(
         // (And so does one whose CSS animations run: their frames come
         // from the live page's clock; a page without scripts stood still.)
         let wants_realm = page.scripts > 0 || olo_js::has_controls(&page.document) || page.has_late_images() || page.animating();
+        let scene = page.scene.clone();
         *cached = Some(Cached {
             key: r.key.clone(),
             page,
@@ -1984,7 +1986,10 @@ fn render(
             scripted: pass == Pass::Scripted,
             wants_realm,
             loaded_at,
-            live: live_slot,
+            live: live_slot.map(|mut live| {
+                live.realm.set_scene(scene);
+                live
+            }),
             viewport_dependent: host.viewport_used.get(),
             origin,
             base,

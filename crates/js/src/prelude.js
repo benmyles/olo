@@ -811,7 +811,15 @@
     writeln(s) { this.write(s); },
     open() { return this; }, close() {},
     execCommand() { return false; }, queryCommandSupported() { return false; }, queryCommandEnabled() { return false; }, queryCommandState() { return false; },
-    elementFromPoint() { return null; }, elementsFromPoint() { return []; }, caretRangeFromPoint() { return null; },
+    // What a click there would reach, in what was painted last (the
+    // root where nothing else is; nothing outside the viewport).
+    elementFromPoint(x, y) {
+      x = +x; y = +y;
+      if (!(x >= 0 && y >= 0 && x < global.innerWidth && y < global.innerHeight)) return null;
+      return N.hitTest(x + scrollXY[0], y + scrollXY[1], scrollXY[1], global.innerHeight) || this.documentElement;
+    },
+    elementsFromPoint(x, y) { const out = []; for (let e = this.elementFromPoint(x, y); e; e = e.parentElement) out.push(e); return out; },
+    caretRangeFromPoint() { return null; },
     getSelection() { return global.getSelection(); },
     exitFullscreen() { return Promise.resolve(); }, exitPointerLock() {},
     hasStorageAccess() { return Promise.resolve(true); }, requestStorageAccess() { return Promise.resolve(); },

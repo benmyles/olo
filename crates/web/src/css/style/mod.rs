@@ -433,6 +433,7 @@ fn paint_only(p: Property) -> bool {
             | P::MaskRepeat
             | P::MaskSize
             | P::ClipPath
+            | P::Clip
             | P::Isolation
             | P::TextDecorationColor
             | P::CaretColor

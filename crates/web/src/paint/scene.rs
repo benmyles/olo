@@ -2763,6 +2763,26 @@ impl<'a> BuildJob<'a> {
                     } else {
                         clip
                     };
+                    // clip: rect() on an absolutely positioned box (CSS 2.1
+                    // §11.1.2): its edges from the border box's top left,
+                    // `auto` that edge of the border box.
+                    let clip = match s.value(P::Clip) {
+                        Value::Inset(inset) if matches!(s.value(P::Position), Value::Keyword(K::Absolute | K::Fixed)) => {
+                            let autos = inset.clip_rect().unwrap_or([true; 4]);
+                            let [top, right, bottom, left] = inset.offsets().map(|n| decoration::resolve_any(n, 0.));
+                            let (x0, x1) = (if autos[3] { 0. } else { left }, if autos[1] { outer.width } else { right });
+                            let (y0, y1) = (if autos[0] { 0. } else { top }, if autos[2] { outer.height } else { bottom });
+                            let rect = Rect { x: outer.x + x0, y: outer.y + y0, width: (x1 - x0).max(0.), height: (y1 - y0).max(0.) };
+                            let old = if clip == NONE { Rect { x: -1e30, y: -1e30, width: 2e30, height: 2e30 } } else { self.clips[clip as usize].rect };
+                            if self.clips.len() >= self.limits.commands {
+                                return Err(Error::Limit);
+                            }
+                            let index = self.clips.len() as u32;
+                            self.clips.push(Clip { rect: intersection(old, rect), radii: None, transform: children_transform });
+                            index
+                        }
+                        _ => clip,
+                    };
                     children_clip = clip;
                     // A backdrop layer's box paints at least nothing at its
                     // place, so the layer is there for what is under it to

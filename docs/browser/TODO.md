@@ -148,6 +148,10 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   out flat: job 1,756 → 310 ms, customs 1,375 → 71 ms.
 - [ ] NYT scrolls at 115% of a core (Chrome 98%), and its style job's
   matching is 188 ms of 310 (142 candidates an element).
+- [ ] elementFromPoint answers from the scene last painted: a change the
+  page made since (an element inserted, then asked about) isn't seen
+  until the next render; Chrome lays out first. caretRangeFromPoint and
+  caretPositionFromPoint are still stubs.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.

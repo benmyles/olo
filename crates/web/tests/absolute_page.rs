@@ -413,3 +413,22 @@ fn an_absolute_flex_child_sits_as_the_sole_item_would() {
         assert_eq!(t.x - s.x, 5., "an inset set: as it says, at {scale}");
     }
 }
+#[test]
+fn clip_rect_hides_an_absolute_box_and_takes_its_hits_away() {
+    // `clip: rect()` (CSS 2.1 §11.1.2) on absolutely positioned boxes only:
+    // a skip link `rect(0 0 0 0)` shows nothing and takes no clicks; a
+    // partial rect keeps its part (auto: that edge of the border box).
+    let p = load(
+        "#skip{position:absolute;left:10px;top:10px;width:1px;height:1px;padding:10px;overflow:hidden;background-color:red;clip:rect(0 0 0 0)}#part{position:absolute;left:100px;top:0;width:100px;height:60px;background-color:blue;clip:rect(10px,80px,auto,20px)}#flow{width:50px;height:50px;margin-top:100px;background-color:green;clip:rect(0 0 0 0)}</style><div id=skip>Skip</div><div id=part></div><div id=flow></div>",
+        1.,
+    );
+    let id = |node: Option<olo_web::dom::NodeId>| node.and_then(|n| p.document.attribute(n, "id").unwrap().map(str::to_owned));
+    assert_ne!(id(p.scene.hit_test(15., 15., 0., 300., &[])), Some("skip".into()));
+    assert_eq!(id(p.scene.hit_test(150., 30., 0., 300., &[])), Some("part".into()));
+    assert_ne!(id(p.scene.hit_test(110., 30., 0., 300., &[])), Some("part".into()));
+    assert_ne!(id(p.scene.hit_test(150., 5., 0., 300., &[])), Some("part".into()));
+    assert_ne!(id(p.scene.hit_test(190., 30., 0., 300., &[])), Some("part".into()));
+    assert_eq!(id(p.scene.hit_test(150., 59., 0., 300., &[])), Some("part".into()));
+    // Not positioned: clip doesn't apply.
+    assert_eq!(id(p.scene.hit_test(20., 120., 0., 300., &[])), Some("flow".into()));
+}

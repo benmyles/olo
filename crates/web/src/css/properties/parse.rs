@@ -619,6 +619,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
         Grammar::TextBoxEdge => text_box_edge(parts),
         Grammar::ContainerName => container_name(parts),
         Grammar::ClipPath => super::clip::parse(parts, limits, cancelled),
+        Grammar::ClipRect => super::clip::rect(parts, limits, cancelled),
         Grammar::FontStyle => font::style(parts, limits, cancelled),
         Grammar::Keywords(_) if property == Property::TextAlign && parts.len() == 1 && parts[0].kind() == Kind::Ident && parts[0].text().unwrap().eq_ignore_ascii_case("-webkit-match-parent") => {
             Ok(Value::Keyword(Keyword::MatchParent))
@@ -690,6 +691,7 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
         Grammar::TextBoxEdge => text_box_edge(&[c]),
         Grammar::ContainerName => container_name(&[c]),
         Grammar::ClipPath => super::clip::parse(&[c], limits, cancelled),
+        Grammar::ClipRect => super::clip::rect(&[c], limits, cancelled),
         Grammar::FontWidth => font::width(c, limits, cancelled),
         Grammar::Overflow => {
             if c.kind() == Kind::Ident && c.text().unwrap().eq_ignore_ascii_case("overlay") {
