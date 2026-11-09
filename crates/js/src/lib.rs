@@ -1200,6 +1200,28 @@ impl Realm {
         }
         (heap.used_heap_size(), heap.total_heap_size(), bytes, seen.len())
     }
+    /// A V8 heap snapshot of the realm written to `path` (debugging memory).
+    pub fn write_heap_snapshot(&mut self, path: &std::path::Path) -> std::io::Result<()> {
+        use std::io::Write as _;
+        let _entered = Entered::new(&self.isolate);
+        let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
+        let mut failed = None;
+        self.isolate.take_heap_snapshot(|chunk| match file.write_all(chunk) {
+            Ok(()) => true,
+            Err(e) => {
+                failed = Some(e);
+                false
+            }
+        });
+        failed.map_or_else(|| file.flush(), Err)
+    }
+    /// How many node wrappers the realm holds, and how many of their nodes
+    /// are in the document.
+    pub fn wrapper_counts(&self) -> (usize, usize) {
+        let s = self.state.borrow();
+        let connected = s.wrappers.keys().filter(|n| s.document.is_connected(**n).unwrap_or(false)).count();
+        (s.wrappers.len(), connected)
+    }
     /// The MediaSource stream a media element plays (its src is the
     /// source's object URL, or its srcObject the source), if it has one.
     pub fn media_stream(&self, node: NodeId) -> Option<Arc<olo_mse::Stream>> {
@@ -2573,7 +2595,7 @@ enum Snapshot {
 static SNAPSHOT: std::sync::Mutex<Snapshot> = std::sync::Mutex::new(Snapshot::Unknown);
 /// What a snapshot's layout is, besides what its key hashes: bumped when
 /// what `make_snapshot` puts in it changes.
-const SNAPSHOT_FORMAT: u32 = 2;
+const SNAPSHOT_FORMAT: u32 = 3;
 fn snapshot_path() -> Option<std::path::PathBuf> {
     use std::hash::{BuildHasher, Hash, Hasher};
     let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).filter(|p| p.is_absolute()).or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;

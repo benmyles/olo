@@ -7377,3 +7377,20 @@ IMDb's hero is still dark: its visible slide isn't one these reach. On
 BBC, each browser alone (a busy machine): Olo load 5.55 CPU s (5.23
 before), idle 1.0%, scroll 36%, 582 MB; Chrome 6.16 s, 4.5%, 138%,
 692 MB.
+
+Then why NYT's scripts cost more in Olo: V8's own threads took 57% of
+its load CPU, most of it garbage collection, and Olo's heap was 235 MB
+to Chrome's 151 with the same 4,870 elements. Heap snapshots of both
+(Olo's written with OLO_HEAP_SNAPSHOT, Chrome's over CDP) had the same
+objects, as many of each kind, each about twice the size in Olo: its V8
+was built without pointer compression, every reference 8 bytes where
+Chrome's are 4. It is built with it now (the crate's ptrcomp library).
+An empty page's heap is 2.2 MB (3.6), NYT's 187 MB, and the collector
+has that much less to mark and move.
+
+| NYT, each alone | Chrome | Olo before | Olo now |
+|---|---|---|---|
+| Load (CPU s) | 12.08 | 12.67 | 11.37 |
+| Idle | 13.2% | 2.5% | 2.7% |
+| Scroll | 119% | 122% | 125% |
+| Memory | 1,162 MB | 839 MB | 652 MB |

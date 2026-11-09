@@ -1383,6 +1383,16 @@ fn render(
             let (advances, js, renders, render_ms, since) = live.stats;
             let report = live.realm.report();
             let (gl_calls, gl_seconds) = live.realm.take_gl_stats();
+            let (wrappers, connected) = live.realm.wrapper_counts();
+            eprintln!("  live: {wrappers} node wrappers, {connected} of them in the document");
+            // OLO_HEAP_SNAPSHOT=PATH: the page's heap written there once, 15 s in.
+            if let Some(path) = std::env::var_os("OLO_HEAP_SNAPSHOT")
+                && live.started.elapsed() > Duration::from_secs(15)
+                && !std::path::Path::new(&path).exists()
+            {
+                let written = live.realm.write_heap_snapshot(std::path::Path::new(&path));
+                eprintln!("  live: heap snapshot {written:?}");
+            }
             eprintln!(
                 "  live: in {:.1} s, {advances} advances ({} ticks, at most {} in one; {js:.0} ms of scripts, {gl_calls} WebGL calls in {:.0} ms), {renders} renders ({render_ms:.0} ms); {} layouts for measurements so far",
                 since.elapsed().as_secs_f64(),

@@ -11,7 +11,7 @@ olo-web = { path = "../web" }
 # Media Source Extensions' byte streams (fragmented MPEG-4, WebM).
 olo-mse = { path = "../mse" }
 # JavaScript: V8 (C++), the one non-Rust part of the browser, as the mandate allows.
-v8 = "152"
+v8 = { version = "152", features = ["v8_enable_pointer_compression"] }
 url = "2"
 # Import maps (JSON).
 serde_json.workspace = true
