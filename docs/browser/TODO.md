@@ -42,6 +42,13 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   still rebuild the whole box tree (2-4.5 ms); typed text is rewritten
   in place. Per frame (120 Hz, as Chrome's) its animation's style patch
   is 0.3-0.7 ms for 9 elements, most of the page thread now.
+- [ ] MDN's load against Chrome: 1.46 vs 1.17 CPU s (2026-11-08: its
+  pseudo-elements looked for from the rule index, its components' new
+  styles restyling only their trees: restyles while loading 45-55 → 2-10
+  ms). Left: matching 21-27 ms per restyle from nothing (two of them),
+  renders restyling what the scripts' measurement just styled (the
+  measurer's styles are of the default interaction and its own rules),
+  layout 8-10 ms per pass (intrinsic sizes 7 ms of it).
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.

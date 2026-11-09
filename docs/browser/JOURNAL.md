@@ -6959,3 +6959,27 @@ the Guardian and old Reddit, looking for pages that fail outright:
   picture set's background identity is worked out once. GitHub against
   Chrome, each alone: load 9.41 vs 9.34 CPU s, idle 27% vs 35%,
   scrolling 56% vs 60%: no longer behind while idle or scrolling.
+- **Pseudo-elements looked for from the rule index.** MDN styles 7,141
+  elements (most in hidden menus) and has 213 pseudo-elements; looking for
+  them was 14 ms of each restyle. Whether a rule giving `content` could
+  match is now asked of the rule index and the ancestor filter alone
+  (`RuleSet::may_generate`): nested CSS like `:is(.breadcrumbs li)::after`
+  is keyed on `li`, and every one of the sidebar's items was a candidate.
+  An element's tree scopes (a walk to its tree's root, asked at every
+  match) are found once per element. 14.4 → 6 ms.
+- **A component's new styles restyle only what they reach.** MDN's and
+  Reddit's components add their styles to their shadow roots as they
+  load; each changed the rules, and a restyle with other rules began from
+  nothing (MDN: 8 times, 45-55 ms each). A recompilation in which only
+  shadow trees' sheets changed now records their hosts, and the next
+  restyle keeps every style outside those hosts' composed subtrees: 2-10
+  ms. `OLO_STYLE_CHECK` styles the document again from nothing after each
+  incremental restyle and compares every style by value; it found two
+  older bugs that more incremental restyles exposed, both fixed: a child
+  added to a host was never styled when its slot sat deep in the shadow
+  tree (the slot's subtree was copied as it was), and children of a
+  parent turned flex stayed inline (`display` isn't inherited, but
+  blockifies). 0 styles differ on MDN, GitHub, BBC, apple.com, Wikipedia
+  and 14 Reddit loads. Against Chrome, each alone: MDN load 1.85 → 1.46
+  CPU s (Chrome 1.17), Reddit 2.66 vs 2.95 CPU s, scrolling 10.5% vs 61%,
+  460 vs 716 MB.
