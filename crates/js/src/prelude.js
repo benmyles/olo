@@ -221,10 +221,9 @@
       if (!isNode(other) || other === this) return 0;
       if (this.contains(other)) return 16 | 4;
       if (other.contains(this)) return 8 | 2;
-      const order = N.query(documentNode, '*', true);
-      const a = order.indexOf(this), b = order.indexOf(other);
-      if (a < 0 || b < 0) return 1;
-      return a < b ? 4 : 2;
+      const order = N.treeOrder(this, other);
+      if (order === 0) return 1 | 32 | 2;
+      return order < 0 ? 4 : 2;
     },
     lookupNamespaceURI(prefix) { return prefix === 'svg' ? 'http://www.w3.org/2000/svg' : null; },
     isDefaultNamespace() { return true; },
@@ -247,7 +246,7 @@
       if (root) for (const inner of customIn(root)) out.push(inner);
     };
     if (type === 1) add(node);
-    for (const el of N.query(node, '*', true)) add(el);
+    for (const el of N.customIn(node)) add(el);
     return out;
   };
   const connected = (node) => {

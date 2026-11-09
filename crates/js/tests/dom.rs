@@ -782,3 +782,19 @@ fn idle_callbacks_run_at_the_next_idle_moment() {
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] idle true false,timer 30"]);
 }
+#[test]
+fn document_position_and_custom_elements_without_walking_everything() {
+    let (report, _) = run("<body><div id=a><p id=b></p></div><section id=c><i id=d></i></section><script>\
+        const [a, b, c, d] = ['a', 'b', 'c', 'd'].map((id) => document.getElementById(id));\
+        const loose = document.createElement('span');\
+        const seen = [];\
+        customElements.define('x-thing', class extends HTMLElement { connectedCallback() { seen.push(this.id); } });\
+        const host = document.createElement('div');\
+        host.innerHTML = '<x-thing id=one></x-thing><p><x-thing id=two></x-thing></p>';\
+        document.body.append(host);\
+        console.log([b.compareDocumentPosition(d), d.compareDocumentPosition(b), a.compareDocumentPosition(b), b.compareDocumentPosition(a), c.compareDocumentPosition(loose) & 1, seen.join(' ')].join(','));\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    // following, preceding, contains+following, contained+preceding, disconnected; both connected in order.
+    assert_eq!(report.console, ["[log] 4,2,20,10,1,one two"]);
+}

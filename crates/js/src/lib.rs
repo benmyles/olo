@@ -2067,6 +2067,8 @@ const NATIVES: &[&str] = &[
     "setScrollOffset",
     "media",
     "mediaCommand",
+    "treeOrder",
+    "customIn",
     "mseCreate",
     "mseSupported",
     "mseAddBuffer",
@@ -3147,6 +3149,73 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 rv.set(v8::Array::new_with_elements(scope, &items).into());
             }
         }
+        // Which of two nodes comes first in tree order (-1: the first, 1:
+        // the second, 0: not in one tree): compareDocumentPosition, without
+        // the document's every element made a wrapper (it was, each call).
+        "treeOrder" => {
+            let (Some(a), Some(b)) = (node(scope, 0), node(scope, 1)) else { return };
+            let s = state.borrow();
+            let doc = &s.document;
+            let chain = |mut n: NodeId| {
+                let mut c = vec![n];
+                while let Ok(Some(p)) = doc.parent(n) {
+                    c.push(p);
+                    n = p;
+                }
+                c.reverse();
+                c
+            };
+            let (ca, cb) = (chain(a), chain(b));
+            let order = if ca[0] != cb[0] {
+                0
+            } else {
+                let common = ca.iter().zip(&cb).take_while(|(x, y)| x == y).count();
+                match (ca.get(common), cb.get(common)) {
+                    // One holds the other: the holder first.
+                    (None, _) => -1,
+                    (_, None) => 1,
+                    (Some(&x), Some(&y)) => {
+                        let mut at = Some(x);
+                        let mut first = 1;
+                        while let Some(n) = at {
+                            if n == y {
+                                first = -1;
+                                break;
+                            }
+                            at = doc.next_sibling(n).ok().flatten();
+                        }
+                        first
+                    }
+                }
+            };
+            rv.set(v8::Integer::new(scope, order).into());
+        }
+        // The elements under a node that may be custom elements (a dash in
+        // their name, or an `is`), in tree order: what connecting a subtree
+        // looks at, without every element in it made a wrapper.
+        "customIn" => {
+            let Some(root) = node(scope, 0) else { return };
+            let found = {
+                let s = state.borrow();
+                let doc = &s.document;
+                let mut out = Vec::new();
+                let mut stack: Vec<NodeId> = doc.children(root).map(|c| c.collect::<Vec<_>>()).unwrap_or_default();
+                stack.reverse();
+                while let Some(n) = stack.pop() {
+                    if doc.node_type(n).ok() == Some(NodeType::Element) {
+                        if doc.name(n).ok().flatten().is_some_and(|name| name.contains('-')) || doc.attribute(n, "is").ok().flatten().is_some() {
+                            out.push(n);
+                        }
+                        if let Ok(children) = doc.children(n) {
+                            let children: Vec<NodeId> = children.collect();
+                            stack.extend(children.into_iter().rev());
+                        }
+                    }
+                }
+                out
+            };
+            rv.set(nodes_array(scope, &state, &found));
+        }
         // Media Source Extensions: the page's MediaSources, their buffers
         // parsed here as they are appended (`olo_mse`).
         "mseCreate" => {
@@ -3573,6 +3642,9 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
 /// the element, not through the selector engine (most querySelector
 /// calls are one of these).
 enum Simple<'a> {
+    /// `*`: every element (YouTube asks for it some two thousand times as
+    /// it starts: it went through the general matcher, element by element).
+    Any,
     Tag(String),
     Id(&'a str),
     Class(&'a str),
@@ -3580,6 +3652,9 @@ enum Simple<'a> {
 fn simple_selector(selector: &str) -> Option<Simple<'_>> {
     let selector = selector.trim();
     let ident = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') && !s.starts_with(|c: char| c.is_ascii_digit() || c == '-');
+    if selector == "*" {
+        return Some(Simple::Any);
+    }
     if let Some(id) = selector.strip_prefix('#') {
         return ident(id).then_some(Simple::Id(id));
     }
@@ -3601,6 +3676,7 @@ fn select(
         let is_html = |n: NodeId| doc.namespace(n).ok().flatten() == Some(olo_web::dom::Namespace::Html);
         let hit = |n: NodeId| -> bool {
             match &simple {
+                Simple::Any => true,
                 Simple::Tag(tag) => doc.name(n).ok().flatten().is_some_and(|name| if is_html(n) { name.eq_ignore_ascii_case(tag) } else { name == tag }),
                 Simple::Id(id) => doc.attribute(n, "id").ok().flatten() == Some(id),
                 Simple::Class(class) => doc.attribute(n, "class").ok().flatten().is_some_and(|c| c.split_ascii_whitespace().any(|t| if quirks { t.eq_ignore_ascii_case(class) } else { t == *class })),
