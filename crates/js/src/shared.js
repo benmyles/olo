@@ -11,6 +11,53 @@
   const H = N.hidden || global;
   class DOMException extends Error { constructor(message, name) { super(message); this.name = name || 'Error'; this.code = { IndexSizeError: 1, HierarchyRequestError: 3, WrongDocumentError: 4, InvalidCharacterError: 5, NotFoundError: 8, NotSupportedError: 9, InvalidStateError: 11, SyntaxError: 12, InvalidModificationError: 13, NamespaceError: 14, InvalidAccessError: 15, TypeMismatchError: 17, SecurityError: 18, NetworkError: 19, AbortError: 20, QuotaExceededError: 22, TimeoutError: 23, InvalidNodeTypeError: 24, DataCloneError: 25 }[this.name] || 0; } }
   global.DOMException = DOMException;
+  // What console.log writes of a value, read without running any of the
+  // page's code: no getter of its, no toString, toJSON or proxy trap.
+  // Chrome's console reads nothing while its DevTools are closed, and pages
+  // test for it (an Error whose stack is a getter of theirs, logged, tells
+  // them DevTools or an automation protocol is attached).
+  {
+    const own = Object.getOwnPropertyDescriptor, keys = Object.keys, isArray = Array.isArray, ErrorProto = Error.prototype;
+    const symbolText = Symbol.prototype.toString, dateText = Date.prototype.toISOString, isDate = (a) => { try { dateText.call(a); return true; } catch (e) { return e instanceof RangeError; } };
+    // (A data property, up the prototypes: what `a[k]` is, no getter run.)
+    const inherited = (a, k) => { for (let o = a, i = 0; o && i < 32 && !N.isProxy(o); o = Object.getPrototypeOf(o), i++) { const d = own(o, k); if (d) return 'value' in d ? d.value : undefined; } return undefined; };
+    const isError = (a) => { for (let o = a, i = 0; o && i < 32 && !N.isProxy(o); o = Object.getPrototypeOf(o), i++) if (o === ErrorProto) return true; return false; };
+    const read = (a, k) => { const d = own(a, k); return !d ? undefined : 'value' in d ? d.value : d.get && N.builtin(d.get) ? d.get.call(a) : undefined; };
+    const text = (a, depth) => {
+      switch (typeof a) {
+        case 'string': return depth ? JSON.stringify(a) : a;
+        case 'number': case 'boolean': case 'bigint': return String(a);
+        case 'undefined': return depth ? 'null' : 'undefined';
+        case 'symbol': return symbolText.call(a);
+        case 'function': { if (N.isProxy(a)) return 'function'; const n = own(a, 'name'); return (depth ? '' : 'function ') + (n && typeof n.value === 'string' ? n.value : '') + (depth ? '' : '()'); }
+      }
+      if (a === null) return 'null';
+      if (N.isProxy(a)) return depth ? '{}' : 'Proxy {}';
+      // An error: its name and message, and the frames V8 captured (its
+      // stack isn't read: that runs the page's Error.prepareStackTrace).
+      if (!depth && isError(a)) {
+        const name = inherited(a, 'name'), message = inherited(a, 'message');
+        const head = typeof name === 'string' ? name : 'Error';
+        return (typeof message === 'string' && message ? head + ': ' + message : head) + N.errorFrames(a);
+      }
+      if (isDate(a)) { try { return JSON.stringify(dateText.call(a)); } catch (e) { return 'null'; } }
+      if (ArrayBuffer.isView(a) || depth > 3) return isArray(a) ? '[]' : '{}';
+      if (isArray(a)) {
+        const parts = [];
+        const length = Math.min(read(a, 'length') || 0, 100);
+        for (let i = 0; i < length; i++) parts.push(text(read(a, String(i)), depth + 1));
+        return '[' + parts.join(',') + ']';
+      }
+      const parts = [];
+      for (const k of keys(a).slice(0, 100)) {
+        const v = read(a, k);
+        if (v === undefined || typeof v === 'function' || typeof v === 'symbol') continue;
+        parts.push(JSON.stringify(k) + ':' + text(v, depth + 1));
+      }
+      return '{' + parts.join(',') + '}';
+    };
+    H.__olo_consoleText = (a) => { try { return text(a, 0); } catch (e) { return '?'; } };
+  }
   const parseURL = (input, base) => {
     // Opaque schemes keep the rest as it is (a blob URL holds another URL).
     const o = String(input).match(/^(blob|data|javascript|mailto|tel|about):([\s\S]*)$/i);

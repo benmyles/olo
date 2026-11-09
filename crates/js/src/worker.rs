@@ -96,7 +96,29 @@ struct State {
     closed: bool,
 }
 type Shared = Rc<RefCell<State>>;
-const NATIVES: &[&str] = &["log", "postMessage", "fetchSync", "fetchStart", "runScript", "now", "url", "userAgent", "close", "digest", "hmac", "randomBytes", "aes", "pbkdf2", "hkdf"];
+const NATIVES: &[&str] = &[
+    "log",
+    "postMessage",
+    "fetchSync",
+    "fetchStart",
+    "runScript",
+    "now",
+    "url",
+    "userAgent",
+    "close",
+    "digest",
+    "hmac",
+    "randomBytes",
+    "aes",
+    "pbkdf2",
+    "hkdf",
+    "machine",
+    "brands",
+    "chromeVersion",
+    "isProxy",
+    "builtin",
+    "errorFrames",
+];
 
 #[allow(clippy::too_many_arguments)]
 fn run(
@@ -452,6 +474,30 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
             rv.set(string(scope, &ua));
         }
         "close" => state.borrow_mut().closed = true,
+        // What the page's navigator says (a worker's says the same, as in
+        // Chrome): [processors, memory], Chrome's brands, its version.
+        "machine" => {
+            let (threads, memory) = crate::machine();
+            let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(scope, threads as f64).into(), v8::Number::new(scope, memory).into()];
+            rv.set(v8::Array::new_with_elements(scope, &items).into());
+        }
+        "brands" => {
+            let items: Vec<v8::Local<v8::Value>> = crate::BRANDS
+                .iter()
+                .map(|(b, major, full)| {
+                    let parts: Vec<v8::Local<v8::Value>> = [*b, *major, *full].iter().map(|t| string(scope, t)).collect();
+                    v8::Array::new_with_elements(scope, &parts).into()
+                })
+                .collect();
+            rv.set(v8::Array::new_with_elements(scope, &items).into());
+        }
+        "chromeVersion" => rv.set(string(scope, crate::CHROME_FULL)),
+        "isProxy" => rv.set_bool(args.get(0).is_proxy()),
+        "errorFrames" => {
+            let text = crate::error_frames(scope, args.get(0));
+            rv.set(string(scope, &text));
+        }
+        "builtin" => rv.set_bool(v8::Local::<v8::Function>::try_from(args.get(0)).is_ok_and(|f| f.script_id() <= 0)),
         _ => {}
     }
 }

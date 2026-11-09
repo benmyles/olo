@@ -5,7 +5,8 @@
 (function (global) {
   'use strict';
   const N = global.__olo;
-  const log = (level, args) => N.log(level, args.map((a) => { try { return typeof a === 'string' ? a : (a instanceof Error ? (a.stack || String(a)) : JSON.stringify(a)); } catch (e) { return String(a); } }).join(' '));
+  const consoleText = (N.hidden || global).__olo_consoleText;
+  const log = (level, args) => N.log(level, args.map(consoleText).join(' '));
   const console = {};
   for (const level of ['log', 'info', 'debug', 'warn', 'error', 'trace', 'dir', 'table']) console[level] = (...args) => log(level, args);
   for (const name of ['group', 'groupCollapsed', 'groupEnd', 'time', 'timeEnd', 'timeLog', 'count', 'countReset', 'clear', 'profile', 'profileEnd']) console[name] = () => {};
@@ -87,7 +88,58 @@
   // Environment
   const url = new URL(N.url());
   global.location = { href: url.href, protocol: url.protocol, host: url.host, hostname: url.hostname, port: url.port, pathname: url.pathname, search: url.search, hash: url.hash, origin: url.origin, toString: () => url.href };
-  global.navigator = { userAgent: N.userAgent(), language: 'en-US', languages: ['en-US', 'en'], hardwareConcurrency: 8, onLine: true, platform: 'Linux x86_64', appName: 'Netscape', product: 'Gecko', vendor: 'Google Inc.' };
+  // navigator: Chrome's WorkerNavigator, saying what the page's navigator
+  // says (pages compare the two).
+  {
+    const tagged = (name, o) => { Object.defineProperty(o, Symbol.toStringTag, { value: name, configurable: true }); return o; };
+    const ua = N.userAgent();
+    const [threads, memory] = N.machine();
+    const brands = N.brands().map(([brand, version, full]) => ({ brand, version, full }));
+    class NavigatorUAData {
+      get brands() { return brands.map((b) => ({ brand: b.brand, version: b.version })); }
+      get mobile() { return false; }
+      get platform() { return 'Linux'; }
+      getHighEntropyValues(hints) {
+        const all = { architecture: 'x86', bitness: '64', formFactors: ['Desktop'], fullVersionList: brands.map((b) => ({ brand: b.brand, version: b.full })), model: '', platformVersion: '', uaFullVersion: N.chromeVersion(), wow64: false };
+        const out = { brands: this.brands, mobile: false, platform: 'Linux' };
+        for (const h of Array.from(hints || [])) if (Object.prototype.hasOwnProperty.call(all, h)) out[h] = all[h];
+        const sorted = {};
+        for (const k of Object.keys(out).sort()) sorted[k] = out[k];
+        return Promise.resolve(sorted);
+      }
+      toJSON() { return { brands: this.brands, mobile: false, platform: 'Linux' }; }
+    }
+    tagged('NavigatorUAData', NavigatorUAData.prototype);
+    const uaData = Object.create(NavigatorUAData.prototype);
+    const status = (state) => tagged('PermissionStatus', { state, name: '', onchange: null, addEventListener() {}, removeEventListener() {} });
+    const values = {
+      mediaCapabilities: tagged('MediaCapabilities', { decodingInfo: () => Promise.resolve({ supported: true, smooth: true, powerEfficient: true }), encodingInfo: () => Promise.resolve({ supported: true, smooth: true, powerEfficient: true }) }),
+      permissions: tagged('Permissions', { query: (d) => Promise.resolve(status(d && d.name === 'notifications' ? 'prompt' : 'prompt')) }),
+      hardwareConcurrency: threads, appCodeName: 'Mozilla', appName: 'Netscape', appVersion: ua.replace(/^Mozilla\//, ''), platform: 'Linux x86_64', product: 'Gecko', userAgent: ua,
+      language: 'en-US', languages: Object.freeze(['en-US', 'en']), onLine: true,
+      connection: tagged('NetworkInformation', { effectiveType: '4g', rtt: 50, downlink: 10, saveData: false, onchange: null }),
+      hid: tagged('HID', { getDevices: () => Promise.resolve([]), requestDevice: () => Promise.resolve([]), onconnect: null, ondisconnect: null }),
+      serial: tagged('Serial', { getPorts: () => Promise.resolve([]), onconnect: null, ondisconnect: null }),
+      usb: tagged('USB', { getDevices: () => Promise.resolve([]), onconnect: null, ondisconnect: null }),
+      deviceMemory: memory, userAgentData: uaData,
+      locks: tagged('LockManager', { request: (name, a, b) => Promise.resolve().then(() => (typeof a === 'function' ? a : b)({ name, mode: 'exclusive' })), query: () => Promise.resolve({ held: [], pending: [] }) }),
+      storage: tagged('StorageManager', { estimate: () => Promise.resolve({ quota: 2e11, usage: 0, usageDetails: {} }), persisted: () => Promise.resolve(false), getDirectory: () => Promise.reject(new DOMException('Not supported', 'NotSupportedError')) }),
+      gpu: tagged('GPU', { requestAdapter: () => Promise.resolve(null), getPreferredCanvasFormat: () => 'bgra8unorm', wgslLanguageFeatures: new Set() }),
+      storageBuckets: tagged('StorageBucketManager', { open: () => Promise.reject(new DOMException('Not supported', 'NotSupportedError')), keys: () => Promise.resolve([]), delete: () => Promise.resolve() }),
+    };
+    const WorkerNavigator = function WorkerNavigator() { throw new TypeError('Illegal constructor'); };
+    const proto = WorkerNavigator.prototype;
+    delete proto.constructor;
+    for (const name of ['mediaCapabilities', 'permissions', 'hardwareConcurrency', 'appCodeName', 'appName', 'appVersion', 'platform', 'product', 'userAgent', 'language', 'languages', 'onLine', 'connection', 'constructor', 'hid', 'serial', 'usb', 'deviceMemory', 'userAgentData', 'locks', 'storage', 'gpu', 'storageBuckets']) {
+      if (name === 'constructor') { Object.defineProperty(proto, 'constructor', { value: WorkerNavigator, writable: true, configurable: true }); continue; }
+      const v = values[name];
+      Object.defineProperty(proto, name, { get() { return v; }, enumerable: true, configurable: true });
+    }
+    tagged('WorkerNavigator', proto);
+    Object.defineProperty(WorkerNavigator, 'prototype', { writable: false });
+    global.WorkerNavigator = WorkerNavigator; global.NavigatorUAData = NavigatorUAData;
+    global.navigator = Object.create(proto);
+  }
   global.structuredClone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   global.AbortSignal = class AbortSignal extends EventTarget { constructor() { super(); this.aborted = false; this.reason = undefined; this.onabort = null; } throwIfAborted() { if (this.aborted) throw this.reason; } };
   global.AbortController = class AbortController { constructor() { this.signal = new global.AbortSignal(); } abort(reason) { if (this.signal.aborted) return; this.signal.aborted = true; this.signal.reason = reason; dispatch(this.signal, new Event('abort')); } };

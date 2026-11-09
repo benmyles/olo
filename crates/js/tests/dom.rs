@@ -873,3 +873,37 @@ fn the_battery_is_read() {
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] [object BatteryManager] number Infinity"]);
 }
+/// The console reads nothing of the page's code: an Error whose stack is a
+/// getter of the page's, an object with a getter, a proxy and a toJSON are
+/// logged without running them (pages test for it: Chrome's console runs
+/// nothing while DevTools are closed). An error of V8's logs its stack.
+#[test]
+fn the_console_runs_none_of_the_page_s_code() {
+    let (report, _) = run("<body><script>\
+        let ran = 0;\
+        const e = new Error('x'); Object.defineProperty(e, 'stack', { get() { ran++; return ''; } });\
+        console.debug(e); console.log({ a: 1, get b() { ran++; return 2; }, c: 'd', toJSON() { ran++; return {}; } });\
+        console.log(new Proxy({}, { get() { ran++; }, ownKeys() { ran++; return []; }, getOwnPropertyDescriptor() { ran++; } }));\
+        console.log(String(new Error('plain').stack === undefined), [1, 'x', null], ran);\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console.len(), 4);
+    assert_eq!(report.console[1], "[log] {\"a\":1,\"c\":\"d\"}");
+    assert_eq!(report.console[2], "[log] Proxy {}");
+    assert_eq!(report.console[3], "[log] false [1,\"x\",null] 0");
+}
+/// Logging an error doesn't format its stack: the page's
+/// Error.prepareStackTrace isn't run (pages set one to see whether a console
+/// read the stack, as DevTools' or an automation protocol's does).
+#[test]
+fn a_logged_error_s_stack_is_not_formatted() {
+    let (report, _) = run("<body><script>\
+        let ran = false; const before = Error.prepareStackTrace;\
+        Error.prepareStackTrace = function () { ran = true; return before; };\
+        console.log(new Error('quiet')); console.log(ran);\
+        Error.prepareStackTrace = before;\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert!(report.console[0].starts_with("[log] Error: quiet"), "{:?}", report.console);
+    assert_eq!(report.console[1], "[log] false");
+}

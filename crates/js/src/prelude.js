@@ -15,7 +15,8 @@
       else Object.defineProperty(target, name, Object.assign({ configurable: true, enumerable: true }, d));
     }
   };
-  const log = (level, args) => N.log(level, args.map((a) => { try { return typeof a === 'string' ? a : typeof a === 'number' || typeof a === 'bigint' || typeof a === 'undefined' || typeof a === 'symbol' || typeof a === 'function' ? String(a) : (a instanceof Error ? (a.stack || String(a)) : JSON.stringify(a)); } catch (e) { return String(a); } }).join(' '));
+  const consoleText = (N.hidden || global).__olo_consoleText;
+  const log = (level, args) => N.log(level, args.map(consoleText).join(' '));
   const console = {};
   for (const level of ['log', 'info', 'debug', 'warn', 'error', 'trace', 'dir', 'table']) console[level] = (...args) => log(level, args);
   for (const name of ['group', 'groupCollapsed', 'groupEnd', 'time', 'timeEnd', 'timeLog', 'count', 'countReset', 'assert', 'clear', 'profile', 'profileEnd']) console[name] = () => {};

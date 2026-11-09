@@ -2146,6 +2146,48 @@ fn hidden_key<'s>(scope: &mut v8::PinScope<'s, '_>) -> Option<v8::Local<'s, v8::
 }
 /// One of Olo's own functions (`__olo_*`) by name: from where the prelude
 /// keeps them (`hidden_key`), else from the global object (a worker's).
+/// An error's frames as V8 captured them when it was made, without its
+/// `stack` read: reading it runs the page's Error.prepareStackTrace, which
+/// pages set to see whether a console (DevTools, an automation protocol)
+/// read it.
+pub(crate) fn error_frames(scope: &mut v8::PinScope<'_, '_>, value: v8::Local<v8::Value>) -> String {
+    let Some(trace) = v8::Exception::get_stack_trace(scope, value) else { return String::new() };
+    let mut out = String::new();
+    for i in 0..trace.get_frame_count() {
+        let Some(frame) = trace.get_frame(scope, i) else { continue };
+        let script = frame.get_script_name_or_source_url(scope).map(|s| s.to_rust_string_lossy(scope)).unwrap_or_default();
+        let at = format!("{script}:{}:{}", frame.get_line_number(), frame.get_column());
+        match frame.get_function_name(scope).map(|s| s.to_rust_string_lossy(scope)).filter(|f| !f.is_empty()) {
+            Some(function) => out.push_str(&format!("\n    at {function} ({at})")),
+            None => out.push_str(&format!("\n    at {at}")),
+        }
+    }
+    out
+}
+/// The machine as Chrome tells pages of it: its processors online (not the
+/// share of them Olo's cgroup lets it use) and its memory in GB, rounded to
+/// a power of two between 0.25 and 32. Read once.
+pub(crate) fn machine() -> (usize, f64) {
+    static MACHINE: std::sync::OnceLock<(usize, f64)> = std::sync::OnceLock::new();
+    *MACHINE.get_or_init(|| {
+        let online = std::fs::read_to_string("/sys/devices/system/cpu/online").ok().map(|s| {
+            s.trim()
+                .split(',')
+                .map(|r| match r.split_once('-') {
+                    Some((a, b)) => b.parse::<usize>().unwrap_or(0).saturating_sub(a.parse::<usize>().unwrap_or(0)) + 1,
+                    None => usize::from(!r.is_empty()),
+                })
+                .sum::<usize>()
+        });
+        let threads = online.filter(|&n| n > 0).unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get()));
+        let kb = std::fs::read_to_string("/proc/meminfo")
+            .ok()
+            .and_then(|m| m.lines().find(|l| l.starts_with("MemTotal:")).and_then(|l| l.split_whitespace().nth(1)?.parse::<f64>().ok()))
+            .unwrap_or(8. * 1048576.);
+        let memory = 2f64.powf((kb / 1048576.).log2().round()).clamp(0.25, 32.);
+        (threads, memory)
+    })
+}
 /// The prelude's compiled code, kept: in memory for the realms after the
 /// first, on disk for the next launch (its name the prelude's hash, so each
 /// build has its own). V8 checks that a cache is for this source and these
@@ -2340,6 +2382,9 @@ const NATIVES: &[&str] = &[
     "brands",
     "chromeVersion",
     "fromPrelude",
+    "isProxy",
+    "builtin",
+    "errorFrames",
     "mseCreate",
     "mseSupported",
     "mseAddBuffer",
@@ -3469,6 +3514,14 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         "chromeVersion" => rv.set(string(scope, CHROME_FULL).into()),
         // Whether a function is the prelude's (it reads as native code, as
         // Chrome's own do).
+        // For the console, which reads nothing of the page's code: whether a
+        // value is a proxy, and whether a function is V8's own (no script).
+        "isProxy" => rv.set_bool(args.get(0).is_proxy()),
+        "errorFrames" => {
+            let text = error_frames(scope, args.get(0));
+            rv.set(string(scope, &text));
+        }
+        "builtin" => rv.set_bool(v8::Local::<v8::Function>::try_from(args.get(0)).is_ok_and(|f| f.script_id() <= 0)),
         "fromPrelude" => {
             let script = state.borrow().prelude_script;
             rv.set_bool(v8::Local::<v8::Function>::try_from(args.get(0)).is_ok_and(|f| f.script_id() == script));
@@ -3476,24 +3529,7 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         // [processors, memory (GB)] as Chrome says them: its threads, and
         // its memory rounded to a power of two between 0.25 and 32.
         "machine" => {
-            // (The machine's processors online, as Chrome counts them, not
-            // the share of them Olo's cgroup lets it use.)
-            let online = std::fs::read_to_string("/sys/devices/system/cpu/online").ok().map(|s| {
-                s.trim()
-                    .split(',')
-                    .map(|r| match r.split_once('-') {
-                        Some((a, b)) => b.parse::<usize>().unwrap_or(0).saturating_sub(a.parse::<usize>().unwrap_or(0)) + 1,
-                        None => usize::from(!r.is_empty()),
-                    })
-                    .sum::<usize>()
-            });
-            let threads = online.filter(|&n| n > 0).unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get()));
-            let kb = std::fs::read_to_string("/proc/meminfo")
-                .ok()
-                .and_then(|m| m.lines().find(|l| l.starts_with("MemTotal:")).and_then(|l| l.split_whitespace().nth(1)?.parse::<f64>().ok()))
-                .unwrap_or(8. * 1048576.);
-            let gb = kb / 1048576.;
-            let memory = 2f64.powf(gb.log2().round()).clamp(0.25, 32.);
+            let (threads, memory) = machine();
             let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(scope, threads as f64).into(), v8::Number::new(scope, memory).into()];
             rv.set(v8::Array::new_with_elements(scope, &items).into());
         }
