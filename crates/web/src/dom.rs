@@ -348,8 +348,10 @@ fn text_hash(text: &str) -> u64 {
     static SEED: std::sync::LazyLock<foldhash::fast::RandomState> = std::sync::LazyLock::new(Default::default);
     SEED.hash_one(text)
 }
-/// How many changes the log keeps before giving up on describing them.
-const CHANGES: usize = 1 << 16;
+/// How many changes the log keeps before compacting them (and giving up
+/// when that leaves it still three quarters full): a feed building its
+/// next posts makes some 100,000 between two renders.
+const CHANGES: usize = 1 << 17;
 #[derive(Clone)]
 pub struct Document {
     id: u64,
@@ -660,11 +662,62 @@ impl Document {
     fn bump_with(&mut self, change: Change) -> Result<()> {
         self.revision = self.revision.checked_add(1).ok_or(Error::RevisionOverflow)?;
         if self.changes.len() >= CHANGES {
-            self.changes.clear();
-            self.changes_from = self.revision;
+            self.compact_changes();
+            if self.changes.len() >= CHANGES / 4 * 3 {
+                self.changes.clear();
+                self.changes_from = self.revision;
+            }
         }
         self.changes.push((self.revision, change));
         Ok(())
+    }
+    /// The log, full, made shorter without forgetting what changed: each
+    /// node's changes of a kind as one (an attribute's first old value and
+    /// last new one; one that ended as it began, none), at its latest
+    /// revision, so a reader since any revision still sees all it must (and
+    /// maybe some it needn't). A page building its feed's next posts made
+    /// 90,000 changes between two renders: the log, cleared, reached back
+    /// to neither, and the page was restyled whole (Reddit, 107 ms).
+    fn compact_changes(&mut self) {
+        #[derive(Hash, PartialEq, Eq)]
+        enum Key {
+            Attribute(NodeId, Box<str>),
+            Node(NodeId),
+            Style(NodeId),
+            Text(NodeId),
+            Children(NodeId),
+            Control(NodeId),
+            Unknown,
+        }
+        let mut merged: foldhash::HashMap<Key, (u64, Change)> = foldhash::HashMap::default();
+        for (revision, change) in self.changes.drain(..) {
+            let key = match &change {
+                Change::Attribute { node, name, .. } => Key::Attribute(*node, name.clone()),
+                Change::Node(n) => Key::Node(*n),
+                Change::Style(n) => Key::Style(*n),
+                Change::Text { node, .. } => Key::Text(*node),
+                Change::Children { node, .. } => Key::Children(*node),
+                Change::Control(n) => Key::Control(*n),
+                Change::Unknown => Key::Unknown,
+            };
+            match merged.get_mut(&key) {
+                None => {
+                    merged.insert(key, (revision, change));
+                }
+                Some((at, kept)) => {
+                    *at = revision;
+                    match (kept, change) {
+                        (Change::Attribute { new: kept_new, .. }, Change::Attribute { new, .. }) => *kept_new = new,
+                        (Change::Text { emptiness: kept_empty, .. }, Change::Text { emptiness, .. }) => *kept_empty |= emptiness,
+                        (Change::Children { elements: kept_elements, .. }, Change::Children { elements, .. }) => *kept_elements |= elements,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        let mut kept: Vec<(u64, Change)> = merged.into_values().filter(|(_, c)| !matches!(c, Change::Attribute { old, new, .. } if old == new)).collect();
+        kept.sort_unstable_by_key(|(r, _)| *r);
+        self.changes = kept;
     }
     /// The changes made after `revision`, oldest first, or None when the log
     /// no longer reaches back that far (then everything may have changed).

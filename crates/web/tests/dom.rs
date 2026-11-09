@@ -461,3 +461,31 @@ fn long_strings_are_held_once_however_many_values_are_them() {
     assert_eq!(snapshot.memory().owned_text_bytes, owned, "the snapshot's count is its own");
     assert_eq!(snapshot.value(texts[0]).unwrap(), Some(sheet.as_str()));
 }
+
+/// A log too full is made shorter, not forgotten: each node's attribute as
+/// one change (its first old value, its last new one), so a reader from
+/// before still learns what changed (Reddit's feed made 90,000 changes
+/// between two renders; a cleared log restyled the page whole).
+#[test]
+fn a_full_change_log_is_compacted_not_forgotten() {
+    let mut doc = document();
+    let root = doc.root();
+    let a = element(&mut doc, "div");
+    let b = element(&mut doc, "div");
+    doc.append_child(root, a).unwrap();
+    doc.append_child(a, b).unwrap();
+    doc.set_attribute(a, "class", "first").unwrap();
+    let from = doc.revision();
+    for i in 0..140_000 {
+        doc.set_attribute(b, "data-i", i.to_string()).unwrap();
+    }
+    doc.set_attribute(a, "class", "last").unwrap();
+    let changes = doc.changes_since(from).expect("the log still reaches back");
+    assert!(changes.len() < 10_000, "{} changes", changes.len());
+    let a_change = changes.iter().find_map(|(_, c)| match c {
+        olo_web::dom::Change::Attribute { node, name, old, new } if *node == a && &**name == "class" => Some((old.clone(), new.clone())),
+        _ => None,
+    });
+    assert_eq!(a_change, Some((Some("first".into()), Some("last".into()))));
+    assert!(changes.iter().any(|(_, c)| matches!(c, olo_web::dom::Change::Attribute { node, .. } if *node == b)));
+}
