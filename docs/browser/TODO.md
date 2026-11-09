@@ -46,9 +46,13 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   prelude was 475 ms of it). Left to make faster still: the prelude's
   16-23 ms each page (a V8 startup snapshot would make it nothing),
   matching 21-27 ms per restyle from nothing, layout 8-10 ms per pass.
-- [ ] Reddit: its load costs more CPU than Chrome's when its feed's
-  components all run (4.2 vs 2.7 CPU s on a busy machine; 2.95 vs 6.33 on
-  another run: measure again quiet).
+- [ ] Reddit against Chrome, quiet, its feed working: load 3.18 vs 2.63
+  CPU s, idle 0.9% vs 3.7%, scrolling 123% vs 60% (2026-11-08). While
+  scrolling: its scripts ~1 s in 6 (parsing each 528 KB next page through
+  a template, serializing and parsing it again), style 770 ms (each page's
+  2,000 elements, 73 candidate rules each with its Tailwind classes; a
+  document sheet changed restyles from nothing: shadow trees' changes
+  keep styles, the document's don't yet), boxes 260 ms, layout 250 ms.
 - [ ] A script-less page with CSS animations takes a realm for its clock
   (the prelude's 16-23 ms once): a clock of its own would be lighter. A V8
   startup snapshot of the prelude would make every page's 16-23 ms nothing.
