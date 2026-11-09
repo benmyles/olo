@@ -7171,3 +7171,32 @@ step binds it (its document, URL, viewport, clock, screen), so it is run
 once into a V8 startup snapshot, kept on disk; a page's realm is that
 snapshot read back, bound: **4.3 ms**. The prelude's part of a page in
 the browser went from 25 ms to 1.
+
+## 2026-11-09, morning: NYT's custom properties
+
+NYT loaded at 20 CPU seconds to Chrome's 13, then sat at 79% of a core
+idle, in 2.3 GB. Its style passes took 1.4-2.8 s each, nearly all in
+custom properties: one rule gives every element some 180 of them, most
+through var() (`--tpl-typography-title-14: var(--tpl-font-weight-semi-bold)
+var(--tpl-size-font-14)/…`). Each element resolved all of them again
+(950,000 resolutions a pass) into a dictionary of its own over its
+parent's, so a lookup searched a chain as deep as the tree.
+
+Now a style job keeps each dictionary it makes, by the dictionary
+inherited and the element's custom-property candidates (as Chrome's
+matched properties cache does): an element declaring what its parent
+did over the same inherited values takes the one made before. A value
+spelled the same as the one inherited is left out, so most elements
+make none; `initial` needs no resolver; a chain 8 deep is written out
+flat. NYT's style job: 1,756 → 310 ms (customs 1,375 → 71 ms; 4,870
+taken from the memo, 453 made).
+
+| NYT, 1000×700 | Chrome | Olo before | Olo now |
+|---|---|---|---|
+| Load (CPU s, first 20 s) | 12.5 | 20.4 | 9.9 |
+| Idle | 17.6% | 79% | 1.8% |
+| Scroll | 98% | 108% | 115% |
+| Memory (PSS) | 868 MB | 2,258 MB | 803 MB |
+
+Also fixed on the way: two custom-property values from one token arena
+compared as the same whatever their ranges.

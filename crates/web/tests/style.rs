@@ -917,3 +917,42 @@ fn like_siblings_share_styles_only_where_their_matches_agree() {
     assert_eq!(color("i", 0), [0, 0, 128, 255], "under .nav p");
     assert_eq!(color("i", 1), [128, 128, 128, 255], "not under .nav");
 }
+
+#[test]
+fn custom_properties_every_element_declares_follow_what_each_inherits() {
+    // NYT's way: one rule gives every element the same custom properties,
+    // most through var(). Each element's are its own all the same: one whose
+    // inherited values changed, or which sets a base itself, sees that.
+    let host = Snapshot::default();
+    let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+    let parsed = olo_web::html::parse(
+        Arc::from(
+            "<div id=a><div id=b><div id=c style='--base:9px'><div id=d><p id=e></p><p id=f style='--empty:x'></p></div></div></div></div>\
+             <div id=g style='--size:initial'><div id=h></div></div>",
+        ),
+        Default::default(),
+        None,
+    )
+    .unwrap();
+    let sheet = rules(":root{--base:1px} *{--size:var(--base) var(--base);--empty:;--gone:initial;--deep:var(--size)} #h{--gone:back}");
+    let mut job = style::Job::new(&parsed.document, &sheet, defaults, Default::default(), Default::default(), None).unwrap();
+    while !job.step(64, |_| &host).unwrap().finished {}
+    let tree = job.finish().unwrap();
+    let style = |id: &str| tree.iter().find(|(n, _)| parsed.document.attribute(*n, "id").unwrap() == Some(id)).map(|(_, s)| s).unwrap();
+    let spelled = |id: &str, name: &str| style(id).custom(name).and_then(|c| c.value().map(|v| v.source_spelling().to_string()));
+    for id in ["a", "b"] {
+        assert_eq!(spelled(id, "--size").as_deref(), Some("1px 1px"), "{id}");
+        assert_eq!(spelled(id, "--deep").as_deref(), Some("1px 1px"), "{id}");
+    }
+    for id in ["c", "d", "e", "f"] {
+        assert_eq!(spelled(id, "--size").as_deref(), Some("9px 9px"), "{id}");
+        assert_eq!(spelled(id, "--deep").as_deref(), Some("9px 9px"), "{id}");
+        assert_eq!(spelled(id, "--gone"), None, "{id}");
+    }
+    assert_eq!(spelled("e", "--empty").as_deref(), Some(""));
+    assert_eq!(spelled("f", "--empty").as_deref(), Some("x"));
+    assert_eq!(spelled("g", "--size"), None);
+    assert_eq!(spelled("g", "--deep"), None);
+    assert_eq!(spelled("h", "--size").as_deref(), Some("1px 1px"));
+    assert_eq!(spelled("h", "--gone").as_deref(), Some("back"));
+}

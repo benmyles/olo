@@ -245,25 +245,78 @@ fn customs(
     parent: Option<&Style>,
     limits: Limits,
     cancelled: Option<&AtomicBool>,
+    memo: Option<&mut CustomsMemo>,
 ) -> Result<Arc<Dictionary>> {
     let inherited = parent.map_or_else(|| defaults.empty_customs.clone(), |p| p.customs.clone());
     if inherited.len > limits.custom_properties {
         return Err(Error::Limit);
     }
-    let mut local = cascade.custom_names().peekable();
-    if local.peek().is_none() {
+    if cascade.custom_names().next().is_none() {
         return Ok(inherited);
     }
-    // What this element declares, over its parent's dictionary.
+    // The same candidates over the same inherited dictionary make the same
+    // dictionary: an element declaring what its parent did, as NYT's every
+    // element does (some 180, most through var(): 950,000 resolved a
+    // restyle), takes what was made before.
+    let Some(memo) = memo else {
+        return merge_customs(cascade, resolver, inherited, limits, cancelled);
+    };
+    let key = CustomsMemo::key(&inherited, cascade);
+    if let Some(found) = memo.get(key, &inherited, cascade) {
+        COUNTS[2].fetch_add(1, Ordering::Relaxed);
+        return Ok(found);
+    }
+    let made = merge_customs(cascade, resolver, inherited.clone(), limits, cancelled)?;
+    COUNTS[3].fetch_add(1, Ordering::Relaxed);
+    memo.insert(key, inherited, cascade, made.clone());
+    Ok(made)
+}
+fn merge_customs(cascade: &cascade::Cascade<'_>, resolver: &mut cascade::Resolver<'_>, inherited: Arc<Dictionary>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Arc<Dictionary>> {
+    let local = cascade.custom_names();
+    // What this element declares, over its parent's dictionary: a value with
+    // nothing to substitute as it is, without the resolver; one the very
+    // same as it inherits left out, and with none other its parent's
+    // dictionary itself. (NYT declares some 180 custom properties on every
+    // element, `*`-style: resolved and copied on each, 2.2 s a restyle.)
+    use crate::css::variables::Context as _;
     let mut values = Vec::new();
     for name in local {
         check(cancelled)?;
         if inherited.len + values.len() >= limits.custom_properties || values.len() >= limits.work {
             return Err(Error::Limit);
         }
-        values.push(Custom { name: Arc::from(name), value: resolver.custom(name).map_err(Error::cascade)? });
+        let declared = cascade.lookup(name).and_then(|b| variables::Computed::declared(b.value, b.animation_tainted));
+        let value = match declared {
+            Some(value) => value,
+            None => resolver.custom(name).map_err(Error::cascade)?,
+        };
+        if inherited.get(name).is_some_and(|i| i.identical(&value) || i.same(&value)) {
+            continue;
+        }
+        values.push(Custom { name: Arc::from(name), value });
+    }
+    if values.is_empty() {
+        return Ok(inherited);
     }
     values.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+    // Over a chain already DICTIONARY_DEPTH deep: one level, the chain's
+    // values (the nearest of each name) with these over them, so a lookup
+    // stays one search, not one a level (NYT's chains went as deep as its
+    // tree: Dictionary::get and its compares were 38% of its page thread).
+    let mut inherited = inherited;
+    if inherited.depth >= DICTIONARY_DEPTH {
+        // Nearest first; a stable sort keeps them so, and the first of
+        // each name stays.
+        let mut all: Vec<Custom> = values;
+        for level in inherited.chain() {
+            check(cancelled)?;
+            all.extend(level.values.iter().cloned());
+        }
+        all.sort_by(|a, b| a.name.cmp(&b.name));
+        all.dedup_by(|later, first| later.name == first.name);
+        values = all;
+        inherited = defaults_empty(&inherited);
+    }
     COUNTS[0].fetch_add(1, Ordering::Relaxed);
     COUNTS[1].fetch_add(values.len() as u64, Ordering::Relaxed);
     let mut bytes = values.len() * size_of::<Custom>() + size_of::<Dictionary>() + 2 * size_of::<usize>();
@@ -282,7 +335,87 @@ fn customs(
     }
     let len = inherited.len + values.len();
     let parent = if inherited.values.is_empty() && inherited.parent.is_none() { None } else { Some(inherited) };
-    Ok(Arc::new(Dictionary { parent, values: values.into_boxed_slice(), bytes, len }))
+    let depth = parent.as_ref().map_or(1, |p| p.depth + 1);
+    Ok(Arc::new(Dictionary { parent, values: values.into_boxed_slice(), bytes, len, depth }))
+}
+/// Custom-property dictionaries a style job has made, by what they were
+/// made from: the inherited dictionary (held, so its address stays its own)
+/// and the element's custom-property candidates in cascade order (their
+/// token arenas held, so a range in one names one declaration).
+#[derive(Default)]
+pub(super) struct CustomsMemo {
+    buckets: std::collections::HashMap<u64, Vec<Memoized>>,
+    len: usize,
+}
+struct Memoized {
+    inherited: Arc<Dictionary>,
+    candidates: Box<[Candidate]>,
+    made: Arc<Dictionary>,
+}
+struct Candidate {
+    value: variables::Value,
+    name: (usize, usize),
+    /// An empty value's name, spelled out: an empty range need not be one
+    /// declaration's own, so its name is compared too.
+    empty: Option<Box<str>>,
+    tainted: bool,
+    priority: cascade::Priority,
+}
+/// How many dictionaries a job keeps (each holds its candidates' values).
+const MEMO_ENTRIES: usize = 512;
+impl CustomsMemo {
+    /// The key for these candidates over `inherited`.
+    fn key(inherited: &Arc<Dictionary>, cascade: &cascade::Cascade<'_>) -> u64 {
+        let mix = |h: u64, x: u64| (h.rotate_left(5) ^ x).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+        let mut h = mix(0, Arc::as_ptr(inherited) as u64);
+        for (name, value, tainted, _) in cascade.custom_candidates() {
+            let (arena, start, end) = value.identity();
+            if start == end {
+                h = name.bytes().fold(h, |h, b| mix(h, u64::from(b)));
+            }
+            h = mix(mix(mix(h, arena as u64), (u64::from(start) << 32) | u64::from(end)), u64::from(tainted));
+        }
+        h
+    }
+    fn get(&self, key: u64, inherited: &Arc<Dictionary>, cascade: &cascade::Cascade<'_>) -> Option<Arc<Dictionary>> {
+        self.buckets.get(&key)?.iter().find(|m| Arc::ptr_eq(&m.inherited, inherited) && m.matches(cascade)).map(|m| m.made.clone())
+    }
+    fn insert(&mut self, key: u64, inherited: Arc<Dictionary>, cascade: &cascade::Cascade<'_>, made: Arc<Dictionary>) {
+        if self.len >= MEMO_ENTRIES {
+            self.buckets.clear();
+            self.len = 0;
+        }
+        let candidates = cascade
+            .custom_candidates()
+            .map(|(name, value, tainted, priority)| {
+                let (_, start, end) = value.identity();
+                Candidate { value: value.clone(), name: (name.as_ptr() as usize, name.len()), empty: (start == end).then(|| name.into()), tainted, priority }
+            })
+            .collect();
+        self.buckets.entry(key).or_default().push(Memoized { inherited, candidates, made });
+        self.len += 1;
+    }
+}
+impl Memoized {
+    fn matches(&self, cascade: &cascade::Cascade<'_>) -> bool {
+        let mut mine = self.candidates.iter();
+        cascade.custom_candidates().all(|(name, value, tainted, priority)| {
+            mine.next().is_some_and(|c| {
+                c.value.identity() == value.identity()
+                    && c.name == (name.as_ptr() as usize, name.len())
+                    && c.empty.as_deref().is_none_or(|n| n == name)
+                    && c.tainted == tainted
+                    && c.priority == priority
+            })
+        }) && mine.next().is_none()
+    }
+}
+/// How many levels a custom-property dictionary's chain grows to before a
+/// new one is written out whole (see `customs`).
+const DICTIONARY_DEPTH: u16 = 8;
+/// An empty dictionary (no parent), standing for a chain written out.
+fn defaults_empty(_like: &Arc<Dictionary>) -> Arc<Dictionary> {
+    Arc::new(Dictionary { parent: None, values: Box::new([]), bytes: 0, len: 0, depth: 0 })
 }
 #[allow(clippy::too_many_arguments)]
 /// Nanoseconds in each part of computing, summed when OLO_STYLE_TIMING
@@ -301,7 +434,7 @@ pub fn used_scheme(allowed: Keyword, preferred: color::Scheme) -> color::Scheme 
         _ => color::Scheme::Light,
     }
 }
-pub(super) static COUNTS: [AtomicU64; 2] = [const { AtomicU64::new(0) }; 2];
+pub(super) static COUNTS: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
 fn stamp(on: bool) -> Option<std::time::Instant> {
     on.then(std::time::Instant::now)
 }
@@ -318,6 +451,7 @@ pub(super) fn values(
     parent: Option<&Style>,
     root: Option<&Style>,
     fonts: Option<&mut font_pool::FontPool>,
+    memo: Option<&mut CustomsMemo>,
     host: &impl Host,
     options: Options,
     limits: Limits,
@@ -571,7 +705,7 @@ pub(super) fn values(
     lap(&mut clock, 2);
     let inline_origin = coupled::apply(&mut values, defaults, parent, axes, options)?;
     lap(&mut clock, 3);
-    let customs = customs(defaults, cascade, &mut resolver, parent, limits, cancelled)?;
+    let customs = customs(defaults, cascade, &mut resolver, parent, limits, cancelled, memo)?;
     lap(&mut clock, 4);
     dependencies.substitution |= resolver.pending_cached() != 0 || cascade.custom_names().next().is_some();
     let bytes = values.len() * size_of::<Entry>() + values.iter().map(|e| e.value.reserved_bytes()).sum::<usize>() + customs.bytes;

@@ -109,6 +109,11 @@ impl Value {
     pub fn wide(&self) -> Option<Wide> {
         wide(self.components())
     }
+    /// Its arena and range: the same for clones of one value only, while
+    /// the arena lives.
+    pub(crate) fn identity(&self) -> (usize, u32, u32) {
+        (Arc::as_ptr(&self.syntax) as usize, self.start, self.end & END)
+    }
     pub(crate) fn arena_identity(&self) -> usize {
         Arc::as_ptr(&self.syntax) as usize
     }
@@ -141,13 +146,37 @@ impl Computed {
     pub fn invalid() -> Self {
         Self { value: None, animation_tainted: false }
     }
+    /// A declared value as its own computed value: one with nothing to
+    /// substitute (no var(), env() or attr()) and no CSS-wide keyword but
+    /// `initial`.
+    pub fn declared(value: &Value, animation_tainted: bool) -> Option<Self> {
+        if value.needs_substitution() {
+            return None;
+        }
+        match value.wide() {
+            None => Some(Self { value: Some(value.clone()), animation_tainted }),
+            // An unregistered property's initial value: guaranteed-invalid.
+            Some(Wide::Initial) if !animation_tainted => Some(Self::invalid()),
+            Some(_) => None,
+        }
+    }
+    /// The very same tokens (the same arena and range), not merely spelled
+    /// alike: cheap enough to ask of every element's every custom property.
+    pub fn identical(&self, other: &Self) -> bool {
+        self.animation_tainted == other.animation_tainted
+            && match (&self.value, &other.value) {
+                (None, None) => true,
+                (Some(a), Some(b)) => Arc::ptr_eq(&a.syntax, &b.syntax) && a.start == b.start && a.end == b.end,
+                _ => false,
+            }
+    }
     /// Whether two computed values are the same: both invalid, or the same
     /// tokens (the same allocation, or spelled the same).
     pub fn same(&self, other: &Self) -> bool {
         self.animation_tainted == other.animation_tainted
             && match (&self.value, &other.value) {
                 (None, None) => true,
-                (Some(a), Some(b)) => a.arena_identity() == b.arena_identity() || a.source_spelling() == b.source_spelling(),
+                (Some(a), Some(b)) => a.identity() == b.identity() || a.source_spelling() == b.source_spelling(),
                 _ => false,
             }
     }

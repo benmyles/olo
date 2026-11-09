@@ -250,6 +250,16 @@ impl<'a> Cascade<'a> {
         self.entries.capacity() * size_of::<Entry<'_>>() + self.known.capacity() * size_of::<KnownRange>()
     }
 
+    /// Every custom-property candidate in cascade order: its name, value,
+    /// taint and priority (what its custom properties are computed from,
+    /// with what it inherits).
+    pub fn custom_candidates(&self) -> impl Iterator<Item = (&'a str, &'a variables::Value, bool, Priority)> + '_ {
+        let first = self.custom.values().next().map_or(self.entries.len(), |r| r.start);
+        self.entries[first..].iter().filter_map(|e| match e.data {
+            Data::Custom(name, value) => Some((name, value, e.animation_tainted, e.priority)),
+            Data::Known(..) => None,
+        })
+    }
     pub fn custom_names(&self) -> impl Iterator<Item = &str> {
         self.custom.keys().copied()
     }

@@ -344,6 +344,7 @@ pub struct Job<'a> {
     tree: StyleTree,
     account: memory::Account,
     fonts: font_pool::FontPool,
+    customs: compute::CustomsMemo,
     /// With OLO_STYLE_TIMING set: time in hints and inline parsing, matching,
     /// computing, pseudo-elements, and the candidates and elements counted.
     timing: Option<Timing>,
@@ -487,6 +488,7 @@ impl<'a> Job<'a> {
             sharing: Vec::new(),
             account: Default::default(),
             fonts: font_pool::FontPool::new(limits.font_cache_entries),
+            customs: compute::CustomsMemo::default(),
             timing: std::env::var_os("OLO_STYLE_TIMING").map(|_| {
                 compute::TIMING.store(true, std::sync::atomic::Ordering::Relaxed);
                 for p in compute::PHASES.iter().chain(&compute::COUNTS) {
@@ -1729,6 +1731,7 @@ impl<'a> Job<'a> {
             root,
             self.tree.styles.last().map(|s| &s.style),
             Some(&mut self.fonts),
+            Some(&mut self.customs),
             host,
             Options { root: parent.is_none(), layout_parent, ..Default::default() },
             self.limits.style,
@@ -1829,6 +1832,7 @@ impl<'a> Job<'a> {
                 root,
                 None,
                 Some(&mut self.fonts),
+                Some(&mut self.customs),
                 host,
                 Options { root: false, layout_parent, ..Default::default() },
                 self.limits.style,
@@ -1870,6 +1874,7 @@ impl<'a> Job<'a> {
                 root,
                 None,
                 Some(&mut self.fonts),
+                Some(&mut self.customs),
                 host,
                 Options { root: false, layout_parent: None, ..Default::default() },
                 self.limits.style,
@@ -1951,6 +1956,11 @@ impl<'a> Job<'a> {
                 compute::COUNTS[0].load(std::sync::atomic::Ordering::Relaxed),
                 compute::COUNTS[1].load(std::sync::atomic::Ordering::Relaxed),
                 ms[5]
+            );
+            eprintln!(
+                "  customs: {} dictionaries taken from the memo, {} made and kept",
+                compute::COUNTS[2].load(std::sync::atomic::Ordering::Relaxed),
+                compute::COUNTS[3].load(std::sync::atomic::Ordering::Relaxed)
             );
         }
         if self.failed {

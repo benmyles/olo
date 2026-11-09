@@ -328,6 +328,8 @@ struct Dictionary {
     bytes: usize,
     /// How many names this and its parents hold together (an upper bound).
     len: usize,
+    /// How many levels its chain has (this one's 1 over no parent).
+    depth: u16,
 }
 impl Dictionary {
     fn get(&self, name: &str) -> Option<&variables::Computed> {
@@ -509,10 +511,10 @@ impl Defaults {
             revision,
             environment: host.environment()?,
             empty: Arc::from([]),
-            empty_customs: Arc::new(Dictionary { parent: None, values: Box::new([]), bytes: 0, len: 0 }),
+            empty_customs: Arc::new(Dictionary { parent: None, values: Box::new([]), bytes: 0, len: 0, depth: 0 }),
         };
         let cascade = cascade::Builder::new(Default::default(), cancelled).finish(false, None).map_err(Error::cascade)?;
-        let computed = compute::values(&defaults, &cascade, None, None, None, host, Options::default(), limits, cancelled)?;
+        let computed = compute::values(&defaults, &cascade, None, None, None, None, host, Options::default(), limits, cancelled)?;
         defaults.values = computed.values.into_boxed_slice();
         for (i, entry) in defaults.values.iter().enumerate() {
             defaults.positions[entry.property as usize] = i as u8;
@@ -612,7 +614,7 @@ impl Style {
         limits: Limits,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
-        Self::compute_reusing(defaults, cascade, parent, root, None, None, host, options, limits, cancelled)
+        Self::compute_reusing(defaults, cascade, parent, root, None, None, None, host, options, limits, cancelled)
     }
     #[allow(clippy::too_many_arguments)]
     fn compute_reusing(
@@ -622,6 +624,7 @@ impl Style {
         root: Option<&Style>,
         reuse: Option<&Style>,
         fonts: Option<&mut font_pool::FontPool>,
+        memo: Option<&mut compute::CustomsMemo>,
         host: &impl Host,
         options: Options,
         limits: Limits,
@@ -642,7 +645,7 @@ impl Style {
         if cascade.has_parent() != parent.is_some() || options.root && parent.is_some() {
             return Err(Error::Invalid);
         }
-        let mut computed = compute::values(&defaults, cascade, parent, root, fonts, host, options, limits, cancelled)?;
+        let mut computed = compute::values(&defaults, cascade, parent, root, fonts, memo, host, options, limits, cancelled)?;
         let clock = compute::TIMING.load(std::sync::atomic::Ordering::Relaxed).then(std::time::Instant::now);
         if !cfg!(feature = "baseline-style-dense") {
             computed.values.retain(|entry| !entry.value.same(defaults.value(entry.property)));

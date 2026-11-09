@@ -138,6 +138,16 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   slowest style 58 ms, from 105-135). Left: sheets with @font-face,
   @keyframes or a rule that can match anything still restyle all; layout
   reuses no box when a feed inserts posts (16 ms of 4,240 boxes).
+- [x] NYT's style passes took 1.4-2.8 s (2026-11-09): one rule gives
+  every element ~180 custom properties, most through var(), each
+  resolved again on every element and copied into a dictionary of its
+  own, chained as deep as the tree. A style job keeps the dictionaries
+  it makes by inherited dictionary and candidates (Chrome's matched
+  properties cache, for custom properties), values the same as inherited
+  are left out, `initial` needs no resolver, a chain 8 deep is written
+  out flat: job 1,756 → 310 ms, customs 1,375 → 71 ms.
+- [ ] NYT scrolls at 115% of a core (Chrome 98%), and its style job's
+  matching is 188 ms of 310 (142 candidates an element).
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.
