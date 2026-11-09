@@ -63,6 +63,7 @@ path = "smithay/smithay-drm-extras"
 [patch.crates-io]
 blade-graphics = { path = "gpui/blade-graphics" }
 matroska-demuxer = { path = "vendor/matroska-demuxer" }
+rustls = { path = "vendor/rustls" }
 blocking = { path = "vendor/blocking" }
 brush-interactive = { path = "vendor/brush-interactive" }
 rust_h265 = { path = "vendor/rust_h265" }

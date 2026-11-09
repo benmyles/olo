@@ -29,6 +29,30 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   keeps its folder for what it runs, not as its own process's, so
   `/proc/PID/cwd` said where it started). Drop it if upstream takes
   hooks like these (and changes its own folder on `cd`).
+- **rustls 0.23.46** (Apache-2.0 OR ISC OR MIT): Olo's browser says
+  hello as Chrome does, since sites fingerprint the ClientHello
+  (Cloudflare held Olo at its challenge for rustls's own). A
+  `ClientConfig::chrome_hello` flag turns this on (`src/client/hs.rs`,
+  `src/client/common.rs` `ChromeHello`, `src/msgs/handshake.rs`
+  `ChromeExtensions`):
+  - Chrome's cipher suites in its order. The CBC and RSA ones rustls
+    can't do are offered but never chosen by a server that has the
+    others.
+  - GREASE in the suites, groups, key shares, versions and signature
+    algorithms, and as the first and last extensions.
+  - Chrome's signature algorithms, ML-DSA included.
+  - `renegotiation_info`, `session_ticket`, SCT, `trust_anchors` and
+    ALPS, plus a GREASE ECH as BoringSSL makes one.
+  - Every extension but the GREASE ones and `pre_shared_key` in a random
+    order.
+  - The post-quantum hybrid's key share always, whatever group the
+    server chose last time.
+
+  A server that takes ALPS gets the client's EncryptedExtensions after
+  its Finished (`src/client/tls13.rs`). An SCT in a certificate entry is
+  ignored, not refused. With it, JA4, JA3 (unsorted), peetprint and
+  Akamai's HTTP/2 hash match Chrome 157's on tls.peet.ws, fresh and
+  resumed. Drop it if rustls gains a way to shape its hello.
 - **nvenc-sys/** (MIT): NVIDIA's NVENC API (nvEncodeAPI.h, Video Codec
   SDK 12) as declarations only: nvidia-video-codec-sdk 0.4.0's bindgen
   output (types, the function table, GUIDs, structure versions) with

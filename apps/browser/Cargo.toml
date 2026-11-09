@@ -23,6 +23,10 @@ olo-js = { path = "../../crates/js" }
 serde.workspace = true
 serde_json.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "http2", "gzip", "brotli", "deflate", "zstd"] }
+# TLS as Chrome speaks it (vendor/rustls: `ClientConfig::chrome_hello`):
+# its post-quantum group (aws-lc-rs), brotli certificate compression.
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "prefer-post-quantum", "brotli", "std", "tls12", "logging"] }
+rustls-native-certs = "0.8"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "time", "macros", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 url = "2"

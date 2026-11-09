@@ -185,6 +185,27 @@ pub struct Resource {
     pub headers: String,
     document_encoding: Option<&'static encoding_rs::Encoding>,
 }
+/// TLS configured as Chrome's (vendor/rustls says hello as Chrome does):
+/// TLS 1.3 and 1.2, the post-quantum group first (X25519MLKEM768, X25519,
+/// P-256, P-384, aws-lc-rs's order and Chrome's), brotli certificate
+/// compression only, h2 then http/1.1, the system's roots.
+fn chrome_tls() -> rustls::ClientConfig {
+    let provider = std::sync::Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let mut roots = rustls::RootCertStore::empty();
+    for cert in rustls_native_certs::load_native_certs().certs {
+        // (Stores hold some roots too old to parse: skipped, as reqwest skips them.)
+        let _ = roots.add(cert);
+    }
+    let mut config = rustls::ClientConfig::builder_with_provider(provider)
+        .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12])
+        .expect("aws-lc-rs does TLS 1.3 and 1.2")
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+    config.cert_decompressors = vec![rustls::compress::BROTLI_DECOMPRESSOR];
+    config.chrome_hello = true;
+    config
+}
 impl Loader {
     pub fn new() -> page::Result<Self> {
         Ok(Self {
@@ -198,6 +219,9 @@ impl Loader {
                 .http2_initial_stream_window_size(6 * 1024 * 1024)
                 .http2_initial_connection_window_size(15 * 1024 * 1024)
                 .http2_max_frame_size(None)
+                // TLS as Chrome speaks it (its hello is fingerprinted too:
+                // Cloudflare stopped Olo at its challenge for rustls's).
+                .use_preconfigured_tls(chrome_tls())
                 .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_secs(20))
                 .timeout(Duration::from_secs(60))
