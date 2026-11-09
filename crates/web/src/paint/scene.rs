@@ -419,6 +419,7 @@ pub struct PaintState {
     rest: u64,
     transforms: Box<[[f64; 6]]>,
     images: Vec<(u32, u64)>,
+    moved: Vec<[f64; 6]>,
 }
 pub struct Stratum {
     pub kind: LayerKind,
@@ -856,7 +857,30 @@ impl Scene {
             .enumerate()
             .filter_map(|(i, c)| if let Primitive::Image { image, .. } = c.primitive { Some((i as u32, tree.image(image).map_or(0, |im| im.serial()))) } else { None })
             .collect();
-        PaintState { serial: self.commands_serial, rest: h.finish(), transforms: self.transforms.clone(), images }
+        PaintState { serial: self.commands_serial, rest: h.finish(), transforms: self.transforms.clone(), images, moved: self.moved.iter().map(|m| m.matrix).collect() }
+    }
+    /// Where (document space) the moved layers whose matrices changed
+    /// since the scene `old` was the state of showed and show: their
+    /// subtrees' extents through the old and new matrices, within their
+    /// clips. Their tiles are the same (placed apart), but what the page
+    /// shows there changed. None when the layers are others.
+    pub fn moved_changed_region(&self, old: &PaintState) -> Option<Vec<Rect>> {
+        if old.moved.len() != self.moved.len() {
+            return None;
+        }
+        let mut region = Vec::new();
+        for (m, was) in self.moved.iter().zip(old.moved.iter()) {
+            if m.matrix.iter().zip(was.iter()).all(|(a, b)| a.to_bits() == b.to_bits()) {
+                continue;
+            }
+            let si = self.strata.iter().position(|s| s.kind == LayerKind::Moved(m.root))?;
+            let Some(extent) = self.stratum_extent(si) else { continue };
+            for matrix in [m.matrix, *was] {
+                let shown = aabb(matrix, extent);
+                region.push(m.clip.map_or(shown, |c| intersection(c, shown)));
+            }
+        }
+        Some(region)
     }
     /// Where (document space) this scene paints otherwise than the scene
     /// `old` was the state of, when it has the same commands and only

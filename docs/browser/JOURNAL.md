@@ -7418,3 +7418,22 @@ Access-Control-Request-Headers was dropped as a header a page may not
 set; the browser's CORS code passes it now (and a page's own x-olo-
 headers are dropped). NYT, YouTube and Reddit fail no fetch Chrome
 doesn't.
+
+IMDb's hero carousel was dark. Its pictures loaded and laid out, and a
+static render of its DOM showed them; the live page didn't. Reduced to
+a strip moved by a 300 ms transform transition in a clipped box: the
+computed transform ended at -600 px, the screen stayed at -300. The
+strip is a moved layer (animated transform, placed apart, its tiles
+kept), and the live render decides whether a frame showed anything by
+what changed: the page's matrices, never the moved layers'. Each frame
+looked unseen, so frames were skipped for 250 ms at a time and the last
+never shown. A moved layer whose matrix changed now counts where its
+extent shows, within its clip, before and after.
+
+That check had a hole the other way too: a frame that changed only
+moved layers (the same paint) was never judged unseen, so a spinner
+off screen rendered every frame (120 a second). It is judged now, and
+the wake-up for a later look, lost when the window had been pacing
+frames, is kept. A spinner 3000 px down: 8.4% CPU before, 0.4% now
+(10 s each, twice); scrolled into view it renders every frame again.
+IMDb idle: 6.2–7.8% before, 6.0–6.5% now (noise; it plays a video).

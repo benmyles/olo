@@ -840,8 +840,12 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                         let paced = l.paced_at.is_some_and(|t| t.elapsed() < Duration::from_millis(250));
                         let frame = (!paced && (l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty() || c.page.animating())).then_some(l.next_frame_ms).filter(|_| !hidden(l));
                         // Only animations off screen to show: looked at again later.
+                        // (Even when the window paced the last frames: it
+                        // heard nothing moves on screen, and sends no more.)
+                        let others = l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty();
                         let frame = match (frame, l.unseen_until_ms) {
-                            (Some(f), Some(u)) if !(l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty()) => Some(f.max(u)),
+                            (Some(f), Some(u)) if !others => Some(f.max(u)),
+                            (None, Some(u)) if !others && c.page.animating() && !hidden(l) => Some(u),
                             (f, _) => f,
                         };
                         let due = match (l.next_due_ms, frame) {
@@ -2404,8 +2408,14 @@ fn render(
     // Only some matrices moved since (an animated transform): the tiles
     // away from what they move keep their signatures (GitHub's animation
     // looked at every tile every frame, 1.3 ms).
-    let moved_region =
-        if same_paint || cached.paint_size != Some((r.key.width, r.key.height, scene.device_scale().to_bits())) { None } else { cached.paint_state.as_ref().and_then(|old| scene.changed_region(old)) };
+    // (The same paint: nothing of the page's moved, only moved layers.)
+    let moved_region = if same_paint {
+        Some(Vec::new())
+    } else if cached.paint_size != Some((r.key.width, r.key.height, scene.device_scale().to_bits())) {
+        None
+    } else {
+        cached.paint_state.as_ref().and_then(|old| scene.changed_region(old))
+    };
     let previous_signatures = std::mem::take(&mut cached.tile_signatures);
     let mut signatures: TileMap<Option<u64>> = TileMap::with_capacity_and_hasher(previous_signatures.len(), Default::default());
     let backdrop_boxes = backdrop_boxes(scene.layout(), scale);
@@ -2705,11 +2715,13 @@ fn render(
     // meanwhile are the scroll's, newly in view: not the animation's, which
     // changed nothing but those matrices. A spinner off screen re-rendered
     // the page every frame of a scroll.)
+    // (Moved layers placed anew show wherever their clips let them.)
+    let moved_layers = cached.paint_state.as_ref().and_then(|old| scene.moved_changed_region(old));
     let unseen = pass == Pass::Live
-        && moved_region.as_ref().is_some_and(|region| {
+        && moved_region.as_ref().zip(moved_layers.as_ref()).is_some_and(|(region, layers)| {
             let (top, bottom) = (f64::from(scroll) / scale, f64::from(scroll + r.key.height as i32) / scale);
             let width = f64::from(r.key.width) / scale;
-            region.iter().all(|rect| rect.y + rect.height <= top || rect.y >= bottom || rect.x + rect.width <= 0. || rect.x >= width)
+            region.iter().chain(layers.iter()).all(|rect| rect.y + rect.height <= top || rect.y >= bottom || rect.x + rect.width <= 0. || rect.x >= width)
         });
     // (Decided by live renders only: a frame of the scroll alone, which
     // renders nothing, cleared it, and the next frame rendered again.)
