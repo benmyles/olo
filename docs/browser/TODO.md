@@ -66,6 +66,17 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   tiny-skia's 0.16 (it blends two mip levels, as Chrome's results show it
   should); SIMD over the row, or one level when they are near, would
   close it.
+- [ ] Media Source Extensions: no `MediaSource` at all, so YouTube's and
+  Reddit's videos (HLS through hls.js) never play; Reddit shows a spinner
+  where they would be. Needs the script API (MediaSource, SourceBuffer,
+  buffered ranges, object URLs) and the player reading a growing fMP4 or
+  WebM stream (its demuxers read a whole file).
+- [ ] Turned or scaled moved layers only on the page itself: a spinner in
+  an opacity group, under a transform or a fixed box still repaints its
+  tile each frame. Scale animations show the layer's texture magnified
+  (sharp again when they end), as Chrome's do.
+- [ ] SVG stroke properties from stylesheets (`stroke-dasharray` animated
+  by CSS, Material's spinner) aren't read: presentation attributes only.
 - [ ] `getComputedStyle` answers no `animation-name` (a page probing which
   elements animate finds none).
 - [ ] Decoded pictures: kept whole while bound (a page's budget 256 MB,

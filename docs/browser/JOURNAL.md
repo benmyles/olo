@@ -7074,4 +7074,12 @@ the Guardian and old Reddit, looking for pages that fail outright:
   `<img>` (or SVG) with `opacity: .3`, a blur, a rotation or greyscale was
   drawn as if it had none: atomic inlines now paint through the same
   groups and transforms as blocks.
+- **Spinners.** Reddit's video posts spin a loading ring until their video
+  plays (it doesn't yet: below), and that ring cost 55% of a core, a tile
+  painted again 114 times a second. An animated box that turns or scales
+  is now a layer painted once and turned on the GPU (as Chrome composites
+  one); a test page of spinners went from 14% of a core to 8%. Looking at
+  them found three more things wrong: a rounded border whose sides differ
+  in colour (every CSS spinner's ring) was drawn square, SVG dashes were
+  drawn solid, and a paused animation ran on. All three as Chrome now.
 
