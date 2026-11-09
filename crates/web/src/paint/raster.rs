@@ -465,8 +465,9 @@ impl Engine {
         if g.blur > 0. {
             let sigma = f64::from(g.blur) * scale;
             // A wide blur at a fraction of the resolution (one in `k`),
-            // within the tile size limit: what it blurs away it never needed.
-            let mut k = (sigma / 12.).max(1.).floor();
+            // within the tile size limit: what it blurs away it never needed
+            // (`blur_step`).
+            let mut k = blur_step(sigma);
             loop {
                 let margin = (3. * sigma / k).ceil();
                 let w = (f64::from(region.width) / k).ceil() + 2. * margin;
@@ -491,8 +492,7 @@ impl Engine {
                 // its place, scaled by k (bilinear: it is all blurred).
                 let ox = f64::from(small.x) * k - f64::from(region.x);
                 let oy = f64::from(small.y) * k - f64::from(region.y);
-                let paint = tiny_skia::PixmapPaint { quality: if k > 1. { tiny_skia::FilterQuality::Bilinear } else { tiny_skia::FilterQuality::Nearest }, ..Default::default() };
-                out.draw_pixmap(0, 0, content.as_ref(), &paint, Transform::from_row(k as f32, 0., 0., k as f32, ox as f32, oy as f32), None);
+                upscale(&content, k, ox, oy, &mut out);
                 layer = out;
             }
         }
@@ -518,7 +518,7 @@ impl Engine {
         }
         let sigma = f64::from(d.sigma) * scale;
         let (dx, dy) = (f64::from(d.dx) * scale, f64::from(d.dy) * scale);
-        let mut k = (sigma / 12.).max(1.).floor();
+        let mut k = blur_step(sigma);
         loop {
             let margin = (3. * sigma / k).ceil();
             let w = (f64::from(region.width) / k).ceil() + 2. * margin;
@@ -551,11 +551,7 @@ impl Engine {
         let mut out = Pixmap::new(region.width, region.height).ok_or(Error::Limit)?;
         let ox = f64::from(small.x) * k + dx - f64::from(region.x);
         let oy = f64::from(small.y) * k + dy - f64::from(region.y);
-        let paint = tiny_skia::PixmapPaint {
-            quality: if k > 1. || ox.fract() != 0. || oy.fract() != 0. { tiny_skia::FilterQuality::Bilinear } else { tiny_skia::FilterQuality::Nearest },
-            ..Default::default()
-        };
-        out.draw_pixmap(0, 0, shadow.as_ref(), &paint, Transform::from_row(k as f32, 0., 0., k as f32, ox as f32, oy as f32), None);
+        upscale(&shadow, k, ox, oy, &mut out);
         out.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), None);
         Ok(out)
     }
@@ -596,6 +592,14 @@ fn filter_colors(layer: &mut Pixmap, m: &[f32; 20]) {
         px[3] = (alpha * 255. + 0.5) as u8;
     }
 }
+/// How coarse a blur of `sigma` device pixels is drawn: one pixel in `k`
+/// each way, `k` a whole number so its weights repeat. Not coarser than a
+/// twelfth of sigma: the content is drawn at that resolution before it is
+/// blurred, and gradients there are sampled at points, so a sixth moved a
+/// striped backdrop's mean colour by 7 in 255.
+fn blur_step(sigma: f64) -> f64 {
+    (sigma / 12.).max(1.).floor()
+}
 /// A Gaussian blur of standard deviation `sigma` (pixels) over a
 /// premultiplied layer, as three box blurs each way (Filter Effects 1
 /// §13.1's approximation): linear in the pixels whatever the radius.
@@ -608,56 +612,125 @@ fn blur(layer: &mut Pixmap, sigma: f64) {
     let passes: [(usize, usize); 3] = if d % 2 == 1 { [(d / 2, d / 2); 3] } else { [(d / 2, d / 2 - 1), (d / 2 - 1, d / 2), (d / 2, d / 2)] };
     let (w, h) = (layer.width() as usize, layer.height() as usize);
     let data = layer.data_mut();
-    let mut scratch = vec![0u8; w.max(h) * 4];
+    // Both ways as passes down columns, a row at a time, every column's
+    // window summed side by side (walking one column, or one row's pixels,
+    // at a time was a cache line or a bounds check per pixel): across
+    // through the layer turned on its side, then down it.
+    let mut a = vec![0u8; data.len()];
+    let mut b = vec![0u8; data.len()];
+    let mut sums = vec![0u32; w.max(h) * 4];
+    transpose(data, &mut a, w, h);
     for &(before, after) in &passes {
-        for y in 0..h {
-            box_line(&mut data[y * w * 4..(y + 1) * w * 4], 4, w, before, after, &mut scratch);
+        box_columns(&a, &mut b, h * 4, w, before, after, &mut sums[..h * 4]);
+        std::mem::swap(&mut a, &mut b);
+    }
+    transpose(&a, &mut b, h, w);
+    for (i, &(before, after)) in passes.iter().enumerate() {
+        let out: &mut [u8] = if i == passes.len() - 1 { data } else { &mut a };
+        box_columns(&b, out, w * 4, h, before, after, &mut sums[..w * 4]);
+        if i < passes.len() - 1 {
+            std::mem::swap(&mut a, &mut b);
         }
     }
-    let mut column = vec![0u8; h * 4];
-    for &(before, after) in &passes {
-        for x in 0..w {
-            for y in 0..h {
-                column[y * 4..y * 4 + 4].copy_from_slice(&data[(y * w + x) * 4..(y * w + x) * 4 + 4]);
-            }
-            box_line(&mut column, 4, h, before, after, &mut scratch);
-            for y in 0..h {
-                data[(y * w + x) * 4..(y * w + x) * 4 + 4].copy_from_slice(&column[y * 4..y * 4 + 4]);
+}
+/// RGBA pixels `w` wide and `h` high into `out` turned on their side (`h`
+/// wide, `w` high).
+fn transpose(src: &[u8], out: &mut [u8], w: usize, h: usize) {
+    const BLOCK: usize = 16;
+    for y0 in (0..h).step_by(BLOCK) {
+        for x0 in (0..w).step_by(BLOCK) {
+            for y in y0..(y0 + BLOCK).min(h) {
+                for x in x0..(x0 + BLOCK).min(w) {
+                    out[(x * h + y) * 4..(x * h + y) * 4 + 4].copy_from_slice(&src[(y * w + x) * 4..(y * w + x) * 4 + 4]);
+                }
             }
         }
     }
 }
-/// One box blur along a line of `n` RGBA pixels (`step` bytes apart):
-/// each the mean of the window from `before` pixels back to `after` on,
-/// nothing past the ends.
-fn box_line(line: &mut [u8], step: usize, n: usize, before: usize, after: usize, scratch: &mut [u8]) {
-    let size = (before + after + 1) as u32;
-    let mut sum = [0u32; 4];
-    for i in 0..=after.min(n.saturating_sub(1)) {
-        for c in 0..4 {
-            sum[c] += u32::from(line[i * step + c]);
+/// `sum / size`, rounded, as a multiply: (sum · ⌈2¹⁶ / size⌉ + 2¹⁵) >> 16,
+/// within a 255th of the division for any window a blur takes.
+fn box_scale(size: usize) -> u32 {
+    (65536 + size as u32 - 1) / size as u32
+}
+/// One box blur down every column of `rows` rows `stride` bytes wide, from
+/// `data` into `out`: `sums` holds each byte column's window.
+fn box_columns(data: &[u8], out: &mut [u8], stride: usize, rows: usize, before: usize, after: usize, sums: &mut [u32]) {
+    let scale = box_scale(before + after + 1);
+    sums.fill(0);
+    for row in data.chunks_exact(stride).take(after + 1) {
+        for (s, &v) in sums.iter_mut().zip(row) {
+            *s += u32::from(v);
         }
     }
-    for i in 0..n {
-        for c in 0..4 {
-            scratch[i * 4 + c] = ((sum[c] + size / 2) / size) as u8;
+    for i in 0..rows {
+        for (o, &s) in out[i * stride..(i + 1) * stride].iter_mut().zip(sums.iter()) {
+            *o = ((s * scale + 32768) >> 16) as u8;
         }
-        // Slide: the pixel `after + 1` on comes in, `before` back goes out.
-        let incoming = i + after + 1;
-        if incoming < n {
-            for c in 0..4 {
-                sum[c] += u32::from(line[incoming * step + c]);
+        if i + after + 1 < rows {
+            for (s, &v) in sums.iter_mut().zip(&data[(i + after + 1) * stride..(i + after + 2) * stride]) {
+                *s += u32::from(v);
             }
         }
         if i >= before {
-            let outgoing = i - before;
-            for c in 0..4 {
-                sum[c] -= u32::from(line[outgoing * step + c]);
+            for (s, &v) in sums.iter_mut().zip(&data[(i - before) * stride..(i - before + 1) * stride]) {
+                *s -= u32::from(v);
             }
         }
     }
-    for i in 0..n {
-        line[i * step..i * step + 4].copy_from_slice(&scratch[i * 4..i * 4 + 4]);
+}
+/// `src` scaled up by the whole number `k` onto `out`, its origin at
+/// (`ox`, `oy`) in `out`'s pixels, bilinear (as tiny-skia samples, pixel
+/// centres to pixel centres), in fixed point and a row at a time: a
+/// blurred layer back at full resolution without the general pipeline,
+/// which was half the cost of a blurred tile.
+fn upscale(src: &Pixmap, k: f64, ox: f64, oy: f64, out: &mut Pixmap) {
+    let (sw, sh) = (src.width() as usize, src.height() as usize);
+    let (w, h) = (out.width() as usize, out.height() as usize);
+    if sw == 0 || sh == 0 {
+        return;
+    }
+    // Where an output pixel's centre falls: the source pixel before it and
+    // the next one's weight out of 256, both clamped to the source.
+    let place = |at: usize, origin: f64, len: usize| -> (usize, usize, u32) {
+        let u = (at as f64 + 0.5 - origin) / k - 0.5;
+        let i = u.floor();
+        let f = ((u - i) * 256.).round() as u32;
+        let last = len as f64 - 1.;
+        (i.clamp(0., last) as usize, (i + 1.).clamp(0., last) as usize, f.min(256))
+    };
+    let columns: Vec<(usize, usize, u32)> = (0..w).map(|x| place(x, ox, sw)).collect();
+    let src = src.data();
+    // Source rows scaled across (×256), the two the current output row
+    // reads, kept while the rows go down.
+    let across = |r: usize, into: &mut [u16]| {
+        let row = &src[r * sw * 4..(r + 1) * sw * 4];
+        for (o, &(a, b, f)) in into.chunks_exact_mut(4).zip(&columns) {
+            for c in 0..4 {
+                o[c] = (u32::from(row[a * 4 + c]) * (256 - f) + u32::from(row[b * 4 + c]) * f) as u16;
+            }
+        }
+    };
+    let mut upper = vec![0u16; w * 4];
+    let mut lower = vec![0u16; w * 4];
+    let mut have: (usize, usize) = (usize::MAX, usize::MAX);
+    let data = out.data_mut();
+    for y in 0..h {
+        let (a, b, f) = place(y, oy, sh);
+        if have.0 != a {
+            if have.1 == a {
+                std::mem::swap(&mut upper, &mut lower);
+            } else {
+                across(a, &mut upper);
+            }
+            have.0 = a;
+        }
+        if have.1 != b {
+            across(b, &mut lower);
+            have.1 = b;
+        }
+        for ((o, &t), &l) in data[y * w * 4..(y + 1) * w * 4].iter_mut().zip(&upper).zip(&lower) {
+            *o = ((u32::from(t) * (256 - f) + u32::from(l) * f + 32768) >> 16) as u8;
+        }
     }
 }
 /// A group's `mix-blend-mode` (its index in the scene's list) as the
@@ -682,5 +755,103 @@ fn blend_mode(code: u8) -> tiny_skia::BlendMode {
         15 => B::Luminosity,
         16 => B::Plus,
         _ => B::SourceOver,
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    /// A layer of `w` × `h` with a few opaque shapes on it.
+    fn shapes(w: u32, h: u32) -> Pixmap {
+        let mut p = Pixmap::new(w, h).unwrap();
+        for (x, y, s, c) in [(5., 7., 20., [220, 40, 40]), (30., 18., 9., [30, 60, 230]), (12., 33., 25., [250, 210, 0])] {
+            let mut paint = tiny_skia::Paint::default();
+            paint.set_color_rgba8(c[0], c[1], c[2], 255);
+            p.fill_rect(tiny_skia::Rect::from_xywh(x, y, s, s * 0.7).unwrap(), &paint, Transform::identity(), None);
+        }
+        p
+    }
+    /// The blur as it was written first: a division per value, one column
+    /// at a time.
+    fn reference_blur(layer: &mut Pixmap, sigma: f64) {
+        let d = (sigma * 3. * (2. * std::f64::consts::PI).sqrt() / 4. + 0.5).floor() as usize;
+        let passes: [(usize, usize); 3] = if d % 2 == 1 { [(d / 2, d / 2); 3] } else { [(d / 2, d / 2 - 1), (d / 2 - 1, d / 2), (d / 2, d / 2)] };
+        let (w, h) = (layer.width() as usize, layer.height() as usize);
+        let line = |get: &dyn Fn(usize, usize) -> u8, n: usize, before: usize, after: usize| -> Vec<[u8; 4]> {
+            (0..n)
+                .map(|i| {
+                    let mut px = [0u8; 4];
+                    for (c, v) in px.iter_mut().enumerate() {
+                        let sum: u32 = (i.saturating_sub(before)..=(i + after).min(n - 1)).map(|j| u32::from(get(j, c))).sum();
+                        let size = (before + after + 1) as u32;
+                        *v = ((sum + size / 2) / size) as u8;
+                    }
+                    px
+                })
+                .collect()
+        };
+        for &(before, after) in &passes {
+            for y in 0..h {
+                let row = {
+                    let data = layer.data();
+                    line(&|x, c| data[(y * w + x) * 4 + c], w, before, after)
+                };
+                for (x, px) in row.iter().enumerate() {
+                    layer.data_mut()[(y * w + x) * 4..(y * w + x) * 4 + 4].copy_from_slice(px);
+                }
+            }
+        }
+        for &(before, after) in &passes {
+            for x in 0..w {
+                let column = {
+                    let data = layer.data();
+                    line(&|y, c| data[(y * w + x) * 4 + c], h, before, after)
+                };
+                for (y, px) in column.iter().enumerate() {
+                    layer.data_mut()[(y * w + x) * 4..(y * w + x) * 4 + 4].copy_from_slice(px);
+                }
+            }
+        }
+    }
+    fn max_difference(a: &Pixmap, b: &Pixmap) -> u8 {
+        a.data().iter().zip(b.data()).map(|(x, y)| x.abs_diff(*y)).max().unwrap_or(0)
+    }
+    #[test]
+    fn blur_matches_the_direct_box_blurs() {
+        for (w, h, sigma) in [(48, 40, 3.), (61, 37, 6.5), (40, 64, 12.)] {
+            let mut fast = shapes(w, h);
+            let mut slow = fast.clone();
+            blur(&mut fast, sigma);
+            reference_blur(&mut slow, sigma);
+            // A multiply for each division: within rounding, pass by pass.
+            assert!(max_difference(&fast, &slow) <= 2, "{w}×{h} at {sigma}: {}", max_difference(&fast, &slow));
+        }
+    }
+    #[test]
+    fn upscale_matches_bilinear_drawing() {
+        let mut src = shapes(48, 40);
+        blur(&mut src, 3.);
+        for (k, ox, oy) in [(2., -6., -9.), (3., -4., -2.), (5., -11.5, -3.25)] {
+            let mut fast = Pixmap::new(96, 80).unwrap();
+            upscale(&src, k, ox, oy, &mut fast);
+            let mut drawn = Pixmap::new(96, 80).unwrap();
+            let paint = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..Default::default() };
+            drawn.draw_pixmap(0, 0, src.as_ref(), &paint, Transform::from_row(k as f32, 0., 0., k as f32, ox as f32, oy as f32), None);
+            // Where the source covers the pixel (a blur's margin always
+            // does): past its edge tiny-skia fades out, the upscale clamps.
+            let inside = |at: usize, origin: f64, len: u32| {
+                let u = (at as f64 + 0.5 - origin) / k - 0.5;
+                u >= 0. && u <= f64::from(len) - 1.
+            };
+            let mut worst = 0;
+            for y in (0..80).filter(|&y| inside(y, oy, src.height())) {
+                for x in (0..96).filter(|&x| inside(x, ox, src.width())) {
+                    let i = (y * 96 + x) * 4;
+                    for c in 0..4 {
+                        worst = worst.max(fast.data()[i + c].abs_diff(drawn.data()[i + c]));
+                    }
+                }
+            }
+            assert!(worst <= 2, "×{k} at ({ox}, {oy}): {worst}");
+        }
     }
 }

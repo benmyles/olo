@@ -243,7 +243,7 @@ struct State {
     document: Document,
     config: Config,
     quirks: QuirksMode,
-    wrappers: HashMap<NodeId, v8::Global<v8::Object>>,
+    wrappers: olo_web::dom::NodeMap<v8::Global<v8::Object>>,
     /// The boxed ids wrappers point at; freed with the realm.
     ids: Vec<*mut NodeId>,
     templates: Option<Templates>,
@@ -252,29 +252,29 @@ struct State {
     /// named properties.
     names: Names,
     /// The page's canvases, by element, drawn by its scripts.
-    canvases: HashMap<NodeId, canvas::Canvas>,
+    canvases: olo_web::dom::NodeMap<canvas::Canvas>,
     /// The page's WebGL canvases, by element, drawn by the GPU.
-    gl: HashMap<NodeId, webgl::Context>,
+    gl: olo_web::dom::NodeMap<webgl::Context>,
     /// WebGL calls made and the time in them (for the live page's stats).
     gl_calls: u64,
     /// Selectors compiled for querySelector and matches, by their text
     /// (a page asks the same ones over and over).
-    selectors: HashMap<(String, bool), Arc<Selectors>>,
+    selectors: HashMap<(String, bool), Arc<Selectors>, foldhash::fast::RandomState>,
     gl_seconds: f64,
     image_lookup: Option<ImageLookup>,
     cookies: Option<Cookies>,
     /// Images the scripts loaded, by `img` element.
-    images: HashMap<NodeId, Arc<olo_web::image::Image>>,
+    images: olo_web::dom::NodeMap<Arc<olo_web::image::Image>>,
     /// The URL each element's picture was asked for (to ask again when one
     /// let go comes back into the document).
-    image_urls: HashMap<NodeId, String>,
+    image_urls: olo_web::dom::NodeMap<String>,
     /// Elements out of the document whose pictures were let go, with the
     /// URL to ask for when they come back.
-    images_let_go: HashMap<NodeId, String>,
+    images_let_go: olo_web::dom::NodeMap<String>,
     /// Each `img` element's latest image request (0: one answered at
     /// once): an earlier one finishing later is stale and dropped, as
     /// HTML's "update the image data" aborts it.
-    image_latest: HashMap<NodeId, u64>,
+    image_latest: olo_web::dom::NodeMap<u64>,
     /// An image came for an element since the pictures were last taken
     /// (`canvases`): the page renders to show it.
     images_dirty: bool,
@@ -298,7 +298,7 @@ struct State {
     /// browser (agents see it focused).
     focused: Option<NodeId>,
     /// What the browser's players report of each `<video>` and `<audio>`.
-    media: HashMap<NodeId, Media>,
+    media: olo_web::dom::NodeMap<Media>,
     /// What the scripts asked of them since the browser last looked.
     media_commands: Vec<(NodeId, MediaCommand)>,
     next_request: u64,
@@ -443,22 +443,22 @@ impl Realm {
             document,
             config,
             quirks,
-            wrappers: HashMap::new(),
+            wrappers: Default::default(),
             ids: Vec::new(),
             templates: None,
             names: Names::default(),
             fetcher,
-            canvases: HashMap::new(),
-            gl: HashMap::new(),
+            canvases: Default::default(),
+            gl: Default::default(),
             gl_calls: 0,
             gl_seconds: 0.,
-            selectors: HashMap::new(),
+            selectors: Default::default(),
             image_lookup: None,
             cookies: None,
-            images: HashMap::new(),
-            image_urls: HashMap::new(),
-            images_let_go: HashMap::new(),
-            image_latest: HashMap::new(),
+            images: Default::default(),
+            image_urls: Default::default(),
+            images_let_go: Default::default(),
+            image_latest: Default::default(),
             images_dirty: false,
             requests: Vec::new(),
             in_flight: HashMap::new(),
@@ -468,7 +468,7 @@ impl Realm {
             select_menu: None,
             history: Vec::new(),
             focused: None,
-            media: HashMap::new(),
+            media: Default::default(),
             media_commands: Vec::new(),
             next_request: 1,
             workers: HashMap::new(),
@@ -1400,22 +1400,22 @@ impl State {
             document: Document::new(Arc::from(""), Default::default()).expect("an empty document"),
             config: Config::default(),
             quirks: QuirksMode::NoQuirks,
-            wrappers: HashMap::new(),
+            wrappers: Default::default(),
             ids: Vec::new(),
             templates: None,
             names: Names::default(),
             fetcher: None,
-            canvases: HashMap::new(),
-            gl: HashMap::new(),
+            canvases: Default::default(),
+            gl: Default::default(),
             gl_calls: 0,
             gl_seconds: 0.,
-            selectors: HashMap::new(),
+            selectors: Default::default(),
             image_lookup: None,
             cookies: None,
-            images: HashMap::new(),
-            image_urls: HashMap::new(),
-            images_let_go: HashMap::new(),
-            image_latest: HashMap::new(),
+            images: Default::default(),
+            image_urls: Default::default(),
+            images_let_go: Default::default(),
+            image_latest: Default::default(),
             images_dirty: false,
             requests: Vec::new(),
             in_flight: HashMap::new(),
@@ -1425,7 +1425,7 @@ impl State {
             select_menu: None,
             history: Vec::new(),
             focused: None,
-            media: HashMap::new(),
+            media: Default::default(),
             media_commands: Vec::new(),
             next_request: 1,
             workers: HashMap::new(),
@@ -1845,8 +1845,8 @@ fn attribute_name(state: &Shared, node: NodeId, name: String) -> String {
 #[derive(Default)]
 struct Names {
     revision: Option<u64>,
-    ids: HashMap<String, NodeId>,
-    names: HashMap<String, NodeId>,
+    ids: HashMap<String, NodeId, foldhash::fast::RandomState>,
+    names: HashMap<String, NodeId, foldhash::fast::RandomState>,
 }
 impl Names {
     fn current(&mut self, doc: &Document) -> &Self {
@@ -3473,7 +3473,15 @@ fn simple_selector(selector: &str) -> Option<Simple<'_>> {
     }
     ident(selector).then(|| Simple::Tag(selector.to_ascii_lowercase()))
 }
-fn select(doc: &Document, root: NodeId, selector: &str, quirks: bool, all: bool, matching: bool, compiled: &mut HashMap<(String, bool), Arc<Selectors>>) -> Result<Vec<NodeId>, String> {
+fn select(
+    doc: &Document,
+    root: NodeId,
+    selector: &str,
+    quirks: bool,
+    all: bool,
+    matching: bool,
+    compiled: &mut HashMap<(String, bool), Arc<Selectors>, foldhash::fast::RandomState>,
+) -> Result<Vec<NodeId>, String> {
     if let Some(simple) = simple_selector(selector) {
         let is_html = |n: NodeId| doc.namespace(n).ok().flatten() == Some(olo_web::dom::Namespace::Html);
         let hit = |n: NodeId| -> bool {

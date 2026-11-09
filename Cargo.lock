@@ -7946,6 +7946,7 @@ dependencies = [
 name = "olo-js"
 version = "0.1.0"
 dependencies = [
+ "foldhash 0.2.0",
  "getrandom 0.3.4",
  "glow",
  "hmac 0.13.0",

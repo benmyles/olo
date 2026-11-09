@@ -4,11 +4,11 @@ use crate::font::{self, FaceId, Selection};
 use harfrust::{Buffer, Font, ShapePlan, ShaperFont};
 mod paragraph;
 pub use crate::text::unicode::{Graphemes, graphemes};
+use foldhash::{HashMap, HashMapExt};
 pub use harfrust::{Direction, Feature, Language, Script};
 pub use paragraph::{Analysis, BaseDirection, Paragraph, ParagraphJob, ParagraphLimits, ParagraphReport, Progress, StyleRun, VisualRun, features_of};
 use smallvec::SmallVec;
 use std::{
-    collections::HashMap,
     ops::Range,
     sync::{
         Arc,

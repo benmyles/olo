@@ -1,6 +1,6 @@
 use super::*;
 use crate::css::Component;
-use std::collections::{HashMap, HashSet};
+use foldhash::{HashMap, HashMapExt, HashSet, HashSetExt};
 /// Stable, unique property identity within this element snapshot. Inherited
 /// values are already computed by their parent's resolver, not recascaded here.
 pub struct Binding<'a> {

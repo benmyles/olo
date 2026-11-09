@@ -1,7 +1,7 @@
 use super::*;
 use crate::css::{Components, Kind, Statement, StatementKind, Syntax};
+use foldhash::{HashMap, HashMapExt};
 use selectors::{Selectors, SubjectKey};
-use std::collections::HashMap;
 /// Unsupported/invalid source remains observable to conformance/eval callers.
 /// An issue is never evidence that all original sheet semantics were applied.
 #[derive(Clone, Debug)]

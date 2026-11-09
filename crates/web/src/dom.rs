@@ -341,10 +341,12 @@ pub struct ControlState {
 /// them (`Document::interned`).
 const INTERNED_BYTES: usize = 512;
 fn text_hash(text: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::hash::DefaultHasher::new();
-    text.hash(&mut h);
-    h.finish()
+    // (foldhash: SipHash over Reddit's long texts was a quarter of its
+    // page thread while it scrolled. Seeded once per process, at random:
+    // a page can't choose texts that collide, and no hash leaves it.)
+    use std::hash::BuildHasher;
+    static SEED: std::sync::LazyLock<foldhash::fast::RandomState> = std::sync::LazyLock::new(Default::default);
+    SEED.hash_one(text)
 }
 /// How many changes the log keeps before giving up on describing them.
 const CHANGES: usize = 1 << 16;
@@ -379,10 +381,12 @@ pub struct Document {
     /// Reddit's components' copies filled the 64 MB it may own, and its
     /// next page could not be parsed. (Behind an Arc: a snapshot copies a
     /// pointer.)
-    interned: Arc<std::collections::HashMap<u64, (Arc<Box<str>>, u32)>>,
+    interned: Arc<std::collections::HashMap<u64, (Arc<Box<str>>, u32), std::hash::BuildHasherDefault<NodeHasher>>>,
     /// Names and their atoms, shared with snapshots, copied on a new name.
     names: Arc<Vec<Arc<str>>>,
-    atoms: Arc<HashMap<Arc<str>, Atom>>,
+    /// (foldhash, randomly seeded: every attribute lookup hashes a name,
+    /// and SipHash's share of that was most of Reddit's hashing.)
+    atoms: Arc<HashMap<Arc<str>, Atom, foldhash::fast::RandomState>>,
     /// Form controls' current state, apart from their attributes (HTML's
     /// value and checkedness: what the person typed or ticked), shared
     /// with snapshots.
@@ -484,7 +488,7 @@ impl Document {
             owned_bytes: 0,
             interned: Arc::default(),
             names: Arc::new(Vec::new()),
-            atoms: Arc::new(HashMap::new()),
+            atoms: Arc::default(),
             controls: Arc::new(Default::default()),
             scrolls: Arc::new(Default::default()),
             scroll_serial: 0,
