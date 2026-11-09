@@ -1867,11 +1867,46 @@ pub struct TerminalSettings {
     /// anything graphical, and how, Olo's Chrome included (Terminal's
     /// agent_context.rs, apps/screen/agent-context.md; off by default).
     pub agent_screens: bool,
+    /// What Keep It Going (a tab's menu) types to a coding agent that has
+    /// stopped (Ben, 2026-11-08: "make the keep going message
+    /// configurable, by default it should be "Please continue""): empty,
+    /// the default.
+    pub keep_going_says: String,
+}
+
+impl TerminalSettings {
+    /// Keep It Going's message, unless the person changed it.
+    pub const KEEP_GOING_SAYS: &str = "Please continue";
+
+    /// What Keep It Going says: the person's, else the default (never
+    /// nothing).
+    pub fn keep_going_says(&self) -> &str {
+        let says = self.keep_going_says.trim();
+        if says.is_empty() { Self::KEEP_GOING_SAYS } else { says }
+    }
 }
 
 impl Default for TerminalSettings {
     fn default() -> Self {
-        TerminalSettings { worktrees: "~/worktrees".into(), agent_context: false, agent_titles: false, agent_screens: false }
+        TerminalSettings { worktrees: "~/worktrees".into(), agent_context: false, agent_titles: false, agent_screens: false, keep_going_says: Self::KEEP_GOING_SAYS.into() }
+    }
+}
+
+#[cfg(test)]
+mod keep_going_tests {
+    use super::TerminalSettings;
+
+    /// "Please continue" unless changed; the person's own, trimmed; never
+    /// nothing (left empty, or settings from before it, the default).
+    #[test]
+    fn keep_going_says() {
+        assert_eq!(TerminalSettings::default().keep_going_says(), "Please continue");
+        let own = TerminalSettings { keep_going_says: "  Keep at it, thanks \n".into(), ..Default::default() };
+        assert_eq!(own.keep_going_says(), "Keep at it, thanks");
+        let empty = TerminalSettings { keep_going_says: "   ".into(), ..Default::default() };
+        assert_eq!(empty.keep_going_says(), "Please continue");
+        let before: TerminalSettings = serde_json::from_str(r#"{"worktrees":"~/w"}"#).unwrap();
+        assert_eq!(before.keep_going_says(), "Please continue");
     }
 }
 

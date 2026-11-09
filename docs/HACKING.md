@@ -10240,7 +10240,13 @@ within 5 s.
 **Keep It Going** (Ben, 2026-11-06; `Tab::keep_going`, `KeepGoing`): on a
 tab with a coding agent, its menu (and Tabs ▸ Keep It Going, which
 agents reach through the commands socket, `tab-keep-going:SHELL`) has
-Terminal say "please continue" to the agent once it has stopped: after
+Terminal say "Please continue" (or what Preferences ▸ Terminal ▸ Coding
+Agents ▸ Keep It Going says has instead, `TerminalSettings::
+keep_going_says`, followed live; Use Default puts the default back;
+left empty, the default: Ben, 2026-11-08: "make the keep going message
+configurable, by default it should be "Please continue" but let the
+user change it to whatever they want, as well as revert back to the
+default") to the agent once it has stopped: after
 two minutes (`KEEP_GOING_QUIET`) with nothing at all changing on its
 screen and nothing typed, its turn over (`State::Idle`: not while it
 works, nor on a question, whose answer is the person's), at most once
@@ -10259,7 +10265,9 @@ the hour start again); `OLO_TERMINAL_KEEP_GOING_SECS` shortens the wait
 for a test. Tried headless with a stand-in named `claude` (an idle
 screen, a goal clock ticking every 2 s): one "please continue" after
 the quiet, none again within the hour, back after Terminal quit and
-started again.
+started again. And with the message set in Preferences ("Keep at it,
+thanks") a stand-in got that, the tab's name saying it too; Use
+Default put "Please continue" back, in the field and the setting.
 
 **Repositories** (`src/git.rs`, `src/repos.rs`), in process through
 libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)

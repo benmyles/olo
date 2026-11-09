@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-08
 
+### Terminal: what Keep It Going says, yours to choose
+
+*23:16* — Preferences ▸ Terminal ▸ Coding Agents: Keep It Going says “Please continue” unless you change it; Use Default puts it back. Terminal follows it at once.
+
+![Terminal: what Keep It Going says, yours to choose](2026-11-08/231638-terminal-what-keep-it-going-says-yours-to-choose.png)
+
 ### Stopping a backup, said as it goes
 
 *22:56* — Stopping the moment Stop is clicked (or an upgrade asks): the pack being sent finished first, how much of it and how long, then what's done is kept for the next to go on from.

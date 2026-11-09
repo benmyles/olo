@@ -809,7 +809,7 @@ impl Terminal {
             .iter()
             .map(|tab| {
                 let pr = repos::pr_of(&self.prs, tab);
-                let status = match (tab.status(), pr.map(|p| p.describe())) {
+                let status = match (tab.status(&self.keep_going_says), pr.map(|p| p.describe())) {
                     (Some(a), Some(b)) => Some(format!("{a}; {b}")),
                     (a, b) => a.or(b),
                 };

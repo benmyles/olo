@@ -286,10 +286,11 @@ fn ui_lint_settings_index() {
                     continue;
                 }
                 // Not settings: a scroll bar's arrows, every panel's
-                // Defaults and Revert, a state shown as a button, a
-                // problem's fix (there only while it is), the made-up
-                // displays' buttons.
-                if (n.role == "Button" && (name.starts_with("Scroll ") || matches!(name.as_str(), "Defaults" | "Revert" | "Searching…" | "Fix in Olo Doctor…"))) || this_machines(&name) {
+                // Defaults and Revert, a field's own Use Default, a state
+                // shown as a button, a problem's fix (there only while it
+                // is), the made-up displays' buttons.
+                if (n.role == "Button" && (name.starts_with("Scroll ") || matches!(name.as_str(), "Defaults" | "Revert" | "Use Default" | "Searching…" | "Fix in Olo Doctor…"))) || this_machines(&name)
+                {
                     continue;
                 }
                 // The innermost box round it, by a name that is the same

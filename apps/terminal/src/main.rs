@@ -279,8 +279,9 @@ const KEEP_GOING_QUIET: std::time::Duration = std::time::Duration::from_secs(120
 /// At most once in this long ("limit it to sending up to one "please
 /// continue" per hour").
 const KEEP_GOING_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
-/// What it says.
-const KEEP_GOING_SAYS: &str = "please continue";
+/// What it says, as Preferences ▸ Terminal ▸ Coding Agents has it now
+/// (followed live; kept on Terminal's state, `keep_going_says`).
+struct KeepGoingSays(String);
 
 /// The quiet it waits for: `KEEP_GOING_QUIET`, or in a test
 /// `OLO_TERMINAL_KEEP_GOING_SECS` (seconds).
@@ -313,9 +314,10 @@ impl Tab {
         }
     }
 
-    /// What it's doing, for its tab's name to screen readers and agents.
-    fn status(&self) -> Option<String> {
-        let keep = self.keep_going.as_ref().map(|_| "kept going (\u{201c}please continue\u{201d} after two quiet minutes, at most hourly)");
+    /// What it's doing, for its tab's name to screen readers and agents
+    /// (`says`: what Keep It Going says).
+    fn status(&self, says: &str) -> Option<String> {
+        let keep = self.keep_going.as_ref().map(|_| format!("kept going (\u{201c}{says}\u{201d} after two quiet minutes, at most hourly)"));
         let what = match self.agent {
             Some((agent, state)) => Some(format!("{}: {}", agent.name(), state.describe())),
             None => self.rang.then(|| "bell rang".into()),
@@ -675,6 +677,8 @@ pub(crate) struct Terminal {
     prs: HashMap<git::PrKey, git::Pr>,
     /// Preferences ▸ Terminal: where new worktrees go.
     worktrees_at: String,
+    /// Preferences ▸ Terminal: what Keep It Going says.
+    pub(crate) keep_going_says: String,
     notifier: Notifier,
     /// The notification each shell's agent last put up.
     notes: HashMap<u64, NoteId>,
@@ -1667,6 +1671,7 @@ impl Terminal {
     /// hasn't said so within the hour. How long till it looks again
     /// (None: off, or the tab gone).
     fn keep_going_turn(&mut self, cx: &mut Cx, shell: u64) -> Option<std::time::Duration> {
+        let says = self.keep_going_says.clone();
         let (win, i) = self.find_shell(shell)?;
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return None };
         let tab = &mut t.tabs[i];
@@ -1689,8 +1694,8 @@ impl Terminal {
         }
         k.said = Some(now);
         k.since = Instant::now();
-        tab.session.write(KEEP_GOING_SAYS.as_bytes().to_vec());
-        tracing::info!(shell, "keep it going: said \"{KEEP_GOING_SAYS}\"");
+        tab.session.write(says.as_bytes().to_vec());
+        tracing::info!(shell, "keep it going: said \"{says}\"");
         // Its Return a moment after, as a person types it (all at once, a
         // TUI may take it as pasted text, the Return a new line in it).
         cx.spawn(async move |me, cx| {
@@ -2495,6 +2500,17 @@ impl Terminal {
             Ok(on) => return self.set_agent_context(*on),
             Err(m) => m,
         };
+        let message = match message.downcast::<KeepGoingSays>() {
+            Ok(says) => {
+                if self.keep_going_says != says.0 {
+                    self.keep_going_says = says.0;
+                    // (The tab names that say it.)
+                    cx.redraw_all();
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         let message = match message.downcast::<daemon::Report>() {
             Ok(report) => {
                 for w in self.windows.values_mut() {
@@ -2944,6 +2960,7 @@ fn main() {
                 branches: HashMap::new(),
                 prs: HashMap::new(),
                 worktrees_at: olo_protocol::TerminalSettings::default().worktrees,
+                keep_going_says: olo_protocol::TerminalSettings::KEEP_GOING_SAYS.into(),
                 notifier: Notifier::new(proxy.clone(), "Terminal", "olo-terminal"),
                 notes: HashMap::new(),
                 remembered: None,
@@ -2995,6 +3012,7 @@ fn main() {
         });
         olo_kit_base::settings::watch(move |s| {
             proxy.send(AgentContext { groups: s.terminal.agent_context, titles: s.terminal.agent_titles, screens: s.terminal.agent_screens });
+            proxy.send(KeepGoingSays(s.terminal.keep_going_says().to_owned()));
             proxy.send(repos::WorktreesAt(s.terminal.worktrees));
         });
     });

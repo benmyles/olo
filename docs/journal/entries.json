@@ -3784,5 +3784,11 @@
   "title": "Stopping a backup, said as it goes",
   "caption": "Stopping the moment Stop is clicked (or an upgrade asks): the pack being sent finished first, how much of it and how long, then what's done is kept for the next to go on from.",
   "image": "2026-11-08/225647-stopping-a-backup-said-as-it-goes.png"
+ },
+ {
+  "time": "2026-11-08T23:16:38",
+  "title": "Terminal: what Keep It Going says, yours to choose",
+  "caption": "Preferences \u25b8 Terminal \u25b8 Coding Agents: Keep It Going says \u201cPlease continue\u201d unless you change it; Use Default puts it back. Terminal follows it at once.",
+  "image": "2026-11-08/231638-terminal-what-keep-it-going-says-yours-to-choose.png"
  }
 ]

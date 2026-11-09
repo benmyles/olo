@@ -233,7 +233,8 @@ impl Panel {
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),
             Panel::Sound => (800, 466),
-            Panel::Terminal => (520, 692),
+            // Coding Agents beside Git Worktrees and Command Suggestions.
+            Panel::Terminal => (900, 600),
             // The themes, the chosen one's colour sets beside them.
             Panel::Themes => (800, 600),
             // Tall enough for Touch with both of its notes (a pad with no
