@@ -294,7 +294,7 @@
   global.WebGLContextEvent = class WebGLContextEvent extends Event { constructor(type, init) { super(type, init); this.statusMessage = (init && init.statusMessage) || ''; } };
   // getContext: WebGL kinds here; the 2D kind stays the prelude's.
   const getContext2D = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function (kind, attributes) {
+  HTMLCanvasElement.prototype.getContext = { getContext(kind, attributes) {
     kind = String(kind);
     if (kind === 'webgl' || kind === 'experimental-webgl' || kind === 'webgl2') {
       if (this._gl) return this._gl._version === (kind === 'webgl2' ? 2 : 1) ? this._gl : null;
@@ -308,5 +308,5 @@
       return this._gl;
     }
     return getContext2D.call(this, kind, attributes);
-  };
+  } }.getContext;
 })(globalThis);

@@ -716,7 +716,7 @@
       srcset: { get() { return N.attr(this, 'srcset') || ''; }, set(v) { N.setAttr(this, 'srcset', String(v)); if (N.nodeName(this) === 'IMG') loadImageElement(this); else if (N.nodeName(this) === 'SOURCE' && isPicture(N.parent(this))) pictureChanged(N.parent(this)); } },
     });
     const setAttribute = Element.prototype.setAttribute;
-    Element.prototype.setAttribute = function (name, value) { setAttribute.call(this, name, value); const n = String(name).toLowerCase(); if ((n === 'src' || n === 'srcset' || n === 'sizes') && N.nodeName(this) === 'IMG') loadImageElement(this); else if ((n === 'srcset' || n === 'media' || n === 'sizes' || n === 'type') && N.nodeName(this) === 'SOURCE' && isPicture(N.parent(this))) pictureChanged(N.parent(this)); };
+    Element.prototype.setAttribute = { setAttribute(name, value) { setAttribute.call(this, name, value); const n = String(name).toLowerCase(); if ((n === 'src' || n === 'srcset' || n === 'sizes') && N.nodeName(this) === 'IMG') loadImageElement(this); else if ((n === 'srcset' || n === 'media' || n === 'sizes' || n === 'type') && N.nodeName(this) === 'SOURCE' && isPicture(N.parent(this))) pictureChanged(N.parent(this)); } }.setAttribute;
   }
   H.__olo_imageSizeOf = imageSizeOf; H.__olo_imagePixelSize = imagePixelSize;
   // Text and Comment
@@ -1501,15 +1501,15 @@
       configurable: true, enumerable: true,
     });
     const setAttr = Element.prototype.setAttribute;
-    Element.prototype.setAttribute = function (name, value) {
+    Element.prototype.setAttribute = { setAttribute(name, value) {
       setAttr.call(this, name, value);
       if (String(name).toLowerCase() === 'src' && isMedia(this)) attachFor(this, value);
-    };
+    } }.setAttribute;
     const removeAttr = Element.prototype.removeAttribute;
-    Element.prototype.removeAttribute = function (name) {
+    Element.prototype.removeAttribute = { removeAttribute(name) {
       removeAttr.call(this, name);
       if (String(name).toLowerCase() === 'src' && this._mediaSource) attachFor(this, '');
-    };
+    } }.removeAttribute;
     // An element playing a MediaSource: its duration and buffered time are
     // the source's.
     const plain = { duration: Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'duration'), buffered: Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'buffered'), seekable: Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'seekable') };
@@ -2738,7 +2738,7 @@
   // Trusted Types: a policy's values wrapped (they are strings to
   // whatever takes them; nothing is enforced).
   {
-    const trusted = (name) => { const T = function () { throw new TypeError('Illegal constructor'); }; Object.defineProperty(T, 'name', { value: name }); T.prototype.toString = function () { return this._value; }; T.prototype.toJSON = function () { return this._value; }; global[name] = T; return (v) => { const t = Object.create(T.prototype); Object.defineProperty(t, '_value', { value: String(v) }); return t; }; };
+    const trusted = (name) => { const T = function () { throw new TypeError('Illegal constructor'); }; Object.defineProperty(T, 'name', { value: name }); T.prototype.toString = { toString() { return this._value; } }.toString; T.prototype.toJSON = { toJSON() { return this._value; } }.toJSON; global[name] = T; return (v) => { const t = Object.create(T.prototype); Object.defineProperty(t, '_value', { value: String(v) }); return t; }; };
     const html = trusted('TrustedHTML'), script = trusted('TrustedScript'), scriptURL = trusted('TrustedScriptURL');
     const Policy = function TrustedTypePolicy() { throw new TypeError('Illegal constructor'); };
     global.TrustedTypePolicy = Policy;

@@ -24,11 +24,55 @@
   const nativeNames = new WeakMap();
   const fnToString = Function.prototype.toString;
   const fromPrelude = N.fromPrelude;
-  const native = (f, name) => {
-    if (typeof f !== 'function' || nativeNames.has(f) || !fromPrelude(f)) return f;
+  // A function of an API is, as Chrome's are, no constructor: no
+  // prototype, `new` refused, its own keys only length and name (pages
+  // test each). One written as `function () {}` is called through a
+  // method that is; a getter refuses a prototype for `this` (Illegal
+  // invocation, as Chrome's do: pages read each member of a prototype and
+  // take a value for a lie).
+  const register = (f, name) => {
     nativeNames.set(f, name);
     if (f.name !== name) try { define(f, 'name', { value: name, configurable: true }); } catch (e) {}
     return f;
+  };
+  const illegal = (o) => o == null || ((typeof o === 'object' || typeof o === 'function') && has(o, 'constructor'));
+  const guarded = new WeakSet();
+  const guard = (get, name) => {
+    const k = name.slice(4);
+    const g = getOwn({ get [k]() { if (illegal(this)) throw new TypeError('Illegal invocation'); return get.call(this); } }, k).get;
+    guarded.add(g);
+    return register(g, name);
+  };
+  const plain = (f, name) => {
+    let w;
+    if (name.startsWith('get ')) return guard(f, name);
+    if (name.startsWith('set ')) { const k = name.slice(4); w = getOwn({ set [k](v) { f.call(this, v); } }, k).set; }
+    else { w = { [name]() { return f.apply(this, arguments); } }[name]; define(w, 'length', { value: f.length, configurable: true }); }
+    return register(w, name);
+  };
+  const native = (f, name) => {
+    if (typeof f !== 'function' || nativeNames.has(f) || !fromPrelude(f)) return f;
+    if (has(f, 'prototype')) return plain(f, name);
+    if (name.startsWith('get ')) return guard(f, name);
+    return register(f, name);
+  };
+  // (What the walk finds is only named.)
+  const named = (f, name) => (typeof f !== 'function' || nativeNames.has(f) || !fromPrelude(f) ? f : register(f, name));
+  // Each member of an interface's prototype as Chrome's: getters guarded,
+  // methods no constructors. (Its place among the others kept.)
+  const hardened = (d, name) => {
+    if (d.get && !guarded.has(d.get) && fromPrelude(d.get)) { d.get = guard(d.get, 'get ' + name); if (d.set && has(d.set, 'prototype') && fromPrelude(d.set)) d.set = plain(d.set, 'set ' + name); }
+    else if (typeof d.value === 'function' && has(d.value, 'prototype') && fromPrelude(d.value) && !/^[A-Z]/.test(name)) d.value = plain(d.value, name);
+    return d;
+  };
+  const harden = (P) => {
+    for (const name of Object.getOwnPropertyNames(P)) {
+      if (name === 'constructor') continue;
+      const d = getOwn(P, name);
+      if (!d.configurable) continue;
+      if (d.get && !guarded.has(d.get) && fromPrelude(d.get)) { d.get = guard(d.get, 'get ' + name); if (d.set && has(d.set, 'prototype') && fromPrelude(d.set)) d.set = plain(d.set, 'set ' + name); define(P, name, d); }
+      else if (typeof d.value === 'function' && has(d.value, 'prototype') && fromPrelude(d.value) && !/^[A-Z]/.test(name)) { d.value = plain(d.value, name); define(P, name, d); }
+    }
   };
   let walk = null;
   const toString = { toString() {
@@ -49,6 +93,8 @@
   // VTTCues). An event is made for real, an Event with its init's members;
   // the rest stay out until Olo has them, but for a parent of another, kept
   // off the global.)
+  const stubs = new Set();
+  const shaped = new WeakSet();
   const isEvent = (name) => { for (let n = name, i = 0; n && i < 16; i++) { if (n === 'Event') return true; n = (shape.get(n) || '').split(':')[1]; } return false; };
   const iface = (name, inner = true) => {
     if (has(global, name) && typeof global[name] === 'function') {
@@ -76,6 +122,7 @@
     if (String(C.length) !== length) define(C, 'length', { value: Number(length) || 0, configurable: true });
     define(C.prototype, Symbol.toStringTag, { value: name, configurable: true });
     nativeNames.set(C, name);
+    stubs.add(name);
     // (Interfaces Chrome doesn't put on its global, only behind objects:
     // MemoryInfo, StyleMedia, DeprecatedStorageQuota.)
     if (shape.has(name) && (!constructible || event)) define(global, name, { value: C, writable: true, configurable: true, enumerable: false });
@@ -529,7 +576,7 @@
           break;
         }
         if (!d) d = stub(name, kind, accessors, methods);
-        if (d) members.push([name, d]);
+        if (d) members.push([name, hardened(d, name)]);
       }
       return { P, members, names: new Set(list.map(([n]) => n)) };
     };
@@ -564,7 +611,7 @@
       const moved = taken.get(P) || new Set();
       for (const name of Object.getOwnPropertyNames(P)) {
         if (names.has(name) || moved.has(name) || gone.has(name)) continue;
-        extras.push([name, { ...getOwn(P, name), enumerable: false }]);
+        extras.push([name, hardened({ ...getOwn(P, name), enumerable: false }, name)]);
       }
       const C = has(P, 'constructor') ? P.constructor : null;
       let T = P;
@@ -599,6 +646,8 @@
       if (p && typeof p === 'object' && replaced.has(Object.getPrototypeOf(p))) Object.setPrototypeOf(p, replaced.get(Object.getPrototypeOf(p)));
     }
     for (const node of [global.document, global.document && global.document.doctype]) if (node && replaced.has(Object.getPrototypeOf(node))) Object.setPrototypeOf(node, replaced.get(Object.getPrototypeOf(node)));
+
+    for (const { P } of plans) shaped.add(replaced.get(P) || P);
     // A document's location is its own (unforgeable), as in Chrome.
     if (global.document) {
       const loc = getOwn(Document.prototype, 'location');
@@ -619,6 +668,14 @@
     if (d && d.configurable) delete global[name];
   }
 
+  // ---------- The other interfaces Olo has, their members as Chrome's.
+  for (const [name, kind] of CHROME_WINDOW) {
+    if (!kind.startsWith('C:') || stubs.has(name)) continue;
+    const d = getOwn(global, name);
+    const C = d && d.value;
+    if (typeof C === 'function' && C.prototype && typeof C.prototype === 'object' && !shaped.has(C.prototype)) harden(C.prototype);
+  }
+
   // ---------- What every function the page can reach is called (above).
   walk = () => {
   const seen = new WeakSet();
@@ -630,10 +687,10 @@
       let d;
       try { d = getOwn(o, k); } catch (e) { continue; }
       if (!d) continue;
-      if (d.get) native(d.get, 'get ' + k);
-      if (d.set) native(d.set, 'set ' + k);
+      if (d.get) named(d.get, 'get ' + k);
+      if (d.set) named(d.set, 'set ' + k);
       if (typeof d.value === 'function') {
-        native(d.value, k);
+        named(d.value, k);
         if (d.value.prototype) visit(d.value.prototype, depth + 1);
         visit(d.value, depth + 1);
       } else if (d.value && typeof d.value === 'object' && k !== 'document') visit(d.value, depth + 1);
@@ -645,9 +702,9 @@
     if (name.startsWith('__olo')) continue;
     let d;
     try { d = getOwn(global, name); } catch (e) { continue; }
-    if (d.get) native(d.get, 'get ' + name);
-    if (d.set) native(d.set, 'set ' + name);
-    if (typeof d.value === 'function') { native(d.value, name); if (d.value.prototype) visit(d.value.prototype, 1); visit(d.value, 1); }
+    if (d.get) named(d.get, 'get ' + name);
+    if (d.set) named(d.set, 'set ' + name);
+    if (typeof d.value === 'function') { named(d.value, name); if (d.value.prototype) visit(d.value.prototype, 1); visit(d.value, 1); }
     else if (d.value && typeof d.value === 'object' && d.value !== global) visit(d.value, 1);
   }
   if (global.document) { visit(global.document, 0); }
