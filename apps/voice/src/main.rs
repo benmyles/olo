@@ -13,7 +13,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use olo_protocol::voice::{Mode, Model, NODE, Noise, Settings, State};
-use olo_system::audio::{self, Devices, Kind};
+use olo_system::audio::{self, Devices, Kind, Volume};
 
 fn main() -> ExitCode {
     olo_crash::install();
@@ -147,6 +147,7 @@ fn service() -> ExitCode {
     let mut config: Option<engine::Config> = None;
     let mut state = State { pid: std::process::id(), ..State::default() };
     let mut last_frames = (0u64, 0u64);
+    let mut followed: Option<Followed> = None;
 
     loop {
         // Only while recording is there anything to report as time goes.
@@ -203,8 +204,12 @@ fn service() -> ExitCode {
             }
             state.running = true;
             state.error = None;
+            if let (Some(e), Some(m)) = (&engine, &microphone) {
+                follow(&mut followed, d, m, e);
+            }
         } else {
             give_back(engine.take(), &default_in, &microphone);
+            followed = None;
             config = None;
             state.running = false;
             state.echo_cancelling = false;
@@ -232,6 +237,70 @@ fn service() -> ExitCode {
     give_back(engine.take(), &default_in, &microphone);
     let _ = std::fs::remove_file(State::path());
     ExitCode::SUCCESS
+}
+
+/// What the processed source and its microphone were last left as: the
+/// microphone's name, and their mute and volume.
+#[derive(Debug, Clone, PartialEq)]
+struct Followed {
+    microphone: String,
+    volume: Volume,
+}
+
+fn same(a: &Volume, b: &Volume) -> bool {
+    a.muted == b.muted && (a.level - b.level).abs() < 0.005
+}
+
+/// What the source and the microphone are both to be: the microphone's,
+/// unless the source was changed since they were last the same.
+fn wanted(followed: Option<&Followed>, microphone: &str, source: &Volume, mic: &Volume) -> Volume {
+    match followed {
+        // The source just made (WirePlumber puts nothing of its own back:
+        // `state.restore-props`), or another microphone: the microphone's.
+        Some(f) if f.microphone == microphone => {
+            if same(source, &f.volume) {
+                // The microphone changed (Olo's controls show it), or nothing.
+                *mic
+            } else {
+                // The source changed (an app's mute, Chrome's own gain
+                // control, the microphone key): the microphone takes it.
+                *source
+            }
+        }
+        _ => *mic,
+    }
+}
+
+/// The processed source's mute and volume are its microphone's, both ways
+/// (Ben, 2026-11-09: "it just kept telling me that the device was muted
+/// and i couldn't change that but in olo prefs it said it was not muted").
+/// Olo shows the microphone in the source's place, so a mute or volume of
+/// the source's own (an app's, the microphone key's, kept by WirePlumber
+/// from one start to the next) was out of sight and out of reach. What's
+/// changed on either is now made the other's; and as PipeWire applies the
+/// source's volume to what it gives, the engine makes that up (its
+/// `Stats::volume`): the voice is as loud as the microphone's volume says,
+/// once, not twice.
+fn follow(followed: &mut Option<Followed>, d: &Devices, microphone: &str, engine: &engine::Engine) {
+    let (Some(source), Some(mic)) = (d.inputs.iter().find(|i| i.name == NODE), d.inputs.iter().find(|i| i.name == microphone)) else { return };
+    let want = wanted(followed.as_ref(), microphone, &source.volume, &mic.volume);
+    for (device, name) in [(source, NODE), (mic, microphone)] {
+        if (device.volume.level - want.level).abs() >= 0.005 {
+            if let Err(e) = audio::set_device_volume(Kind::Input, name, want.level, device.channels) {
+                tracing::warn!("voice: {name}'s volume: {e}");
+            }
+        }
+        if device.volume.muted != want.muted
+            && let Err(e) = audio::set_device_muted(Kind::Input, name, want.muted)
+        {
+            tracing::warn!("voice: {name}'s mute: {e}");
+        }
+    }
+    if followed.as_ref().is_none_or(|f| f.microphone != microphone || !same(&f.volume, &want)) {
+        tracing::info!("voice: the source and {microphone}: {}%{}", (want.level * 100.0).round(), if want.muted { ", muted" } else { "" });
+    }
+    engine.stats.volume.store(want.level.powi(3).to_bits(), std::sync::atomic::Ordering::Relaxed);
+    *followed = Some(Followed { microphone: microphone.to_owned(), volume: want });
 }
 
 /// Stop processing; if ours was the default, the microphone is again.
@@ -291,4 +360,32 @@ fn on_signals(tx: mpsc::Sender<Event>) {
             }
         })
         .expect("thread");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn v(level: f32, muted: bool) -> Volume {
+        Volume { level, muted }
+    }
+
+    /// The microphone's, unless the source was changed since they were
+    /// the same; WirePlumber's or a stale state never wins at the start.
+    #[test]
+    fn the_source_and_its_microphone_are_one() {
+        let kept = |level, muted| Followed { microphone: "mic".into(), volume: v(level, muted) };
+        // New: the microphone's, whatever the source came up as.
+        assert_eq!(wanted(None, "mic", &v(0.69, true), &v(0.76, false)), v(0.76, false));
+        // Muted on the source (an app, the microphone key): the microphone too.
+        assert_eq!(wanted(Some(&kept(0.76, false)), "mic", &v(0.76, true), &v(0.76, false)), v(0.76, true));
+        // Unmuted on the microphone (Preferences, Deskbar): the source too.
+        assert_eq!(wanted(Some(&kept(0.76, true)), "mic", &v(0.76, true), &v(0.76, false)), v(0.76, false));
+        // Chrome's gain control lowers the source: the microphone's gain.
+        assert_eq!(wanted(Some(&kept(0.76, false)), "mic", &v(0.69, false), &v(0.76, false)), v(0.69, false));
+        // Another microphone: its own.
+        assert_eq!(wanted(Some(&kept(0.76, true)), "airpods", &v(0.76, true), &v(1.0, false)), v(1.0, false));
+        // Both as left: nothing changes.
+        assert_eq!(wanted(Some(&kept(0.5, false)), "mic", &v(0.5, false), &v(0.5, false)), v(0.5, false));
+    }
 }

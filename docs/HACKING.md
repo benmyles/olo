@@ -9418,6 +9418,21 @@ one are always told apart:
   and show that microphone as the default; `devices_raw` has both.
   Turned off, stopped or quitting, the microphone is the default itself
   again; if it crashes, WirePlumber falls back to the microphone.
+- **Its mute and volume are the microphone's** (`main.rs`, `follow`),
+  both ways: muted or turned down on the source (an app, Chrome's own
+  gain control, the microphone key), the microphone is too; changed on
+  the microphone (Olo's controls, which show the microphone in the
+  source's place), the source follows. As PipeWire applies the source's
+  volume to what it gives, the engine gives that much more
+  (`Stats::volume`), so the voice is as loud as the microphone's volume
+  says, once. WirePlumber keeps nothing of the source's own
+  (`state.restore-props` false). (Ben, 2026-11-09: Chrome said the
+  processed microphone was muted and couldn't unmute it, while
+  Preferences said it wasn't: muted once, the source came back muted at
+  69% at every start, out of sight.) Tried in a pw-sandbox: a source
+  kept muted came up unmuted at the microphone's volume, mute and volume
+  went across both ways, and at 76% both read −22.4 dBFS (twice applied,
+  −29.5).
 - **What's behind the source** (`engine.rs`, PipeWire's thread): the
   microphone's capture and, for echo cancellation, the default output's
   monitor, only for an output the microphone can hear (not
