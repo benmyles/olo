@@ -424,7 +424,7 @@ impl Selectors {
             }
         }
         let mut subject = Vec::new();
-        for complex in &self.complexes {
+        for (i, complex) in self.complexes.iter().enumerate() {
             if complex.steps.end <= complex.steps.start + 1 {
                 continue;
             }
@@ -471,7 +471,9 @@ impl Selectors {
                                 Test::Attr { .. } => "attr".into(),
                             })
                             .collect();
-                        eprintln!("  keyless compound [{}] in {}", kinds.join("+"), self.subject_summary(complex.steps.end - 1));
+                        // (Of the selector: its complex, by number; a step
+                        // is not a list `subject_summary` could read.)
+                        eprintln!("  keyless compound [{}] in complex {}", kinds.join("+"), i);
                     }
                 }
                 // A compound that tests no attribute (`*`, `*:hover`)
