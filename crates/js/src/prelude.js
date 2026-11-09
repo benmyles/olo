@@ -518,12 +518,14 @@
     prefix: { get() { return null; } },
     id: reflect('id'),
     className: reflect('class'),
-    classList: { get() { return new DOMTokenList(this, 'class'); } },
-    part: { get() { return new DOMTokenList(this, 'part'); } },
+    classList: { get() { return new DOMTokenList(this, 'class'); }, set(v) { this.setAttribute('class', String(v)); } },
+    part: { get() { return new DOMTokenList(this, 'part'); }, set(v) { this.setAttribute('part', String(v)); } },
     // Token lists other elements reflect (an iframe's sandbox, a link's
     // rel), on their own interfaces (`homes`).
-    sandbox: { get() { return new DOMTokenList(this, 'sandbox'); } },
-    relList: { get() { return new DOMTokenList(this, 'rel'); } },
+    // ([PutForwards=value]: a string set is the attribute's value;
+    // YouTube sets an iframe's sandbox so.)
+    sandbox: { get() { return new DOMTokenList(this, 'sandbox'); }, set(v) { this.setAttribute('sandbox', String(v)); } },
+    relList: { get() { return new DOMTokenList(this, 'rel'); }, set(v) { this.setAttribute('rel', String(v)); } },
     slot: reflect('slot'),
     attributes: { get() { const el = this; const list = listOf(N.attrNames(this).map((name) => ({ name, localName: name, value: N.attr(el, name), nodeName: name, nodeValue: N.attr(el, name), ownerElement: el, specified: true })), NamedNodeMap); list.getNamedItem = (n) => list.find((a) => a.name === String(n).toLowerCase()) || null; return list; } },
     children: { get() { return elementChildren(this); } },

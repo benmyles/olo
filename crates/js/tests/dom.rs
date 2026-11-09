@@ -737,3 +737,16 @@ fn response_headers_are_shown_as_fetch_filters_them() {
     assert_eq!(report.errors, Vec::<String>::new());
     assert_eq!(report.console, ["[log] 1 2 null 2 text/html"]);
 }
+/// Token lists are `[PutForwards=value]`: a string set on `classList`,
+/// `sandbox`, `relList` or `part` is the attribute's value (YouTube sets
+/// an iframe's sandbox so, and stopped on a getter-only property).
+#[test]
+fn token_lists_take_a_string_as_their_value() {
+    let (report, _) = run("<body><script>\
+        const f = document.createElement('iframe'); f.sandbox = 'allow-scripts allow-same-origin';\
+        const a = document.createElement('a'); a.relList = 'noopener'; a.classList = 'x y'; a.part = 'p';\
+        console.log(f.getAttribute('sandbox'), f.sandbox.contains('allow-scripts'), a.rel, a.className, a.getAttribute('part'));\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] allow-scripts allow-same-origin true noopener x y p"]);
+}
