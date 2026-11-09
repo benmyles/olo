@@ -63,9 +63,21 @@ struct Agents {
     windows: HashMap<WindowId, Painted>,
     menus: Option<Box<dyn Fn(&mut App) -> Menus>>,
     invoke: Option<Box<dyn Fn(&str, &mut App) -> bool>>,
+    /// A command asked for through the commands socket is being run.
+    invoking: bool,
 }
 
 impl Global for Agents {}
+
+/// Whether the menu command being run now was asked for through the
+/// commands socket (an agent's `invoke`, the command palette), not chosen
+/// by a hand on this display (a click, a key). For the few commands a
+/// program must not give itself: Terminal's Auto Approve, which answers
+/// its agent's questions for it, asks the person first when it's turned
+/// on this way.
+pub fn invoking(cx: &App) -> bool {
+    cx.try_global::<Agents>().is_some_and(|a| a.invoking)
+}
 
 /// Says what a widget is, as it paints. (Kept with the frame: a cached
 /// view drawn from its last paint says it again.)
@@ -239,6 +251,7 @@ fn answer(query: Query, cx: &mut App) {
             // (The menus as they are now: what's enabled.)
             catch_up(cx);
             let invoke = cx.default_global::<Agents>().invoke.take();
+            cx.default_global::<Agents>().invoking = true;
             let ok = match &invoke {
                 Some(f) => f(&command, cx),
                 // The front window's menu bar's, if it has the command.
@@ -247,6 +260,7 @@ fn answer(query: Query, cx: &mut App) {
                     .filter(|(_, (menus, _))| menus.iter().any(|m| m.find_action(&command).is_some_and(|a| a.enabled)))
                     .is_some_and(|(w, (_, on_command))| w.update(cx, |_, window, cx| on_command(&command, window, cx)).is_ok()),
             };
+            cx.default_global::<Agents>().invoking = false;
             cx.default_global::<Agents>().invoke = invoke;
             let _ = reply.send(ok);
         }
@@ -272,6 +286,7 @@ fn answer(query: Query, cx: &mut App) {
         Query::InvokeIn(ask, reply) => {
             catch_up(cx);
             let invoke = cx.default_global::<Agents>().invoke.take();
+            cx.default_global::<Agents>().invoking = true;
             let ok = match &invoke {
                 Some(f) => f(&ask.command, cx),
                 None => by_surface(cx, ask.surface)
@@ -279,6 +294,7 @@ fn answer(query: Query, cx: &mut App) {
                     .filter(|(_, (menus, _))| menus.iter().any(|m| m.find_action(&ask.command).is_some_and(|a| a.enabled)))
                     .is_some_and(|(w, (_, on_command))| w.update(cx, |_, window, cx| on_command(&ask.command, window, cx)).is_ok()),
             };
+            cx.default_global::<Agents>().invoking = false;
             cx.default_global::<Agents>().invoke = invoke;
             let _ = reply.send(ok);
         }

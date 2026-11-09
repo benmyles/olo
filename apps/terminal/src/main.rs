@@ -255,6 +255,61 @@ pub(crate) struct Tab {
     /// Keep It Going (its menu): its agent told "please continue" when it
     /// has stopped.
     keep_going: Option<KeepGoing>,
+    /// Auto Approve (its menu): its agent's "Do you want to proceed?"
+    /// answered Yes after a while.
+    pub(crate) auto_approve: Option<AutoApprove>,
+}
+
+/// Auto Approve (Ben, 2026-11-09: "like the keep going option add one
+/// that is "Auto Approve" and when a "Do you want to proceed?" question
+/// like this comes up have it auto approve / select yes after 30s"): a
+/// coding agent's question asking leave to go on (`agent::approvable`:
+/// "1. Yes" chosen) answered Yes `AUTO_APPROVE_AFTER` after it shows,
+/// unless the person types in the tab meanwhile (then it's theirs) or
+/// presses Stop. The pane shows it counting down. Turned on by the
+/// person: asked for through the commands socket (`olo_ui::agent::
+/// invoking`: an agent, the palette), it asks them first, so an agent
+/// can't answer its own questions.
+pub(crate) struct AutoApprove {
+    /// The question it will answer.
+    pub(crate) pending: Option<Pending>,
+    /// How many it has answered.
+    pub(crate) approved: u32,
+    /// The question the person stopped before Terminal restarted (its
+    /// key, at least 1): still theirs when it's seen again.
+    theirs: Option<u64>,
+}
+
+impl AutoApprove {
+    /// As kept: 0, or the key of the question the person stopped.
+    fn saved(&self) -> u64 {
+        match &self.pending {
+            Some(p) if p.stopped => p.key.max(1),
+            Some(_) => 0,
+            None => self.theirs.unwrap_or(0),
+        }
+    }
+}
+
+pub(crate) struct Pending {
+    /// Which question (`agent::Ask::key`).
+    key: u64,
+    question: String,
+    /// When it answers.
+    pub(crate) due: Instant,
+    /// The person typed, or pressed Stop: it's theirs.
+    pub(crate) stopped: bool,
+    /// Looks once due that didn't find it (a screen read as it's drawn).
+    misses: u32,
+    _timer: olo_ui::gpui::Task<()>,
+}
+
+/// How long a question shows before it's answered ("after 30s").
+const AUTO_APPROVE_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// `AUTO_APPROVE_AFTER`, or in a test `OLO_TERMINAL_AUTO_APPROVE_SECS`.
+fn auto_approve_after() -> std::time::Duration {
+    std::env::var("OLO_TERMINAL_AUTO_APPROVE_SECS").ok().and_then(|v| v.parse().ok()).map_or(AUTO_APPROVE_AFTER, std::time::Duration::from_secs)
 }
 
 /// Keep It Going (Ben, 2026-11-06): a coding agent in the tab told
@@ -311,6 +366,7 @@ impl Tab {
             own_grouping: false,
             hidden_tiled: false,
             keep_going: None,
+            auto_approve: None,
         }
     }
 
@@ -318,15 +374,23 @@ impl Tab {
     /// (`says`: what Keep It Going says).
     fn status(&self, says: &str) -> Option<String> {
         let keep = self.keep_going.as_ref().map(|_| format!("kept going (\u{201c}{says}\u{201d} after two quiet minutes, at most hourly)"));
+        let approve = self.auto_approve.as_ref().map(|a| match &a.pending {
+            Some(p) if !p.stopped => format!("auto approving: Yes to \u{201c}{}\u{201d} in {} s", p.question, p.due.saturating_duration_since(Instant::now()).as_secs_f32().ceil()),
+            _ => format!("auto approving (Yes after {} s; {} answered)", auto_approve_after().as_secs(), a.approved),
+        });
         let what = match self.agent {
             Some((agent, state)) => Some(format!("{}: {}", agent.name(), state.describe())),
             None => self.rang.then(|| "bell rang".into()),
         };
-        match (what, keep) {
-            (Some(w), Some(k)) => Some(format!("{w}; {k}")),
-            (w, None) => w,
-            (None, Some(k)) => Some(k.to_owned()),
-        }
+        let parts: Vec<String> = [what, keep, approve].into_iter().flatten().collect();
+        (!parts.is_empty()).then(|| parts.join("; "))
+    }
+
+    /// A coding agent runs in its foreground now (looked at, not as last
+    /// reported: Auto Approve's Return goes only to one).
+    fn agent_running(&self) -> bool {
+        let shared = &self.session.shared;
+        shared.foreground().filter(|&p| Some(p) != shared.shell()).and_then(agent::which).is_some()
     }
 
     fn current_title(&self) -> String {
@@ -622,6 +686,12 @@ pub(crate) enum Win {
     ConfirmStartOver {
         target: WindowId,
     },
+    /// Auto Approve asked for through the commands socket: the person
+    /// says whether (`shell`'s tab).
+    ConfirmAutoApprove {
+        shell: u64,
+        message: String,
+    },
     /// Name (or rename) a group of a window's (`group`), or make one of
     /// its tab `tab`, and choose its colour.
     NameGroup {
@@ -823,6 +893,10 @@ struct SavedWindow {
     /// (`Tab::keep_going`: Some(0) on, never said).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     keep_going: Vec<Option<u64>>,
+    /// Which tabs answer their agent's questions (`Tab::auto_approve`:
+    /// Some(0) on; Some(key) on, with that question the person's, stopped).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    auto_approve: Vec<Option<u64>>,
 }
 
 impl SavedWindow {
@@ -1093,6 +1167,22 @@ impl Terminal {
             for (shell, said) in keep {
                 self.set_keep_going(cx, shell, Some(said));
             }
+            // Auto Approve too (the person turned it on before), a question
+            // they'd stopped still theirs.
+            let approve: Vec<(u64, u64)> = match self.windows.get(&id) {
+                Some(Win::Term(t)) => t
+                    .tabs
+                    .iter()
+                    .filter_map(|tab| {
+                        let i = ids.iter().position(|&s| s == tab.session.id)?;
+                        Some((tab.session.id, w.auto_approve.get(i).copied().flatten()?))
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            for (shell, stopped) in approve {
+                self.set_auto_approve_from(cx, shell, true, (stopped != 0).then_some(stopped));
+            }
             if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
                 t.tiled = w.tiled;
                 t.tile_groups = w.tile_groups.clone();
@@ -1259,7 +1349,16 @@ impl Terminal {
                 };
                 self.confirm_close(cx, window, None, message, why);
             }
-            Some(Win::ConfirmClose { .. } | Win::Find { .. } | Win::Daemon(_) | Win::ConfirmStartOver { .. } | Win::NameGroup { .. } | Win::ConfirmRemove { .. } | Win::Failed { .. }) => {
+            Some(
+                Win::ConfirmClose { .. }
+                | Win::Find { .. }
+                | Win::Daemon(_)
+                | Win::ConfirmStartOver { .. }
+                | Win::ConfirmAutoApprove { .. }
+                | Win::NameGroup { .. }
+                | Win::ConfirmRemove { .. }
+                | Win::Failed { .. },
+            ) => {
                 self.windows.remove(&window);
                 cx.close_window(window);
             }
@@ -1556,6 +1655,32 @@ impl Terminal {
                     self.remember_soon(cx);
                 }
             }
+            "tab-auto-approve" => {
+                if let Some(shell) = number(arg)
+                    && let Some(i) = t.position(shell)
+                {
+                    let on = t.tabs[i].auto_approve.is_none();
+                    if on && olo_ui::agent::invoking(cx) {
+                        // Not a hand on this display: the person says.
+                        let message = format!(
+                            "Turn on Auto Approve for \u{201c}{}\u{201d}?\n\nIts coding agent\u{2019}s questions asking leave to go on (\u{201c}Do you want to proceed?\u{201d}) will be answered Yes after {} seconds, unless you type in the tab or press Stop.",
+                            t.tabs[i].title,
+                            auto_approve_after().as_secs()
+                        );
+                        tracing::info!(shell, "auto approve: asked for through the commands socket; asking the person");
+                        let id = cx.open_window(WindowOptions::alert("Terminal", &message));
+                        self.windows.insert(id, Win::ConfirmAutoApprove { shell, message });
+                    } else {
+                        self.set_auto_approve(cx, shell, on);
+                        self.remember_soon(cx);
+                    }
+                }
+            }
+            "tab-auto-approve-stop" => {
+                if let Some(shell) = number(arg) {
+                    self.auto_approve_stop(cx, shell);
+                }
+            }
             "tab-to" => {
                 if let Some((shell, target)) = arg.split_once(':').and_then(|(a, b)| Some((number(a)?, number(b)?))) {
                     self.move_tab_to(cx, win, shell, target);
@@ -1713,6 +1838,120 @@ impl Terminal {
         Some(enough)
     }
 
+    /// Auto Approve on for `shell`'s tab, or off. On, a question already
+    /// showing is answered as one that has just come.
+    pub(crate) fn set_auto_approve(&mut self, cx: &mut Cx, shell: u64, on: bool) {
+        self.set_auto_approve_from(cx, shell, on, None);
+    }
+
+    /// The same, `stopped` the question the person had stopped before
+    /// Terminal restarted (still theirs, if it's still asked).
+    fn set_auto_approve_from(&mut self, cx: &mut Cx, shell: u64, on: bool, stopped: Option<u64>) {
+        let Some((win, i)) = self.find_shell(shell) else { return };
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+        let tab = &mut t.tabs[i];
+        if on == tab.auto_approve.is_some() {
+            return;
+        }
+        tab.auto_approve = on.then_some(AutoApprove { pending: None, approved: 0, theirs: stopped });
+        tracing::info!(shell, on, "auto approve");
+        // (Read now, whether or not the agent's been seen yet: after a
+        // restart it hasn't.)
+        let ask = if on && tab.agent_running() { agent::approvable(&agent::screen_text(&tab.session.term.lock())) } else { None };
+        cx.redraw(win);
+        if let Some(ask) = ask {
+            self.auto_approve_asking(cx, agent::Asking(shell, Some(ask)));
+        }
+    }
+
+    /// `shell`'s agent asks a question Auto Approve may answer (or none
+    /// now): it's waited on, a new one from the start.
+    fn auto_approve_asking(&mut self, cx: &mut Cx, agent::Asking(shell, ask): agent::Asking) {
+        let Some((win, i)) = self.find_shell(shell) else { return };
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+        let Some(a) = t.tabs[i].auto_approve.as_mut() else { return };
+        match ask {
+            None => {
+                if a.pending.take().is_some() {
+                    cx.redraw(win);
+                }
+            }
+            Some(ask) if a.pending.as_ref().is_some_and(|p| p.key == ask.key) => {}
+            // Stopped before Terminal restarted: still theirs.
+            Some(ask) if a.theirs == Some(ask.key.max(1)) => {
+                tracing::info!(shell, question = ask.question, "auto approve: stopped before the restart; still the person's");
+                a.pending = Some(Pending { key: ask.key, question: ask.question, due: Instant::now(), stopped: true, misses: 0, _timer: olo_ui::gpui::Task::ready(()) });
+            }
+            Some(ask) => {
+                a.theirs = None;
+                let key = ask.key;
+                let timer = cx.spawn(async move |me, cx| {
+                    loop {
+                        let wait = match me.update(cx, |t, cx| t.auto_approve_tick(cx, shell, key)) {
+                            Ok(Some(wait)) => wait,
+                            _ => break,
+                        };
+                        cx.background_executor().timer(wait).await;
+                    }
+                });
+                tracing::info!(shell, question = ask.question, "auto approve: waiting {} s to answer Yes", auto_approve_after().as_secs());
+                a.pending = Some(Pending { key, question: ask.question, due: Instant::now() + auto_approve_after(), stopped: false, misses: 0, _timer: timer });
+                cx.redraw(win);
+            }
+        }
+    }
+
+    /// Auto Approve's timer for question `key` in `shell`'s tab: its pane
+    /// counts down each second, and once it's due the question (still
+    /// there, still with Yes chosen) is answered. How long till it looks
+    /// again (None: done, stopped, or another question).
+    fn auto_approve_tick(&mut self, cx: &mut Cx, shell: u64, key: u64) -> Option<std::time::Duration> {
+        let (win, i) = self.find_shell(shell)?;
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return None };
+        let title = t.tabs[i].title.clone();
+        let tab = &mut t.tabs[i];
+        let p = tab.auto_approve.as_ref()?.pending.as_ref().filter(|p| p.key == key && !p.stopped)?;
+        let left = p.due.saturating_duration_since(Instant::now());
+        cx.redraw(win);
+        if !left.is_zero() {
+            // (To the next whole second shown.)
+            let frac = left.as_secs_f32().fract();
+            return Some(std::time::Duration::from_secs_f32(if frac > 0.0 { frac } else { 1.0 }));
+        }
+        // Looked at again now: the same question, Yes still chosen, its
+        // agent still there (a few looks, a moment apart: the screen may be
+        // read as it's drawn).
+        let now = if tab.agent_running() { agent::approvable(&agent::screen_text(&tab.session.term.lock())) } else { None };
+        let a = tab.auto_approve.as_mut()?;
+        if !now.as_ref().is_some_and(|n| n.key == key) {
+            let p = a.pending.as_mut()?;
+            p.misses += 1;
+            if p.misses < 5 {
+                return Some(std::time::Duration::from_millis(200));
+            }
+            tracing::info!(shell, question = p.question, "auto approve: the question changed before it was due; not answered");
+            a.pending = None;
+            return None;
+        }
+        let p = a.pending.take()?;
+        tab.session.write(b"\r".to_vec());
+        a.approved += 1;
+        tracing::info!(shell, question = p.question, tab = title, "auto approve: answered Yes");
+        None
+    }
+
+    /// The person typed in `shell`'s tab, or pressed Stop: the question
+    /// waiting is theirs.
+    pub(crate) fn auto_approve_stop(&mut self, cx: &mut Cx, shell: u64) {
+        let Some((win, i)) = self.find_shell(shell) else { return };
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+        if let Some(p) = t.tabs[i].auto_approve.as_mut().and_then(|a| a.pending.as_mut()).filter(|p| !p.stopped) {
+            p.stopped = true;
+            tracing::info!(shell, question = p.question, "auto approve: stopped; the person answers");
+            cx.redraw(win);
+        }
+    }
+
     /// A tab's agent started, stopped or moved on: show it, and say so
     /// when it now needs the person and they aren't looking at it.
     fn agent_changed(&mut self, cx: &mut Cx, agent::Report(shell, now): agent::Report) {
@@ -1754,6 +1993,10 @@ impl Terminal {
         let (summary, kind) = match state {
             State::Blocked => (format!("{} needs your answer", agent.name()), NoteKind::Important),
             _ => (format!("{} is waiting for you", agent.name()), NoteKind::Information),
+        };
+        let body = match tab.auto_approve.as_ref().and_then(|a| a.pending.as_ref()).filter(|p| state == State::Blocked && !p.stopped) {
+            Some(p) => format!("{body} Auto Approve answers Yes in {} s.", p.due.saturating_duration_since(Instant::now()).as_secs_f32().ceil()),
+            None => body,
         };
         let note = Note::new(summary).body(body).kind(kind).action("default", "Show");
         let id = self.notifier.show(self.notes.get(&shell).copied(), note);
@@ -2048,6 +2291,17 @@ impl Terminal {
                 self.windows.remove(&window);
                 cx.close_window(window);
             }
+            Some(&Win::ConfirmAutoApprove { shell, .. }) => {
+                self.windows.remove(&window);
+                cx.close_window(window);
+                // (Turn On is the first; Cancel, Return's and Escape's.)
+                if choice == 0 {
+                    self.set_auto_approve(cx, shell, true);
+                    self.remember_soon(cx);
+                } else {
+                    tracing::info!(shell, "auto approve: not turned on (the person said no)");
+                }
+            }
             Some(&Win::ConfirmStartOver { target }) => {
                 self.windows.remove(&window);
                 cx.close_window(window);
@@ -2204,6 +2458,9 @@ impl Terminal {
             .item("Keep It Going", format!("tab-keep-going:{shell}"))
             .checked(t.tab().keep_going.is_some())
             .enabled(t.tab().agent.is_some() || t.tab().keep_going.is_some())
+            .item("Auto Approve", format!("tab-auto-approve:{shell}"))
+            .checked(t.tab().auto_approve.is_some())
+            .enabled(t.tab().agent.is_some() || t.tab().auto_approve.is_some())
             .separator();
         for (i, tab) in t.tabs.iter().enumerate() {
             let label = match (tab.agent, tab.rang) {
@@ -2532,6 +2789,10 @@ impl Terminal {
             Ok(report) => return self.agent_changed(cx, *report),
             Err(m) => m,
         };
+        let message = match message.downcast::<agent::Asking>() {
+            Ok(asking) => return self.auto_approve_asking(cx, *asking),
+            Err(m) => m,
+        };
         let message = match message.downcast::<agent::Activity>() {
             Ok(a) => {
                 self.keep_going_activity(a.0);
@@ -2632,6 +2893,7 @@ impl Terminal {
             agent_titles: w.agent_titles.get(i).cloned().map(|t| vec![t]).unwrap_or_default(),
             hidden_tiled: Vec::new(),
             keep_going: w.keep_going.get(i).cloned().map(|k| vec![k]).unwrap_or_default(),
+            auto_approve: w.auto_approve.get(i).copied().map(|a| vec![a]).unwrap_or_default(),
         };
         let state = serde_json::to_string(&Saved { windows: vec![one], moved: true }).ok();
         olo_kit_base::moving::copy_to_screen(screen, Vec::new(), state, |_| {});
@@ -2696,6 +2958,7 @@ impl Terminal {
                         agent_titles: if live.iter().any(|x| x.agent_title.is_some()) { live.iter().map(|x| x.agent_title.clone()).collect() } else { Vec::new() },
                         hidden_tiled: if live.iter().any(|x| x.hidden_tiled) { live.iter().map(|x| x.hidden_tiled).collect() } else { Vec::new() },
                         keep_going: if live.iter().any(|x| x.keep_going.is_some()) { live.iter().map(|x| x.keep_going.as_ref().map(|k| k.said.unwrap_or(0))).collect() } else { Vec::new() },
+                        auto_approve: if live.iter().any(|x| x.auto_approve.is_some()) { live.iter().map(|x| x.auto_approve.as_ref().map(AutoApprove::saved)).collect() } else { Vec::new() },
                     })
                 }
                 _ => None,

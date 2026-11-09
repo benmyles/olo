@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Terminal: Auto Approve in a tab's menu
+
+*15:21* — Beside Keep It Going (and in Tabs). Turned on from the commands socket (an agent, the palette), it asks the person first.
+
+![Terminal: Auto Approve in a tab's menu](2026-11-09/152147-terminal-auto-approve-in-a-tab-s-menu.png)
+
+### Terminal: Auto Approve counts down to Yes
+
+*15:21* — A coding agent's "Do you want to proceed?" (here a stand-in drawing Claude Code's dialog) answered Yes after 30 s (6 s in this test), unless the person types in the tab or presses Stop; the countdown in the pane's corner.
+
+![Terminal: Auto Approve counts down to Yes](2026-11-09/152145-terminal-auto-approve-counts-down-to-yes.png)
+
 ### Telegram: folders behind More, a submenu each
 
 *14:50* — A right-click on the More chip: each folder behind it with Mark All as Read, Mute All, Unmute All. Demo account.

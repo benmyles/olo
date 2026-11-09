@@ -2253,6 +2253,10 @@ event reaches it.
   nothing in it does and takes the bar's keys that nothing else took
   (a text field's ⌘C stays its own). With no `agent::set_menus`, the
   command palette reads and invokes the front window's bar.
+  `agent::invoking(cx)` says whether the command being run came through
+  the commands socket (an agent's `invoke`, the palette) rather than a
+  hand on the display (a click, a key): for the few a program mustn't
+  give itself (Terminal's Auto Approve asks the person first then).
 - `MenuBar::of(&app, |a, cx| a.menus(cx), on_command)`: the same bar,
   its menus built from `app` (the window's view) when it changes
   (`cx.notify()`), not each time the window draws. GPUI draws again
@@ -10398,6 +10402,47 @@ the quiet, none again within the hour, back after Terminal quit and
 started again. And with the message set in Preferences ("Keep at it,
 thanks") a stand-in got that, the tab's name saying it too; Use
 Default put "Please continue" back, in the field and the setting.
+
+**Auto Approve** (Ben, 2026-11-09: "like the keep going option add one
+that is "Auto Approve" and when a "Do you want to proceed?" question
+like this comes up have it auto approve / select yes after 30s";
+`Tab::auto_approve`, `AutoApprove`): beside Keep It Going in a tab's
+menu and Tabs ▸ Auto Approve (`tab-auto-approve:SHELL`). A coding
+agent's question asking leave to go on (`agent::approvable`: the last
+line "Do you want to …?" or "Would you like to …?", its first answer
+"1. Yes" with the chooser, ❯ or ›, on it; Claude Code's permission
+dialogs, Codex's "Would you like to run the following command?") is
+answered with Return `AUTO_APPROVE_AFTER` (30 s) after it shows. Not a
+plan waiting to be approved ("No, keep planning"), not when another
+answer is chosen, not another question's answers under words that ask.
+The agent watcher reads it only while the agent asks (`State::Blocked`)
+and tells of a new one, or none, once read the same twice
+(`agent::Asking`; a screen read as it's drawn isn't a change); its key
+is the dialog's text with its digits aside, as Claude Code counts down
+"will automatically block this request in 1:50" under it. When it's
+due the screen is read again (a coding agent in the foreground, the same
+question, Yes chosen; a few looks 200 ms apart) before the Return goes.
+Typing in the tab, or Stop in the countdown at the pane's bottom right
+("Auto Approve: Yes in N s", a Status to agents, redrawn each second
+only while a question waits), makes the question the person's; one
+stopped stays theirs across a restart (kept with the window: Some(key)).
+The tab's icon carries a green disc with a check at its other bottom
+corner; its name says so ("auto approving: Yes to … in N s"); a
+"needs your answer" notification says when it'll answer; each answer is
+logged ("auto approve: answered Yes", with the question and tab, not
+the command). It's the person's to turn on: asked for through the
+commands socket (`olo_ui::agent::invoking`: an agent, the palette), it
+asks them in an alert whose Return and Escape are Cancel, so an agent
+can't answer its own questions and a Return typed as it comes doesn't
+say yes; turning it off needs no asking. `OLO_TERMINAL_AUTO_APPROVE_SECS`
+shortens the wait for a test. Tried headless with a stand-in `claude`
+drawing Claude Code's dialog at the bottom, its clock counting down
+(two questions in a row): each answered after the wait; one typed in
+not answered, the next one answered; Stop; on through the socket asked,
+Return cancelling, Turn On turning it on; back on after Terminal
+restarted, a stopped question still the person's. Cost: with a question
+waiting, 2 frames a second where its clock drew 1 (0.6 ms each, 0.2% of
+a core); with none, nothing (0 wakeups, 0 frames).
 
 **Repositories** (`src/git.rs`, `src/repos.rs`), in process through
 libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)
