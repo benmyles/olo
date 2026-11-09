@@ -1312,3 +1312,13 @@ fn an_about_blank_iframe_is_a_window_of_its_own() {
         ]
     );
 }
+/// The parser's stylesheet links fire load before the window's (Angular's
+/// `media="print" onload="this.media='all'"` styles were never applied).
+#[test]
+fn the_parsers_stylesheet_links_fire_load() {
+    let (report, _) = run("<!DOCTYPE html><head><link id=l rel=stylesheet href='data:text/css,p{}' media=print onload=\"this.media='all';console.log('link load')\"></head><body><script>\
+        addEventListener('load', () => console.log('window load', document.getElementById('l').media));\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] link load", "[log] window load all"]);
+}

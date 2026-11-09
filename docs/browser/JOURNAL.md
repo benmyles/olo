@@ -7531,3 +7531,16 @@ two, cut with "…". Two things Olo lacked:
   `-webkit-box-orient: vertical` and `-webkit-line-clamp: N`: the box
   ends below its Nth line, which ends with "…". Cards and excerpts on
   half the web are clamped like this.
+
+Pixelscan, which Cloudflare had stalled, loads now, and as Chrome draws
+it once three things were fixed:
+- **Its stylesheet came as Angular's `media="print"
+  onload="this.media='all'"`.** The parser's links never fired load, so
+  the styles never applied. They fire it before the window's now.
+- **Its `width: fit-content` button spanned its column.** A column flex
+  container (and a grid) stretched min-, max- and fit-content widths as
+  if they were auto.
+- **Its icons measured 150px where Chrome's are 24.** An SVG with a
+  viewBox, `height: 100%` of a 24px span, contributed its default size
+  to a shrink-to-fit parent; it contributes its ratio's width of the
+  resolved height now.

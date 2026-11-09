@@ -687,9 +687,23 @@ impl Job<'_> {
                 let mut u = if text { Used { width: area, ..used } } else { Used::flex(s, area, height, queries, &mut self.scratch, self.cancel, self.scale)? };
                 let specified = if text { None } else { used::length(s, P::Width, Some(area), None, queries, &mut self.scratch, self.cancel, self.scale)? };
                 let extra = u.padding.horizontal() + u.border.horizontal() + u.margin.horizontal();
-                let stretch = matches!(item.justify, K::Normal | K::Stretch) && specified.is_none();
+                // (min-, max- and fit-content widths are content sized, as
+                // in a column flex container.)
+                let sizing = if text {
+                    None
+                } else {
+                    match s.value(P::Width) {
+                        Value::Keyword(k @ (K::MinContent | K::MaxContent | K::FitContent)) => Some(*k),
+                        Value::FitContent(_) => Some(K::FitContent),
+                        _ => None,
+                    }
+                };
+                let stretch = matches!(item.justify, K::Normal | K::Stretch) && specified.is_none() && sizing.is_none();
                 u.width = if stretch {
                     (area - extra).max(0.)
+                } else if let Some(k @ (K::MinContent | K::MaxContent)) = sizing {
+                    let content = if k == K::MinContent { item.contribution.0 } else { item.contribution.1 };
+                    (content - u.margin.horizontal() - u.padding.horizontal() - u.border.horizontal()).max(0.)
                 } else if let Some(w) = specified {
                     let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
                     (w - if border_box { u.padding.horizontal() + u.border.horizontal() } else { 0. }).max(0.)
@@ -722,9 +736,24 @@ impl Job<'_> {
                 let mut u = if text { Used { width, ..used } } else { Used::flex(s, width, height, queries, &mut self.scratch, self.cancel, self.scale)? };
                 let specified = if text { None } else { used::length(s, P::Width, Some(width), None, queries, &mut self.scratch, self.cancel, self.scale)? };
                 let extra = u.padding.horizontal() + u.border.horizontal() + u.margin.horizontal();
-                let stretch = matches!(item.align, K::Normal | K::Stretch) && specified.is_none();
+                // A width of min-, max- or fit-content is no auto one: the
+                // item is sized by its content, not stretched (Pixelscan's
+                // `width: fit-content` button spanned its whole column).
+                let sizing = if text {
+                    None
+                } else {
+                    match s.value(P::Width) {
+                        Value::Keyword(k @ (K::MinContent | K::MaxContent | K::FitContent)) => Some(*k),
+                        Value::FitContent(_) => Some(K::FitContent),
+                        _ => None,
+                    }
+                };
+                let stretch = matches!(item.align, K::Normal | K::Stretch) && specified.is_none() && sizing.is_none();
                 u.width = if stretch {
                     (width - extra).max(0.)
+                } else if let Some(k @ (K::MinContent | K::MaxContent)) = sizing {
+                    let content = if k == K::MinContent { item.contribution.0 } else { item.contribution.1 };
+                    (content - u.margin.horizontal() - u.padding.horizontal() - u.border.horizontal()).max(0.)
                 } else if let Some(w) = specified {
                     let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
                     (w - if border_box { u.padding.horizontal() + u.border.horizontal() } else { 0. }).max(0.)

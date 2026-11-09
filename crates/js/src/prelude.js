@@ -399,12 +399,16 @@
   // event a task later (webpack's CSS chunks wait for it; the engine
   // fetches the sheet itself).
   const linksLoaded = new WeakSet();
+  // The parser's links (bound with the page): their load fires before
+  // the window's, as a browser's sheets load first (Angular's styles come
+  // as media="print" onload="this.media='all'": never applied without).
+  let parserLinks = [];
+  const loadable = (el) => /(^|\s)(stylesheet|preload|modulepreload|prefetch)(\s|$)/.test((N.attr(el, 'rel') || '').toLowerCase()) && !!N.attr(el, 'href');
   const loadLinks = (node) => {
     const links = N.nodeName(node) === 'LINK' ? [node] : N.query(node, 'link', true);
     for (const el of links) {
       if (linksLoaded.has(el)) continue;
-      const rel = (N.attr(el, 'rel') || '').toLowerCase();
-      if (!/(^|\s)(stylesheet|preload|modulepreload|prefetch)(\s|$)/.test(rel) || !N.attr(el, 'href')) continue;
+      if (!loadable(el)) continue;
       linksLoaded.add(el);
       fireOn(el, 'load');
     }
@@ -2294,6 +2298,9 @@
     // grey placeholders by them). Lazy ones load when scrolled to, in a
     // browser: not now (one of GitHub's below the fold started a timer loop).
     if (name === 'load') {
+      const links = parserLinks;
+      parserLinks = [];
+      for (const el of links) if (N.isConnected(el)) dispatch(el, new Event('load'));
       for (const img of N.query(N.docRoot(), 'img', true)) {
         if (imageLoads.has(img) || (!N.attr(img, 'src') && !N.attr(img, 'srcset')) || (N.attr(img, 'loading') || '').toLowerCase() === 'lazy') continue;
         const size = imageSizeOf(img);
@@ -3336,7 +3343,7 @@
     p.timeOrigin = timeOrigin;
     for (const k of Object.keys(p.timing)) if (p.timing[k]) p.timing[k] = timeOrigin;
     for (const el of N.query(documentNode, 'script', true)) started.add(el);
-    for (const el of N.query(documentNode, 'link', true)) linksLoaded.add(el);
+    for (const el of N.query(documentNode, 'link', true)) { linksLoaded.add(el); if (loadable(el)) parserLinks.push(el); }
     for (const f of pageBinds) f();
   };
 })(globalThis);

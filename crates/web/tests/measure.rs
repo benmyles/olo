@@ -369,3 +369,35 @@ fn breaking_anywhere_shrinks_min_content_and_a_line_clamp_ends_the_box() {
     assert!(rect("c").width > 300., "break-word's breaks don't count at min-content");
     assert_eq!(rect("d").height, 40., "two lines of twenty");
 }
+/// A column flex container's and a grid's items with a min-, max- or
+/// fit-content width are sized by their content, not stretched (Pixelscan's
+/// `width: fit-content` button spanned its whole column).
+#[test]
+fn content_sized_widths_are_not_stretched_across() {
+    let (mut measurer, host, doc, viewport) = measurer_for(
+        "<!doctype html><style>body{margin:0;font:16px sans-serif} .c{display:flex;flex-direction:column;width:600px} .g{display:grid;width:600px}</style>\
+         <div class=c><div id=a style='width:max-content'>max content</div><div id=b style='width:fit-content;padding:0 40px'>fit content</div><div id=c>auto</div></div>\
+         <div class=g><div id=d style='width:max-content'>max content</div><div id=e>auto</div></div>",
+    );
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    let w = |id: &str| m.border_box(find(&doc, id)).unwrap().width;
+    assert!(w("a") < 300., "{}", w("a"));
+    assert!(w("b") < 350. && w("b") > 80., "{}", w("b"));
+    assert_eq!(w("c"), 600.);
+    assert_eq!(w("d"), w("a"));
+    assert_eq!(w("e"), 600.);
+}
+/// An SVG with a viewBox, `width: auto; height: 100%` of a parent whose
+/// height is a length, contributes its ratio's width to a shrink-to-fit
+/// parent, as in Chrome (Pixelscan's icons measured 150px, Chrome 24).
+#[test]
+fn a_ratio_svg_with_a_percentage_height_contributes_its_ratio_width() {
+    let (mut measurer, host, doc, viewport) = measurer_for(
+        "<!doctype html><style>body{margin:0}</style>\
+         <span id=a style='display:inline-flex;height:24px'><svg viewBox='0 0 256 256' style='display:block;width:auto;height:100%'></svg></span>\
+         <div id=b style='display:inline-flex;height:40px'><svg viewBox='0 0 200 100' style='display:block;width:auto;height:100%'></svg></div>",
+    );
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    assert_eq!(m.border_box(find(&doc, "a")).unwrap().width, 24.);
+    assert_eq!(m.border_box(find(&doc, "b")).unwrap().width, 80.);
+}

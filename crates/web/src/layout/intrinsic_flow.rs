@@ -178,9 +178,40 @@ impl Job<'_> {
             inline::IntrinsicWidths { min_content: min, max_content: max }
         } else if b.kind.is_replaced() {
             let (w, h) = cache.tree.natural(id)?;
-            // A specified height with an automatic width sizes a replaced box by its ratio.
-            let w = match len(P::Height, None, &mut self.scratch)? {
-                Some(height) if h > 0. && w > 0. => height * w / h,
+            // A specified height with an automatic width sizes a replaced box
+            // by its ratio: a percentage one too, of a parent whose height is
+            // a length (Pixelscan's icons: an SVG `height: 100%` of a 24px
+            // span measured 150px wide, Chrome 24). An SVG with a viewBox has
+            // that ratio, not its default size's.
+            let height = match len(P::Height, None, &mut self.scratch)? {
+                Some(height) => Some(height),
+                None => match (s.value(P::Height), b.parent.and_then(|p| cache.tree.style(p))) {
+                    (Value::Numeric(_), Some(ps)) => {
+                        let plen = |p: P, scratch: &mut math::Scratch| used::length(ps, p, None, Some(0.), queries, scratch, self.cancel, self.scale);
+                        match used::length(ps, P::Height, None, None, queries, &mut self.scratch, self.cancel, self.scale)? {
+                            Some(ph) => {
+                                let edges = if matches!(ps.value(P::BoxSizing), Value::Keyword(K::BorderBox)) {
+                                    plen(P::PaddingTop, &mut self.scratch)?.unwrap_or(0.)
+                                        + plen(P::PaddingBottom, &mut self.scratch)?.unwrap_or(0.)
+                                        + ps.used_border_width(P::BorderTopWidth)?
+                                        + ps.used_border_width(P::BorderBottomWidth)?
+                                } else {
+                                    0.
+                                };
+                                used::length(s, P::Height, Some((ph - edges).max(0.)), None, queries, &mut self.scratch, self.cancel, self.scale)?
+                            }
+                            None => None,
+                        }
+                    }
+                    _ => None,
+                },
+            };
+            let ratio = match b.kind {
+                BoxKind::InlineVector { vector } | BoxKind::BlockVector { vector } if cache.tree.ratio_only(id) => cache.tree.vector(vector).and_then(|v| v.view_box).map(|vb| vb[2] / vb[3]),
+                _ => (h > 0. && w > 0.).then(|| w / h),
+            };
+            let w = match (height, ratio) {
+                (Some(height), Some(ratio)) => height * ratio,
                 _ => w,
             };
             // A replaced box sized by a percentage (`width: 100%`, or a
