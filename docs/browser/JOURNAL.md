@@ -7036,3 +7036,8 @@ the Guardian and old Reddit, looking for pages that fail outright:
   its play button (`width: auto`, a definite height, `aspect-ratio: 1`,
   absolutely positioned) took its content's width, 0, instead of its
   ratio's. Both as Chrome now.
+- **An absolute flex child sits as the sole item would.** An absolutely
+  positioned child of a flex container with auto insets took the
+  container's start; CSS Flexbox places it as the container's only item
+  would be (its justify-content, the child's align-self). Reddit's loading
+  ring sat at the left edge, apart from its logo.

@@ -58,8 +58,9 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   the latest kept past it). Decode at the size shown, let pictures far
   out of view go and decode them again when they come back (Chrome's
   discardable decodes): Reddit's long feed sits at 1.0-1.5 GB.
-- [ ] Reddit: its loading indicator (between pages) shows as large orange
-  shapes; compare with Chrome's.
+- [x] Reddit: its loading indicator (between pages): its ring, an absolute
+  child of a centring flex box, sat at the start (2026-11-08: placed as
+  the sole flex item would be); its Snoo draws as Chrome's.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.
