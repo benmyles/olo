@@ -74,6 +74,8 @@ pub struct Page {
     sheets: Vec<Sheet>,
     base_scope: Scope,
     sheet_ids: Vec<(crate::dom::NodeId, u64)>,
+    /// How its rules changed, compilation to compilation.
+    rule_changes: RuleChanges,
     /// The document and revision the sheets were last looked for at.
     sheets_checked: Option<(u64, u64)>,
     /// The style tree its pictures were last looked for in
@@ -170,6 +172,7 @@ impl Prepared {
             base: self.base.clone(),
             checked: None,
             late: self.late.len(),
+            changes: RuleChanges::default(),
         }
     }
     /// What the stylesheets declared that the engine dropped.
@@ -596,6 +599,8 @@ pub struct Measurer {
     checked: Option<(u64, u64)>,
     /// How many pictures the page it measures for was prepared without.
     late: usize,
+    /// How its rules changed, compilation to compilation.
+    changes: RuleChanges,
 }
 impl Measurer {
     /// How many pictures the page was prepared without (still on their
@@ -633,6 +638,7 @@ impl Measurer {
         sheets.extend(loaded);
         let loaded_at = started.elapsed();
         let (rules, _, faces, _) = compile(&sheets, self.media, cancel)?;
+        self.changes.record(self.rules.generation(), rules.generation(), sheets_changed_within(doc, &self.sheet_ids, &ids));
         let compiled_at = started.elapsed();
         let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel).inspect_err(|_| self.checked = None)?;
         if crate::env_on!("OLO_WEB_TIMING") {
@@ -694,7 +700,16 @@ impl Measurer {
             None => Defaults::new(host, Default::default(), cancel)?,
         };
         let snapshot = interaction::Snapshot::new(doc, Interaction::default(), cancel);
-        let options = || style::JobOptions { quirks: self.quirks, states: Some(&snapshot), previous: None, generation: self.rules.generation(), animated: None, containers: None, resized: &[] };
+        let options = || style::JobOptions {
+            quirks: self.quirks,
+            states: Some(&snapshot),
+            previous: None,
+            generation: self.rules.generation(),
+            animated: None,
+            containers: None,
+            resized: &[],
+            changed_within: None,
+        };
         // A patch over the previous styles: in place when nothing else
         // holds them, else over a copy.
         let mut patched: Option<(style::Patched, Option<Arc<StyleTree>>)> = None;
@@ -731,9 +746,16 @@ impl Measurer {
             Some((_, None)) => previous.as_ref().map(|m| m.layout.cache().tree().styles().clone()).ok_or(style::Error::Stale)?,
             None => {
                 let previous_styles = previous.as_ref().map(|m| m.layout.cache().tree().styles().as_ref());
-                let mut job = style::Job::new(doc, &self.rules, defaults.clone(), style::JobOptions { previous: previous_styles, ..options() }, Default::default(), cancel)?;
+                // Rules that differ from the previous styles' in some shadow
+                // trees' sheets alone: kept outside them.
+                let generation = previous_styles.map(|s| s.generation());
+                let hosts = generation.and_then(|g| self.changes.since(g, self.rules.generation()));
+                let changed_within = generation.zip(hosts.as_deref());
+                let mut job = style::Job::new(doc, &self.rules, defaults.clone(), style::JobOptions { previous: previous_styles, changed_within, ..options() }, Default::default(), cancel)?;
                 while !job.step(256, |_| host)?.finished {}
-                Arc::new(job.finish()?)
+                let styles = job.finish()?;
+                check_styles(doc, &self.rules, defaults.clone(), style::JobOptions { previous: previous_styles, changed_within, ..options() }, &styles, host, cancel)?;
+                Arc::new(styles)
             }
         };
         phases[0] = started.elapsed().as_secs_f64() * 1000.;
@@ -1683,6 +1705,68 @@ fn sheets_unchanged(doc: &Document, checked: Option<(u64, u64)>) -> bool {
     }
     false
 }
+/// How a page's rules changed from one compilation to the next: by each
+/// step, the hosts of the shadow trees whose sheets alone changed (none:
+/// something else did), so styles of the rules before can be kept outside
+/// those trees (`JobOptions::changed_within`). MDN's components add their
+/// styles to their shadow roots one after another while it loads; each
+/// restyled the whole page from nothing.
+#[derive(Clone, Default)]
+struct RuleChanges(Vec<(u64, u64, Option<Arc<[crate::dom::NodeId]>>)>);
+impl RuleChanges {
+    fn record(&mut self, from: u64, to: u64, hosts: Option<Vec<crate::dom::NodeId>>) {
+        if from == to {
+            return;
+        }
+        self.0.push((from, to, hosts.map(Into::into)));
+        if self.0.len() > 16 {
+            self.0.remove(0);
+        }
+    }
+    /// The hosts whose trees' sheets made the difference from generation
+    /// `from` to `to`, step by recorded step; none when a step changed more
+    /// or the way isn't known.
+    fn since(&self, from: u64, to: u64) -> Option<Vec<crate::dom::NodeId>> {
+        let mut hosts = Vec::new();
+        let mut at = from;
+        let mut steps = self.0.iter();
+        while at != to {
+            let (_, next, changed) = steps.find(|(a, _, _)| *a == at)?;
+            hosts.extend(changed.as_deref()?.iter().copied());
+            at = *next;
+        }
+        hosts.sort_unstable_by_key(|n| n.slot());
+        hosts.dedup();
+        Some(hosts)
+    }
+}
+/// The hosts of the shadow trees whose sheets differ between `old` and
+/// `new` (sheet identities, `sheet_identities`), when the document's own
+/// sheets are as they were; none otherwise (a sheet now outside the
+/// document counts as the document's).
+fn sheets_changed_within(doc: &Document, old: &[(crate::dom::NodeId, u64)], new: &[(crate::dom::NodeId, u64)]) -> Option<Vec<crate::dom::NodeId>> {
+    let by_tree = |ids: &[(crate::dom::NodeId, u64)]| {
+        let mut trees: std::collections::HashMap<Option<crate::dom::NodeId>, Vec<(crate::dom::NodeId, u64)>> = std::collections::HashMap::new();
+        for &(node, id) in ids {
+            trees.entry(doc.shadow_scope(node)).or_default().push((node, id));
+        }
+        trees
+    };
+    let (old, new) = (by_tree(old), by_tree(new));
+    if old.get(&None) != new.get(&None) {
+        return None;
+    }
+    let mut hosts = Vec::new();
+    for tree in old.keys().chain(new.keys()) {
+        let Some(root) = tree else { continue };
+        if old.get(tree) != new.get(tree) {
+            hosts.push(doc.shadow_host(*root)?);
+        }
+    }
+    hosts.sort_unstable_by_key(|n| n.slot());
+    hosts.dedup();
+    Some(hosts)
+}
 fn sheet_identities(doc: &Document) -> Result<(Vec<(crate::dom::NodeId, u64)>, Option<String>, Vec<crate::dom::NodeId>)> {
     use std::hash::{Hash, Hasher};
     let mut ids = Vec::new();
@@ -2166,6 +2250,7 @@ pub fn finish_with(
         &mut containers,
         &[],
         &[],
+        None,
         &mut progress,
     )?;
     Ok(Page {
@@ -2194,6 +2279,7 @@ pub fn finish_with(
         base_scope,
         sheet_ids,
         sheets_checked: None,
+        rule_changes: RuleChanges::default(),
         pictures_scanned: None,
     })
 }
@@ -2407,6 +2493,7 @@ impl Page {
             }
         }
         let (fonts, _) = load_fonts(&faces, base.as_deref(), resource, cancel).inspect_err(|_| self.sheets_checked = None)?;
+        self.rule_changes.record(self.rules.generation(), rules.generation(), sheets_changed_within(doc, &self.sheet_ids, &ids));
         self.rules = rules;
         self.media_dependent = dependent;
         self.interaction_mask = self.rules.state_mask();
@@ -2509,6 +2596,7 @@ impl Page {
             &mut self.containers,
             &restyle,
             &rematch,
+            Some(&self.rule_changes),
             &mut progress,
         );
         // What it kept from before failed it (a case the incremental paths
@@ -2538,6 +2626,7 @@ impl Page {
                     &mut self.containers,
                     &[],
                     &[],
+                    None,
                     &mut progress,
                 )?
             }
@@ -2620,6 +2709,7 @@ impl Page {
             &mut self.containers,
             &[],
             &rematch,
+            Some(&self.rule_changes),
             &mut progress,
         );
         let (scene, issues, fallbacks) = match incremental {
@@ -2678,6 +2768,7 @@ impl Page {
             &mut self.containers,
             &[],
             &[],
+            None,
             &mut progress,
         )?;
         self.rendered_interaction = self.interaction;
@@ -2686,6 +2777,86 @@ impl Page {
         self.fallbacks = fallbacks;
         Ok(())
     }
+}
+/// OLO_STYLE_CHECK: style `doc` again from nothing and compare every
+/// element's and pseudo-element's style with `styles` (made from an
+/// earlier tree), printing the first differences: what an incremental
+/// restyle kept must be what a fresh one makes.
+fn check_styles<H: Host>(
+    doc: &Document,
+    rules: &css::cascade::RuleSet,
+    defaults: Arc<Defaults>,
+    options: style::JobOptions<'_>,
+    styles: &StyleTree,
+    host: &H,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
+    if options.previous.is_none() || std::env::var_os("OLO_STYLE_CHECK").is_none() {
+        return Ok(());
+    }
+    let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { previous: None, changed_within: None, ..options }, Default::default(), cancel)?;
+    while !job.step(256, |_| host)?.finished {}
+    let fresh = job.finish()?;
+    let (kept, made): (Vec<_>, Vec<_>) = (styles.iter().collect(), fresh.iter().collect());
+    let name =
+        |n: crate::dom::NodeId| format!("<{} class={:?}>", doc.name(n).ok().flatten().unwrap_or("?"), doc.attribute(n, "class").ok().flatten().unwrap_or("").chars().take(40).collect::<String>());
+    let mut differing = 0usize;
+    let path = |n: crate::dom::NodeId| {
+        let mut out = Vec::new();
+        let mut at = Some(n);
+        while let Some(a) = at.filter(|_| out.len() < 12) {
+            out.push(format!("{}{}", doc.name(a).ok().flatten().unwrap_or("#"), if doc.shadow_root(a).is_some() { "(host)" } else { "" }));
+            at = doc.parent(a).ok().flatten().or_else(|| doc.shadow_host(a));
+        }
+        out.join(" < ")
+    };
+    for (i, ((a, x), (b, y))) in kept.iter().zip(&made).enumerate() {
+        if a != b {
+            eprintln!("style check: entry {i} is {} kept, {} fresh: the trees part here; fresh's is {}", name(*a), name(*b), path(*b));
+            differing += 1;
+            break;
+        }
+        // Animated elements take their values after (the animation patch).
+        if options.animated.is_some_and(|m| m.contains_key(a)) {
+            continue;
+        }
+        if !x.same_as(y) && x.differs_in_value(y) {
+            if differing < 5 {
+                let attrs: Vec<String> = doc.attributes_ns(*a).map(|a| a.map(|a| format!("{}={:?}", a.local_name, a.value.chars().take(30).collect::<String>())).collect()).unwrap_or_default();
+                eprintln!("style check: {} at {} [{}]", name(*a), path(*a), attrs.join(" "));
+                let rules_of = |t: &StyleTree| t.matched(*a).map(|m| m.iter().map(|(id, _)| rules.describe_rule(*id)).collect::<Vec<_>>().join(" | ")).unwrap_or_else(|| "not recorded".into());
+                eprintln!("style check:   fresh matched: {}", rules_of(&fresh));
+                eprintln!("style check:   kept matched: {}", if options.changed_within.is_some() { "(older rules)".to_owned() } else { rules_of(styles) });
+                use css::properties::Property as P;
+                let summary = |t: &StyleTree, n: crate::dom::NodeId| {
+                    let parent = doc.composed_parent(n).ok().flatten();
+                    let s = t.snapshot(style::StyleKey::from(n));
+                    let ps = parent.and_then(|p| t.snapshot(style::StyleKey::from(p)));
+                    format!(
+                        "own position {:?} float {:?}; parent <{}> display {:?}",
+                        s.map(|s| s.value(P::Position)),
+                        s.map(|s| s.value(P::Float)),
+                        parent.and_then(|p| doc.name(p).ok().flatten()).unwrap_or("?"),
+                        ps.map(|s| s.value(P::Display))
+                    )
+                };
+                eprintln!("style check:   kept: {}", summary(styles, *a));
+                eprintln!("style check:   fresh: {}", summary(&fresh, *a));
+            }
+            differing += 1;
+            if differing <= 5 {
+                eprintln!("style check: {} differs: {}", name(*a), x.difference(y));
+            }
+        }
+    }
+    eprintln!(
+        "style check ({}): {} of {} entries differ{}",
+        if options.changed_within.is_some() { "rules changed in shadow trees" } else { "same rules" },
+        differing,
+        kept.len(),
+        if kept.len() != made.len() { format!("; {} entries fresh", made.len()) } else { String::new() }
+    );
+    Ok(())
 }
 /// OLO_LAYOUT_CHECK: lay `cache` out again without the previous layout
 /// and compare every box's geometry with `layout`'s (which took what it
@@ -3180,6 +3351,7 @@ fn render(
     containers: &mut crate::dom::NodeMap<[f64; 2]>,
     restyle: &[crate::dom::NodeId],
     rematch: &[(crate::dom::NodeId, bool)],
+    changes: Option<&RuleChanges>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
     let mut result = render_once(
@@ -3202,6 +3374,7 @@ fn render(
         containers,
         restyle,
         rematch,
+        changes,
         &mut progress,
     )?;
     if !rules.has_containers() {
@@ -3240,6 +3413,7 @@ fn render(
             containers,
             &resized,
             &[],
+            None,
             &mut progress,
         )?;
     }
@@ -3266,6 +3440,7 @@ fn render_once(
     containers: &crate::dom::NodeMap<[f64; 2]>,
     resized: &[crate::dom::NodeId],
     rematch: &[(crate::dom::NodeId, bool)],
+    changes: Option<&RuleChanges>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
     // The previous layout's styles stand in only while they were computed
@@ -3275,6 +3450,10 @@ fn render_once(
     let previous = previous.filter(|p| p.cache().tree().styles().defaults().is_some_and(|d| d.is_current(host)));
     let previous_styles = previous.map(|p| p.cache().tree().styles().as_ref());
     let previous_revision = previous_styles.map(|p| p.document_revision());
+    // Rules that differ from the previous styles' in some shadow trees'
+    // sheets alone: those styles kept outside them.
+    let changed_hosts = previous_styles.zip(changes).and_then(|(p, c)| c.since(p.generation(), rules.generation()));
+    let changed_within = previous_styles.map(|p| p.generation()).zip(changed_hosts.as_deref());
     // What each stage substituted (styles, boxes, texts, layout), and
     // whether it did all its work again (see `layout::Recorded`).
     let mut found: [layout::Fallbacks; 4] = Default::default();
@@ -3342,7 +3521,16 @@ fn render_once(
         let copying = std::time::Instant::now();
         let mut tree = p.clone();
         let copied_ms = copying.elapsed().as_secs_f64() * 1000.;
-        let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation(), animated: Some(&animation_values), containers: Some(containers), resized };
+        let options = style::JobOptions {
+            quirks,
+            states: Some(&snapshot),
+            previous: None,
+            generation: rules.generation(),
+            animated: Some(&animation_values),
+            containers: Some(containers),
+            resized,
+            changed_within: None,
+        };
         if let Some(result) = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)? {
             patched = Some(result);
             styles = Some(Arc::new(tree));
@@ -3358,26 +3546,23 @@ fn render_once(
     let mut styles = match styles {
         Some(styles) => styles,
         None => {
-            let mut job = style::Job::new(
-                doc,
-                rules,
-                defaults.clone(),
-                style::JobOptions {
-                    quirks,
-                    states: Some(&snapshot),
-                    previous: previous_styles,
-                    generation: rules.generation(),
-                    animated: Some(&animation_values),
-                    containers: Some(containers),
-                    resized,
-                },
-                Default::default(),
-                cancel,
-            )?;
+            let options = style::JobOptions {
+                quirks,
+                states: Some(&snapshot),
+                previous: previous_styles,
+                generation: rules.generation(),
+                animated: Some(&animation_values),
+                containers: Some(containers),
+                resized,
+                changed_within,
+            };
+            let mut job = style::Job::new(doc, rules, defaults.clone(), options, Default::default(), cancel)?;
             while !job.step(128, |_| host)?.finished {
                 progress(Phase::Styles, job.progress().styled)
             }
-            Arc::new(job.finish()?)
+            let styles = job.finish()?;
+            check_styles(doc, rules, defaults.clone(), options, &styles, host, cancel)?;
+            Arc::new(styles)
         }
     };
     // CSS transitions (CSS Transitions 1 §3): an element restyled whose
@@ -3448,7 +3633,16 @@ fn render_once(
         // GitHub's 2.5 MB of CSS, matching nine animated elements again
         // each frame took most of a millisecond).
         let nodes: Vec<(crate::dom::NodeId, bool)> = animation_nodes.iter().map(|&n| (n, tree.has_pseudos(n))).collect();
-        let options = style::JobOptions { quirks, states: Some(&snapshot), previous: None, generation: rules.generation(), animated: Some(&animation_values), containers: Some(containers), resized };
+        let options = style::JobOptions {
+            quirks,
+            states: Some(&snapshot),
+            previous: None,
+            generation: rules.generation(),
+            animated: Some(&animation_values),
+            containers: Some(containers),
+            resized,
+            changed_within: None,
+        };
         let patching = std::time::Instant::now();
         let patch = style::Job::patch(doc, rules, defaults.clone(), options, Default::default(), cancel, &mut tree, &nodes, |_| host)?;
         if timing.is_some() {

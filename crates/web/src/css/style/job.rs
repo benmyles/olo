@@ -30,6 +30,12 @@ pub struct JobOptions<'a> {
     /// what they hold is matched again (their `@container` rules), the rest
     /// kept as `previous` has it.
     pub resized: &'a [NodeId],
+    /// The rules are `previous`'s generation's (the first) but for the
+    /// sheets of the shadow trees these hosts hold (scripts adding a
+    /// component's styles): `previous` serves all the same, and what those
+    /// sheets can reach (each host, its children, its shadow tree and
+    /// those nested in it: `:host`, `::slotted`, `::part`) is styled again.
+    pub changed_within: Option<(u64, &'a [NodeId])>,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct JobLimits {
@@ -244,6 +250,11 @@ impl StyleTree {
     pub fn generation(&self) -> u64 {
         self.generation
     }
+    /// The rules `node` matched, as recorded (ids into the rules of this
+    /// tree's generation; none when not recorded).
+    pub fn matched(&self, node: NodeId) -> Option<&[(u32, selectors::Specificity)]> {
+        self.index(node).and_then(|i| self.styles[i].matched.as_deref())
+    }
     /// Whether a layout of the previous tree's document serves this one
     /// (see the field).
     pub fn geometry_kept(&self) -> bool {
@@ -369,6 +380,25 @@ struct Incremental<'a> {
     geometry_kept: bool,
     /// Why not, when not (diagnostics).
     why_not: Option<String>,
+    /// The rules are another generation's: kept styles' recorded rule ids
+    /// point into the old rules, so they are not kept.
+    rules_changed: bool,
+}
+/// The elements of `host`'s composed subtree, itself included: its
+/// children, its shadow tree, and the trees nested in those.
+fn composed_subtree(document: &Document, host: NodeId, nodes: &mut crate::dom::NodeSet) {
+    let mut stack = vec![host];
+    while let Some(n) = stack.pop() {
+        if document.node_type(n).ok() == Some(crate::dom::NodeType::Element) {
+            nodes.insert(n);
+        }
+        if let Some(root) = document.shadow_root(n) {
+            stack.push(root);
+        }
+        if let Ok(children) = document.children(n) {
+            stack.extend(children);
+        }
+    }
 }
 /// An element's style a later sibling with its parent, name and
 /// attributes takes without matching (Servo and Blink share styles so).
@@ -467,7 +497,14 @@ impl<'a> Job<'a> {
             ancestors: Default::default(),
             chain: Vec::new(),
             previous: options.previous.and_then(|tree| {
-                if tree.document != document.id() || tree.generation != options.generation {
+                // Other rules: only when they differ from the tree's in some
+                // shadow trees' sheets alone.
+                let changed_within = match options.changed_within {
+                    _ if tree.generation == options.generation => None,
+                    Some((generation, hosts)) if generation == tree.generation => Some(hosts),
+                    _ => return None,
+                };
+                if tree.document != document.id() {
                     return None;
                 }
                 let changes = document.changes_since(tree.revision)?;
@@ -619,6 +656,13 @@ impl<'a> Job<'a> {
                         }
                         crate::dom::Change::Attribute { node: n, name, old, new } => {
                             nodes.insert(*n);
+                            // A host's child asking for another slot: its
+                            // host's children change their slots.
+                            if name.as_ref() == "slot"
+                                && let Some(host) = document.parent(*n).ok().flatten().filter(|h| document.shadow_root(*h).is_some())
+                            {
+                                children.insert(host);
+                            }
                             let keys = attribute_keys(name, old.as_deref(), new.as_deref());
                             // An ancestor's :has() can flip only when an
                             // argument tests one of the keys that changed.
@@ -691,9 +735,37 @@ impl<'a> Job<'a> {
                         }
                     }
                 }
+                if let Some(hosts) = changed_within {
+                    for &host in hosts {
+                        composed_subtree(document, host, &mut nodes);
+                    }
+                    // Their recorded rules are the old rules' ids: matched again.
+                    for n in std::mem::take(&mut style_only).iter() {
+                        nodes.insert(*n);
+                    }
+                }
                 let why_not = (!geometry_kept).then(|| "the document's structure or text changed".to_owned());
+                // A host whose children changed: what its slots show did
+                // (a child added, gone, or asking for another slot), so each
+                // slot is walked, not copied with what it showed before
+                // (Reddit's <alert-controller>, added to <shreddit-app>,
+                // was missing from the styles).
+                let mut slots = Vec::new();
+                for &host in &children {
+                    if let Some(root) = document.shadow_root(host) {
+                        let mut stack = vec![root];
+                        while let Some(n) = stack.pop() {
+                            if document.name(n).ok().flatten() == Some("slot") {
+                                slots.push(n);
+                            }
+                            if let Ok(c) = document.children(n) {
+                                stack.extend(c);
+                            }
+                        }
+                    }
+                }
                 let mut below = crate::dom::NodeSet::default();
-                for &n in nodes.iter().chain(&children).chain(&style_only) {
+                for &n in nodes.iter().chain(&children).chain(&style_only).chain(&slots) {
                     let mut at = Some(n);
                     while let Some(a) = at {
                         if !below.insert(a) {
@@ -707,7 +779,7 @@ impl<'a> Job<'a> {
                         at = document.composed_parent(a).ok().flatten().or_else(|| document.shadow_host(a));
                     }
                 }
-                Some(Incremental { tree, nodes, style_only, children, below, geometry_kept, why_not })
+                Some(Incremental { tree, nodes, style_only, children, below, geometry_kept, why_not, rules_changed: changed_within.is_some() })
             }),
             same: Vec::new(),
             inherited_same: Vec::new(),
@@ -1097,10 +1169,12 @@ impl<'a> Job<'a> {
             && !inc.style_only.contains(&node)
             && !parent_node.is_some_and(|p| inc.children.contains(&p))
             && parent.is_none_or(|i| self.inherited_same[i])
+            // Through `display: contents`, the box its children are laid out in.
+            && parent_box.is_none_or(|b| self.inherited_same[b.get() as usize - 1])
             && let Some(i) = inc.tree.index(node)
         {
             let style = inc.tree.styles[i].style.clone();
-            let matched = inc.tree.styles[i].matched.clone();
+            let matched = if inc.rules_changed { None } else { inc.tree.styles[i].matched.clone() };
             let index = self.tree.styles.len();
             self.tree.styles.push(Styled { node, style, parent_box, end: 0, pseudo: None, matched });
             self.same.push(true);
@@ -1152,7 +1226,7 @@ impl<'a> Job<'a> {
                             parent_box: old.parent_box.and_then(|p| NonZeroU32::new((i64::from(p.get()) + delta) as u32)),
                             end: (i64::from(old.end) + delta) as u32,
                             pseudo: old.pseudo,
-                            matched: old.matched.clone(),
+                            matched: if inc.rules_changed { None } else { old.matched.clone() },
                         });
                         self.same.push(true);
                         self.inherited_same.push(true);

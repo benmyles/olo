@@ -995,6 +995,22 @@ impl RuleSet {
         }
         Ok(())
     }
+    /// Rule `id`'s selector, written out (diagnostics), with its tree scope.
+    pub fn describe_rule(&self, id: u32) -> String {
+        self.rules.get(id as usize).map_or_else(
+            || format!("rule {id}?"),
+            |r| {
+                let declared = format!("{:?}", r.declarations);
+                format!(
+                    "{} (scope {:?}{}: {})",
+                    self.selectors.describe(r.selector),
+                    r.scope,
+                    if r.container != NO_CONTAINER { ", in @container" } else { "" },
+                    declared.chars().take(120).collect::<String>()
+                )
+            },
+        )
+    }
     /// Whether a rule declaring `content` for `pseudo` could match `node`:
     /// when none could (most elements), the pseudo-element is not there,
     /// known without matching (MDN: 213 made of 14,282 looked for).

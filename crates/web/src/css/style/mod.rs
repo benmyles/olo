@@ -339,6 +339,17 @@ impl Dictionary {
             d = d.parent.as_deref()?;
         }
     }
+    /// Every name with the value it has here (the nearest level's), as
+    /// written out: for checks.
+    fn flattened(&self) -> std::collections::BTreeMap<String, String> {
+        let mut out = std::collections::BTreeMap::new();
+        for d in self.chain() {
+            for v in d.values.iter() {
+                out.entry(v.name.to_string()).or_insert_with(|| format!("{:?}", v.value));
+            }
+        }
+        out
+    }
     /// This dictionary and its parents, nearest first.
     fn chain(&self) -> impl Iterator<Item = &Dictionary> {
         std::iter::successors(Some(self), |d| d.parent.as_deref())
@@ -744,6 +755,18 @@ impl Style {
         Arc::ptr_eq(&self.values, &other.values)
     }
     /// The names of the properties in which `other` differs (diagnostics).
+    /// Whether a value differs from `other`'s as written out, not only to
+    /// `same_as` (which is quick and sometimes unsure: two `calc()`s
+    /// computed apart are not the same to it): for checks, not hot paths.
+    pub fn differs_in_value(&self, other: &Self) -> bool {
+        Property::ALL.iter().any(|p| {
+            let (a, b) = (self.value(*p), other.value(*p));
+            !a.same(b) && format!("{a:?}") != format!("{b:?}")
+        }) || self.font.request != other.font.request
+            || !(Arc::ptr_eq(&self.customs, &other.customs) || self.customs.same_as(&other.customs) || self.customs.flattened() == other.customs.flattened())
+            || self.axes != other.axes
+            || self.line_height != other.line_height
+    }
     pub fn difference(&self, other: &Self) -> String {
         let mut out = Vec::new();
         for p in Property::ALL {
@@ -850,9 +873,16 @@ impl Style {
     }
     /// Whether every value a child inherits is the same in `other` (so a
     /// child's computed style cannot differ for this parent's change):
-    /// inherited properties, the font, custom properties and the axes.
+    /// inherited properties, the font, custom properties, the axes, and
+    /// `display` (which blockifies a flex or grid container's children).
     pub fn inherited_same(&self, other: &Self) -> bool {
         if !Arc::ptr_eq(&self.defaults, &other.defaults) || self.axes != other.axes {
+            return false;
+        }
+        // Not inherited, but children's styles follow it all the same: a
+        // flex or grid container's children are blockified (Reddit's
+        // gallery image stayed inline when its parent became flex).
+        if !self.value(Property::Display).same(other.value(Property::Display)) {
             return false;
         }
         if !(Arc::ptr_eq(&self.font, &other.font) || self.font.request == other.font.request && self.font.context == other.font.context) {
