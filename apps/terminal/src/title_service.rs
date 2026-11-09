@@ -24,13 +24,15 @@
 //! That process (the agent) and its ancestors find its tab, as the stdio
 //! server's own ancestors did.
 
-use olo_sync::Mutex;
+// (The Condvar with the Mutex it waits on: in a debug build both are
+// the lock checker's, and std's Condvar can't wait on its guard.)
+use olo_sync::{Condvar, Mutex};
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     os::fd::{AsRawFd, FromRawFd, RawFd},
     path::Path,
-    sync::{Arc, Condvar},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
