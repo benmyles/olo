@@ -26,6 +26,40 @@ pub enum ContentPart {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Content(pub Arc<[ContentPart]>);
 impl Content {
+    /// Serialised as getComputedStyle gives it (CSSOM: strings quoted,
+    /// parts apart by spaces): `"x" attr(title) counter(item)`.
+    pub fn css_text(&self) -> String {
+        let quoted = |t: &str| {
+            let mut out = String::with_capacity(t.len() + 2);
+            out.push('"');
+            for c in t.chars() {
+                match c {
+                    '"' | '\\' => {
+                        out.push('\\');
+                        out.push(c);
+                    }
+                    c if c.is_control() => out.push_str(&format!("\\{:x} ", c as u32)),
+                    c => out.push(c),
+                }
+            }
+            out.push('"');
+            out
+        };
+        let style = |k: &Keyword| if *k == Keyword::Decimal { String::new() } else { format!(", {}", k.as_str()) };
+        self.0
+            .iter()
+            .map(|p| match p {
+                ContentPart::Text(t) => quoted(t),
+                ContentPart::Attr(a) => format!("attr({a})"),
+                ContentPart::Counter(n, k) => format!("counter({n}{})", style(k)),
+                ContentPart::Counters(n, sep, k) => format!("counters({n}, {}{})", quoted(sep), style(k)),
+                ContentPart::Quote(open, shows) => format!("{}{}-quote", if *shows { "" } else { "no-" }, if *open { "open" } else { "close" }),
+                ContentPart::Change(n, v) => format!("{n} {v}"),
+                ContentPart::Pair(a, b) => format!("{} {}", quoted(a), quoted(b)),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
     pub(crate) fn reserved_bytes(&self) -> usize {
         self.0
             .iter()
@@ -56,6 +90,11 @@ pub(super) fn parse_content(parts: &[Component<'_>]) -> Result<Value> {
     let mut out = Vec::new();
     for c in parts {
         match c.kind() {
+            // Between parts (`counter(item) ". "`: every content of more
+            // than one part was refused).
+            Kind::Whitespace => continue,
+            // Its alternative text (`"→" / "next"`), for speech: not shown.
+            Kind::Delim if c.character() == Some('/') => break,
             Kind::String => out.push(ContentPart::Text(Arc::from(c.text().unwrap()))),
             Kind::Function if c.text().unwrap().eq_ignore_ascii_case("attr") => {
                 let mut args = c.children().filter(|c| c.kind() != Kind::Whitespace);

@@ -167,8 +167,12 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   layer, whose new matrix the live render didn't count as on screen
   (only the page's matrices were), so its frames were skipped as unseen
   and its last place never shown.
-- [ ] getComputedStyle of a pseudo-element answers the element's own
-  values.
+- [x] getComputedStyle of a pseudo-element answered the element's own
+  values: it answers the pseudo-element's now (its style, its box's
+  sizes; an unstyled one inherits), and `content` is serialised.
+- [ ] `::marker` has no style of its own (Chrome: `display:
+  inline-block`, its rules' colour): its getComputedStyle answers an
+  unstyled pseudo-element's.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.

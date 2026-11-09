@@ -214,9 +214,11 @@ impl Declaration {
         let name = Name::parse(name).ok_or(Error::UnknownProperty)?;
         parse::preflight(values.clone(), limits, cancelled)?;
         // `content: attr(x)` is the legacy attr(): parsed as content's own
-        // syntax, not deferred as an arbitrary substitution (CSS Values 5).
+        // syntax, not deferred as an arbitrary substitution (CSS Values 5),
+        // with content's other functions beside it (`attr(id) counter(n)`
+        // was deferred, and failed).
         let legacy_attr = name == Name::Longhand(Property::Content)
-            && values.clone().all(|c| c.kind() != Kind::Function || c.text().is_some_and(|t| t.eq_ignore_ascii_case("attr")))
+            && values.clone().all(|c| c.kind() != Kind::Function || c.text().is_some_and(|t| ["attr", "counter", "counters"].iter().any(|f| t.eq_ignore_ascii_case(f))))
             && values.clone().filter(|c| c.kind() == Kind::Function).any(|_| true);
         let pending = !legacy_attr && variables::inspect(values.clone(), limits.variables(), cancelled).map_err(variable_error)?;
         let values = if pending {

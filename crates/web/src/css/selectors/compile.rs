@@ -653,21 +653,7 @@ impl Compiler<'_> {
                     },
                 );
             }
-            let p = match name.to_ascii_lowercase().as_str() {
-                "before" => PseudoElement::Before,
-                "after" => PseudoElement::After,
-                "first-line" => PseudoElement::FirstLine,
-                "first-letter" => PseudoElement::FirstLetter,
-                "marker" => PseudoElement::Marker,
-                "selection" => PseudoElement::Selection,
-                "placeholder" => PseudoElement::Placeholder,
-                "backdrop" => PseudoElement::Backdrop,
-                "file-selector-button" => PseudoElement::FileSelectorButton,
-                "spelling-error" => PseudoElement::SpellingError,
-                "grammar-error" => PseudoElement::GrammarError,
-                "target-text" => PseudoElement::TargetText,
-                _ => return Err(Error::Invalid),
-            };
+            let Some(p) = PseudoElement::from_name(&name) else { return Err(Error::Invalid) };
             return Ok((Test::Pseudo(p), Specificity { types: 1, ..Default::default() }, true));
         }
         let base = Specificity { classes: 1, ..Default::default() };

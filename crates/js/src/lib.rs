@@ -4385,8 +4385,17 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         "computed" => {
             if let Some(n) = node(scope, 0) {
                 let property = arg_string(scope, &args, 1);
+                // A pseudo-element's (its name without colons).
+                let pseudo = (args.length() > 2 && args.get(2).is_string()).then(|| arg_string(scope, &args, 2));
+                let pseudo = match pseudo.as_deref() {
+                    None => None,
+                    Some(name) => match olo_web::css::selectors::PseudoElement::from_name(name) {
+                        Some(p) => Some(p),
+                        None => return rv.set_null(),
+                    },
+                };
                 let mut s = state.borrow_mut();
-                let text = s.measured().and_then(|m| m.computed(n, &property));
+                let text = s.measured().and_then(|m| m.computed_pseudo(n, pseudo, &property));
                 drop(s);
                 match text {
                     Some(t) => rv.set(string(scope, &t)),

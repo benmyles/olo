@@ -1566,12 +1566,25 @@
   global.scroll = global.scrollTo = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(Number(x) || 0, Number(y) || 0); };
   global.scrollBy = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(scrollXY[0] + (Number(x) || 0), scrollXY[1] + (Number(y) || 0)); };
   global.alert = (m) => log('alert', [String(m)]); global.confirm = () => false; global.prompt = () => null; global.print = () => {}; global.open = () => null; global.close = () => {}; global.focus = () => {}; global.blur = () => {}; global.stop = () => {}; global.reportError = reportError; global.getSelection = () => ({ rangeCount: 0, type: 'None', toString: () => '', getRangeAt: () => new Range(), removeAllRanges() {}, addRange() {}, anchorNode: null, focusNode: null, isCollapsed: true, addEventListener() {} });
-  global.getComputedStyle = (el) => {
-    const inline = parseStyle(el && N.attr(el, 'style') || '');
-    const tag = el && N.nodeName(el).toLowerCase();
+  // (A pseudo-element's, given its name with or without its colons, as
+  // Chrome takes it: an unknown one has no values at all.)
+  const PSEUDOS = ['before', 'after', 'first-line', 'first-letter', 'marker', 'selection', 'placeholder', 'backdrop', 'file-selector-button', 'spelling-error', 'grammar-error', 'target-text'];
+  global.getComputedStyle = (el, pseudoElt) => {
+    let pseudo;
+    if (pseudoElt != null && pseudoElt !== '') {
+      pseudo = String(pseudoElt).replace(/^::?/, '').toLowerCase();
+      if (!PSEUDOS.includes(pseudo)) {
+        const empty = new CSSStyleDeclaration(() => '', () => {});
+        empty.getPropertyValue = () => '';
+        return new Proxy(empty, { get(target, key) { if (typeof key !== 'string') return undefined; if (key in target) return target[key]; return ''; }, set() { return true; } });
+      }
+    }
+    const inline = pseudo ? [] : parseStyle(el && N.attr(el, 'style') || '');
+    const tag = pseudo ? 'span' : el && N.nodeName(el).toLowerCase();
     const defaults = { display: ['div', 'p', 'body', 'html', 'section', 'header', 'footer', 'main', 'nav', 'article', 'aside', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'form', 'table', 'pre', 'blockquote', 'figure', 'hr', 'fieldset', 'details', 'dialog', 'address', 'dd', 'dl', 'dt'].includes(tag) ? 'block' : (tag === 'script' || tag === 'style' || tag === 'head' || tag === 'meta' || tag === 'link' || tag === 'title' || tag === 'template' ? 'none' : 'inline'), visibility: 'visible', opacity: '1', position: 'static', overflow: 'visible', color: 'rgb(0, 0, 0)', backgroundColor: 'rgba(0, 0, 0, 0)', fontSize: '16px', fontFamily: 'serif', fontWeight: '400', lineHeight: 'normal', width: 'auto', height: 'auto', zIndex: 'auto', transform: 'none', transition: 'all 0s ease 0s', animationName: 'none', pointerEvents: 'auto', direction: 'ltr', boxSizing: 'content-box', textAlign: 'start', top: 'auto', left: 'auto', right: 'auto', bottom: 'auto', margin: '0px', padding: '0px', border: '0px none rgb(0, 0, 0)', marginTop: '0px', marginRight: '0px', marginBottom: '0px', marginLeft: '0px', paddingTop: '0px', paddingRight: '0px', paddingBottom: '0px', paddingLeft: '0px', borderTopWidth: '0px', borderRightWidth: '0px', borderBottomWidth: '0px', borderLeftWidth: '0px', float: 'none', clear: 'none', cursor: 'auto', content: 'none', flexDirection: 'row', flexWrap: 'nowrap', justifyContent: 'normal', alignItems: 'normal', gap: 'normal', minWidth: '0px', maxWidth: 'none', minHeight: '0px', maxHeight: 'none', letterSpacing: 'normal', textTransform: 'none', textDecoration: 'none solid rgb(0, 0, 0)', whiteSpace: 'normal', wordBreak: 'normal', backgroundImage: 'none', backgroundSize: 'auto', backgroundPosition: '0% 0%', userSelect: 'auto', willChange: 'auto', filter: 'none', backdropFilter: 'none', clipPath: 'none', mixBlendMode: 'normal', isolation: 'auto', objectFit: 'fill', aspectRatio: 'auto', scrollBehavior: 'auto', overflowX: 'visible', overflowY: 'visible', touchAction: 'auto', writingMode: 'horizontal-tb', columnCount: 'auto', outline: 'rgb(0, 0, 0) none 0px', boxShadow: 'none', borderRadius: '0px', verticalAlign: 'baseline', listStyle: 'outside none disc', tableLayout: 'auto', borderCollapse: 'separate', emptyCells: 'show', captionSide: 'top', resize: 'none', appearance: 'none', colorScheme: 'normal', accentColor: 'auto', containerType: 'normal', contain: 'none', perspective: 'none', transformOrigin: '0px 0px', transformStyle: 'flat', backfaceVisibility: 'visible', animationDuration: '0s', transitionDuration: '0s', fontStyle: 'normal', fontVariant: 'normal', textIndent: '0px', textOverflow: 'clip', textShadow: 'none', wordSpacing: '0px', tabSize: '8', hyphens: 'manual', inset: 'auto' };
+    if (pseudo) defaults.content = pseudo === 'before' || pseudo === 'after' ? 'none' : 'normal';
     const decl = new CSSStyleDeclaration(() => Object.entries(defaults).map(([k, v]) => kebab(k) + ': ' + v).concat(inline.map((p) => p.name + ': ' + p.value)).join('; '), () => {});
-    const engine = (name) => (el && N.nodeType(el) === 1 ? N.computed(el, name) : null);
+    const engine = (name) => (el && N.nodeType(el) === 1 ? (pseudo ? N.computed(el, name, pseudo) : N.computed(el, name)) : null);
     decl.getPropertyValue = (name) => { name = propName(name); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(name)] !== undefined ? defaults[camel(name)] : ''; };
     return new Proxy(decl, { get(target, key) { if (typeof key !== 'string') return undefined; if (key in target) return target[key]; const name = kebab(key); const v = engine(name); if (v != null) return v; const p = inline.find((p) => p.name === name); if (p) return p.value; return defaults[camel(key)] !== undefined ? defaults[camel(key)] : ''; }, set() { return true; } });
   };

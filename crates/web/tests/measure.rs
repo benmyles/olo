@@ -303,6 +303,28 @@ fn a_length_margin_resolves_to_itself_not_the_room_left_over() {
     assert_eq!(get("em", "margin-right").as_deref(), Some("20px"));
 }
 #[test]
+fn a_pseudo_element_answers_its_own_computed_style() {
+    // getComputedStyle(el, '::before') as Chrome answers it: the pseudo's
+    // own values and box (Olo gave the element's); one nothing styles
+    // inherits from its element and is otherwise initial.
+    let (mut measurer, host, doc, viewport) = measurer_for(
+        "<!doctype html><style>body{margin:0;color:rgb(10,20,30)} #a::before{content:\"x\" attr(id) counter(n) / \"alt\";display:block;width:50%;padding:3px;color:red} #a::after{content:'y\"'}</style>\
+         <div id=a style='width:200px'>hi</div><div id=b style='color:green'>no</div>",
+    );
+    let m = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+    use olo_web::css::selectors::PseudoElement::{After, Before};
+    let get = |id: &str, p, name: &str| m.computed_pseudo(find(&doc, id), p, name);
+    assert_eq!(get("a", Some(Before), "content").as_deref(), Some("\"x\" attr(id) counter(n)"));
+    assert_eq!(get("a", Some(Before), "width").as_deref(), Some("100px"));
+    assert_eq!(get("a", Some(Before), "padding-top").as_deref(), Some("3px"));
+    assert_eq!(get("a", Some(Before), "color").as_deref(), Some("rgb(255, 0, 0)"));
+    assert_eq!(get("a", Some(After), "content").as_deref(), Some("\"y\\\"\""));
+    assert_eq!(get("a", None, "width").as_deref(), Some("200px"));
+    assert_eq!(get("a", None, "content").as_deref(), Some("normal"));
+    assert_eq!(get("b", Some(Before), "color").as_deref(), Some("rgb(0, 128, 0)"), "inherited from its element");
+    assert_eq!(get("b", Some(Before), "width"), None, "initial: the caller's to answer");
+}
+#[test]
 fn a_picture_a_script_loaded_measures_its_image_after_the_document_changes() {
     // The pictures bound for measuring were the document's at one revision:
     // after any change an image measured as its placeholder (0 tall with a

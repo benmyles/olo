@@ -1495,17 +1495,41 @@ impl Measured {
     /// properties scripts read: keywords, lengths in px, colours, display,
     /// and the box's used sizes and edges.
     pub fn computed(&self, node: crate::dom::NodeId, name: &str) -> Option<String> {
+        self.computed_pseudo(node, None, name)
+    }
+    /// Whether `node` has the pseudo-element `pseudo` styled (one that
+    /// generates content: `::before` with a `content`).
+    pub fn has_pseudo(&self, node: crate::dom::NodeId, pseudo: css::selectors::PseudoElement) -> bool {
+        self.layout.cache().tree().styles().snapshot(css::style::StyleKey::pseudo(node, pseudo)).is_some()
+    }
+    /// `computed` for a pseudo-element of `node` (`getComputedStyle(el,
+    /// '::before')`): its own style, and its box's sizes when it has one.
+    pub fn computed_pseudo(&self, node: crate::dom::NodeId, pseudo: Option<css::selectors::PseudoElement>, name: &str) -> Option<String> {
         use css::properties::{Keyword as K, Name, Property as P};
         use css::style::Value;
         let tree = self.layout.cache().tree();
-        let style = tree.styles().snapshot(node)?;
+        let Some(style) = tree.styles().snapshot(css::style::StyleKey { node, pseudo }) else {
+            // A pseudo-element nothing styles (no `content`): what it
+            // inherits from its element, as Chrome answers (the rest its
+            // initial values, which the caller knows).
+            let Name::Longhand(p) = Name::parse(name)? else { return None };
+            return (pseudo.is_some() && p.inherited()).then(|| computed_value(tree.styles().snapshot(node)?, p)).flatten();
+        };
         // A custom property: its computed value as spelled, substituted
         // (a page's gradient reads its colours from `--gradientColorOne`).
         if name.starts_with("--") {
             return style.custom(name).and_then(|c| c.value().map(|v| v.source_spelling().trim().to_owned()));
         }
         let Name::Longhand(p) = Name::parse(name)? else { return None };
-        let g = self.geometry(node);
+        let g = match pseudo {
+            None => self.geometry(node),
+            // A pseudo-element's box: a child of its element's.
+            Some(pseudo) => self.index.get(&node).and_then(|&id| {
+                let key = css::style::StyleKey::pseudo(node, pseudo);
+                let id = std::iter::successors(tree.get(id)?.first_child, |&c| tree.get(c)?.next_sibling).find(|&c| tree.get(c).is_some_and(|b| b.style_node == key))?;
+                Some((id, self.layout.bounds(id)?, self.layout.geometry(id)?))
+            }),
+        };
         let px = |v: f64| format!("{}px", trim(v));
         let used = match p {
             P::Width | P::Height => g.map(|(_, r, g)| {
@@ -1576,6 +1600,7 @@ pub fn computed_value(style: &css::style::Style, p: css::properties::Property) -
         Some(match style.value(p) {
             Value::Keyword(k) => k.as_str().to_owned(),
             Value::Numeric(n) if n.expression().constant().is_none_or(|q| q.ty.kind() == Some(css::math::Dimension::Percentage)) => numeric_text(n)?,
+            Value::Content(c) => c.css_text(),
             Value::Transforms(t) if t.0.is_empty() => "none".into(),
             Value::Transforms(t) => {
                 t.0.iter()

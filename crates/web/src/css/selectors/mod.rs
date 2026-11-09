@@ -173,6 +173,26 @@ pub enum PseudoElement {
     GrammarError,
     TargetText,
 }
+impl PseudoElement {
+    /// The pseudo-element a name (after its colons) names, case aside.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name.to_ascii_lowercase().as_str() {
+            "before" => Self::Before,
+            "after" => Self::After,
+            "first-line" => Self::FirstLine,
+            "first-letter" => Self::FirstLetter,
+            "marker" => Self::Marker,
+            "selection" => Self::Selection,
+            "placeholder" => Self::Placeholder,
+            "backdrop" => Self::Backdrop,
+            "file-selector-button" => Self::FileSelectorButton,
+            "spelling-error" => Self::SpellingError,
+            "grammar-error" => Self::GrammarError,
+            "target-text" => Self::TargetText,
+            _ => return None,
+        })
+    }
+}
 #[derive(Clone, Copy)]
 enum Relation {
     None,
