@@ -1052,3 +1052,85 @@ console.log(c.tagName, typeof c.getBBox, typeof c.getTotalLength, c.getTotalLeng
     realm.advance_frame(10., std::time::Duration::from_secs(1), Some(true));
     assert_eq!(realm.report().console, ["[log] circle function function 62.426971435546875 function"]);
 }
+#[test]
+fn window_post_message_reaches_its_own_window() {
+    // window.postMessage was a no-op: libraries scheduling work with it
+    // (setImmediate polyfills, Closure's nextTick) never ran it.
+    let page = r#"<script>
+const seen = [];
+window.addEventListener('message', (e) => seen.push([JSON.stringify(e.data), e.origin, e.source === window, e.data === sent].join(' ')));
+const sent = { a: [1, 2], b: 'x' };
+window.postMessage(sent, '*');
+window.postMessage('dropped', 'https://elsewhere.test');
+window.postMessage('own', { targetOrigin: '/' });
+seen.push('sync ' + window.postMessage.length);
+setTimeout(() => console.log(seen.join(' | ')), 20);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    realm.advance(50., std::time::Duration::from_secs(1));
+    assert_eq!(realm.report().console, [r#"[log] sync 1 | {"a":[1,2],"b":"x"} https://example.test true false | "own" https://example.test true false"#]);
+}
+#[test]
+fn frames_post_messages_through_the_browser() {
+    // An iframe's contentWindow takes postMessage (the browser carries it to
+    // the frame's realm); a message from the frame arrives from it.
+    let page = r#"<iframe id=f src="https://frame.test/"></iframe><script>
+const f = document.getElementById('f');
+const w = f.contentWindow;
+window.addEventListener('message', (e) => console.log('got', JSON.stringify(e.data), e.origin, e.source === w, e.source === f.contentWindow));
+w.postMessage({ hello: 1 }, 'https://frame.test');
+console.log(String(w), w.window === w, w.parent === window, typeof w.postMessage, window.parent === window, window.top === window);
+</script>"#;
+    let parsed = html::parse(Arc::from(page), html::ParseOptions { scripting: true, ..Default::default() }, None).unwrap();
+    let scripts: Vec<Script> = olo_js::page_scripts(&parsed.document, "https://example.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut realm = Realm::new(parsed.document, Config { url: "https://example.test/".into(), ..Default::default() }, None, None).unwrap();
+    realm.run_page(&scripts);
+    let posts = realm.take_posts();
+    assert_eq!(posts.len(), 1);
+    let (target, bytes, origin) = &posts[0];
+    assert!(target.is_some());
+    assert_eq!(origin, "https://frame.test");
+    // The framed side: its parent a remote window; what it posts goes out.
+    let framed = html::parse(
+        Arc::from(
+            r#"<script>
+window.addEventListener('message', (e) => { console.log('framed got', JSON.stringify(e.data), e.origin, e.source === window.parent); window.parent.postMessage('back', '*'); });
+console.log(window.parent === window, window.top === window.parent, String(window.parent));
+</script>"#,
+        ),
+        html::ParseOptions { scripting: true, ..Default::default() },
+        None,
+    )
+    .unwrap();
+    let framed_scripts: Vec<Script> = olo_js::page_scripts(&framed.document, "https://frame.test/")
+        .into_iter()
+        .map(|(source, name, module, node)| match source {
+            Source::Inline(text) => Script { source: text, name, module, node: Some(node) },
+            Source::External(u) => panic!("external script {u}"),
+        })
+        .collect();
+    let mut frame = Realm::new(framed.document, Config { url: "https://frame.test/".into(), framed: true, ..Default::default() }, None, None).unwrap();
+    frame.run_page(&framed_scripts);
+    frame.receive_message(None, bytes, "https://example.test");
+    let back = frame.take_posts();
+    assert_eq!(back.len(), 1);
+    assert!(back[0].0.is_none());
+    realm.receive_message(*target, &back[0].1, "https://frame.test");
+    assert_eq!(realm.report().console, ["[log] [object Window] true true function true true", r#"[log] got "back" https://frame.test true true"#]);
+    assert_eq!(frame.report().console, ["[log] false true [object Window]", r#"[log] framed got {"hello":1} https://example.test true"#]);
+}

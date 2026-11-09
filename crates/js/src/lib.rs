@@ -53,6 +53,9 @@ pub struct Config {
     pub budget_ms: f64,
     /// Wall-clock seconds the whole run may take.
     pub wall_seconds: f64,
+    /// The page is an iframe's: its `parent` and `top` are the embedding
+    /// page's window (postMessage carried by the browser), not its own.
+    pub framed: bool,
 }
 /// What the browser calls itself, to servers and to scripts alike: a
 /// Chrome of the same engine generation, so sites serve the pages they
@@ -93,7 +96,18 @@ pub const SEC_CH_UA_FULL: &str = r#""Not-A.Brand";v="99.0.0.0", "Google Chrome";
 pub const BRANDS: [(&str, &str, &str); 3] = [("Not-A.Brand", "99", "99.0.0.0"), ("Google Chrome", "157", "157.0.8103.38"), ("Chromium", "157", "157.0.8103.38")];
 impl Default for Config {
     fn default() -> Self {
-        Self { url: "about:blank".into(), viewport: (1000., 700.), scale: 1., user_agent: USER_AGENT.into(), language: "en-US".into(), quirks: false, dark: false, budget_ms: 3000., wall_seconds: 8. }
+        Self {
+            url: "about:blank".into(),
+            viewport: (1000., 700.),
+            scale: 1.,
+            user_agent: USER_AGENT.into(),
+            language: "en-US".into(),
+            quirks: false,
+            dark: false,
+            budget_ms: 3000.,
+            wall_seconds: 8.,
+            framed: false,
+        }
     }
 }
 /// A media element's state as its player has it (HTMLMediaElement).
@@ -357,6 +371,10 @@ struct State {
     measure: Option<Measure>,
     /// The last layout, good while the document's revision is its own.
     measured: Option<olo_web::page::Measured>,
+    /// Messages posted to other frames' windows since the browser last
+    /// took them: to an iframe's (its element) or the parent's (none),
+    /// structured clones, with the target origin asked for.
+    posts: Vec<(Option<NodeId>, Vec<u8>, String)>,
     /// What the browser last painted of the page (`Realm::set_scene`):
     /// where elementFromPoint looks, as a click does.
     scene: Option<Arc<olo_web::paint::Scene>>,
@@ -465,10 +483,34 @@ impl Drop for Realm {
     fn drop(&mut self) {
         // What the heap held goes back to the system with the isolate: told
         // to let go of what it keeps for reuse first.
+        let _entered = Entered::new(&self.isolate);
         self.isolate.low_memory_notification();
         if std::env::var_os("OLO_WEB_TIMING").is_some() {
             eprintln!("realm: dropped");
         }
+    }
+}
+/// This realm's isolate entered on the thread while a call into it runs,
+/// the one entered before restored after. rusty_v8 enters an isolate as
+/// it is made and leaves it as it is dropped, so with two realms on one
+/// thread (a page made while another lives, a frame's and its page's in
+/// a test) the newer stayed the entered one, and calls into the older ran
+/// V8 against the newer's thread state (its marking barrier: V8 aborted,
+/// "vector[] index out of bounds", in its write barrier).
+struct Entered(*const v8::Isolate);
+impl Entered {
+    fn new(isolate: &v8::Isolate) -> Self {
+        // SAFETY: entering is allowed again and again; `drop` exits it,
+        // restoring the isolate entered before, while it lives.
+        unsafe { isolate.enter() };
+        Self(isolate)
+    }
+}
+impl Drop for Entered {
+    fn drop(&mut self) {
+        // SAFETY: the isolate entered in `new`, still alive (the guard
+        // lives within a borrow of its realm) and the current one again.
+        unsafe { (*self.0).exit() };
     }
 }
 /// A task running in the realm (see `Guard`), until dropped.
@@ -537,6 +579,7 @@ impl Realm {
             waker: None,
             measure,
             measured: None,
+            posts: Vec::new(),
             scene: None,
             layout_seconds: 0.,
             run_layouts: 0,
@@ -655,6 +698,7 @@ impl Realm {
         if std::env::var_os("OLO_IMAGE_DEBUG").is_some() {
             eprintln!("  image: request {id} for {node:?}: {}", if result.is_ok() { "loaded" } else { "failed" });
         }
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -733,6 +777,7 @@ impl Realm {
             return;
         }
         pending.sort_by_key(|(id, _)| *id);
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -776,6 +821,7 @@ impl Realm {
         let _busy = Busy::new(&guard);
         let state = self.state.clone();
         let cached = prelude_code();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -798,11 +844,15 @@ impl Realm {
             };
             state.borrow_mut().prelude_script = script.script_id();
             compiled = Instant::now();
-            let done = script.run(tc)?;
-            // (After the run: the functions it compiled are in the cache too.)
+            // The cache made from the compiled script, before it runs: one
+            // made after holds what the run made of the natives (functions
+            // over Olo's callbacks), and another isolate consuming it
+            // aborted V8 ("vector[] index out of bounds" reading its
+            // read-only heap), or corrupted its heap to abort later.
             if fresh && let Some(data) = script.get_unbound_script(tc).create_code_cache() {
                 keep_prelude_code(&data);
             }
+            let done = script.run(tc)?;
             Some(done)
         })();
         if std::env::var_os("OLO_JS_TIMING").is_some() {
@@ -827,6 +877,7 @@ impl Realm {
     /// and clock): what isn't in the prelude made once for every page.
     fn bind_page(&mut self) -> Result<(), String> {
         let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -850,6 +901,7 @@ impl Realm {
         }
         let _busy = Busy::new(&guard);
         let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -877,6 +929,7 @@ impl Realm {
         }
         let _busy = Busy::new(&guard);
         let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -975,6 +1028,7 @@ impl Realm {
         }
         let _busy = Busy::new(&guard);
         let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -1043,6 +1097,7 @@ impl Realm {
             json_string(code),
             text.map_or("null".to_owned(), json_string)
         );
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -1149,6 +1204,7 @@ impl Realm {
     /// V8's heap used and its size, and the pictures bound to elements
     /// (their decoded bytes, each picture once, and how many).
     pub fn memory(&mut self) -> (usize, usize, usize, usize) {
+        let _entered = Entered::new(&self.isolate);
         let heap = self.isolate.get_heap_statistics();
         let s = self.state.borrow();
         let mut seen = std::collections::HashSet::new();
@@ -1183,6 +1239,7 @@ impl Realm {
         }
         let _busy = Busy::new(&guard);
         let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -1213,6 +1270,7 @@ impl Realm {
             }
             let _busy = Busy::new(&guard);
             let state = self.state.clone();
+            let _entered = Entered::new(&self.isolate);
             v8::scope!(let scope, &mut self.isolate);
             let context = v8::Local::new(scope, &self.context);
             let scope = &mut v8::ContextScope::new(scope, context);
@@ -1236,6 +1294,36 @@ impl Realm {
     /// saw it shows the offsets as they are.
     pub fn scroll_serial(&self) -> u64 {
         self.state.borrow().document.scroll_serial()
+    }
+    /// Messages the page posted to other frames since last asked: to an
+    /// iframe's window (its element) or the parent's (none), each a
+    /// structured clone and the target origin it was posted for ("*", "/"
+    /// for the sender's own, or an origin).
+    pub fn take_posts(&mut self) -> Vec<(Option<NodeId>, Vec<u8>, String)> {
+        std::mem::take(&mut self.state.borrow_mut().posts)
+    }
+    /// A message from another frame's window: from an iframe of this page
+    /// (its element) or from the parent (none), with its origin; a
+    /// `message` event on the window, its source that window.
+    pub fn receive_message(&mut self, from: Option<NodeId>, data: &[u8], origin: &str) {
+        let state = self.state.clone();
+        let guard = self.guard.clone();
+        let _busy = Busy::new(&guard);
+        let _entered = Entered::new(&self.isolate);
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        let global = context.global(scope);
+        let Some(f) = prelude_function(scope, global, "__olo_frameMessage") else { return };
+        v8::tc_scope!(let tc, scope);
+        let Some(value) = clone::deserialize(tc, data) else { return };
+        let source: v8::Local<v8::Value> = match from.and_then(|n| wrap(tc, &state, n)) {
+            Some(o) => o.into(),
+            None => v8::null(tc).into(),
+        };
+        let args = [source, value, string(tc, origin).into()];
+        f.call(tc, global.into(), &args);
+        tc.perform_microtask_checkpoint();
     }
     /// What the browser painted of the page last, for elementFromPoint
     /// (the boxes a click there would reach, in paint order).
@@ -1421,6 +1509,7 @@ impl Realm {
     }
     /// Evaluate an expression and return its value as text (objects as JSON).
     pub fn eval(&mut self, source: &str) -> Result<String, String> {
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -1489,6 +1578,7 @@ impl Realm {
             return;
         }
         let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -1542,6 +1632,7 @@ impl Realm {
     /// animationend), dispatched as AnimationEvents.
     pub fn animation_events(&mut self, events: &[(NodeId, &str, &str, f64)]) {
         let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -1562,6 +1653,7 @@ impl Realm {
     /// `document.currentScript`: this element, or null.
     fn set_current_script(&mut self, node: Option<NodeId>) {
         let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -1588,6 +1680,7 @@ impl Realm {
         }
         let _busy = Busy::new(&guard);
         let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -1615,6 +1708,7 @@ impl Realm {
         }
         let _busy = Busy::new(&guard);
         let state = self.state.clone();
+        let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
         let context = v8::Local::new(scope, &self.context);
         let scope = &mut v8::ContextScope::new(scope, context);
@@ -1710,6 +1804,7 @@ impl State {
             waker: None,
             measure: None,
             measured: None,
+            posts: Vec::new(),
             scene: None,
             layout_seconds: 0.,
             run_layouts: 0,
@@ -2589,7 +2684,8 @@ fn prelude_cache_path() -> Option<std::path::PathBuf> {
     use std::hash::{BuildHasher, Hash, Hasher};
     let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).filter(|p| p.is_absolute()).or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
     let mut h = foldhash::fast::FixedState::with_seed(0).build_hasher();
-    PRELUDE.hash(&mut h);
+    // (2: made before the prelude runs.)
+    (PRELUDE, 2u8).hash(&mut h);
     v8::V8::get_version().hash(&mut h);
     Some(base.join("olo").join("browser").join(format!("prelude-{:016x}.v8", h.finish())))
 }
@@ -2763,6 +2859,8 @@ const NATIVES: &[&str] = &[
     "canvasSize",
     "canvasEncode",
     "canvasFont",
+    "framed",
+    "framePost",
     "svgGeometry",
     "canvasOp",
     "canvasPixels",
@@ -4445,6 +4543,22 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                         rv.set(v8::Array::new_with_elements(scope, &items).into());
                     }
                     None => rv.set_null(),
+                }
+            }
+        }
+        // Whether this page is an iframe's.
+        "framed" => {
+            rv.set_bool(state.borrow().config.framed);
+        }
+        // postMessage to another frame's window (an iframe's element, or
+        // null for the parent), its message cloned, the target origin.
+        "framePost" => {
+            let target = node(scope, 0);
+            let origin = arg_string(scope, &args, 2);
+            if let Some(bytes) = clone::serialize(scope, args.get(1)) {
+                let mut s = state.borrow_mut();
+                if s.posts.len() < 4096 {
+                    s.posts.push((target, bytes, origin));
                 }
             }
         }

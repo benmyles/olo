@@ -584,7 +584,7 @@
     validationMessage: { get() { return ''; } },
     willValidate: { get() { return true; } },
     files: { get() { return null; } },
-    contentWindow: { get() { return null; } },
+    contentWindow: { get() { return N.nodeName(this) === 'IFRAME' && N.isConnected(this) ? remoteWindow(this) : null; } },
     contentDocument: { get() { return null; } },
     sheet: { get() { return sheetOf(this); } },
     text: { get() { return N.textContent(this); }, set(v) { N.setTextContent(this, String(v)); } },
@@ -1449,7 +1449,44 @@
   global.clientInformation = global.navigator;
   global.screen = { width: vw, height: vh, availWidth: vw, availHeight: vh, colorDepth: 24, pixelDepth: 24, orientation: { type: vw >= vh ? 'landscape-primary' : 'portrait-primary', angle: 0, addEventListener() {}, removeEventListener() {} } };
   Object.assign(global, { innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0, name: '', status: '', closed: false, length: 0, isSecureContext: false, origin: '', crossOriginIsolated: false });
-  for (const k of ['window', 'self', 'top', 'parent', 'frames']) Object.defineProperty(global, k, { get() { return global; }, set() {}, configurable: true });
+  // Other frames' windows: an iframe's (from its element) or, in an
+  // iframe's page, the parent's. Another document, often another origin:
+  // postMessage (the browser carries a structured clone) and little else.
+  const remoteWindows = new WeakMap();
+  const remoteWindow = (frame) => {
+    const key = frame || remoteWindows;
+    let w = remoteWindows.get(key);
+    if (w) return w;
+    w = {};
+    const post = { postMessage(message, targetOrigin = undefined, transfer = undefined) {
+      if (arguments.length === 0) throw new TypeError("Failed to execute 'postMessage' on 'Window': 1 argument required, but only 0 present.");
+      const t = targetOrigin && typeof targetOrigin === 'object' ? targetOrigin.targetOrigin : targetOrigin;
+      N.framePost(frame || null, message, t === undefined ? '/' : String(t));
+    } }.postMessage;
+    const self = { get() { return w; } };
+    Object.defineProperties(w, {
+      postMessage: { value: post }, window: self, self, frames: self,
+      parent: { get() { return frame ? global : w; } }, top: { get() { return frame ? global.top : w; } },
+      opener: { get() { return null; } }, length: { get() { return 0; } },
+      closed: { get() { return frame ? !N.isConnected(frame) : false; } },
+      location: { get() { return { replace() {}, assign() {}, toString() { return ''; } }; }, set() {} },
+      focus: { value() {} }, blur: { value() {} }, close: { value() {} },
+      [Symbol.toStringTag]: { value: 'Window' },
+    });
+    remoteWindows.set(key, w);
+    return w;
+  };
+  // In an iframe's page, the parent's window is the embedding page's.
+  let framedParent;
+  const parentWindow = () => (framedParent === undefined ? (framedParent = N.framed() ? remoteWindow(null) : null) : framedParent) || global;
+  for (const k of ['window', 'self', 'frames']) Object.defineProperty(global, k, { get() { return global; }, set() {}, configurable: true });
+  for (const k of ['top', 'parent']) Object.defineProperty(global, k, { get() { return parentWindow(); }, set() {}, configurable: true });
+  // A message another frame posted (its element here, or null for the
+  // parent): a `message` event from its window.
+  H.__olo_frameMessage = (frame, data, origin) => {
+    const source = frame ? remoteWindow(frame) : parentWindow();
+    dispatch(global, new MessageEvent('message', { data, origin: String(origin), source }));
+  };
   // DOMImplementation.createHTMLDocument: a document of its own is a
   // detached tree here (html, head with the title, body), with the
   // document methods scripts use on it (jQuery parses markup into one).
@@ -1491,7 +1528,7 @@
   const scrollWindow = (x, y) => { const size = N.docSize(); const [vw2, vh2] = N.viewport(); scrollXY[0] = Math.max(0, Math.min(x, size[0] - vw2)); scrollXY[1] = Math.max(0, Math.min(y, size[1] - vh2)); global.scrollX = global.pageXOffset = scrollXY[0]; global.scrollY = global.pageYOffset = scrollXY[1]; setTimeout(() => { dispatch(documentNode, new Event('scroll', { bubbles: true })); }, 0); };
   global.scroll = global.scrollTo = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(Number(x) || 0, Number(y) || 0); };
   global.scrollBy = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(scrollXY[0] + (Number(x) || 0), scrollXY[1] + (Number(y) || 0)); };
-  global.alert = (m) => log('alert', [String(m)]); global.confirm = () => false; global.prompt = () => null; global.print = () => {}; global.open = () => null; global.close = () => {}; global.focus = () => {}; global.blur = () => {}; global.stop = () => {}; global.postMessage = () => {}; global.reportError = reportError; global.getSelection = () => ({ rangeCount: 0, type: 'None', toString: () => '', getRangeAt: () => new Range(), removeAllRanges() {}, addRange() {}, anchorNode: null, focusNode: null, isCollapsed: true, addEventListener() {} });
+  global.alert = (m) => log('alert', [String(m)]); global.confirm = () => false; global.prompt = () => null; global.print = () => {}; global.open = () => null; global.close = () => {}; global.focus = () => {}; global.blur = () => {}; global.stop = () => {}; global.reportError = reportError; global.getSelection = () => ({ rangeCount: 0, type: 'None', toString: () => '', getRangeAt: () => new Range(), removeAllRanges() {}, addRange() {}, anchorNode: null, focusNode: null, isCollapsed: true, addEventListener() {} });
   global.getComputedStyle = (el) => {
     const inline = parseStyle(el && N.attr(el, 'style') || '');
     const tag = el && N.nodeName(el).toLowerCase();
@@ -2445,6 +2482,23 @@
   // Message ports deliver as macrotasks (React's scheduler runs on one).
   class MessagePort extends EventTargetCtor { constructor() { super(); this.onmessage = null; this.onmessageerror = null; this._other = null; } postMessage(data) { const other = this._other; if (!other) return; setTimeout(() => { if (other._other) dispatch(other, new MessageEvent('message', { data: N.structuredClone(data) })); }, 0); } start() {} close() { this._other = null; } }
   global.MessagePort = MessagePort;
+  // window.postMessage to this window: a structured clone of the message,
+  // a `message` event from this window in a task of its own (libraries
+  // schedule work with it: setImmediate polyfills, Closure's nextTick). A
+  // target origin not this page's drops it, as browsers do.
+  global.postMessage = { postMessage(message, targetOrigin = undefined, transfer = undefined) {
+    if (arguments.length === 0) throw new TypeError("Failed to execute 'postMessage' on 'Window': 1 argument required, but only 0 present.");
+    let target = targetOrigin && typeof targetOrigin === 'object' ? targetOrigin.targetOrigin : targetOrigin;
+    target = target === undefined ? '/' : String(target);
+    const own = global.location.origin;
+    if (target !== '*' && target !== '/') {
+      let wanted;
+      try { wanted = new URL(target).origin; } catch (e) { throw new DOMException("Failed to execute 'postMessage' on 'Window': Invalid target origin '" + target + "' in a call to 'postMessage'.", 'SyntaxError'); }
+      if (wanted !== own) return;
+    }
+    const data = N.structuredClone(message);
+    setTimeout(() => dispatch(global, new MessageEvent('message', { data, origin: own, source: global })), 0);
+  } }.postMessage;
   global.MessageChannel = class MessageChannel { constructor() { this.port1 = new MessagePort(); this.port2 = new MessagePort(); this.port1._other = this.port2; this.port2._other = this.port1; } };
   // Workers: each a thread with its own scope (the engine's), its script
   // fetched by the browser; messages are structured clones.

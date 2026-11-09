@@ -7285,3 +7285,23 @@ what aborts. It had happened before (04:37 today) and got likelier as
 the prelude grew. Each class's transition is now made as the prelude
 finishes, so it is in the startup snapshot and pages never make it. No
 crash since in a dozen loads each way; a realm still takes 4.2 ms.
+
+That wasn't the whole story. A test with two realms on one thread (a
+page's and its frame's) aborted V8 every time, in a different place:
+deserializing the prelude's code cache. The cache was made after the
+prelude ran, so it held what the run made of Olo's natives, and another
+isolate consuming it read V8's read-only heap out of bounds, or worse,
+went on with a corrupted heap and aborted later (the write barrier
+crashes). Every realm made without the snapshot (the first loads after an
+update, while the snapshot is made; a page's frames) took that cache.
+It is made from the compiled script before it runs now. A realm without
+the snapshot takes 31.5 ms where it took 23.9; from the snapshot, 4.5.
+Each realm also enters its own isolate for every call into it now
+(rusty_v8 leaves the newest one entered on a thread).
+
+`window.postMessage` was a no-op as well: libraries that schedule work
+through it (setImmediate polyfills, Closure's nextTick) never ran it. It
+posts a structured clone to the window now, a task later. And an
+iframe's `contentWindow`, null before, is its window as another origin
+sees it: postMessage both ways (a frame's `parent` and `top` are the
+page's), carried by the browser between the realms.
