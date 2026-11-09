@@ -441,7 +441,9 @@
       define(global, name, { get: native(function () { return handlers[name]; }, 'get ' + name), set: native(function (v) { handlers[name] = typeof v === 'function' ? v : null; }, 'set ' + name), enumerable: true, configurable: true });
     } else if (kind === 'a' && has(accessors, name)) {
       const v = accessors[name];
-      define(global, name, { get: native(function () { return v; }, 'get ' + name), enumerable: true, configurable: true });
+      // (frameElement: a child window's iframe, which it binds with.)
+      const get = name === 'frameElement' ? function () { return H.__olo_frameElementValue ?? null; } : function () { return v; };
+      define(global, name, { get: native(get, 'get ' + name), enumerable: true, configurable: true });
     } else if (typeof kind === 'string' && kind.startsWith('F:') && has(aliases, name)) {
       // (Prefixed constructors, Chrome's old names for its own.)
       const target = has(global, aliases[name]) ? global[aliases[name]] : iface(aliases[name], false);

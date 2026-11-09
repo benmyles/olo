@@ -106,14 +106,16 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   global and DOM prototypes, WebGL, API functions as Chrome's; JOURNAL).
   (Amazon shows Chrome under remote debugging "Access restricted"; agents
   may still check its pages render, looking only.)
-- [ ] Cloudflare's challenge (Stack Overflow, 2026-11-09): with Chrome's
-  TLS, it now serves its challenge script, whose checks run in an
-  about:blank iframe it makes. That frame's contentWindow is a remote
-  window in Olo, with no Function, Object or navigator (Chrome: a full
-  same-origin window, its document scriptable from the parent), so the
-  script throws. Needed: same-origin child windows, a second context in
-  the page's isolate (same security token), its own prelude and document,
-  ticked with the page's.
+- [x] Cloudflare's challenge (Stack Overflow, 2026-11-09) passes: its
+  checks run in an about:blank iframe it makes, whose contentWindow is a
+  same-origin window now (a context of its own in the page's isolate,
+  lib.rs frameWindow). What such a window doesn't do yet: show what is
+  put in its document (the iframe draws nothing), run scripts inserted
+  into it in its own context, its own input and layout (its innerWidth
+  is 300), document.write into it; iframes of a same-origin URL are
+  still remote windows.
+- [ ] Stack Overflow's questions page: a white block covers the right
+  column near "Featured on Meta" (2026-11-09).
 - [ ] Olo's own internals call the page-visible Object.defineProperty
   (each Event's isTrusted, getComputedStyle's declaration): a page that
   hooks it sees them. Take the builtins once, in the prelude.

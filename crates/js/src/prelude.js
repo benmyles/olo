@@ -618,8 +618,11 @@
     validationMessage: { get() { return ''; } },
     willValidate: { get() { return true; } },
     files: { get() { return null; } },
-    contentWindow: { get() { return N.nodeName(this) === 'IFRAME' && N.isConnected(this) ? remoteWindow(this) : null; } },
-    contentDocument: { get() { return null; } },
+    // An about:blank iframe's window is a same-origin one of this page's
+    // (its document scriptable from here, as in Chrome: Cloudflare's
+    // challenge runs its checks in one); another page's, remote.
+    contentWindow: { get() { if (N.nodeName(this) !== 'IFRAME' || !N.isConnected(this)) return null; return (blankFrame(this) && N.frameWindow(this)) || remoteWindow(this); } },
+    contentDocument: { get() { if (N.nodeName(this) !== 'IFRAME' || !N.isConnected(this) || !blankFrame(this)) return null; const w = N.frameWindow(this); return w ? w.document : null; } },
     sheet: { get() { return sheetOf(this); } },
     text: { get() { return N.textContent(this); }, set(v) { N.setTextContent(this, String(v)); } },
     currentSrc: { get() { return this.src; } },
@@ -1532,6 +1535,8 @@
   };
   // In an iframe's page, the parent's window is the embedding page's.
   let framedParent;
+  // An iframe showing about:blank (no src, or that one, and no srcdoc).
+  const blankFrame = (el) => { const src = N.attr(el, 'src'); return (src == null || src === '' || src === 'about:blank') && N.attr(el, 'srcdoc') == null; };
   const parentWindow = () => (framedParent === undefined ? (framedParent = N.framed() ? remoteWindow(null) : null) : framedParent) || global;
   for (const k of ['window', 'self', 'frames']) Object.defineProperty(global, k, { get() { return global; }, set() {}, configurable: true });
   for (const k of ['top', 'parent']) Object.defineProperty(global, k, { get() { return parentWindow(); }, set() {}, configurable: true });
@@ -3293,6 +3298,28 @@
   // kept: a realm made from it binds only this).
   const pageBinds = [];
   H.__olo_onBind = (f) => { pageBinds.push(f); };
+  // A same-origin child window (an about:blank iframe's, lib.rs
+  // frameWindow): this context bound to a document of its own, an empty
+  // one, its parent the page's window.
+  H.__olo_bindChild = (frame, parent) => {
+    const root = N.createFragment();
+    const html = N.createElement('html', ''), head = N.createElement('head', ''), body = N.createElement('body', '');
+    N.append(html, head); N.append(html, body); N.append(root, html);
+    if (global.HTMLDocument) Object.setPrototypeOf(root, global.HTMLDocument.prototype);
+    documentNode = root;
+    readyState = 'complete';
+    pageURL = new URL('about:blank');
+    historyEntries[0] = { url: pageURL.href, state: null };
+    framedParent = parent;
+    H.__olo_frameElementValue = frame;
+    [vw, vh, dpr] = [300, 150, N.viewport()[2]];
+    for (const [k, v] of Object.entries({ innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, isSecureContext: parent.isSecureContext, origin: parent.origin })) (H.__olo_window_set || ((k, v) => { global[k] = v; }))(k, v);
+    timeOrigin = NativeDate.now();
+    tickWall = 0; lastPerf = 0;
+    const p = (H.__olo_store || ((o) => o))(global.performance);
+    p.timeOrigin = timeOrigin;
+    for (const k of Object.keys(p.timing)) if (p.timing[k]) p.timing[k] = timeOrigin;
+  };
   H.__olo_bindPage = () => {
     documentNode = N.docRoot();
     pageURL = new URL(N.url());

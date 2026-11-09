@@ -1288,3 +1288,27 @@ fn a_peer_connection_offers_and_gathers_as_chrome_s() {
         ]
     );
 }
+/// An about:blank iframe's window is a same-origin window of its own, as
+/// Chrome's: its own builtins and interfaces, its document scriptable from
+/// the parent, its parent and frameElement the page's, its timers run
+/// (Cloudflare's challenge runs its checks in one).
+#[test]
+fn an_about_blank_iframe_is_a_window_of_its_own() {
+    let (report, _) = run("<!DOCTYPE html><body><script>\
+        const f = document.createElement('iframe'); document.body.appendChild(f);\
+        const w = f.contentWindow, d = f.contentDocument;\
+        console.log(w === f.contentWindow, w !== window, typeof w.Function, w.Function !== Function, w.Function.prototype.toString.call(w.Array), w.parent === window, w.top === window, w.frameElement === f, String(w.location), Object.prototype.toString.call(d), d === w.document);\
+        const p = d.createElement('p'); p.textContent = 'hi'; d.body.appendChild(p);\
+        console.log(d.body.textContent, d.querySelector('p') === p, document.querySelector('p'), typeof w.navigator.userAgent, typeof w.RTCPeerConnection, String(w.document.querySelector));\
+        w.setTimeout(() => console.log('child timer', w.document.body.childNodes.length), 5);\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(
+        report.console,
+        [
+            "[log] true true function true function Array() { [native code] } true true true about:blank [object HTMLDocument] true",
+            "[log] hi true null string function function querySelector() { [native code] }",
+            "[log] child timer 1",
+        ]
+    );
+}

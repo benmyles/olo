@@ -313,6 +313,8 @@ struct State {
     templates: Option<Templates>,
     /// The prelude's script: its functions read as native code.
     prelude_script: i32,
+    /// Child windows' prelude scripts (their functions read as native too).
+    child_preludes: Vec<i32>,
     fetcher: Option<Fetcher>,
     /// Elements by id and by name, for `getElementById` and the window's
     /// named properties.
@@ -382,6 +384,15 @@ struct State {
     next_worker: u32,
     /// RTCPeerConnections' ICE gatherings (rtc.rs), by id.
     gatherings: HashMap<u32, rtc::Gathering>,
+    /// Same-origin child windows (an about:blank iframe's): a context of
+    /// their own in this isolate, by their iframe element.
+    child_windows: Vec<(NodeId, v8::Global<v8::Context>)>,
+    /// What a child window asked for comes back to it: its fetches' and
+    /// gatherings' ids.
+    owners: HashMap<(u8, u64), v8::Global<v8::Context>>,
+    /// The realm was made from the prelude's snapshot (a child window is
+    /// then a context made from it, its prelude already run).
+    from_snapshot: bool,
     next_gathering: u32,
     worker_fetcher: Option<SharedFetcher>,
     worker_starter: Option<FetchStarter>,
@@ -562,6 +573,7 @@ impl Realm {
             ids: Vec::new(),
             templates: None,
             prelude_script: -1,
+            child_preludes: Vec::new(),
             names: Names::default(),
             fetcher,
             canvases: Default::default(),
@@ -595,6 +607,9 @@ impl Realm {
             workers: HashMap::new(),
             next_worker: 1,
             gatherings: HashMap::new(),
+            child_windows: Vec::new(),
+            owners: HashMap::new(),
+            from_snapshot: false,
             next_gathering: 1,
             worker_fetcher: None,
             worker_starter: None,
@@ -629,6 +644,7 @@ impl Realm {
         isolate.set_prepare_stack_trace_callback(prepare_stack_trace);
         modules::install(&mut isolate);
         modules::enter(&state);
+        state.borrow_mut().from_snapshot = snapshot.is_some();
         let context = if snapshot.is_some() {
             v8::scope!(let scope, &mut isolate);
             let context = v8::Context::new(scope, v8::ContextOptions::default());
@@ -721,9 +737,10 @@ impl Realm {
         if std::env::var_os("OLO_IMAGE_DEBUG").is_some() {
             eprintln!("  image: request {id} for {node:?}: {}", if result.is_ok() { "loaded" } else { "failed" });
         }
+        let owner = state.borrow_mut().owners.remove(&(0, id));
         let _entered = Entered::new(&self.isolate);
         v8::scope!(let scope, &mut self.isolate);
-        let context = v8::Local::new(scope, &self.context);
+        let context = v8::Local::new(scope, owner.as_ref().unwrap_or(&self.context));
         let scope = &mut v8::ContextScope::new(scope, context);
         v8::tc_scope!(let tc, scope);
         let global = context.global(tc);
@@ -862,8 +879,21 @@ impl Realm {
         let scope = &mut v8::ContextScope::new(scope, context);
         v8::tc_scope!(let tc, scope);
         let global = context.global(tc);
-        let Some(f) = prelude_function(tc, global, "__olo_rtcEvent") else { return };
+        let Some(main) = prelude_function(tc, global, "__olo_rtcEvent") else { return };
         for (id, e) in pending {
+            // (A child window's gathering: its own __olo_rtcEvent.)
+            let owner = state.borrow().owners.get(&(1, u64::from(id))).cloned();
+            let f = match owner {
+                Some(c) => {
+                    let c = v8::Local::new(tc, &c);
+                    let g = c.global(tc);
+                    match prelude_function(tc, g, "__olo_rtcEvent") {
+                        Some(f) => f,
+                        None => continue,
+                    }
+                }
+                None => main,
+            };
             let id: v8::Local<v8::Value> = v8::Number::new(tc, f64::from(id)).into();
             let args: Vec<v8::Local<v8::Value>> = match e {
                 rtc::Event::Host(port) => vec![id, string(tc, "host"), v8::Number::new(tc, f64::from(port)).into()],
@@ -1789,7 +1819,37 @@ impl Realm {
     fn call_prelude_number(&mut self, function: &str, arg: f64) -> Result<f64, String> {
         self.call_prelude_numbers(function, &[arg])
     }
+    /// Child windows' `function` (their timers' tick, with the page's):
+    /// the soonest next due of theirs, infinity for none.
+    fn call_children(&mut self, function: &str, args: &[f64]) -> f64 {
+        let children: Vec<v8::Global<v8::Context>> = self.state.borrow().child_windows.iter().map(|(_, c)| c.clone()).collect();
+        let mut next = f64::INFINITY;
+        for c in &children {
+            let _entered = Entered::new(&self.isolate);
+            v8::scope!(let scope, &mut self.isolate);
+            let c = v8::Local::new(scope, c);
+            let scope = &mut v8::ContextScope::new(scope, c);
+            v8::tc_scope!(let tc, scope);
+            let g = c.global(tc);
+            let Some(f) = prelude_function(tc, g, function) else { continue };
+            let args: Vec<v8::Local<v8::Value>> = args.iter().map(|a| v8::Number::new(tc, *a).into()).collect();
+            match f.call(tc, g.into(), &args) {
+                Some(v) => {
+                    let n = v.number_value(tc).unwrap_or(-1.);
+                    if n >= 0. {
+                        next = next.min(n);
+                    }
+                }
+                None => {
+                    let error = exception_text(tc, "child window");
+                    self.state.borrow_mut().report.errors.push(error);
+                }
+            }
+        }
+        next
+    }
     fn call_prelude_numbers(&mut self, function: &str, args: &[f64]) -> Result<f64, String> {
+        let child_next = if function == "__olo_tick" && !self.state.borrow().child_windows.is_empty() { self.call_children(function, args) } else { f64::INFINITY };
         let guard = self.guard.clone();
         if guard.stopped.load(std::sync::atomic::Ordering::Relaxed) != 0 {
             return Err("stopped".into());
@@ -1808,6 +1868,10 @@ impl Realm {
         let f = v8::Local::<v8::Function>::try_from(f).map_err(|_| "not a function")?;
         let args: Vec<v8::Local<v8::Value>> = args.iter().map(|a| v8::Number::new(tc, *a).into()).collect();
         match f.call(tc, global.into(), &args) {
+            Some(v) if child_next.is_finite() => {
+                let n = v.number_value(tc).unwrap_or(-1.);
+                Ok(if n < 0. { child_next } else { n.min(child_next) })
+            }
             Some(v) => Ok(v.number_value(tc).unwrap_or(-1.)),
             None => {
                 let error = exception_text(tc, function);
@@ -1855,6 +1919,7 @@ impl State {
             ids: Vec::new(),
             templates: None,
             prelude_script: -1,
+            child_preludes: Vec::new(),
             names: Names::default(),
             fetcher: None,
             canvases: Default::default(),
@@ -1888,6 +1953,9 @@ impl State {
             workers: HashMap::new(),
             next_worker: 1,
             gatherings: HashMap::new(),
+            child_windows: Vec::new(),
+            owners: HashMap::new(),
+            from_snapshot: false,
             next_gathering: 1,
             worker_fetcher: None,
             worker_starter: None,
@@ -2780,6 +2848,11 @@ fn prelude_function<'s>(scope: &mut v8::PinScope<'s, '_>, global: v8::Local<'s, 
 }
 /// The native functions and the DOM classes, on the global object.
 fn install(scope: &mut v8::PinScope<'_, '_>, state: &Shared) -> Result<(), String> {
+    install_into(scope, state, false)
+}
+/// `install`, for a child window's context too: the realm's templates are
+/// then kept (its nodes' wrappers are made from them, in any context).
+fn install_into(scope: &mut v8::PinScope<'_, '_>, state: &Shared, child: bool) -> Result<(), String> {
     let global = scope.get_current_context().global(scope);
     let natives = v8::Object::new(scope);
     for (index, name) in NATIVES.iter().enumerate() {
@@ -2811,6 +2884,9 @@ fn install(scope: &mut v8::PinScope<'_, '_>, state: &Shared) -> Result<(), Strin
     let comment = class(scope, global, "Comment", Some(node))?;
     let document = class(scope, global, "Document", Some(node))?;
     let fragment = class(scope, global, "DocumentFragment", Some(node))?;
+    if child && state.borrow().templates.is_some() {
+        return Ok(());
+    }
     state.borrow_mut().templates = Some(Templates {
         event_target: v8::Global::new(scope, event_target),
         node: v8::Global::new(scope, node),
@@ -2940,6 +3016,7 @@ const NATIVES: &[&str] = &[
     "structuredClone",
     "workerStart",
     "rtcGather",
+    "frameWindow",
     "rtcStop",
     "rtcCertificate",
     "workerPost",
@@ -3898,6 +3975,12 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 s.next_request += 1;
                 s.in_flight.insert(id, None);
                 s.requests.push(Request { id, url, kind: RequestKind::Text { method: if method.is_empty() { "GET".into() } else { method }, body, headers } });
+                if !s.child_windows.is_empty() {
+                    let current = scope.get_current_context();
+                    if s.child_windows.iter().any(|(_, c)| v8::Local::new(scope, c) == current) {
+                        s.owners.insert((0, id), v8::Global::new(scope, current));
+                    }
+                }
                 rv.set(v8::Number::new(scope, id as f64).into());
             }
         }
@@ -3907,6 +3990,57 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                 && let Some(value) = clone::deserialize(scope, &bytes)
             {
                 rv.set(value);
+            }
+        }
+        // An about:blank iframe's window: a context of its own in this
+        // isolate (from the snapshot, its prelude run), its document its
+        // own, its parent this window, made when first asked for.
+        "frameWindow" => {
+            let Some(frame) = node(scope, 0) else { return };
+            let existing = state.borrow().child_windows.iter().find(|(n, _)| *n == frame).map(|(_, c)| c.clone());
+            if let Some(c) = existing {
+                let c = v8::Local::new(scope, &c);
+                rv.set(c.global(scope).into());
+                return;
+            }
+            if state.borrow().child_windows.len() >= 64 {
+                return rv.set_null();
+            }
+            let parent = scope.get_current_context();
+            let parent_global = parent.global(scope);
+            let Some(frame_object) = wrap(scope, &state, frame) else { return rv.set_null() };
+            let from_snapshot = state.borrow().from_snapshot;
+            // (From the snapshot, the prelude already run; else run here.)
+            let child = if from_snapshot { v8::Context::new(scope, v8::ContextOptions::default()) } else { new_context(scope) };
+            child.set_security_token(parent.get_security_token(scope));
+            state.borrow_mut().child_windows.push((frame, v8::Global::new(scope, child)));
+            let cs = &mut v8::ContextScope::new(scope, child);
+            if !from_snapshot {
+                let ran = install_into(cs, &state, true).ok().and_then(|()| {
+                    let code = v8::String::new(cs, PRELUDE)?;
+                    let resource = string(cs, "prelude.js");
+                    let origin = v8::ScriptOrigin::new(cs, resource, 0, 0, false, 0, None, false, false, false, None);
+                    let script = v8::Script::compile(cs, code, Some(&origin))?;
+                    state.borrow_mut().child_preludes.push(script.script_id());
+                    script.run(cs)
+                });
+                if ran.is_none() {
+                    return rv.set_null();
+                }
+            }
+            let global = child.global(cs);
+            let bind = prelude_function(cs, global, "__olo_bindChild");
+            if let Some(b) = bind
+                && b.script_id() != state.borrow().prelude_script
+            {
+                state.borrow_mut().child_preludes.push(b.script_id());
+            }
+            if let Some(bind) = bind
+                && bind.call(cs, global.into(), &[frame_object.into(), parent_global.into()]).is_some()
+            {
+                rv.set(global.into());
+            } else {
+                rv.set_null();
             }
         }
         // An RTCPeerConnection's ICE gathering from its STUN servers
@@ -3919,6 +4053,12 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
                     let id = s.next_gathering;
                     s.next_gathering += 1;
                     s.gatherings.insert(id, g);
+                    if !s.child_windows.is_empty() {
+                        let current = scope.get_current_context();
+                        if s.child_windows.iter().any(|(_, c)| v8::Local::new(scope, c) == current) {
+                            s.owners.insert((1, u64::from(id)), v8::Global::new(scope, current));
+                        }
+                    }
                     rv.set(v8::Number::new(scope, f64::from(id)).into());
                 }
                 Err(_) => rv.set_null(),
@@ -4245,8 +4385,8 @@ fn native_inner(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, m
         }
         "builtin" => rv.set_bool(v8::Local::<v8::Function>::try_from(args.get(0)).is_ok_and(|f| f.script_id() <= 0)),
         "fromPrelude" => {
-            let script = state.borrow().prelude_script;
-            rv.set_bool(v8::Local::<v8::Function>::try_from(args.get(0)).is_ok_and(|f| f.script_id() == script));
+            let s = state.borrow();
+            rv.set_bool(v8::Local::<v8::Function>::try_from(args.get(0)).is_ok_and(|f| f.script_id() == s.prelude_script || s.child_preludes.contains(&f.script_id())));
         }
         // [processors, memory (GB)] as Chrome says them: its threads, and
         // its memory rounded to a power of two between 0.25 and 32.

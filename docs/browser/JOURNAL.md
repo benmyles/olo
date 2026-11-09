@@ -7501,3 +7501,21 @@ shape, now fixed:
 The cause, found last: Cloudflare runs its checks in an about:blank
 iframe it makes, and Olo's contentWindow for one is a remote window
 without Function or navigator. Same-origin child windows are next (TODO).
+
+Same-origin child windows, and Stack Overflow through Cloudflare. An
+about:blank iframe's contentWindow was a remote window (thirteen keys),
+contentDocument null; in Chrome it is a full window of the same origin,
+and Cloudflare's challenge takes its pristine functions from one it
+makes. Now such a window is a second context in the page's isolate:
+- **Making it:** from the prelude's snapshot, so its prelude is already
+  run, about a millisecond. It has the parent's security token, so each
+  side reaches the other's objects.
+- **Binding it:** to a document of its own (html, head, body), its
+  parent, top and frameElement the page's, its location about:blank.
+- **Its timers** run with the page's ticks.
+- **Its fetches and WebRTC** answer to it, not to the page.
+
+Without a snapshot, the prelude is run in it. Stack Overflow's
+questions page now loads past Cloudflare's "Performing security
+verification", the challenge passed with no person involved, as in
+Chrome.
