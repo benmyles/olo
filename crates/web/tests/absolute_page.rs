@@ -376,3 +376,18 @@ fn atomic_inlines_align_to_the_line_box_top_bottom_and_middle() {
     assert_eq!(rect(&p, "p2").height, 40.);
     assert_eq!(y("b2"), y("p2"));
 }
+/// An absolutely positioned box with an auto width, a definite height and
+/// an `aspect-ratio` takes the width the ratio gives (CSS Sizing 4 §5.1),
+/// not its content's (Wikipedia's play button was 0 wide).
+#[test]
+fn an_absolute_box_with_a_ratio_takes_its_width_from_its_height() {
+    for scale in [1., 1.5, 2.] {
+        let p = load(
+            "#cb{position:relative;width:250px;height:160px}#b{position:absolute;left:50%;top:50%;width:auto;height:min(50px,70%);aspect-ratio:1/1}#c{position:absolute;left:0;top:0;height:20px;aspect-ratio:2;padding:0 5px;box-sizing:border-box}</style><div id=cb><div id=b></div><div id=c></div></div>",
+            scale,
+        );
+        let b = rect(&p, "b");
+        assert_eq!((b.width, b.height), (50., 50.), "at {scale}");
+        assert_eq!(rect(&p, "c").width, 40., "border-box ratio at {scale}");
+    }
+}

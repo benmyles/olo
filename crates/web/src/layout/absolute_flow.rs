@@ -172,13 +172,17 @@ impl Job<'_> {
         let width_auto = used::length(s, P::Width, Some(width), None, d.queries, &mut self.scratch, self.cancel, self.scale)?.is_none();
         let left = used::length(s, P::Left, Some(width), None, d.queries, &mut self.scratch, self.cancel, self.scale)?;
         let right = used::length(s, P::Right, Some(width), None, d.queries, &mut self.scratch, self.cancel, self.scale)?;
-        let intrinsic = if width_auto && (left.is_none() || right.is_none()) {
+        // An auto width with a ratio and a definite height: the width the
+        // ratio gives (CSS Sizing 4 §5.1; Wikipedia's play button,
+        // `height: min(50px, 70%); aspect-ratio: 1`, was 0 wide).
+        let ratio_width = if width_auto { u.height.and_then(|h| used::aspect_width(s, h, u.padding, u.border)) } else { None };
+        let intrinsic = if width_auto && ratio_width.is_none() && (left.is_none() || right.is_none()) {
             let (w, _) = self.intrinsic_content(d.id, d.queries, width, 0)?;
             [w.min_content, w.max_content]
         } else {
             [0., 0.]
         };
-        let x = input(s, Axis::Horizontal { rtl, static_rtl: rtl }, width, height, u, None, intrinsic, static_x, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+        let x = input(s, Axis::Horizontal { rtl, static_rtl: rtl }, width, height, u, ratio_width, intrinsic, static_x, d.queries, &mut self.scratch, self.cancel, self.scale)?;
         let y = input(s, Axis::Vertical, width, height, u, None, [0., 0.], static_y, d.queries, &mut self.scratch, self.cancel, self.scale)?;
         let horizontal = positioned::solve(x, self.scale)?;
         let vertical = positioned::solve(y, self.scale)?;

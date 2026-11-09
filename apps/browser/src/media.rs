@@ -59,6 +59,8 @@ pub struct Players {
     players: HashMap<NodeId, Player>,
     /// The document revision the elements were last looked for at.
     scanned: Option<u64>,
+    /// Videos with nothing to play but a poster, whose poster was asked for.
+    posters: std::collections::HashSet<NodeId>,
 }
 /// What a step did: whether a picture or a state changed (the page renders
 /// again), and when the next picture is due.
@@ -110,6 +112,17 @@ impl Players {
                     player.fetch(loader.clone(), base.clone(), cancel.clone());
                 }
                 self.players.insert(node, player);
+            }
+            // A video with nothing to play shows its poster all the same
+            // (Wikipedia's player takes its sources away until it is
+            // clicked, in a new element: it showed nothing).
+            for (node, poster) in posters_only(&doc, base) {
+                if !self.players.contains_key(&node) && self.posters.insert(node) {
+                    realm.request_image(node, poster.as_str());
+                }
+            }
+            if self.posters.len() > 256 {
+                self.posters.retain(|n| doc.is_connected(*n).unwrap_or(false));
             }
         }
         for (node, command) in realm.take_media_commands() {
@@ -478,6 +491,29 @@ impl AsRef<[u8]> for SharedBytes {
 }
 /// The `<video>` elements of `doc` with their source: the `src`, else the
 /// first `<source>` of a type the player takes, resolved against `base`.
+/// The `<video>` elements with a poster and nothing to play (no source
+/// `videos` takes), with their posters' URLs.
+fn posters_only(doc: &Document, base: &url::Url) -> Vec<(NodeId, url::Url)> {
+    let playable: Vec<NodeId> = videos(doc, base).into_iter().map(|(n, _)| n).collect();
+    let mut out = Vec::new();
+    let mut stack = vec![doc.root()];
+    while let Some(n) = stack.pop() {
+        if out.len() >= 64 {
+            break;
+        }
+        if doc.name(n).ok().flatten() == Some("video")
+            && !playable.contains(&n)
+            && let Some(url) = doc.attribute(n, "poster").ok().flatten().map(str::trim).filter(|p| !p.is_empty()).and_then(|p| base.join(p).ok())
+        {
+            out.push((n, url));
+        }
+        if let Ok(children) = doc.children(n) {
+            let children: Vec<NodeId> = children.collect();
+            stack.extend(children.into_iter().rev());
+        }
+    }
+    out
+}
 fn videos(doc: &Document, base: &url::Url) -> Vec<(NodeId, String)> {
     let mut out = Vec::new();
     let mut stack = vec![doc.root()];

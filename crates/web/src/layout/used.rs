@@ -208,6 +208,15 @@ impl Used {
         }
     }
 }
+/// The content width `aspect-ratio` gives a box of this content height
+/// (CSS Sizing 4 §5.1), the ratio being of the box per its `box-sizing`.
+pub(super) fn aspect_width(s: &Style, content_height: f64, padding: Edges, border: Edges) -> Option<f64> {
+    let ratio = s.value(P::AspectRatio).scalar().filter(|r| r.is_finite() && *r > 0.)?;
+    let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
+    let (extra_x, extra_y) = (padding.horizontal() + border.horizontal(), padding.vertical() + border.vertical());
+    let w = if border_box { (content_height + extra_y) * ratio - extra_x } else { content_height * ratio };
+    w.is_finite().then_some(w.max(0.))
+}
 /// The content height `aspect-ratio` gives a box of this content width
 /// (CSS Sizing 4 §5.1): the ratio is of the box per its `box-sizing`.
 pub(super) fn aspect_height(s: &Style, content_width: f64, padding: Edges, border: Edges) -> Option<f64> {
