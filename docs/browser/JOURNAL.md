@@ -7305,3 +7305,22 @@ posts a structured clone to the window now, a task later. And an
 iframe's `contentWindow`, null before, is its window as another origin
 sees it: postMessage both ways (a frame's `parent` and `top` are the
 page's), carried by the browser between the realms.
+
+Then live iframes. A frame's document was loaded on a thread of its own,
+its scripts run for half a second, and its picture taken once: a
+captcha, an embedded player, a payment form stood still, took no clicks,
+and couldn't talk to its page. Now a frame with scripts keeps its realm
+on its thread: its timers, its own loads, animation frames while it is
+in view, its picture drawn again as it changes (at most 30 times a
+second); the pointer over it goes to its page in its own coordinates,
+and the keys after a press in it; `postMessage` goes both ways, origins
+checked. Out of view (as Chrome throttles off-screen frames) its page
+runs no animation frames and draws no pictures. A test page across two
+origins: the frame ticks, posts its parent, gets the reply, and a click
+on its button lands. Etsy, which DataDome answers with a captcha page
+(an iframe) on Olo's first request, was blank: its slider shows now.
+
+The cost is the frames' own work, as in Chrome. NYT (16 iframes, ads),
+each browser alone: load 12.67 CPU s (Chrome 11.46; Olo 9.89 before,
+when the ads stopped after half a second), idle 2.5% (Chrome 5.8%),
+839 MB (Chrome 1,373).

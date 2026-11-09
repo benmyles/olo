@@ -72,6 +72,9 @@ pub enum Message {
     /// Input from the person, for the live page's scripts (document
     /// coordinates in CSS px).
     Input(olo_js::Input),
+    /// A message the embedding page posted to an iframe's window (to the
+    /// frame's thread): its structured clone and the page's origin.
+    FrameMessage(Vec<u8>, String),
     Recycle(Vec<Arc<RenderImage>>),
     /// The window's shared textures for WebGL canvases (see
     /// `Reply::SharedWanted`): per canvas, (key, memory, its size, width,
@@ -421,6 +424,8 @@ struct Live {
     players: crate::media::Players,
     /// The page's `<iframe>`s, each rendered as a picture.
     frames: crate::frames::Frames,
+    /// The iframe the person last pressed in: its page takes the keys.
+    frame_focus: Option<olo_web::dom::NodeId>,
     /// The layout's boxes by element, for where videos and iframes show:
     /// kept while the boxes are (the geometry's identity and their count),
     /// made again only when they change (it was made each advance).
@@ -589,17 +594,17 @@ fn is_cancellation(error: &page::Error) -> bool {
 /// What fetching for the live page's scripts takes: the loads run on
 /// their own threads and answer through the worker's channel.
 #[derive(Clone)]
-struct Loads {
-    loader: Arc<crate::network::Loader>,
-    document: crate::network::Resource,
-    scope: Scope,
-    key: Key,
-    cancel: crate::network::Cancel,
-    tx: mpsc::Sender<Message>,
+pub(crate) struct Loads {
+    pub(crate) loader: Arc<crate::network::Loader>,
+    pub(crate) document: crate::network::Resource,
+    pub(crate) scope: Scope,
+    pub(crate) key: Key,
+    pub(crate) cancel: crate::network::Cancel,
+    pub(crate) tx: mpsc::Sender<Message>,
 }
 impl Loads {
     /// Start every load the scripts asked for since the last time.
-    fn dispatch(&self, realm: &mut olo_js::Realm) {
+    pub(crate) fn dispatch(&self, realm: &mut olo_js::Realm) {
         for request in realm.take_requests() {
             let timing = olo_web::env_on!("OLO_BROWSER_TIMING");
             if timing {
@@ -679,7 +684,7 @@ impl Loads {
             });
         })
     }
-    fn waker(&self) -> olo_js::Waker {
+    pub(crate) fn waker(&self) -> olo_js::Waker {
         let tx = self.tx.clone();
         Arc::new(move || {
             let _ = tx.send(Message::Wake);
@@ -906,6 +911,8 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             }
                             continue;
                         }
+                        // (A frame's thread's; never the page's.)
+                        Message::FrameMessage(..) => continue,
                         Message::Wake => {
                             if let Some(c) = cached.as_mut()
                                 && let Some(live) = c.live.as_mut()
@@ -961,6 +968,27 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                         c.page.scene.hit_test(input.x, input.y, scroll, height, &stickies)
                                     }
                                 };
+                                // Over a live iframe the pointer is its page's (in its
+                                // own coordinates), and the keys after a press in it.
+                                let into_frame = match input.kind {
+                                    olo_js::InputKind::Key { .. } => live.frame_focus.filter(|n| live.frames.has(*n)),
+                                    olo_js::InputKind::Scroll => None,
+                                    _ => target.filter(|n| live.frames.has(*n)),
+                                };
+                                if matches!(input.kind, olo_js::InputKind::Down) {
+                                    live.frame_focus = into_frame;
+                                }
+                                if let Some(node) = into_frame
+                                    && let Some((ox, oy)) = content_origin(c.page.scene.layout(), node)
+                                {
+                                    let mut local = input.clone();
+                                    if !matches!(input.kind, olo_js::InputKind::Key { .. }) {
+                                        (local.x, local.y) = (input.x - ox, input.y - oy);
+                                    }
+                                    local.scroll_y = 0.;
+                                    live.frames.input(node, local);
+                                    continue;
+                                }
                                 live.realm.input(&input, target);
                                 live.loads.dispatch(&mut live.realm);
                                 // The live probe (OLO_BROWSER_EVAL_LIVE) also after input,
@@ -1114,6 +1142,8 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             Message::SharedTextures(list) => kept.push_back(Message::SharedTextures(list)),
                             Message::RecycleTargets(targets) => drop(targets),
                             m @ (Message::ScrollBox { .. } | Message::Traverse(_) | Message::ChooseOption(..)) => kept.push_back(m),
+                            // (A frame's thread's; never the page's.)
+                            Message::FrameMessage(..) => {}
                         }
                     }
                     pending = kept;
@@ -1290,7 +1320,25 @@ fn render(
             let revision = live.realm.revision();
             let realm = &live.realm;
             let wake = live.loads.waker();
-            let (framed, _) = live.frames.step(revision, || Some(realm.snapshot()), loader, &base, c.page.scope(), &r.key, &shown, &wake);
+            // In view: its content box meets the viewport (document CSS px).
+            let (top, bottom) = (f64::from(r.scroll) / scale, (f64::from(r.scroll) + f64::from(r.key.height)) / scale);
+            let in_view = |node: olo_web::dom::NodeId| -> bool {
+                let Some(id) = index.and_then(|i| i.get(&node)) else { return false };
+                layout.bounds(*id).is_some_and(|b| b.y < bottom && b.y + b.height > top && b.width > 0. && b.height > 0.)
+            };
+            let (framed, _) = live.frames.step(revision, || Some(realm.snapshot()), loader, &base, c.page.scope(), &r.key, &shown, &in_view, &wake);
+            // Messages between the page and its frames' pages: carried,
+            // their target origins checked.
+            let own = c.origin.origin().ascii_serialization();
+            for (to, data, target) in live.realm.take_posts() {
+                if let Some(node) = to {
+                    live.frames.post(node, data, &target, &own);
+                }
+            }
+            for (node, data, origin) in live.frames.take_messages(&own) {
+                live.realm.receive_message(Some(node), &data, &origin);
+                live.next_due_ms = Some(0.);
+            }
             if framed && olo_web::env_on!("OLO_BROWSER_TIMING") {
                 eprintln!("  frames: a picture came");
             }
@@ -1821,6 +1869,7 @@ fn render(
                 had_focus: false,
                 players: Default::default(),
                 frames: Default::default(),
+                frame_focus: None,
                 box_index: None,
                 render_again,
                 late_check: true,
@@ -3177,6 +3226,15 @@ thread_local! {
     static TILE_PAINTER: std::cell::RefCell<(u64, paint::Engine)> = std::cell::RefCell::new((0, paint::Engine::default()));
 }
 /// A tile painted, made BGRA for the window.
+/// Where an element's content box starts in the document (CSS px): an
+/// iframe's, for the input over it in its own page's coordinates.
+fn content_origin(layout: &layout::Layout, node: olo_web::dom::NodeId) -> Option<(f64, f64)> {
+    let (id, _) = layout.cache().tree().iter().find(|(_, b)| b.node == node && !matches!(b.kind, layout::BoxKind::InlineContent { .. }))?;
+    let bounds = layout.bounds(id)?;
+    let g = layout.geometry(id)?;
+    let c = g.content_box();
+    Some((bounds.x + c.x - g.border_box.x, bounds.y + c.y - g.border_box.y))
+}
 fn paint_tile(painter: &mut paint::Engine, scene: &paint::Scene, stratum: usize, region: paint::DeviceRect, cancel: &std::sync::atomic::AtomicBool) -> std::result::Result<Vec<u8>, paint::Error> {
     let tile = painter.raster_stratum(scene, stratum, region, stratum == 0, Some(cancel))?;
     let mut bytes = tile.into_rgba();

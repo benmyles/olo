@@ -328,10 +328,12 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   opens its menu (the kit's) and takes the choice, and is as wide as its
   widest option (a group's indented), as Chrome, within 1 px; open:
   `<optgroup>` labels in the menu, arrow keys on a focused select. Canvas placeholders.
-- [ ] Iframes: a live page's iframes render as pictures of their documents
-  (stylesheets, images; JOURNAL 2026-11-08). Open: their scripts (ads,
-  YouTube and map embeds need them), input into them, iframes of pages
-  without scripts, `srcdoc`, `loading=lazy`.
+- [ ] Iframes: live since 2026-11-09 (their realms go on on their threads,
+  redrawn as they change, input passed in, postMessage both ways; out of
+  view, no frames). Open: same-origin access (contentDocument, a
+  friendly frame written by its parent: Google's ad frames), about:blank
+  and `srcdoc` frames, frames in frames, scrolling inside a frame, the
+  cursor and focus ring over one, `loading=lazy`, a frame's navigation.
 - [x] JavaScript: V8 with a native DOM (crates/js): the Web API surface in
   a prelude, scripts that scripts insert, measurement from a layout of the
   page as it is (getBoundingClientRect, offset*/client*/scroll*,

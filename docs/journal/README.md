@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser: live iframes
+
+*05:59* — An iframe's page runs on (its timers, loads, animation frames), redraws as it changes, takes the input over it, and posts messages to and from its parent. Etsy's DataDome check was a blank page (its captcha in an iframe whose scripts ran once): it shows and can be solved by a person now.
+
+![Browser: live iframes](2026-11-09/055907-browser-live-iframes.png)
+
 ### Browser: canvas text, charts at full size
 
 *05:07* — Canvas fillText and strokeText drew nothing (empty stubs) and measureText guessed: chart labels, legends and titles were missing. Text is shaped with the page's fonts now. And Chart.js drew its charts at half size: a 300px block's right margin read as the 300px left over, not Chrome's 0px.
