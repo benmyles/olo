@@ -1511,6 +1511,9 @@ fn render(
         // The scripted pass starts from what the static pass fetched.
         let previous = if pass == Pass::Scripted { cached.take() } else { None };
         let loaded_at = previous.as_ref().map_or_else(Instant::now, |c| c.loaded_at);
+        // CSS animations running on the page as first shown: it lives on
+        // for them, scripts or none.
+        let animating = previous.as_ref().is_some_and(|c| c.page.animating());
         // Its sheets held through this pass: the same ones parsed and
         // compiled once, not again.
         let _static_sheets = previous.as_ref().map(|c| c.page.parsed_sheets());
@@ -1602,7 +1605,7 @@ fn render(
                 .collect();
             // (A page with nothing to run goes live all the same while
             // pictures it shows without are on their way: it binds them.)
-            if scripts.is_empty() && !olo_js::has_controls(&doc) && measurer.late_images() == 0 {
+            if scripts.is_empty() && !olo_js::has_controls(&doc) && measurer.late_images() == 0 && !animating {
                 return Ok(doc);
             }
             proxy.send(Reply::Status(r.id, format!("Running {} scripts…", scripts.len())));
@@ -1906,7 +1909,9 @@ fn render(
         eprintln!("Browser: {} page ready {:.0} ms after the request", if pass == Pass::Scripted { "scripted" } else { "static" }, loaded_at.elapsed().as_secs_f64() * 1000.);
         // (A page showing without some of its pictures goes live too: its
         // live render binds them as they land.)
-        let wants_realm = page.scripts > 0 || olo_js::has_controls(&page.document) || page.has_late_images();
+        // (And so does one whose CSS animations run: their frames come
+        // from the live page's clock; a page without scripts stood still.)
+        let wants_realm = page.scripts > 0 || olo_js::has_controls(&page.document) || page.has_late_images() || page.animating();
         *cached = Some(Cached {
             key: r.key.clone(),
             page,
