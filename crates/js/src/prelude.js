@@ -180,7 +180,8 @@
   Object.setPrototypeOf(global, EventTarget.prototype);
 
   // ---------- Node
-  const documentNode = N.docRoot();
+  // (The page's document, bound with the page: see __olo_bindPage.)
+  let documentNode = null;
   const NODE_TYPES = { ELEMENT_NODE: 1, ATTRIBUTE_NODE: 2, TEXT_NODE: 3, CDATA_SECTION_NODE: 4, PROCESSING_INSTRUCTION_NODE: 7, COMMENT_NODE: 8, DOCUMENT_NODE: 9, DOCUMENT_TYPE_NODE: 10, DOCUMENT_FRAGMENT_NODE: 11, DOCUMENT_POSITION_DISCONNECTED: 1, DOCUMENT_POSITION_PRECEDING: 2, DOCUMENT_POSITION_FOLLOWING: 4, DOCUMENT_POSITION_CONTAINS: 8, DOCUMENT_POSITION_CONTAINED_BY: 16 };
   Object.assign(Node, NODE_TYPES);
   Object.assign(Node.prototype, NODE_TYPES);
@@ -1258,8 +1259,6 @@
   // The parser's scripts and links (already run and loaded), wrapped only
   // now that each tag has its class: a wrapper keeps the prototype it was
   // made with.
-  for (const el of N.query(N.docRoot(), 'script', true)) started.add(el);
-  for (const el of N.query(N.docRoot(), 'link', true)) linksLoaded.add(el);
   global.Attr = function Attr() {}; global.NodeList = NodeList; global.HTMLCollection = HTMLCollection; global.NamedNodeMap = NamedNodeMap; global.DOMStringMap = class DOMStringMap {}; global.XMLDocument = Document; global.HTMLDocument = Document; global.HTMLFormControlsCollection = HTMLFormControlsCollection; global.HTMLOptionsCollection = HTMLOptionsCollection;
   global.Image = function Image(w, h) { const el = N.createElement('img', ''); if (w != null) N.setAttr(el, 'width', String(w)); if (h != null) N.setAttr(el, 'height', String(h)); return el; };
   global.Option = function Option(text, value, defaultSelected, selected) { const el = N.createElement('option', ''); if (text != null) N.setTextContent(el, String(text)); if (value != null) N.setAttr(el, 'value', String(value)); if (selected || defaultSelected) N.setAttr(el, 'selected', ''); return el; };
@@ -1310,7 +1309,7 @@
 
   // ---------- Window: location, navigator, screen, timers, storage
   const resolveURL = (s) => { try { return new URL(s, N.url()).href; } catch (e) { return String(s); } };
-  const pageURL = new URL(N.url());
+  let pageURL = null;
   const location = {};
   // Navigation: the window goes there (a fragment of this page, a scroll).
   const navigate = (u, replace) => { const url = resolveURL(String(u)); N.navigate(url, !!replace); };
@@ -1322,7 +1321,7 @@
   // (its address and Back follow); back, forward and go move within them
   // (popstate, and hashchange when only the fragment moved), or ask the
   // browser to go further.
-  const historyEntries = [{ url: pageURL.href, state: null }];
+  const historyEntries = [{ url: '', state: null }];
   let historyIndex = 0;
   const sameOrigin = (u) => u.origin === pageURL.origin || pageURL.protocol === 'file:' && u.protocol === 'file:';
   const arrive = (url, state, oldURL) => {
@@ -1378,11 +1377,11 @@
     arrive(url, historyEntries[best].state, oldURL);
   };
   global.history = history;
-  const [vw, vh, dpr] = N.viewport();
+  let vw = 0, vh = 0, dpr = 1;
   global.navigator = { userAgent: N.userAgent(), appName: 'Netscape', appVersion: N.userAgent().replace(/^Mozilla\//, ''), appCodeName: 'Mozilla', product: 'Gecko', productSub: '20030107', vendor: 'Google Inc.', vendorSub: '', platform: 'Linux x86_64', language: N.language(), languages: [N.language(), N.language().split('-')[0]], onLine: true, cookieEnabled: true, doNotTrack: null, hardwareConcurrency: 8, deviceMemory: 8, maxTouchPoints: 0, pdfViewerEnabled: true, webdriver: false, userAgentData: { brands: [{ brand: 'Chromium', version: '157' }, { brand: 'Google Chrome', version: '157' }], mobile: false, platform: 'Linux', getHighEntropyValues: () => Promise.resolve({ platform: 'Linux', platformVersion: '', architecture: 'x86', model: '', uaFullVersion: '157.0.0.0' }) }, connection: { effectiveType: '4g', rtt: 50, downlink: 10, saveData: false, addEventListener() {}, removeEventListener() {} }, plugins: listOf([]), mimeTypes: listOf([]), javaEnabled: () => false, sendBeacon: () => true, vibrate: () => false, getBattery: () => Promise.resolve({ charging: true, level: 1, addEventListener() {} }), permissions: { query: () => Promise.resolve({ state: 'prompt', onchange: null, addEventListener() {} }) }, clipboard: { writeText: () => Promise.resolve(), readText: () => Promise.resolve('') }, serviceWorker: { register: () => new Promise(() => {}), ready: new Promise(() => {}), getRegistrations: () => Promise.resolve([]), getRegistration: () => Promise.resolve(undefined), addEventListener() {}, controller: null }, storage: { estimate: () => Promise.resolve({ quota: 1e9, usage: 0 }), persist: () => Promise.resolve(false) }, mediaDevices: { enumerateDevices: () => Promise.resolve([]), getUserMedia: () => Promise.reject(new DOMException('Not allowed', 'NotAllowedError')) }, locks: { request: () => Promise.resolve() }, credentials: { get: () => Promise.resolve(null), store: () => Promise.resolve(), create: () => Promise.resolve(null), preventSilentAccess: () => Promise.resolve() }, geolocation: { getCurrentPosition(ok, err) { if (err) err({ code: 1, message: 'denied' }); }, watchPosition() { return 0; }, clearWatch() {} }, share: () => Promise.reject(new DOMException('Not allowed', 'NotAllowedError')), canShare: () => false, requestMediaKeySystemAccess: () => Promise.reject(new DOMException('Unsupported', 'NotSupportedError')), scheduling: { isInputPending: () => false } };
   global.clientInformation = global.navigator;
   global.screen = { width: vw, height: vh, availWidth: vw, availHeight: vh, colorDepth: 24, pixelDepth: 24, orientation: { type: vw >= vh ? 'landscape-primary' : 'portrait-primary', angle: 0, addEventListener() {}, removeEventListener() {} } };
-  Object.assign(global, { innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0, name: '', status: '', closed: false, length: 0, isSecureContext: pageURL.protocol === 'https:' || pageURL.protocol === 'file:' || /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$|\.localhost$/.test(pageURL.hostname), origin: pageURL.origin, crossOriginIsolated: false });
+  Object.assign(global, { innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0, name: '', status: '', closed: false, length: 0, isSecureContext: false, origin: '', crossOriginIsolated: false });
   for (const k of ['window', 'self', 'top', 'parent', 'frames']) Object.defineProperty(global, k, { get() { return global; }, set() {}, configurable: true });
   // DOMImplementation.createHTMLDocument: a document of its own is a
   // detached tree here (html, head with the title, body), with the
@@ -1419,7 +1418,8 @@
     };
     return doc;
   };
-  global.document = documentNode;
+  // (An accessor, as Chrome's: the document bound with the page.)
+  Object.defineProperty(global, 'document', { get() { return documentNode; }, enumerable: true, configurable: true });
   Object.defineProperty(global, 'opener', { value: null, writable: true });
   const scrollWindow = (x, y) => { const size = N.docSize(); const [vw2, vh2] = N.viewport(); scrollXY[0] = Math.max(0, Math.min(x, size[0] - vw2)); scrollXY[1] = Math.max(0, Math.min(y, size[1] - vh2)); global.scrollX = global.pageXOffset = scrollXY[0]; global.scrollY = global.pageYOffset = scrollXY[1]; setTimeout(() => { dispatch(documentNode, new Event('scroll', { bubbles: true })); }, 0); };
   global.scroll = global.scrollTo = (x, y) => { if (typeof x === 'object' && x) { y = x.top; x = x.left; } scrollWindow(Number(x) || 0, Number(y) || 0); };
@@ -1770,7 +1770,7 @@
   // never going back.
   let tickWall = 0, lastPerf = 0;
   const performanceNow = () => { const t = now + (N.wallNow() - tickWall) + 0.001; if (t > lastPerf) lastPerf = t; return lastPerf; };
-  const timeOrigin = Date.now();
+  let timeOrigin = Date.now();
   // The wall clock follows the virtual one, so what scripts time with
   // Date.now() (animations, throttles, token expiries) agrees with timers.
   const NativeDate = Date;
@@ -2002,7 +2002,7 @@
       }
     };
     define(Element.prototype, common);
-    define(Object.getPrototypeOf(documentNode), common.concat(['readystatechange', 'visibilitychange', 'fullscreenchange', 'pointerlockchange']));
+    define(Document.prototype, common.concat(['readystatechange', 'visibilitychange', 'fullscreenchange', 'pointerlockchange']));
     define(global, common.concat(windowOnly));
   }
   // CSS animation and transition events (transitionrun, -start, -end,
@@ -3055,4 +3055,26 @@
   }
   global.ProcessingInstruction = nodeInterface('ProcessingInstruction', global.CharacterData);
   H.__olo_setCurrentScript = (el) => { currentScript = el; };
+  // ---------- The page: what the prelude binds to the page it runs for,
+  // after the rest (which depends on no page, so it can be made once and
+  // kept: a realm made from it binds only this).
+  const pageBinds = [];
+  H.__olo_onBind = (f) => { pageBinds.push(f); };
+  H.__olo_bindPage = () => {
+    documentNode = N.docRoot();
+    pageURL = new URL(N.url());
+    historyEntries[0] = { url: pageURL.href, state: null };
+    [vw, vh, dpr] = N.viewport();
+    Object.assign(global, { innerWidth: vw, innerHeight: vh, outerWidth: vw, outerHeight: vh, devicePixelRatio: dpr, isSecureContext: pageURL.protocol === 'https:' || pageURL.protocol === 'file:' || /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$|\.localhost$/.test(pageURL.hostname), origin: pageURL.origin });
+    if (Object.getPrototypeOf(global.screen) === Object.prototype) Object.assign(global.screen, { width: vw, height: vh, availWidth: vw, availHeight: vh });
+    Object.assign(global.visualViewport, { width: vw, height: vh });
+    timeOrigin = NativeDate.now();
+    tickWall = 0; lastPerf = 0;
+    const p = global.performance;
+    p.timeOrigin = timeOrigin;
+    for (const k of Object.keys(p.timing)) if (p.timing[k]) p.timing[k] = timeOrigin;
+    for (const el of N.query(documentNode, 'script', true)) started.add(el);
+    for (const el of N.query(documentNode, 'link', true)) linksLoaded.add(el);
+    for (const f of pageBinds) f();
+  };
 })(globalThis);

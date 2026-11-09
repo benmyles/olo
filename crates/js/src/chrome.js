@@ -12,6 +12,7 @@
 (function (global) {
   'use strict';
   const N = global.__olo;
+  const H = N.hidden || global;
   const define = Object.defineProperty;
   const getOwn = Object.getOwnPropertyDescriptor;
   const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -314,11 +315,18 @@
 
   // ---------- screen and the window's metrics: the display's.
   const Screen = iface('Screen');
-  const display = N.display();
-  const vw = global.innerWidth, vh = global.innerHeight;
-  const [sw, sh, ow, oh] = display || [vw, vh, vw, vh];
-  const orientation = adopt({ type: sw >= sh ? 'landscape-primary' : 'portrait-primary', angle: 0, onchange: null, lock: reject('NotSupportedError', 'screen.orientation.lock() is not available on this device.'), unlock() {} }, 'ScreenOrientation');
-  const screenValues = { availWidth: sw, availHeight: sh, width: sw, height: sh, colorDepth: 24, pixelDepth: 24, availLeft: 0, availTop: 0, orientation, onchange: null, isExtended: false };
+  const orientation = adopt({ type: 'landscape-primary', angle: 0, onchange: null, lock: reject('NotSupportedError', 'screen.orientation.lock() is not available on this device.'), unlock() {} }, 'ScreenOrientation');
+  const screenValues = { availWidth: 0, availHeight: 0, width: 0, height: 0, colorDepth: 24, pixelDepth: 24, availLeft: 0, availTop: 0, orientation, onchange: null, isExtended: false };
+  // (The display's sizes, as the page is bound: the window says them.)
+  const measureScreen = () => {
+    const vw = global.innerWidth, vh = global.innerHeight;
+    const [sw, sh, ow, oh] = N.display() || [vw, vh, vw, vh];
+    Object.assign(screenValues, { availWidth: sw, availHeight: sh, width: sw, height: sh });
+    const st = stores.get(orientation); if (st) st.type = sw >= sh ? 'landscape-primary' : 'portrait-primary';
+    global.outerWidth = Math.max(ow, vw);
+    global.outerHeight = Math.max(oh, vh);
+  };
+
   const theScreen = Object.create(Screen.prototype);
   for (const [name, kind] of CHROME_PROTOS.Screen) {
     if (name === 'constructor' || kind !== 'a' || !has(screenValues, name)) continue;
@@ -326,8 +334,8 @@
     define(Screen.prototype, name, { get: native(function () { if (this !== theScreen) throw new TypeError('Illegal invocation'); return screenValues[name]; }, 'get ' + name), set: settable ? native(function (v) { screenValues[name] = typeof v === 'function' ? v : null; }, 'set ' + name) : undefined, enumerable: true, configurable: true });
   }
   global.screen = theScreen;
-  global.outerWidth = Math.max(ow, vw);
-  global.outerHeight = Math.max(oh, vh);
+  measureScreen();
+  H.__olo_onBind(measureScreen);
   global.originAgentCluster = true;
 
   // ---------- performance.memory (MemoryInfo).
@@ -341,8 +349,9 @@
 
   // ---------- window.chrome: loadTimes, csi, app.
   const t = (global.performance && global.performance.timing) || {};
-  const origin = (global.performance && global.performance.timeOrigin) || Date.now();
-  const secure = global.location && global.location.protocol === 'https:';
+  // (Read as they are called: the page they answer for is bound later.)
+  const timeOriginOf = () => (global.performance && global.performance.timeOrigin) || Date.now();
+  const isSecure = () => !!(global.location && global.location.protocol === 'https:');
   const app = {
     isInstalled: false,
     getDetails: native(function getDetails() { return null; }, 'getDetails'),
@@ -354,10 +363,11 @@
   };
   global.chrome = {
     loadTimes: native(function loadTimes() {
+      const origin = timeOriginOf(), secure = isSecure();
       const s = (v) => (v || origin) / 1000;
       return { requestTime: s(t.navigationStart), startLoadTime: s(t.navigationStart), commitLoadTime: s(t.responseStart), finishDocumentLoadTime: s(t.domContentLoadedEventEnd), finishLoadTime: s(t.loadEventEnd), firstPaintTime: s(t.domContentLoadedEventEnd), firstPaintAfterLoadTime: 0, navigationType: 'Other', wasFetchedViaSpdy: secure, wasNpnNegotiated: secure, npnNegotiatedProtocol: secure ? 'h2' : 'unknown', wasAlternateProtocolAvailable: false, connectionInfo: secure ? 'h2' : 'http/1.1' };
     }, 'loadTimes'),
-    csi: native(function csi() { return { startE: Math.round(t.navigationStart || origin), onloadT: Math.round(t.domContentLoadedEventEnd || origin), pageT: global.performance.now(), tran: 15 }; }, 'csi'),
+    csi: native(function csi() { const origin = timeOriginOf(); return { startE: Math.round(t.navigationStart || origin), onloadT: Math.round(t.domContentLoadedEventEnd || origin), pageT: global.performance.now(), tran: 15 }; }, 'csi'),
     app,
   };
 
@@ -653,10 +663,16 @@
     for (const node of [global.document, global.document && global.document.doctype]) if (node && replaced.has(Object.getPrototypeOf(node))) Object.setPrototypeOf(node, replaced.get(Object.getPrototypeOf(node)));
 
     for (const { P } of plans) { shaped.add(replaced.get(P) || P); prototypes.add(replaced.get(P) || P); }
-    // A document's location is its own (unforgeable), as in Chrome.
-    if (global.document) {
+    // A document's location is its own (unforgeable), as in Chrome: the
+    // page's document's, as it is bound.
+    {
       const loc = getOwn(Document.prototype, 'location');
-      if (loc && loc.configurable) { delete Document.prototype.location; define(global.document, 'location', { ...loc, enumerable: true, configurable: false }); }
+      if (loc && loc.configurable) {
+        delete Document.prototype.location;
+        const own = () => { const d = global.document; if (d && !has(d, 'location')) define(d, 'location', { ...loc, enumerable: true, configurable: false }); };
+        own();
+        H.__olo_onBind(own);
+      }
     }
     if (global.HTMLBodyElement) {
       const B = HTMLBodyElement.prototype;

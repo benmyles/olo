@@ -994,3 +994,15 @@ fn stacks_show_the_page_s_frames_only() {
     assert!(report.console[1].starts_with("[log] ,forEach,viaEach"), "{:?}", report.console);
     assert_eq!(report.console[2], "[log] at Function.toString");
 }
+/// A page's own functions read as their source, not as native code (the
+/// prelude's script, made once into a snapshot, is told apart from the
+/// page's by its id).
+#[test]
+fn page_functions_read_as_their_source() {
+    let (report, _) = run("<body><script>\
+        function mine(a) { return a + 1; } const arrow = (x) => x;\
+        console.log(String(mine), String(arrow), /native code/.test(String(document.createElement)));\
+        </script>");
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] function mine(a) { return a + 1; } (x) => x true"]);
+}

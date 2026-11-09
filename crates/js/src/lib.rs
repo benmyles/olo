@@ -372,6 +372,10 @@ pub(crate) fn runtime() {
         // held after a page was stopped at 2 GB), and pooled pages are let
         // go after five seconds unused.
         v8::V8::set_flags_from_string("--no-memory-pool-share-memory-on-teardown --memory-pool-timeout=5");
+        // OLO_V8_FLAGS: more of V8's flags (--perf-basic-prof, to profile).
+        if let Ok(flags) = std::env::var("OLO_V8_FLAGS") {
+            v8::V8::set_flags_from_string(&flags);
+        }
         let platform = v8::new_default_platform(0, false).make_shared();
         v8::V8::initialize_platform(platform);
         v8::V8::initialize();
@@ -532,7 +536,15 @@ impl Realm {
             report: Report { revision_before: revision, ..Default::default() },
             started: Instant::now(),
         }));
-        let mut isolate = v8::Isolate::new(v8::CreateParams::default().heap_limits(0, HEAP_MAX));
+        // From the prelude's snapshot when there is one (see
+        // `prelude_snapshot`): its context is the prelude already run.
+        let snapshot = prelude_snapshot();
+        let params = v8::CreateParams::default().heap_limits(0, HEAP_MAX);
+        let params = match snapshot {
+            Some(blob) => params.snapshot_blob(v8::StartupData::from(blob)).external_references(external_references()),
+            None => params,
+        };
+        let mut isolate = v8::Isolate::new(params);
         let guard = Arc::new(Guard { handle: isolate.thread_safe_handle(), busy_since: Default::default(), stopped: Default::default() });
         isolate.add_near_heap_limit_callback(near_heap_limit, Arc::as_ptr(&guard) as *mut std::ffi::c_void);
         watch(&guard);
@@ -542,23 +554,25 @@ impl Realm {
         isolate.set_prepare_stack_trace_callback(prepare_stack_trace);
         modules::install(&mut isolate);
         modules::enter(&state);
-        let context = {
+        let context = if snapshot.is_some() {
             v8::scope!(let scope, &mut isolate);
-            let global = v8::ObjectTemplate::new(scope);
-            // Named access on the window: an unknown global name is the
-            // element with that id (or name, for a few elements), as in
-            // browsers. Non-masking: only names nothing else defines.
-            global.set_named_property_handler(
-                v8::NamedPropertyHandlerConfiguration::new().getter(named_global).flags(v8::PropertyHandlerFlags::NON_MASKING | v8::PropertyHandlerFlags::ONLY_INTERCEPT_STRINGS),
-            );
-            let context = v8::Context::new(scope, v8::ContextOptions { global_template: Some(global), ..Default::default() });
+            let context = v8::Context::new(scope, v8::ContextOptions::default());
+            let scope = &mut v8::ContextScope::new(scope, context);
+            state.borrow_mut().templates = Some(snapshot_templates(scope).ok_or("the snapshot's templates")?);
+            v8::Global::new(scope, context)
+        } else {
+            v8::scope!(let scope, &mut isolate);
+            let context = new_context(scope);
             let scope = &mut v8::ContextScope::new(scope, context);
             install(scope, &state)?;
             v8::Global::new(scope, context)
         };
         let mut realm = Self { isolate, context, state, guard };
         let started = std::time::Instant::now();
-        realm.run_prelude().map_err(|e| format!("prelude: {e}"))?;
+        if snapshot.is_none() {
+            realm.run_prelude().map_err(|e| format!("prelude: {e}"))?;
+        }
+        realm.bind_page().map_err(|e| format!("prelude: {e}"))?;
         if std::env::var_os("OLO_JS_TIMING").is_some() {
             eprintln!("  prelude ({} KB): {:.1} ms", PRELUDE.len() / 1024, started.elapsed().as_secs_f64() * 1000.);
         }
@@ -788,6 +802,26 @@ impl Realm {
             eprintln!("  prelude compiled in {:.1} ms (code cache {cache}), ran in {:.1} ms", (compiled - started).as_secs_f64() * 1000., compiled.elapsed().as_secs_f64() * 1000.);
         }
         if result.is_none() {
+            let error = exception_text(tc, "prelude.js");
+            state.borrow_mut().report.errors.push(error.clone());
+            return Err(error);
+        }
+        Ok(())
+    }
+    /// The prelude bound to this realm's page (its document, URL, viewport
+    /// and clock): what isn't in the prelude made once for every page.
+    fn bind_page(&mut self) -> Result<(), String> {
+        let state = self.state.clone();
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let global = context.global(tc);
+        let Some(bind) = prelude_function(tc, global, "__olo_bindPage") else { return Err("no __olo_bindPage".into()) };
+        // (The prelude's script, whose functions read as native code: from
+        // the snapshot, its id is its function's.)
+        state.borrow_mut().prelude_script = bind.script_id();
+        if bind.call(tc, global.into(), &[]).is_none() {
             let error = exception_text(tc, "prelude.js");
             state.borrow_mut().report.errors.push(error.clone());
             return Err(error);
@@ -2273,6 +2307,168 @@ pub(crate) fn machine() -> (usize, f64) {
         let memory = 2f64.powf((kb / 1048576.).log2().round()).clamp(0.25, 32.);
         (threads, memory)
     })
+}
+/// A page's context: its global object answering unknown names with the
+/// page's elements of that id (or name, for a few elements), as in
+/// browsers (non-masking: only names nothing else defines).
+fn new_context<'s>(scope: &mut v8::PinScope<'s, '_, ()>) -> v8::Local<'s, v8::Context> {
+    let global = v8::ObjectTemplate::new(scope);
+    global
+        .set_named_property_handler(v8::NamedPropertyHandlerConfiguration::new().getter(named_global).flags(v8::PropertyHandlerFlags::NON_MASKING | v8::PropertyHandlerFlags::ONLY_INTERCEPT_STRINGS));
+    v8::Context::new(scope, v8::ContextOptions { global_template: Some(global), ..Default::default() })
+}
+/// The functions V8 calls into Olo for (a snapshot names them).
+fn external_references() -> std::borrow::Cow<'static, [v8::ExternalReference]> {
+    use v8::MapFnTo;
+    std::borrow::Cow::Owned(vec![
+        v8::ExternalReference { function: native.map_fn_to() },
+        v8::ExternalReference { function: illegal_constructor.map_fn_to() },
+        v8::ExternalReference { named_getter: named_global.map_fn_to() },
+    ])
+}
+/// The DOM classes' templates, from the snapshot (in `Templates`' order).
+fn snapshot_templates(scope: &mut v8::PinScope<'_, '_>) -> Option<Templates> {
+    let mut t = (0..9).map(|i| scope.get_isolate_data_from_snapshot_once::<v8::FunctionTemplate>(i).ok().map(|l| v8::Global::new(scope, l)));
+    Some(Templates {
+        event_target: t.next()??,
+        node: t.next()??,
+        element: t.next()??,
+        html_element: t.next()??,
+        svg_element: t.next()??,
+        text: t.next()??,
+        comment: t.next()??,
+        document: t.next()??,
+        fragment: t.next()??,
+    })
+}
+/// The prelude made once: a V8 snapshot of a context with the natives, the
+/// DOM classes and the prelude run, bound to no page. A realm is made from
+/// it and binds its page (4 ms, where running the prelude took 24). Kept on
+/// disk, by what it was made from (the prelude, the natives, V8 and its
+/// flags); made on a thread of its own when there is none, the realms in
+/// the meantime running the prelude as before. OLO_NO_SNAPSHOT: never.
+enum Snapshot {
+    Unknown,
+    Making,
+    Ready(&'static [u8]),
+    Failed,
+}
+static SNAPSHOT: std::sync::Mutex<Snapshot> = std::sync::Mutex::new(Snapshot::Unknown);
+/// What a snapshot's layout is, besides what its key hashes: bumped when
+/// what `make_snapshot` puts in it changes.
+const SNAPSHOT_FORMAT: u32 = 1;
+fn snapshot_path() -> Option<std::path::PathBuf> {
+    use std::hash::{BuildHasher, Hash, Hasher};
+    let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).filter(|p| p.is_absolute()).or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
+    let mut h = foldhash::fast::FixedState::with_seed(0).build_hasher();
+    (PRELUDE, NATIVES, v8::V8::get_version(), std::env::var("OLO_V8_FLAGS").unwrap_or_default(), SNAPSHOT_FORMAT).hash(&mut h);
+    Some(base.join("olo").join("browser").join(format!("prelude-{:016x}.snapshot", h.finish())))
+}
+fn prelude_snapshot() -> Option<&'static [u8]> {
+    let mut state = SNAPSHOT.lock().ok()?;
+    match *state {
+        Snapshot::Ready(blob) => return Some(blob),
+        Snapshot::Making | Snapshot::Failed => return None,
+        Snapshot::Unknown => {}
+    }
+    if std::env::var_os("OLO_NO_SNAPSHOT").is_some() {
+        *state = Snapshot::Failed;
+        return None;
+    }
+    if let Some(blob) = snapshot_path().and_then(|p| std::fs::read(p).ok()).filter(|b| !b.is_empty()) {
+        let blob: &'static [u8] = Box::leak(blob.into_boxed_slice());
+        *state = Snapshot::Ready(blob);
+        return Some(blob);
+    }
+    *state = Snapshot::Making;
+    let spawned = std::thread::Builder::new().name("prelude-snapshot".into()).spawn(|| {
+        let started = Instant::now();
+        let made = make_snapshot();
+        if std::env::var_os("OLO_JS_TIMING").is_some() {
+            eprintln!("  prelude snapshot: {} in {:.1} ms", made.as_ref().map_or_else(|e| format!("not made ({e})"), |b| format!("{} KB", b.len() / 1024)), started.elapsed().as_secs_f64() * 1000.);
+        }
+        let ready = match made {
+            Ok(blob) => {
+                // (Written whole, then named: a reader never sees part.)
+                if let Some(path) = snapshot_path()
+                    && let Some(dir) = path.parent()
+                    && std::fs::create_dir_all(dir).is_ok()
+                {
+                    if let Ok(entries) = std::fs::read_dir(dir) {
+                        for e in entries.flatten() {
+                            let name = e.file_name();
+                            let name = name.to_string_lossy();
+                            if name.starts_with("prelude-") && name.ends_with(".snapshot") && e.path() != path {
+                                let _ = std::fs::remove_file(e.path());
+                            }
+                        }
+                    }
+                    let partial = path.with_extension(format!("{}.part", std::process::id()));
+                    if std::fs::write(&partial, &blob).is_ok() {
+                        let _ = std::fs::rename(&partial, &path);
+                    }
+                }
+                Snapshot::Ready(Box::leak(blob.into_boxed_slice()))
+            }
+            Err(_) => Snapshot::Failed,
+        };
+        if let Ok(mut state) = SNAPSHOT.lock() {
+            *state = ready;
+        }
+    });
+    if spawned.is_err() {
+        *state = Snapshot::Failed;
+    }
+    None
+}
+fn make_snapshot() -> Result<Vec<u8>, String> {
+    let mut isolate = v8::Isolate::snapshot_creator(Some(external_references()), None);
+    let state: Shared = Rc::new(RefCell::new(State::empty()));
+    isolate.set_slot(state.clone());
+    isolate.set_slot(Rejections::default());
+    isolate.set_promise_reject_callback(promise_rejected);
+    {
+        v8::scope!(let scope, &mut isolate);
+        let context = new_context(scope);
+        {
+            let scope = &mut v8::ContextScope::new(scope, context);
+            install(scope, &state)?;
+            let templates: Vec<v8::Local<v8::FunctionTemplate>> = {
+                let s = state.borrow();
+                let t = s.templates.as_ref().ok_or("templates")?;
+                [&t.event_target, &t.node, &t.element, &t.html_element, &t.svg_element, &t.text, &t.comment, &t.document, &t.fragment].iter().map(|g| v8::Local::new(scope, *g)).collect()
+            };
+            for (i, t) in templates.into_iter().enumerate() {
+                if scope.add_isolate_data(t) != i {
+                    return Err("isolate data out of order".into());
+                }
+            }
+            v8::tc_scope!(let tc, scope);
+            let code = v8::String::new(tc, PRELUDE).ok_or("string")?;
+            let resource = string(tc, "prelude.js");
+            let origin = v8::ScriptOrigin::new(tc, resource, 0, 0, false, 0, None, false, false, false, None);
+            let script = v8::Script::compile(tc, code, Some(&origin));
+            if let Some(script) = script {
+                state.borrow_mut().prelude_script = script.script_id();
+            }
+            let ran = script.and_then(|s| s.run(tc));
+            if ran.is_none() {
+                return Err(exception_text(tc, "prelude.js"));
+            }
+            tc.perform_microtask_checkpoint();
+        }
+        scope.set_default_context(context);
+    }
+    // (What holds the creator's handles goes before its blob is made.)
+    {
+        let mut s = state.borrow_mut();
+        s.templates = None;
+        s.wrappers.clear();
+    }
+    drop(isolate.remove_slot::<Shared>());
+    drop(state);
+    let blob = isolate.create_blob(v8::FunctionCodeHandling::Keep).ok_or("blob")?;
+    Ok(blob.to_vec())
 }
 /// The prelude's compiled code, kept: in memory for the realms after the
 /// first, on disk for the next launch (its name the prelude's hash, so each
