@@ -258,21 +258,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return KeyAction::None;
         }
         let opts = crate::keymap::Options::from(&self.settings.keyboard);
-        let focus = self.focused_window().map_or(crate::keymap::Focus::Olo, |w| {
-            use crate::keymap::Focus;
-            let (id, keyboard) = (w.app_id(), &self.settings.keyboard);
-            if keyboard.terminal_apps.contains(&id) {
-                Focus::Terminal
-            } else if olo_protocol::app_keys::CHROMIUM_APPS.contains(&id.as_str()) {
-                Focus::Chrome
-            } else if keyboard.browser_apps.contains(&id) {
-                Focus::Browser
-            } else if id.starts_with("olo.") {
-                Focus::Olo
-            } else {
-                Focus::Other
-            }
-        });
+        let focus = self.focused_window().map_or(crate::keymap::Focus::Olo, |w| crate::keymap::Focus::of(&w.app_id(), &self.settings.keyboard.terminal_apps, &self.settings.keyboard.browser_apps));
         let outs = self.keymap.feed(key, pressed, std::time::Instant::now(), opts, focus);
         // ⌘ on a tab's cut title: its tip at once (`tabtip`).
         if pressed && self.keymap.command_held() {

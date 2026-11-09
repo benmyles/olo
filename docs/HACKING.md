@@ -5397,13 +5397,16 @@ kit's `mac_text_keys` did this; it went with egui on 2026-11-02, and
 until 2026-11-03 ⌘← moved a word in Olo's own text.)
 
 Chrome's own keys are in the profile too (`app_keys`, app
-`google-chrome`, listed as Chrome in Preferences ▸ Keyboard ▸ Shortcuts
-and changed there as any app's): New Tab, Reopen Closed Tab, Open
+`google-chrome`, listed as Chrome and Slack in Preferences ▸ Keyboard ▸
+Shortcuts and changed there as any app's): New Tab, Reopen Closed Tab, Open
 Location, Back, History, Downloads, Developer Tools, Enter Full Screen
 and the rest, each platform's as Chrome has them there (BeOS's as a
 Mac's, Alt its command key). In Chrome and the browsers that are Chrome
-underneath (`CHROMIUM_APPS`: Chromium, Brave, Edge; `keymap::Focus::
-Chrome`) each is sent as what Linux Chrome takes for that command
+underneath (`CHROMIUM_APPS`: Chromium, Brave, Edge), and our web apps
+in it (`olo_xdg::apps::is_web_app`: olo-slack's window, which goes by
+`olo.slack` but is Chrome's, and had Olo's apps' keys: ⌥← reached it as
+Alt+←, Back, not a word; ⌘[ as Ctrl+[, nothing) (`keymap::Focus::of`,
+`Focus::Chrome`), each is sent as what Linux Chrome takes for that command
 (`CHROME_NATIVE`, `app_keys::chrome_keys`, `Keymap::set_chrome`, set
 with the bindings), before the other programs' translations: a Mac's
 ⌘Y is History (Ctrl+H), ⌥⌘I the developer tools (Ctrl+Shift+I), ⌃⌘F
@@ -12321,7 +12324,10 @@ are Slack's alone and the person's Chrome is untouched. It is one of
 window's Wayland app id after the URL and the profile folder
 (`chrome-app.slack.com__client-Default`); app_server reports it as
 `olo.slack` (`olo_xdg::apps::WEB_APPS`, `WindowElement::app_id`), so
-Deskbar, the palette, Twitcher and agents know it as Olo's Slack. It
+Deskbar, the palette, Twitcher and agents know it as Olo's Slack. Its
+keys are Chrome's as the keyboard profile has them ("Keyboard
+profiles": on a Mac ⌥← and ⌥→ a word, ⌘[ and ⌘] Back and Forward,
+whatever Chrome's are set to in Preferences). It
 always starts on the same page (the app id comes from it) and goes to a
 link once in: `olo-slack LINK` (a `slack://channel?team=T&id=C`, `open`,
 `user` link, or a Slack page) leaves it in the profile folder (`Olo Slack

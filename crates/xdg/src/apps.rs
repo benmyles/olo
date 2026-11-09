@@ -30,6 +30,12 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
 /// URL's host and path, `-`, the profile folder's name), and ours.
 pub const WEB_APPS: &[(&str, &str)] = &[("chrome-app.slack.com__client-Default", "olo.slack")];
 
+/// Whether `id` (ours) is one of our web apps in Chrome ([`WEB_APPS`]):
+/// its window is Chrome's, and takes Chrome's keys.
+pub fn is_web_app(id: &str) -> bool {
+    WEB_APPS.iter().any(|(_, ours)| *ours == id)
+}
+
 /// The app id a window goes by: the one it gave, or ours for one of our
 /// web apps' windows ([`WEB_APPS`]).
 pub fn window_app_id(given: String) -> String {

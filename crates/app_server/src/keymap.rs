@@ -108,6 +108,28 @@ pub enum Focus {
     Other,
 }
 
+impl Focus {
+    /// What a window of app `id` is, as far as keys go. Our web apps
+    /// (olo-slack: `olo_xdg::apps::WEB_APPS`) go by an `olo.` id but are
+    /// Chrome's windows, so they take Chrome's keys as the profile has
+    /// them (⌥← a word back, not Back; ⌘[ Back) (Ben, 2026-11-09: "in
+    /// slack option+left/right isn't moving back/forward a word it's
+    /// navigating back forward").
+    pub fn of(id: &str, terminal_apps: &[String], browser_apps: &[String]) -> Focus {
+        if terminal_apps.iter().any(|a| a == id) {
+            Focus::Terminal
+        } else if olo_protocol::app_keys::CHROMIUM_APPS.contains(&id) || olo_xdg::apps::is_web_app(id) {
+            Focus::Chrome
+        } else if browser_apps.iter().any(|a| a == id) {
+            Focus::Browser
+        } else if id.starts_with("olo.") {
+            Focus::Olo
+        } else {
+            Focus::Other
+        }
+    }
+}
+
 /// Modifier pairs, the one pressed for a chord first.
 const CTRL: [u32; 2] = [LEFTCTRL, RIGHTCTRL];
 const SHIFT: [u32; 2] = [LEFTSHIFT, RIGHTSHIFT];
@@ -1241,6 +1263,41 @@ mod tests {
         assert_eq!(r.down(C), [Key(C, true)]);
         r.up(C);
         assert!(r.k.down.is_empty());
+    }
+
+    /// Slack (olo-slack: Chrome, under an `olo.` id) is Chrome: on a Mac,
+    /// ⌥← and ⌥→ move a word (Ctrl+← there), ⌘[ and ⌘] go back and on
+    /// (Alt+←), as the profile's Chrome keys say.
+    #[test]
+    fn slack_takes_chromes_keys() {
+        assert_eq!(Focus::of("olo.slack", &[], &[]), Focus::Chrome);
+        assert_eq!(Focus::of("google-chrome", &[], &[]), Focus::Chrome);
+        assert_eq!(Focus::of("olo.tracker", &[], &[]), Focus::Olo);
+        assert_eq!(Focus::of("org.gnome.Nautilus", &[], &[]), Focus::Other);
+        assert_eq!(Focus::of("olo.terminal", &["olo.terminal".to_owned()], &[]), Focus::Terminal);
+        let mut r = Rig::new();
+        r.focus = Focus::of("olo.slack", &[], &[]);
+        // ⌥←: a word back (Ctrl+←), ⌥ let go of meanwhile; ⌥⇧→ selects one.
+        r.down(LEFTALT);
+        assert_eq!(r.down(LEFT), [Key(LEFTCTRL, true), Key(LEFTALT, false), Key(LEFT, true)]);
+        r.up(LEFT);
+        r.down(LEFTSHIFT);
+        assert_eq!(r.down(RIGHT), [Key(LEFTCTRL, true), Key(RIGHT, true)]);
+        r.up(RIGHT);
+        r.up(LEFTSHIFT);
+        r.up(LEFTALT);
+        // ⌘[ and ⌘]: Back and Forward (Alt+← and Alt+→).
+        r.down(LEFTMETA);
+        assert_eq!(r.down(LEFTBRACE), [Key(RIGHTCTRL, false), Key(LEFTALT, true), Key(LEFT, true)]);
+        r.up(LEFTBRACE);
+        assert_eq!(r.down(RIGHTBRACE), [Key(RIGHTCTRL, false), Key(LEFTALT, true), Key(RIGHT, true)]);
+        r.up(RIGHTBRACE);
+        r.up(LEFTMETA);
+        assert!(r.k.down.is_empty(), "{:?}", r.k.down);
+        // As an Olo app it had: ⌥← reached it as Alt+← (Back).
+        r.focus = Focus::Olo;
+        r.down(LEFTALT);
+        assert_eq!(r.down(LEFT), [Key(LEFT, true)]);
     }
 
     /// Chrome's keys as a Mac has them, sent as Linux Chrome takes them;
