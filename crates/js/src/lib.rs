@@ -275,6 +275,9 @@ struct State {
     /// once): an earlier one finishing later is stale and dropped, as
     /// HTML's "update the image data" aborts it.
     image_latest: olo_web::dom::NodeMap<u64>,
+    /// Pictures let go while their elements are far from what shows (over
+    /// the pictures' budget), with the URL to ask for when they come near.
+    images_away: olo_web::dom::NodeMap<String>,
     /// An image came for an element since the pictures were last taken
     /// (`canvases`): the page renders to show it.
     images_dirty: bool,
@@ -464,6 +467,7 @@ impl Realm {
             image_urls: Default::default(),
             images_let_go: Default::default(),
             image_latest: Default::default(),
+            images_away: Default::default(),
             images_dirty: false,
             requests: Vec::new(),
             in_flight: HashMap::new(),
@@ -928,6 +932,78 @@ impl Realm {
         self.state.borrow().document.attribute(node, name).ok().flatten().is_some()
     }
     /// What the scripts asked of media elements since last asked.
+    /// The scripts' pictures (`img` elements they made or set) and their
+    /// elements, for `keep_pictures_near`.
+    pub fn picture_nodes(&self) -> Vec<NodeId> {
+        let s = self.state.borrow();
+        s.images.keys().chain(s.images_away.keys()).copied().collect()
+    }
+    /// Over `budget` bytes of pictures, those whose elements are not `near`
+    /// what shows are let go (their decoded pixels; the URL kept), and those
+    /// let go whose elements came near are asked for again (from the
+    /// browser's caches, decoded again off this thread), as Chrome discards
+    /// the decodes of pictures far out of view. Reddit's feed held every
+    /// picture of the posts it kept in the document, 570 MB for 134. The
+    /// number let go and asked for again.
+    pub fn keep_pictures_near(&mut self, near: &dyn Fn(NodeId) -> bool, budget: usize) -> (usize, usize) {
+        let mut s = self.state.borrow_mut();
+        let s = &mut *s;
+        let mut seen = std::collections::HashSet::new();
+        let total: usize = s.images.values().filter(|i| seen.insert(Arc::as_ptr(i))).map(|i| i.payload_bytes()).sum();
+        let mut gone = 0;
+        if total > budget {
+            let far: Vec<NodeId> = s.images.keys().filter(|n| !near(**n)).copied().collect();
+            for n in far {
+                s.images.remove(&n);
+                if let Some(url) = s.image_urls.remove(&n) {
+                    s.images_away.insert(n, url);
+                    gone += 1;
+                }
+            }
+            if gone > 0 {
+                s.images_dirty = true;
+            }
+        }
+        let back: Vec<NodeId> = s.images_away.keys().filter(|n| near(**n)).copied().collect();
+        for n in &back {
+            let Some(url) = s.images_away.remove(n) else { continue };
+            if let Some(image) = s.image_lookup.as_mut().and_then(|f| f(&url)) {
+                s.images.insert(*n, image);
+                s.image_urls.insert(*n, url);
+                s.images_dirty = true;
+                continue;
+            }
+            if s.image_lookup.is_some() {
+                let id = s.next_request;
+                s.next_request += 1;
+                s.in_flight.insert(id, Some(*n));
+                s.image_latest.insert(*n, id);
+                s.image_urls.insert(*n, url.clone());
+                s.requests.push(Request { id, url, kind: RequestKind::Image });
+            }
+        }
+        // (Those gone from the document for good: forgotten.)
+        if s.images_away.len() > 4096 {
+            let doc = &s.document;
+            s.images_away.retain(|n, _| doc.is_connected(*n).unwrap_or(false));
+        }
+        (gone, back.len())
+    }
+    /// What the page's scripts hold (OLO_BROWSER_TIMING's memory line):
+    /// V8's heap used and its size, and the pictures bound to elements
+    /// (their decoded bytes, each picture once, and how many).
+    pub fn memory(&mut self) -> (usize, usize, usize, usize) {
+        let heap = self.isolate.get_heap_statistics();
+        let s = self.state.borrow();
+        let mut seen = std::collections::HashSet::new();
+        let mut bytes = 0;
+        for image in s.images.values() {
+            if seen.insert(Arc::as_ptr(image)) {
+                bytes += image.payload_bytes();
+            }
+        }
+        (heap.used_heap_size(), heap.total_heap_size(), bytes, seen.len())
+    }
     /// The MediaSource stream a media element plays (its src is the
     /// source's object URL, or its srcObject the source), if it has one.
     pub fn media_stream(&self, node: NodeId) -> Option<Arc<olo_mse::Stream>> {
@@ -1430,6 +1506,7 @@ impl State {
             image_urls: Default::default(),
             images_let_go: Default::default(),
             image_latest: Default::default(),
+            images_away: Default::default(),
             images_dirty: false,
             requests: Vec::new(),
             in_flight: HashMap::new(),

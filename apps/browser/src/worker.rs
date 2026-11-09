@@ -473,6 +473,8 @@ struct Live {
     /// clock), a quarter second on, as Chrome throttles animations out of
     /// view (Reddit's drew 120 frames a second of nothing, 9% of a core).
     unseen_until_ms: Option<f64>,
+    /// When the scripts' pictures were last kept to what is near the view.
+    pictures_checked: Instant,
 }
 /// What a live page's frames cost (its scripts and renders on the CPU, its
 /// WebGL on the GPU), reviewed each second: over budget, it draws every
@@ -708,6 +710,9 @@ fn frame_period_ms(live: &Live) -> f64 {
 /// display frame (60 Hz), so animations are as smooth as the page draws
 /// them (at 100 ms they showed at 10 frames a second and stuttered).
 const FRAME: Duration = Duration::from_micros(16_667);
+/// The decoded pictures a live page's scripts keep (in `img` elements)
+/// before those far from the view are let go (`Realm::keep_pictures_near`).
+const PICTURES_BUDGET: usize = 160 << 20;
 /// The most pixels a turned or scaled moved layer is painted in one tile
 /// (the painter's limit for a tile).
 const ONE_TILE: i64 = 512 * 512;
@@ -1204,6 +1209,34 @@ fn render(
             return Ok(());
         }
         live.loads.dispatch(&mut live.realm);
+        // The scripts' pictures far from what shows let go over a budget,
+        // and asked for again as they come near (a few times a second).
+        if live.pictures_checked.elapsed() >= Duration::from_millis(250) {
+            live.pictures_checked = Instant::now();
+            let nodes = live.realm.picture_nodes();
+            if !nodes.is_empty() {
+                let layout = c.page.scene.layout();
+                let wanted: olo_web::dom::NodeSet = nodes.into_iter().collect();
+                let fixed = layout.fixed_boxes();
+                let mut at: olo_web::dom::NodeMap<Option<layout::Rect>> = Default::default();
+                for (id, b) in layout.cache().tree().iter() {
+                    if wanted.contains(&b.node) {
+                        // (A fixed box is always near; one not laid out
+                        // never is.)
+                        let rect = if fixed.get(id.index()).copied().unwrap_or(false) { Some(layout::Rect { x: 0., y: 0., width: 0., height: f64::MAX / 4. }) } else { layout.bounds(id) };
+                        at.entry(b.node).or_insert(rect);
+                    }
+                }
+                let height = f64::from(r.key.height) / r.key.scale;
+                let top = f64::from(r.scroll) / r.key.scale - 2. * height;
+                let bottom = top + 5. * height;
+                let near = |n: olo_web::dom::NodeId| at.get(&n).copied().flatten().is_some_and(|b| b.y + b.height >= top && b.y <= bottom);
+                let (gone, back) = live.realm.keep_pictures_near(&near, PICTURES_BUDGET);
+                if (gone > 0 || back > 0) && olo_web::env_on!("OLO_BROWSER_TIMING") {
+                    eprintln!("  pictures: {gone} far from the view let go, {back} near again asked for");
+                }
+            }
+        }
         if olo_web::env_on!("OLO_BROWSER_TIMING") {
             for line in live.realm.take_console() {
                 eprintln!("  live console: {line}");
@@ -1285,6 +1318,11 @@ fn render(
             live.ticks = 0;
             live.max_ticks = 0;
             live.stats = (0, 0., 0, 0., Instant::now());
+            if olo_web::env_on!("OLO_BROWSER_TIMING") {
+                let (used, heap, pictures, count) = live.realm.memory();
+                let page_pictures = c.page.scene.layout().cache().tree().images().map_or(0, |set| set.payload_bytes());
+                eprintln!("  memory: scripts' heap {} of {} MB, their pictures {} MB ({count}), the page's pictures {} MB", used >> 20, heap >> 20, pictures >> 20, page_pictures >> 20);
+            }
             // OLO_JS_PROFILE: where the natives' time went, the top ten.
             if olo_web::env_on!("OLO_JS_PROFILE") {
                 let profile = olo_js::take_native_profile();
@@ -1764,6 +1802,7 @@ fn render(
                 hidden: false,
                 waiting_since: None,
                 unseen_until_ms: None,
+                pictures_checked: Instant::now(),
             });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms ({:.0} ms of this thread's CPU)",
