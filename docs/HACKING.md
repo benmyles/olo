@@ -12677,6 +12677,25 @@ only if that changed. Measured beside the old Wi-Fi-only watch over
 60 s, idle on Ben's machine (Ethernet and Wi-Fi both up): under one
 wakeup a second, against about two.
 
+**AppImages** (`appimages.rs`): with a `~/AppImages` folder, the Olo
+menu has an AppImages item under Applications, each AppImage in it by
+the name its own desktop entry gives (else its file's, a version and
+machine trimmed: "Obsidian-1.5.12.AppImage", Obsidian) with its own
+icon. A type 2 AppImage is an ELF runtime with a SquashFS image after
+its section headers; that's read in process (`backhand`, no mounting),
+for the entry and `.DirIcon` (followed through links), else the entry's
+`Icon=` by name (at the top, or the largest in its hicolor theme). What
+was read is kept in `~/.cache/olo/appimages` (the icon, PNG or SVG as
+given, and an index by path, size and time), so each is read once. The
+folder is followed (inotify, `olo_ui::watch`: made later, removed,
+renamed back too), and a change lists it again on a worker, one scan
+at a time with one more after it if it changed meanwhile (an AppImage
+still downloading). Chosen, it runs; one not executable yet (just
+downloaded) is made so first. Tried in a tsession with a real AppImage
+(DBDelve): its name and 256 × 256 icon came out, added and removed
+copies showed and went at once, and the item went with the folder and
+came back with it.
+
 ### Live widgets (widgets.rs, Preferences ▸ Deskbar)
 
 Ben, 2026-11-07: "add a preferences app for the deskbar and in it

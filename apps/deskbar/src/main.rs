@@ -22,6 +22,7 @@
 //! pointer moves onto something else in it, and the clock ticks on the
 //! minute (or second): nothing runs while nothing changes.
 
+mod appimages;
 mod approve;
 mod sni;
 mod status;
@@ -149,6 +150,8 @@ enum Msg {
     Settings(Settings),
     Outputs(Vec<OutputInfo>),
     Installed(Installed),
+    /// What's in `~/AppImages` (None: no such folder).
+    AppImages(Option<Vec<appimages::AppImage>>),
     /// Other programs' tray icons and launcher badges (`sni`).
     Tray(sni::Tray),
     /// The live widgets' readings, by widget (`widgets`).
@@ -177,6 +180,32 @@ fn scan_installed(proxy: olo_ui::Proxy) {
         let ours = OUR_APPS.iter().map(|(bin, _, _)| *bin).filter(|bin| olo_xdg::find_program(bin).is_some()).collect();
         let preferences = olo_xdg::find_program("olo-preferences").is_some();
         proxy.send(Msg::Installed(Installed { entries: desktop_entry::all(), ours, preferences }));
+    });
+}
+
+/// Look in `~/AppImages` on a worker (an AppImage new or changed is read
+/// for its name and icon), and tell the app. One look at a time; a change
+/// meanwhile (an AppImage still being downloaded) has one more after it.
+fn scan_appimages(proxy: olo_ui::Proxy) {
+    use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    static AGAIN: AtomicBool = AtomicBool::new(false);
+    if RUNNING.swap(true, SeqCst) {
+        AGAIN.store(true, SeqCst);
+        return;
+    }
+    std::thread::spawn(move || {
+        loop {
+            AGAIN.store(false, SeqCst);
+            proxy.send(Msg::AppImages(appimages::scan()));
+            if !AGAIN.load(SeqCst) {
+                RUNNING.store(false, SeqCst);
+                // (One that came as this one ended.)
+                if !AGAIN.swap(false, SeqCst) || RUNNING.swap(true, SeqCst) {
+                    return;
+                }
+            }
+        }
     });
 }
 
@@ -237,6 +266,8 @@ struct Deskbar {
     /// Appearance ▸ Show icons in the Deskbar menu.
     menu_icons: bool,
     installed: Installed,
+    /// The AppImages in `~/AppImages` (None: no such folder).
+    appimages: Option<Vec<appimages::AppImage>>,
     /// A look for what is installed under way (`scan_installed`), and
     /// when the last one started.
     scanning: bool,
@@ -632,7 +663,7 @@ impl Deskbar {
             other = other.submenu(m.sorted()).icon("folder");
         }
 
-        Menu::new("Olo")
+        let mut menu = Menu::new("Olo")
             .item("About Olo Desktop", "about")
             .icon("olo")
             .item("Find…", "find")
@@ -659,11 +690,27 @@ impl Deskbar {
             .icon("shut-down")
             .separator()
             .submenu(apps)
-            .icon("application")
-            .submenu(other)
-            .icon("other-applications")
-            .submenu(prefs)
-            .icon("preferences")
+            .icon("application");
+        // Under Applications: what's in ~/AppImages, if there's the folder.
+        if let Some(m) = self.appimages_menu() {
+            menu = menu.submenu(m).icon("archive");
+        }
+        menu.submenu(other).icon("other-applications").submenu(prefs).icon("preferences")
+    }
+
+    /// `~/AppImages`' apps, by name, each with its own icon (taken out of
+    /// it) or the generic one; None without the folder.
+    fn appimages_menu(&self) -> Option<Menu> {
+        let found = self.appimages.as_ref()?;
+        let mut m = Menu::new("AppImages");
+        if found.is_empty() {
+            return Some(m.item("Put AppImages in ~/AppImages", "none").enabled(false));
+        }
+        for a in found {
+            let icon = a.icon.as_ref().map_or_else(|| "application".to_owned(), |p| p.display().to_string());
+            m = m.item(&a.name, format!("appimage:{}", a.path.display())).icon(icon);
+        }
+        Some(m)
     }
 
     /// The focused window (what "Others" leaves alone and a window is
@@ -978,6 +1025,11 @@ impl Deskbar {
             }
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
+            Some(("appimage", path)) => {
+                if let Err(e) = appimages::launch(std::path::Path::new(path)) {
+                    tracing::warn!("appimages: {path}: {e}");
+                }
+            }
             Some(("caff", arg)) => self.caffeine_command(arg),
             // A power mode: set by the daemon (off the UI thread); its
             // signal says so back.
@@ -1383,6 +1435,7 @@ impl Deskbar {
                     view.update(cx, |_, cx| cx.notify());
                 }
             }
+            Msg::AppImages(found) => self.appimages = found,
             Msg::Installed(installed) => {
                 self.installed = installed;
                 self.scanning = false;
@@ -3260,6 +3313,13 @@ fn main() {
         if let Some(w) = olo_ui::watch::watch(desktop_entry::app_dirs(), move |_| scan_installed(rescan.clone())) {
             std::mem::forget(w);
         }
+        // AppImages put in ~/AppImages or taken out (the folder there or
+        // not, made later): listed again at once.
+        scan_appimages(proxy.clone());
+        let rescan = proxy.clone();
+        if let Some(w) = olo_ui::watch::watch([appimages::dir()], move |_| scan_appimages(rescan.clone())) {
+            std::mem::forget(w);
+        }
         status::spawn({
             let proxy = proxy.clone();
             move |s| proxy.send(Msg::Status(s))
@@ -3288,6 +3348,7 @@ fn main() {
                 menu_icons: true,
                 installed: Installed::default(),
                 scanning: true,
+                appimages: None,
                 scanned_at: Some(Instant::now()),
                 entries: HashMap::new(),
                 last_focused: None,
