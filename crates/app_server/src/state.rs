@@ -213,6 +213,10 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub dnd_icon: Option<DndIcon>,
     /// A Wayland drag-and-drop is under way (Escape ends it: `escape_drag`).
     pub dragging: bool,
+    /// The tab a drag rests on, its window to come forward (shell/spring.rs),
+    /// and the count its waits go by.
+    pub spring: Option<crate::shell::spring::Spring>,
+    pub spring_token: u64,
     /// Escape ended a drag or a move: its release reaches nobody either,
     /// and the move grab, ending, puts its window back (`MoveCancelled`).
     pub escaped: bool,
@@ -428,11 +432,13 @@ impl<BackendData: Backend> DndGrabHandler for AnvilState<BackendData> {
     fn dropped(&mut self, _target: Option<DndTarget<'_, Self>>, _validated: bool, _seat: Seat<Self>, _location: Point<f64, Logical>) {
         self.dnd_icon = None;
         self.dragging = false;
+        self.spring = None;
     }
 
     fn cancelled(&mut self, _seat: Seat<Self>, _location: Point<f64, Logical>) {
         self.dnd_icon = None;
         self.dragging = false;
+        self.spring = None;
     }
 }
 
@@ -1228,6 +1234,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             toplevel_handles: HashMap::new(),
             dnd_icon: None,
             dragging: false,
+            spring: None,
+            spring_token: 0,
             escaped: false,
             move_cancelled: false,
             suppressed_keys: Vec::new(),

@@ -860,6 +860,17 @@ fn main() {
 
 ### Drag and drop (`olo_ui::dnd`, GPUI's drops)
 
+**Spring-loaded tabs** (app_server shell/spring.rs): anything dragged
+and held 0.6 s (`SPRING`) over a window's yellow tab brings that window
+forward, to the front of its group if it's in one, as a click on its
+tab would, so what's dragged can be dropped into it; the drag goes on
+over it (Ben, 2026-11-09). A drag that leaves the tab sooner brings
+nothing forward; nothing waits while nothing is dragged. Tried in a
+tsession: a file dragged from Tracker onto the tab of a StyledEdit
+window behind it came forward after 0.6 s (not at 0.3) and the drop
+opened the file in it; onto a group's tab behind its front one, that
+tab came to the front.
+
 Over Wayland's data device, so it works within a window, between
 Olo's apps and with any other Wayland program. (app_server tells a drag
 where the pointer is as it starts, `dnd_requested`: an app asks once the

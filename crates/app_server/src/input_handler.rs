@@ -1148,6 +1148,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         pointer.frame(self);
         self.overview_pointer();
         self.twitch_pointer();
+        self.spring_pointer();
     }
 
     fn on_touch_down<B: InputBackend>(&mut self, evt: B::TouchDownEvent) {
@@ -1494,6 +1495,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         pointer.frame(self);
         self.overview_pointer();
         self.twitch_pointer();
+        self.spring_pointer();
     }
 
     /// Input injected over IPC by UI tests.
@@ -1660,6 +1662,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 pointer.frame(self);
                 self.overview_pointer();
                 self.twitch_pointer();
+                self.spring_pointer();
             }
             S::Button { button, pressed } => {
                 if self.overview_button(button, pressed) || self.twitch_button(button, pressed) {
@@ -2031,6 +2034,7 @@ impl AnvilState<UdevData> {
         pointer.frame(self);
         self.overview_pointer();
         self.twitch_pointer();
+        self.spring_pointer();
 
         // If pointer is now in a constraint region, activate it
         // TODO Anywhere else pointer is moved needs to do this
@@ -2067,6 +2071,7 @@ impl AnvilState<UdevData> {
         pointer.frame(self);
         self.overview_pointer();
         self.twitch_pointer();
+        self.spring_pointer();
     }
 
     fn on_tablet_tool_axis<B: InputBackend>(&mut self, evt: B::TabletToolAxisEvent) {

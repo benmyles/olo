@@ -46,6 +46,7 @@ pub mod groups;
 pub mod modes;
 pub mod pip;
 pub mod rounds;
+pub mod spring;
 pub mod tabdrag;
 pub mod tiling;
 mod wm;
