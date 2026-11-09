@@ -7053,3 +7053,25 @@ the Guardian and old Reddit, looking for pages that fail outright:
   waited the timeout before each, its 83 icon fetches one after another.
   An idle callback runs at the next idle moment now, and Cache Storage
   keeps what is put in it. YouTube's home is as Chrome's within a second.
+- **Reddit's scroll, its hashing and blurs.** SipHash was about 14% of
+  the page thread while Reddit scrolled (attribute-name atoms, interned
+  texts, the realm's node maps, the style engine's indexes): foldhash or
+  the node hasher now, 0.02%. Its media backdrops (a picture at
+  scale(1.2) blur(24px)) cost 2.35 ms a tile: the blur's passes go down
+  columns a row at a time and the coarse layer comes back up in fixed
+  point, 0.67 ms. A coarser blur grid was tried and left: gradients drawn
+  that coarse moved a backdrop's colour by 7.
+- **Blurs before their ancestors' clip.** Those backdrops faded to white
+  at their box's edges: the box's overflow clip cut the picture before
+  the blur spread it. Chrome blurs, then clips, and blurs in the box's own
+  space (scaled by its transform). Both as Chrome now (12.5 -> 2.0 of 255
+  on a test page).
+- **Pictures scaled or moved by a transform** are drawn by the upright
+  sampler where they land (closer to Chrome than tiny-skia's pattern was);
+  that sampler filters each source row once, in f32, the same pixels.
+  Tiles of a page of 24 such pictures: 1.97 -> 1.15 ms.
+- **Inline images take their opacity, filter and transform.** An inline
+  `<img>` (or SVG) with `opacity: .3`, a blur, a rotation or greyscale was
+  drawn as if it had none: atomic inlines now paint through the same
+  groups and transforms as blocks.
+

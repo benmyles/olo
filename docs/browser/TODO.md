@@ -47,7 +47,9 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
   16-23 ms each page (a V8 startup snapshot would make it nothing),
   matching 21-27 ms per restyle from nothing, layout 8-10 ms per pass.
 - [ ] Reddit against Chrome, quiet, its feed working: load 3.18 vs 2.63
-  CPU s, idle 0.9% vs 3.7%, scrolling 123% vs 60% (2026-11-08). While
+  CPU s, idle 0.9% vs 3.7%, scrolling 123% vs 60% (2026-11-08; since:
+  SipHash, 14% of the page thread, gone; blurred backdrops 2.35 -> 0.67 ms
+  a tile; its feed differs each load, ±25% between runs). While
   scrolling: its scripts ~1 s in 6 (parsing each 528 KB next page through
   a template, serializing and parsing it again), style 770 ms (each page's
   2,000 elements, 73 candidate rules each with its Tailwind classes; a
@@ -56,6 +58,14 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 - [ ] A script-less page with CSS animations takes a realm for its clock
   (the prelude's 16-23 ms once): a clock of its own would be lighter. A V8
   startup snapshot of the prelude would make every page's 16-23 ms nothing.
+- [ ] A translucent, transformed or filtered atomic inline paints in its
+  line's place, not raised to its stacking context's later layers as
+  CSS 2 Appendix E has it (the same unless something overlaps it); its
+  z-index is ignored.
+- [ ] Scaled pictures through the upright sampler: 0.28 ms a draw against
+  tiny-skia's 0.16 (it blends two mip levels, as Chrome's results show it
+  should); SIMD over the row, or one level when they are near, would
+  close it.
 - [ ] `getComputedStyle` answers no `animation-name` (a page probing which
   elements animate finds none).
 - [ ] Decoded pictures: kept whole while bound (a page's budget 256 MB,
