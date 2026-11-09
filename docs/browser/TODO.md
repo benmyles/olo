@@ -35,20 +35,17 @@ GitHub's homepage, open (seen against Chrome at 1000 × 700):
 
 Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 
-- [ ] GitHub against Chrome (each alone, 1000 × 700): load 9.41 vs 9.34
-  CPU s, idle 27% vs 35%, scrolling 56% vs 60% (2026-11-08: a frame no
-  longer scans every style for pictures nor hashes every background).
-  Load is where it trails: element insertions (its animated demo panel)
-  still rebuild the whole box tree (2-4.5 ms); typed text is rewritten
-  in place. Per frame (120 Hz, as Chrome's) its animation's style patch
-  is 0.3-0.7 ms for 9 elements, most of the page thread now.
-- [ ] MDN's load against Chrome: 1.46 vs 1.17 CPU s (2026-11-08: its
+- [ ] GitHub against Chrome (each alone, 1000 × 700): load 9.01 vs 9.10
+  CPU s, idle 27% vs 37%, scrolling 54% vs 61% (2026-11-08). Element
+  insertions (its animated demo panel) still rebuild the whole box tree
+  (2-4.5 ms); its animation's style patch is 0.3-0.7 ms a frame for 9
+  elements, most of the page thread while idle.
+- [x] MDN's load against Chrome: 0.95 vs 1.15 CPU s (2026-11-08: its
   pseudo-elements looked for from the rule index, its components' new
-  styles restyling only their trees: restyles while loading 45-55 → 2-10
-  ms). Left: matching 21-27 ms per restyle from nothing (two of them),
-  renders restyling what the scripts' measurement just styled (the
-  measurer's styles are of the default interaction and its own rules),
-  layout 8-10 ms per pass (intrinsic sizes 7 ms of it).
+  styles restyling only their trees, ids and names from an index: the
+  prelude was 475 ms of it). Left to make faster still: the prelude's
+  16-23 ms each page (a V8 startup snapshot would make it nothing),
+  matching 21-27 ms per restyle from nothing, layout 8-10 ms per pass.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.

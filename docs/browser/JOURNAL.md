@@ -6983,3 +6983,16 @@ the Guardian and old Reddit, looking for pages that fail outright:
   and 14 Reddit loads. Against Chrome, each alone: MDN load 1.85 → 1.46
   CPU s (Chrome 1.17), Reddit 2.66 vs 2.95 CPU s, scrolling 10.5% vs 61%,
   460 vs 716 MB.
+- **Ids and names from an index.** V8 asks the window's named properties
+  about every global it doesn't know yet (each `global.X =` of Olo's
+  prelude, each `typeof X` of a page), and each question walked the whole
+  document twice (an id, then a form or image name). The prelude took
+  475 ms on MDN, 404 on Wikipedia, 94 on Hacker News, at every load. The
+  realm now keeps elements by id and name, remade in one walk only when
+  the change log shows an id, a name or elements moved: 16-23 ms.
+  `OLO_JS_TIMING` times the prelude and each script; the "Browser
+  scripts" line gives the page thread's CPU. Every site measured now
+  loads for less CPU than Chrome (each alone): MDN 0.95 vs 1.15 CPU s,
+  Wikipedia 1.09 vs 2.22, BBC 5.05 vs 9.88, apple.com 1.24 vs 1.40,
+  GitHub 9.01 vs 9.10, Reddit 2.69 vs 7.20; scrolling costs less or the
+  same on all six, and memory is a third to a half of Chrome's.
