@@ -956,6 +956,16 @@ impl Selectors {
             .collect::<Vec<_>>()
             .join(", ")
     }
+    /// Whether a branch of list `root` addressing `pseudo` could match an
+    /// element whose ancestors are `filter`'s: the matcher's fast reject,
+    /// from the compiled selectors alone, without making a matcher.
+    pub(crate) fn may_match(&self, root: u32, pseudo: Option<PseudoElement>, filter: &AncestorFilter) -> bool {
+        let Some(list) = self.lists.get(root as usize) else { return true };
+        self.links[list.links.start as usize..list.links.end as usize].iter().any(|&i| {
+            let complex = &self.complexes[i as usize];
+            complex.pseudo == pseudo && self.ancestor_hashes[complex.ancestors.start as usize..complex.ancestors.end as usize].iter().all(|&h| filter.may_contain(h))
+        })
+    }
     /// Each branch's key, with the pseudo-element it addresses, if any: a
     /// `::before` branch can only match a ::before, never the element.
     /// Each branch's keys (several when the subject is `:is(a, b)`: one per

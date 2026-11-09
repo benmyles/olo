@@ -325,6 +325,8 @@ pub struct Job<'a> {
     progress: Progress,
     failed: bool,
     scratch: cascade::MatchScratch,
+    /// The element last matched and its tree scopes (`dom`).
+    scopes_of: Option<(NodeId, [Option<u64>; 4])>,
     /// Styles a like sibling may take (style sharing): recent elements
     /// whose matching met nothing a sibling could answer otherwise.
     sharing: Vec<Sharable>,
@@ -401,6 +403,9 @@ struct Timing {
     hints: f64,
     matching: f64,
     computing: f64,
+    /// After computing: comparing with the previous tree and storing.
+    storing: f64,
+    /// Pseudo-elements: looking for and styling them.
     pseudo: f64,
     candidates: usize,
     elements: usize,
@@ -414,7 +419,21 @@ struct Timing {
 }
 impl Default for Timing {
     fn default() -> Self {
-        Self { shared: 0, hints: 0., matching: 0., computing: 0., pseudo: 0., candidates: 0, elements: 0, copied: 0, copy: 0., started: std::time::Instant::now(), constructed: 0., visited: 0 }
+        Self {
+            shared: 0,
+            hints: 0.,
+            matching: 0.,
+            computing: 0.,
+            storing: 0.,
+            pseudo: 0.,
+            candidates: 0,
+            elements: 0,
+            copied: 0,
+            copy: 0.,
+            started: std::time::Instant::now(),
+            constructed: 0.,
+            visited: 0,
+        }
     }
 }
 impl<'a> Job<'a> {
@@ -434,6 +453,7 @@ impl<'a> Job<'a> {
             progress: Progress::default(),
             failed: false,
             scratch: Default::default(),
+            scopes_of: None,
             sharing: Vec::new(),
             account: Default::default(),
             fonts: font_pool::FontPool::new(limits.font_cache_entries),
@@ -733,6 +753,20 @@ impl<'a> Job<'a> {
             self.next = None;
         }
         result
+    }
+    /// The document as selectors see it, with `node`'s scopes worked out
+    /// once for all its matches (its own, its pseudo-elements').
+    fn dom(&mut self, node: NodeId) -> Result<selectors::DomTree<'a>> {
+        let scopes = match self.scopes_of {
+            Some((n, scopes)) if n == node => scopes,
+            _ => {
+                let scopes = selectors::DomTree::find_scopes(self.document, node).map_err(|e| Error::cascade(cascade::Error::Selectors(e)))?;
+                self.scopes_of = Some((node, scopes));
+                scopes
+            }
+        };
+        let dom = if let Some(states) = self.options.states { selectors::DomTree::with_states(self.document, states) } else { selectors::DomTree::new(self.document) };
+        Ok(dom.with_scopes(node, scopes))
     }
     fn tick(&mut self) -> Result<()> {
         check(self.cancelled)?;
@@ -1207,6 +1241,10 @@ impl<'a> Job<'a> {
         }
         self.tree.slots[node.slot() as usize] = NonZeroU32::new(index as u32 + 1);
         self.account.add(&self.tree.styles[index].style);
+        let mark_stored = clock.map(|c| c.elapsed().as_secs_f64()).unwrap_or(0.);
+        if let Some(t) = self.timing.as_mut() {
+            t.storing += mark_stored - mark_compute;
+        }
         if self.rules.has_pseudo_elements() {
             let element = self.tree.styles[index].style.clone();
             for (pseudo, style) in self.compute_pseudos(node, &element, host)? {
@@ -1230,7 +1268,7 @@ impl<'a> Job<'a> {
             }
         }
         if let (Some(t), Some(c)) = (self.timing.as_mut(), clock) {
-            t.pseudo += c.elapsed().as_secs_f64() - mark_compute;
+            t.pseudo += c.elapsed().as_secs_f64() - mark_stored;
         }
         let retained = self
             .account
@@ -1514,7 +1552,7 @@ impl<'a> Job<'a> {
         if sharing {
             for i in (0..self.sharing.len()).rev() {
                 if self.sharing[i].parent == parent && alike(self.document, self.sharing[i].node, node).map_err(Error::Dom)? && {
-                    let dom = if let Some(states) = self.options.states { selectors::DomTree::with_states(self.document, states) } else { selectors::DomTree::new(self.document) };
+                    let dom = self.dom(node)?;
                     self.rules
                         .answers_like(&dom, node, selectors::MatchOptions { quirks: self.options.quirks, ..Default::default() }, &self.sharing[i].recorded, self.limits.matching, self.cancelled)
                         .map_err(Error::cascade)?
@@ -1558,13 +1596,13 @@ impl<'a> Job<'a> {
         if let Some(animated) = self.options.animated.and_then(|a| a.get(&node)) {
             inline.extend(animated.iter().cloned());
         }
+        let dom = self.dom(node)?;
         let parent = parent.map(|i| &self.tree.styles[i].style);
         let root = self.root.map(|i| &self.tree.styles[i].style);
         let layout_parent = parent_box.map(|i| match self.tree.styles[i.get() as usize - 1].style.value(Property::Display) {
             Value::Display(display) => BoxParent { display: *display, axes: self.tree.styles[i.get() as usize - 1].style.axes },
             _ => unreachable!(),
         });
-        let dom = if let Some(states) = self.options.states { selectors::DomTree::with_states(self.document, states) } else { selectors::DomTree::new(self.document) };
         let mark_hints = clock.map(|c| c.elapsed().as_secs_f64()).unwrap_or(0.);
         if let Some(t) = self.timing.as_mut() {
             t.hints += mark_hints;
@@ -1648,14 +1686,18 @@ impl<'a> Job<'a> {
         if !self.rules.has_pseudo_elements() {
             return Ok(out);
         }
-        let dom = if let Some(states) = self.options.states { selectors::DomTree::with_states(self.document, states) } else { selectors::DomTree::new(self.document) };
+        let dom = self.dom(node)?;
         for pseudo in [PseudoElement::Before, PseudoElement::After] {
             if !self.rules.has_pseudo(pseudo) {
                 continue;
             }
             self.tick()?;
             // Only a rule declaring `content` makes the pseudo-element
-            // exist: those few are tried first; most elements stop here.
+            // exist: whether one could match is known from the rule index
+            // alone (most elements stop here), then those few are tried.
+            if !self.rules.may_generate(&dom, node, pseudo, self.limits.cascade, &mut self.scratch, Some(&self.ancestors), self.cancelled).map_err(Error::cascade)? {
+                continue;
+            }
             let generates = self
                 .rules
                 .match_element_with_hints(
@@ -1774,7 +1816,7 @@ impl<'a> Job<'a> {
         }
         if let Some(t) = &self.timing {
             eprintln!(
-                "style timing: {} elements ({} reused, {} shared), {} candidates ({:.1} per element; {} rejected, {} compounds, {} tests, {} steps): hints {:.1} ms, matching {:.1} ms, computing {:.1} ms, pseudo {:.1} ms; font cache {:?}",
+                "style timing: {} elements ({} reused, {} shared), {} candidates ({:.1} per element; {} rejected, {} compounds, {} tests, {} steps): hints {:.1} ms, matching {:.1} ms, computing {:.1} ms, storing {:.1} ms, pseudo {:.1} ms ({} made); font cache {:?}",
                 t.elements + self.progress.reused + t.shared,
                 self.progress.reused,
                 t.shared,
@@ -1787,7 +1829,9 @@ impl<'a> Job<'a> {
                 t.hints * 1000.,
                 t.matching * 1000.,
                 t.computing * 1000.,
+                t.storing * 1000.,
                 t.pseudo * 1000.,
+                self.tree.pseudos.len(),
                 self.fonts.stats()
             );
             match (&self.options.previous, &self.previous) {

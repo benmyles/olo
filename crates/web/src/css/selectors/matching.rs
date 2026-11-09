@@ -72,13 +72,30 @@ pub trait StateSource {
 pub struct DomTree<'a> {
     document: &'a Document,
     states: Option<&'a dyn StateSource>,
+    /// One element's `scopes`, worked out once: each is a walk up to its
+    /// tree's root, asked for at every match of the element (and of its
+    /// pseudo-elements).
+    known: Option<(NodeId, [Option<u64>; 4])>,
 }
 impl<'a> DomTree<'a> {
     pub fn new(document: &'a Document) -> Self {
-        Self { document, states: None }
+        Self { document, states: None, known: None }
     }
     pub fn with_states(document: &'a Document, states: &'a dyn StateSource) -> Self {
-        Self { document, states: Some(states) }
+        Self { document, states: Some(states), known: None }
+    }
+    /// This tree with `node`'s scopes known (as `scopes` would find them).
+    pub fn with_scopes(mut self, node: NodeId, scopes: [Option<u64>; 4]) -> Self {
+        self.known = Some((node, scopes));
+        self
+    }
+    /// The trees whose rules can reach `node` (`Tree::scopes`), found by
+    /// walking up the document.
+    pub fn find_scopes(document: &Document, node: NodeId) -> Result<[Option<u64>; 4]> {
+        let slot = document.assigned_slot(node)?.and_then(|s| document.shadow_scope(s));
+        let own = document.shadow_scope(node);
+        let outer = own.and_then(|root| document.shadow_host(root)).and_then(|host| document.shadow_scope(host));
+        Ok([own.map(scope_key), document.shadow_root(node).map(scope_key), slot.map(scope_key), outer.map(scope_key)])
     }
 }
 impl Tree for DomTree<'_> {
@@ -118,10 +135,12 @@ impl Tree for DomTree<'_> {
         Ok(self.document.shadow_scope(node).and_then(|root| self.document.shadow_host(root)))
     }
     fn scopes(&self, node: NodeId) -> Result<[Option<u64>; 4]> {
-        let slot = self.document.assigned_slot(node)?.and_then(|s| self.document.shadow_scope(s));
-        let own = self.document.shadow_scope(node);
-        let outer = own.and_then(|root| self.document.shadow_host(root)).and_then(|host| self.document.shadow_scope(host));
-        Ok([own.map(scope_key), self.document.shadow_root(node).map(scope_key), slot.map(scope_key), outer.map(scope_key)])
+        if let Some((known, scopes)) = self.known
+            && known == node
+        {
+            return Ok(scopes);
+        }
+        Self::find_scopes(self.document, node)
     }
     fn first_child(&self, node: NodeId) -> Result<Option<NodeId>> {
         Ok(self.document.first_child(node)?)

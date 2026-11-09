@@ -56,3 +56,41 @@ fn a_font_patched_in_place_shapes_its_texts_again() {
     }
     assert!(width_of(&last, &doc, "t") < before, "the span's text is smaller than before");
 }
+/// A `::before`/`::after` exists where a rule giving it `content` matches,
+/// and only there: rules keyed on the element's name with an ancestor in
+/// an `:is()` (as CSS nesting writes them) are ruled out by the
+/// ancestors alone, in the document and in a shadow tree.
+#[test]
+fn pseudo_elements_are_made_where_their_content_rules_match() {
+    use olo_web::css::selectors::PseudoElement;
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let viewport = layout::Viewport { width: 400., height: 300., scale: 1. };
+    let media = olo_web::css::media::Media::screen(viewport.width, viewport.height, viewport.scale, false);
+    let source = "<!doctype html><style>:is(.crumbs li)::after{content:'>'} li::before{color:red} .x li::before{content:'*'}</style>\
+        <ul class=crumbs><li id=a>a</li></ul><ul><li id=b>b</li></ul><div class=x><ul><li id=c>c</li></ul></div>\
+        <div id=h><template shadowrootmode=open><style>:is(.c span)::before{content:'*'}</style><p class=c><span id=s>s</span></p><p><span id=t>t</span></p></template></div>";
+    let prepared = page::prepare(Arc::from(source), &scope, media, false, None, |_, _| {}, |_, _, _| Ok(None)).unwrap();
+    let host = paint_host::Scaled::new(prepared.scope().clone(), 1.);
+    let measurer = prepared.measurer();
+    let mut shaper = shaping::Engine::default();
+    let doc = prepared.into_document();
+    let m = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+    let styles = m.layout().cache().tree().styles();
+    let find = |id: &str| {
+        let mut stack = vec![doc.root()];
+        while let Some(n) = stack.pop() {
+            if doc.node_type(n).unwrap() == olo_web::dom::NodeType::Element && doc.attribute(n, "id").unwrap() == Some(id) {
+                return n;
+            }
+            stack.extend(doc.children(n).unwrap());
+            stack.extend(doc.shadow_root(n));
+        }
+        panic!("no #{id}")
+    };
+    let has = |id: &str, pseudo| styles.pseudo(find(id), pseudo).is_some();
+    assert!(has("a", PseudoElement::After) && !has("b", PseudoElement::After) && !has("c", PseudoElement::After));
+    assert!(!has("a", PseudoElement::Before) && !has("b", PseudoElement::Before) && has("c", PseudoElement::Before), "a rule without content makes none");
+    assert!(has("s", PseudoElement::Before) && !has("t", PseudoElement::Before), "in a shadow tree");
+}

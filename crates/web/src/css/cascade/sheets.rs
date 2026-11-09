@@ -902,29 +902,19 @@ impl RuleSet {
             parent.is_some() && matches!(tree.parent(node).map_err(Error::Selectors)?.map(|p| tree.content(p)).transpose().map_err(Error::Selectors)?, Some(selectors::Content::Fragment));
         builder.finish(has_parent || fragment_child, parent)
     }
+    /// The rules that could match `node` (by its tree scopes, name, id,
+    /// classes and attributes), into `scratch.candidates`.
     #[allow(clippy::too_many_arguments)]
-    fn match_inner<'a, T: selectors::Tree>(
-        &'a self,
+    fn collect_candidates<T: selectors::Tree>(
+        &self,
         tree: &T,
         node: T::Node,
+        name: &selectors::ElementName<'_>,
         options: selectors::MatchOptions<'_, T::Node>,
-        inline: Option<&'a [p::Declaration]>,
-        hints: Option<&'a [p::Declaration]>,
-        parent: Option<&'a dyn Inherited>,
         limits: Limits,
-        match_limits: selectors::MatchLimits,
         scratch: &mut MatchScratch,
-        ancestors: Option<&selectors::AncestorFilter>,
-        cancelled: Option<&'a AtomicBool>,
-        mut record: Option<&mut Vec<(u32, selectors::Specificity)>>,
-    ) -> Result<Cascade<'a>> {
-        check(cancelled)?;
-        if options.visited_style {
-            return Err(Error::Unsupported("private visited paint path"));
-        }
-        let selectors::Content::Element(name) = tree.content(node).map_err(Error::Selectors)? else {
-            return Err(Error::Invalid);
-        };
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<()> {
         scratch.candidates.clear();
         if cfg!(feature = "baseline-cascade-index") {
             scratch.candidates.extend(0..self.rules.len() as u32);
@@ -1003,6 +993,62 @@ impl RuleSet {
                 }
             }
         }
+        Ok(())
+    }
+    /// Whether a rule declaring `content` for `pseudo` could match `node`:
+    /// when none could (most elements), the pseudo-element is not there,
+    /// known without matching (MDN: 213 made of 14,282 looked for).
+    #[allow(clippy::too_many_arguments)]
+    pub fn may_generate<T: selectors::Tree>(
+        &self,
+        tree: &T,
+        node: T::Node,
+        pseudo: selectors::PseudoElement,
+        limits: Limits,
+        scratch: &mut MatchScratch,
+        ancestors: Option<&selectors::AncestorFilter>,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<bool> {
+        if !self.index.pseudo_content.contains_key(&pseudo) {
+            return Ok(false);
+        }
+        let selectors::Content::Element(name) = tree.content(node).map_err(Error::Selectors)? else {
+            return Err(Error::Invalid);
+        };
+        let options = selectors::MatchOptions { pseudo: Some(pseudo), content_only: true, ..Default::default() };
+        self.collect_candidates(tree, node, &name, options, limits, scratch, cancelled)?;
+        // A candidate needing an ancestor key the element's ancestors lack
+        // (`:is(.breadcrumbs li)::after` for each of MDN's sidebar items)
+        // is out at once.
+        Ok(match ancestors {
+            Some(filter) => scratch.candidates.iter().any(|&id| self.rules.get(id as usize).is_none_or(|rule| self.selectors.may_match(rule.selector, Some(pseudo), filter))),
+            None => !scratch.candidates.is_empty(),
+        })
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn match_inner<'a, T: selectors::Tree>(
+        &'a self,
+        tree: &T,
+        node: T::Node,
+        options: selectors::MatchOptions<'_, T::Node>,
+        inline: Option<&'a [p::Declaration]>,
+        hints: Option<&'a [p::Declaration]>,
+        parent: Option<&'a dyn Inherited>,
+        limits: Limits,
+        match_limits: selectors::MatchLimits,
+        scratch: &mut MatchScratch,
+        ancestors: Option<&selectors::AncestorFilter>,
+        cancelled: Option<&'a AtomicBool>,
+        mut record: Option<&mut Vec<(u32, selectors::Specificity)>>,
+    ) -> Result<Cascade<'a>> {
+        check(cancelled)?;
+        if options.visited_style {
+            return Err(Error::Unsupported("private visited paint path"));
+        }
+        let selectors::Content::Element(name) = tree.content(node).map_err(Error::Selectors)? else {
+            return Err(Error::Invalid);
+        };
+        self.collect_candidates(tree, node, &name, options, limits, scratch, cancelled)?;
         if scratch.candidates.len() > limits.candidates {
             return Err(Error::Limit);
         }
