@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>Outside marker geometry</title>
+<style>
+@font-face {font-family:"Olo Inline plain";src:url(../inline-fixtures/plain.ttf)}
+body {font:20px "Olo Inline plain";margin:0}
+ul {margin:0;padding:0 0 0 80px;width:300px}
+li {margin:0}
+.large::marker {font-size:40px;color:rgb(220,0,0)}
+.small::marker {font-size:10px;color:rgb(0,0,220)}
+</style>
+<ul>
+<li id="empty"></li>
+<li id="large-empty" class="large"></li>
+<li id="plain">A B</li>
+<li id="large-text" class="large">A B</li>
+<li id="small-text" class="small">A B</li>
+<li id="none" style="list-style-type:none"></li>
+<li id="child"><div id="child-block">A B</div></li>
+<li id="large-child" class="large"><div id="large-child-block">A B</div></li>
+<li id="whitespace">   </li>
+<li id="hidden-child"><span style="display:none">C</span></li>
+<li id="abs-child"><span style="position:absolute">D</span></li>
+<li id="multiline" class="large">A B<br>C D</li>
+<li id="inside" class="large" style="list-style-position:inside">A B</li>
+<li id="last">E</li>
+</ul>

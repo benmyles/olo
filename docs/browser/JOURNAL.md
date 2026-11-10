@@ -7544,3 +7544,67 @@ it once three things were fixed:
   viewBox, `height: 100%` of a 24px span, contributed its default size
   to a shrink-to-fit parent; it contributes its ratio's width of the
   resolved height now.
+
+## 2026-11-09, resumed Claude session 35a0076a
+
+Recovered the session transcript and its three modified source files. The
+interrupted patch added Web API enumerability, marker styles, synthetic text
+for empty items, and a hardcoded Google speech-voice list. Kept and completed
+the standards fixes; removed the voice list because the speech backend cannot
+produce those voices. The production-browser goal remains open. Chrome's
+surface and a feature probe passing cannot substitute for its behavior.
+
+- **Observers:** Web IDL members of Olo's unshaped interfaces are enumerable,
+  so Zone.js can copy and invoke `observe`/`disconnect`. Restrict this to
+  Olo-defined members, preserving recorded prototype descriptors and native
+  ECMAScript members: the inherited patch made Date.prototype enumerable.
+  The regression wraps IntersectionObserver, ResizeObserver and
+  MutationObserver, then checks Date/Array/Object prototypes.
+- **Markers:** retain computed `::marker` color/font styles through reuse and
+  incremental patches. Outside markers align to the first in-flow baseline,
+  including a block descendant, and reserve the required space above it.
+  Empty items reserve a line without fabricated zero-width text. Resolve only
+  font metrics for a marker baseline, rather than all paragraph options.
+- **Independent oracle:** Chrome 157.0.8103.38, an owned Wayland Agent Screen,
+  a private scratch profile and the original deterministic fixture font.
+  `crates/web/tests/marker-fixtures` records source/font hashes and 80 element
+  rectangles at DPR 1/1.25/1.5/1.75/2; all 320 coordinates match within 1/64 CSS
+  pixel. Incremental class/style changes match fresh layout. This is geometry
+  coverage: bullet glyphs and horizontal gaps still differ in actual pixels,
+  and marker content/images/counters/writing modes remain incomplete.
+- **Native visuals:** 15 live theme/scale combinations before and after,
+  light/dark/night × five scales, at odd window x=49. All native reviews are
+  clean. Before/after screenshots are in the screenshot journal. Authored white
+  page backgrounds remain white; universal page darkening is still unfinished.
+
+Release measurements are retained in
+`measurements/2026-11-09-marker-resume.json`, including the first run's hitch,
+raw frame/idle observations, binary hashes and workloads. The baseline is the
+inherited release executable copied on resume, not a claim of a pristine
+33cc67d8 build. Repeat measurements use baseline/candidate/candidate/baseline,
+1,000 list items or ordinary blocks, seven warm menu reloads per process, a
+1000×700 native window at DPR1/120Hz, `tools/dev/cost`, and `scroll-check`'s
+unchanged Check/analyser on the owned Agent Screen.
+
+| Repeat measurement | Inherited | Candidate |
+|---|---:|---:|
+| List worker-ready median | 16 ms | 17 ms |
+| Ordinary worker-ready median | 11 ms | 11 ms |
+| List first scroll movement median | 28.9 ms | 28.6 ms |
+| Ordinary first scroll movement median | 25.55 ms | 28.6 ms |
+| List slowest client draw | 0.77 ms | 0.85 ms |
+| Ordinary slowest client draw | 0.99 ms | 0.91 ms |
+| Idle CPU / frames | 0% / 0 | 0% / 0 |
+
+Repeat drag/wheel runs have no hitches or still frames. The initial candidate
+had a 9.51 ms draw and one hitch; those observations remain in the artifact.
+Some wheel runs split an easing sequence into four detected notches, and the
+initial runs included half-pixel easing-step increases. These measurements do
+not establish perfect scrolling, a Chrome speed advantage, or website
+acceptance. The list pays about 1 ms for corrected layout on this workload.
+Worker-ready measures completion on the page worker, not presentation.
+
+Validation before main integration: `cargo test --release --no-fail-fast
+-p olo-web -p olo-browser -p olo-js`: 530 passed, no failures (the inherited
+baseline was 527). Existing ignored tests remain ignored; this is not a full
+WPT or website acceptance result.

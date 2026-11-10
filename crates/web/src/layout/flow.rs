@@ -1535,6 +1535,73 @@ impl<'a> Job<'a> {
         }
         None
     }
+    /// The first in-flow line's baseline, from this box's border top. Outside
+    /// markers align to that line even when it belongs to a block child.
+    fn first_baseline(&self, id: BoxId, depth: usize) -> Result<Option<f64>> {
+        check(self.cancel)?;
+        if depth > self.limits.depth {
+            return Err(Error::Limit);
+        }
+        let tree = &self.cache.tree;
+        let b = tree.get(id).ok_or(Error::Invalid)?;
+        if let BoxKind::InlineContent { source } = b.kind {
+            return Ok(self.texts.get(source as usize).and_then(Option::as_ref).and_then(|l| l.lines().iter().position(|line| !line.phantom).and_then(|i| l.baseline(i))));
+        }
+        if !matches!(b.kind, BoxKind::Block { .. }) {
+            return Ok(None);
+        }
+        let g = self.geometry[id.index()];
+        let mut next = b.first_child;
+        while let Some(c) = next {
+            check(self.cancel)?;
+            let child = tree.get(c).ok_or(Error::Invalid)?;
+            next = child.next_sibling;
+            if child.absolute || child.marker || tree.style(c).is_some_and(|s| matches!(s.value(P::Float), Value::Keyword(K::Left | K::Right | K::InlineStart | K::InlineEnd))) {
+                continue;
+            }
+            if let Some(baseline) = self.first_baseline(c, depth + 1)? {
+                return Ok(Some(g.border_width.top + g.padding.top + self.geometry[c.index()].border_box.y + baseline));
+            }
+        }
+        Ok(None)
+    }
+    /// An outside marker contributes room above the first baseline, without
+    /// changing the content's line-height. With no content it still creates
+    /// the item's empty line. No synthetic text enters the document or scene.
+    fn marker_room(&mut self, id: BoxId, auto: f64) -> Result<Option<f64>> {
+        let cache = self.cache.clone();
+        let tree = &cache.tree;
+        let Some(marker) = tree.get(id).and_then(|b| b.first_child).filter(|&c| tree.get(c).is_some_and(|b| b.marker)) else { return Ok(None) };
+        let item = tree.style(id).ok_or(Error::Invalid)?;
+        let marker_style = tree.styles().pseudo(tree.get(id).ok_or(Error::Invalid)?.node, crate::css::selectors::PseudoElement::Marker).unwrap_or(item);
+        let marker_baseline = self.marker_baseline(marker_style)?;
+        let g = self.geometry[id.index()];
+        let Some(baseline) = self.first_baseline(id, 0)? else {
+            let item_baseline = if std::ptr::eq(marker_style, item) { marker_baseline } else { self.marker_baseline(item)? };
+            return Ok(Some(auto.max(item.line_height() + (marker_baseline - item_baseline).max(0.))));
+        };
+        let shift = (marker_baseline - (baseline - g.border_width.top - g.padding.top)).max(0.);
+        if shift > 0. {
+            let mut next = tree.get(marker).and_then(|b| b.next_sibling);
+            while let Some(c) = next {
+                check(self.cancel)?;
+                let child = tree.get(c).ok_or(Error::Invalid)?;
+                next = child.next_sibling;
+                if !child.absolute {
+                    self.geometry[c.index()].border_box.y += shift;
+                }
+            }
+        }
+        Ok(Some(auto + shift))
+    }
+    fn marker_baseline(&self, style: &crate::css::style::Style) -> Result<f64> {
+        // The same half-leading/device rounding as inline::Options, without
+        // resolving wrapping, alignment and spacing just to read a baseline.
+        let metrics = self.scope.metrics(&style.font().request, self.cancel).map_err(shaping::Error::from)?;
+        let ascent = (metrics.ascent * self.scale).round();
+        let descent = (-metrics.descent * self.scale).round();
+        Ok((ascent + ((style.line_height() * self.scale - ascent - descent) / 2.).floor()) / self.scale)
+    }
     fn last_baseline(&self, id: BoxId, depth: usize) -> Result<Option<f64>> {
         check(self.cancel)?;
         if depth > self.limits.depth {
@@ -2212,6 +2279,10 @@ impl<'a> Job<'a> {
                     }
                 }
                 let mut auto = f.cursor + if f.collapse_bottom { 0. } else { f.pending.value() };
+                if let Some(with_marker) = self.marker_room(f.id, auto)? {
+                    auto = with_marker;
+                    f.through = false;
+                }
                 // A select: as tall as its first line (its chosen option).
                 if self.cache.tree.boxes[f.id.index()].first_line
                     && let Some((y, bottom)) = self.first_line(f.id)

@@ -4132,5 +4132,17 @@
   "title": "Browser: Pixelscan as Chrome draws it",
   "caption": "Its Angular stylesheet applied, fit-content buttons and ratio SVG icons sized as Chrome sizes them.",
   "image": "2026-11-09/095651-browser-pixelscan-as-chrome-draws-it.png"
+ },
+ {
+  "time": "2026-11-09T19:43:12",
+  "title": "Browser: list marker baselines before",
+  "caption": "Inherited browser patch: larger outside markers overlapped the following lines; empty-item space was supplied by synthetic zero-width text.",
+  "image": "2026-11-09/194312-browser-list-marker-baselines-before.png"
+ },
+ {
+  "time": "2026-11-09T19:43:13",
+  "title": "Browser: list marker baselines after",
+  "caption": "Outside markers reserve room above the first content baseline, including block children. Empty items reserve a line without synthetic text. 80 Chrome reference rectangles match at five scales; marker glyph shapes and horizontal gaps still need work.",
+  "image": "2026-11-09/194313-browser-list-marker-baselines-after.png"
  }
 ]

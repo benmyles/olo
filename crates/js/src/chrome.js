@@ -720,6 +720,19 @@
       // FontFaceSet]. V8's own, a typed array's, inherit theirs.)
       if (fromPrelude(C) && C.prototype !== Object.prototype && C.prototype !== Function.prototype && !has(C.prototype, Symbol.toStringTag) && C.name === name) define(C.prototype, Symbol.toStringTag, { value: name, configurable: true });
       if (!shaped.has(C.prototype)) harden(C.prototype);
+      // Web IDL's members are enumerable, unlike a class's methods: zone.js
+      // (Angular) copies an IntersectionObserver's by `for...in` over one,
+      // and Pixelscan's had no observe or disconnect. (Olo's own `_`
+      // members stay out of sight; V8's builtins stay as they are.)
+      if (fromPrelude(C) && !shaped.has(C.prototype)) {
+        const P = C.prototype;
+        for (const k of Object.getOwnPropertyNames(P)) {
+          if (k === 'constructor' || k.startsWith('_')) continue;
+          const pd = getOwn(P, k);
+          const member = pd.get || pd.set || pd.value;
+          if (pd.configurable && !pd.enumerable && typeof member === 'function' && fromPrelude(member)) define(P, k, { ...pd, enumerable: true });
+        }
+      }
     }
   }
 

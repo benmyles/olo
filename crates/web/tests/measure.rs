@@ -105,6 +105,51 @@ fn measurer_for(source: &str) -> (page::Measurer, paint_host::Scaled, olo_web::d
     let measurer = prepared.measurer();
     (measurer, host, prepared.into_document(), viewport)
 }
+#[test]
+fn outside_markers_reserve_room_and_align_to_the_first_content_baseline() {
+    let oracle: serde_json::Value = serde_json::from_str(include_str!("marker-fixtures/chrome.json")).unwrap();
+    let (measurer, host, doc, mut viewport) = measurer_for(include_str!("marker-fixtures/markers.html"));
+    for row in oracle["rows"].as_array().unwrap() {
+        viewport.scale = row["scale"].as_f64().unwrap();
+        let host = paint_host::Scaled::new(host.0.0.clone(), viewport.scale);
+        let measured = measurer.measure(&doc, &host, &mut shaping::Engine::default(), viewport, None, None).unwrap();
+        for case in row["cases"].as_array().unwrap() {
+            let id = case["id"].as_str().unwrap();
+            let n = find(&doc, id);
+            let rect = measured.border_box(n).unwrap();
+            for (key, got) in [("x", rect.x), ("y", rect.y), ("width", rect.width), ("height", rect.height)] {
+                let expected = case["rect"][key].as_f64().unwrap();
+                assert!((got - expected).abs() <= 1. / 64., "{id} {key} at {}x: {got} != Chrome {expected}", viewport.scale);
+            }
+        }
+        assert_eq!(measured.inner_text(&doc, find(&doc, "empty")).as_deref(), Some(""));
+    }
+}
+#[test]
+fn marker_styles_survive_reuse_and_change_with_their_originating_item() {
+    use olo_web::css::selectors::PseudoElement::Marker;
+    let (mut measurer, host, mut doc, viewport) = measurer_for(
+        "<!doctype html><style>li::marker{color:rgb(220,0,0);font-size:40px}li.changed::marker{color:rgb(0,0,220);font-size:20px}</style>\
+         <ul><li id=a>A B</li><li id=b>C D</li></ul><div id=other>E</div>",
+    );
+    let mut shaper = shaping::Engine::default();
+    let mut last = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+    let a = find(&doc, "a");
+    assert_eq!(last.computed_pseudo(a, Some(Marker), "color").as_deref(), Some("rgb(220, 0, 0)"));
+    for (id, name, value) in [("other", "style", "color:green"), ("a", "class", "changed"), ("a", "class", ""), ("a", "style", "display:block"), ("a", "style", "")] {
+        doc.set_attribute(find(&doc, id), name, value).unwrap();
+        let m = measurer.measure(&doc, &host, &mut shaper, viewport, Some(last), None).unwrap();
+        let fresh = measurer.measure(&doc, &host, &mut shaper, viewport, None, None).unwrap();
+        for id in ["a", "b", "other"] {
+            let n = find(&doc, id);
+            assert_eq!(m.border_box(n), fresh.border_box(n), "{id} after {name}={value}");
+            assert_eq!(m.computed_pseudo(n, Some(Marker), "color"), fresh.computed_pseudo(n, Some(Marker), "color"));
+            assert_eq!(m.computed_pseudo(n, Some(Marker), "font-size"), fresh.computed_pseudo(n, Some(Marker), "font-size"));
+        }
+        assert_as_fresh(&m, &mut measurer, &host, &doc, viewport);
+        last = m;
+    }
+}
 fn find(doc: &olo_web::dom::Document, id: &str) -> olo_web::dom::NodeId {
     let mut stack = vec![doc.root()];
     while let Some(n) = stack.pop() {

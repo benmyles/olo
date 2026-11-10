@@ -198,9 +198,21 @@ Nothing blocks a page's event loop (JOURNAL 2026-11-08, night), open:
 - [x] getComputedStyle of a pseudo-element answered the element's own
   values: it answers the pseudo-element's now (its style, its box's
   sizes; an unstyled one inherits), and `content` is serialised.
-- [ ] `::marker` has no style of its own (Chrome: `display:
-  inline-block`, its rules' colour): its getComputedStyle answers an
-  unstyled pseudo-element's.
+- [x] Initial `::marker` color/font styles, computed-style queries and
+  incremental preservation. Outside markers reserve room above the first
+  content baseline, including block descendants; empty items have a line
+  without synthetic text. 80 Chrome geometry observations at five DPRs pass.
+- [ ] Complete markers: generated content/images/counters, allowed-property
+  restrictions, computed `display`, vertical writing and RTL positioning,
+  bullet glyph shapes/horizontal gaps. Geometry coverage is not a pixel pass.
+- [x] Web IDL observer methods are enumerable for wrappers such as Zone.js;
+  keep ECMAScript Date methods non-enumerable and recorded prototype shapes
+  intact. Regression covers IntersectionObserver, ResizeObserver and
+  MutationObserver wrappers.
+- [ ] Speech synthesis needs a real backend and available-voice discovery.
+  Removed the interrupted session's hardcoded Google voice list: `speak()`
+  cannot produce those voices. Do not advertise unimplemented capabilities
+  to make a feature probe pass.
 - [ ] Selectors are compiled again with every compile of a page's sheets
   (11 ms of GitHub's 17): keep each sheet's compiled selectors with it,
   as its declarations are, relocated into the rule set's arenas.

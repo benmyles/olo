@@ -323,6 +323,21 @@ impl Job<'_> {
         }
         let a = self.active_absolute.take().ok_or(Error::Invalid)?;
         let marker = self.cache.tree.get(id).is_some_and(|b| b.marker);
+        let marker_y = if marker {
+            let parent = self.cache.tree.get(id).and_then(|b| b.parent).ok_or(Error::Invalid)?;
+            let pg = self.geometry[parent.index()];
+            let own_baseline = self.first_baseline(id, 0)?.unwrap_or(0.);
+            let baseline = match self.first_baseline(parent, 0)? {
+                Some(b) => b - pg.border_width.top - pg.padding.top,
+                None => {
+                    let item = self.cache.tree.style(parent).ok_or(Error::Invalid)?;
+                    self.marker_baseline(item)?.max(own_baseline)
+                }
+            };
+            Some(baseline - own_baseline)
+        } else {
+            None
+        };
         let g = &mut self.geometry[id.index()];
         let h = g.content_box().height;
         let vertical = positioned::solve(Input { intrinsic: [h, h], ..a.y }, self.scale)?;
@@ -331,7 +346,7 @@ impl Job<'_> {
             // An outside marker ends where its item's content starts.
             g.border_box.x = a.x - g.border_box.width;
         }
-        g.border_box.y = a.offset_y + vertical.border_start();
+        g.border_box.y = marker_y.unwrap_or(a.offset_y + vertical.border_start());
         g.border_box.height = vertical.size + g.padding.vertical() + g.border_width.vertical();
         g.margin.top = vertical.margin[0];
         g.margin.bottom = vertical.margin[1];

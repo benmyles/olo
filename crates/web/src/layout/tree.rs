@@ -789,15 +789,18 @@ impl<'a> BuildJob<'a> {
             self.list_counters.insert(p, ordinal);
         }
         let text = marker_text(*kind, ordinal);
+        // (Its text in its `::marker` style when rules give it one: their
+        // colour and font.)
+        let text_style = if self.styles.pseudo(node, PseudoElement::Marker).is_some() { StyleKey::pseudo(node, PseudoElement::Marker) } else { node.into() };
         if matches!(s.value(Property::ListStylePosition), Value::Keyword(Keyword::Inside)) {
             self.pending(item)?;
-            return self.append(node, item, node, &text, None);
+            return self.append(node, item, text_style, &text, None);
         }
         let marker = self.add(node, node, BoxKind::Block { flow_root: true, root: false, absolute: true }, item)?;
         self.boxes[marker.index()].absolute = true;
         self.boxes[marker.index()].marker = true;
         self.pending(marker)?;
-        self.append(node, marker, node, &text, None)?;
+        self.append(node, marker, text_style, &text, None)?;
         self.flush()
     }
     /// The element's `::before` or `::after` content, if it has any: text in

@@ -1266,6 +1266,25 @@ fn the_window_is_shaped_as_chrome_s() {
         ]
     );
 }
+/// Zone.js copies these operations with for...in when wrapping observers.
+/// Web IDL methods are enumerable; ECMAScript's Date methods are not, even
+/// though Olo replaces the Date constructor to share the page's clock.
+#[test]
+fn observer_operations_are_enumerable_without_changing_ecmascript_builtins() {
+    let (report, _) = run(r#"<!doctype html><script>
+for (const C of [IntersectionObserver, ResizeObserver, MutationObserver]) {
+  const observer = new C(() => {}), copied = {};
+  for (const k in observer) if (typeof observer[k] === 'function') copied[k] = observer[k].bind(observer);
+  copied.observe(document.documentElement, {childList:true});
+  copied.disconnect();
+  console.log(C.name, typeof copied.observe, typeof copied.disconnect,
+    Object.prototype.propertyIsEnumerable.call(C.prototype, 'constructor'));
+}
+console.log(Object.keys(Date.prototype).join(), Object.keys(Array.prototype).join(), Object.keys(Object.prototype).join());
+</script>"#);
+    assert_eq!(report.errors, Vec::<String>::new());
+    assert_eq!(report.console, ["[log] IntersectionObserver function function false", "[log] ResizeObserver function function false", "[log] MutationObserver function function false", "[log]   ",]);
+}
 /// RTCPeerConnection as Chrome's: an offer of its form for a data channel,
 /// and its host candidate an mDNS name on the socket's port.
 #[test]

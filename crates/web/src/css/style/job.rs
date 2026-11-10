@@ -1195,7 +1195,7 @@ impl<'a> Job<'a> {
             self.tree.slots[node.slot() as usize] = NonZeroU32::new(index as u32 + 1);
             self.account.add(&self.tree.styles[index].style);
             let mut pseudos = 0usize;
-            for pseudo in [PseudoElement::Before, PseudoElement::After, PseudoElement::Placeholder] {
+            for pseudo in [PseudoElement::Before, PseudoElement::After, PseudoElement::Placeholder, PseudoElement::Marker] {
                 if let Some(&p) = inc.tree.pseudos.get(&(node, pseudo)) {
                     let style = inc.tree.styles[p as usize].style.clone();
                     let at = self.tree.styles.len() as u32;
@@ -1539,7 +1539,7 @@ impl<'a> Job<'a> {
             }
             let pseudos = self.compute_pseudos(node, &style, &h)?;
             // The pseudo-elements must be the ones there before.
-            for pseudo in [PseudoElement::Before, PseudoElement::After, PseudoElement::Placeholder] {
+            for pseudo in [PseudoElement::Before, PseudoElement::After, PseudoElement::Placeholder, PseudoElement::Marker] {
                 if self.tree.pseudos.contains_key(&(node, pseudo)) != pseudos.iter().any(|(p, _)| *p == pseudo) {
                     return Ok(Err(format!("<{}>'s {pseudo:?} came or went", name(self, node))));
                 }
@@ -1881,6 +1881,45 @@ impl<'a> Job<'a> {
                 self.cancelled,
             )?;
             out.push((PseudoElement::Placeholder, style));
+        }
+        // A list item's marker: styled by `::marker` rules (its colour, its
+        // font), no `content` needed. Keep the snapshot for computed-style
+        // queries and incremental restyles as well as painting.
+        if self.rules.has_pseudo(PseudoElement::Marker) && matches!(element.value(Property::Display), Value::Display(Display::Box { list_item: true, .. })) {
+            self.tick()?;
+            let cascade = self
+                .rules
+                .match_element_with_hints(
+                    &dom,
+                    node,
+                    selectors::MatchOptions { quirks: self.options.quirks, pseudo: Some(PseudoElement::Marker), ..Default::default() },
+                    None,
+                    None,
+                    Some(element as &dyn cascade::Inherited),
+                    self.limits.cascade,
+                    self.limits.matching,
+                    &mut self.scratch,
+                    Some(&self.ancestors),
+                    self.cancelled,
+                )
+                .map_err(Error::cascade)?;
+            if cascade.declared_properties().next().is_some() {
+                let root = self.root.map(|i| &self.tree.styles[i].style);
+                let style = Style::compute_reusing(
+                    self.defaults.clone(),
+                    &cascade,
+                    Some(element),
+                    root,
+                    None,
+                    Some(&mut self.fonts),
+                    Some(&mut self.customs),
+                    host,
+                    Options { root: false, layout_parent: None, ..Default::default() },
+                    self.limits.style,
+                    self.cancelled,
+                )?;
+                out.push((PseudoElement::Marker, style));
+            }
         }
         Ok(out)
     }

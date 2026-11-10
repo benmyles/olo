@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-09
 
+### Browser: list marker baselines after
+
+*19:43* — Outside markers reserve room above the first content baseline, including block children. Empty items reserve a line without synthetic text. 80 Chrome reference rectangles match at five scales; marker glyph shapes and horizontal gaps still need work.
+
+![Browser: list marker baselines after](2026-11-09/194313-browser-list-marker-baselines-after.png)
+
+### Browser: list marker baselines before
+
+*19:43* — Inherited browser patch: larger outside markers overlapped the following lines; empty-item space was supplied by synthetic zero-width text.
+
+![Browser: list marker baselines before](2026-11-09/194312-browser-list-marker-baselines-before.png)
+
 ### Browser: Pixelscan as Chrome draws it
 
 *09:56* — Its Angular stylesheet applied, fit-content buttons and ratio SVG icons sized as Chrome sizes them.

@@ -13536,12 +13536,13 @@ A Telegram client of Olo's own: MTProto in process through grammers
 ## Native browser development shell (apps/browser)
 
 `olo-browser` is the development window over `crates/web`'s original Rust
-static page pipeline (`page`, `paint`, `layout`). It opens `about:engine` or
-local UTF-8 HTML, with native address/Go/Stop/menu controls, structured visible
-text and status, worker progress/cancellation, retained scrolling tiles and
-kit restart state. Initial HTTP/HTTPS navigation and still images work. It is
-not yet a complete web browser: network security policy, JavaScript, full
-layout/painting, semantic document actions, universal page
+page engine (`page`, `paint`, `layout`) and `crates/js`'s V8 bindings. It opens
+`about:engine`, local HTML and HTTP/HTTPS pages, with native address/Go/Stop/menu
+controls, structured visible text and status, worker progress/cancellation,
+retained scrolling tiles and kit restart state. Scripts and portions of the
+modern DOM, layout and media APIs work; this is not yet a complete web browser.
+Network security policy, complete standards behavior and isolation,
+semantic document actions, universal page
 darkening and desktop/password/passkey integrations remain open. Nothing
 registers it as the default browser. See `apps/browser/README.md` and the
 acceptance/journal/TODO in `docs/browser` before making compatibility claims.

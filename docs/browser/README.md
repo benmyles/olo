@@ -5,17 +5,13 @@ JavaScript; embedding Blink, WebKit, Servo, or a system browser as the
 engine does not meet the objective. The installed browser remains
 available while this one is developed. Nothing here changes defaults.
 
-**Status: the original Rust engine now parses static HTML, resolves selected
-CSS/styles and native fonts, shapes text, lays out initial normal flow and
-paints bounded retained tiles in a native `olo-browser` development window.
-Local HTML, initial HTTP/HTTPS navigation and linked CSS, cancellable network
-progress, initial structured text and clickable links, live pointer selector states,
-scrolling, PNG/JPEG/WebP/GIF still images and restart restoration
-work. The development loader has bounded decoded resources and native TLS
-verification. Complete Fetch/HTTP caching/cookies, JavaScript, complete web layout,
-complete image sizing/sampling, other media, semantic document actions, universal dark mode and Olo/password/
-passkey integrations remain substantial required work. There is no demonstrated
-website compatibility: 0/100 sites and 0/3,000 combinations accepted.**
+**Status: development, not production-ready.** The original Rust engine has
+HTML/DOM/CSS, text shaping, layout and retained painting, HTTP/HTTPS navigation,
+V8 scripting and partial modern web APIs in the native `olo-browser` shell.
+The journal records individual live-page improvements and Chrome comparisons.
+Complete standards behavior, interactions, media, native browser features,
+renderer isolation and security, and the visual/performance acceptance matrix
+remain required. **0/100 sites and 0/3,000 combinations are accepted.**
 The 99% target remains an acceptance criterion. Passing 100 selected sites
 alone cannot establish compatibility with 99% of the web.
 

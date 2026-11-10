@@ -1,12 +1,18 @@
 # Olo Browser development shell
 
 `olo-browser [about:engine | /absolute/path/to/file.html]` opens the original
-Rust static page pipeline in a native `olo-ui` window. It is an initial
-single-document shell, not a Chrome-compatible browser. Initial HTTP/HTTPS,
-linked CSS, text/image links, Back/Forward and still images work. JavaScript,
-complete CSS/layout/input, tabs, complete image/media support, sandboxing,
+Rust page engine in a native `olo-ui` window. It remains a development browser;
+Chrome compatibility has not passed the acceptance matrix. HTTP/HTTPS,
+linked CSS, links, Back/Forward, images, V8 scripting and parts of the modern
+DOM, layout, canvas and media APIs work. Complete standards behavior,
+tabs, complete image/media support, sandboxing,
 password/passkey mediation and full Olo integrations are still required.
 It does not change the installed/default browser.
+
+The detailed sections below originated as static-pipeline milestones. For
+current implementation work and remaining failures, consult
+`docs/browser/JOURNAL.md` and `docs/browser/TODO.md`; a component test passing
+does not establish website or production readiness.
 
 HTML parsing, style, font work, layout, scene construction, tile rasterization,
 file reads and image reclamation run on a worker. Progress streams through
